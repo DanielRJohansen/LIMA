@@ -422,24 +422,12 @@ struct Compound {
 
 	//---------------------------------------------------------------------------------//
 
-	
-	__host__ void init() {	// Only call this if the compound has already been assigned particles & bonds
-		center_of_mass = calcCOM();
-		//printf("")
-		//radius = singlebonds[0].reference_dist * n_particles * 0.5f;
-		//center_of_mass.print('C');
-		//printf("Radius %f\n", radius);
-	}
+	// Only call this if the compound has already been assigned particles & bonds
+	__host__ void init();
 
-	__host__ Float3 calcCOM() {
-		Float3 com;
-		for (int i = 0; i < n_particles; i++) {
-			com += (prev_positions[i] * (1.f / (float)n_particles));
-			//com += (particles[i].pos_tsub1 * (1.f / (float) n_particles));
-		}
-			
-		return com;
-	}
+	__host__ void initBondedLUT();
+
+	__host__ Float3 calcCOM();
 	/*
 	__host__ bool intersects(Compound a) {
 		return (a.center_of_mass - center_of_mass).len() < (a.radius + radius + max_LJ_dist);
@@ -448,54 +436,16 @@ struct Compound {
 	
 
 
-	__host__ void addParticle(int atomtype_id, Float3 pos) {
-		if (n_particles == MAX_COMPOUND_PARTICLES) {
-			printf("ERROR: Cannot add particle to compound!\n");
-			exit(1);
-		}
+	__host__ void addParticle(int atomtype_id, Float3 pos);
+	__host__ void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id);
 
-		atom_types[n_particles] = atomtype_id;
-		prev_positions[n_particles] = pos;
-		n_particles++;
-	}
-	__host__ void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
-		if (n_particles == MAX_COMPOUND_PARTICLES) {
-			printf("ERROR: Cannot add particle to compound!\n");
-			exit(1);
-		}
-
-		atom_types[n_particles] = atomtype_id;
-		prev_positions[n_particles] = pos;
-		atom_color_types[n_particles] = atomtype_color_id;
-#ifdef LIMA_DEBUGMODE
-		particle_global_ids[n_particles] = global_id;
-		//printf("%d global id\n", global_id);
-#endif
-		n_particles++;
-	}
 	__host__ bool hasRoomForRes() {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + MAX_ATOMS_IN_RESIDUE) <= MAX_COMPOUND_PARTICLES;
 	}
-	__host__ void calcParticleSphere() {
-		Float3 com = calcCOM();// calcCOM(compound);
-
-		//float furthest = LONG_MIN;
-		float furthest = FLT_MIN;
-		//float closest = LONG_MAX;
-		float closest = FLT_MAX;
-		int closest_index = 0;
-
-		for (int i = 0; i < n_particles; i++) {
-			float dist = (prev_positions[i] - com).len();
-			closest_index = dist < closest ? i : closest_index;
-			closest = std::min(closest, dist);
-			furthest = std::max(furthest, dist);
-		}
-
-		key_particle_index = closest_index;
-		confining_particle_sphere = furthest;
-	}
+	__host__ void calcParticleSphere();
 	//---------------------------------------------------------------------------------//
+
+//	__device__ void loadMeta(Compound* compound);
 
 	__device__ void loadMeta(Compound* compound) {
 		n_particles = compound->n_particles;
@@ -503,6 +453,8 @@ struct Compound {
 		n_anglebonds = compound->n_anglebonds;
 		n_dihedrals = compound->n_dihedrals;
 	}
+
+	//__device__ void loadData(Compound* compound);
 	__device__ void loadData(Compound* compound) {
 		if (threadIdx.x < n_particles) {
 			prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
@@ -510,9 +462,11 @@ struct Compound {
 			lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
 			compound->forces[threadIdx.x] = Float3(0.f);
-//#ifdef LIMA_DEBUGMODE
-			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x]; 
-//#endif
+			//#ifdef LIMA_DEBUGMODE
+			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
+			//#endif
+			for (int i = 0; i < n_particles; i++)
+				bondedparticles_lookup[threadIdx.x][i] = compound->bondedparticles_lookup[threadIdx.x][i];
 		}
 		else {
 			prev_positions[threadIdx.x] = Float3(-1.f);
@@ -538,11 +492,12 @@ struct Compound {
 		}
 	}
 
-
 	//CompoundState* compound_state_ptr;
 	//CompoundNeighborList* compound_neighborlist_ptr;
 
-
+	// TODO: make it bit array with uint64_t at some point..
+	// BWARE: Uninitialized on purpose!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	uint8_t bondedparticles_lookup[MAX_COMPOUND_PARTICLES][MAX_COMPOUND_PARTICLES];
 };
 
 
@@ -618,6 +573,8 @@ struct CompoundBridge {
 
 	void addBondParticles(GenericBond* bond, Molecule* molecule) {
 		for (int p = 0; p < bond->n_particles; p++) {
+			int a = n_particles;
+			int b = n_bonds;
 			if (!particleAlreadyStored(&bond->particles[p])) {
 				addParticle(&bond->particles[p], molecule);
 			}				
@@ -683,8 +640,12 @@ struct CompoundBridgeBundle {
 
 	bool addBridge(int left_c_id, int right_c_id) {
 		if (left_c_id > right_c_id) { std::swap(left_c_id, right_c_id); }
-		if (n_bridges == COMPOUNDBRIDGES_IN_BUNDLE)
-			return false;
+		if (n_bridges == COMPOUNDBRIDGES_IN_BUNDLE) {
+			printf("FATAL ERROR: MAXIMUM bridges in bundle reached. Missing implementation of multiple bundles");
+			exit(1);
+			//return false;
+		}
+			
 		compound_bridges[n_bridges++] = CompoundBridge(left_c_id, right_c_id);
 		return true;
 	}
@@ -696,6 +657,8 @@ struct CompoundBridgeBundle {
 				return bridge;
 			}
 		}
+		printf("FATAL ERROR: Failed to find belonging bridge");
+		exit(1);
 	}
 
 };
@@ -801,6 +764,13 @@ struct CompoundBridgeBundleCompact {
 	CompoundBridgeCompact compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
 	int n_bridges = 0;
 };
+
+
+
+struct SlidingActionGroupModule {
+	uint8_t pairs [64][64] = {};
+};
+
 
 
 #pragma warning (pop)

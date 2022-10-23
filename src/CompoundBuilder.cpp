@@ -28,7 +28,8 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 
 
 	//loadParticles(&compound, &atom_data, max_residue_id, true);
-	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
+	//loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
+	loadParticles(&molecule, &atom_data, 1, min_residue_id, ignore_hydrogens);
 	bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
 
 
@@ -56,6 +57,13 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 		}	
 	}
 	
+	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+		for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+			printf(" %d ", molecule.compounds[0].bondedparticles_lookup[i][ii]);
+		}
+		printf("\n");
+	}
+	//exit(0);
 
 
 	delete[] particle_id_maps;
@@ -137,7 +145,7 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 
 		if (record.residue_seq_number != current_res_id) {
-			if (current_compound == nullptr || !current_compound->hasRoomForRes()) {
+			if (current_compound == nullptr || !current_compound->hasRoomForRes()) {	// TODO: Make this better............. probe how many particles beforehand
 				//molecule->compound_bridge_bundle.addBridge(current_compound_id, current_compound_id + 1);
 
 				if (current_compound_id != -1)		// Dont add bridge to first compound
@@ -145,7 +153,9 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 				current_compound_id++;
 				current_compound = &molecule->compounds[current_compound_id];
+				current_compound->initBondedLUT();
 				molecule->n_compounds++;
+
 			}
 			current_res_id = record.residue_seq_number;
 		}
@@ -280,6 +290,9 @@ void CompoundBuilder::addBond(Molecule* molecule, ParticleRef* maps, vector<stri
 		}
 
 		compound->singlebonds[compound->n_singlebonds++] = PairBond(bondtype->b0, bondtype->kb, maps[0].local_id_compound, maps[1].local_id_compound, apply_BLJI);		
+
+
+
 	}
 	else {
 
@@ -397,6 +410,21 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 
 			Compound* compound_self = &molecule->compounds[particle_refs[id_self].compound_id];
 			compound_self->lj_ignore_list[particle_refs[id_self].local_id_compound].addIgnoreTarget(particle_refs[id_other].local_id_compound, particle_refs[id_other].compound_id);
+
+
+
+			if (particle_refs[id_self].compound_id == particle_refs[id_other].compound_id) {
+				uint8_t localid_self = particle_refs[id_self].local_id_compound;
+				uint8_t localid_other = particle_refs[id_other].local_id_compound;
+
+
+				// TODO: implement a strict order of the correct position, instead of having the same information twice!
+				compound_self->bondedparticles_lookup[localid_self][localid_other] = 1;
+				compound_self->bondedparticles_lookup[localid_other][localid_self] = 1;
+			}
+			//uint8_t local_id_self = particle_refs[id_self].local_id_compound
+
+			//compound_self->bonded_particles[]
 		}
 	}
 }
@@ -605,18 +633,5 @@ void CompoundBuilder::countElements(Molecule* molecule) {
 
 
 
-
-
-
-
-
-//
-//
-//
-//
-//Molecule::Molecule() {
-//	compounds = new Compound[MAX_COMPOUNDS];
-//	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
-//}
 
 

@@ -23,6 +23,8 @@
 
 // DIHEDRALS can no longer be disabled, as they are critical for BLJI
 
+// Implicit Non-overlapping Work Distribution
+#define INWD
 
 // Debugging
 const bool print_compound_positions = false;
@@ -56,7 +58,7 @@ constexpr float CUTOFF = 0.8f;	//nm/
 
 
 // OPTIMIZATION PARAMETERS
-const int MAX_COMPOUND_PARTICLES = 56;
+const int MAX_COMPOUND_PARTICLES = 40;
 
 
 
@@ -107,8 +109,8 @@ const int STEPS_PER_TRAINDATATRANSFER = 100;
 
 
 // Related to compound bridges
-const int COMPOUNDBRIDGES_IN_BUNDLE = 64;
-const int MAX_PARTICLES_IN_BRIDGE = 32;
+const int COMPOUNDBRIDGES_IN_BUNDLE = 96;
+const int MAX_PARTICLES_IN_BRIDGE = 64;
 const int MAX_SINGLEBONDS_IN_BRIDGE = 32;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 32;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;

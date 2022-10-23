@@ -28,8 +28,7 @@ int main() {
 	int a = 0b1011;
 	int b = 0b1 << 0;
 	int c = a & b;
-	printf("%d", c);
-	exit(0);
+
 	//Environment::prepFF("conf_test.gro", "topol_test.top");
 
 	string conf_filename = "conf.gro";

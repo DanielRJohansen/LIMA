@@ -721,14 +721,16 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 __device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
-#ifdef ENABLE_BLJV
+#ifndef INWD
 		if (i != threadIdx.x && threadIdx.x < compound->n_particles) {
 		//if (i != threadIdx.x && !compound->lj_ignore_list[threadIdx.x].ignore((uint8_t)i, (uint8_t)blockIdx.x) && threadIdx.x < compound->n_particles) {
 			//printf("Thread %d computing LJ to index %d\n", threadIdx.x, i);
 #else
-		if (i != threadIdx.x && threadIdx.x < compound->n_particles) {
+		if (i != threadIdx.x && threadIdx.x < compound->n_particles && !compound->bondedparticles_lookup[threadIdx.x][i]) {
 #endif
 			//if (i != threadIdx.x  && threadIdx.x < compound.n_particles) {																											// DANGER
+
+
 
 			force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 				//(forcefield_device.particle_parameters[compound->atom_types[threadIdx.x]].sigma + forcefield_device.particle_parameters[compound->atom_types[i]].sigma) * 0.5f,		// Don't know how to handle atoms being this close!!!
@@ -783,7 +785,6 @@ __device__ Float3 computeCompoundToSolventLJForces(Float3* self_pos, int n_parti
 			(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[atomtypes_others[i]].sigma) * 0.5f,
 			(forcefield_device.particle_parameters[atomtype_self].epsilon + forcefield_device.particle_parameters[atomtypes_others[i]].epsilon) * 0.5,
 			atomtype_self, atomtypes_others[i]
-
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -821,6 +822,7 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 			);
 
 			//forces[0] = Float3(0.f); forces[1] = Float3(0.f);
+#ifndef INWD
 			if (pb->invertLJ) {
 				float temp = 0.f;
 				//float sigma = (forcefield_device.particle_parameters[entity->atom_types[pb->atom_indexes[0]]].sigma + forcefield_device.particle_parameters[entity->atom_types[pb->atom_indexes[1]]].sigma) * 0.5;
@@ -844,6 +846,7 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 					
 				
 			}
+#endif
 		}
 
 
@@ -880,6 +883,7 @@ __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* u
 			);
 
 			//forces[0] = Float3(0.f); forces[1] = Float3(0.f); forces[2] = Float3(0.f);
+#ifndef INWD
 			if (ab->invertLJ) {
 				float temp = 0.f;
 				//float sigma = (forcefield_device.particle_parameters[entity->atom_types[ab->atom_indexes[0]]].sigma + forcefield_device.particle_parameters[entity->atom_types[ab->atom_indexes[2]]].sigma) * 0.5;
@@ -895,6 +899,7 @@ __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* u
 					//anti_lj_force.print('A');
 				}
 			}
+#endif
 		}
 
 
@@ -932,6 +937,7 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 				potE
 			);
 
+#ifndef INWD
 			//forces[0] = Float3(0.f); forces[1] = Float3(0.f); forces[2] = Float3(0.f); forces[3] = Float3(0.f);
 			if (db->invertLJ) {
 				float temp = 0.f;
@@ -947,6 +953,7 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 				forces[0] -= anti_lj_force; forces[3] += anti_lj_force;
 
 			}
+#endif
 
 		}
 
@@ -1079,6 +1086,8 @@ __global__ void compoundKernel(Box* box) {
 	
 
 	Float3 force = compound.forces[threadIdx.x];
+	
+	force = Float3(0.f);
 	Float3 force_LJ_sol(0.f);
 	
 
@@ -1117,7 +1126,7 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();				// CRITICAL
 		//continue;
 
-		//continue;									// DANGER
+		continue;									// DANGER
 		if (threadIdx.x < compound.n_particles) {
 			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 			//anti_inter += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,

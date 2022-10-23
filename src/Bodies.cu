@@ -1,6 +1,127 @@
 #include "Bodies.cuh"
 
 
+
+
+__host__ void Compound::init() {
+	center_of_mass = calcCOM();
+	//printf("")
+	//radius = singlebonds[0].reference_dist * n_particles * 0.5f;
+	//center_of_mass.print('C');
+	//printf("Radius %f\n", radius);
+}
+
+__host__ void Compound::initBondedLUT()
+{
+	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+		for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+			bondedparticles_lookup[i][ii] = 0;
+		}
+	}
+	
+}
+
+__host__ Float3 Compound::calcCOM() {
+	Float3 com;
+	for (int i = 0; i < n_particles; i++) {
+		com += (prev_positions[i] * (1.f / (float)n_particles));
+		//com += (particles[i].pos_tsub1 * (1.f / (float) n_particles));
+	}
+
+	return com;
+}
+
+__host__ void Compound::addParticle(int atomtype_id, Float3 pos) {
+	if (n_particles == MAX_COMPOUND_PARTICLES) {
+		printf("ERROR: Cannot add particle to compound!\n");
+		exit(1);
+	}
+
+	atom_types[n_particles] = atomtype_id;
+	prev_positions[n_particles] = pos;
+	n_particles++;
+}
+
+__host__ void Compound::addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
+	if (n_particles == MAX_COMPOUND_PARTICLES) {
+		printf("ERROR: Cannot add particle to compound!\n");
+		exit(1);
+	}
+
+	atom_types[n_particles] = atomtype_id;
+	prev_positions[n_particles] = pos;
+	atom_color_types[n_particles] = atomtype_color_id;
+#ifdef LIMA_DEBUGMODE
+	particle_global_ids[n_particles] = global_id;
+	//printf("%d global id\n", global_id);
+#endif
+	n_particles++;
+}
+
+__host__ void Compound::calcParticleSphere() {
+	Float3 com = calcCOM();// calcCOM(compound);
+
+	//float furthest = LONG_MIN;
+	float furthest = FLT_MIN;
+	//float closest = LONG_MAX;
+	float closest = FLT_MAX;
+	int closest_index = 0;
+
+	for (int i = 0; i < n_particles; i++) {
+		float dist = (prev_positions[i] - com).len();
+		closest_index = dist < closest ? i : closest_index;
+		closest = std::min(closest, dist);
+		furthest = std::max(furthest, dist);
+	}
+
+	key_particle_index = closest_index;
+	confining_particle_sphere = furthest;
+}
+
+//__device__ void Compound::loadMeta(Compound* compound) {
+//	n_particles = compound->n_particles;
+//	n_singlebonds = compound->n_singlebonds;
+//	n_anglebonds = compound->n_anglebonds;
+//	n_dihedrals = compound->n_dihedrals;
+//}
+//__device__ void Compound::loadData(Compound* compound) {
+//	if (threadIdx.x < n_particles) {
+//		prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
+//		atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
+//		lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
+//		forces[threadIdx.x] = compound->forces[threadIdx.x];
+//		compound->forces[threadIdx.x] = Float3(0.f);
+//		//#ifdef LIMA_DEBUGMODE
+//		particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
+//		//#endif
+//	}
+//	else {
+//		prev_positions[threadIdx.x] = Float3(-1.f);
+//		atom_types[threadIdx.x] = 0;
+//		//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
+//		forces[threadIdx.x] = Float3(0.f);
+//		particle_global_ids[threadIdx.x] = 0;
+//	}
+//	for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
+//		int index = i * blockDim.x + threadIdx.x;
+//		if (index < n_singlebonds)
+//			singlebonds[index] = compound->singlebonds[index];
+//	}
+//	for (int i = 0; (i * blockDim.x) < n_anglebonds; i++) {
+//		int index = i * blockDim.x + threadIdx.x;
+//		if (index < n_anglebonds)
+//			anglebonds[index] = compound->anglebonds[index];
+//	}
+//	for (int i = 0; (i * blockDim.x) < n_dihedrals; i++) {
+//		int index = i * blockDim.x + threadIdx.x;
+//		if (index < n_dihedrals)
+//			dihedrals[index] = compound->dihedrals[index];
+//	}
+//}
+
+
+
+
 /*
 Molecule::Molecule() {	// Always returns a h2o molecule rn
 	n_atoms = 3;

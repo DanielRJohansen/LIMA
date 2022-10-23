@@ -1333,8 +1333,8 @@ __global__ void solventForceKernel(Box* box) {
 		//printf("pot: %f\n", box->potE_buffer[compounds_offset + solvent_index + (box->step) * box->total_particles]);
 		box->potE_buffer[compounds_offset + solvent_index + step_offset] = force.len();
 		box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
-		if ((solvent.pos.x > 7 || solvent.pos.y > 7 || solvent.pos.z > 7) && box->step == 0)
-			solvent.pos.print();
+		/*if ((solvent.pos.x > 7 || solvent.pos.y > 7 || solvent.pos.z > 7) && box->step == 0)
+			solvent.pos.print('y');*/
 		box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
 	}
 
@@ -1352,8 +1352,7 @@ __global__ void solventForceKernel(Box* box) {
 
 		}
 		float len = (solvent.pos - solvent.pos_tsub1).len();
-		/*if ( len < 0.0004)
-			printf("%f\n", len);*/
+
 
 		applyPBC(&solvent.pos);	
 

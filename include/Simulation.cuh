@@ -10,8 +10,8 @@
 
 #ifndef __linux__
 //const string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\molecules\\t4lys_full\\";
-const string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\";
-const string OUT_DIR = "C:\\PROJECTS\\Quantom\\Simulation\\";
+const std::string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\";
+const std::string OUT_DIR = "C:\\PROJECTS\\Quantom\\Simulation\\";
 #else
 //const string MOL_FOLDER = "../Compounds/t4lys/";
 const string MOL_FOLDER = "../../Simulation/Molecule/";
@@ -34,8 +34,8 @@ constexpr double SOLVENT_MASS = 18.01528f * 1e-3;	// kg/mol
 // This goes on Device
 class Box {
 public:
-
-	Compound* compounds;
+	Box() {}
+	Compound* compounds = nullptr;
 
 	uint32_t n_compounds = 0;
 	uint16_t n_solvents = 0;
@@ -43,28 +43,28 @@ public:
 
 
 	// These are shared for all compounds, MUST be allocated before adding any compounds to box, so not in moveToDevice //
-	CompoundState* compound_state_array;	
-	CompoundState* compound_state_array_next;
+	CompoundState* compound_state_array = nullptr;
+	CompoundState* compound_state_array_next = nullptr;
 
-	NeighborList* compound_neighborlists;
-	NeighborList* solvent_neighborlists;
+	NeighborList* compound_neighborlists = nullptr;
+	NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//
 
-	Solvent* solvents;
-	Solvent* solvents_next;
+	Solvent* solvents = nullptr;
+	Solvent* solvents_next = nullptr;
 
-	CompoundBridgeBundleCompact* bridge_bundle;
+	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 
 
 	uint32_t step = 0;
-	double dt;
+	double dt = 0;
 	bool critical_error_encountered = 0;
 
-	float* potE_buffer;		// For total energy summation
-	Float3* traj_buffer;
+	float* potE_buffer = nullptr;		// For total energy summation
+	Float3* traj_buffer = nullptr;
 
-	float* outdata;			// Temp, for longging values to whatever
-	Float3* data_GAN;			// Only works if theres 1 compounds right now.
+	float* outdata = nullptr;			// Temp, for longging values to whatever
+	Float3* data_GAN = nullptr;			// Only works if theres 1 compounds right now.
 
 
 	float thermostat_scalar = 1.f;
@@ -97,7 +97,7 @@ public:
 class Simulation {
 public:
 	Simulation() {
-		box = new Box;
+		box = new Box();
 	}
 
 	__host__ void moveToDevice() {
@@ -136,12 +136,12 @@ public:
 	//int step = 0;
 
 
-	float* potE_buffer;	// Not really a buffer yet, just one large array that holds full simulation data
-	Float3* traj_buffer;
-	float* temperature_buffer;
+	float* potE_buffer = NULL;	// Not really a buffer yet, just one large array that holds full simulation data
+	Float3* traj_buffer = nullptr;
+	float* temperature_buffer = nullptr;
 	int n_temp_values = 0;
-	Float3* traindata_buffer;		// Position and force data for all particles, for NN training
-	float* logging_data;				// Used for debugging/logging any values. 10 floats per step!
+	Float3* traindata_buffer = nullptr;		// Position and force data for all particles, for NN training
+	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 
 	uint32_t total_particles_upperbound = 0;
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
@@ -156,7 +156,7 @@ public:
 	Box* box;
 
 
-	Compound* compounds_host;				// For reading static data, for example during nlist-search
+	Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search
 
 	// Box variable copies, here for ease of access.
 	int n_compounds = 0;
@@ -165,7 +165,7 @@ public:
 
 
 
-	string out_dir = OUT_DIR;
+	std::string out_dir = OUT_DIR;
 	
 
 
@@ -173,7 +173,5 @@ public:
 	int blocks_per_solventkernel = 0;
 private:
 	uint64_t step = 0;
-
-
 };
 

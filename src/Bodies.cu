@@ -63,3 +63,16 @@ CompoundBridgeBundleCompact::CompoundBridgeBundleCompact(CompoundBridgeBundle* b
 		//printf("bridge %d has %d particles\n\n", i, compound_bridges[i].n_particles);
 	}
 }
+
+Molecule::Molecule() {
+	compounds = new Compound[MAX_COMPOUNDS];
+	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
+}
+
+Float3 Molecule::calcCOM() {
+	Float3 com(0.f);
+	for (int i = 0; i < n_compounds; i++) {
+		com += (compounds[i].calcCOM() * (1.f / (float)n_compounds));
+	}
+	return com;
+}

@@ -510,7 +510,7 @@ vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
 			data_buffer[5][0],		// chain id
 			stoi(data_buffer[6]),
 			data_buffer[7][0],
-			Float3(stof(data_buffer[8]), stof(data_buffer[9]), stof(data_buffer[10])) * 0.1	// Convert A to nm right off the bat!
+			Float3(stof(data_buffer[8]), stof(data_buffer[9]), stof(data_buffer[10])) * 0.1f	// Convert A to nm right off the bat!
 		));
 		
 	}
@@ -610,13 +610,13 @@ void CompoundBuilder::countElements(Molecule* molecule) {
 
 
 
-
-
-
-
-Molecule::Molecule() {
-	compounds = new Compound[MAX_COMPOUNDS];
-	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
-}
+//
+//
+//
+//
+//Molecule::Molecule() {
+//	compounds = new Compound[MAX_COMPOUNDS];
+//	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
+//}
 
 

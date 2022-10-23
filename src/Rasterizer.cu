@@ -216,9 +216,9 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     //atoms[index] = atom;
 
     // Convert units to normalized units for OpenGL
-    atom.radius = 0.25 * atom.radius;            // Yeah, i'm just eyeballing this..
+    atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
     for (int dim = 0; dim < 3; dim++) {
-        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / (double) BOX_LEN - 0.5f) * 1.8l;
+        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / (float) BOX_LEN - 0.5f) * 1.8f;
     }
 
 

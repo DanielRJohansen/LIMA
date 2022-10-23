@@ -45,15 +45,15 @@ public:
 
 
 private:
-	ForceFieldMaker* FFM;
+	ForceFieldMaker* FFM = nullptr;
 	//IDMap* particle_id_maps;
-	ParticleRef* particle_id_maps;
-	CompoundBridgeBundle* compound_bridge_bundle;
+	ParticleRef* particle_id_maps = nullptr;
+	CompoundBridgeBundle* compound_bridge_bundle = nullptr;
 
 	uint16_t unique_doublyconnected_id = 1;
 
 	//uint32_t** bonded_interactions_list;	// Contains each particles list of (larger) ids of particles with which it shares a bonded interaction
-	LJ_Ignores* bonded_interactions_list;
+	LJ_Ignores* bonded_interactions_list = nullptr;
 
 
 
@@ -118,7 +118,7 @@ private:
 			valid = true; 
 		}
 		bool valid = false;
-		int id;
+		int id = 0;
 		string name;
 	};
 
@@ -138,13 +138,13 @@ private:
 			coordinate = h;
 		}
 
-		int atom_serial_number;
-		string atom_name;
-		char alternate_location_indicator;
-		string residue_name;
-		char chain_identifier;
-		int residue_seq_number;
-		char code_for_insertions_of_residues;
+		int atom_serial_number = 0;
+		string atom_name = "";
+		char alternate_location_indicator = 0;
+		string residue_name = "";
+		char chain_identifier = 0;
+		int residue_seq_number = 0;
+		char code_for_insertions_of_residues = 0;
 		Float3 coordinate;						// [nm]
 	};
 

@@ -1,17 +1,18 @@
 #pragma once
-
-#include "QuantomTypes.cuh"
 #include <iostream>
 
 #include "Constants.cuh"
+#include "LimaTypes.cuh"
+//#include "QuantomTypes.cuh"
 
 
 
 
 
 
-
-
+// Hyper-fast objects for kernel, so we turn all safety off here!
+#pragma warning (push)
+#pragma warning (disable : 26495)
 
 
 
@@ -52,15 +53,15 @@ struct ParticleRef {		 // Maybe call map instead?
 struct NBAtomtype {
 	NBAtomtype(){}
 	NBAtomtype(float m, float s, float e) : mass(m), sigma(s), epsilon(e) {}
-	float mass;			// kg / mol
-	float sigma;		// nm
-	float epsilon;		// J/mol
+	float mass = 0.f;			// kg / mol
+	float sigma = 0.f;		// nm
+	float epsilon = 0.f;		// J/mol
 };
 
 
 struct PairBond {	// IDS and indexes are used interchangeably here!
 	PairBond(){}
-	PairBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb), invertLJ(invertLJ) {
+	PairBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 		// This is only for loading the forcefield, so the ID's refers to id's given in .conf file!
 		atom_indexes[0] = id1;
 		atom_indexes[1] = id2;
@@ -81,7 +82,7 @@ struct PairBond {	// IDS and indexes are used interchangeably here!
 	//double reference_dist;
 	float b0 = 0.f;
 	float kb = 0.f;
-	uint32_t atom_indexes[2];	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
+	uint32_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
 	bool invertLJ = false;		// When sharing multiple bonded connections
 };
@@ -97,7 +98,7 @@ struct AngleBond {
 
 	float theta_0 = 0.f;
 	float k_theta = 0.f;
-	uint32_t atom_indexes[3]; // i,j,k angle between i and k
+	uint32_t atom_indexes[3] = {}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
 	bool invertLJ = false;		// When sharing multiple bonded connections
 };
@@ -115,7 +116,7 @@ struct DihedralBond {
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
 	uint8_t n = 0;
-	uint32_t atom_indexes[4];
+	uint32_t atom_indexes[4] = {0,0,0,0};
 	const static int n_atoms = 4;
 	bool invertLJ = false;		// When sharing multiple bonded connections
 };
@@ -136,7 +137,7 @@ struct GenericBond {				// ONLY used during creation, never on device!
 				compound_ids[1] = particles[i].compound_id;
 			}
 		}
-		if (compound_ids[0] > compound_ids[1] && compound_ids[1] != -1) { swap(compound_ids[0], compound_ids[1]); }
+		if (compound_ids[0] > compound_ids[1] && compound_ids[1] != -1) { std::swap(compound_ids[0], compound_ids[1]); }
 	}
 
 	bool spansTwoCompounds() {	// Simply check if any id has been put into index 1
@@ -167,9 +168,9 @@ struct GenericBond {				// ONLY used during creation, never on device!
 
 	int compound_ids[2] = { -1,-1 };		// Can either span 1 or 2 compounds. If more, then undefined behaviour
 
-	void* bond_ref;
+	void* bond_ref = nullptr;
 
-	ParticleRef particles[4];
+	ParticleRef particles[4] = {};
 	int n_particles = 0;
 };
 
@@ -182,10 +183,10 @@ struct LJ_Ignores {	// Each particle is associated with 1 of these.
 	}
 
 	static const int max_ids = 32;
-	uint8_t local_ids[max_ids];
-	uint8_t compound_ids[max_ids];
+	uint8_t local_ids[max_ids] = {};
+	uint8_t compound_ids[max_ids] = {};
 
-	uint32_t global_ids[max_ids];
+	uint32_t global_ids[max_ids] = {};
 	uint8_t n_ignores = 0;
 
 
@@ -487,8 +488,8 @@ struct Compound {
 		for (int i = 0; i < n_particles; i++) {
 			float dist = (prev_positions[i] - com).len();
 			closest_index = dist < closest ? i : closest_index;
-			closest = min(closest, dist);
-			furthest = max(furthest, dist);
+			closest = std::min(closest, dist);
+			furthest = std::max(furthest, dist);
 		}
 
 		key_particle_index = closest_index;
@@ -555,13 +556,7 @@ struct Molecule {
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;
 
-	Float3 calcCOM() {
-		Float3 com(0.f);
-		for (int i = 0; i < n_compounds; i++) {
-			com += (compounds[i].calcCOM() * (1.f / (float)n_compounds));
-		}
-		return com;
-	}
+	Float3 calcCOM();
 
 
 
@@ -687,7 +682,7 @@ struct CompoundBridgeBundle {
 	int n_bridges = 0;
 
 	bool addBridge(int left_c_id, int right_c_id) {
-		if (left_c_id > right_c_id) { swap(left_c_id, right_c_id); }
+		if (left_c_id > right_c_id) { std::swap(left_c_id, right_c_id); }
 		if (n_bridges == COMPOUNDBRIDGES_IN_BUNDLE)
 			return false;
 		compound_bridges[n_bridges++] = CompoundBridge(left_c_id, right_c_id);
@@ -808,7 +803,7 @@ struct CompoundBridgeBundleCompact {
 };
 
 
-
+#pragma warning (pop)
 
 
 

@@ -193,7 +193,7 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 	return simulation->box->n_solvents;
 }
 
-int BoxBuilder::solvateBox(Simulation* simulation, vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	for (Float3 sol_pos : *solvent_positions) {
 		if (simulation->box->n_solvents == MAX_SOLVENTS) {

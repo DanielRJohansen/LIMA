@@ -291,7 +291,7 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 	file = fopen(file_path, "wb");
 #endif
 
-	printf("Check %d %d\n", sizeof(T), n_datapoints);
+	std::printf("Check %d %lld\n", static_cast<int>(sizeof(T)), n_datapoints);
 
 	fwrite(data, sizeof(T), n_datapoints, file);
 	fclose(file);

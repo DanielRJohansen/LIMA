@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "Constants.cuh"
+#include "LimaTypes.cuh"
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
 
@@ -209,6 +210,15 @@ private:
 };
 
 
+
+
+
+class EngineCtrl {
+public:
+	EngineCtrl(){}
+
+	static int get();
+};
 // FUNCTIONS IN THIS CLASS CAN BE CALLED FROM OTHER FILES
 /*
 class DeviceFunctionCollection {

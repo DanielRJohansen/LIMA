@@ -13,6 +13,9 @@
 #include <sstream>
 
 
+struct TestType {
+	static int get();
+};
 
 
 constexpr double PI = 3.14159;
@@ -28,10 +31,10 @@ struct Int3 {
 	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ inline Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
 	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
-	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int) floor((float)x * a), (int) floor((float)y * a), (int) floor((float)z * a)); }
+	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int)floor((float)x * a), (int)floor((float)y * a), (int)floor((float)z * a)); }
 
 
-	int x=0, y=0, z = 0;
+	int x = 0, y = 0, z = 0;
 };
 
 
@@ -52,20 +55,20 @@ struct Float3 {
 	__host__ __device__ inline void operator -= (const Float3 a) { x -= a.x; y -= a.y; z -= a.z; }
 	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
 
-	__host__ __device__ inline bool operator < (const Float3 a) {return x < a.x && y < a.y && z < a.z; }
-	__host__ __device__ inline bool operator > (const Float3 a) { return x > a.x&& y > a.y&& z > a.z; }
+	__host__ __device__ inline bool operator < (const Float3 a) { return x < a.x&& y < a.y&& z < a.z; }
+	__host__ __device__ inline bool operator > (const Float3 a) { return x > a.x && y > a.y && z > a.z; }
 
 	__host__ __device__ Float3 norm() {
 		float l = len();
 		if (l)
-			return *this * (1.f / l); 
+			return *this * (1.f / l);
 		return Float3(0, 0, 0);
 	}
 	__device__ Float3 norm_fast() {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
-	__host__ __device__ Float3 square() {return Float3(x * x, y * y, z * z);}
-	__host__ __device__ inline float len() {return (float)sqrtf(x * x + y * y + z * z); }
+	__host__ __device__ Float3 square() { return Float3(x * x, y * y, z * z); }
+	__host__ __device__ inline float len() { return (float)sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline float lenSquared() { return (float)(x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
@@ -78,7 +81,7 @@ struct Float3 {
 			z -= a;
 		return *this;
 	}
-	
+
 	__host__ __device__ inline static float getAngle(Float3 v1, Float3 v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
@@ -96,16 +99,18 @@ struct Float3 {
 
 	__host__ __device__ Float3 cross(Float3 a) const { return Float3(y * a.z - z * a.y, z * a.x - x * a.z, x * a.y - y * a.x); }
 	__host__ __device__ float dot(Float3 a) const { return (x * a.x + y * a.y + z * a.z); }
-	__host__ __device__ Float3 abs() const { return Float3(
-		std::abs(x),
-		std::abs(y), 
-		std::abs(z)
-		); }
+	__host__ __device__ Float3 abs() const {
+		return Float3(
+			std::abs(x),
+			std::abs(y),
+			std::abs(z)
+		);
+	}
 
 
-	__host__ __device__ void print(char c='_') { 
+	__host__ __device__ void print(char c = '_') {
 		if (len() < 100000)
-			printf("%c %f %f %f\n", c, x, y, z); 
+			printf("%c %f %f %f\n", c, x, y, z);
 		else
 			printf("%c %.0f\t\t %.0f\t\t %.0f\n", c, x, y, z);
 	}
@@ -132,9 +137,9 @@ struct Float3 {
 		return v;
 	}
 	__host__ __device__ Float3 rotateAroundVector(Float3 pitch_yaw_roll, Float3 k) {	// k=normal = z-pointing		
-		Float3 v = rodriguesRotatation(*this, Float3(1,0,0), pitch_yaw_roll.x);
+		Float3 v = rodriguesRotatation(*this, Float3(1, 0, 0), pitch_yaw_roll.x);
 
-		v = rodriguesRotatation(v, Float3(0,0,1) , pitch_yaw_roll.y);		
+		v = rodriguesRotatation(v, Float3(0, 0, 1), pitch_yaw_roll.y);
 		v = rodriguesRotatation(v, k, pitch_yaw_roll.z);
 		return v;
 	}
@@ -169,11 +174,11 @@ struct Float3 {
 
 	// Not used right now!
 	__host__ __device__ static Float3 centerOfMass(Float3* arr_ptr, uint32_t arr_size) {	// Only run before sim, so we can cast to double without slowing sim
-		Float3 sum = Float3(0,0,0);
+		Float3 sum = Float3(0, 0, 0);
 		for (uint32_t i = 0; i < arr_size; i++) {
 			sum = sum + arr_ptr[i];
 		}
-		return sum * (1.f/ arr_size);
+		return sum * (1.f / arr_size);
 	}
 
 
@@ -192,7 +197,7 @@ struct Double3 {
 		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
 	}
 	__host__ __device__ inline Double3 operator + (const Double3 a) const { return Double3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ inline void operator += (const Float3 a) { x += (double) a.x; y += (double) a.y; z += (double) a.z; }
+	__host__ __device__ inline void operator += (const Float3 a) { x += (double)a.x; y += (double)a.y; z += (double)a.z; }
 	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
 
 
@@ -206,8 +211,8 @@ struct Double3 {
 };
 
 struct BoundingBox {
-	BoundingBox(){}
-	BoundingBox(Float3 min, Float3 max): min(min), max(max) {}
+	BoundingBox() {}
+	BoundingBox(Float3 min, Float3 max) : min(min), max(max) {}
 
 
 	Float3 min, max;
@@ -235,7 +240,7 @@ struct BlockMutex {
 	__device__ BlockMutex(){}
 	int mutex = 0;
 
-	
+
 
 	__device__ void lock() {
 		while (atomicCAS(mutex, 0, 1) != 0) {}
@@ -328,7 +333,7 @@ struct Trajectory {
 		printf("Success\n");
 	}
 
-	
+
 
 	std::string readFileIntoString(const std::string& path) {
 		auto ss = std::ostringstream{};
@@ -365,12 +370,12 @@ public:
 			insert(keys[i]);
 	}
 
-	bool insert(uint16_t key, int offset=1) {			// Returns true for sucessful insertion
+	bool insert(uint16_t key, int offset = 1) {			// Returns true for sucessful insertion
 		if (offset > 100000) {
 			printf("Hashtable insertion failed\n");
 			exit(1);
 		}
-			
+
 
 		uint32_t hash = (getHash(key) + offset) % table_size;
 		if (table[hash] == key) {		// Key already exists in table
@@ -379,7 +384,7 @@ public:
 		else if (table[hash] == -1) {	// Key doesn't exist in table
 			table[hash] = key;
 			return true;
-		} 
+		}
 		else {							// Hash already taken, recurse
 			return insert(key, offset * 2);
 		}
@@ -391,7 +396,7 @@ public:
 private:
 
 	uint32_t getHash(uint16_t key) {
-		return (uint32_t) floor(table_size*(fmod((double) key * k, 1.)));
+		return (uint32_t)floor(table_size * (fmod((double)key * k, 1.)));
 	}
 
 
@@ -407,7 +412,7 @@ private:
 
 
 struct RenderBall {
-	RenderBall(){}
+	RenderBall() {}
 	__host__ __device__ RenderBall(Float3 pos, float radius, Int3 color) :pos(pos), radius(radius), color(color) {}
 	Float3 pos;	// only uses x and y
 	float radius = 0.f;
@@ -463,7 +468,7 @@ private:
 				child = &right;
 				height = &h_right;
 			}
-			
+
 
 			if (*child == NULL) {
 				*child = new Node(key);
@@ -473,7 +478,7 @@ private:
 			else {
 				if ((*child)->insert(key, this)) {
 					*height = (*child)->max_height + 1;
-					
+
 				}
 				return false;
 			}
@@ -530,7 +535,7 @@ class StringMap {
 		Mapping(string l, string r) : left(l), right(r) {}
 		string left, right;
 	};
-	
+
 
 	vector<Mapping> mappings;
 	string mapToRight(string left) {

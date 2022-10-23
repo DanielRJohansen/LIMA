@@ -11,7 +11,7 @@
 
 
 #include "Rasterizer.cuh"
-#include "QuantomTypes.cuh"
+#include "LimaTypes.cuh"
 
 #include <chrono>
 

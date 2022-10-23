@@ -1,6 +1,7 @@
 #pragma once
 
 //#include "QuantomTypes.cuh"
+
 #include "Bodies.cuh"
 //#include "Display.h"
 #include "DisplayV2.h"
@@ -62,12 +63,12 @@ private:
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	//Display* display;
-	DisplayV2* display;
-	Interface* interface;
-	Engine* engine;
-	ForceFieldMaker* forcefieldmaker;
+	DisplayV2* display = nullptr;
+	//Interface* interface = nullptr;
+	Engine* engine = nullptr;
+	ForceFieldMaker* forcefieldmaker = nullptr;
 	Analyzer analyzer;
-	CompoundBuilder* compoundbuilder;
+	CompoundBuilder* compoundbuilder = nullptr;
 	BoxBuilder boxbuilder;
 
 

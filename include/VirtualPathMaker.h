@@ -1,7 +1,8 @@
 #pragma once
 
-#include "QuantomTypes.cuh"
+#include "LimaTypes.cuh"
 #include <math.h>
+
 class VirtualPathMaker
 {
 public:

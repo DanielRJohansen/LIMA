@@ -425,8 +425,6 @@ struct Compound {
 	// Only call this if the compound has already been assigned particles & bonds
 	__host__ void init();
 
-	__host__ void initBondedLUT();
-
 	__host__ Float3 calcCOM();
 	/*
 	__host__ bool intersects(Compound a) {
@@ -465,8 +463,6 @@ struct Compound {
 			//#ifdef LIMA_DEBUGMODE
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
 			//#endif
-			for (int i = 0; i < n_particles; i++)
-				bondedparticles_lookup[threadIdx.x][i] = compound->bondedparticles_lookup[threadIdx.x][i];
 		}
 		else {
 			prev_positions[threadIdx.x] = Float3(-1.f);
@@ -492,14 +488,10 @@ struct Compound {
 		}
 	}
 
-	//CompoundState* compound_state_ptr;
-	//CompoundNeighborList* compound_neighborlist_ptr;
-
-	// TODO: make it bit array with uint64_t at some point..
-	// BWARE: Uninitialized on purpose!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	uint8_t bondedparticles_lookup[MAX_COMPOUND_PARTICLES][MAX_COMPOUND_PARTICLES];
 };
 
+using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
+using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 
 
 struct CompoundBridgeBundleCompact;
@@ -513,9 +505,7 @@ struct Molecule {
 
 	Float3 calcCOM();
 
-
-
-
+	BondedParticlesLUTManager* bonded_particles_lut_manager;
 
 	~Molecule() {
 		//printf("Deleting\n");		// Huh, this deletes too early. I better implement properly at some point.

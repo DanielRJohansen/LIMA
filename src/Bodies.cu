@@ -11,16 +11,6 @@ __host__ void Compound::init() {
 	//printf("Radius %f\n", radius);
 }
 
-__host__ void Compound::initBondedLUT()
-{
-	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-		for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
-			bondedparticles_lookup[i][ii] = 0;
-		}
-	}
-	
-}
-
 __host__ Float3 Compound::calcCOM() {
 	Float3 com;
 	for (int i = 0; i < n_particles; i++) {
@@ -187,6 +177,7 @@ CompoundBridgeBundleCompact::CompoundBridgeBundleCompact(CompoundBridgeBundle* b
 
 Molecule::Molecule() {
 	compounds = new Compound[MAX_COMPOUNDS];
+	bonded_particles_lut_manager = new BondedParticlesLUTManager();
 	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
 }
 

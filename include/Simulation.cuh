@@ -55,6 +55,7 @@ public:
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 
+	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
 	uint32_t step = 0;
 	double dt = 0;
@@ -85,6 +86,8 @@ public:
 
 		compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
 		solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);
+
+		bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
 		cudaDeviceSynchronize();
 		printf("Box transferred to device\n");

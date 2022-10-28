@@ -232,29 +232,38 @@ struct BoundingBox {
 	}
 };
 
+// TODO make this
+struct CompactBool {
 
-
-
-/*
-struct BlockMutex {
-	__device__ BlockMutex(){}
-	int mutex = 0;
-
-
-
-	__device__ void lock() {
-		while (atomicCAS(mutex, 0, 1) != 0) {}
-	}
-	__device__ void unlock() {
-		atomicExch(mutex, 0);
-	}
 };
-*/
 
+// This struct is agnostic as to which compounds the particles in the table belongs to!!
+template <typename T, int len>
+class FixedSizeMatrix {
+public:
+	__host__ __device__ FixedSizeMatrix() {};
+	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; };
 
+	
 
+	__host__ __device__ T* get(int i1, int i2) { return &matrix[i1 + i2 * m_len]; }
 
+	__host__ void set(int i1, int i2, T object) { matrix[i1 + i2 * m_len] = object; }
 
+	__device__ void load(FixedSizeMatrix<T, len>& src) {
+		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
+			matrix[i] = src.get(i);
+		}
+	}
+
+private:		
+	const static int m_len = len;
+	const static int m_size = m_len * m_len;
+	T matrix[m_len * m_len];
+
+	// To be used for loading only
+	__device__ T get(int index) { return matrix[index]; }
+};
 
 
 

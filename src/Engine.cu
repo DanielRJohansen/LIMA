@@ -718,7 +718,7 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 	return force;// *24.f * 1e-9;
 }
 
-__device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr) {
+__device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
 #ifndef INWD
@@ -726,7 +726,7 @@ __device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundStat
 		//if (i != threadIdx.x && !compound->lj_ignore_list[threadIdx.x].ignore((uint8_t)i, (uint8_t)blockIdx.x) && threadIdx.x < compound->n_particles) {
 			//printf("Thread %d computing LJ to index %d\n", threadIdx.x, i);
 #else
-		if (i != threadIdx.x && threadIdx.x < compound->n_particles && !compound->bondedparticles_lookup[threadIdx.x][i]) {
+		if (i != threadIdx.x && !*bonded_particles_lut.get(threadIdx.x, i)) {
 #endif
 			//if (i != threadIdx.x  && threadIdx.x < compound.n_particles) {																											// DANGER
 
@@ -1044,11 +1044,13 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 
 
 
-
+#define compound_index blockIdx.x
 __global__ void compoundKernel(Box* box) {
 	__shared__ Compound compound;
 	__shared__ CompoundState compound_state;
 	__shared__ NeighborList neighborlist;
+
+	__shared__ BondedParticlesLUT bonded_particles_lut;
 
 #ifdef ENABLE_SOLVENTS
 	//__shared__ Float3 utility_buffer[NEIGHBORLIST_MAX_SOLVENTS];							// waaaaay too biggg
@@ -1065,6 +1067,7 @@ __global__ void compoundKernel(Box* box) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
 		compound_state.setMeta(compound.n_particles);
 		neighborlist.loadMeta(&box->compound_neighborlists[blockIdx.x]);
+
 	}
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
@@ -1094,14 +1097,30 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
+		//BondedParticlesLUT* lut = box->bonded_particles_lut_manager->get(compound_index, compound_index);
+		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		LIMAENG::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
+		__syncthreads();
+	/*	if (threadIdx.x == 0 && compound_index == 0) {
+
+			bool match = true;
+			for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+				for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+					printf("%d ", *bonded_particles_lut.get(i, ii));
+					if (*bonded_particles_lut.get(i, ii) != compound.bondedparticles_lookup[i][ii])
+						printf("FAIL!");
+				}
+				printf("\n");
+			}
+			printf("\n\n\n\n");
+		}*/
 		__syncthreads();
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 
 
-		force += computeIntramolecularLJForces(&compound, &compound_state, &potE_sum, data_ptr);
+		force += computeIntramolecularLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 	//force = Float3(0.f);
@@ -1263,7 +1282,7 @@ __global__ void compoundKernel(Box* box) {
 	
 	box->compound_state_array_next[blockIdx.x].loadData(&compound_state);
 }
-
+#undef compound_id
 
 
 

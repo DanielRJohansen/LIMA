@@ -49,10 +49,9 @@ void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
 	for (int c = 0; c < molecule->n_compounds; c++) {
 		Compound* compound = &molecule->compounds[c];
 		for (int i = 0; i < compound->n_particles; i++) {
-//			compound->particles[i].pos_tsub1 += offset;
 			compound->prev_positions[i] += offset;
 		}
-		integrateCompound(compound,	simulation);
+		integrateCompound(compound, simulation);
 	}
 
 	simulation->total_compound_particles = molecule->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
@@ -60,6 +59,11 @@ void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
 
 	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact;
 	*simulation->box->bridge_bundle = *molecule->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+
+	simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{ *molecule->bonded_particles_lut_manager };
+	//*simulation->box->bonded_particles_lut_manager = &molecule->bonded_particleslut_manager;
+	//exit(0);
+	
 
 	printf("Molecule added to box\n");
 }
@@ -367,8 +371,8 @@ BoundingBox BoxBuilder::calcCompoundBoundingBox(Compound* compound)
 		//Float3 pos = compound->particles[i].pos_tsub1;
 		Float3 pos = compound->prev_positions[i];
 		for (int dim = 0; dim < 3; dim++) {
-			*bb.min.placeAt(dim) = min(bb.min.at(dim), pos.at(dim));
-			*bb.max.placeAt(dim) = max(bb.max.at(dim), pos.at(dim));
+			*bb.min.placeAt(dim) = std::min(bb.min.at(dim), pos.at(dim));
+			*bb.max.placeAt(dim) = std::max(bb.max.at(dim), pos.at(dim));
 		}
 	}
 	return bb;
@@ -402,7 +406,7 @@ float minDist(Compound* compound, Float3 particle_pos) {
 	float mindist = 999999;
 	for (int i = 0; i < compound->n_particles; i++) {
 		float dist = (compound->prev_positions[i] - particle_pos).len();
-		mindist = min(mindist, dist);
+		mindist = std::min(mindist, dist);
 	}
 	return mindist;
 }

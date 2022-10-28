@@ -58,7 +58,7 @@ constexpr float CUTOFF = 0.8f;	//nm/
 
 
 // OPTIMIZATION PARAMETERS
-const int MAX_COMPOUND_PARTICLES = 40;
+const int MAX_COMPOUND_PARTICLES = 20;
 
 
 
@@ -90,7 +90,7 @@ const bool PRINT_TEMP = false;
 
 const int MAX_COMPOUNDS = 0xFF;
 const int MAX_ATOMS = 1'000'000;
-const int MAX_ATOMS_IN_RESIDUE = 32;
+const int MAX_ATOMS_IN_RESIDUE = 32;		// TODO SET YP AGAIN
 
 
 

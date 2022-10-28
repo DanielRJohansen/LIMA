@@ -57,12 +57,22 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 		}	
 	}
 	
-	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-		for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
-			printf(" %d ", molecule.compounds[0].bondedparticles_lookup[i][ii]);
-		}
-		printf("\n");
-	}
+
+
+	//for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+	//	for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+	//		printf(" %d ", molecule.compounds[0].bondedparticles_lookup[i][ii]);
+	//		//if ()
+	//	}
+	//	printf("\n");
+	//}
+	//printf("\n"); printf("\n"); printf("\n");
+	//for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+	//	for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {			
+	//		printf(" %d ", *molecule.bonded_particles_lut_manager->get(0, 0)->get(i, ii));
+	//	}
+	//	printf("\n");
+	//}
 	//exit(0);
 
 
@@ -100,14 +110,6 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 
 
 
-
-
-
-
-
-
-
-
 void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::Record_ATOM>* pdb_data, int max_residue_id, int min_residue_id, bool ignore_protons) {
 	int current_res_id = -1;
 	int current_compound_id = -1;
@@ -117,31 +119,13 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 	for (Record_ATOM record : *pdb_data) {
 
-			/*
-			int particle_id = stoi(record[1]);
-			string atom_name = record[2];
-			string monomer_name = record[3];
-			cout << record[3] <<endl;
-			cout << record[4] << endl;
-			int monomer_id = stoi(record[4]);
-			Float3 coord(stod(record[5]), stod(record[6]), stod(record[7]));
-			coord *= 0.1f;	// convert A to nm
-			*/
-			//printf("res %d   max res %d\n", record.residue_seq_number, max_residue_id);
+		if (record.residue_seq_number < min_residue_id) { continue; }
 
-		if (record.residue_seq_number < min_residue_id)
-			continue;
+		if (record.residue_seq_number > max_residue_id) { break; }
 
-		if (record.residue_seq_number > max_residue_id)
-			break;
+		if (ignore_protons && record.atom_name[0] == 'H') { continue; }
 
-		if (ignore_protons && record.atom_name[0] == 'H')
-			continue;
-
-		if (record.residue_name == "SOL")
-			continue;
-		
-
+		if (record.residue_name == "SOL") { continue; }		
 
 
 		if (record.residue_seq_number != current_res_id) {
@@ -153,7 +137,6 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 				current_compound_id++;
 				current_compound = &molecule->compounds[current_compound_id];
-				current_compound->initBondedLUT();
 				molecule->n_compounds++;
 
 			}
@@ -185,14 +168,8 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 void CompoundBuilder::loadTopology(Molecule* molecule, vector<vector<string>>* top_data)
 {	
-	/*bonded_interactions_list = new uint32_t * [molecule->n_atoms_total];			// Just delete this section now
-	for (uint32_t i = 0; i < molecule->n_atoms_total; i++) {
-		bonded_interactions_list[i] = new uint32_t[MAX_BONDED_INTERACTIONS];
-		for (uint32_t ii = 0; ii < MAX_BONDED_INTERACTIONS; ii++) {
-			bonded_interactions_list[i][ii] = UINT32_MAX;
-		}
-	}*/
 
+	molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
 	int dihedral_cnt = 0;
@@ -206,7 +183,7 @@ void CompoundBuilder::loadTopology(Molecule* molecule, vector<vector<string>>* t
 		if (mode == INACTIVE) {
 			mode = setMode(record[0]);
 
-			if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the lowest dihedral bonds, as i think they are IMPROPER DIHEDRALS
+			if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the bottom dihedral bonds, as i think they are IMPROPER DIHEDRALS
 				dihedral_cnt++;
 
 			continue;
@@ -373,6 +350,9 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 	// ALWAYS do angles first, or this breaks!
 
 
+
+	
+
 	// System 3, bond object based
 
 
@@ -419,14 +399,21 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 
 
 				// TODO: implement a strict order of the correct position, instead of having the same information twice!
-				compound_self->bondedparticles_lookup[localid_self][localid_other] = 1;
-				compound_self->bondedparticles_lookup[localid_other][localid_self] = 1;
+				/*compound_self->bondedparticles_lookup[localid_self][localid_other] = 1;
+				compound_self->bondedparticles_lookup[localid_other][localid_self] = 1;*/
 			}
 			//uint8_t local_id_self = particle_refs[id_self].local_id_compound
 
 			//compound_self->bonded_particles[]
+
+
+			BondedParticlesLUTManager* lut_man = molecule->bonded_particles_lut_manager;
+			BondedParticlesLUT* lut = lut_man->get(particle_refs[id_self].compound_id, particle_refs[id_other].compound_id);
+			lut->set(particle_refs[id_self].local_id_compound, particle_refs[id_other].local_id_compound, true);
 		}
 	}
+
+
 }
 
 bool CompoundBuilder::checkIfFirstBondedInteraction(Molecule* molecule, ParticleRef* particle_maps, int n) {	// Works whether particle spans multiple compounds or not.

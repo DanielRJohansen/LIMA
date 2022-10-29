@@ -242,7 +242,7 @@ struct CompactBool {
 template <typename T, int len>
 class FixedSizeMatrix {
 public:
-	__host__ __device__ FixedSizeMatrix();
+	__host__ __device__ FixedSizeMatrix() {};
 	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; };
 
 	

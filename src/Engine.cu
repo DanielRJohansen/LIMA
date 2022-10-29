@@ -140,9 +140,10 @@ void Engine::handleBoxtemp() {
 	float temp = temp_package.x;
 	float biggest_contribution = temp_package.y;
 
-	temp = temp == 0.f ? 1 : temp;																			// So we avoid dividing by 0
 	simulation->temperature_buffer[simulation->n_temp_values++] = temp;
 
+	// So we avoid dividing by 0
+	float temp_safe = temp == 0.f ? 1 : temp;
 	float temp_scalar = target_temp / temp;
 		// I just added this to not change any temperatures too rapidly
 	temp_scalar = min(temp_scalar, 1.01f);
@@ -420,26 +421,15 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 
-//#ifdef ENABLE_BLJV
-//		//if (!lj_ignore_list->ignore((uint8_t)neighborparticle_id, (uint8_t)neighborcompound_id))	// Check if particle_self is bonded to particle_i in neighbor compound
-//			//continue;
-//#endif
 		// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
 		if (*bonded_particles_lut.get(threadIdx.x, neighborparticle_id)) { continue; }
 
+		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
-		int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
-
-		
-		//continue;	// Tester
 		force += calcLJForce(self_pos, &neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
-			//(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[neighborparticle_atomtype].sigma) * 0.5f,
-			//(forcefield_device.particle_parameters[atomtype_self].epsilon + forcefield_device.particle_parameters[neighborparticle_atomtype].epsilon) * 0.5,
-			//atomtype_self, atomtypes_others[i]
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
-
 	}	
 	return force;// *24.f * 1e-9;
 }
@@ -447,26 +437,11 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 __device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
-#ifndef INWD
-		if (i != threadIdx.x && threadIdx.x < compound->n_particles) {
-		//if (i != threadIdx.x && !compound->lj_ignore_list[threadIdx.x].ignore((uint8_t)i, (uint8_t)blockIdx.x) && threadIdx.x < compound->n_particles) {
-			//printf("Thread %d computing LJ to index %d\n", threadIdx.x, i);
-#else
-		if (i != threadIdx.x && !*bonded_particles_lut.get(threadIdx.x, i)) {
-#endif
-			//if (i != threadIdx.x  && threadIdx.x < compound.n_particles) {																											// DANGER
 
-
+		if (i != threadIdx.x && !(* bonded_particles_lut.get(threadIdx.x, i))) {
 
 			force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
-				//(forcefield_device.particle_parameters[compound->atom_types[threadIdx.x]].sigma + forcefield_device.particle_parameters[compound->atom_types[i]].sigma) * 0.5f,		// Don't know how to handle atoms being this close!!!
-				//sqrtf(forcefield_device.particle_parameters[compound->atom_types[threadIdx.x]].epsilon * forcefield_device.particle_parameters[compound->atom_types[i]].epsilon),
-				// 
 				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
-				// 
-				//compound.atom_types[threadIdx.x], compound.atom_types[i]
-				//compound.particle_global_ids[threadIdx.x], blockIdx.x
-				//threadIdx.x, i
 				compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
 			);// *24.f * 1e-9;
 		}
@@ -775,19 +750,11 @@ __global__ void compoundKernel(Box* box) {
 	__shared__ Compound compound;
 	__shared__ CompoundState compound_state;
 	__shared__ NeighborList neighborlist;
-
 	__shared__ BondedParticlesLUT bonded_particles_lut;
-
-#ifdef ENABLE_SOLVENTS
-	//__shared__ Float3 utility_buffer[NEIGHBORLIST_MAX_SOLVENTS];							// waaaaay too biggg
-	//__shared__ uint8_t utility_buffer_small[NEIGHBORLIST_MAX_SOLVENTS];
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
-#else
-	//__shared__ Float3 utility_buffer[MAX_COMPOUND_PARTICLES];
-	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
-#endif
 
 
+	return;
 
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
@@ -795,15 +762,13 @@ __global__ void compoundKernel(Box* box) {
 		neighborlist.loadMeta(&box->compound_neighborlists[blockIdx.x]);
 
 	}
+
+
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
 	compound_state.loadData(&box->compound_state_array[blockIdx.x]);
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
 	__syncthreads();
-
-
-
-
 
 
 	float potE_sum = 0;
@@ -823,7 +788,6 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
-		//BondedParticlesLUT* lut = box->bonded_particles_lut_manager->get(compound_index, compound_index);
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
 		__syncthreads();
@@ -835,7 +799,6 @@ __global__ void compoundKernel(Box* box) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 	//force = Float3(0.f);
-
 	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
@@ -855,8 +818,6 @@ __global__ void compoundKernel(Box* box) {
 		bonded_particles_lut.load(*compoundpair_lut);
 		__syncthreads();
 
-
-		//continue;									// DANGER
 		if (threadIdx.x < compound.n_particles) {
 			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 			//anti_inter += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
@@ -873,15 +834,6 @@ __global__ void compoundKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
-	/*for (int i = threadIdx.x; i < neighborlist.n_solvent_neighbors; i += blockDim.x) {
-		utility_buffer[i] = box->solvents[neighborlist.neighborsolvent_ids[i]].pos;
-		EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[i]);
-	}
-	__syncthreads();
-	if (threadIdx.x < compound.n_particles) {
-		force_LJ_sol = computeSolventToCompoundLJForces(&compound_state.positions[threadIdx.x], neighborlist.n_solvent_neighbors, utility_buffer, data_ptr, &potE_sum, compound.atom_types[threadIdx.x]);
-		force += force_LJ_sol;
-	}
 	*/
 	for (int offset = 0; offset * blockDim.x < neighborlist.n_solvent_neighbors; offset += blockDim.x) {
 		int solvent_nlist_index = offset + threadIdx.x; // index in neighborlist
@@ -889,7 +841,7 @@ __global__ void compoundKernel(Box* box) {
 		if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
 			utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
 			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
-		}		
+		}
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
@@ -909,7 +861,7 @@ __global__ void compoundKernel(Box* box) {
 	if (threadIdx.x < compound.n_particles) {
 		//Float3 force_(force.x, force.y, force.z);
 		//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force_, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, false);		
-		if (box->step >= RAMPUP_STEPS || 1) {
+		if (box->step >= RAMPUP_STEPS || INTEGRATION_RAMPUP_ENABLED) {
 			integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, false);
 		}
 		else {
@@ -951,7 +903,6 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 
 
-		
 		if (blockIdx.x == 0 && threadIdx.x == 0) {			
 			Float3 pos_prev_temp = compound.prev_positions[threadIdx.x];			
 			EngineUtils::applyHyperpos(&compound_state.positions[threadIdx.x], &pos_prev_temp);
@@ -1085,7 +1036,7 @@ __global__ void solventForceKernel(Box* box) {
 //		printf("%f\n", (solvent.pos - box->solvents[solvent_index].pos).len());
 
 		int p_index = MAX_COMPOUND_PARTICLES + solvent_index;
-		if (box->step >= RAMPUP_STEPS || 1) {
+		if (box->step >= RAMPUP_STEPS || !INTEGRATION_RAMPUP_ENABLED) {
 			integratePosition(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, &box->thermostat_scalar, p_index, true);
 		}
 		else {

@@ -8,43 +8,25 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
 
 
-
 	simulation->box->compound_state_array = new CompoundState[MAX_COMPOUNDS];
 	cudaMalloc(&simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS);
 	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
 
-
-
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
-	for (int i = 0; i < MAX_COMPOUNDS; i++) {
-		//simulation->box->compound_neighborlists->init();
-		//simulation->box->compound_neighborlists->associated_id = i;
-	}
-	for (int i = 0; i < MAX_SOLVENTS; i++) {
-		//simulation->box->solvent_neighborlists->associated_id = i;
-		//simulation->box->solvent_neighborlists->init();
-	}
-
-
-
 
 
 	simulation->box->dt = simulation->dt;
-
-
 }
 
 void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
 	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);
 	Float3 offset = desired_molecule_center - molecule->calcCOM();
 
-
 	printf("Molecule offset for centering: ");
 	offset.print(' ');
 	most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
-
 
 	for (int c = 0; c < molecule->n_compounds; c++) {
 		Compound* compound = &molecule->compounds[c];
@@ -75,8 +57,8 @@ void BoxBuilder::addScatteredMolecules(Simulation* simulation, Compound* molecul
 }
 
 void BoxBuilder::finishBox(Simulation* simulation) {
+	// Load meta information
 	simulation->copyBoxVariables();
-
 	printf("Box contains %d compounds, %d bridges and %d solvents\n\n", simulation->n_compounds, simulation->n_bridges, simulation->n_solvents);
 
 
@@ -86,15 +68,8 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	simulation->box->total_particles_upperbound = simulation->total_particles_upperbound;											// BAD AMBIGUOUS AND WRONG CONSTANTS
 
 
-
-
-
-
-
 	cudaMemcpy(simulation->box->compound_state_array_next, simulation->box->compound_state_array, sizeof(CompoundState) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);	// Just make sure they have the same n_particles info...
 	cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
-
-
 
 	
 	// Permanent Outputs for energy & trajectory analysis

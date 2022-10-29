@@ -10,9 +10,10 @@
 
 
 // --- These can be toggled to test the capabilities of LIMA without the two improperly implemented features --- //
-#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 #define ENABLE_BLJV				// Ensures no LJ between bonded particles
 //#define IGNORE_NEIGHBOR_OVERFLOW	// LJ list doesnt include neighbors when limit is reached.
+const bool INTEGRATION_RAMPUP_ENABLED = 0;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -71,11 +72,11 @@ const int SIMULATION_STEPS = 20000;
 const int RAMPUP_STEPS = 1;
 
 
-const int STEPS_PER_NLIST_UPDATE = 4;
+const int STEPS_PER_NLIST_UPDATE = 10;
 
 
 
-const int STEPS_PER_RENDER = 1;
+const int STEPS_PER_RENDER = 5;
 
 
 

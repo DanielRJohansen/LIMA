@@ -19,7 +19,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 
 
 	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
-	bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
+	//bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
 
 
 
@@ -48,7 +48,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 
 	delete[] particle_id_maps;
 	delete compound_bridge_bundle;
-	delete[] bonded_interactions_list;
+	//delete[] bonded_interactions_list;
 
 	printf("\n\n############################# FINISHED BUILDING MOLECULE #############################\n\n\n");
 

@@ -61,25 +61,8 @@ struct NBAtomtype {
 
 struct PairBond {	// IDS and indexes are used interchangeably here!
 	PairBond(){}
-	PairBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
-		// This is only for loading the forcefield, so the ID's refers to id's given in .conf file!
-		atom_indexes[0] = id1;
-		atom_indexes[1] = id2;
-	}
+	PairBond(int id1, int id2, float b0, float kb);
 
-	PairBond( uint32_t particleindex_a, uint32_t particleindex_b) {
-		atom_indexes[0] = particleindex_a;
-		atom_indexes[1] = particleindex_b;
-	}
-	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
-		//reference_dist(ref_dist) {
-		b0(ref_dist), kb(kb) {
-		atom_indexes[0] = particleindex_a;
-		atom_indexes[1] = particleindex_b;
-	}
-	
-	//uint32_t bond_index;	
-	//double reference_dist;
 	float b0 = 0.f;
 	float kb = 0.f;
 	uint32_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
@@ -89,81 +72,33 @@ struct PairBond {	// IDS and indexes are used interchangeably here!
 
 struct AngleBond {
 	AngleBond() {}
-	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta) : 
-		theta_0(theta_0), k_theta(k_theta) {
-		atom_indexes[0] = id1;
-		atom_indexes[1] = id2;
-		atom_indexes[2] = id3;
-	}
+	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
 	float k_theta = 0.f;
-	uint32_t atom_indexes[3] = {}; // i,j,k angle between i and k
+	uint32_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
-	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct DihedralBond {
 	DihedralBond() {}
-	//DihedralBond(float phi_0, float k_phi) : phi_0(phi_0), k_phi(k_phi) {}
-	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n) : 
-		phi_0(phi_0), k_phi(k_phi), n(n) {
-		atom_indexes[0] = id1;
-		atom_indexes[1] = id2;
-		atom_indexes[2] = id3;
-		atom_indexes[3] = id4;
-	}
+	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n);
+
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
-	uint8_t n = 0;
+	uint8_t n = 0;								// WTF is this? xD
 	uint32_t atom_indexes[4] = {0,0,0,0};
 	const static int n_atoms = 4;
-	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct GenericBond {				// ONLY used during creation, never on device!
 	enum BONDTYPES { SINGLE, ANGLE, DIHEDRAL, PAIR };
 
 	GenericBond() {}
-	GenericBond(ParticleRef* particle_refs, int n) {
-		for (int i = 0; i < n; i++) {
-			particles[n_particles++] = particle_refs[i];
+	GenericBond(ParticleRef* particle_refs, int n);
 
-
-			if (compound_ids[0] == -1) { 
-				compound_ids[0] = particles[i].compound_id; 
-			}
-			else if (compound_ids[0] != particles[i].compound_id) {
-				compound_ids[1] = particles[i].compound_id;
-			}
-		}
-		if (compound_ids[0] > compound_ids[1] && compound_ids[1] != -1) { std::swap(compound_ids[0], compound_ids[1]); }
-	}
-
-	bool spansTwoCompounds() {	// Simply check if any id has been put into index 1
-		return (compound_ids[1] != -1);
-	}
-	bool allParticlesExist() {	// Returns false if any particle in bond does not exist, for example when ignoring hydrogens
-		for (int i = 0; i < n_particles; i++) {
-			if (particles[i].local_id_compound == -1)
-				return false;
-		}
-		return true;
-	}
-
-
-	/*
-	template<typename T>
-	void assignBond(T* bond) {
-		(T*) bond_ref = bond;
-		for (int i = 0; i < bond->n_atoms; i++) {
-
-
-
-		}
-		//compound_ids[0] = compound_ids[0] == -1 ? bond->
-	}
-	*/
+	bool spansTwoCompounds();
+	bool allParticlesExist();
 
 
 	int compound_ids[2] = { -1,-1 };		// Can either span 1 or 2 compounds. If more, then undefined behaviour
@@ -176,98 +111,98 @@ struct GenericBond {				// ONLY used during creation, never on device!
 
 
 
-struct LJ_Ignores {	// Each particle is associated with 1 of these.
-	LJ_Ignores() {
-		for (int i = 0; i < max_ids; i++)
-			global_ids[i] = UINT32_MAX;
-	}
-
-	static const int max_ids = 32;
-	uint8_t local_ids[max_ids] = {};
-	uint8_t compound_ids[max_ids] = {};
-
-	uint32_t global_ids[max_ids] = {};
-	uint8_t n_ignores = 0;
-
-
-	uint16_t doublyconnected_id = 0;
-	
-	__host__ void addIgnoreTarget(int target_global_id) {
-		global_ids[n_ignores] = target_global_id;
-		n_ignores++;
-	}
-
-	__host__ void addIgnoreTarget(uint8_t target_id, uint8_t compound_id) {
-		if (n_ignores == max_ids) {
-			printf("Failed to add ignore target!\n");
-			exit(0);
-		}
-		for (int i = 0; i < n_ignores; i++) {		// If target particle is already ignored, do nothing
-			if (local_ids[i] == target_id && compound_ids[i] == compound_id)
-				return;
-		}
-
-		local_ids[n_ignores] = target_id;
-		compound_ids[n_ignores] = compound_id;
-		n_ignores++;
-	}
-	
-	__device__ bool ignore(uint8_t query_local_id, uint8_t query_compound_id) {
-		for (int i = 0; i < n_ignores; i++) {
-			if (local_ids[i] == query_local_id && compound_ids[i] == query_compound_id)
-				return true;
-		}
-		return false;
-	}
-
-	__host__ bool checkAlreadyConnected(uint16_t global_id) {
-		for (int i = 0; i < n_ignores; i++) {
-			if (global_ids[i] == global_id)
-				return true;
-		}
-		return false;
-	}
-	
-
-	__host__ void assignDoublyConnectedID(uint16_t id) {
-		doublyconnected_id = id;
-	}
-
-	__device__ bool doublyConnected(uint16_t dc_id) {
-		return (dc_id == doublyconnected_id && doublyconnected_id != 0);
-	}
-
-
-	// For system 3
-	__host__  void init() {
-		for (int i = 0; i < max_ids; i++)
-			global_ids[i] = UINT32_MAX;
-	}
-	__host__ bool isAlreadyConnected(uint32_t global_id) {
-		for (int i = 0; i < n_ignores; i++) {
-			if (global_ids[i] == global_id)
-				return true;
-		}
-		return false;
-	}
-
-	__host__ void addConnection(uint32_t global_id) {
-		for (int i = 0; i < max_ids; i++) {
-			if (global_ids[i] == global_id) {
-				//printf("MC found!\n");
-				return;
-			}
-				
-			if (global_ids[i] == UINT32_MAX) {
-				global_ids[i] = global_id;
-				n_ignores++;
-				return;
-			}
-		}
-		printf("Out of bounds force LJ ignores!\n");
-		exit(1);
-	}
-};
+//struct LJ_Ignores {	// Each particle is associated with 1 of these.
+//	LJ_Ignores() {
+//		for (int i = 0; i < max_ids; i++)
+//			global_ids[i] = UINT32_MAX;
+//	}
+//
+//	static const int max_ids = 32;
+//	uint8_t local_ids[max_ids] = {};
+//	uint8_t compound_ids[max_ids] = {};
+//
+//	uint32_t global_ids[max_ids] = {};
+//	uint8_t n_ignores = 0;
+//
+//
+//	uint16_t doublyconnected_id = 0;
+//	
+//	__host__ void addIgnoreTarget(int target_global_id) {
+//		global_ids[n_ignores] = target_global_id;
+//		n_ignores++;
+//	}
+//
+//	__host__ void addIgnoreTarget(uint8_t target_id, uint8_t compound_id) {
+//		if (n_ignores == max_ids) {
+//			printf("Failed to add ignore target!\n");
+//			exit(0);
+//		}
+//		for (int i = 0; i < n_ignores; i++) {		// If target particle is already ignored, do nothing
+//			if (local_ids[i] == target_id && compound_ids[i] == compound_id)
+//				return;
+//		}
+//
+//		local_ids[n_ignores] = target_id;
+//		compound_ids[n_ignores] = compound_id;
+//		n_ignores++;
+//	}
+//	
+//	__device__ bool ignore(uint8_t query_local_id, uint8_t query_compound_id) {
+//		for (int i = 0; i < n_ignores; i++) {
+//			if (local_ids[i] == query_local_id && compound_ids[i] == query_compound_id)
+//				return true;
+//		}
+//		return false;
+//	}
+//
+//	__host__ bool checkAlreadyConnected(uint16_t global_id) {
+//		for (int i = 0; i < n_ignores; i++) {
+//			if (global_ids[i] == global_id)
+//				return true;
+//		}
+//		return false;
+//	}
+//	
+//
+//	__host__ void assignDoublyConnectedID(uint16_t id) {
+//		doublyconnected_id = id;
+//	}
+//
+//	__device__ bool doublyConnected(uint16_t dc_id) {
+//		return (dc_id == doublyconnected_id && doublyconnected_id != 0);
+//	}
+//
+//
+//	// For system 3
+//	__host__  void init() {
+//		for (int i = 0; i < max_ids; i++)
+//			global_ids[i] = UINT32_MAX;
+//	}
+//	__host__ bool isAlreadyConnected(uint32_t global_id) {
+//		for (int i = 0; i < n_ignores; i++) {
+//			if (global_ids[i] == global_id)
+//				return true;
+//		}
+//		return false;
+//	}
+//
+//	__host__ void addConnection(uint32_t global_id) {
+//		for (int i = 0; i < max_ids; i++) {
+//			if (global_ids[i] == global_id) {
+//				//printf("MC found!\n");
+//				return;
+//			}
+//				
+//			if (global_ids[i] == UINT32_MAX) {
+//				global_ids[i] = global_id;
+//				n_ignores++;
+//				return;
+//			}
+//		}
+//		printf("Out of bounds force LJ ignores!\n");
+//		exit(1);
+//	}
+//};
 
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
 
@@ -277,69 +212,8 @@ public:
 	enum NEIGHBOR_TYPE {COMPOUND, SOLVENT};
 
 
-	__host__ bool addId(uint16_t new_id, NEIGHBOR_TYPE nt) {
-		switch (nt)
-		{
-		case NeighborList::COMPOUND:
-			if (n_compound_neighbors < NEIGHBORLIST_MAX_COMPOUNDS) {
-				neighborcompound_ids[n_compound_neighbors++] = new_id;
-				return true;
-			}
-			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-			exit(1);
-			break;
-
-		case NeighborList::SOLVENT:
-			if (n_solvent_neighbors < NEIGHBORLIST_MAX_SOLVENTS) {
-				neighborsolvent_ids[n_solvent_neighbors++] = new_id;
-				//if (associated_id==0 || new_id == 0)
-					//printf("%d added id %d\n", associated_id, new_id);
-				return true;
-			}
-
-			printf("\nFailed to insert solvent neighbor id %d of %d\n", new_id, n_solvent_neighbors);
-			exit(1);
-			break;
-
-		default:
-			break;
-		}
-		exit(1);
-		return false;
-	}
-	__host__ bool removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
-
-		switch (nt) {
-		case NeighborList::SOLVENT:
-			for (int i = 0; i < n_solvent_neighbors; i++) {
-				if (neighborsolvent_ids[i] == neighbor_id) {
-					neighborsolvent_ids[i] = neighborsolvent_ids[n_solvent_neighbors - 1];
-					n_solvent_neighbors--;
-					return true;
-				}
-			}
-			printf("\n%d Failed to remove neighbor solvent ID: %d of %d total IDs. max+1: %d\n", associated_id, neighbor_id, n_solvent_neighbors, neighborcompound_ids[n_solvent_neighbors]);
-			for (int i = 0; i < n_solvent_neighbors; i++) {
-				//printf("%d\n", neighborsolvent_ids[i]);
-			}
-			break;
-		case NeighborList::COMPOUND:
-			for (int i = 0; i < n_compound_neighbors; i++) {
-				if (neighborcompound_ids[i] == neighbor_id) {
-					neighborcompound_ids[i] = neighborcompound_ids[n_compound_neighbors - 1];
-					n_compound_neighbors--;
-					return true;
-				}
-			}
-			printf("\nFailed to remove neighbor compound %d of %d\n", neighbor_id, n_compound_neighbors);
-			break;
-		default:
-			printf("Faulty neighbortype\n");
-			break;
-		}
-		
-		return false;
-	}
+	__host__ bool addId(uint16_t new_id, NEIGHBOR_TYPE nt);
+	__host__ bool removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt);
 
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;

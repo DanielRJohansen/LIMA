@@ -10,9 +10,6 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 	display = new DisplayV2();
 
-	
-	
-
 
 	ForceFieldMaker* forcefieldmaker = new ForceFieldMaker();
 	compoundbuilder = new CompoundBuilder(forcefieldmaker);

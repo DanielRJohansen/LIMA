@@ -689,18 +689,18 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 
 //__device__ Float3 computeIntermolecularLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self, uint8_t* atomtypes_others, LJ_Ignores* lj_ignore_list, uint32_t* global_ids) {	// Assumes all positions are 
 __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomtype_self, LJ_Ignores* lj_ignore_list, float* potE_sum, uint32_t global_id_self, float* data_ptr,
-	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id) {
-	
-	
-	
+	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {	
 	Float3 force(0.f);
-	//Float3 a;
+
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 
-#ifdef ENABLE_BLJV
-		//if (!lj_ignore_list->ignore((uint8_t)neighborparticle_id, (uint8_t)neighborcompound_id))	// Check if particle_self is bonded to particle_i in neighbor compound
-			//continue;
-#endif
+//#ifdef ENABLE_BLJV
+//		//if (!lj_ignore_list->ignore((uint8_t)neighborparticle_id, (uint8_t)neighborcompound_id))	// Check if particle_self is bonded to particle_i in neighbor compound
+//			//continue;
+//#endif
+		// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
+		if (*bonded_particles_lut.get(threadIdx.x, neighborparticle_id)) { continue; }
+
 
 		int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
@@ -1090,7 +1090,7 @@ __global__ void compoundKernel(Box* box) {
 
 	Float3 force = compound.forces[threadIdx.x];
 	
-	force = Float3(0.f);
+	//force = Float3(0.f);
 	Float3 force_LJ_sol(0.f);
 	
 
@@ -1101,40 +1101,22 @@ __global__ void compoundKernel(Box* box) {
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		LIMAENG::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
 		__syncthreads();
-	/*	if (threadIdx.x == 0 && compound_index == 0) {
 
-			bool match = true;
-			for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-				for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
-					printf("%d ", *bonded_particles_lut.get(i, ii));
-					if (*bonded_particles_lut.get(i, ii) != compound.bondedparticles_lookup[i][ii])
-						printf("FAIL!");
-				}
-				printf("\n");
-			}
-			printf("\n\n\n\n");
-		}*/
-		__syncthreads();
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-
-
 		force += computeIntramolecularLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 	//force = Float3(0.f);
 
-	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //
-	
-	//for (int neighborcompound_id = 0; neighborcompound_id < box->n_compounds; neighborcompound_id++) {
+	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		if (neighborcompound_id == blockIdx.x) {
 			printf("i: %d  Block %d neighbors nc %d of %d\n",i, blockIdx.x, neighborcompound_id, neighborlist.n_compound_neighbors);
 		}
-		//if (neighborcompound_id == blockIdx.x)	// Only needed untill we have proper neighbor lists
-//			continue;
+
 		int neighborcompound_particles = box->compound_state_array[neighborcompound_id].n_particles;
 
 		if (threadIdx.x < neighborcompound_particles) {
@@ -1142,14 +1124,17 @@ __global__ void compoundKernel(Box* box) {
 			//utility_buffer_small[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];				/// HEEEEY WHY ARE WE NOT USING THIS?!??!?!?!?!
 			LIMAENG::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
 		}
-		__syncthreads();				// CRITICAL
-		//continue;
 
-		continue;									// DANGER
+		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
+		bonded_particles_lut.load(*compoundpair_lut);
+		__syncthreads();
+
+
+		//continue;									// DANGER
 		if (threadIdx.x < compound.n_particles) {
 			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 			//anti_inter += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
-				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id);
+				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 		}
 		__syncthreads();				// CRITICAL			
 	}

@@ -20,7 +20,7 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 	
 	int min_res_id = 0;
-	int max_res_id = 200;
+	int max_res_id = 15;
 	bool ignore_hydrogens = true;
 	Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(MOL_FOLDER + conf_filename, MOL_FOLDER + topol_filename, max_res_id, min_res_id, ignore_hydrogens);
 	//Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(MOL_FOLDER + "conf.gro", MOL_FOLDER + "topol.top", max_res_id, min_res_id, ignore_hydrogens);

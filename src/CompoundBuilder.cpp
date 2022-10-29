@@ -5,31 +5,20 @@
 
 
 Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
-	//vector<vector<string>> pdb_data = readFile(pdb_path);
-	//vector<Record_ATOM> atom_data = parsePDB(pdb_path);
 	printf("\n\n############################# BUILDING MOLECULE #############################\n\n\n");
 
 	compound_bridge_bundle = new CompoundBridgeBundle;
 	particle_id_maps = new ParticleRef[MAX_ATOMS];
 
-
-	
-
-
 	vector<Record_ATOM> atom_data = parseGRO(gro_path);
 	vector<vector<string>> top_data = parseTOP(itp_path);
 
-
-	//Compound compound;													// position of particles stored in compund.particles.pos_tsub1
 	Molecule molecule;
 
 	FFM->buildForcefield();
 
 
-
-	//loadParticles(&compound, &atom_data, max_residue_id, true);
-	//loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
-	loadParticles(&molecule, &atom_data, 1, min_residue_id, ignore_hydrogens);
+	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
 	bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
 
 
@@ -56,25 +45,6 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 			printf("compound %d    local %d    global %d\n", particle_id_maps[i].compound_id, particle_id_maps[i].local_id_compound, particle_id_maps[i].global_id);
 		}	
 	}
-	
-
-
-	//for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-	//	for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
-	//		printf(" %d ", molecule.compounds[0].bondedparticles_lookup[i][ii]);
-	//		//if ()
-	//	}
-	//	printf("\n");
-	//}
-	//printf("\n"); printf("\n"); printf("\n");
-	//for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-	//	for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {			
-	//		printf(" %d ", *molecule.bonded_particles_lut_manager->get(0, 0)->get(i, ii));
-	//	}
-	//	printf("\n");
-	//}
-	//exit(0);
-
 
 	delete[] particle_id_maps;
 	delete compound_bridge_bundle;
@@ -98,17 +68,6 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 	}
 	return solvent_positions;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::Record_ATOM>* pdb_data, int max_residue_id, int min_residue_id, bool ignore_protons) {
 	int current_res_id = -1;

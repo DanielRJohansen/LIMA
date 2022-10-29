@@ -30,9 +30,7 @@ struct ForceField {
 
 class ForceFieldMaker {
 public:
-	ForceFieldMaker() {
-
-	}
+	ForceFieldMaker() {}
 
 
 	void buildForcefield();
@@ -69,17 +67,17 @@ private:
 	ForceField forcefield;
 
 
-	int* nb_atomtype_ids;
+	int* nb_atomtype_ids = nullptr;
 	int n_atoms = 0;
 
-	NBAtomtype* nb_atomtypes;
+	NBAtomtype* nb_atomtypes = nullptr;
 	int n_nb_atomtypes = 0;
 
-	PairBond* topol_bonds;
+	PairBond* topol_bonds = nullptr;
 	int n_topol_bonds = 0;
-	AngleBond* topol_angles;
+	AngleBond* topol_angles = nullptr;
 	int n_topol_angles = 0;
-	DihedralBond* topol_dihedrals;
+	DihedralBond* topol_dihedrals = nullptr;
 	int n_topol_dihedrals = 0; 
 
 #ifdef __linux__

@@ -181,7 +181,7 @@ DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_
 	DihedralBond* dihedrals = new DihedralBond[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
-	bool has_been_enabled = false;
+	//bool has_been_enabled = false;
 
 
 	for (vector<string> row : forcefield_rows) {

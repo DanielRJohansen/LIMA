@@ -94,10 +94,9 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 
 	// TRAINING DATA and TEMPRARY OUTPUTS
-	uint64_t n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
+	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
 	uint64_t n_traindata_device = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER;
-	long double total_bytes = sizeof(float) * n_loggingdata_device
-		+ sizeof(Float3) * n_traindata_device;
+	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
 	printf("Reserving %.2f MB device mem for logging + training data\n", (float) ((total_bytes) * 1e-6));
 	cudaMallocManaged(&simulation->box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
 
@@ -136,9 +135,9 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 	
 
 
-	int bodies_per_dim = ceil(cbrt((double)N_SOLVATE_MOLECULES));
-	double dist_between_compounds = (BOX_LEN) / (double)bodies_per_dim;	// dist_per_index
-	double base = box_base + dist_between_compounds / 2.f;
+	const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
+	const float dist_between_compounds = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
+	const float base = box_base + dist_between_compounds / 2.f;
 	printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_compounds);
 
 
@@ -148,7 +147,7 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 				if (simulation->box->n_solvents == N_SOLVATE_MOLECULES)
 					break;
 
-				Float3 solvent_center = Float3(base + dist_between_compounds * (double)x_index, base + dist_between_compounds * (double)y_index, base + dist_between_compounds * (double)z_index);
+				Float3 solvent_center = Float3(base + dist_between_compounds * static_cast<float>(x_index), base + dist_between_compounds * static_cast<float>(y_index), base + dist_between_compounds * static_cast<float>(z_index));
 				//double solvent_radius = 0.2;
 
 				if (spaceAvailable(simulation->box, solvent_center)) {
@@ -157,13 +156,6 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 						simulation->dt
 					);
 				}
-				/*
-				if (spaceAvailable(simulation->box, solvent_center, solvent_radius)) {
-					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(
-						solvent_center,
-						simulation->dt
-					);
-				}*/
 			}
 		}
 	}
@@ -190,7 +182,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 	}
 
 	simulation->total_particles += simulation->box->n_solvents;
-	printf("%d of %d solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
+	printf("%lu of %lu solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
 	return simulation->box->n_solvents;
 }
 
@@ -198,10 +190,9 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 {
 	compound->init();
 	CompoundState* state = &simulation->box->compound_state_array[simulation->box->n_compounds];
-	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound->n_particles; i++) {
-//		state->positions[i] = compound->particles[i].pos_tsub1;
 		state->positions[i] = compound->prev_positions[i];
 		state->n_particles++;
 	}
@@ -219,7 +210,7 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 
 
 
-Solvent BoxBuilder::createSolvent(Float3 com, double dt) {
+Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
 	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
 	return Solvent(com, com - solvent_vel * dt);
 }
@@ -357,7 +348,7 @@ bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
 {
 	BoundingBox bb_a = calcCompoundBoundingBox(compound);
 	bb_a.addPadding(MIN_NONBONDED_DIST);
-	for (int c_index = 0; c_index < box->n_compounds; c_index++) {
+	for (size_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		BoundingBox bb_b = calcCompoundBoundingBox(&box->compounds[c_index]);
 
 		/*if (box->n_compounds == 13) {
@@ -379,7 +370,7 @@ bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
 
 float minDist(Compound* compound, Float3 particle_pos) {
 	float mindist = 999999;
-	for (int i = 0; i < compound->n_particles; i++) {
+	for (size_t i = 0; i < compound->n_particles; i++) {
 		float dist = (compound->prev_positions[i] - particle_pos).len();
 		mindist = std::min(mindist, dist);
 	}
@@ -389,7 +380,7 @@ float minDist(Compound* compound, Float3 particle_pos) {
 bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center)
 {
 	for (int c_index = 0; c_index < box->n_compounds; c_index++) {
-		if (minDist(&box->compounds[c_index], particle_center) < 0.2)
+		if (minDist(&box->compounds[c_index], particle_center) < 0.2f)
 			return false;
 
 

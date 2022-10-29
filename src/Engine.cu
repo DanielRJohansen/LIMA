@@ -30,7 +30,7 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	this->forcefield_host = forcefield_host;
 	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 
-	printf("Forcefield size: %d bytes\n", sizeof(ForceField));
+	printf("Forcefield size: %zu bytes\n", sizeof(ForceField));
 
 	//ForceField forcefield_nb_host = FFM.getNBForcefield();
 	//cudaMemcpyToSymbol(forcefield_nb_device, &forcefield_nb_host, sizeof(ForceField), 0, cudaMemcpyHostToDevice);
@@ -149,7 +149,7 @@ void Engine::handleBoxtemp() {
 	temp_scalar = min(temp_scalar, 1.01f);
 	temp_scalar = max(temp_scalar, 0.99f);
 
-	if (PRINT_TEMP || temp > 500.f || temp < 100.f) { printf("\n %d Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (simulation->getStep() - 1) / STEPS_PER_THERMOSTAT, temp, biggest_contribution, temp_package.z); }
+	if (PRINT_TEMP || temp > 500.f || temp < 100.f) { printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (simulation->getStep() - 1) / STEPS_PER_THERMOSTAT, temp, biggest_contribution, temp_package.z); }
 		
 	if (temp > target_temp/4.f && temp < target_temp*4.f || true) {
 		if (APPLY_THERMOSTAT && simulation->getStep() > 10) {
@@ -764,6 +764,7 @@ __global__ void compoundKernel(Box* box) {
 
 
 	__syncthreads();
+
 	compound.loadData(&box->compounds[blockIdx.x]);
 	compound_state.loadData(&box->compound_state_array[blockIdx.x]);
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
@@ -893,13 +894,13 @@ __global__ void compoundKernel(Box* box) {
 	
 	// ------------------------------------ DATA LOG ------------------------------- //	
 	{
-		if (threadIdx.x < compound.n_particles || 1) {																							// TODO: Remove || 1
-			int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
-			int compound_offset = blockIdx.x * MAX_COMPOUND_PARTICLES;
-			//box->potE_buffer[threadIdx.x + compound_offset + step_offset] = potE_sum;			// TODO: Should be += since bridge sets value first
+		//if (threadIdx.x < compound.n_particles || 1) {																							// TODO: Remove || 1
+		//	//int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
+		//	//int compound_offset = blockIdx.x * MAX_COMPOUND_PARTICLES;
+		//	//box->potE_buffer[threadIdx.x + compound_offset + step_offset] = potE_sum;			// TODO: Should be += since bridge sets value first
 
-		}		
-		__syncthreads();
+		//}		
+		//__syncthreads();
 
 
 		if (blockIdx.x == 0 && threadIdx.x == 0) {			
@@ -1080,7 +1081,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 	__shared__ CompoundBridgeCompact bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];							// waaaaay too biggg
-	__shared__ uint8_t utility_buffer_small[MAX_PARTICLES_IN_BRIDGE];
+	//__shared__ uint8_t utility_buffer_small[MAX_PARTICLES_IN_BRIDGE];
 
 	if (threadIdx.x == 0) {
 		bridge.loadMeta(&box->bridge_bundle->compound_bridges[blockIdx.x]);

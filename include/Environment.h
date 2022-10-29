@@ -56,7 +56,7 @@ public:
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 
-	Simulation* simulation;
+	Simulation* simulation = nullptr;
 
 
 private:

@@ -71,7 +71,7 @@ public:
 	void NListManager::pushNlistsToDevice(Simulation* simulation);
 
 
-	int stepsSinceUpdate(uint64_t currentSimStep) { return currentSimStep - prev_update_step; }
+	int stepsSinceUpdate(uint64_t currentSimStep) { return static_cast<int>(currentSimStep - prev_update_step); }
 	uint64_t getPrevUpdateStep() { return prev_update_step; }
 
 

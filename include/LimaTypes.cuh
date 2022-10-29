@@ -18,7 +18,7 @@ struct TestType {
 };
 
 
-constexpr double PI = 3.14159;
+constexpr float PI = 3.14159f;
 
 enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S };
 
@@ -163,6 +163,7 @@ struct Float3 {
 
 	__host__ __device__ float* placeAt(int index) {
 		switch (index) {
+		default:			// Sadly it is not reasonable to catch this in release
 		case 0:
 			return &x;
 		case 1:
@@ -204,7 +205,7 @@ struct Double3 {
 	__host__ __device__ inline double len() { return (double)sqrt(x * x + y * y + z * z); }
 
 	__host__ __device__ void print(char c = '_') {
-		printf("%c %Lf %Lf %Lf\n", c, x, y, z);
+		printf("%c %f %f %f\n", c, x, y, z);
 	}
 
 	double x = 0, y = 0, z = 0;
@@ -241,7 +242,7 @@ struct CompactBool {
 template <typename T, int len>
 class FixedSizeMatrix {
 public:
-	__host__ __device__ FixedSizeMatrix() {};
+	__host__ __device__ FixedSizeMatrix();
 	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; };
 
 	
@@ -296,7 +297,7 @@ struct Trajectory {
 	Trajectory() {}
 	Trajectory(std::string path) {
 		positions = new Float3[max_size];
-		float buffer[3];
+		float buffer[3] = {};
 
 		printf("Path: ");
 		std::cout << path << std::endl;

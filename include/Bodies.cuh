@@ -281,14 +281,14 @@ struct CompoundBridgeBundleCompact;
 struct Molecule {
 	Molecule();
 	int n_compounds = 0;
-	Compound* compounds;
-	CompoundBridgeBundleCompact* compound_bridge_bundle;
+	Compound* compounds = nullptr;
+	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;
 
 	Float3 calcCOM();
 
-	BondedParticlesLUTManager* bonded_particles_lut_manager;
+	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
 	~Molecule() {
 		//printf("Deleting\n");		// Huh, this deletes too early. I better implement properly at some point.
@@ -346,8 +346,6 @@ struct CompoundBridge {
 
 	void addBondParticles(GenericBond* bond, Molecule* molecule) {
 		for (int p = 0; p < bond->n_particles; p++) {
-			int a = n_particles;
-			int b = n_bonds;
 			if (!particleAlreadyStored(&bond->particles[p])) {
 				addParticle(&bond->particles[p], molecule);
 			}				

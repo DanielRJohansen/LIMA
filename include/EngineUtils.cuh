@@ -44,23 +44,20 @@ namespace EngineUtils {
 	}
 
 	static Float3 __host__ getBoxTemperature(Simulation* simulation, ForceField& forcefield_host) {
-
 		const uint64_t step = simulation->getStep() - 1;
 
-		long double temp_sum = 0;				// [k]
-
-		long double kinE_sum = 0;
+		long double kinE_sum = 0;	// [k]
 		float biggest_contribution = 0;
 
 
-		const int step_offset_a = step * simulation->total_particles_upperbound;
-		const int step_offset_b = (step - 2) * simulation->total_particles_upperbound;
-		const int solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
+		const uint64_t step_offset_a = step * simulation->total_particles_upperbound;
+		const uint64_t step_offset_b = (step - 2) * simulation->total_particles_upperbound;
+		const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 
 
 		for (int c = 0; c < simulation->n_compounds; c++) {
-			int compound_offset = c * MAX_COMPOUND_PARTICLES;
-			for (int i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
+			uint64_t compound_offset = c * MAX_COMPOUND_PARTICLES;
+			for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
 
 				Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
 				Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
@@ -81,11 +78,11 @@ namespace EngineUtils {
 			Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
 			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, SOLVENT_MASS, simulation->dt);
 			biggest_contribution = max(biggest_contribution, kinE);
-			kinE_sum += kinE;
+			kinE_sum += static_cast<float>(kinE);
 		}
 		//double avg_kinE = kinE_sum / (long double)particles_total;
-		double avg_kinE = kinE_sum / (long double)simulation->total_particles;
-		float temperature = avg_kinE * 2.f / (3.f * 8.3145);
+		float avg_kinE = static_cast<float>(kinE_sum / static_cast<long double>(simulation->total_particles));
+		float temperature = avg_kinE * 2.f / (3.f * 8.3145f);
 		//printf("\nTemp: %f\n", temperature);
 		return Float3(temperature, biggest_contribution, avg_kinE);
 	}

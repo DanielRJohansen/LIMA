@@ -26,7 +26,7 @@ private:
 	void integrateCompound(Float3 com, int compound_index,
 		CompoundState* statebuffer_node, double dt, Simulation* simulation);
 	void integrateCompound(Compound* compound, Simulation* simulation);
-	Solvent createSolvent(Float3 com, double dt);
+	Solvent createSolvent(Float3 com, float dt);
 
 	bool spaceAvailable(Box* box, Float3 com, double radius);
 	void compoundLinker(Simulation* simulation);									// Temp function
@@ -55,23 +55,23 @@ private:
 
 	// ---------------------------------------------------- Variables ---------------------------------------------------- //
 	Box box;	// Local host version
-	double box_len = BOX_LEN;
-	double box_base = 0;
+	const float box_len = BOX_LEN;
+	const float box_base = 0;
 
 
 
 
 
-	const double M = SOLVENT_MASS;				// kg/mol
+	const float M = SOLVENT_MASS;				// kg/mol
 	//double k_B = 8.617333262145 * 10e-5;	// Boltzmann constant
 	const double k_B = 1.380 * 1e-23;
 	const double T = 313;	// Kelvin
 	const double R = 8.3144;					// J/(Kelvin*mol)
 	//double mean_velocity = M / (2 * k_B * T);				// This is bullshit. Only for sol mass
-	const double v_rms = sqrt(3 * R * T / M);
+	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 
-	double MIN_NONBONDED_DIST = 0.5;
+	float MIN_NONBONDED_DIST = 0.5;
 
 
 

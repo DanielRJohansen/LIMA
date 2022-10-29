@@ -27,7 +27,7 @@ const string OUT_DIR = "../../Simulation/";
 
 
 
-constexpr double SOLVENT_MASS = 18.01528f * 1e-3;	// kg/mol
+constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol
 //constexpr double SOLVENT_MASS = 12.0107 * 1e-3;	// kg/mol
 //constexpr double COMPOUNDPARTICLE_MASS = 12.0107 * 1e-3;
 
@@ -58,7 +58,7 @@ public:
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
 	uint32_t step = 0;
-	double dt = 0;
+	float dt = 0;
 	bool critical_error_encountered = 0;
 
 	float* potE_buffer = nullptr;		// For total energy summation
@@ -150,10 +150,10 @@ public:
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
 	uint32_t total_particles = 0;				// Precise number, but DO NOT EVER USE IN INDEXING!!
 	
-	int n_steps = SIMULATION_STEPS;
+	uint64_t n_steps = SIMULATION_STEPS;
 
-	const double dt = 1 * 1e-6;					// [ns] first val corresponds to fs
-	const double dt_pico = dt * 1000.f;
+	const float dt = 1.f * 1e-6f;					// [ns] first val corresponds to fs
+	const float dt_pico = dt * 1000.f;
 	int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
 	Box* box;

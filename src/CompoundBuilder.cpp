@@ -371,8 +371,8 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 		records.push_back(record);
 	}
 
-	for (auto record : records) {
-		for (auto w : record) {
+	for (auto& record : records) {
+		for (auto& w : record) {
 			//cout << w << " ";
 		}
 		//printf("\n");

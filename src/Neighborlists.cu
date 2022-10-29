@@ -14,6 +14,23 @@ NListManager::NListManager(Simulation* simulation) {
 }
 
 
+void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlists_mutexlock, bool force_update, bool async, int* timings) {
+	if (async && !force_update) {
+		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock);
+		nlist_worker.detach();
+	}
+	else {
+		NListUtils::updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock);
+	}
+
+	prev_update_step = simulation->getStep();
+
+	if (force_update) {
+		Int3 n_data(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
+		printf("\nEntity neighbors: %d %d\n", n_data.x, n_data.y);
+	}
+}
+
 void NListManager::offloadPositionDataNLIST(Simulation* simulation) {
 	//cudaMemcpyAsync(compoundstatearray_host, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->box->n_compounds, cudaMemcpyDeviceToHost);
 	cudaMemcpy(nlist_data_collection->compoundstates, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->n_compounds, cudaMemcpyDeviceToHost);
@@ -196,6 +213,10 @@ namespace NListUtils {
 		auto t1 = std::chrono::high_resolution_clock::now();
 		*timing = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
+
+
+
+		// SIGNALING MAIN THREAD //
 		*finished = 1;		// Thread terminates here!
 		*mutex_lock = 0;	// Unlock
 	}

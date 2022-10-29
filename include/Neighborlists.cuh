@@ -4,6 +4,7 @@
 #include "Simulation.cuh"
 #include "EngineUtils.cuh"
 #include <chrono>
+#include <thread>
 
 struct NListDataCollection {
 	//NListDataCollection() {}
@@ -65,15 +66,19 @@ public:
 	NListManager(){}	// This is messy, necessary to 
 	NListManager(Simulation* simulation);
 
-	//Static as it must be able to run in a separate thread
-	//static void updataNeighborLists(bool async);
+	void updateNeighborLists(Simulation* simulation, bool* unused_lock, bool force_update, bool async, int* timings);
 	void NListManager::offloadPositionDataNLIST(Simulation* simulation);
 	void NListManager::pushNlistsToDevice(Simulation* simulation);
 
 
-	bool updated_neighborlists_ready = 0;
+	int stepsSinceUpdate(uint64_t currentSimStep) { return currentSimStep - prev_update_step; }
+	uint64_t getPrevUpdateStep() { return prev_update_step; }
+
+
+	volatile bool updated_neighborlists_ready = 0;
 	NListDataCollection* nlist_data_collection = nullptr;
 
 private:
 	// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
+	uint64_t prev_update_step = 0;
 };

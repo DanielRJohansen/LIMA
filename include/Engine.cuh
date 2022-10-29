@@ -82,9 +82,9 @@ private:
 	void handleBoxtemp();
 
 
-	int prev_nlist_update_step = 0;
+	//int prev_nlist_update_step = 0;
 	bool updatenlists_mutexlock = 0;
-	volatile bool updated_neighborlists_ready = 0;
+	//volatile bool updated_neighborlists_ready = 0;
 
 	// -------------------------------------- HELPERS -------------------------------------- //
 

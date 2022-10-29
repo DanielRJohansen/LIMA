@@ -94,36 +94,18 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update) {
 
-
-
-	if (((simulation->getStep() - prev_nlist_update_step >= STEPS_PER_NLIST_UPDATE) || force_update) && !updatenlists_mutexlock) {
+	if (((nlist_manager->stepsSinceUpdate(simulation->getStep() ) >= STEPS_PER_NLIST_UPDATE) || force_update) && !updatenlists_mutexlock) {
 		updatenlists_mutexlock = 1;
 		
 		nlist_manager->offloadPositionDataNLIST(simulation);
 		// Lots of waiting time here...
 		cudaDeviceSynchronize();
 
-
-		if (async) {
-			std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_manager->nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
-			nlist_worker.detach();
-		}
-		else {
-			NListUtils::updateNeighborLists(simulation, nlist_manager->nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
-		}
-
-		prev_nlist_update_step = simulation->getStep();
+		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z);
 	}
 
-	if (updated_neighborlists_ready) {
+	if (nlist_manager->updated_neighborlists_ready) {
 		nlist_manager->pushNlistsToDevice(simulation);
-	}
-
-	if (force_update) {
-		Int3 n_data(nlist_manager->nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_manager->nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
-		//Int3 after(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
-
-		printf("\nEntity neighbors: %d %d\n", n_data.x, n_data.y);
 	}
 }
 
@@ -152,57 +134,12 @@ void Engine::offloadTrainData() {
 
 
 
-Float3 Engine::getBoxTemperature() {
-	
-	const int step = simulation->getStep() - 1;
 
-	long double temp_sum = 0;				// [k]
-
-	long double kinE_sum = 0;
-	float biggest_contribution = 0;
-
-
-	const int step_offset_a = step * simulation->total_particles_upperbound;
-	const int step_offset_b = (step - 2) * simulation->total_particles_upperbound;
-	const int solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
-
-
-	for (int c = 0; c < simulation->n_compounds; c++) {
-		int compound_offset = c * MAX_COMPOUND_PARTICLES;
-		for (int i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
-
-			Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
-			Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
-			//float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_device.particle_parameters[simulation->box->compounds[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
-			//printf("kinE %f\n", kinE);
-			//printf("mass %f\n", forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass);
-			biggest_contribution = max(biggest_contribution, kinE);
-				
-			kinE_sum += kinE;
-			//particles_total++;
-		}
-	}
-	//printf("\nKin e %Lf\n", kinE_sum);
-	//kinE_sum = 0;
-	for (int i = 0; i < simulation->n_solvents; i++) {
-		Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
-		Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
-		float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, SOLVENT_MASS, simulation->dt);
-		biggest_contribution = max(biggest_contribution, kinE);
-		kinE_sum += kinE;
-	}
-	//double avg_kinE = kinE_sum / (long double)particles_total;
-	double avg_kinE = kinE_sum / (long double)simulation->total_particles;
-	float temperature = avg_kinE * 2.f / (3.f * 8.3145);
-	//printf("\nTemp: %f\n", temperature);
-	return Float3(temperature, biggest_contribution, avg_kinE);
-}
 
 																																			// THIS fn requires mallocmanaged!!   // HARD DISABLED HERE
 void Engine::handleBoxtemp() {
 	const float target_temp = 310.f;				// [k]
-	Float3 temp_package = getBoxTemperature();
+	Float3 temp_package = EngineUtils::getBoxTemperature();
 	float temp = temp_package.x;
 	float biggest_contribution = temp_package.y;
 
@@ -236,8 +173,6 @@ void Engine::handleBoxtemp() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-
-
 void Engine::step() {
 	auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();

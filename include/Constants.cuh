@@ -58,7 +58,7 @@ constexpr float CUTOFF = 0.8f;	//nm/
 
 
 // OPTIMIZATION PARAMETERS
-const int MAX_COMPOUND_PARTICLES = 20;
+const int MAX_COMPOUND_PARTICLES = 64;
 
 
 

@@ -78,7 +78,6 @@ private:
 	void offloadPositionData();
 	void offloadTrainData();
 
-	Float3 getBoxTemperature();
 	void handleBoxtemp();
 
 

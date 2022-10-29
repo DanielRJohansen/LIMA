@@ -71,9 +71,9 @@ struct PairBond {	// IDS and indexes are used interchangeably here!
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
 	}
-	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b, bool invertLJ) :
+	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
 		//reference_dist(ref_dist) {
-		b0(ref_dist), kb(kb), invertLJ(invertLJ) {
+		b0(ref_dist), kb(kb) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
 	}
@@ -84,13 +84,13 @@ struct PairBond {	// IDS and indexes are used interchangeably here!
 	float kb = 0.f;
 	uint32_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
-	bool invertLJ = false;		// When sharing multiple bonded connections
+	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct AngleBond {
 	AngleBond() {}
-	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta, bool invertLJ) : 
-		theta_0(theta_0), k_theta(k_theta), invertLJ(invertLJ) {
+	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta) : 
+		theta_0(theta_0), k_theta(k_theta) {
 		atom_indexes[0] = id1;
 		atom_indexes[1] = id2;
 		atom_indexes[2] = id3;
@@ -100,14 +100,14 @@ struct AngleBond {
 	float k_theta = 0.f;
 	uint32_t atom_indexes[3] = {}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
-	bool invertLJ = false;		// When sharing multiple bonded connections
+	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct DihedralBond {
 	DihedralBond() {}
 	//DihedralBond(float phi_0, float k_phi) : phi_0(phi_0), k_phi(k_phi) {}
-	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n, bool invertLJ) : 
-		phi_0(phi_0), k_phi(k_phi), n(n), invertLJ(invertLJ) {
+	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n) : 
+		phi_0(phi_0), k_phi(k_phi), n(n) {
 		atom_indexes[0] = id1;
 		atom_indexes[1] = id2;
 		atom_indexes[2] = id3;
@@ -118,7 +118,7 @@ struct DihedralBond {
 	uint8_t n = 0;
 	uint32_t atom_indexes[4] = {0,0,0,0};
 	const static int n_atoms = 4;
-	bool invertLJ = false;		// When sharing multiple bonded connections
+	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct GenericBond {				// ONLY used during creation, never on device!
@@ -397,7 +397,7 @@ struct Compound {
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)
 
-	LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
+	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
 
 #ifdef LIMA_DEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
@@ -457,7 +457,7 @@ struct Compound {
 		if (threadIdx.x < n_particles) {
 			prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-			lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
+			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
 			compound->forces[threadIdx.x] = Float3(0.f);
 			//#ifdef LIMA_DEBUGMODE

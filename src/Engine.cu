@@ -37,7 +37,6 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	//cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
 
-	
 	handleNLISTS(simulation, false, true);				// Fix neighborlists before running
 
 	printf("Engine ready\n\n\n");
@@ -134,12 +133,10 @@ void Engine::offloadTrainData() {
 
 
 
-
-
 																																			// THIS fn requires mallocmanaged!!   // HARD DISABLED HERE
 void Engine::handleBoxtemp() {
 	const float target_temp = 310.f;				// [k]
-	Float3 temp_package = EngineUtils::getBoxTemperature();
+	Float3 temp_package = EngineUtils::getBoxTemperature(simulation, forcefield_host);
 	float temp = temp_package.x;
 	float biggest_contribution = temp_package.y;
 
@@ -271,19 +268,6 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	float s = sigma * sigma / dist_sq;								// [nm^2]/[nm^2] -> unitless
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
-	//float force_scalar = 1.f;
-
-	//if (force_scalar != force_scalar) {
-	//	printf("Error is here\n\n");
-	//}
-
-
-
-	//if (blockIdx.x == 12 && threadIdx.x == 27 && ddd.len() > 1000000)
-		//ddd.print('f');
-#ifndef ENABLE_BLJV
-	return (*pos1 - *pos0) * sigma * epsilon;				// This line forces the CUDA compile to include all calculations, but can never produce a large force.
-#endif
 
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
@@ -315,7 +299,6 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	}
 #endif
 	return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
-	//return Float3(0.);
 }
 
 //constexpr double kb = 17.5 * 1e+6;		//	J/(mol*nm^2)	/ kg/(ns^2 * mol)
@@ -431,7 +414,7 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 
 
 //__device__ Float3 computeIntermolecularLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self, uint8_t* atomtypes_others, LJ_Ignores* lj_ignore_list, uint32_t* global_ids) {	// Assumes all positions are 
-__device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomtype_self, LJ_Ignores* lj_ignore_list, float* potE_sum, uint32_t global_id_self, float* data_ptr,
+__device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
 	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {	
 	Float3 force(0.f);
 
@@ -875,7 +858,7 @@ __global__ void compoundKernel(Box* box) {
 
 		//continue;									// DANGER
 		if (threadIdx.x < compound.n_particles) {
-			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
+			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 			//anti_inter += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 		}

@@ -20,7 +20,7 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 
 /*
 double __device__ calcKineticEnergy(Float3* pos1, Float3* pos2, double mass, double dt) {
-	LIMAENG::applyHyperpos(pos1, pos2);
+	EngineUtils::applyHyperpos(pos1, pos2);
 
 
 	double vel = (*pos1 - *pos2).len() * 0.5f / dt;
@@ -65,10 +65,10 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 
 	Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step - 1) * box->total_particles_upperbound];
 	Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step + 1) * box->total_particles_upperbound];
-	//LIMAENG::applyHyperpos(&pos_tadd1, &pos_tsub1);
+	//EngineUtils::applyHyperpos(&pos_tadd1, &pos_tsub1);
 	//testspace::testerfn(4);
 	//double kinE = calcKineticEnergy(&pos_tadd1, &pos_tsub1, compound.particles[threadIdx.x].mass, box->dt);
-	float kinE = LIMAENG::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
 
 
 
@@ -114,7 +114,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 	Float3 pos_tsub1 = traj_buffer[compounds_offset + solvent_index + (step - 1) * box->total_particles_upperbound];
 	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->total_particles_upperbound];
 
-	float kinE = LIMAENG::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
 
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->total_particles_upperbound];
 
@@ -136,7 +136,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 
 Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	int64_t analysable_steps = simulation->getStep() - 3;
-	LIMAENG::genericErrorCheck("Cuda error before analyzeEnergy\n");
+	EngineUtils::genericErrorCheck("Cuda error before analyzeEnergy\n");
 	if (analysable_steps < 1) {
 		printf("FATAL ERROR, no steps to analyze");
 		exit(1);
@@ -184,7 +184,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 
 		cudaDeviceSynchronize();
-		LIMAENG::genericErrorCheck("Cuda error during analyzer transfer\n");
+		EngineUtils::genericErrorCheck("Cuda error during analyzer transfer\n");
 
 		Float3* average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
 		Float3* average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);	//avg energy PER PARTICLE in compound
@@ -235,7 +235,7 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 
 	cudaFree(data_out);
 	delete[] average_solvent_energy_blocked;
-	LIMAENG::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
+	EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 	return average_solvent_energy;
 }
 
@@ -277,7 +277,7 @@ Float3* Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps
 
 	cudaFree(data_out);
 	delete[] host_data;
-	LIMAENG::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
+	EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
 	return average_compound_energy;
 }

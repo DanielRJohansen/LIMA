@@ -1,5 +1,7 @@
 #include "Engine.cuh"
 
+#include "EngineUtils.cu"
+
 
 __constant__ ForceField forcefield_device;
 //__constant__ ForceField forcefield_nb_device;
@@ -7,10 +9,10 @@ __constant__ ForceField forcefield_device;
 
 Engine::Engine() {}
 Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
-	LIMAENG::genericErrorCheck("Error before engine initialization.\n");
+	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
-	nlist_data_collection = new NListDataCollection(simulation);
-
+	//nlist_data_collection = new NListDataCollection(simulation);
+	nlist_manager = new NListManager(simulation);
 
 
 
@@ -19,7 +21,7 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	printf("Compoundkernel shared mem. size: %d B\n", Ckernel_shared_mem);
 	printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);
 
-	LIMAENG::genericErrorCheck("Error before moving forcefield to device\n");
+	EngineUtils::genericErrorCheck("Error before moving forcefield to device\n");
 
 
 
@@ -33,14 +35,9 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	//ForceField forcefield_nb_host = FFM.getNBForcefield();
 	//cudaMemcpyToSymbol(forcefield_nb_device, &forcefield_nb_host, sizeof(ForceField), 0, cudaMemcpyHostToDevice);
 	//cudaDeviceSynchronize();
-	LIMAENG::genericErrorCheck("Error while moving forcefield to device\n");
+	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
 
-	for (int i = 0; i < nlist_data_collection->n_compounds; i++) {
-		nlist_data_collection->compound_neighborlists[i].associated_id = i;
-	}
-	for (int i = 0; i < nlist_data_collection->n_solvents; i++) {
-		nlist_data_collection->solvent_neighborlists[i].associated_id = i;
-	}
+	
 	handleNLISTS(simulation, false, true);				// Fix neighborlists before running
 
 	printf("Engine ready\n\n\n");
@@ -51,9 +48,9 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 
 
 void Engine::deviceMaster() {
-	LIMAENG::genericErrorCheck("Error before step!");
+	EngineUtils::genericErrorCheck("Error before step!");
 	step();
-	LIMAENG::genericErrorCheck("Error after step!");
+	EngineUtils::genericErrorCheck("Error after step!");
 }
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER intStep()!
@@ -101,222 +98,33 @@ void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update)
 
 	if (((simulation->getStep() - prev_nlist_update_step >= STEPS_PER_NLIST_UPDATE) || force_update) && !updatenlists_mutexlock) {
 		updatenlists_mutexlock = 1;
-		offloadPositionDataNLIST(simulation);
+		
+		nlist_manager->offloadPositionDataNLIST(simulation);
 		// Lots of waiting time here...
 		cudaDeviceSynchronize();
 
 
 		if (async) {
-			std::thread nlist_worker(Engine::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
+			std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_manager->nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
 			nlist_worker.detach();
 		}
 		else {
-			updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
+			NListUtils::updateNeighborLists(simulation, nlist_manager->nlist_data_collection, &updated_neighborlists_ready, &timings.z, &updatenlists_mutexlock);
 		}
 
 		prev_nlist_update_step = simulation->getStep();
 	}
 
 	if (updated_neighborlists_ready) {
-		pushNlistsToDevice();
+		nlist_manager->pushNlistsToDevice(simulation);
 	}
 
 	if (force_update) {
-		Int3 n_data(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
+		Int3 n_data(nlist_manager->nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_manager->nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
 		//Int3 after(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
 
 		printf("\nEntity neighbors: %d %d\n", n_data.x, n_data.y);
 	}
-}
-
-void Engine::offloadPositionDataNLIST(Simulation* simulation) {
-	//cudaMemcpyAsync(compoundstatearray_host, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->box->n_compounds, cudaMemcpyDeviceToHost);
-	cudaMemcpy(nlist_data_collection->compoundstates, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->n_compounds, cudaMemcpyDeviceToHost);
-	if (simulation->n_solvents > 0)
-		cudaMemcpy(nlist_data_collection->solvents, simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
-}
-
-void Engine::pushNlistsToDevice() {
-	cudaMemcpy(simulation->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
-	cudaMemcpy(simulation->box->solvent_neighborlists, nlist_data_collection->solvent_neighborlists, sizeof(NeighborList) * simulation->n_solvents, cudaMemcpyHostToDevice);
-	updated_neighborlists_ready = 0;
-}
-
-/*
-void Engine::offloadPositionData(Simulation* simulation) {
-	//cudaMemcpyAsync(compoundstatearray_host, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->box->n_compounds, cudaMemcpyDeviceToHost);
-
-	const int step_offset = (simulation->getStep() - STEPS_PER_LOGTRANSFER) * simulation->total_particles_upperbound;	// Tongue in cheek here, i think this is correct...
-	cudaMemcpy(&nlist_data_collection->compoundstates[step_offset], simulation->box->compound_state_array, sizeof(CompoundState) * simulation->n_compounds, cudaMemcpyDeviceToHost);
-	cudaMemcpy(&nlist_data_collection->solvents[step_offset], simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
-}
-*/
-
-
-
-bool Engine::neighborWithinCutoff(Float3* pos_a, Float3* pos_b, float cutoff_offset) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
-	Float3 pos_b_temp = *pos_b;
-	LIMAENG::applyHyperpos(pos_a, &pos_b_temp);
-	float dist = (*pos_a - pos_b_temp).len();
-	return (dist < (CUTOFF + cutoff_offset));
-}
-
-
-
-void Engine::cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection) {	
-	for (int id_self = 0; id_self < nlist_data_collection->n_compounds; id_self++) {
-		NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
-		float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
-
-
-
-		for (int j = 0; j < nlist_self->n_compound_neighbors; j++) {		// Cull compound-compound
-			int id_neighbor = nlist_self->neighborcompound_ids[j];
-			NeighborList* nlist_neighbor = &nlist_data_collection->compound_neighborlists[id_neighbor];
-			float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].confining_particle_sphere;
-
-			if (id_self < id_neighbor) {
-				if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF)) {
-					nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-					nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);				
-					j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
-				}
-			}
-		}
-
-
-		for (int j = 0; j < nlist_self->n_solvent_neighbors; j++) {			// Cull compound-solvent
-			int id_neighbor = nlist_self->neighborsolvent_ids[j];
-			NeighborList* nlist_neighbor = &nlist_data_collection->solvent_neighborlists[id_neighbor];
-
-			//printf("Dist: %f\n", (nlist_data_collection->compound_key_positions[id_self] - nlist_data_collection->solvent_positions[id_neighbor]).len());
-			if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], cutoff_add_self + CUTOFF) && false ) {
-				nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-				//	printf("J: %d\n", j);
-				nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-				j--;	// Decrement, as the removeId puts the last element at the current and now va-cant spot.
-			}
-		}
-	}
-
-
-	for (int id_self = 0; id_self < nlist_data_collection->n_solvents; id_self++) {																// Cull solvent-solvent
-		NeighborList* nlist_self = &nlist_data_collection->solvent_neighborlists[id_self];
-
-		int cnt = 0;
-
-		for (int j = 0; j < nlist_self->n_solvent_neighbors; j++) {			/// NOT FINISHED HERE
-			int id_neighbor = nlist_self->neighborsolvent_ids[j];
-			NeighborList* nlist_neighbor = &nlist_data_collection->solvent_neighborlists[id_neighbor];
-
-			if (!neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], CUTOFF)) {
-				cnt++;
-				if (!nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::SOLVENT))
-					printf("J1: %d id_self %d id_neighbor %d    cnt %d\n", j, id_self, id_neighbor, cnt);
-				if (!nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::SOLVENT)) {
-					printf("J2: %d of %d.   id_self %d id_neighbor %d count: %d\n", j, nlist_self->n_solvent_neighbors, id_self, id_neighbor, cnt);
-					for (int i = 0; i < nlist_self->n_solvent_neighbors; i++) {
-						printf("neighbor %d\n", nlist_self->neighborsolvent_ids[i]);
-					}
-					printf("\n\n\n");
-					exit(1);
-				}
-					
-
-				j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
-			}			
-		}
-	}
-}
-
-
-void Engine::updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection, volatile bool* finished, int* timing, bool* mutex_lock) {	// This is a thread worker-function, so it can't own the object, thus i pass a ref to the engine object..
-	auto t0 = std::chrono::high_resolution_clock::now();
-	Int3 before(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
-	//Int3 before(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
-	//nlist_data_collection->preparePositionData();
-
-
-	nlist_data_collection->preparePositionData(simulation->compounds_host);		// Makes key positions addressable in arrays: compound_key_positions and solvent_positions
-	// First do culling of neighbors that has left CUTOFF
-	cullDistantNeighbors(simulation, nlist_data_collection);
-
-
-	// First add compound->solvent, compound->compound
-	for (uint16_t id_self = 0; id_self < simulation->n_compounds; id_self++) {
-
-		NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
-		HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
-		HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-		float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
-
-		//printf("\nSize to hashtable: %d\n", nlist_self->n_solvent_neighbors);
-		//printf("cutoff %f\n", cutoff_offset);
-
-		// Go through all solvents in box!
-		for (uint16_t id_candidate = 0; id_candidate < simulation->n_solvents; id_candidate++) {
-			NeighborList* nlist_candidate = &nlist_data_collection->solvent_neighborlists[id_candidate];
-			//continue;
-			if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], cutoff_add_self + CUTOFF)) {
-				if (hashtable_solventneighbors.insert(id_candidate)) {
-					nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-					nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-				}
-			}
-
-		}
-
-		// Go through all compounds in box, with higher ID than self!
-		for (uint16_t id_candidate = id_self + 1; id_candidate < simulation->n_compounds; id_candidate++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
-			NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_candidate];
-			float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;
-			//continue;
-			//printf("Distance to neighbor compound: %f\n", (nlist_data_collection->compound_key_positions[id_self] - nlist_data_collection->compound_key_positions[id_candidate]).len());
-			//if (id_self == 0)
-				//printf("Adding compound %d to %d\n", id_candidate, id_self);
-
-			if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_candidate], cutoff_add_self + cutoff_add_candidate + CUTOFF)) {
-				if (hashtable_compoundneighbors.insert(id_candidate)) {
-					nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-					nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-				}
-			}
-		}
-	}
-
-	// Finally add all solvent->solvent candidates
-	for (int id_self = 0; id_self < simulation->n_solvents; id_self++) {
-		NeighborList* nlist_self = &nlist_data_collection->solvent_neighborlists[id_self];
-		HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, (int)nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-
-
-
-		for (int id_candidate = id_self + 1; id_candidate < simulation->n_solvents; id_candidate++) {
-			NeighborList* nlist_candidate = &nlist_data_collection->solvent_neighborlists[id_candidate];
-			if (neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], CUTOFF)) {
-				if (hashtable_solventneighbors.insert(id_candidate)) {
-					nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-					nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-					//printf("\n");
-					if (id_self == 193) {
-						//printf("Adding id %d with dist %f\n", id_candidate, (nlist_data_collection->solvent_positions[id_self] - nlist_data_collection->solvent_positions[id_candidate]).len());
-					}
-				}
-			}
-			
-		}
-	}
-
-	Int3 after(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
-	//Int3 after(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
-
-	//printf("\nEntity went from %d %d neighbors to %d %d\n", before.x, before.y, after.x, after.y);
-	
-	auto t1 = std::chrono::high_resolution_clock::now();
-	*timing = (int) std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-
-	*finished = 1;		// Thread terminates here!
-	*mutex_lock = 0;	// Unlock
 }
 
 
@@ -339,7 +147,7 @@ void Engine::offloadTrainData() {
 	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
 	cudaMemcpy(&simulation->traindata_buffer[step_offset], simulation->box->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
-	LIMAENG::genericErrorCheck("Cuda error during traindata offloading\n");
+	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
 }
 
 
@@ -365,8 +173,8 @@ Float3 Engine::getBoxTemperature() {
 
 			Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
 			Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-			float kinE = LIMAENG::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
-			//float kinE = LIMAENG::calcKineticEnergy(&posa, &posb, forcefield_device.particle_parameters[simulation->box->compounds[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
+			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
+			//float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_device.particle_parameters[simulation->box->compounds[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
 			//printf("kinE %f\n", kinE);
 			//printf("mass %f\n", forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass);
 			biggest_contribution = max(biggest_contribution, kinE);
@@ -380,7 +188,7 @@ Float3 Engine::getBoxTemperature() {
 	for (int i = 0; i < simulation->n_solvents; i++) {
 		Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
 		Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
-		float kinE = LIMAENG::calcKineticEnergy(&posa, &posb, SOLVENT_MASS, simulation->dt);
+		float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, SOLVENT_MASS, simulation->dt);
 		biggest_contribution = max(biggest_contribution, kinE);
 		kinE_sum += kinE;
 	}
@@ -471,7 +279,7 @@ void Engine::step() {
 	
 	//cudaMemcpy(simulation->box->solvents, simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyDeviceToDevice);
 	cudaDeviceSynchronize();
-	LIMAENG::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
+	EngineUtils::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 	auto t2 = std::chrono::high_resolution_clock::now();
 
 
@@ -756,7 +564,7 @@ __device__ Float3 computeSolventToSolventLJForces(Float3* self_pos, NeighborList
 	Float3 force(0.f);
 	for (int i = 0; i < nlist->n_solvent_neighbors; i++) {
 		Solvent neighbor = solvents[nlist->neighborsolvent_ids[i]];			
-		LIMAENG::applyHyperpos(&neighbor.pos, self_pos);
+		EngineUtils::applyHyperpos(&neighbor.pos, self_pos);
 		force += calcLJForce(self_pos, &neighbor.pos, data_ptr, potE_sum, 
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma, 
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
@@ -795,7 +603,7 @@ __device__ Float3 computeCompoundToSolventLJForces(Float3* self_pos, int n_parti
 	Float3 force(0, 0, 0);
 	for (int i = 0; i < n_particles; i++) {
 		Float3 hyperpos = positions[i];			// copy, DONT ref it as all threads will cann applyHyperpos
-		LIMAENG::applyHyperpos(self_pos, &hyperpos);
+		EngineUtils::applyHyperpos(self_pos, &hyperpos);
 		force += calcLJForce(self_pos, &hyperpos, data_ptr, potE_sum);	
 	}
 	return force;
@@ -978,7 +786,7 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	float prev_vel = (*pos - *pos_tsub1).len();
 		
 	Float3 temp = *pos;
-	LIMAENG::applyHyperpos(pos, pos_tsub1);
+	EngineUtils::applyHyperpos(pos, pos_tsub1);
 	//printf("dt %.08f\n", dt);
 	//*pos = *pos * 2 - *pos_tsub1 + *force * (1.f / mass) * dt * dt;	// no *0.5?	// [nm] - [nm] + [kg*m*s^-2]/[kg] * [ns]^2
 	//double magnitude_equalizer = 1e+4;		// Due to force being very large and dt being very small
@@ -1010,7 +818,7 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 	//float prev_vel = (*pos - *pos_tsub1).len();
 
 	Float3 temp = *pos;
-	LIMAENG::applyHyperpos(pos, pos_tsub1);
+	EngineUtils::applyHyperpos(pos, pos_tsub1);
 	//printf("dt %.08f\n", dt);
 	//*pos = *pos * 2 - *pos_tsub1 + *force * (1.f / mass) * dt * dt;	// no *0.5?	// [nm] - [nm] + [kg*m*s^-2]/[kg] * [ns]^2
 	//double magnitude_equalizer = 1e+4;		// Due to force being very large and dt being very small
@@ -1099,7 +907,7 @@ __global__ void compoundKernel(Box* box) {
 	{
 		//BondedParticlesLUT* lut = box->bonded_particles_lut_manager->get(compound_index, compound_index);
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
-		LIMAENG::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
+		EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
 		__syncthreads();
 
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
@@ -1122,7 +930,7 @@ __global__ void compoundKernel(Box* box) {
 		if (threadIdx.x < neighborcompound_particles) {
 			utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
 			//utility_buffer_small[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];				/// HEEEEY WHY ARE WE NOT USING THIS?!??!?!?!?!
-			LIMAENG::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
+			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
 		}
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
@@ -1149,7 +957,7 @@ __global__ void compoundKernel(Box* box) {
 #ifdef ENABLE_SOLVENTS
 	/*for (int i = threadIdx.x; i < neighborlist.n_solvent_neighbors; i += blockDim.x) {
 		utility_buffer[i] = box->solvents[neighborlist.neighborsolvent_ids[i]].pos;
-		LIMAENG::applyHyperpos(&compound_state.positions[0], &utility_buffer[i]);
+		EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[i]);
 	}
 	__syncthreads();
 	if (threadIdx.x < compound.n_particles) {
@@ -1162,7 +970,7 @@ __global__ void compoundKernel(Box* box) {
 
 		if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
 			utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
-			LIMAENG::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
+			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
 		}		
 		__syncthreads();
 
@@ -1203,7 +1011,7 @@ __global__ void compoundKernel(Box* box) {
 	if (threadIdx.x == 0) {
 		applyPBC(&compound_state.positions[threadIdx.x]);
 	}
-	LIMAENG::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
+	EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 	
 
@@ -1228,12 +1036,12 @@ __global__ void compoundKernel(Box* box) {
 		
 		if (blockIdx.x == 0 && threadIdx.x == 0) {			
 			Float3 pos_prev_temp = compound.prev_positions[threadIdx.x];			
-			LIMAENG::applyHyperpos(&compound_state.positions[threadIdx.x], &pos_prev_temp);
+			EngineUtils::applyHyperpos(&compound_state.positions[threadIdx.x], &pos_prev_temp);
 			
 			int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * 10;
 
 			box->outdata[0 + step_offset] = (compound_state.positions[threadIdx.x] - pos_prev_temp).len() / box->dt;
-			box->outdata[1 + step_offset] = LIMAENG::calcKineticEnergy(&compound_state.positions[threadIdx.x], &pos_prev_temp, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
+			box->outdata[1 + step_offset] = EngineUtils::calcKineticEnergy(&compound_state.positions[threadIdx.x], &pos_prev_temp, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
 			box->outdata[2 + step_offset] = potE_sum;																											// This does NOT take bridge potE into account!!!!!!!
 			box->outdata[3 + step_offset] = force.len();
 
@@ -1293,6 +1101,8 @@ __global__ void solventForceKernel(Box* box) {
 	data_ptr[2] = 9999.f;
 	Float3 force(0,0,0);
 
+	Float3 fff;
+
 
 	//Solvent* solvent = &solvents[threadIdx.x];
 	Solvent solvent;
@@ -1314,7 +1124,7 @@ __global__ void solventForceKernel(Box* box) {
 			
 
 		if (thread_active) {
-			LIMAENG::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
+			EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
 			force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
 		}
 		__syncthreads();
@@ -1425,7 +1235,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
 	{											// So for the very first step, these ´should all be 0, but they are not??										TODO: Look into this at some point!!!! Also, can cant really apply hyperpos here without breaking stuff, sindce
 																																								// The bridge spans such a big volume! :/
-		LIMAENG::applyHyperpos(&positions[0], &positions[particle_id_bridge]);
+		EngineUtils::applyHyperpos(&positions[0], &positions[particle_id_bridge]);
 		__syncthreads();	
 		force += computePairbondForces(&bridge, positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&bridge, positions, utility_buffer, &potE_sum);

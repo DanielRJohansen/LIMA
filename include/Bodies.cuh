@@ -3,17 +3,12 @@
 
 #include "Constants.cuh"
 #include "LimaTypes.cuh"
-//#include "QuantomTypes.cuh"
-
-
-
 
 
 
 // Hyper-fast objects for kernel, so we turn all safety off here!
 #pragma warning (push)
 #pragma warning (disable : 26495)
-
 
 
 
@@ -24,8 +19,6 @@ struct Solvent {
 	Float3 pos;
 	Float3 pos_tsub1;
 };
-
-
 
 
 
@@ -47,7 +40,6 @@ struct ParticleRef {		 // Maybe call map instead?
 	int local_id_bridge = -1;
 
 	__host__ inline bool operator == (const ParticleRef a) const { return (global_id == a.global_id); }
-
 };
 
 struct NBAtomtype {
@@ -62,6 +54,17 @@ struct NBAtomtype {
 struct PairBond {	// IDS and indexes are used interchangeably here!
 	PairBond(){}
 	PairBond(int id1, int id2, float b0, float kb);
+
+	PairBond(uint32_t particleindex_a, uint32_t particleindex_b) {
+		atom_indexes[0] = particleindex_a;
+		atom_indexes[1] = particleindex_b;
+	}
+	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
+		//reference_dist(ref_dist) {
+		b0(ref_dist), kb(kb) {
+		atom_indexes[0] = particleindex_a;
+		atom_indexes[1] = particleindex_b;
+	}
 
 	float b0 = 0.f;
 	float kb = 0.f;
@@ -111,102 +114,8 @@ struct GenericBond {				// ONLY used during creation, never on device!
 
 
 
-//struct LJ_Ignores {	// Each particle is associated with 1 of these.
-//	LJ_Ignores() {
-//		for (int i = 0; i < max_ids; i++)
-//			global_ids[i] = UINT32_MAX;
-//	}
-//
-//	static const int max_ids = 32;
-//	uint8_t local_ids[max_ids] = {};
-//	uint8_t compound_ids[max_ids] = {};
-//
-//	uint32_t global_ids[max_ids] = {};
-//	uint8_t n_ignores = 0;
-//
-//
-//	uint16_t doublyconnected_id = 0;
-//	
-//	__host__ void addIgnoreTarget(int target_global_id) {
-//		global_ids[n_ignores] = target_global_id;
-//		n_ignores++;
-//	}
-//
-//	__host__ void addIgnoreTarget(uint8_t target_id, uint8_t compound_id) {
-//		if (n_ignores == max_ids) {
-//			printf("Failed to add ignore target!\n");
-//			exit(0);
-//		}
-//		for (int i = 0; i < n_ignores; i++) {		// If target particle is already ignored, do nothing
-//			if (local_ids[i] == target_id && compound_ids[i] == compound_id)
-//				return;
-//		}
-//
-//		local_ids[n_ignores] = target_id;
-//		compound_ids[n_ignores] = compound_id;
-//		n_ignores++;
-//	}
-//	
-//	__device__ bool ignore(uint8_t query_local_id, uint8_t query_compound_id) {
-//		for (int i = 0; i < n_ignores; i++) {
-//			if (local_ids[i] == query_local_id && compound_ids[i] == query_compound_id)
-//				return true;
-//		}
-//		return false;
-//	}
-//
-//	__host__ bool checkAlreadyConnected(uint16_t global_id) {
-//		for (int i = 0; i < n_ignores; i++) {
-//			if (global_ids[i] == global_id)
-//				return true;
-//		}
-//		return false;
-//	}
-//	
-//
-//	__host__ void assignDoublyConnectedID(uint16_t id) {
-//		doublyconnected_id = id;
-//	}
-//
-//	__device__ bool doublyConnected(uint16_t dc_id) {
-//		return (dc_id == doublyconnected_id && doublyconnected_id != 0);
-//	}
-//
-//
-//	// For system 3
-//	__host__  void init() {
-//		for (int i = 0; i < max_ids; i++)
-//			global_ids[i] = UINT32_MAX;
-//	}
-//	__host__ bool isAlreadyConnected(uint32_t global_id) {
-//		for (int i = 0; i < n_ignores; i++) {
-//			if (global_ids[i] == global_id)
-//				return true;
-//		}
-//		return false;
-//	}
-//
-//	__host__ void addConnection(uint32_t global_id) {
-//		for (int i = 0; i < max_ids; i++) {
-//			if (global_ids[i] == global_id) {
-//				//printf("MC found!\n");
-//				return;
-//			}
-//				
-//			if (global_ids[i] == UINT32_MAX) {
-//				global_ids[i] = global_id;
-//				n_ignores++;
-//				return;
-//			}
-//		}
-//		printf("Out of bounds force LJ ignores!\n");
-//		exit(1);
-//	}
-//};
 
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
-
-
 class NeighborList {
 public:
 	enum NEIGHBOR_TYPE {COMPOUND, SOLVENT};

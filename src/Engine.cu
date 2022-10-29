@@ -754,7 +754,6 @@ __global__ void compoundKernel(Box* box) {
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
 
 
-	return;
 
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);

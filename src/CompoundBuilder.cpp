@@ -224,8 +224,8 @@ void CompoundBuilder::addBond(Molecule* molecule, ParticleRef* maps, vector<stri
 			exit(0);
 		}
 
-		compound->singlebonds[compound->n_singlebonds++] = PairBond(bondtype->b0, bondtype->kb, maps[0].local_id_compound, maps[1].local_id_compound);		
-
+		//compound->singlebonds[compound->n_singlebonds++] = PairBond(bondtype->b0, bondtype->kb, maps[0].local_id_compound, maps[1].local_id_compound);		
+		compound->singlebonds[compound->n_singlebonds++] = PairBond(maps[0].local_id_compound, maps[1].local_id_compound, bondtype->b0, bondtype->kb);
 
 
 	}

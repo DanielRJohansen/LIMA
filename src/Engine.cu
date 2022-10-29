@@ -834,7 +834,7 @@ __global__ void compoundKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
-	*/
+	
 	for (int offset = 0; offset * blockDim.x < neighborlist.n_solvent_neighbors; offset += blockDim.x) {
 		int solvent_nlist_index = offset + threadIdx.x; // index in neighborlist
 
@@ -854,7 +854,7 @@ __global__ void compoundKernel(Box* box) {
 
 
 	//box->potE_buffer[threadIdx.x + blockIdx.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES + (box->step % STEPS_PER_TRAINDATATRANSFER) * gridDim.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES] = force.len();
-	box->traj_buffer[threadIdx.x + blockIdx.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES + (box->step % STEPS_PER_TRAINDATATRANSFER) * gridDim.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES] = Float3(0.);// compound_state.positions[threadIdx.x];	// N DATAGAN???!?!
+	//box->traj_buffer[threadIdx.x + blockIdx.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES + (box->step % STEPS_PER_TRAINDATATRANSFER) * gridDim.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES] = compound_state.positions[threadIdx.x];	// N DATAGAN???!?!
 
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
@@ -920,12 +920,19 @@ __global__ void compoundKernel(Box* box) {
 
 
 		int n_compounds_total = gridDim.x;
+		
 		int step_offset = (box->step % STEPS_PER_TRAINDATATRANSFER) * n_compounds_total * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES;
 		int compound_offset = blockIdx.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES;
 		int particle_offset = threadIdx.x * N_DATAGAN_VALUES;
 		box->data_GAN[0 + particle_offset + compound_offset + step_offset] = compound_state.positions[threadIdx.x];
 		box->data_GAN[1 + particle_offset + compound_offset + step_offset] = force_LJ_sol;
 		box->data_GAN[2 + particle_offset + compound_offset + step_offset] = force;
+
+		int steps_since_transfer = (box->step % STEPS_PER_LOGTRANSFER);
+		step_offset = steps_since_transfer * box->total_particles_upperbound;
+		compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
+		// Log the previous pos, as this comes after integration, and we do want that juicy pos_0 ;)
+		box->traj_buffer[step_offset + compound_offset + threadIdx.x] = compound.prev_positions[threadIdx.x];
 
 		if (threadIdx.x >= compound.n_particles)
 			box->data_GAN[0 + particle_offset + compound_offset + step_offset] = Float3(-1.f);

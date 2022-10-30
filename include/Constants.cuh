@@ -10,7 +10,7 @@
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
 const bool INTEGRATION_RAMPUP_ENABLED = 1;
-const int RAMPUP_STEPS = 50;
+const int RAMPUP_STEPS = 5000;
 
 constexpr float CUTOFF = 0.9f;	//nm/
 // -------------------------------------------------------------------------------------------------------------- //
@@ -88,14 +88,17 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 const bool ENABLE_BOXTEMP = true;		// Calc box-temp
 const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = true;
-const int STEPS_PER_THERMOSTAT = 3;			// Must be >= 3 why?
+const int STEPS_PER_THERMOSTAT = 30;			// Must be >= 3 why?
+const int FIRST_TEMPERATURE_PRINT_STEP = 4000;
+const int FIRST_THERMOSTAT_APPLICATION_STEP = 5000;
+constexpr float MAX_THERMOSTAT_SCALER = 0.01f;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 5;
+const int STEPS_PER_RENDER = 20;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

@@ -131,10 +131,16 @@ void Engine::handleBoxtemp() {
 	temp_scalar = min(temp_scalar, 1.01f);
 	temp_scalar = max(temp_scalar, 0.99f);
 
-	if (PRINT_TEMP || temp > 500.f || temp < 100.f) { printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (simulation->getStep() - 1) / STEPS_PER_THERMOSTAT, temp, biggest_contribution, temp_package.z); }
+	uint64_t step = simulation->getStep();
+	
+	if (step >= FIRST_TEMPERATURE_PRINT_STEP) {
+		if (PRINT_TEMP || temp > 500.f || temp < 100.f) { 
+			printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (step - 1) / STEPS_PER_THERMOSTAT, temp, biggest_contribution, temp_package.z); 
+		}
+	}
 		
 	if (temp > target_temp/4.f && temp < target_temp*4.f || true) {
-		if (APPLY_THERMOSTAT && simulation->getStep() > 10) {
+		if (APPLY_THERMOSTAT && step >= FIRST_THERMOSTAT_APPLICATION_STEP) {
 			
 			simulation->box->thermostat_scalar = temp_scalar;
 

@@ -1,6 +1,7 @@
 #include "Engine.cuh"
 
 
+// Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
 __constant__ ForceField forcefield_device;
 
 
@@ -185,9 +186,6 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 }
 
 
-
-
-//__device__ Float3 computeIntermolecularLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self, uint8_t* atomtypes_others, LJ_Ignores* lj_ignore_list, uint32_t* global_ids) {	// Assumes all positions are 
 __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
 	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
@@ -207,6 +205,7 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 	return force;// *24.f * 1e-9;
 }
 
+
 __device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
@@ -222,11 +221,9 @@ __device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundStat
 }
 
 
-
-
-
 __device__ Float3 computeSolventToSolventLJForces(Float3* self_pos, NeighborList* nlist, Solvent* solvents, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
 	Float3 force(0.f);
+	//if (blockIdx.x + threadIdx.x == 0) printf("n neighbor solvents %d\n", nlist->n_solvent_neighbors);
 	for (int i = 0; i < nlist->n_solvent_neighbors; i++) {
 		Solvent neighbor = solvents[nlist->neighborsolvent_ids[i]];
 		EngineUtils::applyHyperpos(&neighbor.pos, self_pos);
@@ -637,16 +634,15 @@ __global__ void solventForceKernel(Box* box) {
 	//__shared__ Float3 solvent_positions[THREADS_PER_SOLVENTBLOCK];
 	__shared__ Float3 utility_buffer[MAX_COMPOUND_PARTICLES];
 	__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
-	__shared__ Solvent solvents[THREADS_PER_SOLVENTBLOCK];
+	//__shared__ Solvent solvents[THREADS_PER_SOLVENTBLOCK];
 
 	float potE_sum = 0;
 	float data_ptr[4];	// Pot, force, closest particle, ?
 	for (int i = 0; i < 4; i++)
 		data_ptr[i] = 0;
 	data_ptr[2] = 9999.f;
-	Float3 force(0, 0, 0);
 
-	Float3 fff;
+	Float3 force(0.f);
 
 
 	//Solvent* solvent = &solvents[threadIdx.x];
@@ -658,7 +654,6 @@ __global__ void solventForceKernel(Box* box) {
 
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
 	for (int i = 0; i < box->n_compounds; i++) {
-		//continue;		 // DANGER
 		int n_compound_particles = box->compound_state_array[i].n_particles;
 		// First all threads help loading the molecule
 		if (threadIdx.x < n_compound_particles) {
@@ -667,14 +662,14 @@ __global__ void solventForceKernel(Box* box) {
 		}
 		__syncthreads();
 
+		//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
+
 
 		if (thread_active) {
 			EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
 			force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
 		}
 		__syncthreads();
-
-
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -682,7 +677,6 @@ __global__ void solventForceKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
 	if (thread_active) {
-		// DANGER
 		force += computeSolventToSolventLJForces(&solvent.pos, &box->solvent_neighborlists[solvent_index], box->solvents, data_ptr, &potE_sum);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -794,7 +788,6 @@ __global__ void compoundBridgeKernel(Box* box) {
 		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
 
 
-
 		int compound_offset = p_ref->compound_id * MAX_COMPOUND_PARTICLES;
 		int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
 
@@ -804,10 +797,6 @@ __global__ void compoundBridgeKernel(Box* box) {
 
 
 }
-
-
-
-
 
 
 

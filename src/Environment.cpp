@@ -51,7 +51,8 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
-	assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES);
+	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
+	static_assert(THREADS_PER_SOLVENTBLOCK >= THREADS_PER_COMPOUNDBLOCK, "Illegal kernel parameter");
 	//assert(THREADS_PER_SOLVENTBLOCK >= N_SOLVATE_MOLECULES);
 	assert(BOX_LEN > 3.f);
 	//assert(BOX_LEN >= CUTOFF + 0.5f);

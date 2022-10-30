@@ -3,16 +3,8 @@
 
 
 #define LIMA_DEBUGMODE
-
 //#define LIMA_SAFERUN		// Use this for?
 //#define LIMA_VERBOSE
-
-
-// --- These can be toggled to test the capabilities of LIMA without the two improperly implemented features --- //
-#define ENABLE_BLJV				// Ensures no LJ between bonded particles
-//#define IGNORE_NEIGHBOR_OVERFLOW	// LJ list doesnt include neighbors when limit is reached.
-
-// -------------------------------------------------------------------------------------------------------------- //
 
 
 
@@ -20,8 +12,7 @@
 const bool INTEGRATION_RAMPUP_ENABLED = 1;
 const int RAMPUP_STEPS = 50;
 
-constexpr float CUTOFF = 0.8f;	//nm/
-
+constexpr float CUTOFF = 0.9f;	//nm/
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -33,6 +24,7 @@ constexpr float CUTOFF = 0.8f;	//nm/
 constexpr float BOX_LEN = 7.f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 // -------------------------------------------------------------------------------------------------------------- //
+
 
 
 
@@ -77,6 +69,7 @@ const int MAX_SINGLEBONDS_IN_BRIDGE = 32;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 32;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
 // -------------------------------------------------------------------------------------------------------------- //
+
 
 
 

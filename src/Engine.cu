@@ -1,19 +1,11 @@
 #include "Engine.cuh"
 
-#include "EngineUtils.cu"
-
-
-
-//__constant__ ForceField forcefield_nb_device;
 
 
 Engine::Engine() {}
 Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
-	//nlist_data_collection = new NListDataCollection(simulation);
-	nlist_manager = new NListManager(simulation);
-
 
 
 	int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(NeighborList) + sizeof(Float3) * NEIGHBORLIST_MAX_SOLVENTS + sizeof(uint8_t) * NEIGHBORLIST_MAX_SOLVENTS;	
@@ -21,23 +13,14 @@ Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
 	printf("Compoundkernel shared mem. size: %d B\n", Ckernel_shared_mem);
 	printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);
 
-	EngineUtils::genericErrorCheck("Error before moving forcefield to device\n");
 
-
-
-	//ForceField forcefield_host = FFM.getForcefield();
-	//ForceField forcefield_host = FFM.getNBForcefield();
 	this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
-	printf("Forcefield size: %zu bytes\n", sizeof(ForceField));
 
-	//ForceField forcefield_nb_host = FFM.getNBForcefield();
-	//cudaMemcpyToSymbol(forcefield_nb_device, &forcefield_nb_host, sizeof(ForceField), 0, cudaMemcpyHostToDevice);
-	//cudaDeviceSynchronize();
-	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
-
+	nlist_manager = new NListManager(simulation);
 	handleNLISTS(simulation, false, true);				// Fix neighborlists before running
+
 
 	printf("Engine ready\n\n\n");
 }
@@ -66,7 +49,6 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		offloadTrainData();
 	}
 
-	
 	handleNLISTS(simulation);
 	
 
@@ -223,6 +205,3 @@ void Engine::step() {
 	int copy_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 	timings = timings + Int3(force_duration, copy_duration, 0);
 }
-
-
-

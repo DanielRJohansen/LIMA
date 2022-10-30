@@ -126,8 +126,7 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 }
 
 void CompoundBuilder::loadTopology(Molecule* molecule, vector<vector<string>>* top_data)
-{	
-
+{
 	molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
@@ -174,15 +173,7 @@ void CompoundBuilder::loadMaps(ParticleRef* maps, vector<string>* record, int n)
 }
 
 void CompoundBuilder::addGeneric(Molecule* molecule, vector<string>* record, TopologyMode mode) {
-	//GenericBond g_bond;
-	//PairBond s_bond;
-	//AngleBond a_bond;
 	ParticleRef maps[4];
-
-	//PairBond* bondtype;
-	//AngleBond* angletype;
-	//DihedralBond* dihedraltype;
-
 
 	switch (mode)
 	{
@@ -316,30 +307,6 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 		}
 	}
 }
-
-//bool CompoundBuilder::checkIfFirstBondedInteraction(Molecule* molecule, ParticleRef* particle_maps, int n) {	// Works whether particle spans multiple compounds or not.
-//	uint32_t global_id_left = particle_maps[0].global_id;		// left and right is arbitrary.
-//	uint32_t global_id_right = particle_maps[n-1].global_id;
-//	
-//	bool first_connection = !bonded_interactions_list[global_id_left].isAlreadyConnected(global_id_right);
-//
-//	if (min(global_id_left, global_id_right) == 512 && max(global_id_left, global_id_right) == 515) {
-//		//printf("Checking the two, n: %d     ac: %d\n", n, first_connection);
-//	}
-//
-//	if (!first_connection) {
-//		//printf("Not first %d\n", n);
-//	}
-//
-//	bonded_interactions_list[global_id_left].addConnection(global_id_right);
-//	bonded_interactions_list[global_id_right].addConnection(global_id_left);
-//
-//
-//	//printf("%d %d %d\n", particle_refs[0].compound_id, particle_refs[0].global_id, molecule->n_atoms_total);
-//	
-//	return first_connection;
-//}
-
 
 
 vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file segmentation, DANGEROUS!

@@ -27,7 +27,7 @@ const string OUT_DIR = "../../Simulation/";
 
 
 
-constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol
+constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
 //constexpr double SOLVENT_MASS = 12.0107 * 1e-3;	// kg/mol
 //constexpr double COMPOUNDPARTICLE_MASS = 12.0107 * 1e-3;
 

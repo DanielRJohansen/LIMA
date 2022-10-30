@@ -43,7 +43,7 @@ public:
 		//CompoundState* self_state, CompoundState* neighborstate_buffer, Float3* utility_buffer);
 
 
-
+	ForceField getForcefield() { return forcefield_host; }
 
 
 	~Engine() {
@@ -71,6 +71,7 @@ private:
 //	static void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
 //	NListDataCollection* nlist_data_collection;
 
+	void setDeviceConstantMemory();
 
 
 	// streams every n steps

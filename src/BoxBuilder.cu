@@ -132,9 +132,6 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 {
 	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
 
-	
-
-
 	const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
 	const float dist_between_compounds = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
 	const float base = box_base + dist_between_compounds / 2.f;
@@ -151,10 +148,7 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 				//double solvent_radius = 0.2;
 
 				if (spaceAvailable(simulation->box, solvent_center)) {
-					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(
-						solvent_center,
-						simulation->dt
-					);
+					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
 				}
 			}
 		}
@@ -177,8 +171,6 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 		if (spaceAvailable(simulation->box, sol_pos) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
 		}
-		//else 
-			//printf("no room\n");
 	}
 
 	simulation->total_particles += simulation->box->n_solvents;
@@ -211,7 +203,7 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 
 
 Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
-	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
+	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
 	return Solvent(com, com - solvent_vel * dt);
 }
 

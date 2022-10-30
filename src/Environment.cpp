@@ -30,6 +30,7 @@ Environment::Environment(string conf_filename, string topol_filename) {
 	boxbuilder.addSingleMolecule(simulation, &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
+	//boxbuilder.solvateBox(simulation);
 	boxbuilder.solvateBox(simulation, &solvent_positions);
 #endif
 	//exit(1);
@@ -41,22 +42,11 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 
 	simulation->moveToDevice();	// Only moves the Box to the device
-	verifyBox();
-
-
- 
-
-	if (print_compound_positions) {	
-		for (int c = 0; c < simulation->n_compounds; c++) {
-			Compound* comp = &simulation->compounds_host[c];
-			for (int p = 0; p < comp->n_particles; p++) {
-				printf("%d   ", comp->particle_global_ids[p]);
-				simulation->box->compound_state_array[c].positions[p].print();
-			}
-		}
-	}
 
 	engine = new Engine(simulation, forcefieldmaker->getNBForcefield());
+
+	verifyBox();
+
 }
 
 
@@ -89,6 +79,24 @@ void Environment::verifyBox() {
 			exit(1);
 		}
 	}
+
+
+	if (std::abs(SOLVENT_MASS - engine->getForcefield().particle_parameters[0].mass) > 1e-3f) {
+		printf("Error in solvent mass");
+		exit(0);
+	}
+
+
+	if (print_compound_positions) {
+		for (int c = 0; c < simulation->n_compounds; c++) {
+			Compound* comp = &simulation->compounds_host[c];
+			for (int p = 0; p < comp->n_particles; p++) {
+				printf("%d   ", comp->particle_global_ids[p]);
+				simulation->box->compound_state_array[c].positions[p].print();
+			}
+		}
+	}
+
 	printf("Environment::verifyBox success\n");
 }
 

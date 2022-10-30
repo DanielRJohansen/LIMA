@@ -10,7 +10,7 @@
 
 
 namespace EngineUtils {
-	static inline void __device__ __host__ applyHyperpos(Float3* static_particle, Float3* movable_particle) {
+	__device__ __host__ static inline void applyHyperpos(Float3* static_particle, Float3* movable_particle) {
 		//#pragma unroll
 		for (int i = 0; i < 3; i++) {
 			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
@@ -18,7 +18,7 @@ namespace EngineUtils {
 		}
 	}
 
-	static float __device__ __host__ calcKineticEnergy(Float3* pos1, Float3* pos2, float mass, double dt) {	// pos1/2 MUST be 2 steps apart!!!!
+	__device__ __host__ static float calcKineticEnergy(Float3* pos1, Float3* pos2, float mass, double dt) {	// pos1/2 MUST be 2 steps apart!!!!
 		EngineUtils::applyHyperpos(pos1, pos2);
 
 		if ((*pos1 - *pos2).len() > 1) {
@@ -31,6 +31,13 @@ namespace EngineUtils {
 		float vel = (*pos1 - *pos2).len() * (float)(0.5f / dt);
 		float kinE = 0.5f * mass * vel * vel;
 		return kinE;
+	}
+
+	__device__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
+		for (int dim = 0; dim < 3; dim++) {
+			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
+		}
 	}
 
 	static void __host__ genericErrorCheck(const char* text) {
@@ -76,7 +83,7 @@ namespace EngineUtils {
 		for (int i = 0; i < simulation->n_solvents; i++) {
 			Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
 			Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
-			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, SOLVENT_MASS, simulation->dt);
+			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[0].mass, simulation->dt);
 			biggest_contribution = max(biggest_contribution, kinE);
 			kinE_sum += static_cast<float>(kinE);
 		}

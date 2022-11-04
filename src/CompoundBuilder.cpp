@@ -5,8 +5,9 @@
 
 
 Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
-	printf("\n\n############################# BUILDING MOLECULE #############################\n\n\n");
+	FFM->buildForcefield();
 
+	printf("\n\n############################# BUILDING MOLECULE #############################\n\n");
 	compound_bridge_bundle = new CompoundBridgeBundle;
 	particle_id_maps = new ParticleRef[MAX_ATOMS];
 
@@ -15,7 +16,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 
 	Molecule molecule;
 
-	FFM->buildForcefield();
+
 
 
 	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
@@ -31,7 +32,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	*molecule.compound_bridge_bundle = CompoundBridgeBundleCompact(compound_bridge_bundle);
 
 	countElements(&molecule);
-	printf("Molecule built with %d compounds and %d bridges\n\n\n", molecule.n_compounds, molecule.compound_bridge_bundle->n_bridges);
+	printf("Molecule built with %d compounds and %d bridges\n", molecule.n_compounds, molecule.compound_bridge_bundle->n_bridges);
 
 	for (int i = 0; i < molecule.n_compounds; i++) {
 		molecule.compounds[i].calcParticleSphere();
@@ -50,7 +51,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	delete compound_bridge_bundle;
 	//delete[] bonded_interactions_list;
 
-	printf("\n\n############################# FINISHED BUILDING MOLECULE #############################\n\n\n");
+	printf("\n############################# FINISHED BUILDING MOLECULE #############################\n\n\n");
 
 	return molecule;
 }

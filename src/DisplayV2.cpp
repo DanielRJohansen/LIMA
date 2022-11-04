@@ -88,12 +88,14 @@ bool DisplayV2::initGLFW() {
         
 
     /* Create a windowed mode window and its OpenGL context */
+    printf("Loading window --->");
     window = glfwCreateWindow(1080, 1080, "LIMA - Molecular Dynamics Engine", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
         return 0;
     }
+    printf("done\n");
 
     /* Make the window's context current */
     glfwMakeContextCurrent(window);

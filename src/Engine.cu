@@ -1,6 +1,6 @@
 #include "Engine.cuh"
 
-
+#include <algorithm>
 
 Engine::Engine() {}
 Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
@@ -115,46 +115,7 @@ void Engine::offloadTrainData() {
 
 
 
-																																			// THIS fn requires mallocmanaged!!   // HARD DISABLED HERE
-void Engine::handleBoxtemp() {
-	const float target_temp = 310.f;				// [k]
-	Float3 temp_package = EngineUtils::getBoxTemperature(simulation, forcefield_host);
-	float temp = temp_package.x;
-	float biggest_contribution = temp_package.y;
 
-	simulation->temperature_buffer[simulation->n_temp_values++] = temp;
-
-	// So we avoid dividing by 0
-	float temp_safe = temp == 0.f ? 1 : temp;
-	float temp_scalar = target_temp / temp;
-		// I just added this to not change any temperatures too rapidly
-	temp_scalar = min(temp_scalar, 1.01f);
-	temp_scalar = max(temp_scalar, 0.99f);
-
-	uint64_t step = simulation->getStep();
-	
-	if (step >= FIRST_TEMPERATURE_PRINT_STEP) {
-		if (PRINT_TEMP || temp > 500.f || temp < 100.f) { 
-			printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (step - 1) / STEPS_PER_THERMOSTAT, temp, biggest_contribution, temp_package.z); 
-		}
-	}
-		
-	if (temp > target_temp/4.f && temp < target_temp*4.f || true) {
-		if (APPLY_THERMOSTAT && step >= FIRST_THERMOSTAT_APPLICATION_STEP) {
-			
-			simulation->box->thermostat_scalar = temp_scalar;
-
-			if (temp_scalar != temp_scalar ){//} || abs(temp_scalar) == "inf") {
-				printf("Scalar: %f\n", simulation->box->thermostat_scalar);
-				exit(0);
-			}			
-		}		
-	}
-	else {
-		printf("Critical temperature encountered (%0.02f [k])\n", temp);
-		simulation->box->critical_error_encountered = true;
-	}
-}
 
 
 

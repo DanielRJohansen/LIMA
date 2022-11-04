@@ -50,47 +50,13 @@ namespace EngineUtils {
 		}
 	}
 
-	static Float3 __host__ getBoxTemperature(Simulation* simulation, ForceField& forcefield_host) {
-		const uint64_t step = simulation->getStep() - 1;
-
-		long double kinE_sum = 0;	// [k]
-		float biggest_contribution = 0;
-
-
-		const uint64_t step_offset_a = step * simulation->total_particles_upperbound;
-		const uint64_t step_offset_b = (step - 2) * simulation->total_particles_upperbound;
-		const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
-
-
-		for (int c = 0; c < simulation->n_compounds; c++) {
-			uint64_t compound_offset = c * MAX_COMPOUND_PARTICLES;
-			for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
-
-				Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
-				Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-				float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
-				//float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_device.particle_parameters[simulation->box->compounds[c].atom_types[i]].mass, simulation->dt);			// Doesnt work, use forcefield_host!!
-				//printf("kinE %f\n", kinE);
-				//printf("mass %f\n", forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass);
-				biggest_contribution = std::max(biggest_contribution, kinE);
-
-				kinE_sum += kinE;
-				//particles_total++;
-			}
-		}
-		//printf("\nKin e %Lf\n", kinE_sum);
-		//kinE_sum = 0;
-		for (int i = 0; i < simulation->n_solvents; i++) {
-			Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
-			Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
-			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[0].mass, simulation->dt);
-			biggest_contribution = max(biggest_contribution, kinE);
-			kinE_sum += static_cast<float>(kinE);
-		}
-		//double avg_kinE = kinE_sum / (long double)particles_total;
-		float avg_kinE = static_cast<float>(kinE_sum / static_cast<long double>(simulation->total_particles));
-		float temperature = avg_kinE * 2.f / (3.f * 8.3145f);
-		//printf("\nTemp: %f\n", temperature);
-		return Float3(temperature, biggest_contribution, avg_kinE);
+	__device__ __host__ static inline float calcHyperDist(Float3* p1, Float3* p2) {
+		Float3 temp = *p2;
+		applyHyperpos(p1, &temp);
+		return (*p1 - temp).len();
 	}
+
+
+
+
 };

@@ -67,8 +67,8 @@ public:
 	NListManager(Simulation* simulation);
 
 	void updateNeighborLists(Simulation* simulation, bool* unused_lock, bool force_update, bool async, int* timings);
-	void NListManager::offloadPositionDataNLIST(Simulation* simulation);
-	void NListManager::pushNlistsToDevice(Simulation* simulation);
+	void offloadPositionDataNLIST(Simulation* simulation);
+	void pushNlistsToDevice(Simulation* simulation);
 
 
 	int stepsSinceUpdate(uint64_t currentSimStep) { return static_cast<int>(currentSimStep - prev_update_step); }

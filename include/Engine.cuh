@@ -10,9 +10,12 @@
 #include "Forcefield.cuh"
 
 
-	
 #include "Neighborlists.cuh"
 #include "EngineUtils.cuh"
+
+#include "Printer.h"
+
+//#include <algorithm>
 
 __global__ void compoundKernel(Box* box);
 __global__ void solventForceKernel(Box* box);
@@ -80,7 +83,9 @@ private:
 	cudaError_t cuda_status;
 };
 
-
+struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
+	float temperature{}, avg_kinE_compound{}, max_kinE_compound{}, avg_kinE_solvent{}, max_kinE_solvent{};
+};
 
 // FUNCTIONS IN THIS CLASS CAN BE CALLED FROM OTHER FILES
 /*

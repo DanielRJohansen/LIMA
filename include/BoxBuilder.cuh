@@ -20,11 +20,6 @@ public:
 
 
 private:
-
-	void placeSingleMolecule(Simulation* simulation, Compound* molecule);
-
-	void integrateCompound(Float3 com, int compound_index,
-		CompoundState* statebuffer_node, double dt, Simulation* simulation);
 	void integrateCompound(Compound* compound, Simulation* simulation);
 	Solvent createSolvent(Float3 com, float dt);
 

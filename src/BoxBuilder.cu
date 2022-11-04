@@ -64,7 +64,6 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 	// Need this variable both on host and device
 	simulation->total_particles_upperbound = simulation->box->n_compounds * MAX_COMPOUND_PARTICLES + simulation->box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS
-	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
 	simulation->box->total_particles_upperbound = simulation->total_particles_upperbound;											// BAD AMBIGUOUS AND WRONG CONSTANTS
 
 
@@ -119,6 +118,8 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 		exit(1);
 	}
 
+	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
+	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
 
 	simulation->box->moveToDevice();
 	printf("Boxbuild complete!\n\n\n");

@@ -329,12 +329,12 @@ float minDist(Compound* compound, Float3 particle_pos) {
 bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
 	for (int c_index = 0; c_index < box->n_compounds; c_index++) {
-		if (minDist(&box->compounds[c_index], particle_center) < 0.3f)
+		if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
 			return false;
 	}
 	for (int si = 0; si < box->n_solvents; si++) {
 		float dist = EngineUtils::calcHyperDist(&box->solvents[si].pos, &particle_center);
-		if (dist < 0.3f) {
+		if (dist < MIN_NONBONDED_DIST) {
 			printf("\tWARNING: Skipping particle with dist %f\n", dist);
 			return false;
 		}

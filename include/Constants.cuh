@@ -10,7 +10,7 @@
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
 const bool INTEGRATION_RAMPUP_ENABLED = 1;
-const int RAMPUP_STEPS = 100;
+const int RAMPUP_STEPS = 500;
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 
 constexpr float VEL_RMS_SCALAR = 1.f;		// Set to 0 to freeze solvents

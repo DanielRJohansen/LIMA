@@ -66,7 +66,7 @@ private:
 	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 
-	float MIN_NONBONDED_DIST = 0.27;
+	float MIN_NONBONDED_DIST = 0.2;
 
 
 

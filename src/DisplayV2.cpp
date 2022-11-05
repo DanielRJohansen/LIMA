@@ -96,6 +96,7 @@ bool DisplayV2::initGLFW() {
         glfwTerminate();
         return 0;
     }
+    glfwSetWindowPos(window, screensize[0] - display_width, 0);
     printf("done\n");
 
     /* Make the window's context current */

@@ -391,23 +391,22 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 	*pos = *pos * 2.f - *pos_tsub1 + *force * (dt / mass) * dt;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
 	*pos_tsub1 = temp;
 
-
-	// Ensure that particles cannot increase their momentum during rampup
 	Float3 delta_pos = *pos - *pos_tsub1;
-	float new_vel = delta_pos.len();
+	float dist = delta_pos.len();
 	//float vel_scalar = std::min(1.f, prev_vel / new_vel);
-	float vel_scalar = prev_vel / new_vel;
-	vel_scalar = vel_scalar <= 1.01f ? vel_scalar : 1.01f;
+	float vel_scalar = MAX_RAMPUP_DIST / dist;
+	vel_scalar = vel_scalar <= 1.f ? vel_scalar : 1.f;
 	*pos = *pos_tsub1 + delta_pos * vel_scalar;
 
-
-	//EngineUtils::applyHyperpos(pos, pos_tsub1);
-
-	//Float3 temp = *pos;
-	//
-	////	*pos = *pos * 2. - *pos_tsub1 + *force * (dt / mass) * dt * 0.f;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	//*pos = *pos + (*pos - *pos_tsub1) * RAMPUP_MOMENTUM_SCALAR + *force * (dt / mass) * dt;
-	//*pos_tsub1 = temp;
+	{
+	// Ensure that particles cannot increase their momentum during rampup
+	//Float3 delta_pos = *pos - *pos_tsub1;
+	//float new_vel = delta_pos.len();
+	////float vel_scalar = std::min(1.f, prev_vel / new_vel);
+	//float vel_scalar = prev_vel / new_vel;
+	//vel_scalar = vel_scalar <= 1.01f ? vel_scalar : 1.01f;
+	//*pos = *pos_tsub1 + delta_pos * vel_scalar;
+	}
 }
 
 
@@ -471,19 +470,15 @@ __global__ void compoundKernel(Box* box) {
 		force += computeIntramolecularLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
-	//force = Float3(0.f);
+
 	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
-		if (neighborcompound_id == blockIdx.x) {
-			printf("i: %d  Block %d neighbors nc %d of %d\n", i, blockIdx.x, neighborcompound_id, neighborlist.n_compound_neighbors);
-		}
 
 		int neighborcompound_particles = box->compound_state_array[neighborcompound_id].n_particles;
 
 		if (threadIdx.x < neighborcompound_particles) {
 			utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
-			//utility_buffer_small[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];				/// HEEEEY WHY ARE WE NOT USING THIS?!??!?!?!?!
 			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
 		}
 
@@ -493,13 +488,10 @@ __global__ void compoundKernel(Box* box) {
 
 		if (threadIdx.x < compound.n_particles) {
 			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
-				//anti_inter += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &compound.lj_ignore_list[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 		}
 		__syncthreads();				// CRITICAL			
 	}
-	//force += anti_inter;
-	//force = Float3(0.f);
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
@@ -507,9 +499,8 @@ __global__ void compoundKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
-
-	for (int offset = 0; offset * blockDim.x < neighborlist.n_solvent_neighbors; offset += blockDim.x) {
-		int solvent_nlist_index = offset + threadIdx.x; // index in neighborlist
+	for (int i = 0; i * blockDim.x < neighborlist.n_solvent_neighbors; i++) {
+		int solvent_nlist_index = i * blockDim.x + threadIdx.x; // index in neighborlist
 
 		if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
 			utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
@@ -520,6 +511,7 @@ __global__ void compoundKernel(Box* box) {
 		if (threadIdx.x < compound.n_particles) {
 			force_LJ_sol += computeSolventToCompoundLJForces(&compound_state.positions[threadIdx.x], blockDim.x, utility_buffer, data_ptr, &potE_sum, compound.atom_types[threadIdx.x]);
 		}
+		__syncthreads();
 	}
 	force += force_LJ_sol;
 #endif
@@ -531,7 +523,7 @@ __global__ void compoundKernel(Box* box) {
 	if (threadIdx.x < compound.n_particles) {
 		//Float3 force_(force.x, force.y, force.z);
 		//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force_, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, false);		
-		if (box->step >= RAMPUP_STEPS || !INTEGRATION_RAMPUP_ENABLED) {
+		if (box->step >= RAMPUP_STEPS) {
 			integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, false);
 		}
 		else {
@@ -697,7 +689,7 @@ __global__ void solventForceKernel(Box* box) {
 
 	if (thread_active) {
 		int p_index = MAX_COMPOUND_PARTICLES + solvent_index;
-		if (box->step >= RAMPUP_STEPS || !INTEGRATION_RAMPUP_ENABLED) {
+		if (box->step >= RAMPUP_STEPS) {
 			integratePosition(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, &box->thermostat_scalar, p_index, true);
 		}
 		else {

@@ -54,7 +54,9 @@ private:
 	//const int display_height = 1080;
 	//const int display_width = 1920;
 
-	const int display_height = 1600;
-	const int display_width = 1600;
+	const int display_height = 1400;
+	const int display_width = 1400;
+
+	int screensize[2] = {3840, 2160};
 };
 

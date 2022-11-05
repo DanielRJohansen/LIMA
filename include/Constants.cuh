@@ -9,11 +9,11 @@
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-const bool INTEGRATION_RAMPUP_ENABLED = 1;
-const int RAMPUP_STEPS = 500;
+const int RAMPUP_STEPS = 1000;				// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
+constexpr float MAX_RAMPUP_DIST = 0.0005f;	// [nm] how far any particle is max allowed to move during ramp-up
 
-constexpr float VEL_RMS_SCALAR = 1.f;		// Set to 0 to freeze solvents
+constexpr float VEL_RMS_SCALAR = 0.2f;		// Set to 0 to freeze solvents
 constexpr float CUTOFF = 0.9f;	//nm/
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -34,8 +34,10 @@ constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed 
 
 
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
-const int SIMULATION_STEPS = 20000;
+const int SIMULATION_STEPS = 5000;
 const bool print_compound_positions = false;		// what is tihs?
+const bool DUMP_TRAJ = true;
+const bool DUMP_POTE = false;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -47,7 +49,7 @@ const bool print_compound_positions = false;		// what is tihs?
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
-const int N_SOLVATE_MOLECULES = 8000;			// Used when not loading from .conf file
+const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -93,15 +95,15 @@ const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch 
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 5;			// Must be >= 3 why?
 const int FIRST_TEMPERATURE_PRINT_STEP = 0;// RAMPUP_STEPS* INTEGRATION_RAMPUP_ENABLED;
-const int FIRST_THERMOSTAT_APPLICATION_STEP = 200;
-constexpr float MAX_THERMOSTAT_SCALER = 0.001f;
+const int FIRST_THERMOSTAT_APPLICATION_STEP = RAMPUP_STEPS + 200;
+constexpr float MAX_THERMOSTAT_SCALER = 0.005f;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 80;
+const int STEPS_PER_RENDER = 20;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

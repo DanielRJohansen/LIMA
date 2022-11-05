@@ -15,7 +15,7 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 
 	ForceFieldMaker* forcefieldmaker = new ForceFieldMaker();
-	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V2);
+	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V1);
 
 
 	
@@ -36,20 +36,15 @@ Environment::Environment(string conf_filename, string topol_filename) {
 	//boxbuilder.solvateBox(simulation);
 	boxbuilder.solvateBox(simulation, &solvent_positions);
 #endif
-	//exit(1);
 
-	//boxbuilder.addScatteredMolecules(simulation, &mol_dpc, N_LIPID_COPIES);
-	//boxbuilder.solvateBox(simulation);	// Always do after placing compounds
 	delete[] mol_6lzm_10.compounds;
 	boxbuilder.finishBox(simulation);
-
 
 	simulation->moveToDevice();	// Only moves the Box to the device
 
 	engine = new Engine(simulation, forcefieldmaker->getNBForcefield());
 
 	verifyBox();
-
 }
 
 
@@ -145,13 +140,19 @@ void Environment::postRunEvents() {
 #else
 	// WEhat is the linux equivalent?? TODO: !!
 #endif
+	
 
-	dumpToFile(simulation->logging_data, 10 * simulation->getStep(), simulation->out_dir + "logdata.bin");
+	// Nice to have for matlab stuff	
+	printH2();
+	LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->n_solvents, "max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->n_compounds);
+	printH2();
+	
 
 
-	for (int i = 0; i < simulation->getStep(); i++) {
-		//simulation->traindata_buffer[0 + i * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds].print();
+	if (0) {
+		dumpToFile(simulation->logging_data, 10 * simulation->getStep(), simulation->out_dir + "logdata.bin");
 	}
+	
 
 	if (simulation->box->critical_error_encountered) {
 		dumpToFile(simulation->traindata_buffer,
@@ -159,18 +160,19 @@ void Environment::postRunEvents() {
 			simulation->out_dir + "sim_traindata.bin");
 	}
 	
+	if (DUMP_TRAJ) {
+		dumpToFile(simulation->traj_buffer, simulation->getStep() * simulation->total_particles_upperbound, simulation->out_dir + "trajectory.bin");
+	}
 
-	dumpToFile(simulation->traj_buffer, simulation->getStep() * simulation->total_particles_upperbound, simulation->out_dir + "trajectory.bin");
+	if (0) {
+		Analyzer::AnalyzedPackage analyzed_package = analyzer.analyzeEnergy(simulation);
+		dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, simulation->out_dir + "energy.bin");
+		dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, simulation->out_dir + "temperature.bin");
+	}
 
-	printf("temp %f \n", simulation->temperature_buffer[0]);
-
-	Analyzer::AnalyzedPackage analyzed_package = analyzer.analyzeEnergy(simulation);
-	dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, simulation->out_dir + "energy.bin");
-	dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, simulation->out_dir + "temperature.bin");
-	printf("temp %f \n", simulation->temperature_buffer[0]);
-	printf("temp %f %f\n", analyzed_package.temperature_data[0], analyzed_package.temperature_data[analyzed_package.n_temperature_values - 1]);
-
-	dumpToFile(simulation->potE_buffer, simulation->getStep() * simulation->total_particles_upperbound, simulation->out_dir + "potE.bin");
+	if (DUMP_POTE) {
+		dumpToFile(simulation->potE_buffer, simulation->getStep() * simulation->total_particles_upperbound, simulation->out_dir + "potE.bin");
+	}
 
 #ifndef __linux__
 	if (!simulation->box->critical_error_encountered && 0) {	// Skipping for now
@@ -186,7 +188,6 @@ void Environment::postRunEvents() {
 		system(&data_processing_command[0]);
 	}
 
-	
 #endif
 }
 
@@ -201,7 +202,7 @@ void Environment::handleStatus(Simulation* simulation) {
 		engine->timings = Int3(0, 0, 0);
 
 
-		// Deapspin to slow down rendering for visual debugging :)
+		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
 		time0 = std::chrono::high_resolution_clock::now();

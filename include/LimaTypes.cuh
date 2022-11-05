@@ -426,3 +426,11 @@ struct RenderBall {
 	Int3 color;
 	bool disable = false;
 };
+
+enum VerbosityLevel {
+	SILENT,
+	CRITICAL_INFO, 
+	V1,
+	V2,
+	V3
+};

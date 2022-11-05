@@ -39,7 +39,7 @@ private:
 	void rotateCompound(Compound* compound, Float3 xyz_rot);
 	BoundingBox calcCompoundBoundingBox(Compound* compound);
 	bool spaceAvailable(Box* box, Compound* compound);
-	bool spaceAvailable(Box* box, Float3 particle_center);	// Ignore radius for this, as it just check against bounding boxes. 
+	bool spaceAvailable(Box* box, Float3 particle_center, bool verbose=true);	// Ignore radius for this, as it just check against bounding boxes. 
 	bool verifyPairwiseParticleMindist(Compound* a, Compound* b);
 	//What about other solvents then? Not problem now while solvents are placed on a grid, but what about later?
 

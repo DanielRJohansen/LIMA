@@ -1,9 +1,13 @@
 #include "BoxBuilder.cuh"
+#include "EngineUtils.cuh"
 
+#include "Printer.h"
 
+using namespace LIMA_Print;
 
 void BoxBuilder::buildBox(Simulation* simulation) {
-	printf("Building box...\n");
+	//printf("Building box...\n");
+	printH1("Building box", true, false);
 	simulation->box->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
 
@@ -16,6 +20,8 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
+	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact{};
+	simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
 	simulation->box->dt = simulation->dt;
 }
@@ -39,10 +45,12 @@ void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
 	simulation->total_compound_particles = molecule->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
 	simulation->total_particles += molecule->n_atoms_total;
 
-	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact;
+	
 	*simulation->box->bridge_bundle = *molecule->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 
-	simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{ *molecule->bonded_particles_lut_manager };
+	simulation->box->bonded_particles_lut_manager = molecule->bonded_particles_lut_manager;
+
+	//
 	//*simulation->box->bonded_particles_lut_manager = &molecule->bonded_particleslut_manager;
 	//exit(0);
 	
@@ -122,7 +130,8 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
 
 	simulation->box->moveToDevice();
-	printf("Boxbuild complete!\n\n\n");
+	//printf("Boxbuild complete!\n\n\n");
+	printH1("Boxbuild complete!", false, true);
 }
 
 
@@ -132,11 +141,12 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 int BoxBuilder::solvateBox(Simulation* simulation)
 {
 	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
-
+	
+	// First we calculate how to set up the particles in a perfect grid
 	const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
-	const float dist_between_compounds = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
-	const float base = box_base + dist_between_compounds / 2.f;
-	printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_compounds);
+	const float dist_between_particles = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
+	const float base = box_base + dist_between_particles / 2.f;
+	printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_particles);
 
 
 	for (int z_index = 0; z_index < bodies_per_dim; z_index++) {
@@ -145,8 +155,10 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 				if (simulation->box->n_solvents == N_SOLVATE_MOLECULES)
 					break;
 
-				Float3 solvent_center = Float3(base + dist_between_compounds * static_cast<float>(x_index), base + dist_between_compounds * static_cast<float>(y_index), base + dist_between_compounds * static_cast<float>(z_index));
-				//double solvent_radius = 0.2;
+				Float3 solvent_center = Float3(base + dist_between_particles * static_cast<float>(x_index), base + dist_between_particles * static_cast<float>(y_index), base + dist_between_particles * static_cast<float>(z_index));
+				
+				// Randomly offset the particle within 80% of the perfect grid
+				solvent_center += (get3Random() - Float3(0.5)) * 0.8f * dist_between_particles;
 
 				if (spaceAvailable(simulation->box, solvent_center)) {
 					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
@@ -169,7 +181,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(simulation->box, sol_pos) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
 		}
 	}
@@ -193,9 +205,7 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 
 	for (int i = 0; i < compound->n_particles; i++) {
 		Float3 atom_pos_sub1 = state->positions[i] - compound_united_vel * simulation->dt;
-//		compound->particles[i].pos_tsub1 = atom_pos_sub1;												// Overwrite prev pos here, since we have assigned the former prev pos to the state buffer.
 		compound->prev_positions[i] = atom_pos_sub1;												// Overwrite prev pos here, since we have assigned the former prev pos to the state buffer.
-		//compound->prev_positions[i].print('p');
 	}
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
@@ -204,57 +214,12 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 
 
 Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
-	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
+	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
 	return Solvent(com, com - solvent_vel * dt);
 }
 
 
 
-
-
-
-/*
-void BoxBuilder::compoundLinker(Simulation* simulation) {
-	for (int i = 0; i < simulation->box->n_compounds; i++) {
-		for (int j = i+1; j < simulation->box->n_compounds; j++) {
-			simulation->box->compound_neighborlists[i].addId(j, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-			simulation->box->compound_neighborlists[j].addId(i, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-		}
-	}
-}
-
-void BoxBuilder::solvateLinker(Simulation* simulation)
-{
-	for (int i = 0; i < simulation->box->n_solvents; i++) {
-		Solvent* self = &simulation->box->solvents[i];
-		for (int j = i; j < simulation->box->n_solvents; j++) {														// +1 here!
-			Solvent* other = &simulation->box->solvents[j];
-			if (i != j) {
-				if ((self->pos - other->pos).len() < (CUTOFF)) {
-					simulation->box->solvent_neighborlists[i].addId(j, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-					simulation->box->solvent_neighborlists[j].addId(i, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-				}
-			}
-		}
-	}
-}
-
-void BoxBuilder::solvateCompoundCrosslinker(Simulation* simulation)
-{
-	for (int i = 0; i < simulation->box->n_compounds; i++) {
-		Compound* compound = &simulation->box->compounds[i];
-		for (int j = 0; j < simulation->box->n_solvents; j++) {
-			Solvent* solvent= &simulation->box->solvents[j];
-			if ((compound->center_of_mass - solvent->pos).len() < CUTOFF) {
-				simulation->box->compound_neighborlists[i].addId(j, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-				simulation->box->solvent_neighborlists[j].addId(i, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-			}
-		}
-	}
-	printf("Compound n0 solvents: %d\n", simulation->box->compound_neighborlists[0].n_solvent_neighbors);
-}
-
-*/
 
 void BoxBuilder::placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies)
 {
@@ -344,16 +309,7 @@ bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
 	for (size_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		BoundingBox bb_b = calcCompoundBoundingBox(&box->compounds[c_index]);
 
-		/*if (box->n_compounds == 13) {
-			printf("\n c index %d\n", c_index);
-			bb_a.min.print('a');
-			bb_a.max.print('a');
-			bb_b.min.print('b');
-			bb_b.max.print('b');
-		}*/
-
 		if (bb_a.intersects(bb_b)) {
-			//printf("Verifying %d %d\n", box->n_compounds, c_index);
 			if (!verifyPairwiseParticleMindist(compound, &box->compounds[c_index]))
 				return false;			
 		}
@@ -364,36 +320,28 @@ bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
 float minDist(Compound* compound, Float3 particle_pos) {
 	float mindist = 999999;
 	for (size_t i = 0; i < compound->n_particles; i++) {
-		float dist = (compound->prev_positions[i] - particle_pos).len();
+		float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
 		mindist = std::min(mindist, dist);
 	}
 	return mindist;
 }
 
-bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center)
+bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
 	for (int c_index = 0; c_index < box->n_compounds; c_index++) {
-		if (minDist(&box->compounds[c_index], particle_center) < 0.2f)
+		if (minDist(&box->compounds[c_index], particle_center) < 0.3f)
 			return false;
-
-
-
-		//BoundingBox bb = calcCompoundBoundingBox(&box->compounds[c_index]);
-		//bb.addPadding(MIN_NONBONDED_DIST);
-		//if (bb.pointIsInBox(particle_center)) {
-		//	return false;
-		//}
 	}
 	for (int si = 0; si < box->n_solvents; si++) {
-		float dist = (box->solvents[si].pos - particle_center).len();
-		if (dist < 0.25)
-			return false;		
+		float dist = EngineUtils::calcHyperDist(&box->solvents[si].pos, &particle_center);
+		if (dist < 0.3f) {
+			printf("\tWARNING: Skipping particle with dist %f\n", dist);
+			return false;
+		}
 	}
 
 	return true;
 }
-
-
 
 bool BoxBuilder::verifyPairwiseParticleMindist(Compound* a, Compound* b)
 {
@@ -412,46 +360,3 @@ bool BoxBuilder::verifyPairwiseParticleMindist(Compound* a, Compound* b)
 	return true;
 }
 
-
-
-
-
-
-
-
-
-
-
-/*
-int BoxBuilder::solvateBox(Simulation* simulation)
-{
-	int bodies_per_dim = ceil(cbrt((double)N_SOLVATE_MOLECULES));
-	double dist_between_compounds = (BOX_LEN) / (double)bodies_per_dim;	// dist_per_index
-	double base = box_base + dist_between_compounds / 2.f;
-	printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_compounds);
-
-
-	for (int z_index = 0; z_index < bodies_per_dim; z_index++) {
-		for (int y_index = 0; y_index < bodies_per_dim; y_index++) {
-			for (int x_index = 0; x_index < bodies_per_dim; x_index++) {
-				if (simulation->box->n_compounds == N_SOLVATE_MOLECULES)
-					break;
-
-				Float3 compound_center = Float3(base + dist_between_compounds * (double)x_index, base + dist_between_compounds * (double)y_index, base + dist_between_compounds * (double)z_index);
-				double compound_radius = 0.2;
-
-				if (spaceAvailable(compound_center, compound_radius)) {
-					simulation->box->compounds[simulation->box->n_compounds++] = createSolvent(
-						compound_center,
-						simulation->box->n_compounds,
-						&simulation->box->compound_state_array[simulation->box->n_compounds],
-						&simulation->box->compound_neighborlist_array[simulation->box->n_compounds],
-						simulation->dt
-					);
-				}
-			}
-		}
-	}
-	return simulation->box->n_compounds;
-}
-*/

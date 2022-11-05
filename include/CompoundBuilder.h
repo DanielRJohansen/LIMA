@@ -38,7 +38,7 @@ class CompoundBuilder
 	};
 public:
 	CompoundBuilder() {}
-	CompoundBuilder(ForceFieldMaker* ffm) { FFM = ffm; }
+	CompoundBuilder(ForceFieldMaker* ffm, VerbosityLevel vl = SILENT) : verbosity_level(vl) { FFM = ffm; }
 	Molecule buildMolecule(string gro_path, string itp_path, int max_residue_id=INT16_MAX, int min_residue_id=0, bool ignore_hydrogens=true);
 
 	vector<Float3> getSolventPositions(string gro_path);
@@ -52,6 +52,7 @@ private:
 
 	uint16_t unique_doublyconnected_id = 1;
 
+	VerbosityLevel verbosity_level = SILENT;
 	//uint32_t** bonded_interactions_list;	// Contains each particles list of (larger) ids of particles with which it shares a bonded interaction
 	//LJ_Ignores* bonded_interactions_list = nullptr;
 

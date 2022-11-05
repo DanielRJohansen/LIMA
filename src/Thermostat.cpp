@@ -59,11 +59,11 @@ void Engine::handleBoxtemp() {
 	float temp_scalar = target_temp / temp_safe;
 
 	// I just added this to not change any temperatures too rapidly
-	temp_scalar = std::clamp(temp_scalar, 0.99f, 1.01f);
+	temp_scalar = std::clamp(temp_scalar, 1.f-MAX_THERMOSTAT_SCALER, 1.f + MAX_THERMOSTAT_SCALER);
 
 	uint64_t step = simulation->getStep();
 	if (step >= FIRST_TEMPERATURE_PRINT_STEP) {
-		if (PRINT_TEMP || temp > 500.f || temp < 100.f) {
+		if (PRINT_TEMP || std::abs(temp-target_temp) > 100.f) {
 			//printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (step - 1) / STEPS_PER_THERMOSTAT, temp, temp_package.max_kinE_compound, temp_package.avg_kinE_compound);
 			LIMA_Printer::printNameValuePairs(
 				"Temperature", temp, 

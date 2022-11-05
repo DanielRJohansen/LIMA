@@ -6,6 +6,9 @@
 
 #include <vector>
 
+
+
+#include "Printer.h"
 struct Test {
 
 	int arr[4];
@@ -25,7 +28,7 @@ struct Test {
 
 int main() {
 
-
+	LIMA_Print::setScreenSize();		// TODO: fix this for linux
 
 	//Environment::prepFF("conf_test.gro", "topol_test.top");
 

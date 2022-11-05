@@ -15,6 +15,8 @@ void DisplayV2::drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 colo
     glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
 
 
+    //x *= static_cast<float>(display_height) / static_cast<float>(display_width);
+
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(x, y); // center of circle
 
@@ -23,7 +25,6 @@ void DisplayV2::drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 colo
         shaded_color = color * light;
 
         glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
-
         glVertex2f(
             x + (radius * cos(i * twicePi / triangleAmount)),
             y + (radius * sin(i * twicePi / triangleAmount))
@@ -89,7 +90,7 @@ bool DisplayV2::initGLFW() {
 
     /* Create a windowed mode window and its OpenGL context */
     printf("Loading window --->");
-    window = glfwCreateWindow(1080, 1080, "LIMA - Molecular Dynamics Engine", NULL, NULL);
+    window = glfwCreateWindow(display_width, display_height, "LIMA - Molecular Dynamics Engine", NULL, NULL);
     if (!window)
     {
         glfwTerminate();

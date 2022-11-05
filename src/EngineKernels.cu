@@ -386,10 +386,28 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 	EngineUtils::applyHyperpos(pos, pos_tsub1);
 
 	Float3 temp = *pos;
-	
-	//	*pos = *pos * 2. - *pos_tsub1 + *force * (dt / mass) * dt * 0.f;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	*pos = *pos + (*pos - *pos_tsub1) * RAMPUP_MOMENTUM_SCALAR + *force * (dt / mass) * dt;
+	float prev_vel = (*pos - *pos_tsub1).len();
+
+	*pos = *pos * 2.f - *pos_tsub1 + *force * (dt / mass) * dt;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
 	*pos_tsub1 = temp;
+
+
+	// Ensure that particles cannot increase their momentum during rampup
+	Float3 delta_pos = *pos - *pos_tsub1;
+	float new_vel = delta_pos.len();
+	//float vel_scalar = std::min(1.f, prev_vel / new_vel);
+	float vel_scalar = prev_vel / new_vel;
+	vel_scalar = vel_scalar <= 1.01f ? vel_scalar : 1.01f;
+	*pos = *pos_tsub1 + delta_pos * vel_scalar;
+
+
+	//EngineUtils::applyHyperpos(pos, pos_tsub1);
+
+	//Float3 temp = *pos;
+	//
+	////	*pos = *pos * 2. - *pos_tsub1 + *force * (dt / mass) * dt * 0.f;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
+	//*pos = *pos + (*pos - *pos_tsub1) * RAMPUP_MOMENTUM_SCALAR + *force * (dt / mass) * dt;
+	//*pos_tsub1 = temp;
 }
 
 

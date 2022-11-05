@@ -1,13 +1,13 @@
 #include "CompoundBuilder.h"
 
-
-
+#include "Printer.h"
+using namespace LIMA_Print;
 
 
 Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
 	FFM->buildForcefield();
 
-	printf("\n\n############################# BUILDING MOLECULE #############################\n\n");
+	printH2("Building molecule", true, false);
 	compound_bridge_bundle = new CompoundBridgeBundle;
 	particle_id_maps = new ParticleRef[MAX_ATOMS];
 
@@ -28,11 +28,11 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	loadTopology(&molecule, &top_data);
 
 	//molecule.compound_bridge_bundle
-	molecule.compound_bridge_bundle = new CompoundBridgeBundleCompact;// (&compound_bridge_bundle);		// Convert the host version to a compact device version, belonging to the molecule
-	*molecule.compound_bridge_bundle = CompoundBridgeBundleCompact(compound_bridge_bundle);
+	//molecule.compound_bridge_bundle = new CompoundBridgeBundleCompact;// (&compound_bridge_bundle);		
+	molecule.compound_bridge_bundle = new CompoundBridgeBundleCompact{ compound_bridge_bundle, verbosity_level>=V2 };	// Convert the host version to a compact device version, belonging to the molecule
 
 	countElements(&molecule);
-	printf("Molecule built with %d compounds and %d bridges\n", molecule.n_compounds, molecule.compound_bridge_bundle->n_bridges);
+	if (verbosity_level >= V1) { printf("Molecule built with %d compounds and %d bridges\n", molecule.n_compounds, molecule.compound_bridge_bundle->n_bridges); }
 
 	for (int i = 0; i < molecule.n_compounds; i++) {
 		molecule.compounds[i].calcParticleSphere();
@@ -51,7 +51,7 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	delete compound_bridge_bundle;
 	//delete[] bonded_interactions_list;
 
-	printf("\n############################# FINISHED BUILDING MOLECULE #############################\n\n\n");
+	printH2("Finished building molecule", false, true);
 
 	return molecule;
 }
@@ -403,7 +403,8 @@ vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
 
 vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parseGRO(string path)
 {
-	cout << "Reading particles from file" << path << endl;
+	//cout << "Reading particles from file" << path << endl;
+	if (verbosity_level >= V1) { cout <<"Reading particles from file " << path << "\n"; }
 	fstream file;
 	file.open(path);
 	int line_cnt = 0;
@@ -477,11 +478,15 @@ void CompoundBuilder::countElements(Molecule* molecule) {
 		counters[3] += C->n_dihedrals;
 	}
 
-	printf("Molecule created with %d compounds\n", molecule->n_compounds);
+	if (verbosity_level >= 1) {
+		printf("Molecule created with");
+		LIMA_Printer::printNameValuePairs("Particles", counters[0], "Bonds", counters[1], "Angles", counters[2], "Dihedrals", counters[3]);
+	}
+	/*
 	printf("%d particles added\n", counters[0]);
 	printf("%d singlebonds added\n", counters[1]);
 	printf("%d anglebonds added\n", counters[2]);
-	printf("%d dihedrals added\n", counters[3]);
+	printf("%d dihedrals added\n", counters[3]);*/
 }
 
 

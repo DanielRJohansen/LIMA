@@ -3,10 +3,19 @@
 #include <iostream>
 
 #include <string>
-#include <concepts>
+
 
 
 using string = std::string;
+
+namespace LIMA_Print {
+	void setScreenSize();
+	void printH(std::string, char c, bool leading_space, bool trailing_space);
+	void printH1(std::string = "", bool ls = false, bool ts = false);
+	void printH2(std::string = "", bool ls = false, bool ts = false);
+
+
+}
 
 class LIMA_Printer {
 public:
@@ -18,14 +27,11 @@ public:
 	template <typename T>
 	static void doThing(string str, T val, std::vector<string>& buffer) {
 //		std::vector<std::string> lines{ "", "" };
-
 		addRightadjustedStringToString(buffer[0], str);
-
-
 		std::string value_as_string = formatValue(val);
 
 		addRightadjustedStringToString(buffer[1], value_as_string);
-		
+
 	}
 
 	//template void doThing<int>(std::pair<string, T> p1, std::vector<string>& buffer);
@@ -60,8 +66,7 @@ public:
 		printNameValuePairs<T2, T3, T4, T5>(s2, v2, s3, v3, s4, v4, s5, v5, buffer);
 	}
 
-	static void printH1(std::string);
-	static void printH2(std::string);
+
 
 
 private:
@@ -76,8 +81,8 @@ private:
 
 
 	// sizes in chars
-	static const int default_height = 25;
-	static const int default_width = 140;
+	static const int default_height = 60;
+	static const int default_width = 120;
 	static const int chars_per_elem = default_width / 6;
 };
 

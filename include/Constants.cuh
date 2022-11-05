@@ -10,9 +10,10 @@
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
 const bool INTEGRATION_RAMPUP_ENABLED = 1;
-const int RAMPUP_STEPS = 5000;
+const int RAMPUP_STEPS = 100;
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 
+constexpr float VEL_RMS_SCALAR = 1.f;		// Set to 0 to freeze solvents
 constexpr float CUTOFF = 0.9f;	//nm/
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -24,6 +25,7 @@ constexpr float CUTOFF = 0.9f;	//nm/
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr float BOX_LEN = 7.f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
+constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -45,7 +47,7 @@ const bool print_compound_positions = false;		// what is tihs?
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
-const int N_SOLVATE_MOLECULES = 2000;			// Used when not loading from .conf file
+const int N_SOLVATE_MOLECULES = 8000;			// Used when not loading from .conf file
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -88,18 +90,18 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
 const bool ENABLE_BOXTEMP = true;		// Calc box-temp
 const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
-const bool PRINT_TEMP = true;
-const int STEPS_PER_THERMOSTAT = 30;			// Must be >= 3 why?
-const int FIRST_TEMPERATURE_PRINT_STEP = RAMPUP_STEPS;
-const int FIRST_THERMOSTAT_APPLICATION_STEP = 5000;
-constexpr float MAX_THERMOSTAT_SCALER = 0.01f;
+const bool PRINT_TEMP = false;			// Force always print temp
+const int STEPS_PER_THERMOSTAT = 5;			// Must be >= 3 why?
+const int FIRST_TEMPERATURE_PRINT_STEP = 0;// RAMPUP_STEPS* INTEGRATION_RAMPUP_ENABLED;
+const int FIRST_THERMOSTAT_APPLICATION_STEP = 200;
+constexpr float MAX_THERMOSTAT_SCALER = 0.001f;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 20;
+const int STEPS_PER_RENDER = 80;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -112,7 +114,7 @@ const int STEPS_PER_NLIST_UPDATE = 10;
 
 
 // THERMOSTAT PARAMETERS
-const int STEPS_PER_LOGTRANSFER = 3;		// Must be >= 3	why?
+const int STEPS_PER_LOGTRANSFER = 5;		// Must be >= 3	why?
 //const int STEPS_PER_TRAJTRANSFER = 100;
 
 // Logging constants

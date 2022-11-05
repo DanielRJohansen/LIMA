@@ -50,5 +50,11 @@ private:
 	const int triangleAmount = 20; //# of triangles used to draw circle
 	const float PI = 3.14f;
 	const GLfloat twicePi = 2.0f * PI;
+
+	//const int display_height = 1080;
+	//const int display_width = 1920;
+
+	const int display_height = 1600;
+	const int display_width = 1600;
 };
 

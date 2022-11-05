@@ -2,13 +2,16 @@
 
 #include <math.h>
 
-
+#ifndef __linux__
+#include <Windows.h>
+#endif
 
 //using namespace LIMA_Printer;
 
-void addSpaces(std::string& str, int n_spaces) {
+
+void addMultipleChars(std::string& str, int n_spaces, char c = ' ') {
 	for (int i = 0; i < n_spaces; i++)
-		str += " ";
+		str += string{ c };
 }
 
 std::string LIMA_Printer::formatValue(int value)  {
@@ -16,7 +19,7 @@ std::string LIMA_Printer::formatValue(int value)  {
 }
 
 std::string LIMA_Printer::formatValue(double value) {
-	formatValue(static_cast<float>(value));
+	return formatValue(static_cast<float>(value));
 }
 
 std::string LIMA_Printer::formatValue(float value)  {
@@ -31,6 +34,59 @@ std::string LIMA_Printer::formatValue(float value)  {
 
 
 void LIMA_Printer::addRightadjustedStringToString(std::string& main_string, std::string& str) {
-	addSpaces(main_string, chars_per_elem - str.size());
+	addMultipleChars(main_string, chars_per_elem - str.size());
 	main_string += str;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// Namespace
+	// sizes in chars
+static const int default_height = 60;
+static const int default_width = 120;
+static const int chars_per_elem = default_width / 6;
+
+void LIMA_Print::setScreenSize()
+{
+#ifndef __linux__
+	//HWND hwnd = GetConsoleWindow();
+	//if (hwnd != NULL) { MoveWindow(hwnd, 0, 0, default_width, default_height, TRUE); }
+#endif
+}
+
+void LIMA_Print::printH(std::string str, char c, bool ls, bool ts) {
+	string out_str = "";
+	if (ls) out_str += "\n";
+	if (str == "") { 
+		addMultipleChars(out_str, default_width, c); 
+	}
+	else {
+		const int n_fillchars_total = default_width - str.size() - 2;
+		const int extra_char_left = n_fillchars_total % 2;
+
+		addMultipleChars(out_str, n_fillchars_total / 2 + extra_char_left, c);
+		out_str += " ";
+		out_str += str;
+		out_str += " ";
+		addMultipleChars(out_str, n_fillchars_total / 2, c);
+	}
+	out_str += "\n";
+	if (ts) out_str += "\n";
+	std::cout << out_str;
+}
+
+void LIMA_Print::printH1(std::string str, bool ls, bool ts) {
+	printH(str, '#', ls, ts);
+}
+void LIMA_Print::printH2(std::string str, bool ls, bool ts) {
+	printH(str, '-', ls, ts);
 }

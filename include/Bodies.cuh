@@ -456,7 +456,7 @@ struct ParticleRefCompact {
 
 struct CompoundBridgeCompact {
 	CompoundBridgeCompact() {}
-	CompoundBridgeCompact(CompoundBridge* bridge) {
+	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) {
 		n_particles = bridge->n_particles;
 		
 		for (int i = 0; i < n_particles; i++) {
@@ -475,7 +475,11 @@ struct CompoundBridgeCompact {
 		for (int i = 0; i < n_dihedrals; i++) {
 			dihedrals[i] = bridge->dihedrals[i];
 		}
-		printf("Loading bridge with %d particles %d bonds %d angles %d dihedrals\n", n_particles, n_singlebonds, n_anglebonds, n_dihedrals);
+
+		if (verbose) {
+			printf("Loading bridge with %d particles %d bonds %d angles %d dihedrals\n", n_particles, n_singlebonds, n_anglebonds, n_dihedrals);
+		}
+		
 	}
 	
 	
@@ -531,7 +535,7 @@ struct CompoundBridgeCompact {
 
 struct CompoundBridgeBundleCompact {
 	CompoundBridgeBundleCompact() {}
-	CompoundBridgeBundleCompact(CompoundBridgeBundle* bundle);
+	CompoundBridgeBundleCompact(CompoundBridgeBundle* bundle, bool verbose=false);
 	CompoundBridgeCompact compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
 	int n_bridges = 0;
 };

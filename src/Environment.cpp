@@ -1,5 +1,8 @@
 #include "Environment.h"
 
+#include "Printer.h"
+
+using namespace LIMA_Print;
 
 Environment::Environment() {
 }
@@ -12,7 +15,7 @@ Environment::Environment(string conf_filename, string topol_filename) {
 
 
 	ForceFieldMaker* forcefieldmaker = new ForceFieldMaker();
-	compoundbuilder = new CompoundBuilder(forcefieldmaker);
+	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V2);
 
 
 	
@@ -54,12 +57,12 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
 	static_assert(THREADS_PER_SOLVENTBLOCK >= THREADS_PER_COMPOUNDBLOCK, "Illegal kernel parameter");
 	//assert(THREADS_PER_SOLVENTBLOCK >= N_SOLVATE_MOLECULES);
-	assert(BOX_LEN > 3.f);
+	static_assert(BOX_LEN > 3.f, "Box too small");
 	//assert(BOX_LEN >= CUTOFF + 0.5f);
 	//assert(simulation->n_compounds <= 1);	// Otherwise data_GAN goes haywire
 
 	assert(simulation->n_steps % STEPS_PER_LOGTRANSFER == 0);
-	assert(simulation->n_steps % STEPS_PER_THERMOSTAT == 0);
+	//assert(simulation->n_steps % STEPS_PER_THERMOSTAT == 0);
 	assert(simulation->n_steps % STEPS_PER_TRAINDATATRANSFER == 0);
 
 	assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
@@ -108,7 +111,7 @@ void Environment::verifyBox() {
 
 
 void Environment::run() {
-	printf("Simulation started\n\n");
+	printH1("Simulation started", true, false);
 
 	time0 = std::chrono::high_resolution_clock::now();
 
@@ -123,8 +126,9 @@ void Environment::run() {
 		if (handleTermination(simulation)) {
 			break;
 		}
+
 	}
-	printf("\n\n\n########################## SIMULATION FINISHED ##########################\n\n\n\n");
+	printH1("SIMULATION FINISHED", false, true);
 
 	if (simulation->finished || simulation->box->critical_error_encountered) {
 		postRunEvents();
@@ -196,6 +200,9 @@ void Environment::handleStatus(Simulation* simulation) {
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
 		engine->timings = Int3(0, 0, 0);
 
+
+		// Deapspin to slow down rendering for visual debugging :)
+		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
 		time0 = std::chrono::high_resolution_clock::now();
 	}

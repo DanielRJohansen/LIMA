@@ -23,21 +23,9 @@ struct Test {
 };
 
 
-#include "Printer.h"
-
 int main() {
 
-	int a = 0b1011;
-	int b = 0b1 << 0;
-	int c = a & b;
 
-	std::vector<int> a = { 1, 23, 3 };
-	std::vector<std::pair<std::string, int>> b{ {"hey", 2} };
-	//LIMA_Printer::printNameValuePairs(b);
-	//LIMA_Printer::printNameValuePairs({ {"hey", 2} });
-
-
-	return 0;
 
 	//Environment::prepFF("conf_test.gro", "topol_test.top");
 

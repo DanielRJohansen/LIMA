@@ -388,7 +388,7 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 	Float3 temp = *pos;
 	
 	//	*pos = *pos * 2. - *pos_tsub1 + *force * (dt / mass) * dt * 0.f;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	*pos = *pos + (*pos - *pos_tsub1) * 0.1f + *force * (dt / mass) * dt;
+	*pos = *pos + (*pos - *pos_tsub1) * RAMPUP_MOMENTUM_SCALAR + *force * (dt / mass) * dt;
 	*pos_tsub1 = temp;
 }
 

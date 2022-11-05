@@ -37,7 +37,7 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	package.avg_kinE_solvent = sum_kinE_solvents / static_cast<long double>(simulation->n_solvents);
 
 
-	float avg_kinE = static_cast<float>(sum_kinE_compound + sum_kinE_solvents / static_cast<long double>(simulation->total_particles));
+	float avg_kinE = static_cast<float>((sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->total_particles));
 	package.temperature = avg_kinE * 2.f / (3.f * 8.3145f);
 
 	return package;
@@ -64,8 +64,14 @@ void Engine::handleBoxtemp() {
 	uint64_t step = simulation->getStep();
 	if (step >= FIRST_TEMPERATURE_PRINT_STEP) {
 		if (PRINT_TEMP || temp > 500.f || temp < 100.f) {
-			printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (step - 1) / STEPS_PER_THERMOSTAT, temp, temp_package.max_kinE_compound, temp_package.avg_kinE_compound);
-			LIMA_Printer::printNameValuePairs({{"Temperature", temp}})
+			//printf("\n %llu Temperature: %.1f Biggest contrib: %.0f avg kinE %.0f\n", (step - 1) / STEPS_PER_THERMOSTAT, temp, temp_package.max_kinE_compound, temp_package.avg_kinE_compound);
+			LIMA_Printer::printNameValuePairs(
+				"Temperature", temp, 
+				"Avg kinE sol", temp_package.avg_kinE_solvent, 
+				"Avg kinE comp", temp_package.avg_kinE_compound,
+				"Max kinE sol", temp_package.max_kinE_solvent,
+				"Max kinE comp", temp_package.max_kinE_compound
+			);
 		}
 	}
 

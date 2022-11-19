@@ -477,7 +477,7 @@ void CompoundBuilder::countElements(Molecule* molecule) {
 	}
 
 	if (verbosity_level >= 1) {
-		printf("Molecule created with");
+		printf("Molecule created with\n");
 		LIMA_Printer::printNameValuePairs("Particles", counters[0], "Bonds", counters[1], "Angles", counters[2], "Dihedrals", counters[3]);
 	}
 	/*

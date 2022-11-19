@@ -25,7 +25,6 @@ void ForceFieldMaker::buildForcefield() {
 	topol_dihedrals = parseDihedrals(forcefield_rows);
 
 	printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField));
-
 	printf("\n\n############################# FINISHED BUILDING FORCEFIELD #############################\n\n\n");
 
 	//exit(0);

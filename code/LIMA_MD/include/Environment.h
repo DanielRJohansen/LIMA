@@ -18,13 +18,10 @@
 #include <string>
 #include <assert.h>  
 
-
-
-
 #include <stdlib.h>
 #include <stdio.h>
 
-
+#include <memory>
 
 
 #ifndef __linux__
@@ -71,8 +68,8 @@ private:
 	//Display* display;
 	DisplayV2* display = nullptr;
 	//Interface* interface = nullptr;
-	Engine* engine = nullptr;
-	ForceFieldMaker* forcefieldmaker = nullptr;
+	
+	ForceFieldMaker forcefieldmaker;
 	Analyzer analyzer;
 	CompoundBuilder* compoundbuilder = nullptr;
 	BoxBuilder boxbuilder;
@@ -86,7 +83,8 @@ private:
 	template <typename T>
 	void dumpToFile(T* data, uint64_t n_datapoints, string file_path);
 
-	Simulation* simulation = nullptr;
+	std::unique_ptr<Engine> engine;
+	std::unique_ptr<Simulation> simulation;
 
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;

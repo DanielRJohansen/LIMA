@@ -9,12 +9,13 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
-	forcefieldmaker = new ForceFieldMaker();
-	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V1);
+	compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V1);
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
-	simulation = new Simulation(sim_params);
+	//simulation = new Simulation(sim_params);
+	simulation = std::make_unique<Simulation>(sim_params);
+
 	verifySimulationParameters();
 
 	this->work_folder = work_folder;
@@ -24,13 +25,13 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	bool ignore_hydrogens = true;
 	Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(conf_path, topol_path, max_res_id, min_res_id, ignore_hydrogens);
 
-	boxbuilder.buildBox(simulation);
-	boxbuilder.addSingleMolecule(simulation, &mol_6lzm_10);
+	boxbuilder.buildBox(simulation.get());
+	boxbuilder.addSingleMolecule(simulation.get(), &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);
 	vector<Float3> solvent_positions = compoundbuilder->getSolventPositions(conf_path);
-	boxbuilder.solvateBox(simulation, &solvent_positions);
+	boxbuilder.solvateBox(simulation.get(), &solvent_positions);
 #endif
 
 	delete[] mol_6lzm_10.compounds;
@@ -89,10 +90,10 @@ void Environment::verifyBox() {
 }
 
 void Environment::prepareForRun() {
-	boxbuilder.finishBox(simulation);
+	boxbuilder.finishBox(simulation.get());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
-	engine = new Engine(simulation, forcefieldmaker->getNBForcefield());
+	engine = std::make_unique<Engine>(simulation.get(), forcefieldmaker.getNBForcefield());
 
 	verifyBox();
 	ready_to_run = true;
@@ -115,15 +116,15 @@ void Environment::run() {
 		engine->deviceMaster();		// Device first, otherwise offloading data always needs the last datapoint!
 		engine->hostMaster();
 
-		handleStatus(simulation);
-		handleDisplay(simulation);
+		handleStatus(simulation.get());
+		handleDisplay(simulation.get());
 
-		if (handleTermination(simulation)) {
+		if (handleTermination(simulation.get())) {
 			break;
 		}
 
 	}
-	printH1("SIMULATION FINISHED", false, true);
+	printH1("Simulation Finished", false, true);
 
 	if (simulation->finished || simulation->box->critical_error_encountered) {
 		postRunEvents();
@@ -144,12 +145,9 @@ void Environment::postRunEvents() {
 	LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->n_solvents, "max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->n_compounds);
 	printH2();
 	
-
-
 	if (0) {
 		dumpToFile(simulation->logging_data, 10 * simulation->getStep(), out_dir + "logdata.bin");
 	}
-	
 
 	if (simulation->box->critical_error_encountered) {
 		dumpToFile(simulation->traindata_buffer,
@@ -162,7 +160,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (0) {
-		Analyzer::AnalyzedPackage analyzed_package = analyzer.analyzeEnergy(simulation);
+		Analyzer::AnalyzedPackage analyzed_package = analyzer.analyzeEnergy(simulation.get());
 		dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, out_dir + "energy.bin");
 		dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, out_dir + "temperature.bin");
 	}
@@ -184,8 +182,15 @@ void Environment::postRunEvents() {
 		cout << data_processing_command << "\n\n";
 		system(&data_processing_command[0]);
 	}
-
 #endif
+
+	// KILL simulation
+	simulation.release();
+	engine.release();
+	ready_to_run = false;
+
+	printH2("Post-run events finished Finished", true, true);
+	printf("\n\n\n");
 }
 
 
@@ -284,7 +289,6 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 		myfile << "\n";
 	}
 	myfile.close();
-
 }
 
 
@@ -323,5 +327,5 @@ SimulationParams* Environment::getSimparamRef() {
 }
 
 Simulation* Environment::getSim() {
-	return simulation;
+	return simulation.get();
 }

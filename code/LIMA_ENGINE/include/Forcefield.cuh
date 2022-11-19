@@ -30,7 +30,7 @@ struct ForceField {
 
 class ForceFieldMaker {
 public:
-	ForceFieldMaker() { printf("Forcefield size: %zu bytes\n", sizeof(ForceField)); }
+	ForceFieldMaker() = default;
 
 
 	void buildForcefield();

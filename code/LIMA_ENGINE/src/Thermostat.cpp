@@ -72,7 +72,7 @@ void Engine::handleBoxtemp() {
 				"Max kinE sol", temp_package.max_kinE_solvent,
 				"Max kinE comp", temp_package.max_kinE_compound
 			);
-			printf("scalar: %f\n", temp_scalar);
+			//printf("scalar: %f\n", temp_scalar);
 		}
 	}
 

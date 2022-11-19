@@ -56,7 +56,7 @@ private:
 
 
 
-
+	// TODO: Take these from engineUtils instead!
 	const float M = SOLVENT_MASS;				// kg/mol
 	//double k_B = 8.617333262145 * 10e-5;	// Boltzmann constant
 	const double k_B = 1.380 * 1e-23;

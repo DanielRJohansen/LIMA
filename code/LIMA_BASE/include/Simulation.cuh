@@ -78,21 +78,18 @@ public:
 struct SimulationParams {
 	void overloadParams(std::map<std::string, double>& dict);
 
-	float dt = 1.f * 1e-6;	// [ns]
+	float dt = 1.f * 1e-6f;	// [ns]
 	int n_steps = 1000;
 private:
-	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key) {
-		if (dict.count(key)) { *param = static_cast<T>(dict[key]); }
+	template <typename T> void overloadParam(std::map <std::string, double>& dict, 
+		T* param, std::string key, float scalar = 1.f) {
+		if (dict.count(key)) { *param = static_cast<T>(dict[key]) * scalar; }
 	}
 };
 
 // This stays on host
 class Simulation {
 public:
-	//Simulation() {		// TODO: remove
-	//	box = new Box();
-	//}
-
 	Simulation(SimulationParams& sim_params);
 
 	void moveToDevice();
@@ -119,11 +116,11 @@ public:
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
 	uint32_t total_particles = 0;				// Precise number, but DO NOT EVER USE IN INDEXING!!
 	
-	uint64_t n_steps = SIMULATION_STEPS;
+	uint64_t n_steps = 0;
 
 	const float dt = 1.f * 1e-6f;					// [ns] first val corresponds to fs
 	const float dt_pico = dt * 1000.f;
-	int steps_per_render = STEPS_PER_RENDER;
+	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
 	Box* box;
 

@@ -58,14 +58,16 @@ public:
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 
+	// Functions for dev only
 	SimulationParams* getSimparamRef();
+	Simulation* getSim();
 
-	Simulation* simulation = nullptr;
 
 
 private:
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
+	void prepareForRun();
 	//Display* display;
 	DisplayV2* display = nullptr;
 	//Interface* interface = nullptr;
@@ -78,12 +80,13 @@ private:
 	std::string work_folder = "";
 	SimulationParams sim_params{};
 
+	bool ready_to_run = false;
 
 	// These should be in interface maybe?
 	template <typename T>
 	void dumpToFile(T* data, uint64_t n_datapoints, string file_path);
 
-
+	Simulation* simulation = nullptr;
 
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;

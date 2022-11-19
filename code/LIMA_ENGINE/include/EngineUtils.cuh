@@ -47,7 +47,12 @@ namespace EngineUtils {
 		}
 	}
 
-
+	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
+		const float R = 8.3144;								// Ideal gas constants - J/(Kelvin*mol)
+		//double mean_velocity = M / (2 * k_B * T);				// This is bullshit. Only for sol mass
+		const float v_rms = static_cast<float>(sqrt(3 * R * temperature / mass));
+		return v_rms;
+	}
 
 
 

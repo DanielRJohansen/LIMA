@@ -9,10 +9,10 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
-
 	forcefieldmaker = new ForceFieldMaker();
 	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V1);
 }
+
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
 	simulation = new Simulation(sim_params);
 	verifySimulationParameters();
@@ -23,28 +23,17 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	int max_res_id = 300;
 	bool ignore_hydrogens = true;
 	Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(conf_path, topol_path, max_res_id, min_res_id, ignore_hydrogens);
-	//Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(MOL_FOLDER + "conf.gro", MOL_FOLDER + "topol.top", max_res_id, min_res_id, ignore_hydrogens);
-	//Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(MOL_FOLDER + "conf_test.gro", MOL_FOLDER + "topol_test.top", max_res_id, min_res_id, ignore_hydrogens);
-	//vector<Float3> solvent_positions = compoundbuilder->getSolventPositions(MOL_FOLDER + "box7.gro");
-	vector<Float3> solvent_positions = compoundbuilder->getSolventPositions(conf_path);
-
 
 	boxbuilder.buildBox(simulation);
 	boxbuilder.addSingleMolecule(simulation, &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);
+	vector<Float3> solvent_positions = compoundbuilder->getSolventPositions(conf_path);
 	boxbuilder.solvateBox(simulation, &solvent_positions);
 #endif
 
 	delete[] mol_6lzm_10.compounds;
-	boxbuilder.finishBox(simulation);
-
-	simulation->moveToDevice();	// Only moves the Box to the device
-
-	engine = new Engine(simulation, forcefieldmaker->getNBForcefield());
-
-	verifyBox();
 }
 
 
@@ -99,6 +88,16 @@ void Environment::verifyBox() {
 	printf("Environment::verifyBox success\n");
 }
 
+void Environment::prepareForRun() {
+	boxbuilder.finishBox(simulation);
+
+	simulation->moveToDevice();	// Only moves the Box to the device
+	engine = new Engine(simulation, forcefieldmaker->getNBForcefield());
+
+	verifyBox();
+	ready_to_run = true;
+}
+
 
 
 
@@ -106,12 +105,13 @@ void Environment::verifyBox() {
 
 
 void Environment::run() {
+	if (!ready_to_run) { prepareForRun(); }
 	printH1("Simulation started", true, false);
 
 	time0 = std::chrono::high_resolution_clock::now();
 
 	while (display->checkWindowStatus()) {
-		
+
 		engine->deviceMaster();		// Device first, otherwise offloading data always needs the last datapoint!
 		engine->hostMaster();
 
@@ -320,4 +320,8 @@ void Environment::loadSimParams(std::string path) {
 
 SimulationParams* Environment::getSimparamRef() {
 	return &sim_params;
+}
+
+Simulation* Environment::getSim() {
+	return simulation;
 }

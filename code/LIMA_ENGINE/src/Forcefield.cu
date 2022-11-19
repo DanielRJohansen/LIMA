@@ -10,12 +10,6 @@
 void ForceFieldMaker::buildForcefield() {
 	printf("#################################### BUILDING FORCEFIELD ####################################\n");
 
-//	vector<vector<string>> summary_rows = Filehandler::readFile("C:\\Users\\Daniel\\git_repo\\Quantom\\ForcefieldSummary.txt", INT_MAX, true);
-//	vector<vector<string>> forcefield_rows = Filehandler::readFile("C:\\Users\\Daniel\\git_repo\\Quantom\\Forcefield.txt", INT_MAX, true);
-
-	//vector<vector<string>> summary_rows = Filehandler::readFile(ff_dir + "ForcefieldSummary.txt", INT_MAX, true);
-	//vector<vector<string>> forcefield_rows = Filehandler::readFile(ff_dir + "Forcefield.txt", INT_MAX, true);
-
 	vector<vector<string>> summary_rows = Filehandler::readFile(ff_dir + "LIMA_ffnonbonded_filtered.txt", INT_MAX, true);
 	vector<vector<string>> forcefield_rows = Filehandler::readFile(ff_dir + "LIMA_ffbonded_filtered.txt", INT_MAX, true);
 
@@ -23,9 +17,6 @@ void ForceFieldMaker::buildForcefield() {
 	nb_atomtypes = parseAtomTypes(summary_rows);					// 1 entry per type in compressed forcefield
 	loadAtomypesIntoForcefield();
 
-	
-	//printf("%f %f %f\n", forcefield.particle_parameters[1].mass, forcefield.particle_parameters[1].sigma, forcefield.particle_parameters[1].epsilon);
-	//printf("%f %f %f\n", forcefield1.particle_parameters[1].mass, forcefield1.particle_parameters[1].sigma, forcefield1.particle_parameters[1].epsilon);
 
 	nb_atomtype_ids = parseAtomTypeIDs(forcefield_rows);				// 1 entry per atom in conf
 

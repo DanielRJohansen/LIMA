@@ -90,7 +90,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	cudaMallocManaged(&simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);
 	simulation->traj_buffer = new Float3[simulation->total_particles_upperbound * simulation->n_steps];
 
-	simulation->temperature_buffer = new float[SIMULATION_STEPS / STEPS_PER_THERMOSTAT + 1];
+	simulation->temperature_buffer = new float[simulation->n_steps / STEPS_PER_THERMOSTAT + 1];
 
 
 
@@ -236,9 +236,9 @@ void BoxBuilder::placeMultipleCompoundsRandomly(Simulation* simulation, Compound
 
 
 	// Temporary check that no to molecules placed are colliding.
-	for (int i = 0; i < simulation->box->n_compounds; i++) {
+	for (uint32_t i = 0; i < simulation->box->n_compounds; i++) {
 		Compound* c = &simulation->box->compounds[i];
-		for (int ii = 0; ii < simulation->box->n_compounds; ii++) {
+		for (uint32_t ii = 0; ii < simulation->box->n_compounds; ii++) {
 			Compound* c2 = &simulation->box->compounds[ii];
 			if (ii != i) {
 				if (!verifyPairwiseParticleMindist(c, c2)) {
@@ -328,7 +328,7 @@ float minDist(Compound* compound, Float3 particle_pos) {
 
 bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
-	for (int c_index = 0; c_index < box->n_compounds; c_index++) {
+	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
 			return false;
 	}

@@ -9,7 +9,7 @@
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-const int RAMPUP_STEPS = 50;				// Set to 0 to disable
+const int RAMPUP_STEPS = 0;				// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
 
@@ -33,9 +33,9 @@ constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 
 
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
-const int SIMULATION_STEPS = 180;
+//const int SIMULATION_STEPS = 180;
 const bool print_compound_positions = false;		// what is tihs?
-const bool DUMP_TRAJ = true;
+const bool DUMP_TRAJ = false;
 const bool DUMP_POTE = false;
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -89,7 +89,7 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
-const bool ENABLE_BOXTEMP = true;		// Calc box-temp
+const bool ENABLE_BOXTEMP = false;		// Calc box-temp
 const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 10;			// Must be >= 3 why?
@@ -102,8 +102,8 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.01f / static_cast<float>(STEPS_PER_THE
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 20;
-constexpr float FORCED_INTERRENDER_TIME = 500.f;		// [ms] Set to 0 for full speed sim
+const int STEPS_PER_RENDER = 10;
+constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //
 

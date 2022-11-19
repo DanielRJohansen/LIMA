@@ -1,6 +1,5 @@
 #include "Simulation.cuh"
 
-
 void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
 		+ sizeof(Solvent) * MAX_SOLVENTS * 2
@@ -31,6 +30,7 @@ void Simulation::moveToDevice() {
 		fprintf(stderr, "Error during Simulation Host->Device transfer\n");
 		exit(1);
 	}
+	box_is_on_device = true;
 	printf("Simulation ready for device\n\n");
 }
 
@@ -53,6 +53,43 @@ Simulation::Simulation(SimulationParams& sim_params) :
 	n_steps(sim_params.n_steps)
 {
 	box = new Box();
+}
+Simulation::~Simulation() {
+	deleteBoxMembers();
+	delete box;
+}
+
+void Simulation::deleteBoxMembers() {
+	if (box_is_on_device) {
+		cudaFree(box->compounds);
+
+		cudaFree(box->compound_state_array);
+		cudaFree(box->compound_state_array_next);
+
+		cudaFree(box->compound_neighborlists);
+		cudaFree(box->solvent_neighborlists);
+
+		cudaFree(box->solvents);
+		cudaFree(box->solvents_next);
+
+		cudaFree(box->bridge_bundle);		
+		cudaFree(box->bonded_particles_lut_manager);
+
+		cudaFree(box->potE_buffer);
+		cudaFree(box->traj_buffer);
+		cudaFree(box->outdata);
+		cudaFree(box->data_GAN);
+	}
+	else {
+		delete[] box->compounds;	// TODO: Finish this
+		delete[] box->solvents;
+		delete[] box->bridge_bundle;
+		delete[] box->compound_state_array;
+		delete[] box->compound_neighborlists;
+		delete[] box->solvent_neighborlists;
+		delete[] box->bonded_particles_lut_manager;
+		delete[] box->compounds;
+	}
 }
 
 void SimulationParams::overloadParams(std::map<std::string, double>& dict) {

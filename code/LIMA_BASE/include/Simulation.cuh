@@ -35,6 +35,10 @@ constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove thi
 class Box {
 public:
 	Box() {}
+	//~Box();
+	void moveToDevice();				// Loses pointer to RAM location!
+
+
 	Compound* compounds = nullptr;
 
 	uint32_t n_compounds = 0;
@@ -69,9 +73,6 @@ public:
 
 
 	float thermostat_scalar = 1.f;
-
-
-	void moveToDevice();				// Loses pointer to RAM location!
 };
 
 // All members of this struct are double's so they can be parsed easily by std::map, without using variant
@@ -91,15 +92,17 @@ private:
 class Simulation {
 public:
 	Simulation(SimulationParams& sim_params);
-
+	~Simulation();
+	void deleteBoxMembers();
 	void moveToDevice();
 	void copyBoxVariables();
 	void incStep() {
 		step++;
 		box->step++;
 	}
+	
 	inline uint64_t getStep() { return step; }
-	~Simulation() {}
+	
 
 	bool finished = false;
 
@@ -122,8 +125,9 @@ public:
 	const float dt_pico = dt * 1000.f;
 	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
-	Box* box;
 
+	Box* box;
+	bool box_is_on_device = false;
 
 	Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search
 

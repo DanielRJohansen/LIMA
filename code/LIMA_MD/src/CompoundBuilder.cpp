@@ -368,7 +368,6 @@ vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
 
 		vector<string> data_buffer;
 
-
 		int ptr = 0;
 		for (int stop : endpoints) {
 			string word = "";

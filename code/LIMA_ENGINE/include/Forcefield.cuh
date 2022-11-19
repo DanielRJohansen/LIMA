@@ -7,7 +7,7 @@
 #include <vector>
 
 using std::string;
-
+using std::vector;
 
 const int MAX_ATOM_TYPES = 32;
 

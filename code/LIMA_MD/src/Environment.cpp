@@ -5,6 +5,7 @@
 #include <filesystem>
 
 using namespace LIMA_Print;
+using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
@@ -12,8 +13,8 @@ Environment::Environment() {
 	forcefieldmaker = new ForceFieldMaker();
 	compoundbuilder = new CompoundBuilder(forcefieldmaker, VerbosityLevel::V1);
 }
-void Environment::CreateSimulation(string conf_path, string topol_path, std::string work_folder) {
-	simulation = new Simulation();
+void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
+	simulation = new Simulation(sim_params);
 	verifySimulationParameters();
 
 	this->work_folder = work_folder;
@@ -298,14 +299,25 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 	cout << file_path << endl;
 
 	FILE* file;
+
 #ifndef __linux__
-	fopen_s(&file, file_path, "wb");
+	if (!fopen_s(&file, file_path, "wb")) {
+
+		std::printf("Check %d %lld\n", static_cast<int>(sizeof(T)), n_datapoints);
+
+		fwrite(data, sizeof(T), n_datapoints, file);
+		fclose(file);
+	}
 #else
 	file = fopen(file_path, "wb");
 #endif
+}
 
-	std::printf("Check %d %lld\n", static_cast<int>(sizeof(T)), n_datapoints);
+void Environment::loadSimParams(std::string path) {	
+	auto param_dict = Filehandler::parseINIFile(path);
+	sim_params.overloadParams(param_dict);
+}
 
-	fwrite(data, sizeof(T), n_datapoints, file);
-	fclose(file);
+SimulationParams* Environment::getSimparamRef() {
+	return &sim_params;
 }

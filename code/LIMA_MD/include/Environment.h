@@ -54,8 +54,11 @@ public:
 	bool handleTermination(Simulation* simulation);
 	static void prepFF(string conf_path, string topol_path);
 
+	void loadSimParams(std::string path);
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
+
+	SimulationParams* getSimparamRef();
 
 	Simulation* simulation = nullptr;
 
@@ -73,6 +76,7 @@ private:
 	BoxBuilder boxbuilder;
 
 	std::string work_folder = "";
+	SimulationParams sim_params{};
 
 
 	// These should be in interface maybe?

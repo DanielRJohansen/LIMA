@@ -147,7 +147,7 @@ struct Float3 {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1 - cos(theta));
 	}
 
-	__host__ __device__ float at(int index) {
+	__host__ __device__ float at(int index) const{
 		switch (index) {
 		case 0:
 			return x;
@@ -156,7 +156,6 @@ struct Float3 {
 		case 2:
 			return z;
 		default:
-
 			return -404;
 		}
 	}
@@ -276,7 +275,7 @@ private:
 
 template<typename T>
 T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	T* gpu_ptr;
+	T* gpu_ptr = nullptr;
 	int bytesize = n_elements * sizeof(T);
 
 	cudaMallocManaged(&gpu_ptr, bytesize);

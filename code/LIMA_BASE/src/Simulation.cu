@@ -47,3 +47,15 @@ void Simulation::copyBoxVariables() {
 	for (int i = 0; i < n_compounds; i++)
 		compounds_host[i] = box->compounds[i];
 }
+
+Simulation::Simulation(SimulationParams& sim_params) :
+	dt(sim_params.dt),
+	n_steps(sim_params.n_steps)
+{
+	box = new Box();
+}
+
+void SimulationParams::overloadParams(std::map<std::string, double>& dict) {
+	overloadParam(dict, &dt, "dt");
+	overloadParam(dict, &n_steps, "n_steps");
+}

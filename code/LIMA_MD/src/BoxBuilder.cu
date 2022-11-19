@@ -102,7 +102,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 	// TRAINING DATA and TEMPRARY OUTPUTS
 	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
-	uint64_t n_traindata_device = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER;
+	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER;
 	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
 	printf("Reserving %.2f MB device mem for logging + training data\n", (float) ((total_bytes) * 1e-6));
 	cudaMallocManaged(&simulation->box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
@@ -259,7 +259,7 @@ Compound* BoxBuilder::randomizeCompound(Compound* original_compound)
 	//rotateCompound(compound, xyz_rot);
 
 
-	Float3 xyz_target = (get3Random() * 0.6 + Float3(0.2))* BOX_LEN;
+	Float3 xyz_target = (get3Random() * 0.6f + Float3(0.2f))* BOX_LEN;
 	Float3 xyz_mov = xyz_target - original_compound->calcCOM();// calcCompoundCom(original_compound);
 	moveCompound(compound, xyz_mov);
 

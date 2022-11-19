@@ -2,7 +2,7 @@
 
 
 
-
+using namespace std;
 
 bool Filehandler::ignoreRow(vector<char> ignores, string line) {
 	if (line.length() == 0)
@@ -63,4 +63,32 @@ vector<vector<string>> Filehandler::readFile(string path, int end_at, bool verbo
 
 
 	return rows;
+}
+
+map<string, double> Filehandler::parseINIFile(string path) {
+	//if (verbosity_level >= V1) { cout << "Reading particles from file " << path << "\n"; }
+	fstream file;
+	file.open(path);
+
+	map<string, double> dict;
+
+	string line;
+	while (getline(file, line)) {
+		//vector<string> words;
+		int i = 0;
+		string pair[2];
+		stringstream ss(line);
+		string word;
+		while (getline(ss, word, '=')) {
+			word.erase(std::remove_if(word.begin(), word.end(), std::isspace), word.end());
+			/*if (word == "" || word == "[" || word == "]") {
+				continue;
+			}*/
+			pair[i++] = word;
+			if (i == 2) { dict[pair[0]] = stod(pair[1]); }
+		}
+	}
+	file.close();
+
+	return dict;
 }

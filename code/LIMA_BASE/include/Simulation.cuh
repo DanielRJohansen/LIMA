@@ -3,7 +3,7 @@
 //#include "QuantomTypes.cuh"
 #include "Constants.cuh"
 #include "Bodies.cuh"
-
+#include <map>
 
 
 
@@ -74,14 +74,26 @@ public:
 	void moveToDevice();				// Loses pointer to RAM location!
 };
 
-	
+// All members of this struct are double's so they can be parsed easily by std::map, without using variant
+struct SimulationParams {
+	void overloadParams(std::map<std::string, double>& dict);
+
+	float dt = 1.f * 1e-6;	// [ns]
+	int n_steps = 1000;
+private:
+	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key) {
+		if (dict.count(key)) { *param = static_cast<T>(dict[key]); }
+	}
+};
 
 // This stays on host
 class Simulation {
 public:
-	Simulation() {
-		box = new Box();
-	}
+	//Simulation() {		// TODO: remove
+	//	box = new Box();
+	//}
+
+	Simulation(SimulationParams& sim_params);
 
 	void moveToDevice();
 	void copyBoxVariables();
@@ -96,7 +108,7 @@ public:
 
 
 
-	float* potE_buffer = NULL;	// Not really a buffer yet, just one large array that holds full simulation data
+	float* potE_buffer = nullptr;	// Not really a buffer yet, just one large array that holds full simulation data
 	Float3* traj_buffer = nullptr;
 	float* temperature_buffer = nullptr;
 	int n_temp_values = 0;
@@ -133,5 +145,8 @@ public:
 	int blocks_per_solventkernel = 0;
 private:
 	uint64_t step = 0;
+
+	
+	
 };
 

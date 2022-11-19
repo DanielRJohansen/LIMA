@@ -10,7 +10,7 @@
 
 
 namespace EngineUtils {
-	__device__ __host__ static inline void applyHyperpos(Float3* static_particle, Float3* movable_particle) {
+	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
 		//#pragma unroll
 		for (int i = 0; i < 3; i++) {
 			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
@@ -18,18 +18,15 @@ namespace EngineUtils {
 		}
 	}
 
-	__device__ __host__ static inline float calcHyperDist(Float3* p1, Float3* p2) {
+	__device__ __host__ static inline float calcHyperDist(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
 		applyHyperpos(p1, &temp);
 		return (*p1 - temp).len();
 	}
 
-	// pos1/2 MUST be 2 steps apart!!!!
-	__device__ __host__ static float calcKineticEnergy(Float3* pos1, Float3* pos2, float mass, double elapsed_time) {	
-		EngineUtils::applyHyperpos(pos1, pos2);
-
-		float vel = calcHyperDist(pos1, pos2) / elapsed_time;
-		float kinE = 0.5f * mass * vel * vel;
+	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
+		const float vel = calcHyperDist(pos1, pos2) / elapsed_time;
+		const float kinE = 0.5f * mass * vel * vel;
 		return kinE;
 	}
 

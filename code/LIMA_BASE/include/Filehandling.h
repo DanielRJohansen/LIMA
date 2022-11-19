@@ -7,8 +7,9 @@
 #include <sstream>
 
 #include <climits>
+#include <map>
 
-using namespace std;
+//using namespace std;
 
 
 
@@ -17,8 +18,10 @@ using namespace std;
 
 class Filehandler {
 public:
-	static bool ignoreRow(vector<char> ignores, string line);
+	static bool ignoreRow(std::vector<char> ignores, std::string line);
 
-	static vector<vector<string>> readFile(string path, int end_at = INT_MAX, bool verbose = false);
+	static std::map<std::string, double> parseINIFile(std::string path);
+
+	static std::vector<std::vector<std::string>> readFile(std::string path, int end_at = INT_MAX, bool verbose = false);
 };
 

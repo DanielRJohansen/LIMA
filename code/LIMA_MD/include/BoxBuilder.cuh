@@ -66,12 +66,11 @@ private:
 	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 
-	float MIN_NONBONDED_DIST = 0.2;
+	const float MIN_NONBONDED_DIST = 0.2f;
 
 
-
-	Float3 most_recent_offset_applied = Float3(0.f);	// If molecule is offset, each solvent from .gro file must be aswell
-														// Not a clean solution, i know.. :(
+	// If molecule is offset, each solvent from .gro file must be aswell
+	Float3 most_recent_offset_applied = Float3(0.f);	
 
 
 
@@ -92,8 +91,8 @@ private:
 		);
 	}
 
-	double random() {
-		return rand() % 10000 / 10000.f * 2 - 1.f;
+	float random() {
+		return static_cast<float>(rand() % 10000) / 10000.f * 2.f - 1.f;
 	}
 };
 

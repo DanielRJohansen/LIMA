@@ -124,6 +124,7 @@ void Environment::run() {
 		}
 
 	}
+	engine->terminateSimulation();
 	printH1("Simulation Finished", false, true);
 
 	if (simulation->finished || simulation->box->critical_error_encountered) {

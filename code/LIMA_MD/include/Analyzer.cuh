@@ -19,9 +19,11 @@ public:
 
 	struct AnalyzedPackage {
 		AnalyzedPackage() = default;
-		AnalyzedPackage(Float3* e_ptr, int e_cnt, float* t_ptr, int t_cnt) {
-			energy_data.resize(e_cnt);
-			memcpy(energy_data.data(), e_ptr, e_cnt);
+		AnalyzedPackage(std::vector<Float3>& avg_energy, float* t_ptr, int t_cnt) {
+			//energy_data.resize(e_cnt);
+			//memcpy(energy_data.data(), e_ptr, e_cnt);
+			energy_data = avg_energy;
+			auto e_cnt = energy_data.size();
 
 			temperature_data.resize(t_cnt);
 			memcpy(temperature_data.data(), t_ptr, t_cnt);
@@ -30,9 +32,9 @@ public:
 			kin_energy.resize(e_cnt);
 			total_energy.resize(e_cnt);
 			for (int i = 0; i < e_cnt; i++) {
-				pot_energy[i] = e_ptr[i].x;
-				kin_energy[i] = e_ptr[i].y;
-				total_energy[i] = e_ptr[i].z;
+				pot_energy[i] = energy_data[i].x;
+				kin_energy[i] = energy_data[i].y;
+				total_energy[i] = energy_data[i].z;
 			}
 		}
 		/*: n_energy_values(e_cnt), n_temperature_values(t_cnt) {
@@ -56,7 +58,9 @@ public:
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
 	Float3* analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
-	Float3* analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
+	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
+
+	void moveAndPadData(Simulation* sim, uint64_t steps_in_kernel, uint64_t step_offset);
 
 	static void printEnergy(AnalyzedPackage* package);
 

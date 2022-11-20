@@ -66,7 +66,8 @@ public:
 		printNameValuePairs<T2, T3, T4, T5>(s2, v2, s3, v3, s4, v4, s5, v5, buffer);
 	}
 
-
+	static void printTableRow(std::vector<string> row);
+	static void printTableRow(string s, std::vector<float> data);
 
 
 private:

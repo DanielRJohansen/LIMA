@@ -38,7 +38,9 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	*potE += 4 * epsilon * s * (s - 1.f);
+	//*potE = 14;
+
+	//*potE += 4 * epsilon * s * (s - 1.f);
 
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
@@ -179,7 +181,7 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 }
 
 
-__device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
+__device__ Float3 computerIntercompoundLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
 	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 
@@ -198,11 +200,12 @@ __device__ Float3 computerIntermolecularLJForces(Float3* self_pos, uint8_t atomt
 	return force;// *24.f * 1e-9;
 }
 
-__device__ Float3 computeIntramolecularLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
+__device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
 
 		if (i != threadIdx.x && !(*bonded_particles_lut.get(threadIdx.x, i))) {
+			//*potE_sum = 16;
 			force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
 				compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
@@ -412,10 +415,11 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 }
 
 
-__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundState& compound_state, float& potE_sum, Float3& force, Float3& force_LJ_sol) {
+__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundState& compound_state, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
 	const int compound_index = blockIdx.x;
 	//const int n_compounds_total = gridDim.x;
-
+	if (*potE_sum > 2.f) 
+		printf("\n%f\n", *potE_sum);
 	{
 		const int steps_since_transfer = (box->step % STEPS_PER_LOGTRANSFER);
 		const int step_offset = steps_since_transfer * box->total_particles_upperbound;
@@ -423,7 +427,7 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundSta
 		const int index = step_offset + compound_offset + threadIdx.x;
 		// Log the previous pos, as this comes after integration, and we do want that juicy pos(t0) ;)
 		box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
-		box->potE_buffer[index] = potE_sum;
+		box->potE_buffer[index] = *potE_sum;
 	}
 	//if (blockIdx.x == 0 && threadIdx.x == 0) {
 	//	Float3 pos_prev_temp = compound.prev_positions[threadIdx.x];
@@ -507,7 +511,7 @@ __global__ void compoundKernel(Box* box) {
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeIntramolecularLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
+		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -526,13 +530,12 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
-			force += computerIntermolecularLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
+			force += computerIntercompoundLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 		}
 		__syncthreads();
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
-
 
 
 
@@ -584,7 +587,7 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-	LogCompoundData(compound, box, compound_state, potE_sum, force, force_LJ_sol);
+	LogCompoundData(compound, box, compound_state, &potE_sum, force, force_LJ_sol);
 
 	if (force.len() > 2e+10) {
 		printf("\n\nCritical force %.0f           block %d thread %d\n\n\n", force.len(), blockIdx.x, threadIdx.x);

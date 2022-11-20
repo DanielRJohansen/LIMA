@@ -30,7 +30,7 @@ public:
 
 	void deviceMaster();
 	void hostMaster();
-
+	void terminateSimulation();
 
 	Int3 timings = Int3(0, 0, 0);
 
@@ -51,7 +51,7 @@ private:
 
 
 	// streams every n steps
-	void offloadLoggingData();
+	void offloadLoggingData(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
 	void offloadPositionData();
 	void offloadTrainData();
 

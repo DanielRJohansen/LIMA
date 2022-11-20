@@ -38,11 +38,22 @@ void LIMA_Printer::addRightadjustedStringToString(std::string& main_string, std:
 	main_string += str;
 }
 
+void LIMA_Printer::printTableRow(std::vector<string> row) {
+	string str = "";
+	for (auto elem : row) {
+		addRightadjustedStringToString(str, elem);
+	}
+	std::cout << str << "\n\n";
+}
 
-
-
-
-
+void LIMA_Printer::printTableRow(string s, std::vector<float> data) {
+	std::vector<string> row;
+	row.push_back(s);
+	for (auto elem : data) {
+		row.push_back(formatValue(elem));
+	}
+	printTableRow(row);
+}
 
 
 

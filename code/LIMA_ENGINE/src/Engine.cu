@@ -35,7 +35,7 @@ void Engine::deviceMaster() {
 	EngineUtils::genericErrorCheck("Error after step!");
 }
 
-void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER intStep()!
+void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if ((simulation->getStep() % STEPS_PER_LOGTRANSFER) == 0) {
 		offloadLoggingData();
@@ -62,12 +62,12 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 	timings = timings + Int3(0,0,cpu_duration);
 }
 
-
-
-
-
-
-
+void Engine::terminateSimulation() {
+	const int steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
+	if ((steps_since_transfer) > 0) {
+		offloadLoggingData(steps_since_transfer);
+	}
+}
 
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
@@ -91,14 +91,14 @@ void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update)
 }
 
 
-void Engine::offloadLoggingData() {
+void Engine::offloadLoggingData(const int steps_to_transfer) {
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_LOGTRANSFER) ;	// Tongue in cheek here, i think this is correct...
 
-	cudaMemcpy(&simulation->potE_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->potE_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * steps_to_transfer, cudaMemcpyDeviceToHost);
 	
-	cudaMemcpy(&simulation->traj_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->traj_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer, cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(&simulation->logging_data[step_offset * 10], simulation->box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->logging_data[step_offset * 10], simulation->box->outdata, sizeof(float) * 10 * steps_to_transfer, cudaMemcpyDeviceToHost);
 }
 
 void Engine::offloadPositionData() {

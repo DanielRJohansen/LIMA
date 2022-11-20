@@ -112,7 +112,7 @@ struct Float3 {
 		if (len() < 100000)
 			printf("%c %f %f %f\n", c, x, y, z);
 		else
-			printf("%c %.0f\t\t %.0f\t\t %.0f\n", c, x, y, z);
+			printf("%c %.0f\t %.0f\t %.0f\n", c, x, y, z);
 	}
 
 

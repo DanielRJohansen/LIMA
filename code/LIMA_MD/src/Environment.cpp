@@ -159,10 +159,10 @@ void Environment::postRunEvents() {
 		dumpToFile(simulation->traj_buffer, simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
 	}
 
-	if (0) {
-		Analyzer::AnalyzedPackage analyzed_package = analyzer.analyzeEnergy(simulation.get());
-		dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, out_dir + "energy.bin");
-		dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, out_dir + "temperature.bin");
+	if (POSTSIM_ANAL) {
+		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
+		//dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, out_dir + "energy.bin");
+		//dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, out_dir + "temperature.bin");
 	}
 
 	if (DUMP_POTE) {
@@ -328,4 +328,9 @@ SimulationParams* Environment::getSimparamRef() {
 
 Simulation* Environment::getSim() {
 	return simulation.get();
+}
+
+Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
+{
+	return &postsim_anal_package;
 }

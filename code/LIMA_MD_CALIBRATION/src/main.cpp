@@ -5,7 +5,7 @@
 
 #include <iostream>
 #include <string>
-
+#include <algorithm>
 
 bool basicBenchmark(Environment& env) {
 	const string conf_path = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\conf.gro";
@@ -36,6 +36,9 @@ bool doPoolBenchmark(Environment& env) {
 
 		box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
 		env.run();
+
+		Analyzer::printEnergy(env.getAnalyzedPackage());
+		break;
 	}
 
 

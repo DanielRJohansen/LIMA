@@ -3,9 +3,13 @@
 #include "Printer.h"
 using namespace LIMA_Print;
 
+CompoundBuilder::CompoundBuilder(ForceFieldMaker* ffm, VerbosityLevel vl) : verbosity_level(vl) {
+	FFM = ffm;
+	FFM->buildForcefield();
+}
 
 Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
-	FFM->buildForcefield();
+
 
 	printH2("Building molecule", true, false);
 	compound_bridge_bundle = new CompoundBridgeBundle;

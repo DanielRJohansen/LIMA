@@ -1,9 +1,9 @@
 #include "Analyzer.cuh"
+#include "Printer.h"
 
+#include <algorithm>
 
-
-
-
+using namespace LIMA_Print;
 
 template<typename T>
 void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
@@ -18,18 +18,6 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 	}
 }
 
-/*
-double __device__ calcKineticEnergy(Float3* pos1, Float3* pos2, double mass, double dt) {
-	EngineUtils::applyHyperpos(pos1, pos2);
-
-
-	double vel = (*pos1 - *pos2).len() * 0.5f / dt;
-	double kinE = 0.5 * mass * vel * vel;
-	return kinE;
-}
-*/
-
-
 void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
 	__shared__ Compound compound;
@@ -38,12 +26,6 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	unsigned long long int step = blockIdx.x + 1;
 	const int compound_index = blockIdx.y;
 	energy[threadIdx.x] = Float3(0.f);
-
-
-
-
-
-
 
 
 	if (threadIdx.x == 0) {
@@ -63,12 +45,11 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 
 	float potE = potE_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + step * box->total_particles_upperbound];
 
-	Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step - 1) * box->total_particles_upperbound];
-	Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step + 1) * box->total_particles_upperbound];
-	//EngineUtils::applyHyperpos(&pos_tadd1, &pos_tsub1);
-	//testspace::testerfn(4);
-	//double kinE = calcKineticEnergy(&pos_tadd1, &pos_tsub1, compound.particles[threadIdx.x].mass, box->dt);
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
+	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step - 1) * box->total_particles_upperbound];
+	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_index * MAX_COMPOUND_PARTICLES + (step + 1) * box->total_particles_upperbound];
+	const float n_steps = 2.f;
+
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt * n_steps);
 
 
 
@@ -145,26 +126,6 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	printf("Analyzer malloc %.4f GB on host\n", sizeof(Float3) * analysable_steps * 1e-9);
 	Float3* average_energy = new Float3[analysable_steps];
 
-
-	//uint64_t n_values = simulation->total_particles_upperbound * simulation->getStep();
-	//printf("Analyzer malloc %f MB on device\n", (sizeof(Float3) + sizeof(double)) * n_values * 1e-6);
-
-	/*
-	//cudaMalloc(&traj_buffer_device, sizeof(Float3) * n_values);
-	//cudaMalloc(&potE_buffer_device, sizeof(double) * n_values);
-	//cudaMemcpy(traj_buffer_device, simulation->traj_buffer, sizeof(Float3) * n_values, cudaMemcpyHostToDevice);
-	//cudaMemcpy(potE_buffer_device, simulation->potE_buffer, sizeof(double) * n_values, cudaMemcpyHostToDevice);
-
-
-	Float3* average_solvent_energy = analyzeSolvateEnergy(simulation, analysable_steps);
-	Float3* average_compound_energy = analyzeCompoundEnergy(simulation, analysable_steps);	//avg energy PER PARTICLE in compound
-
-	for (uint64_t i = 0; i < analysable_steps; i++) {
-		average_energy[i] = (average_solvent_energy[i] * simulation->box->n_solvents * 1 + average_compound_energy[i] * simulation->total_compound_particles) * (1.f/ (simulation->total_particles));
-		//average_energy[i].print('E');
-	}
-	*/
-
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
 	uint64_t max_steps_per_kernel = 1000;
 	uint64_t particles_per_step = simulation->total_particles_upperbound;
@@ -175,24 +136,20 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 	for (int i = 0; i < ceil((double)analysable_steps / (double)max_steps_per_kernel); i++) {
 		uint64_t step_offset = i * max_steps_per_kernel + 1;												// offset one since we can't analyse step 1
-		uint64_t steps_in_kernel = min(max_steps_per_kernel, analysable_steps - step_offset);
+		uint64_t steps_in_kernel = std::min(max_steps_per_kernel, analysable_steps - step_offset);
 		uint64_t values_in_kernel = (steps_in_kernel + 2) * particles_per_step;
 
 		cudaMemcpy(traj_buffer_device, &simulation->traj_buffer[(step_offset-1) * particles_per_step], sizeof(Float3) * values_in_kernel, cudaMemcpyHostToDevice);		// -1 to additional datap for vel calculation. +2 for -1 and -1 for vel calculation
 		cudaMemcpy(potE_buffer_device, &simulation->potE_buffer[(step_offset-1) * particles_per_step], sizeof(float) * values_in_kernel, cudaMemcpyHostToDevice);
-
-
-
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzer transfer\n");
 
 		Float3* average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
 		Float3* average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);	//avg energy PER PARTICLE in compound
+
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
 			uint64_t step = step_offset - 1 + ii;	// -1 because index 0 is unused
 			average_energy[step] = (average_solvent_energy[ii] * simulation->box->n_solvents + average_compound_energy[ii] * simulation->total_compound_particles) * (1.f / (simulation->total_particles));
-			//printf("avg %f\n", average_energy[step].x);
-			//average_energy[i].print('E');
 		}
 		delete[] average_solvent_energy, average_compound_energy;
 	}
@@ -201,89 +158,116 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaFree(traj_buffer_device);
 	cudaFree(potE_buffer_device);
 
-
-	printf("\n########## Finished analyzing energies ##########\n\n");
-	return AnalyzedPackage(average_energy, analysable_steps, simulation->temperature_buffer, simulation->n_temp_values);;
+	printH2("Finished analyzing energies", false, true);
+	return AnalyzedPackage(average_energy, analysable_steps, simulation->temperature_buffer, simulation->n_temp_values);
 }
 
 Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
-	dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
+	// Start by creating array of energies of value 0
 	Float3* average_solvent_energy = new Float3[n_steps];
-	Float3* average_solvent_energy_blocked = new Float3[n_steps * simulation->blocks_per_solventkernel];
-	Float3* data_out;
-	cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
-
 	for (int i = 0; i < n_steps; i++)
 		average_solvent_energy[i] = Float3(0.f);
 
-	
-	monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
-	cudaDeviceSynchronize();
-	cudaMemcpy(average_solvent_energy_blocked, data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
+	// If any solvents are present, fill above array
+	if (simulation->n_solvents > 0) {
 
-	for (uint64_t step = 0; step < n_steps; step++) {
-		average_solvent_energy[step] = Float3(0.f);
-		for (int block = 0; block < simulation->blocks_per_solventkernel; block++) {
-			average_solvent_energy[step] += average_solvent_energy_blocked[block + step * simulation->blocks_per_solventkernel];
+		Float3* average_solvent_energy_blocked = new Float3[n_steps * simulation->blocks_per_solventkernel];
+		Float3* data_out;
+		cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
+
+		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
+		cudaDeviceSynchronize();
+		EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
+
+		cudaMemcpy(average_solvent_energy_blocked, data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
+
+		for (uint64_t step = 0; step < n_steps; step++) {
+			average_solvent_energy[step] = Float3(0.f);
+			for (int block = 0; block < simulation->blocks_per_solventkernel; block++) {
+				average_solvent_energy[step] += average_solvent_energy_blocked[block + step * simulation->blocks_per_solventkernel];
+			}
+			average_solvent_energy[step] *= (1.f / simulation->n_solvents);
 		}
-		average_solvent_energy[step] *= (1.f / simulation->n_solvents);
-		//if (average_solvent_energy[step].x != 0.f)
-		//printf("avg sol pot %f\n", average_solvent_energy[step].x);
+
+		cudaFree(data_out);
+		delete[] average_solvent_energy_blocked;
 	}
 
-
-	cudaFree(data_out);
-	delete[] average_solvent_energy_blocked;
-	EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 	return average_solvent_energy;
 }
 
 
 Float3* Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps) {
 	uint64_t n_datapoints = simulation->n_compounds * n_steps;
-	dim3 block_dim(n_steps, simulation->box->n_compounds, 1);
+	
 	Float3* average_compound_energy = new Float3[n_steps];
 
 	for (int i = 0; i < n_steps; i++)
 		average_compound_energy[i] = Float3(0.f);
 
 
-	Float3* host_data = new Float3[n_datapoints];
-	Float3* data_out;
+	if (simulation->total_compound_particles > 0) {
+		Float3* host_data = new Float3[n_datapoints];
 
-	cudaMalloc(&data_out, sizeof(Float3) * n_datapoints * 2);
-	
+		Float3* data_out;
+		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints * 2);		// Why 2 lol 
 
-	
+		dim3 block_dim(n_steps, simulation->box->n_compounds, 1);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
+		cudaDeviceSynchronize();
+		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
+
+		cudaMemcpy(host_data, data_out, sizeof(Float3) * n_datapoints, cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
 
 
-
-	monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
-	cudaDeviceSynchronize();
-	cudaMemcpy(host_data, data_out, sizeof(Float3) * n_datapoints, cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
-
-
-	for (uint64_t step = 0; step < n_steps; step++) {
-		for (uint64_t i = 0; i < simulation->box->n_compounds; i++) {
-			//if (host_data[i + step * 256].x > 10000)
-				//printf("Block: %d energy: %f\n", i, host_data[i + step * 256].x);
-			average_compound_energy[step] += host_data[i + step * simulation->box->n_compounds];
+		for (uint64_t step = 0; step < n_steps; step++) {
+			for (uint64_t i = 0; i < simulation->box->n_compounds; i++) {
+				//if (host_data[i + step * 256].x > 10000)
+					//printf("Block: %d energy: %f\n", i, host_data[i + step * 256].x);
+				average_compound_energy[step] += host_data[i + step * simulation->box->n_compounds];
+			}
+			average_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
 		}
-		average_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
+
+		cudaFree(data_out);
+		delete[] host_data;
 	}
-
-
-	cudaFree(data_out);
-	delete[] host_data;
-	EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
 	return average_compound_energy;
 }
 
+float getMin(std::vector<float>& vec) {
+	return *std::min_element(vec.begin(), vec.end());
+}
 
+float getMax(std::vector<float>& vec) {
+	return *std::max_element(vec.begin(), vec.end());
+}
 
+float getMean(vector<float> vec)
+{
+	double sum = 0.;
+	for (auto elem : vec) { sum += static_cast<double>(elem); }	
+	return sum / static_cast<double>(vec.size());
+}
 
+float getStdDev(std::vector<float>& vec) {
+	if (vec.size() == 0) { return 0.f; }
 
+	double mean = getMean(vec);
 
+	double err_sum = 0;
+	for (auto elem : vec) { err_sum += (elem - mean) * (elem - mean); }
+
+	double mean_err_sq = err_sum / static_cast<double>(vec.size());
+	return static_cast<float>(std::sqrt(mean_err_sq));
+}
+
+void Analyzer::printEnergy(AnalyzedPackage* package) {
+	LIMA_Printer::printNameValuePairs("min", 0, "potE", getMin(package->pot_energy), "kinE", getMin(package->kin_energy), "total", getMin(package->total_energy));
+	LIMA_Printer::printNameValuePairs("max", 0, "potE", getMax(package->pot_energy), "kinE", getMax(package->kin_energy), "total", getMax(package->total_energy));
+	LIMA_Printer::printNameValuePairs("Std. Deviation", 0, "potE", getStdDev(package->pot_energy), "kinE", getStdDev(package->kin_energy), "total", getStdDev(package->total_energy));
+}

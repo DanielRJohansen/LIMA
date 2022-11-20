@@ -30,17 +30,15 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	// input positions in cartesian coordinates [nm]
 	// sigma [nm]
 	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
-	//	Returns force in J/mol*M		?????????????!?!?//
-
-
-	//return Float3(sigma);	// Test for forcing LJ calc, but always small force, even with bonded particles!
-
+	// Returns force in J/mol*M		?????????????!?!?//
 
 	// Directly from book
 	float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = sigma * sigma / dist_sq;								// [nm^2]/[nm^2] -> unitless
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+
+	*potE += 4 * epsilon * s * (s - 1.f);
 
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
@@ -422,9 +420,10 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundSta
 		const int steps_since_transfer = (box->step % STEPS_PER_LOGTRANSFER);
 		const int step_offset = steps_since_transfer * box->total_particles_upperbound;
 		const int compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
-
+		const int index = step_offset + compound_offset + threadIdx.x;
 		// Log the previous pos, as this comes after integration, and we do want that juicy pos(t0) ;)
-		box->traj_buffer[step_offset + compound_offset + threadIdx.x] = compound.prev_positions[threadIdx.x];
+		box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
+		box->potE_buffer[index] = potE_sum;
 	}
 	//if (blockIdx.x == 0 && threadIdx.x == 0) {
 	//	Float3 pos_prev_temp = compound.prev_positions[threadIdx.x];

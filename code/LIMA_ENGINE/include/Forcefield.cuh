@@ -30,7 +30,7 @@ struct ForceField {
 
 class ForceFieldMaker {
 public:
-	ForceFieldMaker() = default;
+	ForceFieldMaker(VerbosityLevel vl);
 
 
 	void buildForcefield();
@@ -79,6 +79,8 @@ private:
 	int n_topol_angles = 0;
 	DihedralBond* topol_dihedrals = nullptr;
 	int n_topol_dihedrals = 0; 
+
+	VerbosityLevel vl = SILENT;
 
 #ifdef __linux__
 	string ff_dir = "../../Simulation/Forcefield/";

@@ -58,7 +58,7 @@ public:
 	// Functions for dev only
 	SimulationParams* getSimparamRef();
 	Simulation* getSim();
-
+	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 
 
 private:
@@ -69,7 +69,7 @@ private:
 	DisplayV2* display = nullptr;
 	//Interface* interface = nullptr;
 	
-	ForceFieldMaker forcefieldmaker;
+	ForceFieldMaker forcefieldmaker{VerbosityLevel::V1};
 	Analyzer analyzer;
 	CompoundBuilder* compoundbuilder = nullptr;
 	BoxBuilder boxbuilder;
@@ -86,6 +86,7 @@ private:
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
 
+	Analyzer::AnalyzedPackage postsim_anal_package;
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;
 #else

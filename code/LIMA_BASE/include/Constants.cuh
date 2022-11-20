@@ -37,6 +37,7 @@ constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 const bool print_compound_positions = false;		// what is tihs?
 const bool DUMP_TRAJ = false;
 const bool DUMP_POTE = false;
+const bool POSTSIM_ANAL = true;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

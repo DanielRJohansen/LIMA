@@ -1,17 +1,18 @@
 #pragma once
 
-
 #include "Forcefield.cuh"
+#include "Printer.h"
+
+using namespace LIMA_Print;
 
 
-
-
+ForceFieldMaker::ForceFieldMaker(VerbosityLevel vl) : vl(vl) {};
 
 void ForceFieldMaker::buildForcefield() {
-	printf("#################################### BUILDING FORCEFIELD ####################################\n");
+	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	vector<vector<string>> summary_rows = Filehandler::readFile(ff_dir + "LIMA_ffnonbonded_filtered.txt", INT_MAX, true);
-	vector<vector<string>> forcefield_rows = Filehandler::readFile(ff_dir + "LIMA_ffbonded_filtered.txt", INT_MAX, true);
+	vector<vector<string>> summary_rows = Filehandler::readFile(ff_dir + "LIMA_ffnonbonded_filtered.txt", INT_MAX, vl >= V2);
+	vector<vector<string>> forcefield_rows = Filehandler::readFile(ff_dir + "LIMA_ffbonded_filtered.txt", INT_MAX, vl >= V2);
 
 
 	nb_atomtypes = parseAtomTypes(summary_rows);					// 1 entry per type in compressed forcefield
@@ -24,10 +25,10 @@ void ForceFieldMaker::buildForcefield() {
 	topol_angles = parseAngles(forcefield_rows);
 	topol_dihedrals = parseDihedrals(forcefield_rows);
 
-	printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField));
-	printf("\n\n############################# FINISHED BUILDING FORCEFIELD #############################\n\n\n");
-
-	//exit(0);
+	if (vl >= CRITICAL_INFO) {
+		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField));
+		printH2("Finished building forcefield");
+	}
 }
 
 
@@ -102,7 +103,7 @@ NBAtomtype* ForceFieldMaker::parseAtomTypes(vector<vector<string>> summary_rows)
 		}			
 	}
 	n_nb_atomtypes = ptr;
-	printf("%d NB_Atomtypes loaded\n", ptr);
+	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", ptr); }
 	return atomtypes;
 }
 
@@ -122,7 +123,7 @@ int* ForceFieldMaker::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {
 		}
 			
 	}
-	printf("%d NB_Atomtype_IDs loaded\n", n_atoms);
+	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", n_atoms); }
 	return atomtype_ids;
 }
 
@@ -142,7 +143,7 @@ PairBond* ForceFieldMaker::parseBonds(vector<vector<string>> forcefield_rows) {
 		}
 	}
 	n_topol_bonds = ptr;
-	printf("%d bonds loaded\n", ptr);
+	if (vl >= V1) { printf("%d bonds loaded\n", ptr); }
 	return bonds;
 }
 
@@ -163,7 +164,7 @@ AngleBond* ForceFieldMaker::parseAngles(vector<vector<string>> forcefield_rows) 
 
 	}
 	n_topol_angles = ptr;
-	printf("%d angles loaded\n", ptr);
+	if (vl >= V1) { printf("%d angles loaded\n", ptr); }
 	return angles;
 }
 
@@ -171,8 +172,6 @@ DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_
 	DihedralBond* dihedrals = new DihedralBond[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
-	//bool has_been_enabled = false;
-
 
 	for (vector<string> row : forcefield_rows) {
 		if (newParseTitle(row)) {
@@ -189,7 +188,7 @@ DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_
 		}
 	}
 	n_topol_dihedrals = ptr;
-	printf("%d dihedrals loaded\n", ptr);
+	if (vl >= V1) { printf("%d dihedrals loaded\n", ptr); }
 	return dihedrals;
 }
 
@@ -199,10 +198,17 @@ DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_
 
 
 void ForceFieldMaker::loadAtomypesIntoForcefield() {
+	static const float mass_min = 0.001f;	// [kg/mol]
+	static const float sigma_min = 0.001f;
+	static const float epsilon_min = 0.001f;
+
 	for (int i = 0; i < n_nb_atomtypes; i++) {
 		forcefield.particle_parameters[i].mass = nb_atomtypes[i].mass * 1e-3f;		// Convert g/mol to kg/mol
 		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma;
 		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon;
-		printf("Mass %f Sigma %f Epsilon %f\n", nb_atomtypes[i].mass, nb_atomtypes[i].sigma, nb_atomtypes[i].epsilon);
+
+		bool illegal_parameter = (forcefield.particle_parameters[i].mass < mass_min) || (forcefield.particle_parameters[i].sigma < sigma_min) || (forcefield.particle_parameters[i].epsilon < epsilon_min);
+
+		if ((vl >= V2) || illegal_parameter) { printf("Mass %f Sigma %f Epsilon %f\n", nb_atomtypes[i].mass, nb_atomtypes[i].sigma, nb_atomtypes[i].epsilon); }
 	}
 }

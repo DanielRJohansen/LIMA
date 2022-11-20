@@ -103,7 +103,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.01f / static_cast<float>(STEPS_PER_THE
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 10;
+const int STEPS_PER_RENDER = 5;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //

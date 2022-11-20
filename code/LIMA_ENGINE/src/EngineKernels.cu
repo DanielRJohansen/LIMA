@@ -38,10 +38,8 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	//*potE = 14;
 
-	//*potE += 4 * epsilon * s * (s - 1.f);
-
+	*potE += 4 * epsilon * s * (s - 1.f);
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
 	if (ddd.x != ddd.x) {
@@ -49,26 +47,6 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 		printf("Scalar %f dist_sq %f\n", force_scalar, dist_sq);
 		pos0->print('0');
 		pos0->print('1');
-	}
-	//if (threadIdx.x == 32 && blockIdx.x == 28 && force < -600000.f && force > -700000) {
-	//if (abs(force) > 20e+8 && type1 == 200 && type2 == 1) {
-	if (abs(force_scalar) > 20e+9 || *potE != *potE) {
-		//printf("\nDist %f   D2 %f    force %.1f [MN]     sigma: %.3f \tepsilon %.0f  t1 %d t2 %d\n", (float)sqrt(dist_sq), (float) dist_sq, (float)force_scalar *1e-6, sigma, epsilon, type1, type2);
-		//pos0->print('1');
-		//pos1->print('2');
-		//printf("Block %d Thread %d\n", blockIdx.x, threadIdx.x);
-		//printf("Thread %d Block %d self %f %f %f other %f %f %f\n", threadIdx.x, blockIdx.x, pos0->x, pos0->y, pos0->z, pos1->x, pos1->y, pos1->z);
-		//printf("Force %f %f %f\n", force_unit_vector.x * force, force_unit_vector.y * force, force_unit_vector.z * force);
-	}
-
-	{
-		//Float3 force_vec = force_unit_vector * force;
-		/*if (force_vec.x != force_vec.x) {
-			//printf("Force: %f\n", force);
-			//force_unit_vector.print('u');
-			printf("Thread %d Block %d self %f %f %f other %f %f %f\n", threadIdx.x, blockIdx.x, pos0->x, pos0->y, pos0->z, pos1->x, pos1->y, pos1->z);
-
-		}*/
 	}
 #endif
 	return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
@@ -200,11 +178,10 @@ __device__ Float3 computerIntercompoundLJForces(Float3* self_pos, uint8_t atomty
 	return force;// *24.f * 1e-9;
 }
 
-__device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT& bonded_particles_lut) {
+__device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState* compound_state, float* potE_sum, float* data_ptr, BondedParticlesLUT* bonded_particles_lut) {
 	Float3 force(0.f);
 	for (int i = 0; i < compound->n_particles; i++) {
-
-		if (i != threadIdx.x && !(*bonded_particles_lut.get(threadIdx.x, i))) {
+		if (i != threadIdx.x && !(*bonded_particles_lut->get(threadIdx.x, i))) {
 			//*potE_sum = 16;
 			force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
@@ -417,9 +394,7 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 
 __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundState& compound_state, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
 	const int compound_index = blockIdx.x;
-	//const int n_compounds_total = gridDim.x;
-	if (*potE_sum > 2.f) 
-		printf("\n%f\n", *potE_sum);
+
 	{
 		const int steps_since_transfer = (box->step % STEPS_PER_LOGTRANSFER);
 		const int step_offset = steps_since_transfer * box->total_particles_upperbound;
@@ -511,7 +486,7 @@ __global__ void compoundKernel(Box* box) {
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, bonded_particles_lut);
+		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 

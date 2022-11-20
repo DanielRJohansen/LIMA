@@ -49,7 +49,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		offloadTrainData();
 	}
 
-	handleNLISTS(simulation);
+	handleNLISTS(simulation, false);
 	
 
 	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp

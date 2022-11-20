@@ -43,13 +43,24 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	}
 
 	
-	if (0) {
+	if (verbosity_level >= V3) {
 		for (int i = 1; i < MAX_ATOMS; i++) {
 			if (particle_id_maps[i].global_id == -1)
 				continue;
 			printf("compound %d    local %d    global %d\n", particle_id_maps[i].compound_id, particle_id_maps[i].local_id_compound, particle_id_maps[i].global_id);
-		}	
+		}
+
+		auto lut = molecule.bonded_particles_lut_manager->get(0, 0);
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+			for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+				printf("%d ", *lut->get(i, ii));
+			}
+			printf("\n");
+		}
 	}
+
+
+	
 
 	delete[] particle_id_maps;
 	delete compound_bridge_bundle;

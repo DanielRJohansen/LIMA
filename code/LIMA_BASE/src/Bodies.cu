@@ -81,7 +81,7 @@ CompoundBridgeBundleCompact::CompoundBridgeBundleCompact(CompoundBridgeBundle* b
 
 Molecule::Molecule() {
 	compounds = new Compound[MAX_COMPOUNDS];
-	bonded_particles_lut_manager = new BondedParticlesLUTManager();
+	bonded_particles_lut_manager = new BondedParticlesLUTManager(0);
 	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
 }
 

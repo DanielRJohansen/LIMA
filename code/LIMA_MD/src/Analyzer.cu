@@ -139,7 +139,6 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);	//avg energy PER PARTICLE in compound
 
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
-			average_compound_energy[ii].print();
 			uint64_t step = step_offset + ii;	// -1 because index 0 is unused
 			average_energy[step] = (average_solvent_energy[ii] * simulation->box->n_solvents + average_compound_energy[ii] * simulation->total_compound_particles) * (1.f / (simulation->total_particles));
 		}

@@ -48,12 +48,7 @@ void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
 	
 	*simulation->box->bridge_bundle = *molecule->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 
-	simulation->box->bonded_particles_lut_manager = molecule->bonded_particles_lut_manager;
-
-	//
-	//*simulation->box->bonded_particles_lut_manager = &molecule->bonded_particleslut_manager;
-	//exit(0);
-	
+	simulation->box->bonded_particles_lut_manager = molecule->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
 
 	printf("Molecule added to box\n");
 }

@@ -9,7 +9,7 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
-	compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V1);
+	compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V3);
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {

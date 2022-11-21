@@ -34,7 +34,9 @@ bool doPoolBenchmark(Environment& env) {
 		env.CreateSimulation(conf, topol, work_folder);
 		auto* box = env.getSim()->box;
 
-		box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
+
+
+		//box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
 		env.run();
 
 		Analyzer::printEnergy(env.getAnalyzedPackage());

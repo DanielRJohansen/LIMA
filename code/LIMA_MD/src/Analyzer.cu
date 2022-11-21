@@ -89,7 +89,8 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 	Float3 pos_tsub1 = traj_buffer[compounds_offset + solvent_index + (step - 1) * box->total_particles_upperbound];
 	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->total_particles_upperbound];
 
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt);
+	float mass = 12.011000 * 1e-3f;
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt*2.f);
 
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->total_particles_upperbound];
 

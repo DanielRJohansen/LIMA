@@ -50,12 +50,23 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 			printf("compound %d    local %d    global %d\n", particle_id_maps[i].compound_id, particle_id_maps[i].local_id_compound, particle_id_maps[i].global_id);
 		}
 
-		auto lut = molecule.bonded_particles_lut_manager->get(0, 0);
-		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
-				printf("%d ", *lut->get(i, ii));
+		if (0) {
+			auto lut = molecule.bonded_particles_lut_manager->get(0, 0);
+			for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+				for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
+					printf("%d ", *lut->get(i, ii));
+				}
+				printf("\n");
 			}
-			printf("\n");
+		}
+		
+
+		for (int i = 0; i < molecule.n_compounds; i++) {
+			auto& compound = molecule.compounds[i];
+			printf("´\nCompound %d\n", i);
+			for (int p = 0; p < compound.n_particles; p++) {
+				printf("\t p%d atomtype %d\n", p, compound.atom_types[p]);
+			}
 		}
 	}
 

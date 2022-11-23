@@ -35,7 +35,7 @@ int main() {
 	const string conf_path = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\conf.gro";
 	const string topol_path = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\topol.top";
 
-	Environment::prepFF(conf_path, topol_path);
+	//Environment::prepFF(conf_path, topol_path);
 
 
 	std::string work_folder = "C:\\PROJECTS\\Quantom\\Simulation\\T4Lysozyme\\";

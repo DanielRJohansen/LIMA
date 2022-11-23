@@ -29,7 +29,7 @@
 #endif
 
 
-
+#include "ForcefieldMaker.h"
 
 
 
@@ -49,7 +49,7 @@ public:
 	void handleStatus(Simulation* simulation);
 	void handleDisplay(Simulation* simulation);
 	bool handleTermination(Simulation* simulation);
-	static void prepFF(string conf_path, string topol_path);
+	void prepFF(string conf_path, string topol_path);
 
 	void loadSimParams(std::string path);
 	void renderTrajectory(string trj_path);

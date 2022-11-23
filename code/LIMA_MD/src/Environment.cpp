@@ -20,6 +20,8 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 
 	this->work_folder = work_folder;
 
+	prepFF(conf_path, topol_path);
+
 	int min_res_id = 0;
 	int max_res_id = 300;
 	bool ignore_hydrogens = true;
@@ -235,16 +237,18 @@ bool Environment::handleTermination(Simulation* simulation)
 }
 
 void Environment::prepFF(string conf_path, string topol_path) {
-	const std::string conf_name = "conf.gro";;
-	const std::string topol_name = "topol.top";
-	string program_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_ForcefieldMaker\\Release\\LIMA_ForcefieldMaker.exe "
-		+ (string) "prepsim" + " "
-		+ conf_name + " "
-		+ topol_name + " "
-		;
+	ForcefieldMaker FFM(work_folder);	// Not to confuse with the engine FFM!!!!=!?!
+	FFM.prepSimulationForcefield();
+	//const std::string conf_name = "conf.gro";;
+	//const std::string topol_name = "topol.top";
+	//string program_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_ForcefieldMaker\\Release\\LIMA_ForcefieldMaker.exe "
+	//	+ (string) "prepsim" + " "
+	//	+ conf_name + " "
+	//	+ topol_name + " "
+	//	;
 
-	cout << program_command << "\n\n";
-	system(&program_command[0]);
+	//cout << program_command << "\n\n";
+	//system(&program_command[0]);
 }
 
 void Environment::renderTrajectory(string trj_path)

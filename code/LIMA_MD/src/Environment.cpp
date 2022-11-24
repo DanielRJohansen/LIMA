@@ -9,7 +9,7 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
-	compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V3);
+	//compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V3);
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
@@ -21,18 +21,17 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	this->work_folder = work_folder;
 
 	prepFF(conf_path, topol_path);
+	forcefield.loadForcefield(work_folder + "/molecule");
 
-	int min_res_id = 0;
-	int max_res_id = 300;
-	bool ignore_hydrogens = true;
-	Molecule mol_6lzm_10 = compoundbuilder->buildMolecule(conf_path, topol_path, max_res_id, min_res_id, ignore_hydrogens);
+	CompoundBuilder compoundbuilder(&forcefield, V1);
+	Molecule mol_6lzm_10 = compoundbuilder.buildMolecule(conf_path, topol_path);
 
 	boxbuilder.buildBox(simulation.get());
 	boxbuilder.addSingleMolecule(simulation.get(), &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);
-	vector<Float3> solvent_positions = compoundbuilder->getSolventPositions(conf_path);
+	vector<Float3> solvent_positions = compoundbuilder.getSolventPositions(conf_path);
 	boxbuilder.solvateBox(simulation.get(), &solvent_positions);
 #endif
 
@@ -95,7 +94,7 @@ void Environment::prepareForRun() {
 	boxbuilder.finishBox(simulation.get());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
-	engine = std::make_unique<Engine>(simulation.get(), forcefieldmaker.getNBForcefield());
+	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
 
 	verifyBox();
 	ready_to_run = true;

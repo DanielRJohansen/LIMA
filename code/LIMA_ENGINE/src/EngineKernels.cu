@@ -2,13 +2,13 @@
 
 
 // Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
-__constant__ ForceField forcefield_device;
+__constant__ ForceField_NB forcefield_device;
 
 
 
 
 void Engine::setDeviceConstantMemory() {
-	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
+	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
 }

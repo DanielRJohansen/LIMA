@@ -3,7 +3,7 @@
 #include <algorithm>
 
 Engine::Engine() {}
-Engine::Engine(Simulation* simulation, ForceField forcefield_host) {
+Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
 

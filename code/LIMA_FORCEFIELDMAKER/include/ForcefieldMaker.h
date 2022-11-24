@@ -20,7 +20,7 @@ public:
 
 
 private:
-	const std::string workdir;
+	const std::string molecule_dir;
 	const std::string forcefield_dir;
 
 	std::string conf_path = "";

@@ -2,7 +2,7 @@
 
 
 
-__host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField& forcefield_host) {
+__host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {
 	TemperaturPackage package{};
 
 	const uint64_t step = simulation->getStep() - 1;

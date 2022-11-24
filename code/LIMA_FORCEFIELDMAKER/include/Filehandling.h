@@ -10,18 +10,24 @@
 
 #include "ForcefieldTypes.h"
 
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
 using namespace std;
+
+// Dunno if this works for folders too
+void assertPath(string path) {
+	if (!fs::exists(path)) {
+		std::cerr << "Could not find path: " << path << "\n";
+		abort();
+	}
+}
 
 
 class FileHelpers {
 public:
-	static string pathJoin(string a, string b) {
-#ifdef __linux__
-		return a + "/" + b;
-#else
-		return a + "\\" + b;
-#endif
-	}
+	static string pathJoin(string a, string b) { return a + "/" + b; }
 };
 
 class Reader {

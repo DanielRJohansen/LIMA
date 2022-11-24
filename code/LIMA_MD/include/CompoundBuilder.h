@@ -38,14 +38,14 @@ class CompoundBuilder
 	};
 public:
 	CompoundBuilder() {}
-	CompoundBuilder(ForceFieldMaker* ffm, VerbosityLevel vl = SILENT);
+	CompoundBuilder(Forcefield* ff, VerbosityLevel vl = SILENT);
 	Molecule buildMolecule(string gro_path, string itp_path, int max_residue_id=INT16_MAX, int min_residue_id=0, bool ignore_hydrogens=true);
 
 	vector<Float3> getSolventPositions(string gro_path);
 
 
 private:
-	ForceFieldMaker* FFM = nullptr;
+	Forcefield* forcefield = nullptr;
 	//IDMap* particle_id_maps;
 	ParticleRef* particle_id_maps = nullptr;
 	CompoundBridgeBundle* compound_bridge_bundle = nullptr;

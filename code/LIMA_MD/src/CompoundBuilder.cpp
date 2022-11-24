@@ -3,10 +3,7 @@
 #include "Printer.h"
 using namespace LIMA_Print;
 
-CompoundBuilder::CompoundBuilder(ForceFieldMaker* ffm, VerbosityLevel vl) : verbosity_level(vl) {
-	FFM = ffm;
-	FFM->buildForcefield();
-}
+CompoundBuilder::CompoundBuilder(Forcefield* ff, VerbosityLevel vl) : verbosity_level(vl), forcefield{ ff } {}
 
 Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
 
@@ -146,7 +143,7 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 		//current_compound->addParticle(FFM->atomTypeToIndex(record.atom_name[0]), record.coordinate);
 		//current_compound->addParticle(FFM->getAtomtypeID(record.atom_serial_number), record.coordinate);
-		current_compound->addParticle(FFM->getAtomtypeID(record.atom_serial_number), record.coordinate, FFM->atomTypeToIndex(record.atom_name[0]), record.atom_serial_number);
+		current_compound->addParticle(forcefield->getAtomtypeID(record.atom_serial_number), record.coordinate, forcefield->atomTypeToIndex(record.atom_name[0]), record.atom_serial_number);
 		//record.coordinate.print('p');
 		molecule->n_atoms_total++;
 	}
@@ -231,7 +228,7 @@ void CompoundBuilder::addBond(Molecule* molecule, ParticleRef* maps, vector<stri
 	}
 		
 
-	PairBond* bondtype = FFM->getBondType(maps[0].global_id, maps[1].global_id);
+	PairBond* bondtype = forcefield->getBondType(maps[0].global_id, maps[1].global_id);
 
 	distributeLJIgnores(molecule, maps, 2);				// DANGER
 
@@ -267,7 +264,7 @@ void CompoundBuilder::addAngle(Molecule* molecule, ParticleRef* maps, vector<str
 
 
 
-	AngleBond* angletype = FFM->getAngleType(maps[0].global_id, maps[1].global_id, maps[2].global_id);
+	AngleBond* angletype = forcefield->getAngleType(maps[0].global_id, maps[1].global_id, maps[2].global_id);
 
 	distributeLJIgnores(molecule, maps, 3);
 
@@ -298,7 +295,7 @@ void CompoundBuilder::addDihedral(Molecule* molecule, ParticleRef* maps, vector<
 		return;
 
 
-	DihedralBond* dihedraltype = FFM->getDihedralType(maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id);
+	DihedralBond* dihedraltype = forcefield->getDihedralType(maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id);
 
 	distributeLJIgnores(molecule, maps, 4);
 

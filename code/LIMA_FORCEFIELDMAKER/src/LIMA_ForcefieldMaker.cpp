@@ -12,7 +12,7 @@
 
 
 using std::string;
-namespace fs = std::filesystem;
+
 //#ifdef __linux__
 //	string sim_path = "../../Simulation";
 //	//string sim_path = "/home/lima/Desktop/LIMA/Simulation";
@@ -24,19 +24,18 @@ namespace fs = std::filesystem;
 //string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
 ForcefieldMaker::ForcefieldMaker( string workdir, string default_ff_dir, string conf_file, string topol_file) :
-	workdir(workdir),
+	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
 	forcefield_dir(default_ff_dir)
 {
 	ff_bonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffbonded.txt");
 	ff_nonbonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffnonbonded.txt");
-	assert(fs::exists(ff_bonded_path), std::format("Could not find path: {}\n", ff_bonded_path));
-	assert(fs::exists(ff_nonbonded_path), std::format("Could not find path: {}\n", ff_nonbonded_path));
+	assertPath(ff_bonded_path);
+	assertPath(ff_nonbonded_path);
 
-
-	conf_path = FileHelpers::pathJoin(workdir, conf_file);
-	topol_path = FileHelpers::pathJoin(workdir, topol_file);
-	assert(fs::exists(conf_path), std::format("Could not find path: {}\n", conf_path));
-	assert(fs::exists(topol_path), std::format("Could not find path: {}\n", topol_path));
+	conf_path = FileHelpers::pathJoin(molecule_dir, conf_file);
+	topol_path = FileHelpers::pathJoin(molecule_dir, topol_file);
+	assertPath(conf_path);
+	assertPath(topol_path);
 }
 
 
@@ -120,11 +119,11 @@ void ForcefieldMaker::prepSimulationForcefield() {
 
 
 
-	Printer::printForcefieldSummary(FileHelpers::pathJoin(workdir, "LIMA_ffnonbonded_filtered.txt"), ff_nonbonded_active, &map);
+	Printer::printForcefieldSummary(FileHelpers::pathJoin(molecule_dir, "LIMA_ffnonbonded_filtered.txt"), ff_nonbonded_active, &map);
 
 
 	Printer::printForcefield(
-		FileHelpers::pathJoin(workdir, "LIMA_ffbonded_filtered.txt"),
+		FileHelpers::pathJoin(molecule_dir, "LIMA_ffbonded_filtered.txt"),
 		atoms,
 		topology_bonds,
 		topology_angles,

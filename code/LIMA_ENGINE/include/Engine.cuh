@@ -26,7 +26,7 @@ __global__ void compoundBridgeKernel(Box* box);
 class Engine {
 public:
 	Engine();
-	Engine(Simulation* simulation, ForceField forcefield);
+	Engine(Simulation* simulation, ForceField_NB forcefield);
 
 	void deviceMaster();
 	void hostMaster();
@@ -35,7 +35,7 @@ public:
 	Int3 timings = Int3(0, 0, 0);
 
 
-	ForceField getForcefield() { return forcefield_host; }
+	ForceField_NB getForcefield() { return forcefield_host; }
 
 private:
 	Simulation* simulation;
@@ -65,7 +65,7 @@ private:
 
 	int testval = 0;
 
-	ForceField forcefield_host;
+	ForceField_NB forcefield_host;
 
 
 	// Simulation variables

@@ -22,18 +22,18 @@ struct ParticleParameters {	//Nonbonded
 };
 
 
-struct ForceField {
+struct ForceField_NB {
 	ParticleParameters particle_parameters[MAX_ATOM_TYPES];
 };
 
 
 
-class ForceFieldMaker {
+class Forcefield {
 public:
-	ForceFieldMaker(VerbosityLevel vl);
+	Forcefield(VerbosityLevel vl);
 
 
-	void buildForcefield();
+	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id);
 	PairBond* getBondType(int id1, int id2);
 	AngleBond* getAngleType(int id1, int id2, int id3);
@@ -41,7 +41,7 @@ public:
 
 
 
-	ForceField getNBForcefield() {
+	ForceField_NB getNBForcefield() {
 		return forcefield;
 	}
 
@@ -64,7 +64,7 @@ public:
 	}
 
 private:
-	ForceField forcefield;
+	ForceField_NB forcefield;
 
 
 	int* nb_atomtype_ids = nullptr;
@@ -82,15 +82,7 @@ private:
 
 	VerbosityLevel vl = SILENT;
 
-#ifdef __linux__
-	string ff_dir = "../../Simulation/Forcefield/";
-#else
-	//string ff_dir = "C:\\Users\\Daniel\\git_repo\\Quantom\\";
-	string sim_dir = "C:\\PROJECTS\\Quantom\\Simulation\\";
-	string ff_dir = "C:\\PROJECTS\\Quantom\\Simulation\\Forcefield\\";
-#endif
 
-	//enum STATE { INACTIVE, NB_ATOMTYPE_MAPPINGS, FF_NONBONDED, NB_ATOMTYPES, PAIRTYPES };
 	enum STATE { INACTIVE, FF_NONBONDED, NB_ATOMTYPES, BONDS, ANGLES, DIHEDRALS };
 	static STATE setState(string s, STATE current_state) {
 		if (s == "ff_nonbonded")
@@ -123,7 +115,6 @@ private:
 	DihedralBond* parseDihedrals(vector<vector<string>> forcefield_rows);
 	
 	void loadAtomypesIntoForcefield();
-
 };
 
 

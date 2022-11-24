@@ -69,9 +69,8 @@ private:
 	DisplayV2* display = nullptr;
 	//Interface* interface = nullptr;
 	
-	ForceFieldMaker forcefieldmaker{VerbosityLevel::V1};
+	Forcefield forcefield{VerbosityLevel::V1};
 	Analyzer analyzer;
-	CompoundBuilder* compoundbuilder = nullptr;
 	BoxBuilder boxbuilder;
 
 	std::string work_folder = "";

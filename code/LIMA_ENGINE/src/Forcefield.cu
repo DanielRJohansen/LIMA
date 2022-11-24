@@ -6,13 +6,13 @@
 using namespace LIMA_Print;
 
 
-ForceFieldMaker::ForceFieldMaker(VerbosityLevel vl) : vl(vl) {};
+Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 
-void ForceFieldMaker::buildForcefield() {
+void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	vector<vector<string>> summary_rows = Filehandler::readFile(ff_dir + "LIMA_ffnonbonded_filtered.txt", INT_MAX, vl >= V2);
-	vector<vector<string>> forcefield_rows = Filehandler::readFile(ff_dir + "LIMA_ffbonded_filtered.txt", INT_MAX, vl >= V2);
+	vector<vector<string>> summary_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffnonbonded_filtered.txt", INT_MAX, vl >= V2);
+	vector<vector<string>> forcefield_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffbonded_filtered.txt", INT_MAX, vl >= V2);
 
 
 	nb_atomtypes = parseAtomTypes(summary_rows);					// 1 entry per type in compressed forcefield
@@ -26,13 +26,13 @@ void ForceFieldMaker::buildForcefield() {
 	topol_dihedrals = parseDihedrals(forcefield_rows);
 
 	if (vl >= CRITICAL_INFO) {
-		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField));
+		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField_NB));
 		printH2("Finished building forcefield");
 	}
 }
 
 
-int ForceFieldMaker::getAtomtypeID(int global_id) {
+int Forcefield::getAtomtypeID(int global_id) {
 	if (global_id > n_atoms || global_id == 0) {	// 0 is an error, as atoms are 1-indexed
 		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", global_id);
 		exit(0);
@@ -40,7 +40,7 @@ int ForceFieldMaker::getAtomtypeID(int global_id) {
 	return nb_atomtype_ids[global_id];
 }
 
-PairBond* ForceFieldMaker::getBondType(int id1, int id2) {
+PairBond* Forcefield::getBondType(int id1, int id2) {
 	for (int i = 0; i < n_topol_bonds; i++) {
 		if (topol_bonds[i].atom_indexes[0] == id1 && topol_bonds[i].atom_indexes[1] == id2) {
 			return &topol_bonds[i];
@@ -50,7 +50,7 @@ PairBond* ForceFieldMaker::getBondType(int id1, int id2) {
 	exit(0);
 }
 
-AngleBond* ForceFieldMaker::getAngleType(int id1, int id2, int id3) {
+AngleBond* Forcefield::getAngleType(int id1, int id2, int id3) {
 	for (int i = 0; i < n_topol_angles; i++) {
 		if (topol_angles[i].atom_indexes[0] == id1 && topol_angles[i].atom_indexes[1] == id2 && topol_angles[i].atom_indexes[2] == id3) {
 			return &topol_angles[i];
@@ -60,7 +60,7 @@ AngleBond* ForceFieldMaker::getAngleType(int id1, int id2, int id3) {
 	exit(0);
 }
 
-DihedralBond* ForceFieldMaker::getDihedralType(int id1, int id2, int id3, int id4) {
+DihedralBond* Forcefield::getDihedralType(int id1, int id2, int id3, int id4) {
 	for (int i = 0; i < n_topol_dihedrals; i++) {
 		if (topol_dihedrals[i].atom_indexes[0] == id1 && topol_dihedrals[i].atom_indexes[1] == id2 && topol_dihedrals[i].atom_indexes[2] == id3 && topol_dihedrals[i].atom_indexes[3] == id4) {
 			return &topol_dihedrals[i];
@@ -81,7 +81,7 @@ DihedralBond* ForceFieldMaker::getDihedralType(int id1, int id2, int id3, int id
 
 
 
-NBAtomtype* ForceFieldMaker::parseAtomTypes(vector<vector<string>> summary_rows) {
+NBAtomtype* Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
 	NBAtomtype* atomtypes = new NBAtomtype[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
@@ -107,7 +107,7 @@ NBAtomtype* ForceFieldMaker::parseAtomTypes(vector<vector<string>> summary_rows)
 	return atomtypes;
 }
 
-int* ForceFieldMaker::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
+int* Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
 	int* atomtype_ids = new int[10000];
 	STATE current_state = INACTIVE;
 
@@ -127,7 +127,7 @@ int* ForceFieldMaker::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {
 	return atomtype_ids;
 }
 
-PairBond* ForceFieldMaker::parseBonds(vector<vector<string>> forcefield_rows) {
+PairBond* Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
 	PairBond* bonds = new PairBond[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
@@ -147,7 +147,7 @@ PairBond* ForceFieldMaker::parseBonds(vector<vector<string>> forcefield_rows) {
 	return bonds;
 }
 
-AngleBond* ForceFieldMaker::parseAngles(vector<vector<string>> forcefield_rows) {
+AngleBond* Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
 	AngleBond* angles = new AngleBond[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
@@ -168,7 +168,7 @@ AngleBond* ForceFieldMaker::parseAngles(vector<vector<string>> forcefield_rows) 
 	return angles;
 }
 
-DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_rows) {
+DihedralBond* Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows) {
 	DihedralBond* dihedrals = new DihedralBond[10000];
 	int ptr = 0;
 	STATE current_state = INACTIVE;
@@ -197,7 +197,7 @@ DihedralBond* ForceFieldMaker::parseDihedrals(vector<vector<string>> forcefield_
 
 
 
-void ForceFieldMaker::loadAtomypesIntoForcefield() {
+void Forcefield::loadAtomypesIntoForcefield() {
 	static const float mass_min = 0.001f;	// [kg/mol]
 	static const float sigma_min = 0.001f;
 	static const float epsilon_min = 0.001f;

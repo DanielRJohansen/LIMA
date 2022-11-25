@@ -55,6 +55,21 @@ struct Float3 {
 	__host__ __device__ inline void operator -= (const Float3 a) { x -= a.x; y -= a.y; z -= a.z; }
 	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
 
+	__device__ inline Float3 mul_highres(const double d) const {
+		return Float3(
+			static_cast<float>(static_cast<double>(x) * d),
+			static_cast<float>(static_cast<double>(y) * d),
+			static_cast<float>(static_cast<double>(z) * d)
+		);
+	}
+	__device__ inline Float3 add_highres(const Float3 a) const {
+		return Float3(
+			static_cast<float>(static_cast<double>(x) + static_cast<double>(a.x)),
+			static_cast<float>(static_cast<double>(y) + static_cast<double>(a.y)),
+			static_cast<float>(static_cast<double>(z) + static_cast<double>(a.z))
+		);
+	}
+
 	__host__ __device__ inline bool operator < (const Float3 a) { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) { return x > a.x && y > a.y && z > a.z; }
 

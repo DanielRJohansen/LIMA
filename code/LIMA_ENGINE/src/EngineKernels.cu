@@ -38,9 +38,9 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	*potE += 4. * epsilon * s * (s - 1.f) * 0.5f;
+	*potE += 4. * epsilon * s * (s - 1.f);
 
-	printf("eps %f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
+	//printf("eps %f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
 	if (ddd.x != ddd.x) {
@@ -334,8 +334,10 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 	return utility_buffer[threadIdx.x];
 }
 
-__device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const double mass, const double dt, float* thermostat_scalar, int p_index, bool issolvent = false) {
+__device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const double dt, float* thermostat_scalar, int p_index, bool print = false) {
 	// Force is in ??Newton, [kg * nm /(mol*ns^2)] //	
+
+
 
 	// Always do hyperpos first!
 	EngineUtils::applyHyperpos(pos, pos_tsub1);
@@ -343,16 +345,40 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	Float3 temp = *pos;
 	float prev_vel = (*pos - *pos_tsub1).len();
 
-	*pos = *pos * 2.f - *pos_tsub1 + *force * (dt / mass) * dt;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
+	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
+	Float3 dx = *pos - *pos_tsub1;
+	Float3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
+	Float3 x_ = (dx).add_highres(ddx);
+
+	if (print) {
+	//	printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
+		printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", pos->len(), dx.len(), ddx.len(), x_.len(), ((*pos + x_) - *pos).len());
+	}
+	*pos += x_;
 	*pos_tsub1 = temp;
 
-	printf("Thread %d    Mass %f    Force scalar %f\n", threadIdx.x, mass, force->len());
+	double d = force->len();
+	double acc = d* dt / mass * dt;
+
+
+	
 	Float3 delta_pos = *pos - *pos_tsub1;
 	*pos = *pos_tsub1 + delta_pos * *thermostat_scalar;
 
-	if (delta_pos.len() > 0.05) {
-		printf("\nSol: %d b %d t %d.      Distance/step: %f prev: %f    Force: %f\n", issolvent, blockIdx.x, threadIdx.x, delta_pos.len(), prev_vel, force->len());
+	
+	{
+		float mass2 = 2.f * mass;
+		float mass_inv = 1.f / mass;
+		float dtdivm = dt / static_cast<double>(mass);
+		float fdt = force->mul_highres(dt).len();
+		//printf("dt/mass %.8f   fdt %.8f ddx %.8f    x_ %f\n", dtdivm, fdt, ddx.len(), x_.len());
+		//printf("mass %f dt^2/mass %.8f, dt %.8f ddx %.8f   \n", mass, dt / mass * dt, dt, ddx);
 	}
+	
+
+	//if (delta_pos.len() > 0.05) {
+	//	printf("\nSol: %d b %d t %d.      Distance/step: %f prev: %f    Force: %f\n", issolvent, blockIdx.x, threadIdx.x, delta_pos.len(), prev_vel, force->len());
+	//}
 
 #ifdef LIMA_VERBOSE
 	if ((*pos - *pos_tsub1).len() > 0.1) {
@@ -540,7 +566,7 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	if (threadIdx.x < compound.n_particles) {
 		if (box->step >= RAMPUP_STEPS) {
-			integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, false);
+			integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
 		}
 		else {
 			integratePositionRampUp(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->step);

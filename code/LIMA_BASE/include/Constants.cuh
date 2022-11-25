@@ -91,7 +91,7 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
 const bool ENABLE_BOXTEMP = false;		// Calc box-temp
-const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
+const bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 10;			// Must be >= 3 why?
 const int FIRST_TEMPERATURE_PRINT_STEP = RAMPUP_STEPS;

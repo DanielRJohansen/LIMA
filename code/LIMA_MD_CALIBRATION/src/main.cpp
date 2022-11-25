@@ -20,6 +20,7 @@ bool basicBenchmark(Environment& env) {
 }
 
 bool doPoolBenchmark(Environment& env) {
+
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -36,7 +37,7 @@ bool doPoolBenchmark(Environment& env) {
 
 
 
-		//box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
+		box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
 		env.run();
 
 		Analyzer::printEnergy(env.getAnalyzedPackage());
@@ -52,6 +53,9 @@ bool doPoolBenchmark(Environment& env) {
 
 
 int main() {
+
+	printf("%.8f\n", (6.52399397f + 0.0000012f) - 6.52399397f);
+	exit(1);
 	Environment env;
 
 	//basicBenchmark(env);

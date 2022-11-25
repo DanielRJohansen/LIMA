@@ -137,7 +137,7 @@ void Environment::run() {
 
 void Environment::postRunEvents() {
 	
-	const std::string out_dir = work_folder + "Steps_" + to_string(simulation->getStep()) + "\\";
+	const std::string out_dir = work_folder + "Steps_" + to_string(simulation->getStep()) + "/";
 
 	std::filesystem::current_path(work_folder);
 	std::filesystem::create_directories(out_dir);
@@ -163,7 +163,11 @@ void Environment::postRunEvents() {
 
 	if (POSTSIM_ANAL) {
 		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
-		//dumpToFile(analyzed_package.energy_data, analyzed_package.n_energy_values, out_dir + "energy.bin");
+		dumpToFile(
+			postsim_anal_package.energy_data.data(),
+			postsim_anal_package.energy_data.size(),
+			out_dir + "energy.bin"
+		);
 		//dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, out_dir + "temperature.bin");
 	}
 
@@ -320,6 +324,8 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 	file = fopen(file_path, "wb");
 #endif
 }
+
+
 
 void Environment::loadSimParams(std::string path) {	
 	auto param_dict = Filehandler::parseINIFile(path);

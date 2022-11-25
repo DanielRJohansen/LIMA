@@ -7,7 +7,9 @@
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
 
-
+namespace ForceCalc {
+//	-
+};
 
 namespace EngineUtils {
 	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
@@ -45,6 +47,10 @@ namespace EngineUtils {
 			fprintf(stderr, text);
 			exit(1);
 		}
+	}
+
+	__device__ __host__ static void applyABC(Coord* pos) {
+
 	}
 
 	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 

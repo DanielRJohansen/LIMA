@@ -346,15 +346,29 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	float prev_vel = (*pos - *pos_tsub1).len();
 
 	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	Float3 dx = *pos - *pos_tsub1;
-	Float3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
-	Float3 x_ = (dx).add_highres(ddx);
+	Double3 x = *pos;
+	Double3 dx = *pos - *pos_tsub1;
+	Double3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
+	Double3 x_ = dx + ddx;
+	Double3 pos_new = x + x_;
+	//Float3 x_rel = *pos / BOX_LEN;
+	//Float3 x_new_rel = x_rel + x_ / BOX_LEN;
+	//Float3 x_new_abs = x_new_rel * BOX_LEN;
+	
+	//Double3 pos_d{ *pos };
 
-	if (print) {
-	//	printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
-		printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", pos->len(), dx.len(), ddx.len(), x_.len(), ((*pos + x_) - *pos).len());
+
+	
+	//*pos += x_;
+	*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
+	if (print && threadIdx.x == 1) {
+		//	printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
+			//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", pos->len(), dx.len(), ddx.len(), x_.len(), ((*pos + x_) - *pos).len());
+			//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", x_rel.len(), dx.len(), ddx.len(), x_.len(), ((x_new_abs) - *pos).len());
+		pos->print('f');
+		pos_new.print('d');
 	}
-	*pos += x_;
+
 	*pos_tsub1 = temp;
 
 	double d = force->len();

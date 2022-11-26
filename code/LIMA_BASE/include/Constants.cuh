@@ -25,6 +25,9 @@ constexpr float CUTOFF = 0.9f;	//nm/
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr float BOX_LEN = 7.f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
+//constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
+constexpr float NORMALIZER = BOX_LEN * 2.f;
+constexpr float NORMALIZER_SQ = NORMALIZER*NORMALIZER;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

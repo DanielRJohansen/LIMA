@@ -204,8 +204,8 @@ void Forcefield::loadAtomypesIntoForcefield() {
 
 	for (int i = 0; i < n_nb_atomtypes; i++) {
 		forcefield.particle_parameters[i].mass = nb_atomtypes[i].mass * 1e-3f;		// Convert g/mol to kg/mol
-		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma;
-		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon;
+		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma / NORMALIZER;	// Convert to normalized value
+		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon / (NORMALIZER * NORMALIZER);
 
 		bool illegal_parameter = (forcefield.particle_parameters[i].mass < mass_min) || (forcefield.particle_parameters[i].sigma < sigma_min) || (forcefield.particle_parameters[i].epsilon < epsilon_min);
 

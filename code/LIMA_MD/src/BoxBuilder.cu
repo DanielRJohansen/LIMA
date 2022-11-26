@@ -186,14 +186,20 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 	return simulation->box->n_solvents;
 }
 
+
+
+
+/*
+* These two funcitons are in charge of normalizing ALL coordinates!!
+*/
 void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 {
 	compound->init();
 	CompoundState* state = &simulation->box->compound_state_array[simulation->box->n_compounds];
-	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f / BOX_LEN;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound->n_particles; i++) {
-		state->positions[i] = compound->prev_positions[i];
+		state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here
 		state->n_particles++;
 	}
 
@@ -206,13 +212,14 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
 }
 
-
-
 Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
-	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
+	com = com / NORMALIZER;
+	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR / NORMALIZER;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
 	return Solvent(com, com - solvent_vel * dt);
 }
-
+/*
+* These two funcitons are in charge of normalizing ALL coordinates!!
+*/
 
 
 
@@ -323,6 +330,7 @@ float minDist(Compound* compound, Float3 particle_pos) {
 
 bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
+	particle_center = particle_center / NORMALIZER;
 	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
 			return false;

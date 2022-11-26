@@ -282,10 +282,10 @@ float getStdDev(std::vector<float>& vec) {
 }
 
 void Analyzer::printEnergy(AnalyzedPackage* package) {
-	LIMA_Printer::printTableRow({ "", "min", "max", "Std. deviation" });
-	LIMA_Printer::printTableRow("potE", { getMin(package->pot_energy), getMax(package->pot_energy), getStdDev(package->pot_energy) });
-	LIMA_Printer::printTableRow("kinE", { getMin(package->kin_energy), getMax(package->kin_energy), getStdDev(package->kin_energy) });
-	LIMA_Printer::printTableRow("totalE", { getMin(package->total_energy), getMax(package->total_energy), getStdDev(package->total_energy) });
+	LIMA_Printer::printTableRow({ "", "min", "max", "Std. deviation", "Change 0->n"});
+	LIMA_Printer::printTableRow("potE", { getMin(package->pot_energy), getMax(package->pot_energy), getStdDev(package->pot_energy), (package->pot_energy.back() - package->pot_energy.front()) / package->pot_energy.front() });
+	LIMA_Printer::printTableRow("kinE", { getMin(package->kin_energy), getMax(package->kin_energy), getStdDev(package->kin_energy), (package->kin_energy.back() - package->kin_energy.front()) / package->kin_energy.front() });
+	LIMA_Printer::printTableRow("totalE", { getMin(package->total_energy), getMax(package->total_energy), getStdDev(package->total_energy), (package->total_energy.back() - package->total_energy.front()) / package->total_energy.front() });
 	
 	/*LIMA_Printer::printNameValuePairs("min", 0, "potE", getMin(package->pot_energy), "kinE", getMin(package->kin_energy), "total", getMin(package->total_energy));
 	LIMA_Printer::printNameValuePairs("max", 0, "potE", getMax(package->pot_energy), "kinE", getMax(package->kin_energy), "total", getMax(package->total_energy));

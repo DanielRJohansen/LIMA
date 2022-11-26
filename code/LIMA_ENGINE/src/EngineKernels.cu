@@ -25,7 +25,7 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
 }
 
-__device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float* potE, float sigma, float epsilon, int type1 = -1, int type2 = -1) {
+__device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
 	// input positions in cartesian coordinates [nm]
 	// sigma [nm]
@@ -34,13 +34,19 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 
 	// Directly from book
 	float dist_sq = (*pos1 - *pos0).lenSquared();
-	float s = sigma * sigma / dist_sq;								// [nm^2]/[nm^2] -> unitless
+	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	*potE += 4. * epsilon * s * (s - 1.f);
+
+	//float dist_abs = sqrtf(dist_sq) * NORMALIZER;
+
+
+	*potE += 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ;
 
 	//printf("eps %f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
+	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
+		printf("dist %f    s %f    eps %f    pot %f\n", sqrtf(dist_sq), s, epsilon, 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ);*/
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
 	if (ddd.x != ddd.x) {
@@ -346,48 +352,51 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	float prev_vel = (*pos - *pos_tsub1).len();
 
 	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	Double3 x = *pos;
-	Double3 dx = *pos - *pos_tsub1;
-	Double3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
-	Double3 x_ = dx + ddx;
-	Double3 pos_new = x + x_;
+	//float acc = (*force * dt * (dt / static_cast<double>(mass))).len();
+	//Float3 x = *pos;
+	//Float3 dx = *pos - *pos_tsub1;
+	//Float3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
+	//Float3 x_ = dx + ddx;
+	//Double3 pos_new = x + x_;
 	//Float3 x_rel = *pos / BOX_LEN;
 	//Float3 x_new_rel = x_rel + x_ / BOX_LEN;
 	//Float3 x_new_abs = x_new_rel * BOX_LEN;
-	
+	*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+
 	//Double3 pos_d{ *pos };
 
 
 	
-	//*pos += x_;
-	*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
-	if (print && threadIdx.x == 1) {
-		//	printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
-			//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", pos->len(), dx.len(), ddx.len(), x_.len(), ((*pos + x_) - *pos).len());
-			//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", x_rel.len(), dx.len(), ddx.len(), x_.len(), ((x_new_abs) - *pos).len());
-		pos->print('f');
-		pos_new.print('d');
-	}
+	////*pos += x_;
+	////*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
+	//if (print && threadIdx.x == 1) {
+	//	//printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
+	//	//x.print();
+	//	printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", pos->len(), dx.len(), force->len(), ddx.len(), x_.len(), (*pos - *pos_tsub1).len() - prev_vel);
+	//		//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", x_rel.len(), dx.len(), ddx.len(), x_.len(), ((x_new_abs) - *pos).len());
+	//	//pos->print('f');
+	//	//pos_new.print('d');
+	//}
 
 	*pos_tsub1 = temp;
-
-	double d = force->len();
-	double acc = d* dt / mass * dt;
-
-
-	
-	Float3 delta_pos = *pos - *pos_tsub1;
-	*pos = *pos_tsub1 + delta_pos * *thermostat_scalar;
-
-	
-	{
-		float mass2 = 2.f * mass;
-		float mass_inv = 1.f / mass;
-		float dtdivm = dt / static_cast<double>(mass);
-		float fdt = force->mul_highres(dt).len();
-		//printf("dt/mass %.8f   fdt %.8f ddx %.8f    x_ %f\n", dtdivm, fdt, ddx.len(), x_.len());
-		//printf("mass %f dt^2/mass %.8f, dt %.8f ddx %.8f   \n", mass, dt / mass * dt, dt, ddx);
-	}
+//
+//	double d = force->len();
+////	double acc = d* dt / mass * dt;
+//
+//
+//	
+//	Float3 delta_pos = *pos - *pos_tsub1;
+//	*pos = *pos_tsub1 + delta_pos * *thermostat_scalar;
+//
+//	
+//	{
+//		float mass2 = 2.f * mass;
+//		float mass_inv = 1.f / mass;
+//		float dtdivm = dt / static_cast<double>(mass);
+//		float fdt = force->mul_highres(dt).len();
+//		//printf("dt/mass %.8f   fdt %.8f ddx %.8f    x_ %f\n", dtdivm, fdt, ddx.len(), x_.len());
+//		//printf("mass %f dt^2/mass %.8f, dt %.8f ddx %.8f   \n", mass, dt / mass * dt, dt, ddx);
+//	}
 	
 
 	//if (delta_pos.len() > 0.05) {

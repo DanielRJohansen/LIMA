@@ -27,7 +27,7 @@ namespace EngineUtils {
 	}
 
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
-		const float vel = calcHyperDist(pos1, pos2) / elapsed_time;
+		const float vel = calcHyperDist(pos1, pos2) / elapsed_time * NORMALIZER;
 		const float kinE = 0.5f * mass * vel * vel;
 		return kinE;
 	}

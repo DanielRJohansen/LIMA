@@ -11,8 +11,8 @@ Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	vector<vector<string>> summary_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffnonbonded_filtered.txt", INT_MAX, vl >= V2);
-	vector<vector<string>> forcefield_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffbonded_filtered.txt", INT_MAX, vl >= V2);
+	vector<vector<string>> summary_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffnonbonded_filtered.txt");
+	vector<vector<string>> forcefield_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffbonded_filtered.txt");
 
 
 	nb_atomtypes = parseAtomTypes(summary_rows);					// 1 entry per type in compressed forcefield

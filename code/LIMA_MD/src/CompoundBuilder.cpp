@@ -1,11 +1,14 @@
 #include "CompoundBuilder.h"
 
 #include "Printer.h"
+
+#include <array>
+
 using namespace LIMA_Print;
 
 CompoundBuilder::CompoundBuilder(Forcefield* ff, VerbosityLevel vl) : verbosity_level(vl), forcefield{ ff } {}
 
-Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
+Molecule CompoundBuilder::buildMolecule(string gro_path, string top_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
 
 
 	printH2("Building molecule", true, false);
@@ -13,13 +16,17 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string itp_path, int ma
 	particle_id_maps = new ParticleRef[MAX_ATOMS];
 
 	vector<Record_ATOM> atom_data = parseGRO(gro_path);
-	vector<vector<string>> top_data = parseTOP(itp_path);
+	vector<vector<string>> top_data = parseTOP(top_path);
+	Topology topology = parseTop1(top_path);
+
+	assignMoleculeIDs(atom_data, topology);
 
 	Molecule molecule;
 
 
 
 
+	// Load particles into molecule
 	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
 	//bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
 
@@ -151,42 +158,57 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 void CompoundBuilder::loadTopology(Molecule* molecule, vector<vector<string>>* top_data)
 {
-	molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
+	//molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
-	int dihedral_cnt = 0;
-	TopologyMode mode = INACTIVE;
-	for (vector<string> record : *top_data) {
-		if (record.size() == 0) {
-			mode = INACTIVE;
-			continue;
-		}
+	//int dihedral_cnt = 0;
+	//TopologyMode mode = INACTIVE;
+	//for (vector<string> record : *top_data) {
+	//	if (record.size() == 0) {
+	//		mode = INACTIVE;
+	//		continue;
+	//	}
 
-		if (mode == INACTIVE) {
-			mode = setMode(record[0]);
+	//	if (mode == INACTIVE) {
+	//		mode = setMode(record[0]);
 
-			if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the bottom dihedral bonds, as i think they are IMPROPER DIHEDRALS
-				dihedral_cnt++;
+	//		if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the bottom dihedral bonds, as i think they are IMPROPER DIHEDRALS
+	//			dihedral_cnt++;
 
-			continue;
-		}
-		if (mode == DIHEDRAL && dihedral_cnt > 1)
-			continue;
+	//		continue;
+	//	}
+	//	if (mode == DIHEDRAL && dihedral_cnt > 1)
+	//		continue;
 
-		addGeneric(molecule, &record, mode);
-	}
+	//	addGeneric(molecule, &record, mode);
+	//}
 }
 
 
-CompoundBuilder::TopologyMode CompoundBuilder::setMode(string entry)
+bool CompoundBuilder::setMode(vector<string>& row, TopologyMode& current_mode)
 {
-	if (entry == "bonds")
-		return BOND;
-	if (entry == "angles")
-		return ANGLE;
-	if (entry == "dihedrals")
-		return DIHEDRAL;
-	return INACTIVE;
+	// If empty row, then we are finished with a section	- THIS might be sorted away in the file-read, so...?
+	if (row.size() == 0) { return INACTIVE; }
+	
+	// Since the above is sorted away in the file read, we probably go from one section directly to the the next section header
+	if (row.size() == 1) {
+		if (row[0] == "bonds") {
+			current_mode = BOND;
+		}
+		else if (row[0] == "angles") {
+			current_mode = ANGLE;
+		}
+		else if (row[0] == "dihedrals") {
+			dihedral_sections_count++;
+			if (dihedral_sections_count == 1) { current_mode = DIHEDRAL; }
+			else { current_mode = INACTIVE; }
+		}
+
+		return true;
+	}
+	
+	// By default we stay in the current mode.
+	return false;
 }
 
 void CompoundBuilder::loadMaps(ParticleRef* maps, vector<string>* record, int n) {
@@ -331,6 +353,65 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 	}
 }
 
+void CompoundBuilder::assignMoleculeIDs(vector<Record_ATOM>& atom_data, Topology& topology)
+{
+	vector<uint32_t> residueID_to_moleculeID;
+	residueID_to_moleculeID.reserve(atom_data.size() + 10);
+
+	uint32_t current_molecule_id = 0;
+
+	// Residue 1 (GMX 1-indexed) is always the first molecule (LIMA 0-indexed)
+	residueID_to_moleculeID[1] = current_molecule_id;
+	
+	uint32_t residue_id_left = 1;
+	uint32_t residue_id_right = 2;
+
+	while (residue_id_right <= atom_data.back().residue_seq_number) {
+		if (!areResiduesBonded(residue_id_left, residue_id_right, atom_data, topology)) { current_molecule_id++; }
+
+		residueID_to_moleculeID[residue_id_right] = current_molecule_id;
+		residue_id_left++;
+		residue_id_right++;
+	}
+
+	for (auto& record : atom_data) {
+		record.moleculeID = residueID_to_moleculeID[record.residue_seq_number];
+	}
+}
+
+
+Topology CompoundBuilder::parseTop1(string path) {		// Naive file segmentation, DANGEROUS!
+	auto rows = Filehandler::readFile(path, {';', '#'}, {"[", "]"});
+	Topology topology;
+
+
+
+	int dihedral_cnt = 0;
+	TopologyMode mode = INACTIVE;
+	for (auto& row : rows) {
+		bool new_section = setMode(row, mode);
+		if (new_section) { continue; }
+
+		switch (mode)
+		{
+		case CompoundBuilder::INACTIVE:
+			break;
+		case CompoundBuilder::ATOMS:
+			//topology.addAtomsdataEntry(atol(row[0].c_str()), row[1], atol(row[2].c_str()));
+			break;
+		case CompoundBuilder::BOND:
+			topology.addBondsdataEntry(atol(row[0].c_str()), atol(row[1].c_str()), atoi(row[2].c_str()));
+			break;
+		case CompoundBuilder::ANGLE:
+			break;
+		case CompoundBuilder::DIHEDRAL:
+			break;
+		default:
+			break;
+		}
+	}
+	return topology;
+}
 
 vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file segmentation, DANGEROUS!
 {
@@ -341,6 +422,9 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 	string space_delimiter = " ";
 
 	vector<vector<string>> records;
+
+	auto rows = Filehandler::readFile(path, { ';', '#' }, { "[", "]" });
+
 
 	while (getline(file, line)) {
 		vector<string> record;
@@ -359,13 +443,6 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 				continue;
 		}
 		records.push_back(record);
-	}
-
-	for (auto& record : records) {
-		for (auto& w : record) {
-			//cout << w << " ";
-		}
-		//printf("\n");
 	}
 	return records;
 }

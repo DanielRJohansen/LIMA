@@ -20,10 +20,16 @@ namespace EngineUtils {
 		}
 	}
 
-	__device__ __host__ static inline float calcHyperDist(const Float3* p1, const Float3* p2) {
+	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
 		applyHyperpos(p1, &temp);
 		return (*p1 - temp).len();
+	}
+
+	__device__ __host__ static float calcHyperDistDenormalized(const Float3* p1, const Float3* p2) {
+		Float3 temp = *p2;
+		applyHyperpos(p1, &temp);
+		return (*p1 - temp).len() * NORMALIZER;
 	}
 
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
@@ -49,9 +55,9 @@ namespace EngineUtils {
 		}
 	}
 
-	__device__ __host__ static void applyABC(Coord* pos) {
+	//__device__ __host__ static void applyABC(Coord* pos) {
 
-	}
+	//}
 
 	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
 		const float R = 8.3144;								// Ideal gas constants - J/(Kelvin*mol)

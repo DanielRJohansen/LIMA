@@ -8,20 +8,20 @@
 #include <algorithm>
 
 
-bool coordPrecesionBenchmark() {
-	Float3 pos1{ 3.5, 4, 4 };
-	Float3 pos2{ 4, 4, 4 };
-
-	Coord c1{ pos1 };
-	Coord c2{ pos2 };
-
-	double dist_c = sqrt(c1.distSqAbs(&c2));
-	double dist_f = (pos1 - pos2).len();
-
-	printf("dist_c %.12f dist_f %.12f\n", dist_c, dist_f);
-
-	return true;
-}
+//bool coordPrecesionBenchmark() {
+//	Float3 pos1{ 3.5, 4, 4 };
+//	Float3 pos2{ 4, 4, 4 };
+//
+//	Coord c1{ pos1 };
+//	Coord c2{ pos2 };
+//
+//	double dist_c = sqrt(c1.distSqAbs(&c2));
+//	double dist_f = (pos1 - pos2).len();
+//
+//	printf("dist_c %.12f dist_f %.12f\n", dist_c, dist_f);
+//
+//	return true;
+//}
 
 bool basicBenchmark(Environment& env) {
 	const string conf_path = "C:/PROJECTS/Quantom/Simulation/Molecule/conf.gro";

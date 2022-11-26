@@ -20,7 +20,7 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 
 	this->work_folder = work_folder;
 
-	prepFF(conf_path, topol_path);
+	//prepFF(conf_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	CompoundBuilder compoundbuilder(&forcefield, V1);

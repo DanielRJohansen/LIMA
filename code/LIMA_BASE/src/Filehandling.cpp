@@ -14,14 +14,25 @@ bool Filehandler::ignoreRow(vector<char> ignores, string line) {
 	return false;
 }
 
+bool Filehandler::ignoreWord(vector<string> ignores, string word) {
+	if (word.length() == 0)
+		return true;
+	for (auto elem : ignores) {
+		if (word == elem)
+			return true;
+	}
+	return false;
+}
 
-vector<vector<string>> Filehandler::readFile(string path, int end_at, bool verbose) {
+
+// Uses ';' and ' ' as delimiters
+vector<vector<string>> Filehandler::readFile(string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
 	if (verbose) { cout << "Reading file " << path << endl; }
 	fstream file;
 	file.open(path);
 
 
-	vector<char> ignores = { ';', '/' };
+
 
 	vector<vector<string>> rows;
 	int row_cnt = 0;
@@ -29,8 +40,7 @@ vector<vector<string>> Filehandler::readFile(string path, int end_at, bool verbo
 
 	string line;
 	while (getline(file, line)) {
-
-		if (ignoreRow(ignores, line)) {
+		if (ignoreRow(comment_markers, line)) {
 			ignore_cnt++;
 			continue;
 		}
@@ -40,9 +50,11 @@ vector<vector<string>> Filehandler::readFile(string path, int end_at, bool verbo
 		string element, element_nested;
 		while (getline(ss, element, ' ')) {
 			stringstream ss2 = stringstream(element);
-			while (getline(ss2, element_nested, ';')) {
-				if (element_nested.length() > 0)
+			while (getline(ss2, element_nested, ';')) { 
+
+				if (!ignoreWord(ignores, element_nested)) {
 					row.push_back(element_nested);
+				}
 			}
 		}
 

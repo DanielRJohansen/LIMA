@@ -227,47 +227,47 @@ struct Double3 {
 	double x = 0, y = 0, z = 0;
 };
 
-// LIMA Coordinate3
-struct Coord {
-	uint32_t x = 0, y = 0, z = 0;
-
-	__device__ Coord(Float3 pos_abs) {
-		x = static_cast<uint32_t>((pos_abs.x / BOX_LEN) * 8.f * 32.f * 128.f * 256.f * 512.f);
-		y = static_cast<uint32_t>((pos_abs.y / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
-		z = static_cast<uint32_t>((pos_abs.z / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
-	}
-	__host__ __device__ Coord(uint32_t x, uint32_t y, uint32_t z) : x(x), y(y), z(z) {}
-
-	inline Coord operator * (const uint32_t a) { return Coord{ x * a, y * a, z * a }; }
-
-	
-
-	__host__ __device__ float distSqAbs(Coord* a) {
-		// Calc distances along all three dimensions, and convert to Float3
-		Coord diff = this->difference(a);
-		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
-
-		// Calc distances along all three dimensions in x/(2^32)
-		diff_f *= BOX_LEN;
-		uint32_t uu = 0u -1;
-		float f = static_cast<float>(0u-1);
-		diff_f = diff_f / static_cast<float>(0u - 1);
-
-		return diff_f.lenSquared();
-	}
-private:
-
-	bool isSqLegal() {
-		
-	}
-	__host__ __device__ Coord difference(Coord* a) const {
-		return Coord{
-			std::max(x, a->x) - std::min(x, a->x),
-			std::max(y, a->y) - std::min(y, a->y),
-			std::max(z, a->z) - std::min(z, a->z)
-		};
-	}
-};
+//// LIMA Coordinate3
+//struct Coord {
+//	uint32_t x = 0, y = 0, z = 0;
+//
+//	__device__ Coord(Float3 pos_abs) {
+//		x = static_cast<uint32_t>((pos_abs.x / BOX_LEN) * 8.f * 32.f * 128.f * 256.f * 512.f);
+//		y = static_cast<uint32_t>((pos_abs.y / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
+//		z = static_cast<uint32_t>((pos_abs.z / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
+//	}
+//	__host__ __device__ Coord(uint32_t x, uint32_t y, uint32_t z) : x(x), y(y), z(z) {}
+//
+//	inline Coord operator * (const uint32_t a) { return Coord{ x * a, y * a, z * a }; }
+//
+//	
+//
+//	__host__ __device__ float distSqAbs(Coord* a) {
+//		// Calc distances along all three dimensions, and convert to Float3
+//		Coord diff = this->difference(a);
+//		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
+//
+//		// Calc distances along all three dimensions in x/(2^32)
+//		diff_f *= BOX_LEN;
+//		uint32_t uu = 0u -1;
+//		float f = static_cast<float>(0u-1);
+//		diff_f = diff_f / static_cast<float>(0u - 1);
+//
+//		return diff_f.lenSquared();
+//	}
+//private:
+//
+//	bool isSqLegal() {
+//		
+//	}
+//	__host__ __device__ Coord difference(Coord* a) const {
+//		return Coord{
+//			std::max(x, a->x) - std::min(x, a->x),
+//			std::max(y, a->y) - std::min(y, a->y),
+//			std::max(z, a->z) - std::min(z, a->z)
+//		};
+//	}
+//};
 
 struct BoundingBox {
 	BoundingBox() {}

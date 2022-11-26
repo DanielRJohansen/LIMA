@@ -25,7 +25,7 @@ struct ParsedLine {
 };
 
 
-
+struct Topology;
 
 
 using namespace std;
@@ -56,6 +56,8 @@ private:
 	//uint32_t** bonded_interactions_list;	// Contains each particles list of (larger) ids of particles with which it shares a bonded interaction
 	//LJ_Ignores* bonded_interactions_list = nullptr;
 
+	// Count to keep track of multiple topol sections named "dihedral". This can be done smarter..
+	int dihedral_sections_count = 0;
 
 
 	struct Record_ATOM;
@@ -64,8 +66,8 @@ private:
 	void calcParticleSphere(Compound* compound);
 
 
-	enum TopologyMode { INACTIVE, BOND, ANGLE, DIHEDRAL };
-	TopologyMode setMode(string entry);
+	enum TopologyMode { INACTIVE, ATOMS, BOND, ANGLE, DIHEDRAL };
+	bool setMode(vector<string> entry, TopologyMode& current_mode);
 	void loadMaps(ParticleRef* maps, vector<string>* record, int n);
 	void addGeneric(Molecule* molecule, vector<string>* record, TopologyMode mode);
 	void addBond(Molecule* molecule, ParticleRef* maps, vector<string>* record);
@@ -74,12 +76,14 @@ private:
 	void distributeLJIgnores(Molecule* molecule, ParticleRef* maps, int n);
 	//bool checkIfFirstBondedInteraction(Molecule* molecule, ParticleRef* maps, int n);
 
+	void assignMoleculeIDs(vector<Record_ATOM>& atom_data, Topology& topology);
 
 	ParsedLine parseLine(int line_index);
 	ParsedLine parseAtom(string line);
 	ParsedLine parseConnection(string line);
 
 	vector<vector<string>> parseTOP(string path);
+	Topology parseTop1(string path);
 	vector<Record_ATOM> parsePDB(string path);
 	vector<Record_ATOM> parseGRO(string path);
 
@@ -147,6 +151,7 @@ private:
 		int residue_seq_number = 0;
 		char code_for_insertions_of_residues = 0;
 		Float3 coordinate;						// [nm]
+		int moleculeID = -1;	// Given by LIMA
 	};
 
 
@@ -158,3 +163,30 @@ private:
 
 
 
+struct Topology {
+
+	void addAtomsdataEntry(uint32_t nr, string type, uint32_t res_nr) { atoms_data.push_back({ nr, type, res_nr }); }
+	void addBondsdataEntry(uint32_t ai, uint32_t aj, int funct) { bonds_data.push_back({ ai, aj, funct }); }
+
+private:
+
+
+	// Data types templated directly on GMX default .top files sections
+	struct atoms_data_entry {
+		uint32_t nr{};
+		string type{};
+		uint32_t res_nr{};
+	};
+
+	struct bonds_data_entry {
+		uint32_t ai{};
+		uint32_t aj{};
+		int funct{};
+	};
+
+	vector<atoms_data_entry> atoms_data;
+	vector<bonds_data_entry> bonds_data;
+
+
+
+};

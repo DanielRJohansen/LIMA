@@ -45,7 +45,7 @@ bool doPoolBenchmark(Environment& env) {
 	float dt = env.getSimparamRef()->dt;
 
 	//float particle_temps[] = { 10.f, 100.f, 200.f, 273.f, 300.f, 500.f };	// Simulated temp of a single particle
-	float particle_temps[] = { 200000 };
+	float particle_temps[] = { 1000 };
 	for (auto temp : particle_temps) {
 		env.CreateSimulation(conf, topol, work_folder);
 		auto* box = env.getSim()->box;
@@ -69,12 +69,14 @@ bool doPoolBenchmark(Environment& env) {
 
 int main() {
 
+
+
 	/*coordPrecesionBenchmark();
 	return 0;*/
 	Environment env;
 
-	basicBenchmark(env);
-	//doPoolBenchmark(env);
+	//basicBenchmark(env);
+	doPoolBenchmark(env);
 
 	return 0;
 }

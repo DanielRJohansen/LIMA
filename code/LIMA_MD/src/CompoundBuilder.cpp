@@ -2,7 +2,7 @@
 
 #include "Printer.h"
 
-#include <array>
+#include <algorithm>
 
 using namespace LIMA_Print;
 
@@ -15,11 +15,17 @@ Molecule CompoundBuilder::buildMolecule(string gro_path, string top_path, int ma
 	compound_bridge_bundle = new CompoundBridgeBundle;
 	particle_id_maps = new ParticleRef[MAX_ATOMS];
 
-	vector<Record_ATOM> atom_data = parseGRO(gro_path);
+	atom_data = parseGRO(gro_path);
 	vector<vector<string>> top_data = parseTOP(top_path);
-	Topology topology = parseTop1(top_path);
+	topology = parseTop1(top_path);
 
-	assignMoleculeIDs(atom_data, topology);
+
+	// Input:	residue_seq_id
+	// Output:	0-indexed index of first atom belonging to that residue
+	residueId_to_firstatomindex = makeResidueIdToAtomindexMap();
+	bonded_atoms = makeBondedatomsLUT();
+
+	assignMoleculeIDs();
 
 	Molecule molecule;
 
@@ -158,30 +164,32 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 void CompoundBuilder::loadTopology(Molecule* molecule, vector<vector<string>>* top_data)
 {
-	//molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
+	molecule->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
-	//int dihedral_cnt = 0;
-	//TopologyMode mode = INACTIVE;
-	//for (vector<string> record : *top_data) {
-	//	if (record.size() == 0) {
-	//		mode = INACTIVE;
-	//		continue;
-	//	}
+	int dihedral_cnt = 0;
+	TopologyMode mode = INACTIVE;
+	for (vector<string> record : *top_data) {
+		if (record.size() == 0) {
+			mode = INACTIVE;
+			continue;
+		}
+		bool new_section = setMode(record, mode);
+		if (new_section) { continue; }
 
-	//	if (mode == INACTIVE) {
-	//		mode = setMode(record[0]);
+		//if (mode == INACTIVE) {
+		//	mode = setMode(record[0]);
 
-	//		if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the bottom dihedral bonds, as i think they are IMPROPER DIHEDRALS
-	//			dihedral_cnt++;
+		//	if (mode == DIHEDRAL)			// Bad fix, but for now we ignore the bottom dihedral bonds, as i think they are IMPROPER DIHEDRALS
+		//		dihedral_cnt++;
 
-	//		continue;
-	//	}
-	//	if (mode == DIHEDRAL && dihedral_cnt > 1)
-	//		continue;
+		//	continue;
+		//}
+		//if (mode == DIHEDRAL && dihedral_cnt > 1)
+		//	continue;
 
-	//	addGeneric(molecule, &record, mode);
-	//}
+		addGeneric(molecule, &record, mode);	// CANNOT ADD DIHEDRALS RIGHT NOW; DUE TO THE SECOND DIHEDRAL SECTION ALREADY BEING NOTED IN ANOTHER FUNCTION!! DANGER DANGER!
+	}
 }
 
 
@@ -214,8 +222,7 @@ bool CompoundBuilder::setMode(vector<string>& row, TopologyMode& current_mode)
 void CompoundBuilder::loadMaps(ParticleRef* maps, vector<string>* record, int n) {
 	for (int i = 0; i < n; i++) {
 		maps[i] = particle_id_maps[stoi((*record)[i])];
-	}
-		
+	}		
 }
 
 void CompoundBuilder::addGeneric(Molecule* molecule, vector<string>* record, TopologyMode mode) {
@@ -353,21 +360,29 @@ void CompoundBuilder::distributeLJIgnores(Molecule* molecule, ParticleRef* parti
 	}
 }
 
-void CompoundBuilder::assignMoleculeIDs(vector<Record_ATOM>& atom_data, Topology& topology)
+void CompoundBuilder::assignMoleculeIDs()
 {
 	vector<uint32_t> residueID_to_moleculeID;
-	residueID_to_moleculeID.reserve(atom_data.size() + 10);
+	// Worst case scenario where each residue is a separate atom and a separate molecule (so solvents)
+	residueID_to_moleculeID.resize(atom_data.size() + 1);	
 
 	uint32_t current_molecule_id = 0;
 
 	// Residue 1 (GMX 1-indexed) is always the first molecule (LIMA 0-indexed)
 	residueID_to_moleculeID[1] = current_molecule_id;
 	
+
+	
+
+
+
 	uint32_t residue_id_left = 1;
 	uint32_t residue_id_right = 2;
 
 	while (residue_id_right <= atom_data.back().residue_seq_number) {
-		if (!areResiduesBonded(residue_id_left, residue_id_right, atom_data, topology)) { current_molecule_id++; }
+		if (!areResiduesBonded(residue_id_left, residue_id_right)) { 
+			current_molecule_id++; 
+		}
 
 		residueID_to_moleculeID[residue_id_right] = current_molecule_id;
 		residue_id_left++;
@@ -377,6 +392,63 @@ void CompoundBuilder::assignMoleculeIDs(vector<Record_ATOM>& atom_data, Topology
 	for (auto& record : atom_data) {
 		record.moleculeID = residueID_to_moleculeID[record.residue_seq_number];
 	}
+}
+
+// This function assumes that the bonds in the topol.top file are always smallest on left side.
+bool CompoundBuilder::areResiduesBonded(uint32_t res1, uint32_t res2)
+{
+	uint32_t res1_firstatom_index = residueId_to_firstatomindex[res1];
+	for (int i = res1_firstatom_index; i < atom_data.size(); i++) {
+		if (atom_data[i].residue_seq_number != res1) { return false; }	// Finished, no match
+
+
+		uint32_t atom_id = atom_data[i].atom_serial_number;	// GMX 1-indexed
+		auto& atom_bonds_to = bonded_atoms[atom_id];
+
+		uint32_t res2_firstatom_index = residueId_to_firstatomindex[res2];
+		for (int j = res2_firstatom_index; j < atom_data.size(); j++) {
+
+			if (atom_data[j].residue_seq_number != res2) { return false; }	// Finished, no match
+
+			uint32_t atom_id_query = atom_data[j].atom_serial_number;
+			if (find(atom_bonds_to.begin(), atom_bonds_to.end(), atom_id_query) != atom_bonds_to.end()) {	// If found
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+
+vector<uint32_t> CompoundBuilder::makeResidueIdToAtomindexMap()
+{
+	vector<uint32_t> residueIdToAtomindexMap;
+	// Worst case where every residue contains 1 atom (So solvent e.g.). +1 for GMX 1-indexing
+	residueIdToAtomindexMap.resize(atom_data.size() + 1);	
+
+	int64_t currentResidueID = -1;
+
+	for (uint32_t i = 0; i < atom_data.size(); i++) {
+		auto& elem = atom_data[i];
+
+		if (elem.residue_seq_number != currentResidueID) {
+			currentResidueID = elem.residue_seq_number;
+			residueIdToAtomindexMap[elem.residue_seq_number] = i;
+		}
+	}
+	return residueIdToAtomindexMap;
+}
+
+vector<vector<uint32_t>> CompoundBuilder::makeBondedatomsLUT()
+{
+	vector<vector<uint32_t >> bondedatoms_lut;
+	bondedatoms_lut.resize(atom_data.size() + 1);	// +1 to account for GMX 1-indexing
+
+	for (auto& elem : topology.bonds_data) {
+		bondedatoms_lut[elem.ai].push_back(elem.aj);
+	}	
+	return bondedatoms_lut;
 }
 
 

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fstream>
 #include <vector>
+#include <array>
 
 #include "Constants.cuh"
 #include "Forcefield.cuh"
@@ -25,9 +26,31 @@ struct ParsedLine {
 };
 
 
-struct Topology;
+struct Topology {
+
+	void addAtomsdataEntry(uint32_t nr, string type, uint32_t res_nr) { atoms_data.push_back({ nr, type, res_nr }); }
+	void addBondsdataEntry(uint32_t ai, uint32_t aj, int funct) { bonds_data.push_back({ ai, aj, funct }); }
 
 
+	// Data types templated directly on GMX default .top files sections
+	struct atoms_data_entry {
+		uint32_t nr{};
+		string type{};
+		uint32_t res_nr{};
+	};
+
+	struct bonds_data_entry {
+		uint32_t ai{};
+		uint32_t aj{};
+		int funct{};
+	};
+
+	vector<atoms_data_entry> atoms_data;
+	vector<bonds_data_entry> bonds_data;
+};
+
+
+// The compound-builder must be unique to a single conf.gro-topol.top file pair!
 using namespace std;
 class CompoundBuilder
 {
@@ -67,7 +90,7 @@ private:
 
 
 	enum TopologyMode { INACTIVE, ATOMS, BOND, ANGLE, DIHEDRAL };
-	bool setMode(vector<string> entry, TopologyMode& current_mode);
+	bool setMode(vector<string>& entry, TopologyMode& current_mode);
 	void loadMaps(ParticleRef* maps, vector<string>* record, int n);
 	void addGeneric(Molecule* molecule, vector<string>* record, TopologyMode mode);
 	void addBond(Molecule* molecule, ParticleRef* maps, vector<string>* record);
@@ -76,7 +99,20 @@ private:
 	void distributeLJIgnores(Molecule* molecule, ParticleRef* maps, int n);
 	//bool checkIfFirstBondedInteraction(Molecule* molecule, ParticleRef* maps, int n);
 
-	void assignMoleculeIDs(vector<Record_ATOM>& atom_data, Topology& topology);
+
+
+	// Topology related stuff
+	void assignMoleculeIDs();
+	bool areResiduesBonded(uint32_t res1, uint32_t res2);
+	uint32_t getFirstAtomindexOfRes(vector<Record_ATOM>& atom_data, uint32_t res_id);
+	vector<uint32_t> makeResidueIdToAtomindexMap();
+	vector<vector<uint32_t>> makeBondedatomsLUT();
+
+	vector<uint32_t> residueId_to_firstatomindex;	// GMX 1-indexing
+	vector<vector<uint32_t>> bonded_atoms;		// GMX 1-indexing
+
+	Topology topology;
+	vector<Record_ATOM> atom_data;
 
 	ParsedLine parseLine(int line_index);
 	ParsedLine parseAtom(string line);
@@ -163,30 +199,3 @@ private:
 
 
 
-struct Topology {
-
-	void addAtomsdataEntry(uint32_t nr, string type, uint32_t res_nr) { atoms_data.push_back({ nr, type, res_nr }); }
-	void addBondsdataEntry(uint32_t ai, uint32_t aj, int funct) { bonds_data.push_back({ ai, aj, funct }); }
-
-private:
-
-
-	// Data types templated directly on GMX default .top files sections
-	struct atoms_data_entry {
-		uint32_t nr{};
-		string type{};
-		uint32_t res_nr{};
-	};
-
-	struct bonds_data_entry {
-		uint32_t ai{};
-		uint32_t aj{};
-		int funct{};
-	};
-
-	vector<atoms_data_entry> atoms_data;
-	vector<bonds_data_entry> bonds_data;
-
-
-
-};

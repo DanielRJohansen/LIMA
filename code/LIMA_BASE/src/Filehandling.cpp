@@ -4,7 +4,7 @@
 
 using namespace std;
 
-bool Filehandler::ignoreRow(vector<char> ignores, string line) {
+bool Filehandler::ignoreRow(const vector<char>& ignores, const string& line) {
 	if (line.length() == 0)
 		return true;
 	for (char c : ignores) {
@@ -14,7 +14,7 @@ bool Filehandler::ignoreRow(vector<char> ignores, string line) {
 	return false;
 }
 
-bool Filehandler::ignoreWord(vector<string> ignores, string word) {
+bool Filehandler::ignoreWord(const vector<string>& ignores, const string& word) {
 	if (word.length() == 0)
 		return true;
 	for (auto elem : ignores) {
@@ -26,7 +26,7 @@ bool Filehandler::ignoreWord(vector<string> ignores, string word) {
 
 
 // Uses ';' and ' ' as delimiters
-vector<vector<string>> Filehandler::readFile(string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
+vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
 	if (verbose) { cout << "Reading file " << path << endl; }
 	fstream file;
 	file.open(path);
@@ -72,7 +72,7 @@ vector<vector<string>> Filehandler::readFile(string path, vector<char> comment_m
 	return rows;
 }
 
-map<string, double> Filehandler::parseINIFile(string path) {
+map<string, double> Filehandler::parseINIFile(const string path) {
 	// TODO: add read here
 	//if (verbosity_level >= V1) { cout << "Reading particles from file " << path << "\n"; }
 	fstream file;

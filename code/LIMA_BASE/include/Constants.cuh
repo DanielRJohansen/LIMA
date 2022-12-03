@@ -9,12 +9,14 @@
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-const int RAMPUP_STEPS = 0;				// Set to 0 to disable
+const int RAMPUP_STEPS = 0;					// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
 
 constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
-constexpr float CUTOFF = 0.9f;	//nm/
+
+constexpr float LIMA_SCALE = 1e-6;			// size of 1 lima unit in nm or ns or whatever
+constexpr float CUTOFF = 1.1f / LIMA_SCALE;				// nm
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -23,11 +25,14 @@ constexpr float CUTOFF = 0.9f;	//nm/
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr float BOX_LEN = 7.f;		// Must be > twice the len of largest compound
+constexpr float BOX_LEN = 7.f * 1e+6f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 //constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
-constexpr float NORMALIZER = BOX_LEN * 2.f;
+constexpr float NORMALIZER = BOX_LEN;
 constexpr float NORMALIZER_SQ = NORMALIZER*NORMALIZER;
+
+constexpr float BOX_LEN_RELATIVE = BOX_LEN / NORMALIZER;
+constexpr float BOX_LEN_RELATIVE_HALF = BOX_LEN_RELATIVE / 2.f;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -106,7 +111,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.01f / static_cast<float>(STEPS_PER_THE
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 5;
+const int STEPS_PER_RENDER = 10;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //

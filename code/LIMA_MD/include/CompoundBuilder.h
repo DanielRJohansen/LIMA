@@ -129,23 +129,7 @@ private:
 	ResidueComboId parseResidueID(string s);
 	inline bool isAsciiNumber(char c) { return (c > 47 && c < 58); }
 	void countElements(Molecule* molecule);
-	vector<string> splitAtomnameFromId(vector<string> words) {
-		vector<string> words_;
-		words_.push_back(words.at(0));
-		if (words.at(1)[0] == 'O') {	// This is the most painful code i've been forced to write my entire life..
-			words_.push_back("OW");
-			words_.push_back(&words.at(1)[2]);
-		}
-		else {
-			words_.push_back("HW");		// should be followed by 1 or 2, too lazy to implement
-			words_.push_back(&words.at(1)[3]);
-		}
-		for (int i = 2; i < 5; i++)
-			words_.push_back(words.at(i));
-		
-		return words_;
-
-	}
+	vector<string> splitAtomnameFromId(vector<string> words);
 
 
 

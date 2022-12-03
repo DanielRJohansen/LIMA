@@ -21,14 +21,14 @@ __host__ Float3 Compound::calcCOM() {
 	return com;
 }
 
-__host__ void Compound::addParticle(int atomtype_id, Float3 pos) {
+__host__ void Compound::addParticle(int atomtype_id, Float3 pos) {	// TODO: Delete?
 	if (n_particles == MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
 	}
 
 	atom_types[n_particles] = atomtype_id;
-	prev_positions[n_particles] = pos;
+	prev_positions[n_particles] = pos * LIMA_SCALE;
 	n_particles++;
 }
 

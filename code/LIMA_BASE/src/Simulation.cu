@@ -49,7 +49,7 @@ void Simulation::copyBoxVariables() {
 }
 
 Simulation::Simulation(SimulationParams& sim_params) :
-	dt(sim_params.dt),
+	dt(sim_params.dt),	// convert [ns] to [fs]
 	n_steps(sim_params.n_steps)
 {
 	box = new Box();
@@ -93,6 +93,6 @@ void Simulation::deleteBoxMembers() {
 }
 
 void SimulationParams::overloadParams(std::map<std::string, double>& dict) {
-	overloadParam(dict, &dt, "dt", 1e-6f);
+	overloadParam(dict, &dt, "dt");
 	overloadParam(dict, &n_steps, "n_steps");
 }

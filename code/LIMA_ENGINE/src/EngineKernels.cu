@@ -42,11 +42,15 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	//float dist_abs = sqrtf(dist_sq) * NORMALIZER;
 
 
-	*potE += 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ;
+	*potE += 4. * epsilon * s * (s - 1.f) * NORMALIZER_SQ * 0.5;
 
-	//printf("eps %f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
+	//printf("eps %.10f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
 	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
 		printf("dist %f    s %f    eps %f    pot %f\n", sqrtf(dist_sq), s, epsilon, 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ);*/
+	//if (threadIdx.x == 0 && blockIdx.x == 0) {
+	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
+	//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
+	//}
 #ifdef LIMA_VERBOSE
 	Float3 ddd = (*pos1 - *pos0) * force_scalar;
 	if (ddd.x != ddd.x) {
@@ -361,47 +365,34 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	//Float3 x_rel = *pos / BOX_LEN;
 	//Float3 x_new_rel = x_rel + x_ / BOX_LEN;
 	//Float3 x_new_abs = x_new_rel * BOX_LEN;
-	*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	//double x = ((double)pos->x - (double)pos_tsub1->x) + (double)force->x * dt * (dt / static_cast<double>(mass));
+	double x = pos->x;
+	double dx = pos->x - pos_tsub1->x;
+	double ddx = force->x * dt * dt / static_cast<double>(mass);
+	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	pos->x = x + dx + ddx;
+
 
 	//Double3 pos_d{ *pos };
 
-
-	
+	if (threadIdx.x + blockIdx.x == 0) {
+		//printf("step %d f %f\n", 0, force->x);
+		float actual_x = x * NORMALIZER * LIMA_SCALE;
+		double diff = (double)pos->x - x - dx;
+		printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", x, dx, force->x, ddx, dx + ddx, diff);
+	}
 	////*pos += x_;
 	////*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
 	//if (print && threadIdx.x == 1) {
 	//	//printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
 	//	//x.print();
-	//	printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", pos->len(), dx.len(), force->len(), ddx.len(), x_.len(), (*pos - *pos_tsub1).len() - prev_vel);
+	
 	//		//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", x_rel.len(), dx.len(), ddx.len(), x_.len(), ((x_new_abs) - *pos).len());
 	//	//pos->print('f');
 	//	//pos_new.print('d');
 	//}
 
 	*pos_tsub1 = temp;
-//
-//	double d = force->len();
-////	double acc = d* dt / mass * dt;
-//
-//
-//	
-//	Float3 delta_pos = *pos - *pos_tsub1;
-//	*pos = *pos_tsub1 + delta_pos * *thermostat_scalar;
-//
-//	
-//	{
-//		float mass2 = 2.f * mass;
-//		float mass_inv = 1.f / mass;
-//		float dtdivm = dt / static_cast<double>(mass);
-//		float fdt = force->mul_highres(dt).len();
-//		//printf("dt/mass %.8f   fdt %.8f ddx %.8f    x_ %f\n", dtdivm, fdt, ddx.len(), x_.len());
-//		//printf("mass %f dt^2/mass %.8f, dt %.8f ddx %.8f   \n", mass, dt / mass * dt, dt, ddx);
-//	}
-	
-
-	//if (delta_pos.len() > 0.05) {
-	//	printf("\nSol: %d b %d t %d.      Distance/step: %f prev: %f    Force: %f\n", issolvent, blockIdx.x, threadIdx.x, delta_pos.len(), prev_vel, force->len());
-	//}
 
 #ifdef LIMA_VERBOSE
 	if ((*pos - *pos_tsub1).len() > 0.1) {

@@ -13,10 +13,11 @@ namespace ForceCalc {
 
 namespace EngineUtils {
 	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
-		//#pragma unroll
 		for (int i = 0; i < 3; i++) {
-			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
-			*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
+			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			*movable_particle->placeAt(i) += BOX_LEN_RELATIVE * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_RELATIVE_HALF);
+			*movable_particle->placeAt(i) -= BOX_LEN_RELATIVE * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_RELATIVE_HALF);
 		}
 	}
 
@@ -40,8 +41,10 @@ namespace EngineUtils {
 
 	__device__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
 		for (int dim = 0; dim < 3; dim++) {
-			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
+			/**current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);*/
+			*current_position->placeAt(dim) += BOX_LEN_RELATIVE * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN_RELATIVE * (current_position->at(dim) > BOX_LEN_RELATIVE);
 		}
 	}
 

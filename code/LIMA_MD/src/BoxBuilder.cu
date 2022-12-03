@@ -27,7 +27,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 }
 
 void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
-	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);
+	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
 	Float3 offset = desired_molecule_center - molecule->calcCOM();
 
 	printf("Molecule offset for centering: ");
@@ -196,10 +196,10 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 {
 	compound->init();
 	CompoundState* state = &simulation->box->compound_state_array[simulation->box->n_compounds];
-	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f / BOX_LEN;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound->n_particles; i++) {
-		state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here
+		state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
 		state->n_particles++;
 	}
 
@@ -213,7 +213,7 @@ void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
 }
 
 Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
-	com = com / NORMALIZER;
+	com = com / NORMALIZER * 1e+6;	// concvert to normalized [fm]
 	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR / NORMALIZER;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
 	return Solvent(com, com - solvent_vel * dt);
 }

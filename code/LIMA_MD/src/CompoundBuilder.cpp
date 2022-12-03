@@ -99,7 +99,7 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 	vector<Float3> solvent_positions;
 	for (Record_ATOM record : atom_data) {
 		if (record.residue_name == "SOL" && record.atom_name[0] == 'O') {	// Easy solution, just say Oxygen is the center of the solvent. Ignore the hydrogens
-			solvent_positions.push_back(record.coordinate);
+			solvent_positions.push_back(record.coordinate / LIMA_SCALE);
 		
 		}
 	}
@@ -109,8 +109,9 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::Record_ATOM>* pdb_data, int max_residue_id, int min_residue_id, bool ignore_protons) {
 	int current_res_id = -1;
 	int current_compound_id = -1;
+	int current_molecule_id = -1;
 	Compound* current_compound = nullptr;
-	//int prev_atom_id;
+
 
 
 	for (Record_ATOM record : *pdb_data) {
@@ -123,12 +124,14 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 
 		if (record.residue_name == "SOL") { continue; }		
 
+		bool new_molecule = record.moleculeID != current_molecule_id;
+		current_molecule_id = record.moleculeID;
 
 		if (record.residue_seq_number != current_res_id) {
-			if (current_compound == nullptr || !current_compound->hasRoomForRes()) {	// TODO: Make this better............. probe how many particles beforehand
+			if (current_compound == nullptr || !current_compound->hasRoomForRes() || new_molecule) {	// TODO: Make this better............. probe how many particles beforehand
 				//molecule->compound_bridge_bundle.addBridge(current_compound_id, current_compound_id + 1);
 
-				if (current_compound_id != -1)		// Dont add bridge to first compound
+				if (current_compound_id != -1 && !new_molecule)		// Dont add bridge to first compound
 					compound_bridge_bundle->addBridge(current_compound_id, current_compound_id + 1);
 
 				current_compound_id++;
@@ -147,17 +150,13 @@ void CompoundBuilder::loadParticles(Molecule* molecule, vector<CompoundBuilder::
 		}
 			
 		particle_id_maps[record.atom_serial_number] = ParticleRef(record.atom_serial_number, current_compound_id, molecule->compounds[current_compound_id].n_particles);
-		//current_compound->addParticle(FFM.atomTypeToIndex(record.atom_name[0]), CompactParticle(record.coordinate));
 
+		current_compound->addParticle(
+			forcefield->getAtomtypeID(record.atom_serial_number),
+			record.coordinate / LIMA_SCALE,
+			forcefield->atomTypeToIndex(record.atom_name[0]),
+			record.atom_serial_number);
 
-		//ParticleParameters pp1 = FFM.getForcefield().particle_parameters[FFM.atomTypeToIndex(record.atom_name[0])];
-		//ParticleParameters pp2 = FFM.getNBForcefield().particle_parameters[FFM.getAtomtypeID(record.atom_serial_number)];
-		//printf("Change: %f %f %f\n\n", pp2.mass / pp1.mass, pp2.sigma / pp1.sigma, pp2.epsilon / pp1.epsilon);
-
-		//current_compound->addParticle(FFM->atomTypeToIndex(record.atom_name[0]), record.coordinate);
-		//current_compound->addParticle(FFM->getAtomtypeID(record.atom_serial_number), record.coordinate);
-		current_compound->addParticle(forcefield->getAtomtypeID(record.atom_serial_number), record.coordinate, forcefield->atomTypeToIndex(record.atom_name[0]), record.atom_serial_number);
-		//record.coordinate.print('p');
 		molecule->n_atoms_total++;
 	}
 }
@@ -600,8 +599,10 @@ vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parseGRO(string path)
 		if (words.size() == 5)
 			words = splitAtomnameFromId(words);									// Disgusting function, and i hate GROMACS for making me do this!
 
-		if (!res.valid || words.size() != 6)
-			continue;
+		if (!res.valid || words.size() != 6) continue;
+
+		if (words[0][0] == ';') continue;
+			
 
 		Record_ATOM record(
 			stoi(words.at(2)),
@@ -659,7 +660,23 @@ void CompoundBuilder::countElements(Molecule* molecule) {
 	printf("%d dihedrals added\n", counters[3]);*/
 }
 
+vector<string> CompoundBuilder::splitAtomnameFromId(vector<string> words) {
+	vector<string> words_;
+	words_.push_back(words.at(0));
+	if (words.at(1)[0] == 'O') {	// This is the most painful code i've been forced to write my entire life..
+		words_.push_back("OW");
+		words_.push_back(&words.at(1)[2]);
+	}
+	else {
+		words_.push_back("HW");		// should be followed by 1 or 2, too lazy to implement
+		words_.push_back(&words.at(1)[3]);
+	}
+	for (int i = 2; i < 5; i++)
+		words_.push_back(words.at(i));
 
+	return words_;
+
+}
 
 
 

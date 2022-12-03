@@ -9,18 +9,16 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
-	//compoundbuilder = new CompoundBuilder(&forcefieldmaker, VerbosityLevel::V3);
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
-	//simulation = new Simulation(sim_params);
 	simulation = std::make_unique<Simulation>(sim_params);
 
 	verifySimulationParameters();
 
 	this->work_folder = work_folder;
 
-	//prepFF(conf_path, topol_path);									// TODO: Make check in here whether we can skip this!
+	prepFF(conf_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	CompoundBuilder compoundbuilder(&forcefield, V1);
@@ -137,7 +135,7 @@ void Environment::run() {
 
 void Environment::postRunEvents() {
 	
-	const std::string out_dir = work_folder + "Steps_" + to_string(simulation->getStep()) + "/";
+	const std::string out_dir = work_folder + "/Steps_" + to_string(simulation->getStep()) + "/";
 
 	std::filesystem::current_path(work_folder);
 	std::filesystem::create_directories(out_dir);
@@ -206,7 +204,7 @@ void Environment::handleStatus(Simulation* simulation) {
 		printf("\r\tStep #%06d", simulation->box->step);
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->n_steps - simulation->box->step) / 60);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min\n", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
+		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
 		engine->timings = Int3(0, 0, 0);
 
 

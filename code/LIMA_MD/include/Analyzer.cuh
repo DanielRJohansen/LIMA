@@ -63,6 +63,7 @@ public:
 	void moveAndPadData(Simulation* sim, uint64_t steps_in_kernel, uint64_t step_offset);
 
 	static void printEnergy(AnalyzedPackage* package);
+	static float getStdDevNorm(std::vector<float>& vec);
 
 private:
 	Engine engine;

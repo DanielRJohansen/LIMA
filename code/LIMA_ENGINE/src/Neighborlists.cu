@@ -197,10 +197,6 @@ namespace NListUtils {
 					if (hashtable_solventneighbors.insert(id_candidate)) {
 						nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::SOLVENT);
 						nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::SOLVENT);
-						//printf("\n");
-						if (id_self == 193) {
-							//printf("Adding id %d with dist %f\n", id_candidate, (nlist_data_collection->solvent_positions[id_self] - nlist_data_collection->solvent_positions[id_candidate]).len());
-						}
 					}
 				}
 

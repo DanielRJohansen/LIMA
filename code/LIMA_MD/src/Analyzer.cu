@@ -44,13 +44,12 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 
 	const int compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int step_offset = step * box->total_particles_upperbound;
-	float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
+	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
 	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - 1) * box->total_particles_upperbound];
 	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + 1) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, SOLVENT_MASS, box->dt * n_steps);
-
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, 12.f * 1e-3f, box->dt * n_steps);
 	float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
@@ -119,7 +118,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	//printf("Analyzer malloc %.4f GB on host\n", sizeof(Float3) * analysable_steps * 1e-9);
 	//Float3* average_energy = new Float3[analysable_steps];
 	std::vector<Float3> average_energy;
-	average_energy.resize(n_steps);
+	average_energy.resize(n_steps - 2);	// Ignore first and last step
 
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
 	uint64_t max_steps_per_kernel = 1000;
@@ -140,7 +139,8 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);	//avg energy PER PARTICLE in compound
 
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
-			uint64_t step = step_offset + ii;	// -1 because index 0 is unused
+			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
+			if (step == -1 || step >= n_steps-2) { continue; }	// Dont save first step, as the kinE is slightly wrong
 			average_energy[step] = (average_solvent_energy[ii] * simulation->box->n_solvents + average_compound_energy[ii] * simulation->total_compound_particles) * (1.f / (simulation->total_particles));
 		}
 		delete[] average_solvent_energy;
@@ -216,7 +216,7 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 
 std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
 	uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
-	
+
 	//Float3* average_compound_energy = new Float3[n_steps];
 	std::vector<Float3> average_compound_energy;
 	average_compound_energy.resize(steps_in_kernel);
@@ -281,6 +281,10 @@ float getStdDev(std::vector<float>& vec) {
 	return static_cast<float>(std::sqrt(mean_err_sq));
 }
 
+float Analyzer::getStdDevNorm(std::vector<float>& vec) {
+	return getStdDev(vec) / vec.front();
+}
+
 void printRow(string title, vector<float>& vec) {
 	LIMA_Printer::printTableRow(
 		title, { 
@@ -296,7 +300,3 @@ void Analyzer::printEnergy(AnalyzedPackage* package) {
 	printRow("kinE", package->kin_energy);
 	printRow("totalE", package->total_energy);
 }
-
-
-
-

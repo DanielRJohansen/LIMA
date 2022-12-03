@@ -13,6 +13,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 	simulation->box->compound_state_array = new CompoundState[MAX_COMPOUNDS];
+	simulation->box->compound_state_array_prev = new CompoundState[MAX_COMPOUNDS];
 	cudaMalloc(&simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS);
 	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
@@ -26,38 +27,40 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->dt = simulation->dt;
 }
 
-void BoxBuilder::addSingleMolecule(Simulation* simulation, Molecule* molecule) {
+void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
 	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
-	Float3 offset = desired_molecule_center - molecule->calcCOM();
+	Float3 offset = desired_molecule_center - compound_collection->calcCOM();
 
-	printf("Molecule offset for centering: ");
+	printf("CompoundCollection offset for centering: ");
 	offset.print(' ');
 	most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
 
-	for (int c = 0; c < molecule->n_compounds; c++) {
-		Compound* compound = &molecule->compounds[c];
+	for (int c = 0; c < compound_collection->n_compounds; c++) {
+		Compound_Carrier* compound = &compound_collection->compounds[c];
 		for (int i = 0; i < compound->n_particles; i++) {
-			compound->prev_positions[i] += offset;
+			//compound->prev_positions[i] += offset;
+			compound->state.positions[i] += offset;
+			compound->state_tsub1.positions[i] += offset;
 		}
 		integrateCompound(compound, simulation);
 	}
 
-	simulation->total_compound_particles = molecule->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
-	simulation->total_particles += molecule->n_atoms_total;
+	simulation->total_compound_particles = compound_collection->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
+	simulation->total_particles += compound_collection->n_atoms_total;
 
 	
-	*simulation->box->bridge_bundle = *molecule->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	*simulation->box->bridge_bundle = *compound_collection->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 
-	simulation->box->bonded_particles_lut_manager = molecule->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
+	simulation->box->bonded_particles_lut_manager = compound_collection->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
 
-	printf("Molecule added to box\n");
+	printf("CompoundCollection added to box\n");
 }
 
-void BoxBuilder::addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies)
-{
-	placeMultipleCompoundsRandomly(simulation, molecule, n_copies);
-	printf("Scattered %d Compounds in box\n", simulation->box->n_compounds);
-}
+//void BoxBuilder::addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies)
+//{
+//	placeMultipleCompoundsRandomly(simulation, molecule, n_copies);
+//	printf("Scattered %d Compounds in box\n", simulation->box->n_compounds);
+//}
 
 void BoxBuilder::finishBox(Simulation* simulation) {
 	// Load meta information
@@ -153,7 +156,7 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 				Float3 solvent_center = Float3(base + dist_between_particles * static_cast<float>(x_index), base + dist_between_particles * static_cast<float>(y_index), base + dist_between_particles * static_cast<float>(z_index));
 				
 				// Randomly offset the particle within 80% of the perfect grid
-				solvent_center += (get3Random() - Float3(0.5)) * 0.8f * dist_between_particles;
+				solvent_center += (get3Random() - Float3(0.5f)) * 0.8f * dist_between_particles;
 
 				if (spaceAvailable(simulation->box, solvent_center)) {
 					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
@@ -192,21 +195,26 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 /*
 * These two funcitons are in charge of normalizing ALL coordinates!!
 */
-void BoxBuilder::integrateCompound(Compound* compound, Simulation* simulation)
+void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simulation)
 {
 	compound->init();
 	CompoundState* state = &simulation->box->compound_state_array[simulation->box->n_compounds];
+	CompoundState* state_prev = &simulation->box->compound_state_array_prev[simulation->box->n_compounds];
 	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound->n_particles; i++) {
-		state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
+		//state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
+		//state->positions[i] = compound->state.positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
+		state->positions[i] = compound->state.positions[i] / NORMALIZER;
 		state->n_particles++;
+
 	}
 
 
 	for (int i = 0; i < compound->n_particles; i++) {
 		Float3 atom_pos_sub1 = state->positions[i] - compound_united_vel * simulation->dt;
-		compound->prev_positions[i] = atom_pos_sub1;												// Overwrite prev pos here, since we have assigned the former prev pos to the state buffer.
+		//compound->prev_positions[i] = atom_pos_sub1;												// Overwrite prev pos here, since we have assigned the former prev pos to the state buffer.
+		state_prev->positions[i] = atom_pos_sub1;
 	}
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
@@ -223,106 +231,107 @@ Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
 
 
 
-void BoxBuilder::placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies)
-{
-	int copies_placed = 0;
-	while (copies_placed < n_copies) {
-		Compound* c = randomizeCompound(template_compound);
+//void BoxBuilder::placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies)
+//{
+//	int copies_placed = 0;
+//	while (copies_placed < n_copies) {
+//		Compound* c = randomizeCompound(template_compound);
+//
+//		if (spaceAvailable(simulation->box, c)) {
+//			integrateCompound(c, simulation);
+//			copies_placed++;
+//		}
+//		delete c;
+//	}
+//
+//
+//	// Temporary check that no to molecules placed are colliding.
+//	for (uint32_t i = 0; i < simulation->box->n_compounds; i++) {
+//		Compound* c = &simulation->box->compounds[i];
+//		for (uint32_t ii = 0; ii < simulation->box->n_compounds; ii++) {
+//			Compound* c2 = &simulation->box->compounds[ii];
+//			if (ii != i) {
+//				if (!verifyPairwiseParticleMindist(c, c2)) {
+//					printf("Illegal compound positioning %d %d\n", i, ii);
+//					exit(0);
+//				}				
+//			}
+//		}
+//	}
+//}
 
-		if (spaceAvailable(simulation->box, c)) {
-			integrateCompound(c, simulation);
-			copies_placed++;
-		}
-		delete c;
-	}
+//Compound* BoxBuilder::randomizeCompound(Compound* original_compound)
+//{
+//	Compound* compound = new Compound;
+//	*compound = *original_compound;
+//
+//	Float3 xyz_rot = get3Random() * (2.f*PI);
+//	//rotateCompound(compound, xyz_rot);
+//
+//
+//	Float3 xyz_target = (get3Random() * 0.6f + Float3(0.2f))* BOX_LEN;
+//	Float3 xyz_mov = xyz_target - original_compound->calcCOM();// calcCompoundCom(original_compound);
+//	moveCompound(compound, xyz_mov);
+//
+//	return compound;
+//}
 
+//void BoxBuilder::moveCompound(Compound* compound, Float3 vector)
+//{
+//	for (int i = 0; i < compound->n_particles; i++) {
+//		compound->prev_positions[i] += vector;
+//		//compound->particles[i].pos_tsub1 += vector;
+//	}		
+//}
+//
+//void BoxBuilder::rotateCompound(Compound* compound, Float3 xyz_rot)
+//{
+//	Float3 vec_to_origo = Float3(0, 0, 0) - compound->calcCOM();
+//	moveCompound(compound, vec_to_origo);
+//
+//	for (int i = 0; i < compound->n_particles; i++) {
+//		compound->prev_positions[i].rotateAroundOrigo(xyz_rot);
+//		//compound->particles[i].pos_tsub1.rotateAroundOrigo(xyz_rot);
+//	}
+//		
+//
+//	moveCompound(compound, vec_to_origo * -1);
+//}
+//
+//BoundingBox BoxBuilder::calcCompoundBoundingBox(Compound* compound)
+//{
+//	BoundingBox bb(Float3(9999, 9999, 9999), Float3(-9999, -9999, -9999));
+//	for (int i = 0; i < compound->n_particles; i++) {
+//		//Float3 pos = compound->particles[i].pos_tsub1;
+//		Float3 pos = compound->prev_positions[i];
+//		for (int dim = 0; dim < 3; dim++) {
+//			*bb.min.placeAt(dim) = std::min(bb.min.at(dim), pos.at(dim));
+//			*bb.max.placeAt(dim) = std::max(bb.max.at(dim), pos.at(dim));
+//		}
+//	}
+//	return bb;
+//}
 
-	// Temporary check that no to molecules placed are colliding.
-	for (uint32_t i = 0; i < simulation->box->n_compounds; i++) {
-		Compound* c = &simulation->box->compounds[i];
-		for (uint32_t ii = 0; ii < simulation->box->n_compounds; ii++) {
-			Compound* c2 = &simulation->box->compounds[ii];
-			if (ii != i) {
-				if (!verifyPairwiseParticleMindist(c, c2)) {
-					printf("Illegal compound positioning %d %d\n", i, ii);
-					exit(0);
-				}				
-			}
-		}
-	}
-}
+//bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
+//{
+//	BoundingBox bb_a = calcCompoundBoundingBox(compound);
+//	bb_a.addPadding(MIN_NONBONDED_DIST);
+//	for (size_t c_index = 0; c_index < box->n_compounds; c_index++) {
+//		BoundingBox bb_b = calcCompoundBoundingBox(&box->compounds[c_index]);
+//
+//		if (bb_a.intersects(bb_b)) {
+//			if (!verifyPairwiseParticleMindist(compound, &box->compounds[c_index]))
+//				return false;			
+//		}
+//	}
+//	return true;
+//}
 
-Compound* BoxBuilder::randomizeCompound(Compound* original_compound)
-{
-	Compound* compound = new Compound;
-	*compound = *original_compound;
-
-	Float3 xyz_rot = get3Random() * (2.f*PI);
-	//rotateCompound(compound, xyz_rot);
-
-
-	Float3 xyz_target = (get3Random() * 0.6f + Float3(0.2f))* BOX_LEN;
-	Float3 xyz_mov = xyz_target - original_compound->calcCOM();// calcCompoundCom(original_compound);
-	moveCompound(compound, xyz_mov);
-
-	return compound;
-}
-
-void BoxBuilder::moveCompound(Compound* compound, Float3 vector)
-{
-	for (int i = 0; i < compound->n_particles; i++) {
-		compound->prev_positions[i] += vector;
-		//compound->particles[i].pos_tsub1 += vector;
-	}		
-}
-
-void BoxBuilder::rotateCompound(Compound* compound, Float3 xyz_rot)
-{
-	Float3 vec_to_origo = Float3(0, 0, 0) - compound->calcCOM();
-	moveCompound(compound, vec_to_origo);
-
-	for (int i = 0; i < compound->n_particles; i++) {
-		compound->prev_positions[i].rotateAroundOrigo(xyz_rot);
-		//compound->particles[i].pos_tsub1.rotateAroundOrigo(xyz_rot);
-	}
-		
-
-	moveCompound(compound, vec_to_origo * -1);
-}
-
-BoundingBox BoxBuilder::calcCompoundBoundingBox(Compound* compound)
-{
-	BoundingBox bb(Float3(9999, 9999, 9999), Float3(-9999, -9999, -9999));
-	for (int i = 0; i < compound->n_particles; i++) {
-		//Float3 pos = compound->particles[i].pos_tsub1;
-		Float3 pos = compound->prev_positions[i];
-		for (int dim = 0; dim < 3; dim++) {
-			*bb.min.placeAt(dim) = std::min(bb.min.at(dim), pos.at(dim));
-			*bb.max.placeAt(dim) = std::max(bb.max.at(dim), pos.at(dim));
-		}
-	}
-	return bb;
-}
-
-bool BoxBuilder::spaceAvailable(Box* box, Compound* compound)
-{
-	BoundingBox bb_a = calcCompoundBoundingBox(compound);
-	bb_a.addPadding(MIN_NONBONDED_DIST);
-	for (size_t c_index = 0; c_index < box->n_compounds; c_index++) {
-		BoundingBox bb_b = calcCompoundBoundingBox(&box->compounds[c_index]);
-
-		if (bb_a.intersects(bb_b)) {
-			if (!verifyPairwiseParticleMindist(compound, &box->compounds[c_index]))
-				return false;			
-		}
-	}
-	return true;
-}
-
-float minDist(Compound* compound, Float3 particle_pos) {
+float minDist(CompoundState& compoundstate, Float3 particle_pos) {
 	float mindist = 999999;
-	for (size_t i = 0; i < compound->n_particles; i++) {
-		float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
+	for (size_t i = 0; i < compoundstate.n_particles; i++) {
+		//float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
+		float dist = EngineUtils::calcHyperDist(&compoundstate.positions[i], &particle_pos);
 		mindist = std::min(mindist, dist);
 	}
 	return mindist;
@@ -332,7 +341,8 @@ bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
 	particle_center = particle_center / NORMALIZER;
 	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
-		if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
+		//if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
+		if (minDist(box->compound_state_array[c_index], particle_center) < MIN_NONBONDED_DIST)
 			return false;
 	}
 	for (int si = 0; si < box->n_solvents; si++) {
@@ -346,20 +356,20 @@ bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 	return true;
 }
 
-bool BoxBuilder::verifyPairwiseParticleMindist(Compound* a, Compound* b)
-{
-	for (int ia = 0; ia < a->n_particles; ia++) {
-		for (int ib = 0; ib < b->n_particles; ib++) {
-			//Float3 pos_a = a->particles[ia].pos_tsub1;
-			//Float3 pos_b = b->particles[ib].pos_tsub1;
-			Float3 pos_a = a->prev_positions[ia];
-			Float3 pos_b = b->prev_positions[ib];
-
-			float dist = (pos_a - pos_b).len();
-			if (dist < MIN_NONBONDED_DIST)
-				return false;
-		}
-	}
-	return true;
-}
+//bool BoxBuilder::verifyPairwiseParticleMindist(Compound* a, Compound* b)
+//{
+//	for (int ia = 0; ia < a->n_particles; ia++) {
+//		for (int ib = 0; ib < b->n_particles; ib++) {
+//			//Float3 pos_a = a->particles[ia].pos_tsub1;
+//			//Float3 pos_b = b->particles[ib].pos_tsub1;
+//			Float3 pos_a = a->prev_positions[ia];
+//			Float3 pos_b = b->prev_positions[ib];
+//
+//			float dist = (pos_a - pos_b).len();
+//			if (dist < MIN_NONBONDED_DIST)
+//				return false;
+//		}
+//	}
+//	return true;
+//}
 

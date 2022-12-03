@@ -3,44 +3,48 @@
 
 
 
-__host__ void Compound::init() {
-	center_of_mass = calcCOM();
-	//printf("")
-	//radius = singlebonds[0].reference_dist * n_particles * 0.5f;
-	//center_of_mass.print('C');
-	//printf("Radius %f\n", radius);
-}
+//__host__ void Compound::init() {
+//	center_of_mass = calcCOM();
+//	//printf("")
+//	//radius = singlebonds[0].reference_dist * n_particles * 0.5f;
+//	//center_of_mass.print('C');
+//	//printf("Radius %f\n", radius);
+//}
 
-__host__ Float3 Compound::calcCOM() {
+Float3 Compound_Carrier::calcCOM() {
 	Float3 com;
 	for (int i = 0; i < n_particles; i++) {
-		com += (prev_positions[i] * (1.f / (float)n_particles));
-		//com += (particles[i].pos_tsub1 * (1.f / (float) n_particles));
+		com += state.positions[i] / static_cast<float>(n_particles);
 	}
-
 	return com;
 }
 
-__host__ void Compound::addParticle(int atomtype_id, Float3 pos) {	// TODO: Delete?
+__host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos) {	// TODO: Delete?
 	if (n_particles == MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
 	}
 
 	atom_types[n_particles] = atomtype_id;
-	prev_positions[n_particles] = pos * LIMA_SCALE;
+	//prev_positions[n_particles] = pos * LIMA_SCALE;
+	state.positions[n_particles] = pos;
+	state_tsub1.positions[n_particles] = state.positions[n_particles];
+
 	n_particles++;
 }
 
-__host__ void Compound::addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
+__host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
 	if (n_particles == MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
 	}
 
+	state.positions[n_particles] = pos;
+	state_tsub1.positions[n_particles] = state.positions[n_particles];
+
 	atom_types[n_particles] = atomtype_id;
-	prev_positions[n_particles] = pos;
 	atom_color_types[n_particles] = atomtype_color_id;
+
 #ifdef LIMA_DEBUGMODE
 	particle_global_ids[n_particles] = global_id;
 	//printf("%d global id\n", global_id);
@@ -48,7 +52,7 @@ __host__ void Compound::addParticle(int atomtype_id, Float3 pos, int atomtype_co
 	n_particles++;
 }
 
-__host__ void Compound::calcParticleSphere() {
+__host__ void Compound_Carrier::calcParticleSphere() {
 	Float3 com = calcCOM();// calcCOM(compound);
 
 	//float furthest = LONG_MIN;
@@ -58,7 +62,7 @@ __host__ void Compound::calcParticleSphere() {
 	int closest_index = 0;
 
 	for (int i = 0; i < n_particles; i++) {
-		float dist = (prev_positions[i] - com).len();
+		float dist = (state.positions[i] - com).len();
 		closest_index = dist < closest ? i : closest_index;
 		closest = std::min(closest, dist);
 		furthest = std::max(furthest, dist);
@@ -79,16 +83,18 @@ CompoundBridgeBundleCompact::CompoundBridgeBundleCompact(CompoundBridgeBundle* b
 	}
 }
 
-Molecule::Molecule() {
-	compounds = new Compound[MAX_COMPOUNDS];
+CompoundCollection::CompoundCollection() {
+	//compounds = new Compound[MAX_COMPOUNDS];
 	bonded_particles_lut_manager = new BondedParticlesLUTManager(0);
 	//compound_bridge_bundle = new CompoundBridgeBundleCompact;
 }
 
-Float3 Molecule::calcCOM() {
+Float3 CompoundCollection::calcCOM() {
 	Float3 com(0.f);
-	for (int i = 0; i < n_compounds; i++) {
-		com += (compounds[i].calcCOM() * (1.f / (float)n_compounds));
+	/*for (int i = 0; i < n_compounds; i++) {
+		com += (compounds[i].calcCOM() * (1.f / (float)n_compounds));*/
+	for (auto& compound : compounds) {
+		com += compound.calcCOM() / static_cast<float>(n_compounds);
 	}
 	return com;
 }

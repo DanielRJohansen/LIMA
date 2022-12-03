@@ -63,12 +63,37 @@ namespace EngineUtils {
 	//}
 
 	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
-		const float R = 8.3144;								// Ideal gas constants - J/(Kelvin*mol)
+		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
 		//double mean_velocity = M / (2 * k_B * T);				// This is bullshit. Only for sol mass
-		const float v_rms = static_cast<float>(sqrt(3 * R * temperature / mass));
+		const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
 		return v_rms;
 	}
 
 
 
+};
+
+namespace LIMAPOSITIONSYSTEM {
+	//static Coord coordFromAbsPos(Float3 pos)
+	static void positionCompound(Compound& compound, CompoundState& state) {
+		Float3& key_pos = state.positions[compound.key_particle_index];
+		Coord compound_origo = Float3(key_pos);
+
+		double default_norm_dist = 2.0 / LIMA_SCALE;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
+
+		for (int i = 0; i < compound.n_particles; i++) {
+			double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compound_origo.x)) / default_norm_dist;
+			double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compound_origo.y)) / default_norm_dist;
+			double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compound_origo.z)) / default_norm_dist;
+
+			Float3 rel_pos{ x, y, z };
+			Coord rel_coord{ rel_pos * static_cast<float>(1 << 29) };
+
+			if (rel_pos.len()) {
+				throw "Compound spans too large a distance";
+			}
+		}
+	}
+
+	//__device__ static void applyPBC(Compound* compound);
 };

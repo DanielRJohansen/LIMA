@@ -217,7 +217,7 @@ __device__ Float3 computeSolventToSolventLJForces(Float3* self_pos, NeighborList
 	return force;// *24.f * 1e-9;
 }
 __device__ Float3 computeSolventToCompoundLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self) {	// Specific to solvent kernel
-	Float3 force(0, 0, 0);
+	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
 		force += calcLJForce(self_pos, &positions[i], data_ptr, potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOL), calcEpsilon(atomtype_self, ATOMTYPE_SOL)
@@ -273,7 +273,7 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 
 template <typename T>	// Can either be Compound or CompoundBridgeCompact
 __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* utility_buffer, float* potE) {
-	utility_buffer[threadIdx.x] = Float3(0, 0, 0);
+	utility_buffer[threadIdx.x] = Float3(0);
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < entity->n_anglebonds; bond_offset++) {
 		AngleBond* ab = nullptr;
 		Float3 forces[3];
@@ -442,7 +442,8 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundSta
 		const int compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 		const int index = step_offset + compound_offset + threadIdx.x;
 		// Log the previous pos, as this comes after integration, and we do want that juicy pos(t0) ;)
-		box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
+		//box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
+		box->traj_buffer[index] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
 		box->potE_buffer[index] = *potE_sum;
 	}
 	//if (blockIdx.x == 0 && threadIdx.x == 0) {
@@ -579,13 +580,16 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	if (threadIdx.x < compound.n_particles) {
+		utility_buffer[threadIdx.x] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
 		if (box->step >= RAMPUP_STEPS) {
-			integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
+			//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
+			integratePosition(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
 		}
 		else {
-			integratePositionRampUp(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->step);
+			integratePositionRampUp(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->step);
 		}
-		box->compounds[blockIdx.x].prev_positions[threadIdx.x] = compound.prev_positions[threadIdx.x];
+		//box->compounds[blockIdx.x].prev_positions[threadIdx.x] = &utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
+		box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x] = utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
 	}
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------- //

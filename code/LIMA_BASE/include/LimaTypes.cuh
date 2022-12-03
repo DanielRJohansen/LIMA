@@ -11,7 +11,7 @@
 #include <string>
 #include <fstream>
 #include <sstream>
-
+#include <limits>
 #include "Constants.cuh"
 
 
@@ -44,6 +44,10 @@ struct Float3 {
 	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
 	__host__ __device__ Float3(float x, float y, float z) : x(x), y(y), z(z) {}
 	__host__ __device__ Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
+	__host__ __device__ Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
+	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+
 
 	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
 	//__host__ __device__ inline Float3 operator * (const double a) const { return Float3((float) (x * a), (float) (y * a), (float) (z * a)); }
@@ -79,7 +83,7 @@ struct Float3 {
 		float l = len();
 		if (l)
 			return *this * (1.f / l);
-		return Float3(0, 0, 0);
+		return Float3{};
 	}
 	__device__ Float3 norm_fast() {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
@@ -227,47 +231,51 @@ struct Double3 {
 	double x = 0, y = 0, z = 0;
 };
 
-//// LIMA Coordinate3
-//struct Coord {
-//	uint32_t x = 0, y = 0, z = 0;
-//
-//	__device__ Coord(Float3 pos_abs) {
-//		x = static_cast<uint32_t>((pos_abs.x / BOX_LEN) * 8.f * 32.f * 128.f * 256.f * 512.f);
-//		y = static_cast<uint32_t>((pos_abs.y / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
-//		z = static_cast<uint32_t>((pos_abs.z / BOX_LEN) * 8.f * 32 * 128 * 256 * 512);
-//	}
-//	__host__ __device__ Coord(uint32_t x, uint32_t y, uint32_t z) : x(x), y(y), z(z) {}
-//
-//	inline Coord operator * (const uint32_t a) { return Coord{ x * a, y * a, z * a }; }
-//
-//	
-//
-//	__host__ __device__ float distSqAbs(Coord* a) {
-//		// Calc distances along all three dimensions, and convert to Float3
-//		Coord diff = this->difference(a);
-//		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
-//
-//		// Calc distances along all three dimensions in x/(2^32)
-//		diff_f *= BOX_LEN;
-//		uint32_t uu = 0u -1;
-//		float f = static_cast<float>(0u-1);
-//		diff_f = diff_f / static_cast<float>(0u - 1);
-//
-//		return diff_f.lenSquared();
-//	}
-//private:
-//
-//	bool isSqLegal() {
-//		
-//	}
-//	__host__ __device__ Coord difference(Coord* a) const {
-//		return Coord{
-//			std::max(x, a->x) - std::min(x, a->x),
-//			std::max(y, a->y) - std::min(y, a->y),
-//			std::max(z, a->z) - std::min(z, a->z)
-//		};
-//	}
-//};
+// LIMA Coordinate3
+struct Coord {
+	int32_t x = 0, y = 0, z = 0;
+
+	__device__ __host__ Coord(Float3 pos_abs) {
+		x = static_cast<int32_t>(pos_abs.x / BOX_LEN);
+		y = static_cast<int32_t>(pos_abs.y / BOX_LEN);
+		z = static_cast<int32_t>(pos_abs.z / BOX_LEN);
+	}
+	__host__ __device__ Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
+
+	inline Coord operator * (const int32_t a) { return Coord{ x * a, y * a, z * a }; }
+
+	
+
+	__host__ __device__ float distSqAbs(Coord* a) {
+		// Calc distances along all three dimensions, and convert to Float3
+		Coord diff = this->difference(a);
+		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
+
+		// Calc distances along all three dimensions in x/(2^32)
+		diff_f *= BOX_LEN;
+		uint32_t uu = UINT32_MAX;
+		float f = static_cast<float>(uu);
+		diff_f = diff_f / static_cast<float>(uu);
+
+		return diff_f.lenSquared();
+	}
+private:
+	static const
+	bool isSqLegal() {
+		
+	}
+	__host__ __device__ Coord difference(Coord* a) const {
+		return Coord{
+			std::max(x, a->x) - std::min(x, a->x),
+			std::max(y, a->y) - std::min(y, a->y),
+			std::max(z, a->z) - std::min(z, a->z)
+		};
+	}
+};
+
+struct CoordinateSystem {
+
+};
 
 struct BoundingBox {
 	BoundingBox() {}

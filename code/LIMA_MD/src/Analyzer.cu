@@ -30,7 +30,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 
 	if (threadIdx.x == 0) {
 		//printf("index: %d\n", compound_index + (step - 1) * N_MONITORBLOCKS_PER_STEP);
-		data_out[compound_index + (step - 1) * box->n_compounds] = Float3(0, 0, 0);
+		data_out[compound_index + (step - 1) * box->n_compounds] = Float3{};
 		//mass = box->compounds[compound_index].particles[0]
 		compound = box->compounds[compound_index];
 	}
@@ -97,7 +97,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 		//printf("step %04d solvate %04d pot %f, compound_offset %d, step_offset  %d\n", step, solvent_index, potE, compounds_offset, step*box->total_particles_upperbound);
 	}
 
-	double totalE = potE + kinE;
+	float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
 	__syncthreads();

@@ -22,10 +22,10 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	CompoundBuilder compoundbuilder(&forcefield, V1);
-	Molecule mol_6lzm_10 = compoundbuilder.buildMolecule(conf_path, topol_path);
+	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(conf_path, topol_path);
 
 	boxbuilder.buildBox(simulation.get());
-	boxbuilder.addSingleMolecule(simulation.get(), &mol_6lzm_10);
+	boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);
@@ -33,7 +33,7 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	boxbuilder.solvateBox(simulation.get(), &solvent_positions);
 #endif
 
-	delete[] mol_6lzm_10.compounds;
+	//delete[] mol_6lzm_10.compounds;
 }
 
 

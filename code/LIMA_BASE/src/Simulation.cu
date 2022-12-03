@@ -3,7 +3,7 @@
 void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
 		+ sizeof(Solvent) * MAX_SOLVENTS * 2
-		+ sizeof(CompoundState) * MAX_COMPOUNDS * 2
+		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
 	printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
 
@@ -11,7 +11,7 @@ void Box::moveToDevice() {
 	solvents = genericMoveToDevice(solvents, MAX_SOLVENTS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
 	compound_state_array = genericMoveToDevice(compound_state_array, MAX_COMPOUNDS);
-
+	compound_state_array_prev = genericMoveToDevice(compound_state_array_prev, MAX_COMPOUNDS);
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
 	solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);

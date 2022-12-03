@@ -62,7 +62,7 @@ class CompoundBuilder
 public:
 	CompoundBuilder() {}
 	CompoundBuilder(Forcefield* ff, VerbosityLevel vl = SILENT);
-	Molecule buildMolecule(string gro_path, string itp_path, int max_residue_id=INT16_MAX, int min_residue_id=0, bool ignore_hydrogens=true);
+	CompoundCollection buildCompoundCollection(string gro_path, string itp_path, int max_residue_id=INT16_MAX, int min_residue_id=0, bool ignore_hydrogens=true);
 
 	vector<Float3> getSolventPositions(string gro_path);
 
@@ -84,20 +84,20 @@ private:
 
 
 	struct Record_ATOM;
-	void loadParticles(Molecule* molecule, vector<Record_ATOM>* pdb_data, int max_monomer_id = INT32_MAX, int min_residue_id=0, bool ignore_protons =false);
-	void loadTopology(Molecule* molecule, vector<vector<string>>* itp_data);
+	void loadParticles(CompoundCollection* molecule, vector<Record_ATOM>* pdb_data, int max_monomer_id = INT32_MAX, int min_residue_id=0, bool ignore_protons =false);
+	void loadTopology(CompoundCollection* molecule, vector<vector<string>>* itp_data);
 	void calcParticleSphere(Compound* compound);
 
 
 	enum TopologyMode { INACTIVE, ATOMS, BOND, ANGLE, DIHEDRAL };
 	bool setMode(vector<string>& entry, TopologyMode& current_mode);
 	void loadMaps(ParticleRef* maps, vector<string>* record, int n);
-	void addGeneric(Molecule* molecule, vector<string>* record, TopologyMode mode);
-	void addBond(Molecule* molecule, ParticleRef* maps, vector<string>* record);
-	void addAngle(Molecule* molecule, ParticleRef* maps, vector<string>* record);
-	void addDihedral(Molecule* molecule, ParticleRef* maps, vector<string>* record);
-	void distributeLJIgnores(Molecule* molecule, ParticleRef* maps, int n);
-	//bool checkIfFirstBondedInteraction(Molecule* molecule, ParticleRef* maps, int n);
+	void addGeneric(CompoundCollection* molecule, vector<string>* record, TopologyMode mode);
+	void addBond(CompoundCollection* molecule, ParticleRef* maps, vector<string>* record);
+	void addAngle(CompoundCollection* molecule, ParticleRef* maps, vector<string>* record);
+	void addDihedral(CompoundCollection* molecule, ParticleRef* maps, vector<string>* record);
+	void distributeLJIgnores(CompoundCollection* molecule, ParticleRef* maps, int n);
+	//bool checkIfFirstBondedInteraction(CompoundCollection* molecule, ParticleRef* maps, int n);
 
 
 
@@ -128,7 +128,7 @@ private:
 
 	ResidueComboId parseResidueID(string s);
 	inline bool isAsciiNumber(char c) { return (c > 47 && c < 58); }
-	void countElements(Molecule* molecule);
+	void countElements(CompoundCollection* molecule);
 	vector<string> splitAtomnameFromId(vector<string> words);
 
 

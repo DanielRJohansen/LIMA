@@ -48,6 +48,7 @@ public:
 
 	// These are shared for all compounds, MUST be allocated before adding any compounds to box, so not in moveToDevice //
 	CompoundState* compound_state_array = nullptr;
+	CompoundState* compound_state_array_prev = nullptr;
 	CompoundState* compound_state_array_next = nullptr;
 
 	NeighborList* compound_neighborlists = nullptr;

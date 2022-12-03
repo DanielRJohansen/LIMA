@@ -3,8 +3,8 @@
 
 #include "Constants.cuh"
 #include "LimaTypes.cuh"
-
-
+#include <vector>
+#include <array>
 
 // Hyper-fast objects for kernel, so we turn all safety off here!
 #pragma warning (push)
@@ -175,7 +175,7 @@ struct Compound {
 
 
 	uint8_t n_particles = 0;					// MAX 256 particles!!!!0
-	Float3 prev_positions[MAX_COMPOUND_PARTICLES];;			// Should this really belong to the compound and not the box?
+	//Float3 prev_positions[MAX_COMPOUND_PARTICLES];;			// Should this really belong to the compound and not the box?
 	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)
@@ -206,24 +206,15 @@ struct Compound {
 	//---------------------------------------------------------------------------------//
 
 	// Only call this if the compound has already been assigned particles & bonds
-	__host__ void init();
-
-	__host__ Float3 calcCOM();
 	/*
 	__host__ bool intersects(Compound a) {
 		return (a.center_of_mass - center_of_mass).len() < (a.radius + radius + max_LJ_dist);
 	}*/
 
-	
-
-
-	__host__ void addParticle(int atomtype_id, Float3 pos);
-	__host__ void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id);
 
 	__host__ bool hasRoomForRes() {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + MAX_ATOMS_IN_RESIDUE) <= MAX_COMPOUND_PARTICLES;
 	}
-	__host__ void calcParticleSphere();
 	//---------------------------------------------------------------------------------//
 
 //	__device__ void loadMeta(Compound* compound);
@@ -238,7 +229,7 @@ struct Compound {
 	//__device__ void loadData(Compound* compound);
 	__device__ void loadData(Compound* compound) {
 		if (threadIdx.x < n_particles) {
-			prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
+			//prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
 			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
@@ -248,7 +239,7 @@ struct Compound {
 			//#endif
 		}
 		else {
-			prev_positions[threadIdx.x] = Float3(-1.f);
+			//prev_positions[threadIdx.x] = Float3(-1.f);
 			atom_types[threadIdx.x] = 0;
 			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = Float3(0.f);
@@ -273,15 +264,35 @@ struct Compound {
 
 };
 
+// Helper class containing some compound information we will not bring with us to the device
+// This means, all functions are host only!
+struct Compound_Carrier : public Compound {
+	Compound_Carrier(int id) : compound_id(id) {}
+
+	int compound_id = -1;
+	CompoundState state;	// [nm], Absolute values 
+	CompoundState state_tsub1;		// [nm], Absolute values 
+
+
+	void addParticle(int atomtype_id, Float3 pos);// Is this ever used?
+	void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id);
+	void calcParticleSphere();
+
+	void init() { calcCOM(); }
+	Float3 calcCOM();
+
+};
+
 using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
 using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 
 
 struct CompoundBridgeBundleCompact;
-struct Molecule {
-	Molecule();
+struct CompoundCollection {
+	CompoundCollection();
 	int n_compounds = 0;
-	Compound* compounds = nullptr;
+	//Compound* compounds = nullptr;
+	std::vector<Compound_Carrier> compounds;
 	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;
@@ -290,7 +301,7 @@ struct Molecule {
 
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
-	~Molecule() {
+	~CompoundCollection() {
 		//printf("Deleting\n");		// Huh, this deletes too early. I better implement properly at some point.
 		//delete[] compounds;
 	}
@@ -331,7 +342,7 @@ struct CompoundBridge {
 		}
 		return false;
 	}
-	void addParticle(ParticleRef* particle_ref, Molecule* molecule) {
+	void addParticle(ParticleRef* particle_ref, CompoundCollection* molecule) {
 		if (n_particles == MAX_PARTICLES_IN_BRIDGE) {
 			printf("Too many particles in bridge\n");
 			exit(0);
@@ -344,7 +355,7 @@ struct CompoundBridge {
 		//printf("Adding particle with global id: %d\n", particle_ref->global_id);
 	}
 
-	void addBondParticles(GenericBond* bond, Molecule* molecule) {
+	void addBondParticles(GenericBond* bond, CompoundCollection* molecule) {
 		for (int p = 0; p < bond->n_particles; p++) {
 			if (!particleAlreadyStored(&bond->particles[p])) {
 				addParticle(&bond->particles[p], molecule);

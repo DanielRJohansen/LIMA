@@ -64,7 +64,7 @@ bool doPoolBenchmark(Environment& env) {
 
 
 
-		box->compounds[0].prev_positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
+		box->compound_state_array_prev[0].positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
 		env.run();
 
 		auto analytics = env.getAnalyzedPackage();

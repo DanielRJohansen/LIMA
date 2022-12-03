@@ -10,7 +10,7 @@ public:
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation);
-	void addSingleMolecule(Simulation* simulation, Molecule* molecule);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	void addCompoundCollection(Simulation* simulation, CompoundCollection* coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
 	void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation);
@@ -20,7 +20,7 @@ public:
 
 
 private:
-	void integrateCompound(Compound* compound, Simulation* simulation);
+	void integrateCompound(Compound_Carrier* compound, Simulation* simulation);
 	Solvent createSolvent(Float3 com, float dt);
 
 	bool spaceAvailable(Box* box, Float3 com, double radius);
@@ -31,16 +31,16 @@ private:
 
 
 	// -------------- Functions for compound manipulation BEFORE integration -------------- //
-	void placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies);
+	//void placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies);
 	Compound* randomizeCompound(Compound* template_compound);
 	void moveCompound(Compound* compound, Float3 vector);
 
 	//Float3 calcCompoundCom(Compound* compound);
 	void rotateCompound(Compound* compound, Float3 xyz_rot);
-	BoundingBox calcCompoundBoundingBox(Compound* compound);
+	//BoundingBox calcCompoundBoundingBox(Compound* compound);
 	bool spaceAvailable(Box* box, Compound* compound);
 	bool spaceAvailable(Box* box, Float3 particle_center, bool verbose=true);	// Ignore radius for this, as it just check against bounding boxes. 
-	bool verifyPairwiseParticleMindist(Compound* a, Compound* b);
+	//bool verifyPairwiseParticleMindist(Compound* a, Compound* b);
 	//What about other solvents then? Not problem now while solvents are placed on a grid, but what about later?
 
 	// ------------------------------------------------------------------------------------ //

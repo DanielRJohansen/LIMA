@@ -15,7 +15,7 @@ constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max a
 
 constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 
-constexpr float LIMA_SCALE = 1e-6;			// size of 1 lima unit in nm or ns or whatever
+constexpr float LIMA_SCALE = 1e-6f;			// size of 1 lima unit in nm or ns or whatever
 constexpr float CUTOFF = 1.1f / LIMA_SCALE;				// nm
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -25,7 +25,8 @@ constexpr float CUTOFF = 1.1f / LIMA_SCALE;				// nm
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr float BOX_LEN = 7.f * 1e+6f;		// Must be > twice the len of largest compound
+constexpr float BOX_LEN_NM = 7.f;
+constexpr float BOX_LEN = BOX_LEN_NM * 1e+6f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 //constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
 constexpr float NORMALIZER = BOX_LEN;

@@ -344,10 +344,31 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 	return utility_buffer[threadIdx.x];
 }
 
+__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt) {
+	//EngineUtils::applyHyperpos(pos, pos_tsub1);
+
+	//Float3 temp = *pos;
+	//float prev_vel = (*pos - *pos_tsub1).len();
+	Coord prev_vel = coord - coord_tsub1;
+
+	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
+	int32_t x = coord.x;
+	int32_t dx = coord.x - coord_tsub1.x;
+	int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
+	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	//pos->x = x + dx + ddx;
+	coord.x = x + dx + ddx;
+
+	//Double3 pos_d{ *pos };
+
+	if (threadIdx.x + blockIdx.x == 0) {
+		uint32_t diff = coord.x - x - dx;
+		printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+	}
+}
+
 __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const double dt, float* thermostat_scalar, int p_index, bool print = false) {
 	// Force is in ??Newton, [kg * nm /(mol*ns^2)] //	
-
-
 
 	// Always do hyperpos first!
 	EngineUtils::applyHyperpos(pos, pos_tsub1);
@@ -356,16 +377,6 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	float prev_vel = (*pos - *pos_tsub1).len();
 
 	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	//float acc = (*force * dt * (dt / static_cast<double>(mass))).len();
-	//Float3 x = *pos;
-	//Float3 dx = *pos - *pos_tsub1;
-	//Float3 ddx = force->mul_highres(dt) * (dt / static_cast<double>(mass));
-	//Float3 x_ = dx + ddx;
-	//Double3 pos_new = x + x_;
-	//Float3 x_rel = *pos / BOX_LEN;
-	//Float3 x_new_rel = x_rel + x_ / BOX_LEN;
-	//Float3 x_new_abs = x_new_rel * BOX_LEN;
-	//double x = ((double)pos->x - (double)pos_tsub1->x) + (double)force->x * dt * (dt / static_cast<double>(mass));
 	double x = pos->x;
 	double dx = pos->x - pos_tsub1->x;
 	double ddx = force->x * dt * dt / static_cast<double>(mass);
@@ -487,9 +498,10 @@ __device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_
 
 #define compound_index blockIdx.x
 __global__ void compoundKernel(Box* box) {
-	__shared__ Compound compound;
-	__shared__ CompoundState compound_state;
-	__shared__ NeighborList neighborlist;
+	__shared__ Compound compound;				// Mostly bond information
+	__shared__ CompoundState compound_state;	// Global position in [fm]
+	__shared__ CompoundCoords compound_coords;	// Dynamic positions
+	__shared__ NeighborList neighborlist;		
 	__shared__ BondedParticlesLUT bonded_particles_lut;
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
 
@@ -501,11 +513,24 @@ __global__ void compoundKernel(Box* box) {
 	}
 	__syncthreads();
 
+	LIMAPOSITIONSYSTEM::getGlobalPositionsNM(box->compound_coord_array[blockIdx.x], compound_state);
+
+
+
+
 	compound.loadData(&box->compounds[blockIdx.x]);
 	compound_state.loadData(&box->compound_state_array[blockIdx.x]);
+	compound_coords.loadData(box->compound_coord_array[blockIdx.x]);
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
 	__syncthreads();
 
+
+	LIMAPOSITIONSYSTEM::getGlobalPositionsNM(compound_coords, compound_state);
+	__syncthreads();
+
+	if (threadIdx.x == 0) {
+		compound_state.positions[0].print('0');
+	}
 
 	float potE_sum = 0;
 	float data_ptr[4];
@@ -583,7 +608,13 @@ __global__ void compoundKernel(Box* box) {
 		utility_buffer[threadIdx.x] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
 		if (box->step >= RAMPUP_STEPS) {
 			//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
-			integratePosition(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
+			
+			
+			integratePosition(compound_coords.rel_positions[threadIdx.x], box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
+
+
+
+			//integratePosition(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
 		}
 		else {
 			integratePositionRampUp(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->step);
@@ -616,6 +647,7 @@ __global__ void compoundKernel(Box* box) {
 
 
 	box->compound_state_array_next[blockIdx.x].loadData(&compound_state);
+	box->compound_coord_array_next[blockIdx.x].loadData(compound_coords);
 }
 #undef compound_id
 

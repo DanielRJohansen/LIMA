@@ -51,6 +51,10 @@ public:
 	CompoundState* compound_state_array_prev = nullptr;
 	CompoundState* compound_state_array_next = nullptr;
 
+	CompoundCoords* compound_coord_array = nullptr;
+	CompoundCoords* compound_coord_array_prev = nullptr;
+	CompoundCoords* compound_coord_array_next = nullptr;
+
 	NeighborList* compound_neighborlists = nullptr;
 	NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//

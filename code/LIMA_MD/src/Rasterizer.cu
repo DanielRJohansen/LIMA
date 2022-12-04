@@ -1,5 +1,5 @@
 #include "Rasterizer.cuh"
-
+#include "EngineUtils.cuh"
 
 
 
@@ -180,7 +180,9 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
 
     
     if (local_id < box->compounds[compound_id].n_particles) {
-        atoms[global_id].pos = box->compound_state_array[compound_id].positions[local_id];                                                          // Might need to change this, if thread> n_particles!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPositionNM(box->compound_coord_array[compound_id]);
+
+        //atoms[global_id].pos = box->compound_state_array[compound_id].positions[local_id];                                                          // Might need to change this, if thread> n_particles!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //atoms[global_id].pos.print('A');
         atoms[global_id].mass = SOLVENT_MASS;                                                         // TEMP
         //atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_types[local_id]);
@@ -218,7 +220,7 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
     for (int dim = 0; dim < 3; dim++) {
-        *atom.pos.placeAt(dim) = (atom.pos.at(dim) * NORMALIZER / (float) BOX_LEN - 0.5f) * 1.8f;  // De-normalize coord here first. Maybe separate into multiple lines..
+        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f) * 1.8f;  // De-normalize coord here first. Maybe separate into multiple lines..
     }
 
 

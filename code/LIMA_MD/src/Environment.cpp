@@ -231,8 +231,8 @@ bool Environment::handleTermination(Simulation* simulation)
 		simulation->finished = true;
 		return true;
 	}		
-	if (simulation->box->critical_error_encountered)
-		return true;
+	//if (simulation->box->critical_error_encountered)
+		//return true;
 
 	return false;
 }

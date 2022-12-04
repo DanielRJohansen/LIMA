@@ -6,6 +6,7 @@
 
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
+#include <math.h>
 
 namespace ForceCalc {
 //	-
@@ -73,27 +74,61 @@ namespace EngineUtils {
 
 };
 
+
+
+
+
+
+
 namespace LIMAPOSITIONSYSTEM {
 	//static Coord coordFromAbsPos(Float3 pos)
-	static void positionCompound(Compound& compound, CompoundState& state) {
-		Float3& key_pos = state.positions[compound.key_particle_index];
-		Coord compound_origo = Float3(key_pos);
+	static CompoundCoords positionCompound(CompoundState& state,  int key_particle_index=0) {
+		CompoundCoords compoundcoords{};
+		Float3& key_pos = state.positions[key_particle_index];
+		compoundcoords.origo = Float3(key_pos);
 
 		double default_norm_dist = 2.0 / LIMA_SCALE;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
 
-		for (int i = 0; i < compound.n_particles; i++) {
-			double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compound_origo.x)) / default_norm_dist;
-			double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compound_origo.y)) / default_norm_dist;
-			double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compound_origo.z)) / default_norm_dist;
+		for (int i = 0; i < state.n_particles; i++) {
+			double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compoundcoords.origo.x)) / default_norm_dist;
+			double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compoundcoords.origo.y)) / default_norm_dist;
+			double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compoundcoords.origo.z)) / default_norm_dist;
 
 			Float3 rel_pos{ x, y, z };
 			Coord rel_coord{ rel_pos * static_cast<float>(1 << 29) };
+			compoundcoords.rel_positions[i] = rel_coord;
 
-			if (rel_pos.len()) {
+			if (rel_pos.len() > 1.f) {
 				throw "Compound spans too large a distance";
 			}
 		}
+		return compoundcoords;
 	}
+
+	__device__ static Float3 getGlobalPositionNM(CompoundCoords& coords) {
+		return coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
+	}
+
+	__device__ static void getGlobalPositionsNM(CompoundCoords& coords, CompoundState& state) {
+		//state.positions[threadIdx.x] = coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
+		state.positions[threadIdx.x] = getGlobalPositionNM(coords);
+	}
+
+	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
+		// TODO: IMplement
+	}
+
+	static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
+		applyHyperpos(lhs, rhs);
+
+		Coord common_origo = {
+			std::min(lhs.origo.x, rhs.origo.x) + ((std::max(lhs.origo.x, rhs.origo.x) - std::min(lhs.origo.x, rhs.origo.x)) / 2),
+			std::min(lhs.origo.y, rhs.origo.y) + ((std::max(lhs.origo.y, rhs.origo.y) - std::min(lhs.origo.y, rhs.origo.y)) / 2),
+			std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
+		};
+
+	}
+
 
 	//__device__ static void applyPBC(Compound* compound);
 };

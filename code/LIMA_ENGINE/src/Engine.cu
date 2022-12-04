@@ -143,16 +143,27 @@ void Engine::step() {
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 
+	EngineUtils::genericErrorCheck("Error during step\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 
+	{
+		CompoundState* temp = simulation->box->compound_state_array;
+		simulation->box->compound_state_array = simulation->box->compound_state_array_next;
+		simulation->box->compound_state_array_next = temp;
+	}
 	
-	CompoundState* temp = simulation->box->compound_state_array;
-	simulation->box->compound_state_array = simulation->box->compound_state_array_next;
-	simulation->box->compound_state_array_next = temp;
+	{
+		CompoundCoords* temp = simulation->box->compound_coord_array_prev;
+		simulation->box->compound_coord_array_prev = simulation->box->compound_coord_array;
+		simulation->box->compound_coord_array = simulation->box->compound_coord_array_next;
+		simulation->box->compound_coord_array_next = temp;
+	}
 	
 	
 	Solvent* temp_s = simulation->box->solvents;
 	simulation->box->solvents = simulation->box->solvents_next;
 	simulation->box->solvents_next = temp_s;
+
+
 	
 	
 	//cudaMemcpy(simulation->box->compound_state_array, simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS, cudaMemcpyDeviceToDevice);	// Update all positions, after all forces have been calculated

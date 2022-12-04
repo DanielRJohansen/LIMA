@@ -17,6 +17,9 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	cudaMalloc(&simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS);
 	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
+	simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
+	simulation->box->compound_coord_array_prev = new CompoundCoords[MAX_COMPOUNDS];							// Need to manipulate this on host
+	cudaMalloc(&simulation->box->compound_coord_array_next, sizeof(CompoundCoords) * MAX_COMPOUNDS);	// Only need this on device
 
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
@@ -205,16 +208,25 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 	for (int i = 0; i < compound->n_particles; i++) {
 		//state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
 		//state->positions[i] = compound->state.positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
-		state->positions[i] = compound->state.positions[i] / NORMALIZER;
+		state->positions[i] = compound->state.positions[i];
 		state->n_particles++;
 
+		Float3 atom_pos_sub1 = state->positions[i] - compound_united_vel * simulation->dt;
+		state_prev->positions[i] = atom_pos_sub1;
+		state_prev->n_particles++;
 	}
 
 
+	CompoundCoords* coords = &simulation->box->compound_coord_array[simulation->box->n_compounds];
+	CompoundCoords& coords_prev = simulation->box->compound_coord_array_prev[simulation->box->n_compounds];
 	for (int i = 0; i < compound->n_particles; i++) {
-		Float3 atom_pos_sub1 = state->positions[i] - compound_united_vel * simulation->dt;
-		//compound->prev_positions[i] = atom_pos_sub1;												// Overwrite prev pos here, since we have assigned the former prev pos to the state buffer.
-		state_prev->positions[i] = atom_pos_sub1;
+		*coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
+		coords_prev = LIMAPOSITIONSYSTEM::positionCompound(*state_prev, 0);
+	}
+
+	for (int i = 0; i < compound->n_particles; i++) {
+		state->positions[i] *= 1.f/NORMALIZER;
+		state_prev->positions[i] *= 1.f/ NORMALIZER;
 	}
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;

@@ -39,6 +39,7 @@ struct Int3 {
 	int x = 0, y = 0, z = 0;
 };
 
+struct Coord;
 struct Float3 {
 	__host__ __device__ Float3() {}
 	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
@@ -235,12 +236,16 @@ struct Double3 {
 struct Coord {
 	int32_t x = 0, y = 0, z = 0;
 
+	__device__ __host__ Coord() {};
 	__device__ __host__ Coord(Float3 pos_abs) {
-		x = static_cast<int32_t>(pos_abs.x / BOX_LEN);
-		y = static_cast<int32_t>(pos_abs.y / BOX_LEN);
-		z = static_cast<int32_t>(pos_abs.z / BOX_LEN);
+		x = static_cast<int32_t>(pos_abs.x);
+		y = static_cast<int32_t>(pos_abs.y);
+		z = static_cast<int32_t>(pos_abs.z);
 	}
 	__host__ __device__ Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
+
+	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
+	__host__ __device__ Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
 
 	inline Coord operator * (const int32_t a) { return Coord{ x * a, y * a, z * a }; }
 
@@ -259,6 +264,8 @@ struct Coord {
 
 		return diff_f.lenSquared();
 	}
+	__host__ __device__ Float3 toFloat3() const { return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); }
+
 private:
 	static const
 	bool isSqLegal() {
@@ -273,9 +280,6 @@ private:
 	}
 };
 
-struct CoordinateSystem {
-
-};
 
 struct BoundingBox {
 	BoundingBox() {}

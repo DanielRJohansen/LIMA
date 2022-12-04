@@ -169,6 +169,14 @@ struct CompoundState {							// Maybe delete this soon?
 	uint8_t n_particles = 0;
 };
 
+struct CompoundCoords {
+	__device__ void loadData(CompoundCoords& coords) {
+		origo = coords.origo;
+		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
+	}
+	Coord origo{};
+	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};
+};
 
 struct Compound {
 	__host__ __device__  Compound() {}	// {}

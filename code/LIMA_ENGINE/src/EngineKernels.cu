@@ -43,8 +43,13 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 
 
 	*potE += 4. * epsilon * s * (s - 1.f) * NORMALIZER_SQ * 0.5;
-
-	//printf("eps %.10f sig %f s6 %f dist %f dist2 %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq);
+	if (blockIdx.x == 0) {
+		printf("\n");
+		pos0->print('0');
+		pos1->print('1');
+		printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
+	}
+	
 	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
 		printf("dist %f    s %f    eps %f    pot %f\n", sqrtf(dist_sq), s, epsilon, 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ);*/
 	//if (threadIdx.x == 0 && blockIdx.x == 0) {
@@ -363,7 +368,7 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 
 	if (threadIdx.x + blockIdx.x == 0) {
 		uint32_t diff = coord.x - x - dx;
-		printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
 	}
 }
 
@@ -388,7 +393,7 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 
 	if (threadIdx.x + blockIdx.x == 0) {
 		//printf("step %d f %f\n", 0, force->x);
-		float actual_x = x * NORMALIZER * LIMA_SCALE;
+		//float actual_x = x * NORMALIZER * LIMA_SCALE;
 		double diff = (double)pos->x - x - dx;
 		printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", x, dx, force->x, ddx, dx + ddx, diff);
 	}
@@ -513,7 +518,7 @@ __global__ void compoundKernel(Box* box) {
 	}
 	__syncthreads();
 
-	LIMAPOSITIONSYSTEM::getGlobalPositionsNM(box->compound_coord_array[blockIdx.x], compound_state);
+	LIMAPOSITIONSYSTEM::getGlobalPositionsFM(box->compound_coord_array[blockIdx.x], compound_state);
 
 
 
@@ -525,10 +530,10 @@ __global__ void compoundKernel(Box* box) {
 	__syncthreads();
 
 
-	LIMAPOSITIONSYSTEM::getGlobalPositionsNM(compound_coords, compound_state);
+	LIMAPOSITIONSYSTEM::getGlobalPositionsFM(compound_coords, compound_state);
 	__syncthreads();
 
-	if (threadIdx.x == 0) {
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
 		compound_state.positions[0].print('0');
 	}
 
@@ -547,7 +552,7 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
-		EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
+		//EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
 		__syncthreads();
 
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
@@ -564,7 +569,7 @@ __global__ void compoundKernel(Box* box) {
 
 		if (threadIdx.x < neighborcompound_particles) {
 			utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
-			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
+			//EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
 		}
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
@@ -631,10 +636,10 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 
 	if (threadIdx.x == 0) {
-		EngineUtils::applyPBC(&compound_state.positions[threadIdx.x]);
+		//EngineUtils::applyPBC(&compound_state.positions[threadIdx.x]);
 	}
 	__syncthreads();
-	EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
+	//EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 

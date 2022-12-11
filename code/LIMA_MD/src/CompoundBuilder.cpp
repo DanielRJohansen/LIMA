@@ -99,7 +99,7 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 	vector<Float3> solvent_positions;
 	for (Record_ATOM record : atom_data) {
 		if (record.residue_name == "SOL" && record.atom_name[0] == 'O') {	// Easy solution, just say Oxygen is the center of the solvent. Ignore the hydrogens
-			solvent_positions.push_back(record.coordinate / LIMA_SCALE);
+			solvent_positions.push_back(record.coordinate);
 		
 		}
 	}
@@ -155,7 +155,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 
 		current_compound->addParticle(
 			forcefield->getAtomtypeID(record.atom_serial_number),
-			record.coordinate / LIMA_SCALE,
+			record.coordinate * NANO_TO_FEMTO,
 			forcefield->atomTypeToIndex(record.atom_name[0]),
 			record.atom_serial_number);
 
@@ -519,58 +519,58 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 	}
 	return records;
 }
-
-vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
-{
-	fstream file;
-	file.open(path);
-	int line_cnt = 0;
-
-	int endpoints[] = { 4, 11, 16 , 17, 20, 22, 26, 27, 38, 46, 54 };
-
-
-	vector<Record_ATOM> records;
-
-	string line;
-	while (getline(file, line)) {
-		stringstream ss(line);
-		string row_type;
-		getline(ss, row_type, ' ');
-		if (row_type != "ATOM")
-			continue;
-
-		vector<string> data_buffer;
-
-		int ptr = 0;
-		for (int stop : endpoints) {
-			string word = "";
-			
-			while (ptr < stop) {
-				if (line[ptr] != ' ')
-					word = word + line[ptr];
-				ptr++;
-			}
-			//cout << "Word:" << word << endl;
-			data_buffer.push_back(word);
-		}
-
-		cout << data_buffer[6] << endl;
-		//printf("%d\n", stoi(data_buffer[6]));
-		
-		records.push_back(Record_ATOM(
-			stoi(data_buffer[1]),
-			data_buffer[2],
-			data_buffer[3][0],			// alt loc
-			data_buffer[4],
-			data_buffer[5][0],		// chain id
-			stoi(data_buffer[6]),
-			data_buffer[7][0],
-			Float3(stof(data_buffer[8]), stof(data_buffer[9]), stof(data_buffer[10])) * 0.1f	// Convert A to nm right off the bat!
-		));
-		
-	}
-	return records;
-}
+//
+//vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
+//{
+//	fstream file;
+//	file.open(path);
+//	int line_cnt = 0;
+//
+//	int endpoints[] = { 4, 11, 16 , 17, 20, 22, 26, 27, 38, 46, 54 };
+//
+//
+//	vector<Record_ATOM> records;
+//
+//	string line;
+//	while (getline(file, line)) {
+//		stringstream ss(line);
+//		string row_type;
+//		getline(ss, row_type, ' ');
+//		if (row_type != "ATOM")
+//			continue;
+//
+//		vector<string> data_buffer;
+//
+//		int ptr = 0;
+//		for (int stop : endpoints) {
+//			string word = "";
+//			
+//			while (ptr < stop) {
+//				if (line[ptr] != ' ')
+//					word = word + line[ptr];
+//				ptr++;
+//			}
+//			//cout << "Word:" << word << endl;
+//			data_buffer.push_back(word);
+//		}
+//
+//		cout << data_buffer[6] << endl;
+//		//printf("%d\n", stoi(data_buffer[6]));
+//		
+//		records.push_back(Record_ATOM(
+//			stoi(data_buffer[1]),
+//			data_buffer[2],
+//			data_buffer[3][0],			// alt loc
+//			data_buffer[4],
+//			data_buffer[5][0],		// chain id
+//			stoi(data_buffer[6]),
+//			data_buffer[7][0],
+//			Float3(stof(data_buffer[8]), stof(data_buffer[9]), stof(data_buffer[10])) * 0.1f	// Convert A to nm right off the bat!
+//		));
+//		
+//	}
+//	return records;
+//}
 
 vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parseGRO(string path)
 {

@@ -126,7 +126,7 @@ public:
 	
 	uint64_t n_steps = 0;
 
-	const float dt = 1.f * 1e-6f;					// [ns] first val corresponds to fs
+	const float dt = 1.f;					// [ns] first val corresponds to fs
 	const float dt_pico = dt * 1000.f;
 	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;

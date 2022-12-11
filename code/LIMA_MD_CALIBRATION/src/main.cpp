@@ -64,7 +64,8 @@ bool doPoolBenchmark(Environment& env) {
 
 
 
-		box->compound_state_array_prev[0].positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
+		//box->compound_state_array_prev[0].positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
+		LIMAPOSITIONSYSTEM::moveCoordinate(box->compound_coord_array_prev[0].rel_positions[0], Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt);	// convert vel from nm/ns to nm/fs
 		env.run();
 
 		auto analytics = env.getAnalyzedPackage();

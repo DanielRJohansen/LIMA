@@ -5,7 +5,7 @@
 
 
 
-#include "math.h"
+#include <math.h>
 #include <iostream>
 
 #include <string>
@@ -246,7 +246,7 @@ struct Coord {
 
 	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
-
+	__host__ __device__ void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
 	inline Coord operator * (const int32_t a) { return Coord{ x * a, y * a, z * a }; }
 
 	
@@ -259,7 +259,7 @@ struct Coord {
 		// Calc distances along all three dimensions in x/(2^32)
 		diff_f *= BOX_LEN;
 		uint32_t uu = UINT32_MAX;
-		float f = static_cast<float>(uu);
+//		float f = static_cast<float>(uu);
 		diff_f = diff_f / static_cast<float>(uu);
 
 		return diff_f.lenSquared();
@@ -267,10 +267,7 @@ struct Coord {
 	__host__ __device__ Float3 toFloat3() const { return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); }
 
 private:
-	static const
-	bool isSqLegal() {
-		
-	}
+	
 	__host__ __device__ Coord difference(Coord* a) const {
 		return Coord{
 			std::max(x, a->x) - std::min(x, a->x),

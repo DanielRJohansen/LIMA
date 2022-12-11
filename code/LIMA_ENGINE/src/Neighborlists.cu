@@ -51,7 +51,7 @@ namespace NListUtils {
 	bool neighborWithinCutoff(Float3* const pos_a, Float3* const pos_b, const float cutoff_offset) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 		//Float3 pos_b_temp = *pos_b;
 		//EngineUtils::applyHyperpos(pos_a, &pos_b_temp);
-		float dist = EngineUtils::calcHyperDistDenormalized(pos_a, pos_b);
+		float dist = EngineUtils::calcHyperDist(pos_a, pos_b);
 		//float dist = (*pos_a - pos_b_temp).len();
 		
 		return (dist < (CUTOFF + cutoff_offset));

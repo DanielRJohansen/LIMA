@@ -24,7 +24,7 @@ namespace EngineUtils {
 
 	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
-		applyHyperpos(p1, &temp);
+		//applyHyperpos(p1, &temp);
 		return (*p1 - temp).len();
 	}
 
@@ -87,7 +87,7 @@ namespace LIMAPOSITIONSYSTEM {
 		Float3& key_pos = state.positions[key_particle_index];
 		compoundcoords.origo = Float3(key_pos);
 
-		double default_norm_dist = 2.0 / LIMA_SCALE;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
+		double default_norm_dist = 1.0;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
 
 		for (int i = 0; i < state.n_particles; i++) {
 			double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compoundcoords.origo.x)) / default_norm_dist;
@@ -109,9 +109,13 @@ namespace LIMAPOSITIONSYSTEM {
 		return coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
 	}
 
-	__device__ static void getGlobalPositionsNM(CompoundCoords& coords, CompoundState& state) {
+	__device__ static Float3 getGlobalPositionFM(CompoundCoords& coords) {
+		return coords.origo.toFloat3() * NANO_TO_FEMTO*0.f + coords.rel_positions[threadIdx.x].toFloat3() * LIMASCALE_TO_FEMTO;
+	}
+
+	__device__ static void getGlobalPositionsFM(CompoundCoords& coords, CompoundState& state) {
 		//state.positions[threadIdx.x] = coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
-		state.positions[threadIdx.x] = getGlobalPositionNM(coords);
+		state.positions[threadIdx.x] = getGlobalPositionFM(coords);
 	}
 
 	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
@@ -127,6 +131,11 @@ namespace LIMAPOSITIONSYSTEM {
 			std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
 		};
 
+	}
+
+	static void moveCoordinate(Coord& coord, Float3 delta /*[nm]*/) {	// TODO: some checks to make this safe
+		Coord delta_c{ delta / LIMASCALE_TO_FEMTO };
+		coord += delta_c;
 	}
 
 

@@ -32,18 +32,18 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
 	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
-	Float3 offset = desired_molecule_center - compound_collection->calcCOM();
+	//Float3 offset = desired_molecule_center - compound_collection->calcCOM();
 
-	printf("CompoundCollection offset for centering: ");
-	offset.print(' ');
-	most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
+	//printf("CompoundCollection offset for centering: ");
+	//offset.print(' ');
+	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
 
 	for (int c = 0; c < compound_collection->n_compounds; c++) {
 		Compound_Carrier* compound = &compound_collection->compounds[c];
 		for (int i = 0; i < compound->n_particles; i++) {
 			//compound->prev_positions[i] += offset;
-			compound->state.positions[i] += offset;
-			compound->state_tsub1.positions[i] += offset;
+			/*compound->state.positions[i] += offset;
+			compound->state_tsub1.positions[i] += offset;*/
 		}
 		integrateCompound(compound, simulation);
 	}
@@ -219,15 +219,15 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 
 	CompoundCoords* coords = &simulation->box->compound_coord_array[simulation->box->n_compounds];
 	CompoundCoords& coords_prev = simulation->box->compound_coord_array_prev[simulation->box->n_compounds];
-	for (int i = 0; i < compound->n_particles; i++) {
-		*coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
-		coords_prev = LIMAPOSITIONSYSTEM::positionCompound(*state_prev, 0);
-	}
 
-	for (int i = 0; i < compound->n_particles; i++) {
+	*coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
+	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(*state_prev, 0);
+	
+
+	/*for (int i = 0; i < compound->n_particles; i++) {
 		state->positions[i] *= 1.f/NORMALIZER;
 		state_prev->positions[i] *= 1.f/ NORMALIZER;
-	}
+	}*/
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
 }

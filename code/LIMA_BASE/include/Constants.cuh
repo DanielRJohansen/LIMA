@@ -15,8 +15,10 @@ constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max a
 
 constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 
-constexpr float LIMA_SCALE = 1e-6f;			// size of 1 lima unit in nm or ns or whatever
-constexpr float CUTOFF = 1.1f / LIMA_SCALE;				// nm
+//constexpr float LIMA_SCALE = 1.f;// 1e-6f;			// size of 1 lima unit in nm or ns or whatever
+constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
+constexpr float CUTOFF = 1.1f * NANO_TO_FEMTO;				// fm
+constexpr float LIMASCALE_TO_FEMTO = 1e-2f;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -29,7 +31,7 @@ constexpr float BOX_LEN_NM = 7.f;
 constexpr float BOX_LEN = BOX_LEN_NM * 1e+6f;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 //constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
-constexpr float NORMALIZER = BOX_LEN;
+constexpr float NORMALIZER = 1.f;
 constexpr float NORMALIZER_SQ = NORMALIZER*NORMALIZER;
 
 constexpr float BOX_LEN_RELATIVE = BOX_LEN / NORMALIZER;
@@ -112,8 +114,8 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.01f / static_cast<float>(STEPS_PER_THE
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 10;
-constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
+const int STEPS_PER_RENDER = 20;
+constexpr float FORCED_INTERRENDER_TIME = 10.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //
 

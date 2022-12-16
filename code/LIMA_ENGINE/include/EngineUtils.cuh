@@ -85,7 +85,8 @@ namespace LIMAPOSITIONSYSTEM {
 	static CompoundCoords positionCompound(CompoundState& state,  int key_particle_index=0) {
 		CompoundCoords compoundcoords{};
 		Float3& key_pos = state.positions[key_particle_index];
-		compoundcoords.origo = Float3(key_pos);
+		//compoundcoords.origo = Float3(key_pos);	
+		compoundcoords.origo = Float3(0);	// Temp, use the one above in future
 
 		double default_norm_dist = 1.0;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
 
@@ -94,28 +95,32 @@ namespace LIMAPOSITIONSYSTEM {
 			double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compoundcoords.origo.y)) / default_norm_dist;
 			double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compoundcoords.origo.z)) / default_norm_dist;
 
-			Float3 rel_pos{ x, y, z };
-			Coord rel_coord{ rel_pos * static_cast<float>(1 << 29) };
+			Float3 rel_pos_nm{ x, y, z };
+			Coord rel_coord{ rel_pos_nm * NANO_TO_LIMA };
 			compoundcoords.rel_positions[i] = rel_coord;
 
-			if (rel_pos.len() > 1.f) {
-				throw "Compound spans too large a distance";
-			}
+
 		}
 		return compoundcoords;
 	}
 
 	__device__ static Float3 getGlobalPositionNM(CompoundCoords& coords) {
-		return coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
+		return coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / NANO_TO_LIMA;
 	}
 
 	__device__ static Float3 getGlobalPositionFM(CompoundCoords& coords) {
 		return coords.origo.toFloat3() * NANO_TO_FEMTO*0.f + coords.rel_positions[threadIdx.x].toFloat3() * LIMASCALE_TO_FEMTO;
 	}
 
-	__device__ static void getGlobalPositionsFM(CompoundCoords& coords, CompoundState& state) {
+	// Returns position in LimaMetres
+	__device__ static Float3 getGlobalPosition(CompoundCoords& coords) {
+		return coords.origo.toFloat3() * NANO_TO_FEMTO * 0.f + coords.rel_positions[threadIdx.x].toFloat3();
+	}
+
+	// Returns positions in LimaMetres
+	__device__ static void getGlobalPositions(CompoundCoords& coords, CompoundState& state) {
 		//state.positions[threadIdx.x] = coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
-		state.positions[threadIdx.x] = getGlobalPositionFM(coords);
+		state.positions[threadIdx.x] = getGlobalPosition(coords);
 	}
 
 	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {

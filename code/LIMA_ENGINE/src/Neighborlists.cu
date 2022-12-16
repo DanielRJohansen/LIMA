@@ -169,7 +169,7 @@ namespace NListUtils {
 			// Go through all compounds in box, with higher ID than self!
 			for (uint16_t id_candidate = id_self + 1; id_candidate < simulation->n_compounds; id_candidate++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_candidate];
-				float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;
+				float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
 				//continue;
 				//printf("Distance to neighbor compound: %f\n", (nlist_data_collection->compound_key_positions[id_self] - nlist_data_collection->compound_key_positions[id_candidate]).len());
 				//if (id_self == 0)

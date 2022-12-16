@@ -180,7 +180,7 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
 
     
     if (local_id < box->compounds[compound_id].n_particles) {
-        atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPositionNM(box->compound_coord_array[compound_id]);
+        atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(box->compound_coord_array[compound_id]);
 
         //atoms[global_id].pos = box->compound_state_array[compound_id].positions[local_id];                                                          // Might need to change this, if thread> n_particles!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //atoms[global_id].pos.print('A');
@@ -213,16 +213,16 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     RenderAtom atom = atoms[index];
 
     atom.color = getColor(atom.atom_type);
-    atom.radius = (getRadius(atom.atom_type)) / (1.f+atom.pos.y * 0.001f);       // [nm]
+    atom.radius = (getRadius(atom.atom_type)) / (1.f+atom.pos.y * 0.00000000001f);       // [nm]
 
     //atoms[index] = atom;
 
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
-    for (int dim = 0; dim < 3; dim++) {
-        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f) * 1.8f;  // De-normalize coord here first. Maybe separate into multiple lines..
-    }
 
+    for (int dim = 0; dim < 3; dim++) {
+        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN - 0.5f) *1.8f;
+    }
 
     RenderBall ball(atom.pos, atom.radius, atom.color);
     if (atom.atom_type == ATOM_TYPE::NONE)

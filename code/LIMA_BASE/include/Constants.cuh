@@ -17,8 +17,11 @@ constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 
 //constexpr float LIMA_SCALE = 1.f;// 1e-6f;			// size of 1 lima unit in nm or ns or whatever
 constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
-constexpr float CUTOFF = 1.1f * NANO_TO_FEMTO;				// fm
 constexpr float LIMASCALE_TO_FEMTO = 1e-2f;
+constexpr float FEMTO_TO_LIMA = 1e+2f;
+constexpr float NANO_TO_LIMA = 1e+8f;
+
+constexpr float CUTOFF = 1.1f * NANO_TO_LIMA;				// fm
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -28,7 +31,7 @@ constexpr float LIMASCALE_TO_FEMTO = 1e-2f;
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr float BOX_LEN_NM = 7.f;
-constexpr float BOX_LEN = BOX_LEN_NM * 1e+6f;		// Must be > twice the len of largest compound
+constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 //constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
 constexpr float NORMALIZER = 1.f;

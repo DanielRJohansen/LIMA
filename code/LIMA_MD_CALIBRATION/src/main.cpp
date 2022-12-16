@@ -56,7 +56,7 @@ bool doPoolBenchmark(Environment& env) {
 
 	for (auto temp : particle_temps) {
 		float vel_at_temp = temp * 2.f;	// Multiply with 2 to get velocity of 2 particles in a single particle
-		float steps_for_full_interaction = 1000.f / 300.f * vel_at_temp;
+		float steps_for_full_interaction = 1500.f / 300.f * vel_at_temp;
 
 
 		env.CreateSimulation(conf, topol, work_folder);
@@ -65,7 +65,7 @@ bool doPoolBenchmark(Environment& env) {
 
 
 		//box->compound_state_array_prev[0].positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
-		LIMAPOSITIONSYSTEM::moveCoordinate(box->compound_coord_array_prev[0].rel_positions[0], Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt);	// convert vel from nm/ns to nm/fs
+		box->compound_coord_array_prev[0].rel_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt * FEMTO_TO_LIMA;	// convert vel from nm/ns to nm/fs
 		env.run();
 
 		auto analytics = env.getAnalyzedPackage();

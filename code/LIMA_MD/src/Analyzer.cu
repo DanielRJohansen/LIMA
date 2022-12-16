@@ -278,11 +278,12 @@ float getStdDev(std::vector<float>& vec) {
 	for (auto elem : vec) { err_sum += (elem - mean) * (elem - mean); }
 
 	double mean_err_sq = err_sum / static_cast<double>(vec.size());
-	return static_cast<float>(std::sqrt(mean_err_sq));
+	return static_cast<float>(std::abs(std::sqrt(mean_err_sq)));
 }
 
 float Analyzer::getStdDevNorm(std::vector<float>& vec) {
-	return getStdDev(vec) / vec.front();
+
+	return vec.front() != 0.f ? getStdDev(vec) / vec.front() : 0.f;
 }
 
 void printRow(string title, vector<float>& vec) {

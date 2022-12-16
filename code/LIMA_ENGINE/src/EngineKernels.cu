@@ -36,18 +36,18 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless
 	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * FEMTO_TO_LIMA * FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 
 	//float dist_abs = sqrtf(dist_sq) * NORMALIZER;
 
 
-	*potE += 4. * epsilon * s * (s - 1.f) * NORMALIZER_SQ * 0.5;
+	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 	if (blockIdx.x == 0) {
-		printf("\n");
-		pos0->print('0');
-		pos1->print('1');
-		printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
+		//printf("\n");
+		//pos0->print('0');
+		//pos1->print('1');
+		printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %.16f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
 	}
 	
 	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
@@ -449,7 +449,7 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 }
 
 
-__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundState& compound_state, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
+__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
 	const int compound_index = blockIdx.x;
 
 	{
@@ -459,7 +459,11 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundSta
 		const int index = step_offset + compound_offset + threadIdx.x;
 		// Log the previous pos, as this comes after integration, and we do want that juicy pos(t0) ;)
 		//box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
-		box->traj_buffer[index] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
+
+		//box->traj_buffer[index] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
+
+		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getGlobalPositionFM(compound_coords);
+
 		box->potE_buffer[index] = *potE_sum;
 	}
 	//if (blockIdx.x == 0 && threadIdx.x == 0) {
@@ -518,7 +522,7 @@ __global__ void compoundKernel(Box* box) {
 	}
 	__syncthreads();
 
-	LIMAPOSITIONSYSTEM::getGlobalPositionsFM(box->compound_coord_array[blockIdx.x], compound_state);
+	//0LIMAPOSITIONSYSTEM::getGlobalPositions(box->compound_coord_array[blockIdx.x], compound_state);
 
 
 
@@ -530,11 +534,11 @@ __global__ void compoundKernel(Box* box) {
 	__syncthreads();
 
 
-	LIMAPOSITIONSYSTEM::getGlobalPositionsFM(compound_coords, compound_state);
+	LIMAPOSITIONSYSTEM::getGlobalPositions(compound_coords, compound_state);
 	__syncthreads();
 
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		compound_state.positions[0].print('0');
+		//compound_state.positions[0].print('0');
 	}
 
 	float potE_sum = 0;
@@ -643,13 +647,12 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-	LogCompoundData(compound, box, compound_state, &potE_sum, force, force_LJ_sol);
+	LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol);
 
 	if (force.len() > 2e+10) {
 		printf("\n\nCritical force %.0f           block %d thread %d\n\n\n", force.len(), blockIdx.x, threadIdx.x);
 		box->critical_error_encountered = true;
 	}
-
 
 	box->compound_state_array_next[blockIdx.x].loadData(&compound_state);
 	box->compound_coord_array_next[blockIdx.x].loadData(compound_coords);

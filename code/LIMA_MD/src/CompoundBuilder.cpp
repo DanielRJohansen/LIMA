@@ -155,7 +155,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 
 		current_compound->addParticle(
 			forcefield->getAtomtypeID(record.atom_serial_number),
-			record.coordinate * NANO_TO_FEMTO,
+			record.coordinate,
 			forcefield->atomTypeToIndex(record.atom_name[0]),
 			record.atom_serial_number);
 

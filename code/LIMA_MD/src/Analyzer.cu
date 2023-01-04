@@ -266,7 +266,7 @@ float getMean(vector<float> vec)
 {
 	double sum = 0.;
 	for (auto elem : vec) { sum += static_cast<double>(elem); }	
-	return sum / static_cast<double>(vec.size());
+	return static_cast<float>(sum / static_cast<double>(vec.size()));
 }
 
 float getStdDev(std::vector<float>& vec) {

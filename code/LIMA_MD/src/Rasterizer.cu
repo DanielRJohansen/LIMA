@@ -220,10 +220,11 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
 
+    //if (threadIdx.x + blockIdx.x == 0) atom.pos.print('r');
     for (int dim = 0; dim < 3; dim++) {
         *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN - 0.5f) *1.8f;
     }
-
+    //if (threadIdx.x + blockIdx.x == 0) atom.pos.print('R');
     RenderBall ball(atom.pos, atom.radius, atom.color);
     if (atom.atom_type == ATOM_TYPE::NONE)
         ball.disable = true;

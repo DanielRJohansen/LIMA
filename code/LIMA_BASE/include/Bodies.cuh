@@ -171,7 +171,7 @@ struct CompoundState {							// Maybe delete this soon?
 
 struct CompoundCoords {
 	__device__ void loadData(CompoundCoords& coords) {
-		origo = coords.origo;
+		if (threadIdx.x == 0) { origo = coords.origo; };
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
 	Coord origo{};

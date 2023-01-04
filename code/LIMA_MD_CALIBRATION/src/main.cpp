@@ -7,7 +7,7 @@
 #include <string>
 #include <algorithm>
 #include "Printer.h"
-
+#include "Utilities.h"
 
 //bool coordPrecesionBenchmark() {
 //	Float3 pos1{ 3.5, 4, 4 };
@@ -47,25 +47,25 @@ bool doPoolBenchmark(Environment& env) {
 	env.loadSimParams(work_folder + "sim_params.txt");
 	float dt = env.getSimparamRef()->dt;
 
-	
+	auto* sim_params = env.getSimparamRef();
 
 	//float particle_temps[] = { 10.f, 100.f, 200.f, 273.f, 300.f, 500.f };	// Simulated temp of a single particle
-	//std::vector<float> particle_temps{ 300, 600, 2000 };// , 1000, 2000, 5000, 10000
+	//std::vector<float> particle_temps{ 300, 600, 2000, 4000, 8000 };// , 1000, 2000, 5000, 10000
 	std::vector<float> particle_temps{ 600};// , 1000, 2000, 5000, 10000
 	std::vector<float> std_devs;
 
 	for (auto temp : particle_temps) {
-		float vel_at_temp = temp * 2.f;	// Multiply with 2 to get velocity of 2 particles in a single particle
-		float steps_for_full_interaction = 1500.f / 300.f * vel_at_temp;
-
+		auto vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp * 2.f); // temp * 2 as 1 particles stores the temp of both in this test. [m/s] or [fm/fs]
+		int steps_for_full_interaction = 12000000 / static_cast<int>(vel);
+		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 
 		env.CreateSimulation(conf, topol, work_folder);
 		auto* box = env.getSim()->box;
-
-
-
 		//box->compound_state_array_prev[0].positions[0] += Float3(-1, 0, 0) / NORMALIZER * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt;
-		box->compound_coord_array_prev[0].rel_positions[0] += Float3(-1, 0, 0) * EngineUtils::calcSpeedOfParticle(particle_mass, temp) * dt * FEMTO_TO_LIMA;	// convert vel from nm/ns to nm/fs
+
+
+		//box->compound_coord_array_prev[0].rel_positions[0] += Float3(-1, 0, 0) * vel * dt * FEMTO_TO_LIMA;	// convert vel from fm/fs to Lm/fs
+		box->compound_coord_array_prev[1].rel_positions[0] += Float3(1, 0, 0) * vel * dt * FEMTO_TO_LIMA;	// convert vel from fm/fs to Lm/fs
 		env.run();
 
 		auto analytics = env.getAnalyzedPackage();

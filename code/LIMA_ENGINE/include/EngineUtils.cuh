@@ -8,6 +8,10 @@
 #include "Forcefield.cuh"
 #include <math.h>
 
+#include <cuda.h>
+#include <device_functions.h>
+#include <device_launch_parameters.h>
+#include <cuda_runtime_api.h>
 namespace ForceCalc {
 //	-
 };
@@ -84,7 +88,7 @@ namespace LIMAPOSITIONSYSTEM {
 	//static Coord coordFromAbsPos(Float3 pos)
 	static CompoundCoords positionCompound(CompoundState& state,  int key_particle_index=0) {
 		CompoundCoords compoundcoords{};
-		Float3& key_pos = state.positions[key_particle_index];
+		//Float3& key_pos = state.positions[key_particle_index];
 		//compoundcoords.origo = Float3(key_pos);	
 		compoundcoords.origo = Float3(0);	// Temp, use the one above in future
 
@@ -105,27 +109,43 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__device__ static Float3 getGlobalPositionNM(CompoundCoords& coords) {
-		return coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / NANO_TO_LIMA;
+		return coords.origo.toFloat3() + coords.rel_positions[threadIdx.x].toFloat3() / NANO_TO_LIMA;
 	}
 
 	__device__ static Float3 getGlobalPositionFM(CompoundCoords& coords) {
-		return coords.origo.toFloat3() * NANO_TO_FEMTO*0.f + coords.rel_positions[threadIdx.x].toFloat3() * LIMASCALE_TO_FEMTO;
+		return coords.origo.toFloat3() * NANO_TO_FEMTO + coords.rel_positions[threadIdx.x].toFloat3() * LIMA_TO_FEMTO;
 	}
 
 	// Returns position in LimaMetres
 	__device__ static Float3 getGlobalPosition(CompoundCoords& coords) {
-		return coords.origo.toFloat3() * NANO_TO_FEMTO * 0.f + coords.rel_positions[threadIdx.x].toFloat3();
+		return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
 	}
 
 	// Returns positions in LimaMetres
 	__device__ static void getGlobalPositions(CompoundCoords& coords, CompoundState& state) {
-		//state.positions[threadIdx.x] = coords.origo.toFloat3() / 1e+6f + coords.rel_positions[threadIdx.x].toFloat3() / static_cast<float>(1 << 29);
 		state.positions[threadIdx.x] = getGlobalPosition(coords);
 	}
 
 	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
 		// TODO: IMplement
 	}
+	
+	// For coordinates of OTHER, we find the value in LM that each coord must be shifted, to be aligned with coordinates of self
+	__device__ static Coord getRelShift(const Coord& origo_self, const Coord& origo_other) {
+		return (origo_self - origo_other) * NANO_TO_LIMA;
+	}
+
+	__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
+		movable_coord.x += BOX_LEN_NM * ((static_coord.x - movable_coord.x) >  BOX_LEN_HALF_NM);
+		movable_coord.x -= BOX_LEN_NM * ((static_coord.x - movable_coord.x) < -BOX_LEN_HALF_NM);
+
+		movable_coord.y += BOX_LEN_NM * ((static_coord.y - movable_coord.y) > BOX_LEN_HALF_NM);
+		movable_coord.y -= BOX_LEN_NM * ((static_coord.y - movable_coord.y) < -BOX_LEN_HALF_NM);
+
+		movable_coord.z += BOX_LEN_NM * ((static_coord.z - movable_coord.z) > BOX_LEN_HALF_NM);
+		movable_coord.z -= BOX_LEN_NM * ((static_coord.z - movable_coord.z) < -BOX_LEN_HALF_NM);
+	}
+
 
 	static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
 		applyHyperpos(lhs, rhs);
@@ -135,12 +155,45 @@ namespace LIMAPOSITIONSYSTEM {
 			std::min(lhs.origo.y, rhs.origo.y) + ((std::max(lhs.origo.y, rhs.origo.y) - std::min(lhs.origo.y, rhs.origo.y)) / 2),
 			std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
 		};
-
 	}
 
+	__device__ static Coord getHyperOrigo(const Coord& self, Coord other) {
+		applyHyperpos(self, other);
+		return other;
+	}
+
+	// The following two functions MUST ALWAYS be used together
+	// Shift refers to the wanted difference in the relative positions, thus origo must move -shift.
+	// Keep in mind that origo is in nm and rel_pos are in lm
+	// ONLY CALL FROM THREAD 0
+	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
+		//Coord shift_nm = -coords.rel_positions[keyparticle_index] / static_cast<uint32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+
+		Coord shift_nm = coords.rel_positions[keyparticle_index] >> 27;	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+		//printf("%d %d %d\n", shift_nm.x, shift_nm.y, shift_nm.z);
+		coords.origo += shift_nm;
+		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+	}
+	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
+		coords.rel_positions[threadIdx.x] += shift_lm;
+	}
+
+
 	static void moveCoordinate(Coord& coord, Float3 delta /*[nm]*/) {	// TODO: some checks to make this safe
-		Coord delta_c{ delta / LIMASCALE_TO_FEMTO };
+		Coord delta_c{ delta / LIMA_TO_FEMTO };
 		coord += delta_c;
+	}
+
+	__device__ static void applyPBC(CompoundCoords& coords) {
+		if (threadIdx.x != 0) { return; }
+		coords.origo.x += BOX_LEN_NM * (coords.origo.x < 0);
+		coords.origo.x -= BOX_LEN_NM * (coords.origo.x > BOX_LEN_NM);
+
+		coords.origo.y += BOX_LEN_NM * (coords.origo.y < 0);
+		coords.origo.y -= BOX_LEN_NM * (coords.origo.y > BOX_LEN_NM);
+
+		coords.origo.z += BOX_LEN_NM * (coords.origo.z < 0);
+		coords.origo.z -= BOX_LEN_NM * (coords.origo.z > BOX_LEN_NM);
 	}
 
 

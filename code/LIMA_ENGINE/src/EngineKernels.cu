@@ -34,21 +34,21 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 
 	// Directly from book
 	float dist_sq = (*pos1 - *pos0).lenSquared();
-	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless
+	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * FEMTO_TO_LIMA * FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 
-	//float dist_abs = sqrtf(dist_sq) * NORMALIZER;
+
 
 
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
-	if (blockIdx.x == 0) {
-		//printf("\n");
-		//pos0->print('0');
-		//pos1->print('1');
-		printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %.16f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
-	}
+	//if (blockIdx.x == 0) {
+	//	//printf("\n");
+	//	//pos0->print('0');
+	//	//pos1->print('1');
+	//	printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %.16f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
+	//}
 	
 	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
 		printf("dist %f    s %f    eps %f    pot %f\n", sqrtf(dist_sq), s, epsilon, 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ);*/
@@ -357,19 +357,20 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	Coord prev_vel = coord - coord_tsub1;
 
 	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	int32_t x = coord.x;
-	int32_t dx = coord.x - coord_tsub1.x;
-	int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
+	//int32_t x = coord.x;
+	//int32_t dx = coord.x - coord_tsub1.x;
+	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
 	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	coord += (coord - coord_tsub1) + *force * dt * dt / mass;
 	//pos->x = x + dx + ddx;
-	coord.x = x + dx + ddx;
+	//coord.x = x + dx + ddx;
 
 	//Double3 pos_d{ *pos };
 
-	if (threadIdx.x + blockIdx.x == 0) {
-		uint32_t diff = coord.x - x - dx;
-		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-	}
+	//if (threadIdx.x + blockIdx.x == 0) {
+	//	uint32_t diff = coord.x - x - dx;
+	//	//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+	//}
 }
 
 __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const double dt, float* thermostat_scalar, int p_index, bool print = false) {
@@ -382,11 +383,11 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	float prev_vel = (*pos - *pos_tsub1).len();
 
 	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	double x = pos->x;
+	/*double x = pos->x;
 	double dx = pos->x - pos_tsub1->x;
-	double ddx = force->x * dt * dt / static_cast<double>(mass);
-	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
-	pos->x = x + dx + ddx;
+	double ddx = force->x * dt * dt / static_cast<double>(mass);*/
+	*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	//pos->x = x + dx + ddx;
 
 
 	//Double3 pos_d{ *pos };
@@ -394,8 +395,8 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	if (threadIdx.x + blockIdx.x == 0) {
 		//printf("step %d f %f\n", 0, force->x);
 		//float actual_x = x * NORMALIZER * LIMA_SCALE;
-		double diff = (double)pos->x - x - dx;
-		printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", x, dx, force->x, ddx, dx + ddx, diff);
+		//double diff = (double)pos->x - x - dx;
+		//printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", x, dx, force->x, ddx, dx + ddx, diff);
 	}
 	////*pos += x_;
 	////*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
@@ -613,21 +614,39 @@ __global__ void compoundKernel(Box* box) {
 
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
+	__shared__ Coord rel_pos_shift;
+	__syncthreads();				// dont know if necessary to guard the above declaration?
+	if (threadIdx.x == 0) {
+		Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, box->compound_coord_array_prev[blockIdx.x].origo);
+		rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShift(compound_coords.origo, prev_hyper_origo);
+
+//		if (blockIdx.x == 0) { prev_hyper_origo.print('o'); }
+	}
+	__syncthreads();
+
+	Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
+
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		
+		//compound_coords.rel_positions[threadIdx.x].print('n');
+		//prev_rel_pos.print('p');
+		//rel_pos_shift.print('s');
+	}
+	
+
 	if (threadIdx.x < compound.n_particles) {
-		utility_buffer[threadIdx.x] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
-		if (box->step >= RAMPUP_STEPS) {
+		//utility_buffer[threadIdx.x] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
+
 			//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
-			
-			
-			integratePosition(compound_coords.rel_positions[threadIdx.x], box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
+		//__shared__ Coord prev_hyper_origo{};	// dont like this here
+
+		integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
+		//integratePosition(compound_coords.rel_positions[threadIdx.x], box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
 
 
 
 			//integratePosition(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
-		}
-		else {
-			integratePositionRampUp(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->step);
-		}
+
 		//box->compounds[blockIdx.x].prev_positions[threadIdx.x] = &utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
 		box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x] = utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
 	}
@@ -642,10 +661,34 @@ __global__ void compoundKernel(Box* box) {
 	if (threadIdx.x == 0) {
 		//EngineUtils::applyPBC(&compound_state.positions[threadIdx.x]);
 	}
+	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
+	//if (threadIdx.x == 0 && blockIdx.x == 0) LIMAPOSITIONSYSTEM::getGlobalPositionNM(compound_coords).print('b');
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		//compound_coords.origo.print('p');
+		//compound_coords.rel_positions[0].print('P');
+	}
 	__syncthreads();
+	{
+		__shared__ Coord shift_lm;
+		if (threadIdx.x == 0) {
+			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords);
+		}
+		__syncthreads();
+
+		if (threadIdx.x == 0 && blockIdx.x == 0) {
+			//shift_lm.print('S');
+		}
+
+		LIMAPOSITIONSYSTEM::shiftRelPos(compound_coords, shift_lm);
+		__syncthreads();
+	}
+	//if (threadIdx.x == 0 && blockIdx.x == 0) LIMAPOSITIONSYSTEM::getGlobalPositionNM(compound_coords).print('a');
 	//EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
-
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		//compound_coords.origo.print('a');
+		//compound_coords.rel_positions[0].print('A');
+	}
 
 	LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol);
 

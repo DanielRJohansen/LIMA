@@ -246,35 +246,39 @@ struct Coord {
 
 	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
+	__host__ __device__ Coord operator / (const uint32_t& a) const { return Coord(x / a, y / a, z / a); }
+	__host__ __device__ Coord operator - () const { return Coord(-x, -y, -z); }
 	__host__ __device__ void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
-	inline Coord operator * (const int32_t a) { return Coord{ x * a, y * a, z * a }; }
-
+	__host__ __device__ void operator -= (const Coord& a) { x -= a.x; y -= a.y; z -= a.z; };
+	__host__ __device__ Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
+	__device__ Coord operator >> (const uint32_t a) const { return Coord(x >> a, y >> a, z >> a); }
 	
+	__host__ __device__ void print(char c = '_') { printf(" %c %d %d %d\n", c, x, y, z); }
 
-	__host__ __device__ float distSqAbs(Coord* a) {
-		// Calc distances along all three dimensions, and convert to Float3
-		Coord diff = this->difference(a);
-		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
-
-		// Calc distances along all three dimensions in x/(2^32)
-		diff_f *= BOX_LEN;
-		uint32_t uu = UINT32_MAX;
-//		float f = static_cast<float>(uu);
-		diff_f = diff_f / static_cast<float>(uu);
-
-		return diff_f.lenSquared();
-	}
+//	__host__ __device__ float distSqAbs(Coord* a) {
+//		// Calc distances along all three dimensions, and convert to Float3
+//		Coord diff = this->difference(a);
+//		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
+//
+//		// Calc distances along all three dimensions in x/(2^32)
+//		diff_f *= BOX_LEN;
+//		uint32_t uu = UINT32_MAX;
+////		float f = static_cast<float>(uu);
+//		diff_f = diff_f / static_cast<float>(uu);
+//
+//		return diff_f.lenSquared();
+//	}
 	__host__ __device__ Float3 toFloat3() const { return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); }
-
-private:
-	
-	__host__ __device__ Coord difference(Coord* a) const {
-		return Coord{
-			std::max(x, a->x) - std::min(x, a->x),
-			std::max(y, a->y) - std::min(y, a->y),
-			std::max(z, a->z) - std::min(z, a->z)
-		};
-	}
+//
+//private:
+//	
+//	__host__ __device__ Coord difference(Coord* a) const {
+//		return Coord{
+//			std::max(x, a->x) - std::min(x, a->x),
+//			std::max(y, a->y) - std::min(y, a->y),
+//			std::max(z, a->z) - std::min(z, a->z)
+//		};
+//	}
 };
 
 

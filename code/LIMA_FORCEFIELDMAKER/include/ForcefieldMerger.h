@@ -17,10 +17,10 @@ public:
 			parseDihedraltypes(rows, &ff_dihedraltypes);
 		}
 		printf("\n\n");
-		printf("%d NB_Atomtypes found in param files\n", ff_nonbonded.size());
-		printf("%d Bondtypes found in param files\n", ff_bondtypes.size());
-		printf("%d Angletypes found in param files\n", ff_angletypes.size());
-		printf("%d Dihedraltypes found in param files\n", ff_dihedraltypes.size());
+		printf("%lld NB_Atomtypes found in param files\n", ff_nonbonded.size());
+		printf("%lld Bondtypes found in param files\n", ff_bondtypes.size());
+		printf("%lld Angletypes found in param files\n", ff_angletypes.size());
+		printf("%lld Dihedraltypes found in param files\n", ff_dihedraltypes.size());
 	}
 
 

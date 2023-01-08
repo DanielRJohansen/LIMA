@@ -559,8 +559,7 @@ __global__ void compoundKernel(Box* box) {
 	__syncthreads();
 
 	if (threadIdx.x == 0 && blockIdx.x == 1) {
-		compound_state.positions[0].print('1');
-		//com
+		//compound_state.positions[0].print('1');
 	}
 
 	float potE_sum = 0;

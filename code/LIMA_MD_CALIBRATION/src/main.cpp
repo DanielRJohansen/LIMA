@@ -50,14 +50,14 @@ bool doPoolBenchmark(Environment& env) {
 	auto* sim_params = env.getSimparamRef();
 
 	//float particle_temps[] = { 10.f, 100.f, 200.f, 273.f, 300.f, 500.f };	// Simulated temp of a single particle
-	//std::vector<float> particle_temps{ 300, 600, 2000, 4000, 8000 };// , 1000, 2000, 5000, 10000
-	std::vector<float> particle_temps{ 1000};// , 1000, 2000, 5000, 10000
+	std::vector<float> particle_temps{ 300, 600, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
+	//std::vector<float> particle_temps{ 1000};// , 1000, 2000, 5000, 10000
 	std::vector<float> std_devs;
 
 	for (auto temp : particle_temps) {
 		auto vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp * 2.f); // temp * 2 as 1 particles stores the temp of both in this test. [m/s] or [fm/fs]
 		int steps_for_full_interaction = 8000000 / static_cast<int>(vel);
-		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100) * 50;
+		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		env.CreateSimulation(conf, topol, work_folder);
 
 		

@@ -500,6 +500,21 @@ __device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_
 	}
 }
 
+__device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord, int step) { 
+	if (threadIdx.x == 0) {
+		Coord querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperOrigo(origo_self, querycompound->origo);
+
+		// calc Relative Position Shift from the origo-shift
+		*utility_coord = LIMAPOSITIONSYSTEM::getRelShift(origo_self, querycompound_hyperorigo);
+	}
+	__syncthreads();
+
+	//Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
+	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] - *utility_coord;
+	//output_buffer[threadIdx.x] = LIMAPOSITIONSYSTEM::
+	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();
+}
+
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
@@ -514,7 +529,7 @@ __global__ void compoundKernel(Box* box) {
 	__shared__ NeighborList neighborlist;		
 	__shared__ BondedParticlesLUT bonded_particles_lut;
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
-
+	__shared__ Coord utility_coord;
 
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
@@ -529,17 +544,23 @@ __global__ void compoundKernel(Box* box) {
 
 
 	compound.loadData(&box->compounds[blockIdx.x]);
-	compound_state.loadData(&box->compound_state_array[blockIdx.x]);
-	compound_coords.loadData(box->compound_coord_array[blockIdx.x]);
+	//compound_state.loadData(&box->compound_state_array[blockIdx.x]);
+	//compound_coords.loadData(box->compound_coord_array[blockIdx.x]);
+	//int index0_of_currentstep_coordarray = (box->step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
+	//compound_coords.loadData(box->coordarray_circular_queue[index0_of_currentstep_coordarray + blockIdx.x]);
+	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
+	compound_coords.loadData(*coordarray_ptr);
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
 	__syncthreads();
 
 
-	LIMAPOSITIONSYSTEM::getGlobalPositions(compound_coords, compound_state);
+	//LIMAPOSITIONSYSTEM::getGlobalPositions(compound_coords, compound_state);
+	LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords, compound_state);
 	__syncthreads();
 
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		//compound_state.positions[0].print('0');
+	if (threadIdx.x == 0 && blockIdx.x == 1) {
+		compound_state.positions[0].print('1');
+		//com
 	}
 
 	float potE_sum = 0;
@@ -572,10 +593,12 @@ __global__ void compoundKernel(Box* box) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		int neighborcompound_particles = box->compound_state_array[neighborcompound_id].n_particles;
 
-		if (threadIdx.x < neighborcompound_particles) {
-			utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
-			//EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
-		}
+		//if (threadIdx.x < neighborcompound_particles) {
+		//	utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
+		//	//EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
+		//}
+		auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_id);
+		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord, box->step);
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		bonded_particles_lut.load(*compoundpair_lut);
@@ -616,15 +639,22 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	__shared__ Coord rel_pos_shift;
 	__syncthreads();				// dont know if necessary to guard the above declaration?
+
+	// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
+	int actual_stepindex_of_prev = box->step == 0 ? STEPS_PER_LOGTRANSFER - 1 : box->step - 1;
+	auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 	if (threadIdx.x == 0) {
-		Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, box->compound_coord_array_prev[blockIdx.x].origo);
+		//Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, box->compound_coord_array_prev[blockIdx.x].origo);
+		
+		Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, coordarray_prev_ptr->origo);
 		rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShift(compound_coords.origo, prev_hyper_origo);
 
 //		if (blockIdx.x == 0) { prev_hyper_origo.print('o'); }
 	}
 	__syncthreads();
 
-	Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
+	//Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
+	Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] - rel_pos_shift;
 
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
 		
@@ -675,9 +705,9 @@ __global__ void compoundKernel(Box* box) {
 		}
 		__syncthreads();
 
-		if (threadIdx.x == 0 && blockIdx.x == 0) {
-			//shift_lm.print('S');
-		}
+		//if (threadIdx.x == 0 && blockIdx.x == 1) {
+		//	shift_lm.print('S');
+		//}
 
 		LIMAPOSITIONSYSTEM::shiftRelPos(compound_coords, shift_lm);
 		__syncthreads();
@@ -698,7 +728,9 @@ __global__ void compoundKernel(Box* box) {
 	}
 
 	box->compound_state_array_next[blockIdx.x].loadData(&compound_state);
-	box->compound_coord_array_next[blockIdx.x].loadData(compound_coords);
+	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step + 1, blockIdx.x);
+	coordarray_next_ptr->loadData(compound_coords);
+	//box->compound_coord_array_next[blockIdx.x].loadData(compound_coords);
 }
 #undef compound_id
 

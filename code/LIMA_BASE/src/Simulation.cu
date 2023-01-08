@@ -13,8 +13,8 @@ void Box::moveToDevice() {
 	compound_state_array = genericMoveToDevice(compound_state_array, MAX_COMPOUNDS);
 	compound_state_array_prev = genericMoveToDevice(compound_state_array_prev, MAX_COMPOUNDS);
 
-	compound_coord_array = genericMoveToDevice(compound_coord_array, MAX_COMPOUNDS);
-	compound_coord_array_prev = genericMoveToDevice(compound_coord_array_prev, MAX_COMPOUNDS);
+	/*compound_coord_array = genericMoveToDevice(compound_coord_array, MAX_COMPOUNDS);
+	compound_coord_array_prev = genericMoveToDevice(compound_coord_array_prev, MAX_COMPOUNDS);*/
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
 	solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);

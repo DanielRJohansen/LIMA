@@ -178,6 +178,29 @@ struct CompoundCoords {
 	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};
 };
 
+namespace CoordArrayQueueHelpers {
+	__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
+		cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+		int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_COMPOUNDS;
+		cudaMemcpy(&coordarray_circular_queue[index0_of_prev], coords_prev, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+		cudaDeviceSynchronize();
+		if (cudaGetLastError() != cudaSuccess) {
+			fprintf(stderr, "Error during coord's initial configuration copyToDevice\n");
+			exit(1);
+		}
+	}
+
+	__device__ static CompoundCoords* getCoordarrayPtr(CompoundCoords* coordarray_circular_queue, int step, int compound_index) {
+		int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
+		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
+	}
+
+	//__device__ static CompoundCoords* getCoordPtr(CompoundCoords* coordarray_circular_queue, int step, int compound_index, int particle_index) {
+	//	auto coordarray_ptr = getCoordarrayPtr(coordarray_circular_queue, step, compound_index);
+	//	return &coordarray_ptr[particle_index];
+	//}
+}
+
 struct Compound {
 	__host__ __device__  Compound() {}	// {}
 

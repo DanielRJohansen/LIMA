@@ -151,12 +151,12 @@ void Engine::step() {
 		simulation->box->compound_state_array_next = temp;
 	}
 	
-	{
-		CompoundCoords* temp = simulation->box->compound_coord_array_prev;
-		simulation->box->compound_coord_array_prev = simulation->box->compound_coord_array;
-		simulation->box->compound_coord_array = simulation->box->compound_coord_array_next;
-		simulation->box->compound_coord_array_next = temp;
-	}
+	//{
+	//	CompoundCoords* temp = simulation->box->compound_coord_array_prev;
+	//	simulation->box->compound_coord_array_prev = simulation->box->compound_coord_array;
+	//	simulation->box->compound_coord_array = simulation->box->compound_coord_array_next;
+	//	simulation->box->compound_coord_array_next = temp;
+	//}
 	
 	
 	Solvent* temp_s = simulation->box->solvents;

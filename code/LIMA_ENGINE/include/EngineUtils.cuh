@@ -21,14 +21,14 @@ namespace EngineUtils {
 		for (int i = 0; i < 3; i++) {
 			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
 			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			*movable_particle->placeAt(i) += BOX_LEN_RELATIVE * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_RELATIVE_HALF);
-			*movable_particle->placeAt(i) -= BOX_LEN_RELATIVE * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_RELATIVE_HALF);
+			*movable_particle->placeAt(i) += BOX_LEN_FM * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF_FM);
+			*movable_particle->placeAt(i) -= BOX_LEN_FM * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF_FM);
 		}
 	}
 
 	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
-		//applyHyperpos(p1, &temp);
+		applyHyperpos(p1, &temp);
 		return (*p1 - temp).len();
 	}
 
@@ -117,13 +117,17 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Returns position in LimaMetres
-	__device__ static Float3 getGlobalPosition(CompoundCoords& coords) {
+	__device__ static Float3 getGlobalPosition(const CompoundCoords& coords) {
 		return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
 	}
 
 	// Returns positions in LimaMetres
 	__device__ static void getGlobalPositions(CompoundCoords& coords, CompoundState& state) {
 		state.positions[threadIdx.x] = getGlobalPosition(coords);
+	}
+
+	__device__ static void getRelativePositions(CompoundCoords& coords, CompoundState& state) {
+		state.positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
 	}
 
 	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
@@ -136,14 +140,14 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
-		movable_coord.x += BOX_LEN_NM * ((static_coord.x - movable_coord.x) >  BOX_LEN_HALF_NM);
-		movable_coord.x -= BOX_LEN_NM * ((static_coord.x - movable_coord.x) < -BOX_LEN_HALF_NM);
+		movable_coord.x += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) > static_cast<int32_t>( BOX_LEN_HALF_NM));
+		movable_coord.x -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
 
-		movable_coord.y += BOX_LEN_NM * ((static_coord.y - movable_coord.y) > BOX_LEN_HALF_NM);
-		movable_coord.y -= BOX_LEN_NM * ((static_coord.y - movable_coord.y) < -BOX_LEN_HALF_NM);
+		movable_coord.y += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) > static_cast<int32_t>(BOX_LEN_HALF_NM));
+		movable_coord.y -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
 
-		movable_coord.z += BOX_LEN_NM * ((static_coord.z - movable_coord.z) > BOX_LEN_HALF_NM);
-		movable_coord.z -= BOX_LEN_NM * ((static_coord.z - movable_coord.z) < -BOX_LEN_HALF_NM);
+		movable_coord.z += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) > static_cast<int32_t>(BOX_LEN_HALF_NM));
+		movable_coord.z -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
 	}
 
 
@@ -186,16 +190,20 @@ namespace LIMAPOSITIONSYSTEM {
 
 	__device__ static void applyPBC(CompoundCoords& coords) {
 		if (threadIdx.x != 0) { return; }
-		coords.origo.x += BOX_LEN_NM * (coords.origo.x < 0);
-		coords.origo.x -= BOX_LEN_NM * (coords.origo.x > BOX_LEN_NM);
-
-		coords.origo.y += BOX_LEN_NM * (coords.origo.y < 0);
-		coords.origo.y -= BOX_LEN_NM * (coords.origo.y > BOX_LEN_NM);
-
-		coords.origo.z += BOX_LEN_NM * (coords.origo.z < 0);
-		coords.origo.z -= BOX_LEN_NM * (coords.origo.z > BOX_LEN_NM);
+		coords.origo.x += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.x < 0);
+		coords.origo.x -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.x > static_cast<int32_t>(BOX_LEN_NM));
+		coords.origo.y += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.y < 0);
+		coords.origo.y -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.y > static_cast<int32_t>(BOX_LEN_NM));
+		coords.origo.z += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.z < 0);
+		coords.origo.z -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.z > static_cast<int32_t>(BOX_LEN_NM));
 	}
 
+	// DANGEROUS: Only wraps around once! Min is assumed to be 0
+	__device__ static int getIntegarWraparound(int num, const int max) {
+		num += max * (num < 0);
+		num -= max * (num > max);
+		return num;
+	}
 
 	//__device__ static void applyPBC(Compound* compound);
 };

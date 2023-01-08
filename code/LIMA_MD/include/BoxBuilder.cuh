@@ -18,6 +18,10 @@ public:
 	int solvateBox(Simulation* simulation, std::vector<Float3> *solvate_positions);	// Returns # of solvate compounds placed
 
 
+	// Used for creating the positions host, moved to GPU before simulation start.
+	// Public for dev reasons only. Not really a permanent solution..
+	CompoundCoords* coordarray = nullptr;
+	CompoundCoords* coordarray_prev = nullptr;
 
 private:
 	void integrateCompound(Compound_Carrier* compound, Simulation* simulation);
@@ -71,6 +75,7 @@ private:
 
 	// If molecule is offset, each solvent from .gro file must be aswell
 	Float3 most_recent_offset_applied = Float3(0.f);	
+
 
 
 

@@ -17,9 +17,17 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	cudaMalloc(&simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS);
 	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
-	simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
-	simulation->box->compound_coord_array_prev = new CompoundCoords[MAX_COMPOUNDS];							// Need to manipulate this on host
-	cudaMalloc(&simulation->box->compound_coord_array_next, sizeof(CompoundCoords) * MAX_COMPOUNDS);	// Only need this on device
+	//simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
+	//simulation->box->compound_coord_array_prev = new CompoundCoords[MAX_COMPOUNDS];							// Need to manipulate this on host
+	//cudaMalloc(&simulation->box->compound_coord_array_next, sizeof(CompoundCoords) * MAX_COMPOUNDS);	// Only need this on device
+
+
+	// This is where the coords will eventually reside (device)
+	uint64_t n_bytes = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
+	cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes);
+	// This is very the coords reside while build (host)
+	coordarray = new CompoundCoords[MAX_COMPOUNDS];
+	coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
 
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
@@ -28,6 +36,12 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
 	simulation->box->dt = simulation->dt;
+
+	cudaDeviceSynchronize();
+	if (cudaGetLastError() != cudaSuccess) {
+		fprintf(stderr, "Error during buildBox()\n");
+		exit(1);
+	}
 }
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
@@ -59,12 +73,6 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 	printf("CompoundCollection added to box\n");
 }
 
-//void BoxBuilder::addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies)
-//{
-//	placeMultipleCompoundsRandomly(simulation, molecule, n_copies);
-//	printf("Scattered %d Compounds in box\n", simulation->box->n_compounds);
-//}
-
 void BoxBuilder::finishBox(Simulation* simulation) {
 	// Load meta information
 	simulation->copyBoxVariables();
@@ -78,6 +86,12 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 	cudaMemcpy(simulation->box->compound_state_array_next, simulation->box->compound_state_array, sizeof(CompoundState) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);	// Just make sure they have the same n_particles info...
 	cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+
+
+	// Move the positions to the appropriate places in the circular queue
+	CoordArrayQueueHelpers::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
+
+
 
 	
 	// Permanent Outputs for energy & trajectory analysis
@@ -217,10 +231,10 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 	}
 
 
-	CompoundCoords* coords = &simulation->box->compound_coord_array[simulation->box->n_compounds];
-	CompoundCoords& coords_prev = simulation->box->compound_coord_array_prev[simulation->box->n_compounds];
+	CompoundCoords& coords = coordarray[simulation->box->n_compounds];
+	CompoundCoords& coords_prev = coordarray_prev[simulation->box->n_compounds];
 
-	*coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
+	coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
 	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(*state_prev, 0);
 	
 

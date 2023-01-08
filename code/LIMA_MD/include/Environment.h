@@ -59,6 +59,7 @@ public:
 	SimulationParams* getSimparamRef();
 	Simulation* getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
+	CompoundCoords* getCoordarrayPtr(std::string selector = "current" /*"current"|"prev"*/);
 
 
 private:

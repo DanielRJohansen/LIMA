@@ -38,6 +38,8 @@ constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
 constexpr float NORMALIZER = 1.f;
 constexpr float NORMALIZER_SQ = NORMALIZER*NORMALIZER;
 
+constexpr float BOX_LEN_FM = BOX_LEN * LIMA_TO_FEMTO;
+constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
 constexpr float BOX_LEN_RELATIVE = BOX_LEN / NORMALIZER;
 constexpr float BOX_LEN_RELATIVE_HALF = BOX_LEN_RELATIVE / 2.f;
 // -------------------------------------------------------------------------------------------------------------- //
@@ -133,7 +135,7 @@ const int STEPS_PER_NLIST_UPDATE = 10;
 
 
 // THERMOSTAT PARAMETERS
-const int STEPS_PER_LOGTRANSFER = 5;		// Must be >= 3	why?
+const int STEPS_PER_LOGTRANSFER = 10;		// Must be >= 3	why?
 //const int STEPS_PER_TRAJTRANSFER = 100;
 
 // Logging constants

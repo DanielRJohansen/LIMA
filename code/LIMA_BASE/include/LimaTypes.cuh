@@ -51,7 +51,6 @@ struct Float3 {
 
 
 	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
-	//__host__ __device__ inline Float3 operator * (const double a) const { return Float3((float) (x * a), (float) (y * a), (float) (z * a)); }
 	__host__ __device__ inline Float3 operator * (const Float3 a) const { return Float3(x * a.x, y * a.y, z * a.z); }
 	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
 	__host__ __device__ inline Float3 operator / (const Float3 a) const { return Float3(x / a.x, y / a.y, z / a.z); }
@@ -77,8 +76,8 @@ struct Float3 {
 		);
 	}
 
-	__host__ __device__ inline bool operator < (const Float3 a) { return x < a.x&& y < a.y&& z < a.z; }
-	__host__ __device__ inline bool operator > (const Float3 a) { return x > a.x && y > a.y && z > a.z; }
+	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
+	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	__host__ __device__ Float3 norm() {
 		float l = len();
@@ -89,9 +88,9 @@ struct Float3 {
 	__device__ Float3 norm_fast() {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
-	__host__ __device__ Float3 square() { return Float3(x * x, y * y, z * z); }
-	__host__ __device__ inline float len() { return (float)sqrtf(x * x + y * y + z * z); }
-	__host__ __device__ inline float lenSquared() { return (float)(x * x + y * y + z * z); }
+	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
+	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
+	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 	__host__ __device__ Float3 elementwiseModulus(float a) {
@@ -130,7 +129,7 @@ struct Float3 {
 	}
 
 
-	__host__ __device__ void print(char c = '_') {
+	__host__ __device__ void print(char c = '_') const {
 		if (len() < 10000)
 			printf("%c %.10f %.10f %.10f\n", c, x, y, z);
 		else
@@ -144,7 +143,7 @@ struct Float3 {
 
 		*this = rodriguesRotatation(*this, Float3(1, 0, 0), pitch_yaw_roll.x);
 		*this = rodriguesRotatation(*this, Float3(0, 1, 0), pitch_yaw_roll.y);
-		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.y);
+		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.z);
 	}
 
 	// I think the one below is wrong...
@@ -165,7 +164,7 @@ struct Float3 {
 		v = rodriguesRotatation(v, k, pitch_yaw_roll.z);
 		return v;
 	}
-	__host__ __device__ static Float3 rodriguesRotatation(Float3 v, Float3 k, float theta) {
+	__host__ __device__ static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1 - cos(theta));
 	}
 
@@ -242,6 +241,8 @@ struct Coord {
 		y = static_cast<int32_t>(pos_abs.y);
 		z = static_cast<int32_t>(pos_abs.z);
 	}
+
+	__host__ Coord(int32_t a) : x(a), y(a), z(a) {}
 	__host__ __device__ Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
 
 	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }

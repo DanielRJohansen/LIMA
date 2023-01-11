@@ -9,7 +9,6 @@
 #include <math.h>
 
 #include <cuda.h>
-#include <device_functions.h>
 #include <device_launch_parameters.h>
 #include <cuda_runtime_api.h>
 namespace ForceCalc {
@@ -135,7 +134,7 @@ namespace LIMAPOSITIONSYSTEM {
 	
 	// For coordinates of OTHER, we find the value in LM that each coord must be shifted, to be aligned with coordinates of self
 	__device__ static Coord getRelShift(const Coord& origo_self, const Coord& origo_other) {
-		return (origo_self - origo_other) * NANO_TO_LIMA;
+		return (origo_self - origo_other) * static_cast<int32_t>(NANO_TO_LIMA);
 	}
 
 	__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {

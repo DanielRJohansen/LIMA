@@ -81,16 +81,6 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	difference = difference.norm();								// dif_unit_vec, but shares register with dif
 	double force_scalar = -bondtype->kb * error;				//	[J/(mol*nm^2)]*nm =>	kg*nm^2*ns^-2/(mol*nm^2)*nm = kg*nm/(mol*ns^2)				 [N/mol] directionless, yes?
 
-	/*if (threadIdx.x == 0 && blockIdx.x == 0) {
-		printf("\nError: %f [nm] \n", error / NANO_TO_LIMA);
-		printf("\nError: %f [lm] \n", error);
-		printf("force_scalar %f \n", force_scalar);
-		printf("kb %.10f\n", bondtype->kb);
-		printf("error^2 %f \n", (error * error));
-		printf("error^2/ntl %f \n", (error * error) / NANO_TO_LIMA);
-		printf("pot %f\n", 0.5f * bondtype->kb * (error * error));
-		printf("Applied force %f\n", (difference * force_scalar).len());
-	}*/
 
 	results[0] = difference * force_scalar;				// [GN]
 	results[1] = difference * force_scalar * -1;		// [GN]
@@ -98,8 +88,6 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 #ifdef LIMA_VERBOSE
 	if (force_scalar > 2e+7) {
 		printf("thread %d  error %f ref %f force %f\n", threadIdx.x, error, bondtype->b0, force_scalar);
-		//pos_a->print('a');
-		//pos_b->print('b');
 	}
 #endif
 
@@ -128,8 +116,12 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	results[0] = inward_force_direction1 * force_scalar;
 	results[2] = inward_force_direction2 * force_scalar;
 	results[1] = (results[0] + results[2]) * -1;
-
-	//printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
+	
+	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
+		printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
+		inward_force_direction2.print('n');
+		results[2].print('2');
+	}	
 }
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
 	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();		// Should this not be normalized????
@@ -303,7 +295,6 @@ __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* u
 				&positions[ab->atom_indexes[0]],
 				&positions[ab->atom_indexes[1]],
 				&positions[ab->atom_indexes[2]],
-				//&ab->reference_angle,
 				ab,
 				forces, potE
 			);
@@ -378,10 +369,11 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 
 	//Double3 pos_d{ *pos };
 
-	//if (threadIdx.x + blockIdx.x == 0) {
-	//	uint32_t diff = coord.x - x - dx;
-	//	//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-	//}
+	if (threadIdx.x == 2 && blockIdx.x == 0) {
+		force->print('f');
+		//uint32_t diff = coord.x - x - dx;
+		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+	}
 }
 
 __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const float dt, float* thermostat_scalar, int p_index, bool print = false) {
@@ -522,7 +514,6 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, Compo
 
 	//Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
 	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] - *utility_coord;
-	//output_buffer[threadIdx.x] = LIMAPOSITIONSYSTEM::
 	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();
 }
 
@@ -598,6 +589,7 @@ __global__ void compoundKernel(Box* box) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
+
 	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
@@ -622,8 +614,6 @@ __global__ void compoundKernel(Box* box) {
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	//force = 0;
-
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
@@ -644,7 +634,6 @@ __global__ void compoundKernel(Box* box) {
 	force += force_LJ_sol;
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
-
 
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //

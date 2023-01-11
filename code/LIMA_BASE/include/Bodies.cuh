@@ -362,7 +362,7 @@ struct CompoundBridge {
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
 	int n_dihedrals = 0;
 
-	bool bondBelongsInBridge(GenericBond* bond) {
+	bool bondBelongsInBridge(GenericBond* bond) const {
 		return (compound_id_left == bond->compound_ids[0] && compound_id_right == bond->compound_ids[1]);
 	}
 	bool particleAlreadyStored(ParticleRef* p_ref) {

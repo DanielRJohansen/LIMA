@@ -110,6 +110,50 @@ bool doSpringBenchmark(Environment& env) {
 	return true;
 }
 
+bool doAngleBenchmark(Environment& env) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+
+	env.loadSimParams(work_folder + "sim_params.txt");
+
+	auto* sim_params = env.getSimparamRef();
+
+	const float relaxed_angle = 1.8849f; // [rad]
+	std::vector<float> angle_errors{ 0.1f, 0.4f, 1.f }; //(t-t0) [rad]
+	std::vector<float> std_devs;
+
+	for (auto angle_error : angle_errors) {
+		env.CreateSimulation(conf, topol, work_folder);
+
+		auto coordarray_ptr = env.getCoordarrayPtr("current");
+		auto coordarray_prev_ptr = env.getCoordarrayPtr("prev");
+
+		// First rotate particle #3 to the relaxed position + the error angle
+		Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
+		p3_pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
+		coordarray_ptr[0].rel_positions[2] = p3_pos;
+		coordarray_prev_ptr[0].rel_positions[2] = p3_pos;
+
+		// Now center all 3 particles
+		for (auto i = 0; i < 3; i++) {
+			coordarray_ptr[0].rel_positions[i] += Coord{ 350'000'000 };
+			coordarray_prev_ptr[0].rel_positions[i] += Coord{ 350'000'000 };
+		}
+
+		env.run();
+
+		auto analytics = env.getAnalyzedPackage();
+		Analyzer::printEnergy(analytics);
+		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+	}
+
+	LIMA_Print::printMatlabVec("bond_len_errors", angle_errors);
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
+	return true;
+}
+
 
 int main() {
 
@@ -121,6 +165,7 @@ int main() {
 
 	//basicBenchmark(env);
 	//doPoolBenchmark(env);
-	doSpringBenchmark(env);
+	//doSpringBenchmark(env);
+	doAngleBenchmark(env);
 	return 0;
 }

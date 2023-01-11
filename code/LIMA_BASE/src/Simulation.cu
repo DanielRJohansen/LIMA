@@ -96,6 +96,6 @@ void Simulation::deleteBoxMembers() {
 }
 
 void SimulationParams::overloadParams(std::map<std::string, double>& dict) {
-	overloadParam(dict, &dt, "dt");
+	overloadParam(dict, &dt, "dt", 100.f);	// convert [fs] to [ls]
 	overloadParam(dict, &n_steps, "n_steps");
 }

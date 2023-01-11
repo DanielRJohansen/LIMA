@@ -21,8 +21,8 @@ namespace EngineUtils {
 		for (int i = 0; i < 3; i++) {
 			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
 			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			*movable_particle->placeAt(i) += BOX_LEN_FM * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF_FM);
-			*movable_particle->placeAt(i) -= BOX_LEN_FM * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF_FM);
+			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
+			*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);
 		}
 	}
 
@@ -69,9 +69,8 @@ namespace EngineUtils {
 
 	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
 		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
-		//double mean_velocity = M / (2 * k_B * T);				// This is bullshit. Only for sol mass
 		const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
-		return v_rms;
+		return v_rms;	// [m/s]
 	}
 
 
@@ -161,9 +160,10 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	__device__ static Coord getHyperOrigo(const Coord& self, Coord other) {
-		applyHyperpos(self, other);
-		return other;
+	__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
+		Coord temp = other;
+		applyHyperpos(self, temp);
+		return temp;
 	}
 
 	// The following two functions MUST ALWAYS be used together
@@ -173,8 +173,13 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
 		//Coord shift_nm = -coords.rel_positions[keyparticle_index] / static_cast<uint32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
 
-		Coord shift_nm = coords.rel_positions[keyparticle_index] >> 27;	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-		//printf("%d %d %d\n", shift_nm.x, shift_nm.y, shift_nm.z);
+		Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+		
+		if (threadIdx.x == 0 && blockIdx.x == 1) {
+			//printf("x %d shift.x %d  shift_out%d\n", coords.rel_positions[keyparticle_index].x, shift_nm.x, shift_nm.x * static_cast<int32_t>(NANO_TO_LIMA));
+			//printf("%d %d %d\n", shift_nm.x, shift_nm.y, shift_nm.z);
+		}
+		
 		coords.origo += shift_nm;
 		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}

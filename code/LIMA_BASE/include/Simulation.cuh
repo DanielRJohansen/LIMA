@@ -86,7 +86,7 @@ public:
 struct SimulationParams {
 	void overloadParams(std::map<std::string, double>& dict);
 
-	float dt = 1.f * 1e-6f;	// [ns]
+	float dt = 100.f;	// [ls]
 	int n_steps = 1000;
 private:
 	template <typename T> void overloadParam(std::map <std::string, double>& dict, 
@@ -128,8 +128,7 @@ public:
 	
 	uint64_t n_steps = 0;
 
-	const float dt = 1.f;					// [ns] first val corresponds to fs
-	const float dt_pico = dt * 1000.f;
+	const float dt = 100.f;					// [ls]
 	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
 

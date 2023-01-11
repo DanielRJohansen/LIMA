@@ -36,7 +36,7 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * FEMTO_TO_LIMA * FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 
 
@@ -73,13 +73,24 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	// Calculates bond force on both particles					//
 	// Calculates forces as J/mol*M								//
 
-	Float3 difference = *pos_a - *pos_b;						//	[nm]
-	double error = difference.len() - bondtype->b0;			//	[nm]
+	Float3 difference = *pos_a - *pos_b;						//	[lm]
+	float error = difference.len() - bondtype->b0;				//	[lm]
 
-	*potE += 0.5 * bondtype->kb * (error * error);					// [J/mol]
+	*potE += 0.5f * bondtype->kb * (error * error);					// [J/mol]
 
 	difference = difference.norm();								// dif_unit_vec, but shares register with dif
 	double force_scalar = -bondtype->kb * error;				//	[J/(mol*nm^2)]*nm =>	kg*nm^2*ns^-2/(mol*nm^2)*nm = kg*nm/(mol*ns^2)				 [N/mol] directionless, yes?
+
+	/*if (threadIdx.x == 0 && blockIdx.x == 0) {
+		printf("\nError: %f [nm] \n", error / NANO_TO_LIMA);
+		printf("\nError: %f [lm] \n", error);
+		printf("force_scalar %f \n", force_scalar);
+		printf("kb %.10f\n", bondtype->kb);
+		printf("error^2 %f \n", (error * error));
+		printf("error^2/ntl %f \n", (error * error) / NANO_TO_LIMA);
+		printf("pot %f\n", 0.5f * bondtype->kb * (error * error));
+		printf("Applied force %f\n", (difference * force_scalar).len());
+	}*/
 
 	results[0] = difference * force_scalar;				// [GN]
 	results[1] = difference * force_scalar * -1;		// [GN]
@@ -373,11 +384,11 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	//}
 }
 
-__device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const double dt, float* thermostat_scalar, int p_index, bool print = false) {
+__device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const float dt, float* thermostat_scalar, int p_index, bool print = false) {
 	// Force is in ??Newton, [kg * nm /(mol*ns^2)] //	
 
-	// Always do hyperpos first!
-	EngineUtils::applyHyperpos(pos, pos_tsub1);
+	// Always do hyperpos first!				TODO: Remove, as this is now done by moving the origo, right?
+	//EngineUtils::applyHyperpos(pos, pos_tsub1);
 
 	Float3 temp = *pos;
 	float prev_vel = (*pos - *pos_tsub1).len();
@@ -463,7 +474,7 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoo
 
 		//box->traj_buffer[index] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
 
-		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getGlobalPositionFM(compound_coords);
+		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 
 		box->potE_buffer[index] = *potE_sum;
 	}
@@ -611,6 +622,7 @@ __global__ void compoundKernel(Box* box) {
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
+	//force = 0;
 
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
@@ -691,12 +703,13 @@ __global__ void compoundKernel(Box* box) {
 		//EngineUtils::applyPBC(&compound_state.positions[threadIdx.x]);
 	}
 	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
-	//if (threadIdx.x == 0 && blockIdx.x == 0) LIMAPOSITIONSYSTEM::getGlobalPositionNM(compound_coords).print('b');
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		//compound_coords.origo.print('p');
-		//compound_coords.rel_positions[0].print('P');
-	}
 	__syncthreads();
+	//if (threadIdx.x == 0 && blockIdx.x == 0) LIMAPOSITIONSYSTEM::getGlobalPositionNM(compound_coords).print('b');
+	if (threadIdx.x == 0 && blockIdx.x == 1) {
+//		compound_coords.origo.print('p');
+//		compound_coords.rel_positions[0].print('P');
+	}
+	
 	{
 		__shared__ Coord shift_lm;
 		if (threadIdx.x == 0) {
@@ -729,7 +742,6 @@ __global__ void compoundKernel(Box* box) {
 	box->compound_state_array_next[blockIdx.x].loadData(&compound_state);
 	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step + 1, blockIdx.x);
 	coordarray_next_ptr->loadData(compound_coords);
-	//box->compound_coord_array_next[blockIdx.x].loadData(compound_coords);
 }
 #undef compound_id
 

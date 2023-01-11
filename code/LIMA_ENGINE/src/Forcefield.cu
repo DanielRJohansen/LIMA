@@ -139,7 +139,11 @@ PairBond* Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
 		}
 
 		if (current_state == BONDS) {
-			bonds[ptr++] = PairBond(stoi(row[0]), stoi(row[1]), stof(row[4]), stof(row[5]));
+			bonds[ptr++] = PairBond(
+				stoi(row[0]), 
+				stoi(row[1]), 
+				stof(row[4]) * NANO_TO_LIMA,						/* convert [nm] to [lm]*/
+				stof(row[5]) / (NANO_TO_LIMA * NANO_TO_LIMA));		/* convert [J/(mol * nm^2)] to [J/(mol * nm * lm)*/ // I dont know why, but one of the "nm" might be the direction unitvector?? i am confused...
 		}
 	}
 	n_topol_bonds = ptr;
@@ -204,8 +208,8 @@ void Forcefield::loadAtomypesIntoForcefield() {
 
 	for (int i = 0; i < n_nb_atomtypes; i++) {
 		forcefield.particle_parameters[i].mass = nb_atomtypes[i].mass * 1e-3f;				// Convert g/mol to kg/mol
-		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma * NANO_TO_LIMA;	// Convert from [nm] to [fm]
-		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon;				// Interpreted as kg*fm^2/fs^2 
+		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma * NANO_TO_LIMA;		// Convert from [nm] to [lm]
+		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon;				// Interpreted as kg*lm^2/ls^2 
 
 		bool illegal_parameter = (forcefield.particle_parameters[i].mass < mass_min) || (forcefield.particle_parameters[i].sigma < sigma_min) || (forcefield.particle_parameters[i].epsilon < epsilon_min);
 

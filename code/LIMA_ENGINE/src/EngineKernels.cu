@@ -72,18 +72,18 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondtype, Float3* results, float* potE) {
 	// Calculates bond force on both particles					//
 	// Calculates forces as J/mol*M								//
-
+	// kb [J/(mol*lm^2)]
 	Float3 difference = *pos_a - *pos_b;						//	[lm]
 	float error = difference.len() - bondtype->b0;				//	[lm]
 
-	*potE += 0.5f * bondtype->kb * (error * error);					// [J/mol]
+	*potE += 0.5f * bondtype->kb * (error * error);				// [J/mol]
+
+	
+	double force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
 	difference = difference.norm();								// dif_unit_vec, but shares register with dif
-	double force_scalar = -bondtype->kb * error;				//	[J/(mol*nm^2)]*nm =>	kg*nm^2*ns^-2/(mol*nm^2)*nm = kg*nm/(mol*ns^2)				 [N/mol] directionless, yes?
-
-
-	results[0] = difference * force_scalar;				// [GN]
-	results[1] = difference * force_scalar * -1;		// [GN]
+	results[0] = difference * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
+	results[1] = difference * force_scalar * -1;				// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMA_VERBOSE
 	if (force_scalar > 2e+7) {
@@ -95,32 +95,29 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 
 
 __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3* pos_right, AngleBond* angletype, Float3* results, float* potE) {
-	Float3 v1 = *pos_left - *pos_middle;
-	Float3 v2 = *pos_right - *pos_middle;
-	Float3 normal1 = v1.cross(v2);
-	Float3 normal2 = v2.cross(v1);
+	Float3 v1 = (*pos_left - *pos_middle).norm();
+	Float3 v2 = (*pos_right - *pos_middle).norm();
+	Float3 normal1 = v1.cross(v2).norm();
+	Float3 normal2 = normal1 * -1.f; // v2.cross(v1);
 
 	Float3 inward_force_direction1 = (v1.cross(normal2)).norm();
 	Float3 inward_force_direction2 = (v2.cross(normal1)).norm();
 
-	double angle = Float3::getAngle(v1, v2);
-	double error = angle - angletype->theta_0;// *reference_angle;
+	double angle = Float3::getAngle(v1, v2);				// [rad]
+	double error = angle - angletype->theta_0;				// [rad]
 
-	//error = (error / (2.f * PI)) * 360.f;
+	*potE += 0.5 * angletype->k_theta * error * error * 0.5;	// [J/mol]0
+	double force_scalar = angletype->k_theta * (error);			// [J/(mol*rad)]
 
-	//*potE += 0.5 * ktheta * error * error * 0.5;
-	//double force_scalar = ktheta * (error);
-	*potE += 0.5 * angletype->k_theta * error * error * 0.5;
-	double force_scalar = angletype->k_theta * (error);
+	force_scalar /= NANO_TO_LIMA;				// I have no clue why? I guess in the conversion from J/molrad to kg*lm/ls^2??
 
 	results[0] = inward_force_direction1 * force_scalar;
 	results[2] = inward_force_direction2 * force_scalar;
 	results[1] = (results[0] + results[2]) * -1;
 	
 	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
-		printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
-		inward_force_direction2.print('n');
-		results[2].print('2');
+
+		//printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
 	}	
 }
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
@@ -369,8 +366,10 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 
 	//Double3 pos_d{ *pos };
 
-	if (threadIdx.x == 2 && blockIdx.x == 0) {
-		force->print('f');
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		//force->print('f');
+		//printf("dt %f mass %f\n", dt, mass);
+		//(*force*dt*dt / mass).print('F');
 		//uint32_t diff = coord.x - x - dx;
 		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
 	}

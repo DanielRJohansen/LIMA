@@ -120,7 +120,7 @@ bool doAngleBenchmark(Environment& env) {
 	auto* sim_params = env.getSimparamRef();
 
 	const float relaxed_angle = 1.8849f; // [rad]
-	std::vector<float> angle_errors{ 0.1f, 0.4f, 1.f }; //(t-t0) [rad]
+	std::vector<float> angle_errors{ 0.01f, 0.1f, 0.5f, 1.f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
 
 	for (auto angle_error : angle_errors) {

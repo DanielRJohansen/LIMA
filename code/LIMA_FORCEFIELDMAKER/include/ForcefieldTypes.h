@@ -26,7 +26,7 @@ struct FTHelpers {
 	static bool charIsNumberAbove1(char c) {
 		return ((int)c > 49 && (int)c < 58);
 	}
-	static float calcLikeness(string a, string b) {
+	static float calcLikeness(const string& a,const string& b) {
 		float likeness = 0;
 		float point_scale = 1.f / max(a.length(), b.length());
 
@@ -128,7 +128,7 @@ struct Map {
 		if (!mapExists(l))
 			mappings[n_mappings++] = Mapping(l, r);
 	}
-	string mapRight(string query) {
+	string mapRight(const string& query) {
 		for (int i = 0; i < n_mappings; i++) {
 			if (mappings[i].left == query) {
 				return mappings[i].right;
@@ -341,38 +341,24 @@ struct Atom {
 	}
 
 
-
+	static bool assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias) {
+		for (NB_Atomtype force_parameters : forcefield) {
+			if (force_parameters.type == alias) {
+				atom.atomtype_id = force_parameters.atnum_local;
+				return true;
+			}			
+		}
+		//printf("Alias not found!\n");	// TODO: FIX. irght now i dont care tho
+		//exit(1);
+		return false;
+	}
 
 	static void assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map) {
 		for (int i = 0; i < atoms->size(); i++) {
 			Atom* atom = &((*atoms).at(i));
 			string alias = map->mapRight(atom->atomtype);
 
-			for (NB_Atomtype force_parameters : *forcefield) {
-				if (force_parameters.type == alias) {
-					atom->atomtype_id = force_parameters.atnum_local;
-				}
-			}
-		}
-
-		/*
-		for (Atom atom : *atoms) {
-			string alias = map->mapRight(atom.atomtype);
-
-			for (NB_Atomtype force_parameters : *forcefield) {
-				if (force_parameters.type == alias) {
-					atom.atomtype_id = force_parameters.simulation_specific_id;
-				}
-			}
-		}
-		*/
-
-		for (Atom atom : *atoms) {
-			if (atom.atomtype_id == -1) {
-				cout << atom.atomtype << "   ";
-				printf("atom id %d\n", atom.atomtype_id);
-				exit(0);
-			}
+			bool success = assignAtomtypeID(*atom, *forcefield, alias);
 		}
 	}
 };
@@ -688,10 +674,10 @@ struct Angletype {
 
 struct Dihedraltype {
 	Dihedraltype() {}
-	Dihedraltype(string t1, string t2, string t3, string t4) : type1(t1), type2(t2), type3(t3), type4(t4) {
+	Dihedraltype(const string& t1, const string& t2, const string& t3, const string& t4) : type1(t1), type2(t2), type3(t3), type4(t4) {
 		sort();
 	}
-	Dihedraltype(string t1, string t2, string t3, string t4, float phi0, float kphi, int n) : type1(t1), type2(t2), type3(t3), type4(t4), phi0(phi0), kphi(kphi), n(n) {
+	Dihedraltype(const string& t1, const string& t2, const string& t3, const string& t4, float phi0, float kphi, int n) : type1(t1), type2(t2), type3(t3), type4(t4), phi0(phi0), kphi(kphi), n(n) {
 		sort();
 	}
 	Dihedraltype(int id1, int id2, int id3, int id4) : id1(id1), id2(id2), id3(id3), id4(id4) {

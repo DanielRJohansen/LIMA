@@ -36,7 +36,7 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * 0;// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 
 
@@ -90,7 +90,6 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 		printf("thread %d  error %f ref %f force %f\n", threadIdx.x, error, bondtype->b0, force_scalar);
 	}
 #endif
-
 }
 
 
@@ -116,17 +115,15 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	results[1] = (results[0] + results[2]) * -1;
 	
 	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
-
 		//printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
 	}	
 }
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
-	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();		// Should this not be normalized????
-	Float3 normal2 = (*pos_lm - *pos_rm).cross((*pos_right - *pos_rm)).norm();			// Is inward or outward? Refactor!!!
+	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();		
+	Float3 normal2 = (*pos_lm - *pos_rm).cross((*pos_right - *pos_rm)).norm();	
 	// Both vectors point "left". If pos_left+n1 is closer to pos_right than pos_left-n1, then n1 is pointing inwards, and n2 outwards. Also vice-versa.
-	float torsion = Float3::getAngle(normal1, normal2);
 
-
+	const float torsion = Float3::getAngle(normal1, normal2);
 
 
 	if (((*pos_left + normal1) - *pos_right).len() < ((*pos_left - normal1) - *pos_right).len())	// Wait, can't i just check if torsion > pi | torsion < 0`???????????????????????
@@ -146,18 +143,20 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 
 	//double force_scalar = sinf(torsion - dihedral->phi_0);		// Should be -sinf? (cos)' = -sin??!?!
 
-	float force_scalar = dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0);
-	*potE = dihedral->k_phi * (1 - cosf(dihedral->n * torsion - dihedral->phi_0));
+	float force_scalar = dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) *0.f;
+	*potE += dihedral->k_phi * (1 - cosf(dihedral->n * torsion - dihedral->phi_0))			*0.f;
+
+	force_scalar /= 1000000.f;
 
 	//printf("Torsion %f ref %f force_scalar %f\n", torsion, dihedral->phi_0, force_scalar);
 	//force_scalar *= dihedral->k_phi;
-	if (abs(force_scalar) > 183300) {
+	if (1) {
 		pos_left->print('L');
 		pos_lm->print('l');
 		pos_rm->print('r');
 		pos_right->print('R');
 		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
-		printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, 0.f, force_scalar);
+		printf("torsion %f      ref %f    force: %f\n", torsion, dihedral->phi_0, force_scalar);
 	}
 
 
@@ -582,9 +581,9 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
+		//force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 

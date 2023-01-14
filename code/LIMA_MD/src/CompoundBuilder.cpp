@@ -112,7 +112,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 	int current_molecule_id = -1;
 	Compound_Carrier* current_compound = nullptr;
 
-
+	ignore_protons = false;	// temp..
 
 	for (Record_ATOM record : *pdb_data) {
 
@@ -168,7 +168,7 @@ void CompoundBuilder::loadTopology(CompoundCollection* compound_collection, vect
 	compound_collection->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
-	int dihedral_cnt = 0;
+	dihedral_sections_count = 0;	// bad fix-...
 	TopologyMode mode = INACTIVE;
 	for (vector<string> record : *top_data) {
 		if (record.size() == 0) {
@@ -441,10 +441,12 @@ vector<uint32_t> CompoundBuilder::makeResidueIdToAtomindexMap()
 	return residueIdToAtomindexMap;
 }
 
+// This function is BAAAD and it needs to go.
 vector<vector<uint32_t>> CompoundBuilder::makeBondedatomsLUT()
 {
 	vector<vector<uint32_t >> bondedatoms_lut;
-	bondedatoms_lut.resize(atom_data.size() + 1);	// +1 to account for GMX 1-indexing
+	//bondedatoms_lut.resize(atom_data.size() + 1);	// +1 to account for GMX 1-indexing
+	bondedatoms_lut.resize(std::max(atom_data.size() + 1, topology.bonds_data.size()));	// This is not right... but it works for a while
 
 	for (auto& elem : topology.bonds_data) {
 		bondedatoms_lut[elem.ai].push_back(elem.aj);

@@ -6,8 +6,8 @@ clc
 
 % Edit these to select the correct data
 n_steps = 1000;
-benchmarks = ["Pool" "Spring"];
-benchmark = benchmarks(2);
+benchmarks = ["Pool" "Spring" "Met" "T4LysozymeNoSolvent" "TorsionBenchmark"];
+benchmark = benchmarks(5);
 % ------------------------------------ %
 
 workdir = "C:/PROJECTS/Quantom/Simulation/" + benchmark + "/Steps_" + string(n_steps)
@@ -24,6 +24,7 @@ energy_data = reshape(energy_data, [3, n_elements])';
 
 %tiledlayout(2,1)
 %nexttile
+
 potE = energy_data(:,1);
 kinE = energy_data(:,2);
 totalE = energy_data(:,3);
@@ -36,7 +37,7 @@ plot(x, potE);
 hold on
 plot(x, kinE);
 plot(x, totalE);
-title("Average energy")
+title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")

@@ -27,18 +27,58 @@
 
 
 bool basicBenchmark(Environment& env) {
-	const string conf_path = "C:/PROJECTS/Quantom/Simulation/Molecule/conf.gro";
-	const string topol_path = "C:/PROJECTS/Quantom/Simulation/Molecule/topol.top";
-	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/T4Lysozyme";
+	//const string conf_path = "C:/PROJECTS/Quantom/Simulation/Molecule/conf.gro";
+	//const string topol_path = "C:/PROJECTS/Quantom/Simulation/Molecule/topol.top";
+	//const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/T4Lysozyme";
+	//env.CreateSimulation(conf_path, topol_path, work_folder);
+	//env.run();
+	//return true;
 
 
-	env.CreateSimulation(conf_path, topol_path, work_folder);
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+
+	env.loadSimParams(work_folder + "sim_params.txt");
+	env.CreateSimulation(conf, topol, work_folder);
+
 	env.run();
+
+	auto analytics = env.getAnalyzedPackage();
+	Analyzer::printEnergy(analytics);
+
+	std::vector<float> std_devs;
+	std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+
+
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
+	return true;
+}
+
+bool doProteinBenchmark(Environment& env) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/T4LysozymeNoSolvent/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+
+	env.loadSimParams(work_folder + "sim_params.txt");
+	env.CreateSimulation(conf, topol, work_folder);
+
+	env.run();
+
+	auto analytics = env.getAnalyzedPackage();
+	Analyzer::printEnergy(analytics);
+
+	std::vector<float> std_devs;
+	std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+
+
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
 	return true;
 }
 
 bool doPoolBenchmark(Environment& env) {
-
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -94,8 +134,8 @@ bool doSpringBenchmark(Environment& env) {
 
 		auto coordarray_ptr = env.getCoordarrayPtr("current");
 		auto coordarray_prev_ptr = env.getCoordarrayPtr("prev");
-		coordarray_ptr[0].rel_positions[1].x += static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
-		coordarray_prev_ptr[0].rel_positions[1].x += static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
+		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
+		coordarray_prev_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
 
 		env.run();
 
@@ -154,6 +194,27 @@ bool doAngleBenchmark(Environment& env) {
 	return true;
 }
 
+bool doBasicBenchmark(Environment& env, const string& folder_name) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + folder_name + "/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+
+	env.loadSimParams(work_folder + "sim_params.txt");
+	env.CreateSimulation(conf, topol, work_folder);
+
+	env.run();
+
+	auto analytics = env.getAnalyzedPackage();
+	Analyzer::printEnergy(analytics);
+
+	std::vector<float> std_devs;
+	std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+
+
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
+	return true;
+}
 
 int main() {
 
@@ -164,8 +225,11 @@ int main() {
 	Environment env;
 
 	//basicBenchmark(env);
+
+	//doProteinBenchmark(env);
 	//doPoolBenchmark(env);
 	//doSpringBenchmark(env);
-	doAngleBenchmark(env);
+	//doAngleBenchmark(env);
+	doBasicBenchmark(env, "TorsionBenchmark");
 	return 0;
 }

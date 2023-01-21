@@ -136,12 +136,12 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		moveAndPadData(simulation, steps_in_kernel, step_offset);
 
 		Float3* average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
-		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);	//avg energy PER PARTICLE in compound
+		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);
 
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
 			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
 			if (step == -1 || step >= n_steps-2) { continue; }	// Dont save first step, as the kinE is slightly wrong
-			average_energy[step] = (average_solvent_energy[ii] * simulation->box->n_solvents + average_compound_energy[ii] * simulation->total_compound_particles) * (1.f / (simulation->total_particles));
+			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);
 		}
 		delete[] average_solvent_energy;
 	}
@@ -177,6 +177,7 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer\n");
 }
 
+// TODO: Fix this fucntion like the compound one
 Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
 	// Start by creating array of energies of value 0
 	Float3* average_solvent_energy = new Float3[n_steps];
@@ -218,11 +219,11 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 	uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
 
 	//Float3* average_compound_energy = new Float3[n_steps];
-	std::vector<Float3> average_compound_energy;
-	average_compound_energy.resize(steps_in_kernel);
+	std::vector<Float3> total_compound_energy(steps_in_kernel);
+	//total_compound_energy.resize(steps_in_kernel);
 
 	for (int i = 0; i < steps_in_kernel; i++)
-		average_compound_energy[i] = Float3(0.f);
+		total_compound_energy[i] = Float3(0.f);
 
 
 	if (simulation->total_compound_particles > 0) {
@@ -242,16 +243,16 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 
 		for (uint64_t step = 0; step < steps_in_kernel; step++) {
 			for (uint64_t i = 0; i < simulation->box->n_compounds; i++) {
-				average_compound_energy[step] += host_data[i + step * simulation->box->n_compounds];
+				total_compound_energy[step] += host_data[i + step * simulation->box->n_compounds];
 			}
-			average_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
+			//total_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
 		}
 
 		cudaFree(data_out);
 		delete[] host_data;
 	}
 
-	return average_compound_energy;
+	return total_compound_energy;
 }
 
 float getMin(std::vector<float>& vec) {

@@ -62,20 +62,15 @@ void Engine::handleBoxtemp() {
 
 
 	uint64_t step = simulation->getStep();
-	if (step >= FIRST_TEMPERATURE_PRINT_STEP) {
-		if (PRINT_TEMP || std::abs(temp-target_temp) > 100.f) {
-
-			LIMA_Printer::printNameValuePairs(
-				"Temperature", temp, 
-				"Avg kinE sol", temp_package.avg_kinE_solvent, 
-				"Avg kinE comp", temp_package.avg_kinE_compound,
-				"Max kinE sol", temp_package.max_kinE_solvent,
-				"Max kinE comp", temp_package.max_kinE_compound
-			);
-			//printf("scalar: %f\n", temp_scalar);
-		}
+	if (step >= FIRST_TEMPERATURE_PRINT_STEP && PRINT_TEMP && std::abs(temp - target_temp) > 100.f) {
+		LIMA_Printer::printNameValuePairs(
+			"Temperature", temp,
+			"Avg kinE sol", temp_package.avg_kinE_solvent,
+			"Avg kinE comp", temp_package.avg_kinE_compound,
+			"Max kinE sol", temp_package.max_kinE_solvent,
+			"Max kinE comp", temp_package.max_kinE_compound
+		);
 	}
-
 	
 	if (APPLY_THERMOSTAT && step >= FIRST_THERMOSTAT_APPLICATION_STEP) {
 		//simulation->box->thermostat_scalar = temp_scalar;

@@ -112,7 +112,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 	int current_molecule_id = -1;
 	Compound_Carrier* current_compound = nullptr;
 
-	ignore_protons = false;	// temp..
+	//ignore_protons = false;	// temp..
 
 	for (Record_ATOM record : *pdb_data) {
 

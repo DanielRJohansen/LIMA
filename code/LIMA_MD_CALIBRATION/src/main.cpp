@@ -126,7 +126,7 @@ bool doSpringBenchmark(Environment& env) {
 
 	auto* sim_params = env.getSimparamRef();
 
-	std::vector<float> bond_len_errors{ 0, 0.01, 0.05, 0.1 }; //(r-r0) [nm]
+	std::vector<float> bond_len_errors{ 0.01, 0.05 }; //(r-r0) [nm]
 	std::vector<float> std_devs;
 
 	for (auto bond_len_error : bond_len_errors) {		
@@ -160,7 +160,7 @@ bool doAngleBenchmark(Environment& env) {
 	auto* sim_params = env.getSimparamRef();
 
 	const float relaxed_angle = 1.8849f; // [rad]
-	std::vector<float> angle_errors{ 0.01f, 0.1f, 0.5f, 1.f }; //(t-t0) [rad]
+	std::vector<float> angle_errors{ 0.5f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
 
 	for (auto angle_error : angle_errors) {
@@ -229,7 +229,8 @@ int main() {
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(env);
 	//doSpringBenchmark(env);
-	// doAngleBenchmark(env);
+	//doAngleBenchmark(env);
 	doBasicBenchmark(env, "TorsionBenchmark");
+	//doBasicBenchmark(env, "Met");
 	return 0;
 }

@@ -790,7 +790,10 @@ struct Dihedraltype {
 		float best_likeness = 0;
 		Dihedraltype best_match;
 		for (Dihedraltype dihedral : *forcefield) {
-			float likeness = FTHelpers::calcLikeness(query_type->type1, dihedral.type1) * FTHelpers::calcLikeness(query_type->type2, dihedral.type2) * FTHelpers::calcLikeness(query_type->type3, dihedral.type3) * FTHelpers::calcLikeness(query_type->type4, dihedral.type4);
+			float likeness = FTHelpers::calcLikeness(query_type->type1, dihedral.type1) 
+				* FTHelpers::calcLikeness(query_type->type2, dihedral.type2) 
+				* FTHelpers::calcLikeness(query_type->type3, dihedral.type3) 
+				* FTHelpers::calcLikeness(query_type->type4, dihedral.type4);
 			if (likeness > best_likeness) {
 				best_likeness = likeness;
 				best_match = dihedral;

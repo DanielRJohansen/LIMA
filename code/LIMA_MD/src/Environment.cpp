@@ -325,7 +325,7 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 
 
 
-void Environment::loadSimParams(std::string path) {	
+void Environment::loadSimParams(const std::string& path) {	
 	auto param_dict = Filehandler::parseINIFile(path);
 	sim_params.overloadParams(param_dict);
 }

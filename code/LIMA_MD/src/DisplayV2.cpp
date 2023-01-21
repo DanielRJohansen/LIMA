@@ -18,16 +18,18 @@ void DisplayV2::drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 colo
     //x *= static_cast<float>(display_height) / static_cast<float>(display_width);
 
     glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(x, y); // center of circle
+    glVertex3f(x, y, 1.f); // center of circle
+    //glVertex3f()
 
     for (int i = 0; i <= triangleAmount; i++) {
         light = (sin(i * 2 * PI / triangleAmount) + 1.f) / 2.f;
         shaded_color = color * light;
 
         glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
-        glVertex2f(
+        glVertex3f(
             x + (radius * cos(i * twicePi / triangleAmount)),
-            y + (radius * sin(i * twicePi / triangleAmount))
+            y + (radius * sin(i * twicePi / triangleAmount)),
+            0.f
         );
     }
     glEnd();

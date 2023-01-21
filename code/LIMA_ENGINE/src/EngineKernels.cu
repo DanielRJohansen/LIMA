@@ -36,7 +36,7 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * 0;// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) ;// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 
@@ -64,17 +64,15 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	*potE += 0.5f * bondtype->kb * (error * error);				// [J/mol]
 
 	
-	double force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
+	float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
-	difference = difference.norm();								// dif_unit_vec, but shares register with dif
+	difference = difference.norm();								// dif_unit_vec, but shares variable with dif
 	results[0] = difference * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
 	results[1] = difference * force_scalar * -1;				// [kg * lm / (mol*ls^2)] = [lN]
 
-#ifdef LIMA_VERBOSE
-	if (force_scalar > 2e+7) {
-		printf("thread %d  error %f ref %f force %f\n", threadIdx.x, error, bondtype->b0, force_scalar);
+	if (0.5f * bondtype->kb * (error * error) > 100000) {
+		printf("error %f    pote %f    force %f\n", error, 0.5f * bondtype->kb * (error * error), force_scalar);
 	}
-#endif
 }
 
 
@@ -90,8 +88,8 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	double angle = Float3::getAngle(v1, v2);				// [rad]
 	double error = angle - angletype->theta_0;				// [rad]
 
-	*potE += 0.5 * angletype->k_theta * error * error * 0.5;	// [J/mol]0
-	double force_scalar = angletype->k_theta * (error)*4.;			// [J/(mol*rad)]
+	*potE += angletype->k_theta * error * error;	// [J/mol]0
+	double force_scalar = angletype->k_theta * (error) * 15.f;			// [J/(mol*rad)]	 also magic number????
 
 	force_scalar /= NANO_TO_LIMA;				// I have no clue why? I guess in the conversion from J/molrad to kg*lm/ls^2??
 
@@ -120,7 +118,7 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	
 
 
-	float force_scalar = -dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) / NANO_TO_LIMA * 100.f;
+	float force_scalar = -dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) / NANO_TO_LIMA * 10.f;
 	*potE += dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
 
 	//force_scalar /= 1.f;
@@ -150,8 +148,6 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	// Not sure about the final two forces, for now we'll jsut split the sum of opposite forces between them.
 	results[1] = (results[0] + results[3]) * -1.f * 0.5;
 	results[2] = (results[0] + results[3]) * -1.f * 0.5;
-
-
 }
 
 
@@ -238,7 +234,6 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 			calcPairbondForces(
 				&positions[pb->atom_indexes[0]],
 				&positions[pb->atom_indexes[1]],
-				//&pb->reference_dist,
 				pb,
 				forces, potE
 			);
@@ -328,7 +323,7 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 	return utility_buffer[threadIdx.x];
 }
 
-__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt) {
+__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt, const float thermostat_scalar) {
 	//EngineUtils::applyHyperpos(pos, pos_tsub1);
 
 	//Float3 temp = *pos;
@@ -340,7 +335,7 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	//int32_t dx = coord.x - coord_tsub1.x;
 	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
 	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
-	coord += (coord - coord_tsub1) + *force * dt * dt / mass;
+	coord += (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
 	//pos->x = x + dx + ddx;
 	//coord.x = x + dx + ddx;
 
@@ -563,7 +558,7 @@ __global__ void compoundKernel(Box* box) {
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
+		//force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -645,7 +640,7 @@ __global__ void compoundKernel(Box* box) {
 			//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
 		//__shared__ Coord prev_hyper_origo{};	// dont like this here
 
-		integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
+		integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 		//integratePosition(compound_coords.rel_positions[threadIdx.x], box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
 
 

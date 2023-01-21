@@ -5,7 +5,7 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 1000;
+n_steps = 20000;
 benchmarks = ["Pool" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" ];
 benchmark = benchmarks(4);
 % ------------------------------------ %
@@ -29,7 +29,7 @@ potE = energy_data(:,1);
 kinE = energy_data(:,2);
 totalE = energy_data(:,3);
 %totalE = kinE + potE;
-x = 1:length(potE);
+x = (1:length(potE)) .* 100;   % convert from ls to fs
 
 
 

@@ -106,12 +106,12 @@ private:
 	bool areResiduesBonded(uint32_t res1, uint32_t res2);
 	uint32_t getFirstAtomindexOfRes(vector<Record_ATOM>& atom_data, uint32_t res_id);
 	vector<uint32_t> makeResidueIdToAtomindexMap();
-	vector<vector<uint32_t>> makeBondedatomsLUT();
+	vector<vector<uint32_t>> makeBondedatomsLUT(const string& top_path );
 
 	vector<uint32_t> residueId_to_firstatomindex;	// GMX 1-indexing
 	vector<vector<uint32_t>> bonded_atoms;		// GMX 1-indexing
 
-	Topology topology;
+	//Topology topology;
 	vector<Record_ATOM> atom_data;
 
 	ParsedLine parseLine(int line_index);

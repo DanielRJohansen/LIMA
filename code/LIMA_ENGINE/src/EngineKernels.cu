@@ -38,33 +38,18 @@ __device__ Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float
 	s = s * s * s;
 	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s) * 0;// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-
-
-
-
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
-	//if (blockIdx.x == 0) {
-	//	//printf("\n");
-	//	//pos0->print('0');
-	//	//pos1->print('1');
-	//	printf("eps %.10f sig %f s6 %f dist %f dist2 %f force_scalar %.16f\n", epsilon, sigma, s, (*pos1 - *pos0).len(), dist_sq, force_scalar);
-	//}
-	
-	/*if (threadIdx.x == 1 && dist_abs < 0.5) 
-		printf("dist %f    s %f    eps %f    pot %f\n", sqrtf(dist_sq), s, epsilon, 4. * epsilon * s * (s - 1.f) * 0.5f * NORMALIZER_SQ);*/
-	//if (threadIdx.x == 0 && blockIdx.x == 0) {
-	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
-	//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
-	//}
+
 #ifdef LIMA_VERBOSE
-	Float3 ddd = (*pos1 - *pos0) * force_scalar;
-	if (ddd.x != ddd.x) {
-		printf("\nError is here\n");
-		printf("Scalar %f dist_sq %f\n", force_scalar, dist_sq);
+		//if (threadIdx.x == 0 && blockIdx.x == 0) {
+		//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
+		//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
+		//}
 		pos0->print('0');
 		pos0->print('1');
 	}
 #endif
+
 	return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
 }
 
@@ -106,7 +91,7 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	double error = angle - angletype->theta_0;				// [rad]
 
 	*potE += 0.5 * angletype->k_theta * error * error * 0.5;	// [J/mol]0
-	double force_scalar = angletype->k_theta * (error);			// [J/(mol*rad)]
+	double force_scalar = angletype->k_theta * (error)*4.;			// [J/(mol*rad)]
 
 	force_scalar /= NANO_TO_LIMA;				// I have no clue why? I guess in the conversion from J/molrad to kg*lm/ls^2??
 
@@ -121,42 +106,38 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
 	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();		
 	Float3 normal2 = (*pos_lm - *pos_rm).cross((*pos_right - *pos_rm)).norm();	
-	// Both vectors point "left". If pos_left+n1 is closer to pos_right than pos_left-n1, then n1 is pointing inwards, and n2 outwards. Also vice-versa.
+	// Both vectors point "left" (looking from lm to rm). 
 
-	const float torsion = Float3::getAngle(normal1, normal2);
+	float torsion = Float3::getAngle(normal2, normal1);
+	//const float torsion = normal1.getAngleSigned(normal2);
 
+	const bool angle_is_negative = (normal2.dot(*pos_left - *pos_lm)) > 0.f;
+	torsion = angle_is_negative ? torsion * -1.f : torsion;
 
-	if (((*pos_left + normal1) - *pos_right).len() < ((*pos_left - normal1) - *pos_right).len())	// Wait, can't i just check if torsion > pi | torsion < 0`???????????????????????
-		normal2 *= -1;
-	else
-		normal1 *= -1;
-	// Now both normals are pointing inwards
+	normal2 *= -1;
+	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
 
-	//printf("Torsion %f\n", normal1.len());
-	//float error = (torsion - dihedral->phi_0);	// *360.f / 2.f * PI;	// Check whether k_phi is in radians or degrees
-
-	//error = (error / (2.f * PI)) * 360.f;
+	
 
 
-	//*potE += 0.5 * dihedral->k_phi * error * error * 0.5;
-	//double force_scalar = dihedral->k_phi * (error);
+	float force_scalar = -dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) / NANO_TO_LIMA * 100.f;
+	*potE += dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
 
-	//double force_scalar = sinf(torsion - dihedral->phi_0);		// Should be -sinf? (cos)' = -sin??!?!
-
-	float force_scalar = dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) *0.f;
-	*potE += dihedral->k_phi * (1 - cosf(dihedral->n * torsion - dihedral->phi_0))			*0.f;
-
-	force_scalar /= 1000000.f;
+	//force_scalar /= 1.f;
 
 	//printf("Torsion %f ref %f force_scalar %f\n", torsion, dihedral->phi_0, force_scalar);
 	//force_scalar *= dihedral->k_phi;
-	if (1) {
+	if (0) {
+		normal1.print('1');
+		normal2.print('2');
 		pos_left->print('L');
 		pos_lm->print('l');
 		pos_rm->print('r');
 		pos_right->print('R');
+		printf("angle neg %d\n", angle_is_negative);
 		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
-		printf("torsion %f      ref %f    force: %f\n", torsion, dihedral->phi_0, force_scalar);
+		float pot = dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
+		printf("torsion %f     force: %f    pot %f     phi_0 %f k_phi %f\n", torsion, force_scalar * NANO_TO_LIMA, pot, dihedral->phi_0, dihedral->k_phi);
 	}
 
 
@@ -577,13 +558,12 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
-		//EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);
 		__syncthreads();
 
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
+		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -593,10 +573,7 @@ __global__ void compoundKernel(Box* box) {
 		int neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		int neighborcompound_particles = box->compound_state_array[neighborcompound_id].n_particles;
 
-		//if (threadIdx.x < neighborcompound_particles) {
-		//	utility_buffer[threadIdx.x] = box->compound_state_array[neighborcompound_id].positions[threadIdx.x];
-		//	//EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
-		//}
+
 		auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord, box->step);
 

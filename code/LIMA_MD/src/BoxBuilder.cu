@@ -33,7 +33,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
 	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact{};
-	simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
+	//simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
 	simulation->box->dt = simulation->dt;
 

@@ -103,6 +103,8 @@ struct Float3 {
 		return *this;
 	}
 
+	//__host__ __device__ float getAngleSigned(Float3 a) { return atan2f(this->cross(a).dot(a), this->dot(a)); }
+
 	__host__ __device__ inline static float getAngle(Float3 v1, Float3 v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}

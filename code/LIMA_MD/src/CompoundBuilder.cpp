@@ -17,13 +17,13 @@ CompoundCollection CompoundBuilder::buildCompoundCollection(string gro_path, str
 
 	atom_data = parseGRO(gro_path);
 	vector<vector<string>> top_data = parseTOP(top_path);
-	topology = parseTop1(top_path);
+
 
 
 	// Input:	residue_seq_id
 	// Output:	0-indexed index of first atom belonging to that residue
 	residueId_to_firstatomindex = makeResidueIdToAtomindexMap();
-	bonded_atoms = makeBondedatomsLUT();
+	bonded_atoms = makeBondedatomsLUT(top_path);
 
 	assignMoleculeIDs();
 
@@ -60,7 +60,7 @@ CompoundCollection CompoundBuilder::buildCompoundCollection(string gro_path, str
 			printf("compound %d    local %d    global %d\n", particle_id_maps[i].compound_id, particle_id_maps[i].local_id_compound, particle_id_maps[i].global_id);
 		}
 
-		if (0) {
+		if (1) {
 			auto lut = molecule.bonded_particles_lut_manager->get(0, 0);
 			for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
 				for (int ii = 0; ii < MAX_COMPOUND_PARTICLES; ii++) {
@@ -165,7 +165,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 
 void CompoundBuilder::loadTopology(CompoundCollection* compound_collection, vector<vector<string>>* top_data)
 {
-	compound_collection->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
+	//compound_collection->bonded_particles_lut_manager->get(12, 2)->set(2, 3, true);
 
 
 	dihedral_sections_count = 0;	// bad fix-...
@@ -348,11 +348,7 @@ void CompoundBuilder::addDihedral(CompoundCollection* molecule, ParticleRef* map
 void CompoundBuilder::distributeLJIgnores(CompoundCollection* molecule, ParticleRef* particle_refs, int n) {	// Works whether particle spans multiple compounds or not.
 	for (int id_self = 0; id_self < n; id_self++) {
 		for (int id_other = 0; id_other < n; id_other++) {
-			
-			// Not sure if i should not include these too??
-			if (id_self == id_other)
-				continue;
-
+			if (id_self == id_other) { continue; }
 
 			BondedParticlesLUTManager* lut_man = molecule->bonded_particles_lut_manager;
 			BondedParticlesLUT* lut = lut_man->get(particle_refs[id_self].compound_id, particle_refs[id_other].compound_id);
@@ -372,10 +368,6 @@ void CompoundBuilder::assignMoleculeIDs()
 	// Residue 1 (GMX 1-indexed) is always the first molecule (LIMA 0-indexed)
 	residueID_to_moleculeID[1] = current_molecule_id;
 	
-
-	
-
-
 
 	uint32_t residue_id_left = 1;
 	uint32_t residue_id_right = 2;
@@ -442,11 +434,12 @@ vector<uint32_t> CompoundBuilder::makeResidueIdToAtomindexMap()
 }
 
 // This function is BAAAD and it needs to go.
-vector<vector<uint32_t>> CompoundBuilder::makeBondedatomsLUT()
+vector<vector<uint32_t>> CompoundBuilder::makeBondedatomsLUT(const string& topol_path)
 {
+	Topology topology = parseTop1(topol_path);
 	vector<vector<uint32_t >> bondedatoms_lut;
 	//bondedatoms_lut.resize(atom_data.size() + 1);	// +1 to account for GMX 1-indexing
-	bondedatoms_lut.resize(std::max(atom_data.size() + 1, topology.bonds_data.size()));	// This is not right... but it works for a while
+	bondedatoms_lut.resize(std::max(atom_data.size() + 1, topology.bonds_data.size())*4);	// This is not right... but it works for a while
 
 	for (auto& elem : topology.bonds_data) {
 		bondedatoms_lut[elem.ai].push_back(elem.aj);

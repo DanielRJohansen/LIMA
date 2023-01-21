@@ -28,11 +28,8 @@ private:
 	Rasterizer rasterizer;
 	bool initGLFW();
 
-	void drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 color);
-
+	void drawFilledCircle(const RenderBall& ball);
 	void drawBalls(RenderBall* balls, int n_balls);
-	void draw(uint8_t* image);
-	void sleep(int ms);
 	uint8_t* enhance(uint8_t* im, int from_size);	// doubles image resolution
 
 	int xyToIndex(int x, int y, int size_x) {
@@ -42,7 +39,7 @@ private:
 
 
 
-	GLFWwindow* window;
+	GLFWwindow* window = nullptr;
 
 	const int triangleAmount = 20; //# of triangles used to draw circle
 	const float PI = 3.14f;

@@ -159,37 +159,3 @@ void ForcefieldMaker::prepSimulationForcefield() {
 //}
 
 
-
-//int main(int argc, char* argv[]) {
-//	return;
-//	//printf("\n// --------------------------------- ForcefieldMaker starting --------------------------------- //\n\n\n\n\n\n\n\n");
-//
-//	//printf("%d argumets\n", argc);
-//	//cout << ':' << argv[1] << ':' << endl;
-//	//if (argc < 1 || argc > 4) {
-//	//	printf("Invalid arguments list\n");
-//	//}
-//	//else if (argc == 1) {
-//	//	mergeForcefieldFiles();
-//	//	prepareForcefieldForSimulation();
-//	//}
-//	//else if ((string)argv[1] == (string)"mergefff") {
-//	//	printf("Merging forcefield files\n");
-//	//	mergeForcefieldFiles();
-//	//}
-//	//else if ((string)argv[1] == (string)"prepsim") {
-//	//	printf("Filtering forcefield files for simulation\n");
-//	//	prepareForcefieldForSimulation(argv[2], argv[3]);
-//	//}
-//	//else {
-//	//	printf("Bad argument 1\n");
-//	//}
-//
-//
-//
-//
-//
-//	//printf("\n// --------------------------------- ForcefieldMaker finished --------------------------------- //\n\n\n\n\n\n\n\n");
-//	
-//	return 0;
-//}

@@ -230,7 +230,8 @@ int main() {
 	//doPoolBenchmark(env);
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);
-	doBasicBenchmark(env, "TorsionBenchmark");
-	//doBasicBenchmark(env, "Met");
+	//doBasicBenchmark(env, "TorsionBenchmark");
+	doBasicBenchmark(env, "Met");
+	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	return 0;
 }

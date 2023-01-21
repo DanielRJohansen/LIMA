@@ -9,27 +9,23 @@ DisplayV2::DisplayV2() {
 }
 
 
-void DisplayV2::drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 color) {
+void DisplayV2::drawFilledCircle(const RenderBall& ball) {
     float light = 0.5;
-    Int3 shaded_color = color * light;
+    Int3 shaded_color = ball.color * light;
     glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
 
-
-    //x *= static_cast<float>(display_height) / static_cast<float>(display_width);
-
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(x, y, 1.f); // center of circle
-    //glVertex3f()
+    glVertex3f(ball.pos.x, ball.pos.z, ball.pos.y + 1.f); // center of circle
 
     for (int i = 0; i <= triangleAmount; i++) {
         light = (sin(i * 2 * PI / triangleAmount) + 1.f) / 2.f;
-        shaded_color = color * light;
+        shaded_color = ball.color * light;
 
         glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
         glVertex3f(
-            x + (radius * cos(i * twicePi / triangleAmount)),
-            y + (radius * sin(i * twicePi / triangleAmount)),
-            0.f
+            ball.pos.x + (ball.radius * cos(i * twicePi / triangleAmount)),
+            ball.pos.z + (ball.radius * sin(i * twicePi / triangleAmount)),
+            ball.pos.y
         );
     }
     glEnd();
@@ -38,11 +34,8 @@ void DisplayV2::drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius, Int3 colo
 
 void DisplayV2::drawBalls(RenderBall* balls, int n_balls) {
     for (int i = n_balls-1; i >= 0; i--) {
-        RenderBall ball = balls[i];
-        //ball.pos.print('b');
-        //printf("ball %f\n", ball.radius);
-        if (!ball.disable)
-            drawFilledCircle(ball.pos.x, ball.pos.z, ball.radius, ball.color);
+        RenderBall& ball = balls[i];
+        if (!ball.disable) { drawFilledCircle(ball); }
     }
 }
 

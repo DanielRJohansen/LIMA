@@ -202,7 +202,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 	}
 
 	simulation->total_particles += simulation->box->n_solvents;
-	printf("%lu of %lu solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
+	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
 	return simulation->box->n_solvents;
 }
 

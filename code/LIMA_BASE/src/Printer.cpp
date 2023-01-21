@@ -25,7 +25,7 @@ std::string LIMA_Printer::formatValue(double value) {
 std::string LIMA_Printer::formatValue(float value)  {
 	std::string val_s = std::to_string(value);
 
-	int decimals = 6 - log10(value);
+	int decimals = 6 - static_cast<int>(log10(value));
 	std::string val_s_rounded = val_s.substr(0, val_s.find(".") + decimals);
 
 	return val_s_rounded;
@@ -33,14 +33,14 @@ std::string LIMA_Printer::formatValue(float value)  {
 
 
 
-void LIMA_Printer::addRightadjustedStringToString(std::string& main_string, std::string& str) {
-	addMultipleChars(main_string, chars_per_elem - str.size());
+void LIMA_Printer::addRightadjustedStringToString(std::string& main_string, const std::string& str) {
+	addMultipleChars(main_string, static_cast<int>(chars_per_elem - str.size()));
 	main_string += str;
 }
 
-void LIMA_Printer::printTableRow(std::vector<string> row) {
+void LIMA_Printer::printTableRow(const std::vector<string>& row) {
 	string str = "";
-	for (auto elem : row) {
+	for (const auto& elem : row) {
 		addRightadjustedStringToString(str, elem);
 	}
 	std::cout << str << "\n\n";
@@ -81,7 +81,7 @@ void LIMA_Print::printH(std::string str, char c, bool ls, bool ts) {
 		addMultipleChars(out_str, default_width, c); 
 	}
 	else {
-		const int n_fillchars_total = default_width - str.size() - 2;
+		const int n_fillchars_total = static_cast<int>(default_width - str.size() - 2);
 		const int extra_char_left = n_fillchars_total % 2;
 
 		addMultipleChars(out_str, n_fillchars_total / 2 + extra_char_left, c);

@@ -62,7 +62,7 @@ class CompoundBuilder
 public:
 	CompoundBuilder() {}
 	CompoundBuilder(Forcefield* ff, VerbosityLevel vl = SILENT);
-	CompoundCollection buildCompoundCollection(string gro_path, string itp_path, int max_residue_id=INT16_MAX, int min_residue_id=0, bool ignore_hydrogens=true);
+	CompoundCollection buildCompoundCollection(string gro_path, string itp_path, uint32_t max_residue_id=UINT32_MAX, uint32_t min_residue_id=0, bool ignore_hydrogens=true);
 
 	vector<Float3> getSolventPositions(string gro_path);
 
@@ -84,7 +84,7 @@ private:
 
 
 	struct Record_ATOM;
-	void loadParticles(CompoundCollection* molecule, vector<Record_ATOM>* pdb_data, int max_monomer_id = INT32_MAX, int min_residue_id=0, bool ignore_protons =false);
+	void loadParticles(CompoundCollection* molecule, vector<Record_ATOM>* pdb_data, uint32_t max_monomer_id = INT32_MAX, uint32_t min_residue_id=0, bool ignore_protons =false);
 	void loadTopology(CompoundCollection* molecule, vector<vector<string>>* itp_data);
 	void calcParticleSphere(Compound* compound);
 
@@ -103,7 +103,7 @@ private:
 
 	// Topology related stuff
 	void assignMoleculeIDs();
-	bool areResiduesBonded(uint32_t res1, uint32_t res2);
+	bool areResiduesBonded(uint32_t res1, uint32_t res2) const;
 	uint32_t getFirstAtomindexOfRes(vector<Record_ATOM>& atom_data, uint32_t res_id);
 	vector<uint32_t> makeResidueIdToAtomindexMap();
 	vector<vector<uint32_t>> makeBondedatomsLUT(const string& top_path );
@@ -168,7 +168,7 @@ private:
 		char alternate_location_indicator = 0;
 		string residue_name = "";
 		char chain_identifier = 0;
-		int residue_seq_number = 0;
+		uint32_t residue_seq_number = 0;
 		char code_for_insertions_of_residues = 0;
 		Float3 coordinate;						// [nm]
 		int moleculeID = -1;	// Given by LIMA

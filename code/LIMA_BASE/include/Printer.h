@@ -71,7 +71,7 @@ public:
 		printNameValuePairs<T2, T3, T4, T5>(s2, v2, s3, v3, s4, v4, s5, v5, buffer);
 	}
 
-	static void printTableRow(std::vector<string> row);
+	static void printTableRow(const std::vector<string>& row);
 	static void printTableRow(string s, std::vector<float> data);
 
 
@@ -83,7 +83,7 @@ private:
 	static std::string formatValue(double value);
 
 
-	static void addRightadjustedStringToString(std::string& main_string, std::string& str);
+	static void addRightadjustedStringToString(std::string& main_string, const std::string& str);
 
 
 	// sizes in chars

@@ -348,4 +348,5 @@ CompoundCoords* Environment::getCoordarrayPtr(std::string selector)
 	if (selector == "current") return boxbuilder.coordarray;
 	if (selector == "prev") return boxbuilder.coordarray_prev;
 	assert(false);
+	return NULL;
 }

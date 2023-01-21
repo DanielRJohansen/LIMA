@@ -8,7 +8,7 @@ using namespace LIMA_Print;
 
 CompoundBuilder::CompoundBuilder(Forcefield* ff, VerbosityLevel vl) : verbosity_level(vl), forcefield{ ff } {}
 
-CompoundCollection CompoundBuilder::buildCompoundCollection(string gro_path, string top_path, int max_residue_id, int min_residue_id, bool ignore_hydrogens) {
+CompoundCollection CompoundBuilder::buildCompoundCollection(string gro_path, string top_path, uint32_t max_residue_id, uint32_t min_residue_id, bool ignore_hydrogens) {
 
 
 	printH2("Building molecule", true, false);
@@ -106,7 +106,7 @@ vector<Float3> CompoundBuilder::getSolventPositions(string gro_path) {
 	return solvent_positions;
 }
 
-void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vector<CompoundBuilder::Record_ATOM>* pdb_data, int max_residue_id, int min_residue_id, bool ignore_protons) {
+void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vector<CompoundBuilder::Record_ATOM>* pdb_data, uint32_t max_residue_id, uint32_t min_residue_id, bool ignore_protons) {
 	int current_res_id = -1;
 	int current_compound_id = -1;
 	int current_molecule_id = -1;
@@ -135,7 +135,7 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 					compound_bridge_bundle->addBridge(current_compound_id, current_compound_id + 1);
 
 				current_compound_id++;
-				compound_collection->compounds.push_back(Compound_Carrier{ current_compound_id });
+				compound_collection->compounds.emplace_back(Compound_Carrier{ current_compound_id });
 				current_compound = &compound_collection->compounds.back();
 				//current_compound = &molecule->compounds[current_compound_id];
 				compound_collection->n_compounds++;
@@ -359,9 +359,8 @@ void CompoundBuilder::distributeLJIgnores(CompoundCollection* molecule, Particle
 
 void CompoundBuilder::assignMoleculeIDs()
 {
-	vector<uint32_t> residueID_to_moleculeID;
 	// Worst case scenario where each residue is a separate atom and a separate molecule (so solvents)
-	residueID_to_moleculeID.resize(atom_data.size() + 1);	
+	vector<uint32_t> residueID_to_moleculeID(atom_data.size() + 1);	
 
 	uint32_t current_molecule_id = 0;
 
@@ -388,22 +387,22 @@ void CompoundBuilder::assignMoleculeIDs()
 }
 
 // This function assumes that the bonds in the topol.top file are always smallest on left side.
-bool CompoundBuilder::areResiduesBonded(uint32_t res1, uint32_t res2)
+bool CompoundBuilder::areResiduesBonded(uint32_t res1, uint32_t res2) const 
 {
-	uint32_t res1_firstatom_index = residueId_to_firstatomindex[res1];
+	const uint32_t res1_firstatom_index = residueId_to_firstatomindex[res1];
 	for (int i = res1_firstatom_index; i < atom_data.size(); i++) {
 		if (atom_data[i].residue_seq_number != res1) { return false; }	// Finished, no match
 
 
-		uint32_t atom_id = atom_data[i].atom_serial_number;	// GMX 1-indexed
+		const uint32_t atom_id = atom_data[i].atom_serial_number;	// GMX 1-indexed
 		auto& atom_bonds_to = bonded_atoms[atom_id];
 
-		uint32_t res2_firstatom_index = residueId_to_firstatomindex[res2];
+		const uint32_t res2_firstatom_index = residueId_to_firstatomindex[res2];
 		for (int j = res2_firstatom_index; j < atom_data.size(); j++) {
 
 			if (atom_data[j].residue_seq_number != res2) { return false; }	// Finished, no match
 
-			uint32_t atom_id_query = atom_data[j].atom_serial_number;
+			const uint32_t atom_id_query = atom_data[j].atom_serial_number;
 			if (find(atom_bonds_to.begin(), atom_bonds_to.end(), atom_id_query) != atom_bonds_to.end()) {	// If found
 				return true;
 			}
@@ -483,6 +482,7 @@ Topology CompoundBuilder::parseTop1(string path) {		// Naive file segmentation, 
 
 vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file segmentation, DANGEROUS!
 {
+	if (verbosity_level >= V1) { cout << "Reading topology from file " << path << "\n"; }
 	fstream file;
 	file.open(path);
 	int line_cnt = 0;
@@ -514,58 +514,6 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 	}
 	return records;
 }
-//
-//vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parsePDB(string path)
-//{
-//	fstream file;
-//	file.open(path);
-//	int line_cnt = 0;
-//
-//	int endpoints[] = { 4, 11, 16 , 17, 20, 22, 26, 27, 38, 46, 54 };
-//
-//
-//	vector<Record_ATOM> records;
-//
-//	string line;
-//	while (getline(file, line)) {
-//		stringstream ss(line);
-//		string row_type;
-//		getline(ss, row_type, ' ');
-//		if (row_type != "ATOM")
-//			continue;
-//
-//		vector<string> data_buffer;
-//
-//		int ptr = 0;
-//		for (int stop : endpoints) {
-//			string word = "";
-//			
-//			while (ptr < stop) {
-//				if (line[ptr] != ' ')
-//					word = word + line[ptr];
-//				ptr++;
-//			}
-//			//cout << "Word:" << word << endl;
-//			data_buffer.push_back(word);
-//		}
-//
-//		cout << data_buffer[6] << endl;
-//		//printf("%d\n", stoi(data_buffer[6]));
-//		
-//		records.push_back(Record_ATOM(
-//			stoi(data_buffer[1]),
-//			data_buffer[2],
-//			data_buffer[3][0],			// alt loc
-//			data_buffer[4],
-//			data_buffer[5][0],		// chain id
-//			stoi(data_buffer[6]),
-//			data_buffer[7][0],
-//			Float3(stof(data_buffer[8]), stof(data_buffer[9]), stof(data_buffer[10])) * 0.1f	// Convert A to nm right off the bat!
-//		));
-//		
-//	}
-//	return records;
-//}
 
 vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parseGRO(string path)
 {
@@ -615,7 +563,6 @@ vector<CompoundBuilder::Record_ATOM> CompoundBuilder::parseGRO(string path)
 	}
 
 	file.close();
-	
 
 	return records;
 }

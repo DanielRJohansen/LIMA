@@ -23,7 +23,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	__shared__ Compound compound;
 
 
-	unsigned long long int step = blockIdx.x + 1;
+	uint64_t step = blockIdx.x + uint64_t{ 1 };
 	const int compound_index = blockIdx.y;
 	energy[threadIdx.x] = Float3(0.f);
 
@@ -42,12 +42,12 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	}
 	__syncthreads();
 
-	const int compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
+	const uint32_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int step_offset = step * box->total_particles_upperbound;
 	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
-	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - 1) * box->total_particles_upperbound];
-	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + 1) * box->total_particles_upperbound];
+	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->total_particles_upperbound];
+	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
 	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, 12.f * 1e-3f, box->dt * n_steps);
 	float totalE = potE + kinE;
@@ -140,7 +140,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
 			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
-			if (step == -1 || step >= n_steps-2) { continue; }	// Dont save first step, as the kinE is slightly wrong
+			if (step == -1 || step >= n_steps-2u) { continue; }	// Dont save first step, as the kinE is slightly wrong
 			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);
 		}
 		delete[] average_solvent_energy;
@@ -162,13 +162,13 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
 	// Then pad the front. If step 0, we pad with zero. If step n we pad with n-1
-	int paddingSrcIndex = step_offset == 0 ? 0 : step_offset - 1;
+	uint64_t paddingSrcIndex = step_offset == 0 ? 0 : step_offset - 1;
 	cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[0], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer1\n");
 
 	// Then pad the end. if step
-	const int end_index = step_offset + steps_in_kernel;
+	const uint64_t end_index = step_offset + steps_in_kernel;
 	paddingSrcIndex = end_index == simulation->getStep() ? end_index - 1 : end_index;
 	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);

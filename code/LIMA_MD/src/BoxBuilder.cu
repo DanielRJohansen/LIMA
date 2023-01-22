@@ -73,11 +73,14 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 	printf("CompoundCollection added to box\n");
 }
 
-void BoxBuilder::finishBox(Simulation* simulation) {
+void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {
 	// Load meta information
 	simulation->copyBoxVariables();
 	printf("Box contains %d compounds, %d bridges and %d solvents\n\n", simulation->n_compounds, simulation->n_bridges, simulation->n_solvents);
 
+
+	simulation->box->forcefield_device_box = new ForceField_NB{ forcefield };// Copy
+	/**simulation->box->forcefield_device_box = forcefield;	*/
 
 	// Need this variable both on host and device
 	simulation->total_particles_upperbound = simulation->box->n_compounds * MAX_COMPOUND_PARTICLES + simulation->box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS

@@ -9,22 +9,14 @@
 using std::string;
 using std::vector;
 
-const int MAX_ATOM_TYPES = 32;
+
 
 
 #define ATOMTYPE_SOL 0
 
 
-struct ParticleParameters {	//Nonbonded
-	float mass = -1;		//[kg/mol]	or 
-	float sigma = -1;
-	float epsilon = -1;		// J/mol [kg*nm^2 / s^2]
-};
 
 
-struct ForceField_NB {
-	ParticleParameters particle_parameters[MAX_ATOM_TYPES];
-};
 
 
 
@@ -41,7 +33,7 @@ public:
 
 
 
-	ForceField_NB getNBForcefield() {
+	ForceField_NB getNBForcefield() const {
 		return forcefield;
 	}
 
@@ -104,6 +96,7 @@ private:
 
 	//StringMap parseNBAtomtypeMaps(vector<vector<string>> forcefield_rows) {}
 
+	
 
 	
 	NBAtomtype* parseAtomTypes(vector<vector<string>> summary_rows);
@@ -115,6 +108,7 @@ private:
 	DihedralBond* parseDihedrals(vector<vector<string>> forcefield_rows);
 	
 	void loadAtomypesIntoForcefield();
+
 };
 
 

@@ -2,11 +2,14 @@
 
 #include "Forcefield.cuh"
 #include "Printer.h"
+#include "EngineUtils.cuh"
 
 using namespace LIMA_Print;
 
 
+
 Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
+
 
 void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
@@ -215,4 +218,5 @@ void Forcefield::loadAtomypesIntoForcefield() {
 
 		if ((vl >= V2) || illegal_parameter) { printf("Mass %f Sigma %f Epsilon %f\n", nb_atomtypes[i].mass, nb_atomtypes[i].sigma, nb_atomtypes[i].epsilon); }
 	}
+
 }

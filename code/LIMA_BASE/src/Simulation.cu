@@ -1,5 +1,6 @@
 #include "Simulation.cuh"
 
+
 void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
 		+ sizeof(Solvent) * MAX_SOLVENTS * 2
@@ -21,10 +22,11 @@ void Box::moveToDevice() {
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
+	forcefield_device_box = genericMoveToDevice(forcefield_device_box, 1);
+
 	cudaDeviceSynchronize();
 	printf("Box transferred to device\n");
 }
-
 
 void Simulation::moveToDevice() {
 	box = genericMoveToDevice(box, 1);

@@ -34,13 +34,15 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 		//mass = box->compounds[compound_index].particles[0]
 		compound = box->compounds[compound_index];
 	}
-
 	__syncthreads();
 
 	if (threadIdx.x >= compound.n_particles) {
 		return;
 	}
 	__syncthreads();
+
+	const uint8_t& atom_type = compound.atom_types[threadIdx.x];
+	const float mass = box->forcefield_device_box->particle_parameters[atom_type].mass;
 
 	const uint32_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int step_offset = step * box->total_particles_upperbound;
@@ -49,7 +51,8 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->total_particles_upperbound];
 	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, 12.f * 1e-3f, box->dt * n_steps);
+
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps);
 	float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);

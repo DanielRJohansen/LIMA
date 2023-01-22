@@ -590,6 +590,19 @@ struct SlidingActionGroupModule {
 
 
 
+
+
+struct ForceField_NB {
+	struct ParticleParameters {	//Nonbonded
+		float mass = -1;		//[kg/mol]	or 
+		float sigma = -1;
+		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]
+	};
+
+	ParticleParameters particle_parameters[MAX_ATOM_TYPES];
+};
+
+
 #pragma warning (pop)
 
 

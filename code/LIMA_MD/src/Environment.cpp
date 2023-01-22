@@ -89,7 +89,7 @@ void Environment::verifyBox() {
 }
 
 void Environment::prepareForRun() {
-	boxbuilder.finishBox(simulation.get());
+	boxbuilder.finishBox(simulation.get(), forcefield.getNBForcefield());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
 	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
@@ -97,8 +97,6 @@ void Environment::prepareForRun() {
 	verifyBox();
 	ready_to_run = true;
 }
-
-
 
 
 

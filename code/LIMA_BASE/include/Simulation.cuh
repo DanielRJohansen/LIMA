@@ -6,7 +6,7 @@
 #include <map>
 
 
-
+struct ForceField_NB;
 
 #ifndef __linux__
 //const string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\molecules\\t4lys_full\\";
@@ -63,6 +63,8 @@ public:
 
 	Solvent* solvents = nullptr;
 	Solvent* solvents_next = nullptr;
+
+	ForceField_NB* forcefield_device_box = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 

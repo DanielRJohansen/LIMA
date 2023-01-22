@@ -90,6 +90,9 @@ const int MAX_PARTICLES_IN_BRIDGE = 64;
 const int MAX_SINGLEBONDS_IN_BRIDGE = 32;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 32;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
+
+// Related to forcefield / constant memory
+const int MAX_ATOM_TYPES = 32;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

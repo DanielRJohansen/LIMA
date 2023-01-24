@@ -110,7 +110,7 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
-const bool ENABLE_BOXTEMP = true;		// Calc box-temp
+const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
 const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 10;			// Must be >= 3 why?

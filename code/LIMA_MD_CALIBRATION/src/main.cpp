@@ -126,7 +126,7 @@ bool doSpringBenchmark(Environment& env) {
 
 	auto* sim_params = env.getSimparamRef();
 
-	std::vector<float> bond_len_errors{ 0.01f, 0.05f }; //(r-r0) [nm]
+	std::vector<float> bond_len_errors{ 0.01f, 0.02f }; //(r-r0) [nm]
 	std::vector<float> std_devs;
 
 	for (auto bond_len_error : bond_len_errors) {		
@@ -229,9 +229,9 @@ int main() {
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(env);
 	//doSpringBenchmark(env);
-	//doAngleBenchmark(env);
-	doBasicBenchmark(env, "TorsionBenchmark");
-	//doBasicBenchmark(env, "Met");
+//	doAngleBenchmark(env);
+	//doBasicBenchmark(env, "TorsionBenchmark");
+	doBasicBenchmark(env, "Met");
 	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	return 0;
 }

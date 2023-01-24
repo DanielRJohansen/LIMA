@@ -62,7 +62,6 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	float error = difference.len() - bondtype->b0;				//	[lm]
 
 	*potE += 0.5f * bondtype->kb * (error * error);				// [J/mol]
-
 	
 	float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
@@ -85,18 +84,19 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	Float3 inward_force_direction1 = (v1.cross(normal2)).norm();
 	Float3 inward_force_direction2 = (v2.cross(normal1)).norm();
 
-	double angle = Float3::getAngle(v1, v2);				// [rad]
-	double error = angle - angletype->theta_0;				// [rad]
+	float angle = Float3::getAngle(v1, v2);					// [rad]
+	float error = angle - angletype->theta_0;				// [rad]
 
-	*potE += angletype->k_theta * error * error;	// [J/mol]0
-	double force_scalar = angletype->k_theta * (error) * 15.f;			// [J/(mol*rad)]	 also magic number????
+	*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
 
-	force_scalar /= NANO_TO_LIMA;				// I have no clue why? I guess in the conversion from J/molrad to kg*lm/ls^2??
+	float torque_scalar = angletype->k_theta * (error);		// Torque [J/(mol*rad)]
 
-	results[0] = inward_force_direction1 * force_scalar;
-	results[2] = inward_force_direction2 * force_scalar;
+
+	results[0] = inward_force_direction1 * (torque_scalar / (*pos_left - *pos_middle).len());
+	results[2] = inward_force_direction2 * (torque_scalar / (*pos_right - *pos_middle).len());
 	results[1] = (results[0] + results[2]) * -1;
-	
+
+
 	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
 		//printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
 	}	
@@ -115,16 +115,10 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	normal2 *= -1;
 	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
 
-	
+	*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
 
+	float torque = -dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
 
-	float force_scalar = -dihedral->k_phi * sinf(dihedral->n * torsion - dihedral->phi_0) / NANO_TO_LIMA * 10.f;
-	*potE += dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
-
-	//force_scalar /= 1.f;
-
-	//printf("Torsion %f ref %f force_scalar %f\n", torsion, dihedral->phi_0, force_scalar);
-	//force_scalar *= dihedral->k_phi;
 	if (0) {
 		normal1.print('1');
 		normal2.print('2');
@@ -135,19 +129,18 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 		printf("angle neg %d\n", angle_is_negative);
 		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
 		float pot = dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
-		printf("torsion %f     force: %f    pot %f     phi_0 %f k_phi %f\n", torsion, force_scalar * NANO_TO_LIMA, pot, dihedral->phi_0, dihedral->k_phi);
+		printf("torsion %f     torque: %f    pot %f     phi_0 %f k_phi %f\n", torsion, torque, pot, dihedral->phi_0, dihedral->k_phi);
 	}
 
 
 
-
-	//results[0] = normal1 * force_scalar * -1.f;
-	//results[3] = normal2 * force_scalar;
-	results[0] = normal1 * force_scalar;
-	results[3] = normal2 * force_scalar;
+	results[0] = normal1 * (torque / (*pos_left-*pos_lm).len());
+	results[3] = normal2 * (torque / (*pos_right-*pos_rm).len());
 	// Not sure about the final two forces, for now we'll jsut split the sum of opposite forces between them.
-	results[1] = (results[0] + results[3]) * -1.f * 0.5;
-	results[2] = (results[0] + results[3]) * -1.f * 0.5;
+	//results[1] = (results[0] + results[3]) * -1.f * 0.5;
+	//results[2] = (results[0] + results[3]) * -1.f * 0.5;
+	results[1] = (results[0]) * -1.f;
+	results[2] = (results[3]) * -1.f;
 }
 
 
@@ -335,6 +328,7 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	//int32_t dx = coord.x - coord_tsub1.x;
 	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
 	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+
 	coord += (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
 	//pos->x = x + dx + ddx;
 	//coord.x = x + dx + ddx;
@@ -342,6 +336,7 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	//Double3 pos_d{ *pos };
 
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		printf("\nTHermostat: %f\n", thermostat_scalar);
 		//force->print('f');
 		//printf("dt %f mass %f\n", dt, mass);
 		//(*force*dt*dt / mass).print('F');
@@ -363,7 +358,10 @@ __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force,
 	/*double x = pos->x;
 	double dx = pos->x - pos_tsub1->x;
 	double ddx = force->x * dt * dt / static_cast<double>(mass);*/
-	*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+
+	// Without thermostat
+	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+	*pos += (*pos - *pos_tsub1) * thermostat_scalar + *force * dt * (dt / static_cast<double>(mass));
 	//pos->x = x + dx + ddx;
 
 
@@ -558,7 +556,7 @@ __global__ void compoundKernel(Box* box) {
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
+		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 

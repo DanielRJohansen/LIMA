@@ -36,8 +36,6 @@ CompoundCollection CompoundBuilder::buildCompoundCollection(string gro_path, str
 	loadParticles(&molecule, &atom_data, max_residue_id, min_residue_id, ignore_hydrogens);
 	//bonded_interactions_list = new LJ_Ignores[molecule.n_atoms_total * 10];		// DANGER - could get big. We need to ref the lists with particles global id, which comes directly from gro files, thus includes hydrogens and is 1-indexed!
 
-
-
 	//printf("%d particles added\n", compound.n_particles);
 	loadTopology(&molecule, &top_data);
 

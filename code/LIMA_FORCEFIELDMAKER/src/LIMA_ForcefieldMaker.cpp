@@ -57,21 +57,22 @@ vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_A
 }
 
 vector<Bondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms) {
-	vector<Bondtype> ffbondtypes = Bondtype::parseFFBondtypes(*ffbonded_rows);
+	vector<Bondtype> forcefield = Bondtype::parseFFBondtypes(*ffbonded_rows);
 	vector<Bondtype> topology_bonds = Bondtype::parseTopolBondtypes(*topology_rows);
 
 	Bondtype::assignTypesFromAtomIDs(&topology_bonds, *atoms);
-	Bondtype::assignFFParametersFromBondtypes(&topology_bonds, &ffbondtypes);
-	
+	//Bondtype::assignFFParametersFromBondtypes(&topology_bonds, &ffbondtypes);
+	FTHelpers::assignForceVariablesFromForcefield(&topology_bonds, &forcefield);
+
 	return topology_bonds;
 }
 
 vector<Angletype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms) {
-	vector<Angletype> ffangletypes = Angletype::parseFFAngletypes(*ffbonded_rows);
+	vector<Angletype> forcefield = Angletype::parseFFAngletypes(*ffbonded_rows);
 	vector<Angletype> topology_angles = Angletype::parseTopolAngletypes(*topology_rows);
 
 	Angletype::assignTypesFromAtomIDs(&topology_angles, *atoms);
-	Angletype::assignFFParametersFromAngletypes(&topology_angles, &ffangletypes);
+	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
 
 	return topology_angles;
 }
@@ -81,7 +82,7 @@ vector<Dihedraltype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows,
 	vector<Dihedraltype> topology_dihedrals = Dihedraltype::parseTopolDihedraltypes(topology_rows);
 
 	Dihedraltype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
-	Dihedraltype::assignFFParametersFromDihedraltypes(&topology_dihedrals, &forcefield);
+	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
 
 	return topology_dihedrals;
 }

@@ -6,7 +6,8 @@
 #include <vector>
 #include <sstream>
 #include <algorithm>
-
+#include <unordered_map>
+#include <format>
 
 ///////////////////////////////// READ HERE FIRST /////////////////////////////////
 // ffbonded.itp and ffnonbonden.itp has different atomtypes. 
@@ -107,6 +108,33 @@ struct FTHelpers {
 		}
 		out.pop_back();	// remove the last '-'
 		return out;
+	}
+
+	template <typename GenericBondType>
+	static void assignForceVariablesFromForcefield(vector<GenericBondType>* topol_bonds, vector<GenericBondType>* forcefield) {
+		std::unordered_map<string, GenericBondType*> forcefieldMap;
+
+		for (int i = 0; i < topol_bonds->size(); i++) {
+			std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
+				GenericBondType::getBondtype(), i+1, topol_bonds->size());
+
+			GenericBondType* bond = &topol_bonds->at(i);
+
+			// Try to see if we have already searched for a dihedral with an identical order of identical atom types
+			string tag = FTHelpers::makeBondTag(bond->getAtomtypesAsVector());
+			auto cachedFF = forcefieldMap.find(tag);
+
+			if (cachedFF != forcefieldMap.end()) {
+				GenericBondType* appropriateForcefieldType = cachedFF->second;
+				bond->assignForceVariables(*appropriateForcefieldType);
+			}
+			else {
+				GenericBondType* appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(bond, forcefield);
+				forcefieldMap.insert({ tag, appropriateForcefieldType });
+				bond->assignForceVariables(*appropriateForcefieldType);
+			}
+		}
+		std::cout << '\n';
 	}
 };
 
@@ -289,6 +317,11 @@ struct Bondtype {
 		//convertToZeroIndexed();
 	}
 	
+	void assignForceVariables(const Bondtype& a) {
+		b0 = a.b0;
+		kb = a.kb;
+	}
+
 	string type1{}, type2{};
 	int id1{}, id2{};			// bonds from .top only has these values! 
 	float b0{};
@@ -299,34 +332,10 @@ struct Bondtype {
 			swap(type1, type2);
 		}
 	}
-	
-	
-	//void sort() {
-	//	int ptr = 0; 
-	//	//cout << "Sorting " << type1 << "    " << type2 << endl;
-	//	while (type1.length() > ptr && type2.length() > ptr) {
 
-	//		if ((int)type1[ptr] < (int)type2[ptr]) {
-	//			return;
-	//		}
-	//		else if ((int)type1[ptr] == (int)type2[ptr]) {
-	//			// Do nothing, move ptr to the right
-	//		}
-	//		else {
-	//			//printf("Swapping %d %d   ", (int) type1[ptr], (int) type2[ptr]);
-	//			//cout << type1[ptr] << "   " << type2[ptr] << endl;
-	//			//cout << type1 << "    " << type2 << endl << endl;
-	//			swap(type1, type2);
-	//			return;
-	//		}
-	//		ptr++;
-	//	}
-	//	if (type1.length() > type2.length()) {
-	//		swap(type1, type2);
-	//	}
-	//	//printf("\n");
-	//}
+	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2}; }
 
+	static std::string getBondtype() { return "bond"; }
 
 	static vector<Bondtype> parseFFBondtypes(vector<vector<string>> rows);
 
@@ -335,9 +344,9 @@ struct Bondtype {
 	static void assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom> atoms);
 
 
-	static Bondtype getBondFromTypes(Bondtype* query_type, vector<Bondtype>* FF_bondtypes);
+	static Bondtype* findBestMatchInForcefield(Bondtype* query_type, vector<Bondtype>* FF_bondtypes);
 
-	static void assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes);
+	//static void assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes);
 };
 
 
@@ -363,27 +372,6 @@ struct Angletype {
 		ktheta = a.ktheta;
 	}
 
-
-	/*void sort(string* leftmost, string* rightmost) {
-		int ptr = 0;
-		while (leftmost->length() > ptr && rightmost->length() > ptr) {
-			if ((int)(*leftmost)[ptr] < (int)(*rightmost)[ptr]) {
-				return;
-			}
-			else if ((int)(*leftmost)[ptr] > (int)(*rightmost)[ptr]) {
-				swap(*leftmost, *rightmost);
-				return;
-			}
-			ptr++;
-		}
-		if (leftmost->length() > rightmost->length()) {
-			swap(*leftmost, *rightmost);
-		}
-	}
-	void sort() {
-		sort(&type1, &type3);		// We can ONLY sort these two, as type2 MUSTTT be in the middle!!
-	}*/
-
 	void sort() {
 		// The middle type must always be in the middle, so we only sort the outer 2 types
 		// No need to sort if our edges are the same
@@ -394,6 +382,9 @@ struct Angletype {
 		}
 	}
 
+	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2, type3 }; }
+
+	static const std::string getBondtype() { return "angle"; }
 
 	static vector<Angletype> parseFFAngletypes(vector<vector<string>> rows);
 
@@ -403,9 +394,9 @@ struct Angletype {
 
 
 
-	static Angletype* getAngleFromTypes(Angletype* query_type, vector<Angletype>* FF_angletypes);
+	static Angletype* findBestMatchInForcefield(Angletype* query_type, vector<Angletype>* FF_angletypes);
 	
-	static void assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield);
+	//static void assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield);
 };
 
 
@@ -426,7 +417,7 @@ struct Dihedraltype {
 		kphi = a.kphi;
 		n = a.n;
 	}
-
+	
 	string type1, type2, type3, type4;			// left, lm, rm, right
 	int id1{}, id2{}, id3{}, id4{};			// bonds from .top only has these values! 
 	float phi0{};
@@ -450,8 +441,9 @@ struct Dihedraltype {
 			}
 		}
 	}
+	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2, type3, type4 }; }
 
-
+	static const std::string getBondtype() { return "dihedral"; }
 
 	static vector<Dihedraltype> parseFFDihedraltypes(vector<vector<string>> rows);
 
@@ -459,7 +451,5 @@ struct Dihedraltype {
 
 	static void assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals, vector<Atom> atoms);
 
-	static Dihedraltype* getDihedralFromTypes(Dihedraltype* query_type, vector<Dihedraltype>* forcefield);
-
-	static void assignFFParametersFromDihedraltypes(vector<Dihedraltype>* topol_dihedrals, vector<Dihedraltype>* forcefield);
+	static Dihedraltype* findBestMatchInForcefield(Dihedraltype* query_type, vector<Dihedraltype>* forcefield);
 };

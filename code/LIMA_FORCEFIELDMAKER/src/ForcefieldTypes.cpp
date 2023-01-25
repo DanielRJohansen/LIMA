@@ -128,13 +128,6 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows) {
 
 
 
-
-
-
-
-
-
-
 vector<Bondtype> Bondtype::parseFFBondtypes(vector<vector<string>> rows) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 
@@ -201,46 +194,60 @@ void Bondtype::assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom
 
 
 
-Bondtype Bondtype::getBondFromTypes(Bondtype* query_type, vector<Bondtype>* FF_bondtypes) {
+Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondtype>* forcefield) {
+	if (forcefield->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 	float best_likeness = 0;
-	Bondtype best_bond;
-	for (Bondtype bond : *FF_bondtypes) {
+	Bondtype* best_bond = &((*forcefield)[0]);
+	for (Bondtype& bond : *forcefield) {
 		float likeness = FTHelpers::calcLikeness(query_type->type1, bond.type1) * FTHelpers::calcLikeness(query_type->type2, bond.type2);
 		if (likeness > best_likeness) {
 			best_likeness = likeness;
-			best_bond = bond;
+			best_bond = &bond;
 		}
 	}
 	if (best_likeness > 0.01f)
 		return best_bond;
 
-	cout << "Failed to match bond types.\n Closest match " << best_bond.type1 << "    " << best_bond.type2;
+	cout << "Failed to match bond types.\n Closest match " << best_bond->type1 << "    " << best_bond->type2;
 	printf("Likeness %f\n", best_likeness);
 	printf("Topol ids: %d %d\n", query_type->id1, query_type->id2);
 	cout << query_type->type1 << '\t' << query_type->type2 << endl;
 	exit(0);
 }
+//
+//void Bondtype::assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes) {
+//	for (int i = 0; i < topol_bonds->size(); i++) {
+//		if (!(i % 10))
+//			printf("\rAssigning FF parameters to bond %06d of %06lld", i, topol_bonds->size());
+//		Bondtype* bond = &topol_bonds->at(i);
+//
+//		Bondtype appropriateForcefield = getBondFromTypes(bond, FF_bondtypes);	// This might not return the correct one, as it tries to fit the atomtypes_bond to atomtypes_bond known in the CHARMM forcefield
+//
+//		bond->kb = appropriateForcefield.kb;
+//		bond->b0 = appropriateForcefield.b0;
+//	}
+//	printf("\n");
+//}
+//
 
-void Bondtype::assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes) {
-	for (int i = 0; i < topol_bonds->size(); i++) {
-		if (!(i % 10))
-			printf("\rAssigning FF parameters to bond %06d of %06lld", i, topol_bonds->size());
-		Bondtype* bond = &topol_bonds->at(i);
-
-		Bondtype appropriateForcefield = getBondFromTypes(bond, FF_bondtypes);	// This might not return the correct one, as it tries to fit the atomtypes_bond to atomtypes_bond known in the CHARMM forcefield
-
-		bond->kb = appropriateForcefield.kb;
-		bond->b0 = appropriateForcefield.b0;
-	}
-	printf("\n");
-}
-
-
-
-
-
-
-
+//
+//if (FF_angletypes->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
+//float best_likeness = 0;
+//Angletype* best_angle = &((*FF_angletypes)[0]);
+//for (Angletype& angle : *FF_angletypes) {
+//	float likeness = FTHelpers::calcLikeness(query_type->type1, angle.type1) * FTHelpers::calcLikeness(query_type->type2, angle.type2) * FTHelpers::calcLikeness(query_type->type3, angle.type3);
+//	if (likeness > best_likeness) {
+//		best_likeness = likeness;
+//		best_angle = &angle;
+//	}
+//	if (likeness == 1)
+//		break;
+//}
+//if (best_likeness > 0.01f)
+//return best_angle;
+//
+//
+//
 
 
 
@@ -322,7 +329,7 @@ void Angletype::assignTypesFromAtomIDs(vector<Angletype>* topol_angles, vector<A
 
 
 
-Angletype* Angletype::getAngleFromTypes(Angletype* query_type, vector<Angletype>* FF_angletypes) {
+Angletype* Angletype::findBestMatchInForcefield(Angletype* query_type, vector<Angletype>* FF_angletypes) {
 	if (FF_angletypes->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 	float best_likeness = 0;
 	Angletype* best_angle = &((*FF_angletypes)[0]);
@@ -344,31 +351,31 @@ Angletype* Angletype::getAngleFromTypes(Angletype* query_type, vector<Angletype>
 	cout << query_type->type1 << '\t' << query_type->type2 << '\t' << query_type->type3 << endl;
 	exit(0);
 }
-
-void Angletype::assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield) {
-	std::unordered_map<string, Angletype*> forcefieldMap;
-
-	for (int i = 0; i < topol_angles->size(); i++) {
-		printf("\rAssigning FF parameters to angle %06d of %06lld", i, topol_angles->size());
-
-		Angletype* angle = &topol_angles->at(i);
-
-		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-		string tag = FTHelpers::makeBondTag(std::vector{ angle->type1, angle->type2, angle->type3 });
-		auto cachedFF = forcefieldMap.find(tag);
-
-		if (cachedFF != forcefieldMap.end()) {
-			auto* appropriateForcefieldType = cachedFF->second;
-			angle->assignForceVariables(*appropriateForcefieldType);
-		}
-		else {
-			auto* appropriateForcefieldType = getAngleFromTypes(angle, forcefield);
-			forcefieldMap.insert({ tag, appropriateForcefieldType });
-			angle->assignForceVariables(*appropriateForcefieldType);
-		}
-	}
-	printf("\n");
-}
+//
+//void Angletype::assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield) {
+//	std::unordered_map<string, Angletype*> forcefieldMap;
+//
+//	for (int i = 0; i < topol_angles->size(); i++) {
+//		printf("\rAssigning FF parameters to angle %06d of %06lld", i, topol_angles->size());
+//
+//		Angletype* angle = &topol_angles->at(i);
+//
+//		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
+//		string tag = FTHelpers::makeBondTag(std::vector{ angle->type1, angle->type2, angle->type3 });
+//		auto cachedFF = forcefieldMap.find(tag);
+//
+//		if (cachedFF != forcefieldMap.end()) {
+//			auto* appropriateForcefieldType = cachedFF->second;
+//			angle->assignForceVariables(*appropriateForcefieldType);
+//		}
+//		else {
+//			auto* appropriateForcefieldType = findBestMatchInForcefield(angle, forcefield);
+//			forcefieldMap.insert({ tag, appropriateForcefieldType });
+//			angle->assignForceVariables(*appropriateForcefieldType);
+//		}
+//	}
+//	printf("\n");
+//}
 
 
 
@@ -475,7 +482,7 @@ void Dihedraltype::assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals,
 	}
 }
 
-Dihedraltype* Dihedraltype::getDihedralFromTypes(Dihedraltype* query_type, vector<Dihedraltype>* forcefield) {
+Dihedraltype* Dihedraltype::findBestMatchInForcefield(Dihedraltype* query_type, vector<Dihedraltype>* forcefield) {
 	if (forcefield->size() == 0) { throw std::exception("No elements in forcefield"); }
 	float best_likeness = 0;
 	Dihedraltype* best_match = &((*forcefield)[0]);
@@ -501,27 +508,27 @@ Dihedraltype* Dihedraltype::getDihedralFromTypes(Dihedraltype* query_type, vecto
 	exit(0);
 }
 
-void Dihedraltype::assignFFParametersFromDihedraltypes(vector<Dihedraltype>* topol_dihedrals, vector<Dihedraltype>* forcefield) {
-	std::unordered_map<string, Dihedraltype*> forcefieldMap;
-
-	for (int i = 0; i < topol_dihedrals->size(); i++) {
-		printf("\rAssigning FF parameters to dihedral %06d of %06lld", i, topol_dihedrals->size());
-
-		Dihedraltype* dihedral = &topol_dihedrals->at(i);
-
-		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-		string tag = FTHelpers::makeBondTag(std::vector{ dihedral->type1, dihedral->type2, dihedral->type3, dihedral->type4 });
-		auto cachedFF = forcefieldMap.find(tag);
-
-		if (cachedFF != forcefieldMap.end()) {
-			auto* appropriateForcefieldType = cachedFF->second;
-			dihedral->assignForceVariables(*appropriateForcefieldType);
-		}
-		else {
-			auto* appropriateForcefieldType = getDihedralFromTypes(dihedral, forcefield);
-			forcefieldMap.insert({ tag, appropriateForcefieldType });
-			dihedral->assignForceVariables(*appropriateForcefieldType);
-		}
-	}
-	printf("\n");
-}
+//void Dihedraltype::assignFFParametersFromDihedraltypes(vector<Dihedraltype>* topol_dihedrals, vector<Dihedraltype>* forcefield) {
+//	std::unordered_map<string, Dihedraltype*> forcefieldMap;
+//
+//	for (int i = 0; i < topol_dihedrals->size(); i++) {
+//		printf("\rAssigning FF parameters to dihedral %06d of %06lld", i, topol_dihedrals->size());
+//
+//		Dihedraltype* dihedral = &topol_dihedrals->at(i);
+//
+//		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
+//		string tag = FTHelpers::makeBondTag(std::vector{ dihedral->type1, dihedral->type2, dihedral->type3, dihedral->type4 });
+//		auto cachedFF = forcefieldMap.find(tag);
+//
+//		if (cachedFF != forcefieldMap.end()) {
+//			auto* appropriateForcefieldType = cachedFF->second;
+//			dihedral->assignForceVariables(*appropriateForcefieldType);
+//		}
+//		else {
+//			auto* appropriateForcefieldType = findBestMatchInForcefield(dihedral, forcefield);
+//			forcefieldMap.insert({ tag, appropriateForcefieldType });
+//			dihedral->assignForceVariables(*appropriateForcefieldType);
+//		}
+//	}
+//	printf("\n");
+//}

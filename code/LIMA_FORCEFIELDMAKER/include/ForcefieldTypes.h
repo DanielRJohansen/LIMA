@@ -14,7 +14,7 @@
 // The purpose if this bit of code is to compress all forcefield parameters so they can fit on a GPU more easily
 //
 
-//using namespace std;
+
 
 using std::vector, std::string;
 

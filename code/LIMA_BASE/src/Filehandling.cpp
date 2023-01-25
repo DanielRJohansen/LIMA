@@ -38,7 +38,8 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 	int row_cnt = 0;
 	int ignore_cnt = 0;
 
-	string line;
+	// Forward declaring for optimization reasons
+	string line{}, element{}, element_nested{};
 	while (getline(file, line)) {
 		if (ignoreRow(comment_markers, line)) {
 			ignore_cnt++;
@@ -47,7 +48,6 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 
 		vector<string> row;
 		stringstream ss(line);
-		string element, element_nested;
 		while (getline(ss, element, ' ')) {
 			stringstream ss2 = stringstream(element);
 			while (getline(ss2, element_nested, ';')) { 
@@ -58,7 +58,7 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 			}
 		}
 
-		rows.push_back(row);
+		rows.push_back(std::move(row));
 		row_cnt++;
 
 		if (row_cnt >= end_at)

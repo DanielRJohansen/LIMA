@@ -1,6 +1,5 @@
 #include "ForcefieldTypes.h"
 
-#include <unordered_map>
 
 
 
@@ -53,17 +52,6 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 	printf("\n\n\n");
 	return filtered_list;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -193,7 +181,6 @@ void Bondtype::assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom
 
 
 
-
 Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondtype>* forcefield) {
 	if (forcefield->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 	float best_likeness = 0;
@@ -214,42 +201,6 @@ Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondt
 	cout << query_type->type1 << '\t' << query_type->type2 << endl;
 	exit(0);
 }
-//
-//void Bondtype::assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes) {
-//	for (int i = 0; i < topol_bonds->size(); i++) {
-//		if (!(i % 10))
-//			printf("\rAssigning FF parameters to bond %06d of %06lld", i, topol_bonds->size());
-//		Bondtype* bond = &topol_bonds->at(i);
-//
-//		Bondtype appropriateForcefield = getBondFromTypes(bond, FF_bondtypes);	// This might not return the correct one, as it tries to fit the atomtypes_bond to atomtypes_bond known in the CHARMM forcefield
-//
-//		bond->kb = appropriateForcefield.kb;
-//		bond->b0 = appropriateForcefield.b0;
-//	}
-//	printf("\n");
-//}
-//
-
-//
-//if (FF_angletypes->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
-//float best_likeness = 0;
-//Angletype* best_angle = &((*FF_angletypes)[0]);
-//for (Angletype& angle : *FF_angletypes) {
-//	float likeness = FTHelpers::calcLikeness(query_type->type1, angle.type1) * FTHelpers::calcLikeness(query_type->type2, angle.type2) * FTHelpers::calcLikeness(query_type->type3, angle.type3);
-//	if (likeness > best_likeness) {
-//		best_likeness = likeness;
-//		best_angle = &angle;
-//	}
-//	if (likeness == 1)
-//		break;
-//}
-//if (best_likeness > 0.01f)
-//return best_angle;
-//
-//
-//
-
-
 
 
 
@@ -351,44 +302,6 @@ Angletype* Angletype::findBestMatchInForcefield(Angletype* query_type, vector<An
 	cout << query_type->type1 << '\t' << query_type->type2 << '\t' << query_type->type3 << endl;
 	exit(0);
 }
-//
-//void Angletype::assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield) {
-//	std::unordered_map<string, Angletype*> forcefieldMap;
-//
-//	for (int i = 0; i < topol_angles->size(); i++) {
-//		printf("\rAssigning FF parameters to angle %06d of %06lld", i, topol_angles->size());
-//
-//		Angletype* angle = &topol_angles->at(i);
-//
-//		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-//		string tag = FTHelpers::makeBondTag(std::vector{ angle->type1, angle->type2, angle->type3 });
-//		auto cachedFF = forcefieldMap.find(tag);
-//
-//		if (cachedFF != forcefieldMap.end()) {
-//			auto* appropriateForcefieldType = cachedFF->second;
-//			angle->assignForceVariables(*appropriateForcefieldType);
-//		}
-//		else {
-//			auto* appropriateForcefieldType = findBestMatchInForcefield(angle, forcefield);
-//			forcefieldMap.insert({ tag, appropriateForcefieldType });
-//			angle->assignForceVariables(*appropriateForcefieldType);
-//		}
-//	}
-//	printf("\n");
-//}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -507,28 +420,3 @@ Dihedraltype* Dihedraltype::findBestMatchInForcefield(Dihedraltype* query_type, 
 	cout << query_type->type1 << '\t' << query_type->type2 << '\t' << query_type->type3 << '\t' << query_type->type4 << endl;
 	exit(0);
 }
-
-//void Dihedraltype::assignFFParametersFromDihedraltypes(vector<Dihedraltype>* topol_dihedrals, vector<Dihedraltype>* forcefield) {
-//	std::unordered_map<string, Dihedraltype*> forcefieldMap;
-//
-//	for (int i = 0; i < topol_dihedrals->size(); i++) {
-//		printf("\rAssigning FF parameters to dihedral %06d of %06lld", i, topol_dihedrals->size());
-//
-//		Dihedraltype* dihedral = &topol_dihedrals->at(i);
-//
-//		// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-//		string tag = FTHelpers::makeBondTag(std::vector{ dihedral->type1, dihedral->type2, dihedral->type3, dihedral->type4 });
-//		auto cachedFF = forcefieldMap.find(tag);
-//
-//		if (cachedFF != forcefieldMap.end()) {
-//			auto* appropriateForcefieldType = cachedFF->second;
-//			dihedral->assignForceVariables(*appropriateForcefieldType);
-//		}
-//		else {
-//			auto* appropriateForcefieldType = findBestMatchInForcefield(dihedral, forcefield);
-//			forcefieldMap.insert({ tag, appropriateForcefieldType });
-//			dihedral->assignForceVariables(*appropriateForcefieldType);
-//		}
-//	}
-//	printf("\n");
-//}

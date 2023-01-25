@@ -357,6 +357,7 @@ void CompoundBuilder::distributeLJIgnores(CompoundCollection* molecule, Particle
 
 void CompoundBuilder::assignMoleculeIDs()
 {
+	printf("Assigning IDs to molecules\n");
 	// Worst case scenario where each residue is a separate atom and a separate molecule (so solvents)
 	vector<uint32_t> residueID_to_moleculeID(atom_data.size() + 1);	
 
@@ -488,9 +489,9 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 	string space_delimiter = " ";
 
 	vector<vector<string>> records;
-
+	printf("done\n");
 	auto rows = Filehandler::readFile(path, { ';', '#' }, { "[", "]" });
-
+	printf("done\n");
 
 	while (getline(file, line)) {
 		vector<string> record;
@@ -508,7 +509,7 @@ vector<vector<string>> CompoundBuilder::parseTOP(string path)		// Naive file seg
 			if (record[0] == ";")
 				continue;
 		}
-		records.push_back(record);
+		records.push_back(std::move(record));
 	}
 	return records;
 }

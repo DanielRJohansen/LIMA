@@ -7,7 +7,7 @@ using namespace std;
 bool Filehandler::ignoreRow(const vector<char>& ignores, const string& line) {
 	if (line.length() == 0)
 		return true;
-	for (char c : ignores) {
+	for (auto& c : ignores) {
 		if (line[0] == c)
 			return true;
 	}
@@ -17,7 +17,7 @@ bool Filehandler::ignoreRow(const vector<char>& ignores, const string& line) {
 bool Filehandler::ignoreWord(const vector<string>& ignores, const string& word) {
 	if (word.length() == 0)
 		return true;
-	for (auto elem : ignores) {
+	for (auto& elem : ignores) {
 		if (word == elem)
 			return true;
 	}

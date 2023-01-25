@@ -340,10 +340,11 @@ struct CompoundCollection {
 
 struct CompoundBridge {
 	CompoundBridge() {}
-	CompoundBridge(int id_left, int id_right): compound_id_left(id_left), compound_id_right(id_right) {
+	CompoundBridge(uint16_t id_left, uint16_t id_right): compound_id_left(id_left), compound_id_right(id_right) {
 	}
 
-	int compound_id_left, compound_id_right;
+	uint16_t compound_id_left{};
+	uint16_t compound_id_right{};
 	ParticleRef particle_refs[MAX_PARTICLES_IN_BRIDGE];
 	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE];
 	int n_particles = 0;
@@ -356,11 +357,11 @@ struct CompoundBridge {
 	
 
 	PairBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
-	int n_singlebonds = 0;
+	uint16_t n_singlebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
-	int n_anglebonds = 0;
+	uint16_t n_anglebonds = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
-	int n_dihedrals = 0;
+	uint16_t n_dihedrals = 0;
 
 	bool bondBelongsInBridge(GenericBond* bond) const {
 		return (compound_id_left == bond->compound_ids[0] && compound_id_right == bond->compound_ids[1]);
@@ -498,7 +499,10 @@ struct ParticleRefCompact {
 
 struct CompoundBridgeCompact {
 	CompoundBridgeCompact() {}
-	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) {
+	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) :
+		compound_id_left{bridge->compound_id_left},
+		compound_id_right{bridge->compound_id_right}
+	{
 		n_particles = bridge->n_particles;
 		
 		for (int i = 0; i < n_particles; i++) {
@@ -538,6 +542,8 @@ struct CompoundBridgeCompact {
 	uint16_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
 
+	uint16_t compound_id_left{};
+	uint16_t compound_id_right{};
 
 	// -------------- Device functions ------------- //
 	__device__ void loadMeta(CompoundBridgeCompact* bridge) {

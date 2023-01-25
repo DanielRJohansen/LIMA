@@ -19,7 +19,7 @@ constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
 constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
-constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * 1e+6;
+constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 
 constexpr float CUTOFF = 1.1f * NANO_TO_LIMA;				// fm
 // -------------------------------------------------------------------------------------------------------------- //
@@ -110,13 +110,13 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
-const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-const bool APPLY_THERMOSTAT = true;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
+const bool ENABLE_BOXTEMP	= false;		// Calc box-temp
+const bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 10;			// Must be >= 3 why?
 const int FIRST_TEMPERATURE_PRINT_STEP = RAMPUP_STEPS;
 const int FIRST_THERMOSTAT_APPLICATION_STEP = RAMPUP_STEPS + 200;
-constexpr float MAX_THERMOSTAT_SCALER = 0.01f / static_cast<float>(STEPS_PER_THERMOSTAT);
+constexpr float MAX_THERMOSTAT_SCALER = 0.1f / static_cast<float>(STEPS_PER_THERMOSTAT);
 // -------------------------------------------------------------------------------------------------------------- //
 
 

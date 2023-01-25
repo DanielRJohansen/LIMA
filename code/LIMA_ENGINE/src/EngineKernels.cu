@@ -1,5 +1,7 @@
 #include "Engine.cuh"
 
+#pragma warning ( push )
+#pragma warning ( disable: E0020)
 
 // Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
 __constant__ ForceField_NB forcefield_device;
@@ -70,31 +72,33 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	results[1] = difference * force_scalar * -1;				// [kg * lm / (mol*ls^2)] = [lN]
 
 	if (0.5f * bondtype->kb * (error * error) > 100000) {
-		printf("error %f    pote %f    force %f\n", error, 0.5f * bondtype->kb * (error * error), force_scalar);
+		//printf("error %f    pote %f    force %f\n", error, 0.5f * bondtype->kb * (error * error), force_scalar);
 	}
 }
 
 
 __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3* pos_right, AngleBond* angletype, Float3* results, float* potE) {
-	Float3 v1 = (*pos_left - *pos_middle).norm();
-	Float3 v2 = (*pos_right - *pos_middle).norm();
-	Float3 normal1 = v1.cross(v2).norm();
-	Float3 normal2 = normal1 * -1.f; // v2.cross(v1);
+	const Float3 v1 = (*pos_left - *pos_middle).norm();
+	const Float3 v2 = (*pos_right - *pos_middle).norm();
+	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
 
-	Float3 inward_force_direction1 = (v1.cross(normal2)).norm();
-	Float3 inward_force_direction2 = (v2.cross(normal1)).norm();
+	const Float3 inward_force_direction1 = (v1.cross(normal * -1.f)).norm();
+	const Float3 inward_force_direction2 = (v2.cross(normal)).norm();
 
-	float angle = Float3::getAngle(v1, v2);					// [rad]
-	float error = angle - angletype->theta_0;				// [rad]
+	const float angle = Float3::getAngle(v1, v2);					// [rad]
+	const float error = angle - angletype->theta_0;				// [rad]
 
-	*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	// Simple implementation
+	//*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	//float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
 
-	float torque_scalar = angletype->k_theta * (error);		// Torque [J/(mol*rad)]
+	// Correct implementation
+	*potE += -angletype->k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
+	const float torque = angletype->k_theta * sinf(error);	// Torque [J/(mol*rad)]
 
-
-	results[0] = inward_force_direction1 * (torque_scalar / (*pos_left - *pos_middle).len());
-	results[2] = inward_force_direction2 * (torque_scalar / (*pos_right - *pos_middle).len());
-	results[1] = (results[0] + results[2]) * -1;
+	results[0] = inward_force_direction1 * (torque / (*pos_left - *pos_middle).len());
+	results[2] = inward_force_direction2 * (torque / (*pos_right - *pos_middle).len());
+	results[1] = (results[0] + results[2]) * -1.f;
 
 
 	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
@@ -336,7 +340,6 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 	//Double3 pos_d{ *pos };
 
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		printf("\nTHermostat: %f\n", thermostat_scalar);
 		//force->print('f');
 		//printf("dt %f mass %f\n", dt, mass);
 		//(*force*dt*dt / mass).print('F');
@@ -537,7 +540,7 @@ __global__ void compoundKernel(Box* box) {
 	}
 
 	float potE_sum = 0;
-	float data_ptr[4];
+	float data_ptr[4]{};
 	for (int i = 0; i < 4; i++)
 		data_ptr[i] = 0;
 	data_ptr[2] = 9999;
@@ -633,20 +636,8 @@ __global__ void compoundKernel(Box* box) {
 	
 
 	if (threadIdx.x < compound.n_particles) {
-		//utility_buffer[threadIdx.x] = box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x];
-
-			//integratePosition(&compound_state.positions[threadIdx.x], &compound.prev_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
-		//__shared__ Coord prev_hyper_origo{};	// dont like this here
-
 		integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
-		//integratePosition(compound_coords.rel_positions[threadIdx.x], box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
-
-
-
-			//integratePosition(&compound_state.positions[threadIdx.x], &utility_buffer[threadIdx.x], &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, &box->thermostat_scalar, threadIdx.x, box->step > 810);
-
-		//box->compounds[blockIdx.x].prev_positions[threadIdx.x] = &utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
-		box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x] = utility_buffer[threadIdx.x];// compound.prev_positions[threadIdx.x];
+		box->compound_state_array_prev[blockIdx.x].positions[threadIdx.x] = utility_buffer[threadIdx.x];
 	}
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
@@ -871,3 +862,5 @@ __device__ void integrateVelocity(CompactParticle* particle, Float3* particle_fo
 	particle->vel = particle->vel + (*particle_force + particle->force_prev) * (0.5 / particle->mass) * *dt;
 }
 */
+
+#pragma warning (pop)

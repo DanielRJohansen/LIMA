@@ -23,15 +23,13 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	__shared__ Compound compound;
 
 
-	uint64_t step = blockIdx.x + uint64_t{ 1 };
+	const uint64_t step = blockIdx.x + uint64_t{ 1 };
 	const int compound_index = blockIdx.y;
 	energy[threadIdx.x] = Float3(0.f);
 
 
 	if (threadIdx.x == 0) {
-		//printf("index: %d\n", compound_index + (step - 1) * N_MONITORBLOCKS_PER_STEP);
 		data_out[compound_index + (step - 1) * box->n_compounds] = Float3{};
-		//mass = box->compounds[compound_index].particles[0]
 		compound = box->compounds[compound_index];
 	}
 	__syncthreads();
@@ -52,8 +50,8 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
 
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps);
-	float totalE = potE + kinE;
+	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps);
+	const float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
 	__syncthreads();
@@ -235,7 +233,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
-		dim3 block_dim(steps_in_kernel, simulation->box->n_compounds, 1);
+		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->box->n_compounds, 1);
 		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");

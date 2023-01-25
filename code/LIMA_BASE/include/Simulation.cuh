@@ -91,9 +91,8 @@ struct SimulationParams {
 	float dt = 100.f;	// [ls]
 	int n_steps = 1000;
 private:
-	template <typename T> void overloadParam(std::map <std::string, double>& dict, 
-		T* param, std::string key, float scalar = 1.f) {
-		if (dict.count(key)) { *param = static_cast<T>(dict[key]) * scalar; }
+	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
+		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
 	}
 };
 

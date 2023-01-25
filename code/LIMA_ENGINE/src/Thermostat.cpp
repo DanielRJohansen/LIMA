@@ -73,7 +73,7 @@ void Engine::handleBoxtemp() {
 	}
 	
 	if (APPLY_THERMOSTAT && step >= FIRST_THERMOSTAT_APPLICATION_STEP) {
-		//simulation->box->thermostat_scalar = temp_scalar;
+		simulation->box->thermostat_scalar = temp_scalar;
 
 		if (temp_scalar != temp_scalar) {//} || abs(temp_scalar) == "inf") {
 			printf("Scalar: %f\n", simulation->box->thermostat_scalar);

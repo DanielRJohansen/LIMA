@@ -46,10 +46,6 @@ public:
 	uint32_t total_particles_upperbound = 0;
 
 
-	// These are shared for all compounds, MUST be allocated before adding any compounds to box, so not in moveToDevice //
-	CompoundState* compound_state_array = nullptr;
-	CompoundState* compound_state_array_prev = nullptr;
-	CompoundState* compound_state_array_next = nullptr;
 
 	//CompoundCoords* compound_coord_array = nullptr;
 	//CompoundCoords* compound_coord_array_prev = nullptr;

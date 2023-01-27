@@ -32,8 +32,6 @@ void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlist
 }
 
 void NListManager::offloadPositionDataNLIST(Simulation* simulation) {
-	//cudaMemcpyAsync(compoundstatearray_host, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->box->n_compounds, cudaMemcpyDeviceToHost);
-	cudaMemcpy(nlist_data_collection->compoundstates, simulation->box->compound_state_array, sizeof(CompoundState) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 	if (simulation->n_solvents > 0)
 		cudaMemcpy(nlist_data_collection->solvents, simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
 }

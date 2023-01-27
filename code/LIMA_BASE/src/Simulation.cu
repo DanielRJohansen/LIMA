@@ -11,11 +11,6 @@ void Box::moveToDevice() {
 	compounds = genericMoveToDevice(compounds, n_compounds);
 	solvents = genericMoveToDevice(solvents, MAX_SOLVENTS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
-	compound_state_array = genericMoveToDevice(compound_state_array, MAX_COMPOUNDS);
-	compound_state_array_prev = genericMoveToDevice(compound_state_array_prev, MAX_COMPOUNDS);
-
-	/*compound_coord_array = genericMoveToDevice(compound_coord_array, MAX_COMPOUNDS);
-	compound_coord_array_prev = genericMoveToDevice(compound_coord_array_prev, MAX_COMPOUNDS);*/
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
 	solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);
@@ -68,9 +63,6 @@ void Simulation::deleteBoxMembers() {
 	if (box_is_on_device) {
 		cudaFree(box->compounds);
 
-		cudaFree(box->compound_state_array);
-		cudaFree(box->compound_state_array_next);
-
 		cudaFree(box->compound_neighborlists);
 		cudaFree(box->solvent_neighborlists);
 
@@ -89,7 +81,6 @@ void Simulation::deleteBoxMembers() {
 		delete[] box->compounds;	// TODO: Finish this
 		delete[] box->solvents;
 		delete[] box->bridge_bundle;
-		delete[] box->compound_state_array;
 		delete[] box->compound_neighborlists;
 		delete[] box->solvent_neighborlists;
 		delete[] box->bonded_particles_lut_manager;

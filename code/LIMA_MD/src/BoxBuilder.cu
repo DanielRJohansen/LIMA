@@ -12,9 +12,6 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
 
 
-	simulation->box->compound_state_array = new CompoundState[MAX_COMPOUNDS];
-	simulation->box->compound_state_array_prev = new CompoundState[MAX_COMPOUNDS];
-	cudaMalloc(&simulation->box->compound_state_array_next, sizeof(CompoundState) * MAX_COMPOUNDS);
 	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
 	//simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
@@ -87,7 +84,6 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	simulation->box->total_particles_upperbound = simulation->total_particles_upperbound;											// BAD AMBIGUOUS AND WRONG CONSTANTS
 
 
-	cudaMemcpy(simulation->box->compound_state_array_next, simulation->box->compound_state_array, sizeof(CompoundState) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);	// Just make sure they have the same n_particles info...
 	cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
 
 
@@ -218,27 +214,26 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simulation)
 {
 	compound->init();
-	CompoundState* state = &simulation->box->compound_state_array[simulation->box->n_compounds];
-	CompoundState* state_prev = &simulation->box->compound_state_array_prev[simulation->box->n_compounds];
+
+	CompoundState state{};
+	CompoundState state_prev{};
 	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound->n_particles; i++) {
-		//state->positions[i] = compound->prev_positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
-		//state->positions[i] = compound->state.positions[i] / NORMALIZER;	// Normalize Coordinates here, convert to [fm]
-		state->positions[i] = compound->state.positions[i];
-		state->n_particles++;
+		state.positions[i] = compound->state.positions[i];
+		state.n_particles++;
 
-		Float3 atom_pos_sub1 = state->positions[i] - compound_united_vel * simulation->dt;
-		state_prev->positions[i] = atom_pos_sub1;
-		state_prev->n_particles++;
+		Float3 atom_pos_sub1 = state.positions[i] - compound_united_vel * simulation->dt;
+		state_prev.positions[i] = atom_pos_sub1;
+		state_prev.n_particles++;
 	}
 
 
 	CompoundCoords& coords = coordarray[simulation->box->n_compounds];
 	CompoundCoords& coords_prev = coordarray_prev[simulation->box->n_compounds];
 
-	coords = LIMAPOSITIONSYSTEM::positionCompound(*state, 0);
-	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(*state_prev, 0);
+	coords = LIMAPOSITIONSYSTEM::positionCompound(state, 0);
+	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(state_prev, 0);
 	
 
 	/*for (int i = 0; i < compound->n_particles; i++) {
@@ -371,8 +366,10 @@ bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 	particle_center = particle_center / NORMALIZER;
 	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		//if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
-		if (minDist(box->compound_state_array[c_index], particle_center) < MIN_NONBONDED_DIST)
-			return false;
+
+		// This no longer works, as box doesn't store compound state arrays!
+		/*if (minDist(box->compound_state_array[c_index], particle_center) < MIN_NONBONDED_DIST)
+			return false;*/
 	}
 	for (int si = 0; si < box->n_solvents; si++) {
 		float dist = EngineUtils::calcHyperDist(&box->solvents[si].pos, &particle_center);

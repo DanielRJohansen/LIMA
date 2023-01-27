@@ -124,13 +124,21 @@ namespace LIMAPOSITIONSYSTEM {
 		state.positions[threadIdx.x] = getGlobalPosition(coords);
 	}
 
-	__device__ static void getRelativePositions(CompoundCoords& coords, CompoundState& state) {
-		state.positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
+	
+
+	__device__ static void getRelativePositions(Coord* coords, Float3* positions) {
+		positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
 	}
 
-	static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
-		// TODO: IMplement
+	__device__ static void getRelativePositions(CompoundCoords& coords, CompoundState& state) {
+		//state.positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
+		//or 
+		getRelativePositions(coords.rel_positions, state.positions);
 	}
+
+	//static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
+	//	// TODO: IMplement
+	//}
 	
 	// For coordinates of OTHER, we find the value in LM that each coord must be shifted, to be aligned with coordinates of self
 	__device__ static Coord getRelShift(const Coord& origo_self, const Coord& origo_other) {
@@ -149,15 +157,15 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
-	static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
-		applyHyperpos(lhs, rhs);
+	//static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
+	//	applyHyperpos(lhs, rhs);
 
-		Coord common_origo = {
-			std::min(lhs.origo.x, rhs.origo.x) + ((std::max(lhs.origo.x, rhs.origo.x) - std::min(lhs.origo.x, rhs.origo.x)) / 2),
-			std::min(lhs.origo.y, rhs.origo.y) + ((std::max(lhs.origo.y, rhs.origo.y) - std::min(lhs.origo.y, rhs.origo.y)) / 2),
-			std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
-		};
-	}
+	//	Coord common_origo = {
+	//		std::min(lhs.origo.x, rhs.origo.x) + ((std::max(lhs.origo.x, rhs.origo.x) - std::min(lhs.origo.x, rhs.origo.x)) / 2),
+	//		std::min(lhs.origo.y, rhs.origo.y) + ((std::max(lhs.origo.y, rhs.origo.y) - std::min(lhs.origo.y, rhs.origo.y)) / 2),
+	//		std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
+	//	};
+	//}
 
 	__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
 		Coord temp = other;
@@ -207,6 +215,16 @@ namespace LIMAPOSITIONSYSTEM {
 		num += max * (num < 0);
 		num -= max * (num > max);
 		return num;
+	}
+
+	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
+		Coord& coord_origo_left = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_left)->origo;
+		Coord& coord_origo_right = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_right)->origo;
+
+		Coord hyperorigo_right = LIMAPOSITIONSYSTEM::getHyperOrigo(coord_origo_left, coord_origo_right);
+
+		// Calculate necessary shift in relative position for all particles in other, so they share origo with left
+		return (coord_origo_left - hyperorigo_right) * NANO_TO_LIMA;
 	}
 
 	//__device__ static void applyPBC(Compound* compound);

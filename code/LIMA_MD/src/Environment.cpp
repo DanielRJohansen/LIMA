@@ -80,7 +80,6 @@ void Environment::verifyBox() {
 			Compound* comp = &simulation->compounds_host[c];
 			for (int p = 0; p < comp->n_particles; p++) {
 				printf("%d   ", comp->particle_global_ids[p]);
-				simulation->box->compound_state_array[c].positions[p].print();
 			}
 		}
 	}

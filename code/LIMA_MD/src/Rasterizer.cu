@@ -185,7 +185,6 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
         atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);
 
 
-        //atoms[global_id].pos = box->compound_state_array[compound_id].positions[local_id];                                                          // Might need to change this, if thread> n_particles!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //atoms[global_id].pos.print('A');
         atoms[global_id].mass = SOLVENT_MASS;                                                         // TEMP
         //atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_types[local_id]);

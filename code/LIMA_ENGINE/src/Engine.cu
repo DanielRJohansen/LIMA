@@ -130,7 +130,7 @@ void Engine::step() {
 		
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel << < simulation->box->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
+		compoundKernel << < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
 	}
 	cudaDeviceSynchronize();
 

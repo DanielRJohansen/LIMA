@@ -22,7 +22,7 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	CompoundBuilder compoundbuilder(&forcefield, V1);
-	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(conf_path, topol_path);
+	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(conf_path, topol_path, 5);
 
 	boxbuilder.buildBox(simulation.get());
 	boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);

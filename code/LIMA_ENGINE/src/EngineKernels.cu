@@ -509,6 +509,10 @@ __global__ void compoundKernel(Box* box) {
 	Float3 force_LJ_sol(0.f);
 
 
+	if (blockIdx.x == 1 && threadIdx.x == 0) {
+		compound_state.positions[0].print('S');
+		force.print('F');
+	}
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
@@ -585,7 +589,6 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
-
 
 
 
@@ -788,7 +791,8 @@ __global__ void compoundBridgeKernel(Box* box) {
 
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleRefCompact* p_ref = &bridge.particle_refs[particle_id_bridge];
-		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
+		//box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
+		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = 0;
 
 		const int compound_offset = p_ref->compound_id * MAX_COMPOUND_PARTICLES;
 		const int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;

@@ -12,13 +12,6 @@
 
 
 
-struct Solvent {
-	__host__ __device__ Solvent() {}
-	__host__ Solvent(Float3 pos, Float3 pos_tsub1) : pos(pos), pos_tsub1(pos_tsub1) {}
-
-	Float3 pos;
-	Float3 pos_tsub1;
-};
 
 
 
@@ -60,7 +53,6 @@ struct PairBond {	// IDS and indexes are used interchangeably here!
 		atom_indexes[1] = particleindex_b;
 	}
 	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
-		//reference_dist(ref_dist) {
 		b0(ref_dist), kb(kb) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
@@ -169,6 +161,18 @@ struct CompoundState {							// Maybe delete this soon?
 	uint8_t n_particles = 0;
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
 struct CompoundCoords {
 	__device__ void loadData(CompoundCoords& coords) {
 		if (threadIdx.x == 0) { origo = coords.origo; };
@@ -176,30 +180,45 @@ struct CompoundCoords {
 	}
 	Coord origo{};
 	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};
+
+	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,
+		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue);
+};
+
+struct SolventCoord {
+	Coord origo{};
+	Coord rel_position{};
 };
 
 namespace CoordArrayQueueHelpers {
-	__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
-		cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
-		int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_COMPOUNDS;
-		cudaMemcpy(&coordarray_circular_queue[index0_of_prev], coords_prev, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
-		cudaDeviceSynchronize();
-		if (cudaGetLastError() != cudaSuccess) {
-			fprintf(stderr, "Error during coord's initial configuration copyToDevice\n");
-			exit(1);
-		}
-	}
+	/*__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords, 
+		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) */
 
 	__device__ static CompoundCoords* getCoordarrayPtr(CompoundCoords* coordarray_circular_queue, int step, int compound_index) {
-		int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
+		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
 		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
 	}
 
-	//__device__ static CompoundCoords* getCoordPtr(CompoundCoords* coordarray_circular_queue, int step, int compound_index, int particle_index) {
-	//	auto coordarray_ptr = getCoordarrayPtr(coordarray_circular_queue, step, compound_index);
-	//	return &coordarray_ptr[particle_index];
-	//}
+
+
+
+	static void copyInitialCoordConfiguration(SolventCoord* coords,
+		SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue);
+
+	__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue, const int step, const int solvent_id) {
+		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;
+		return &solventcoordarray_circular_queue[index0_of_currentstep_coordarray + solvent_id];
+	}
 }
+
+
+//struct Solvent {
+//	__host__ __device__ Solvent() {}
+//	__host__ Solvent(Float3 pos, Float3 pos_tsub1) : pos(pos), pos_tsub1(pos_tsub1) {}
+//
+//	SolventCoord pos;
+//	SolventCoord pos_tsub1;
+//};
 
 struct Compound {
 	__host__ __device__  Compound() {}	// {}
@@ -231,7 +250,7 @@ struct Compound {
 	DihedralBond dihedrals[MAX_DIHEDRALS];
 
 	int key_particle_index = 404;		// particle which started at center. Used for PBC, applyhyperpos, and neighborlist search.
-	float confining_particle_sphere = 0;		// All particles in compound are PROBABLY within this radius
+	float confining_particle_sphere = 0;		// All particles in compound are PROBABLY within this radius !!!! I think it is nm now, please change to lm!!
 
 
 	//---------------------------------------------------------------------------------//
@@ -363,41 +382,24 @@ struct CompoundBridge {
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
 	uint16_t n_dihedrals = 0;
 
-	bool bondBelongsInBridge(GenericBond* bond) const {
-		return (compound_id_left == bond->compound_ids[0] && compound_id_right == bond->compound_ids[1]);
-	}
-	bool particleAlreadyStored(ParticleRef* p_ref) {
-		for (int i = 0; i < n_particles; i++) {
-			if (particle_refs[i] == *p_ref) {
-				return true;
-			}
-		}
-		return false;
-	}
-	void addParticle(ParticleRef* particle_ref, CompoundCollection* molecule) {
-		if (n_particles == MAX_PARTICLES_IN_BRIDGE) {
-			printf("Too many particles in bridge\n");
-			exit(0);
-		}
-		particle_ref->bridge_id = 0;
-		particle_ref->local_id_bridge = n_particles;
-		atom_types[n_particles] = molecule->compounds[particle_ref->compound_id].atom_types[particle_ref->local_id_compound];
-		particle_refs[n_particles] = *particle_ref;
-		n_particles++;
-		//printf("Adding particle with global id: %d\n", particle_ref->global_id);
-	}
+	bool bondBelongsInBridge(GenericBond* bond) const;
+	bool particleAlreadyStored(ParticleRef* p_ref);
+	void addParticle(ParticleRef* particle_ref, CompoundCollection* molecule);
 
-	void addBondParticles(GenericBond* bond, CompoundCollection* molecule) {
-		for (int p = 0; p < bond->n_particles; p++) {
-			if (!particleAlreadyStored(&bond->particles[p])) {
-				addParticle(&bond->particles[p], molecule);
-			}				
-		}
-	}
+	void addBondParticles(GenericBond* bond, CompoundCollection* molecule);
+
+
+
+	void addGenericBond(PairBond pb);
+	void addGenericBond(AngleBond ab);
+	void addGenericBond(DihedralBond db);
+
+private:
 
 	template <typename T>
 	void localizeIDs(T* bond, int n) {
-		for (int p = 0; p < n; p++) {						// First reassign the global indexes of the bond with local indexes of the bridge
+		// First reassign the global indexes of the bond with local indexes of the bridge
+		for (int p = 0; p < n; p++) {						
 			for (int i = 0; i < n_particles; i++) {
 				if (bond->atom_indexes[p] == particle_refs[i].global_id) {
 					bond->atom_indexes[p] = particle_refs[i].local_id_bridge;
@@ -406,41 +408,6 @@ struct CompoundBridge {
 			}
 		}
 	}
-	/*void addSinglebond(PairBond pb) {
-		localizeIDs(&pb, 2);
-		singlebonds[n_singlebonds++] = pb;
-		//printf("Singlebond added %d %d\n", singlebonds[n_singlebonds - 1].atom_indexes[0], singlebonds[n_singlebonds - 1].atom_indexes[1]);
-	}
-	void addAnglebond(AngleBond ab) {
-		localizeIDs(&ab, 3);
-		anglebonds[n_anglebonds++] = ab;
-		//printf("Anglebond added %d %d %d\n", anglebonds[n_anglebonds - 1].atom_indexes[0], anglebonds[n_anglebonds - 1].atom_indexes[1], anglebonds[n_anglebonds - 1].atom_indexes[2]);
-	}*/
-	void addGenericBond(PairBond pb) {
-		if (n_singlebonds == MAX_SINGLEBONDS_IN_BRIDGE) {
-			printf("Cannot add bond to bridge\n");
-			exit(0);
-		}
-		localizeIDs(&pb, 2);
-		singlebonds[n_singlebonds++] = pb;
-	}
-	void addGenericBond(AngleBond ab) {
-		if (n_anglebonds == MAX_ANGLEBONDS_IN_BRIDGE) {
-			printf("Cannot add angle to bridge\n");
-			exit(0);
-		}
-		localizeIDs(&ab, 3);
-		anglebonds[n_anglebonds++] = ab;
-	}
-	void addGenericBond(DihedralBond db) {
-		if (n_dihedrals == MAX_DIHEDRALBONDS_IN_BRIDGE) {
-			printf("Cannot add dihedral to bridge\n");
-			exit(0);
-		}
-		localizeIDs(&db, 4);
-		dihedrals[n_dihedrals++] = db;
-	}
-
 };
 
 
@@ -452,28 +419,9 @@ struct CompoundBridgeBundle {
 	CompoundBridge compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
 	int n_bridges = 0;
 
-	bool addBridge(int left_c_id, int right_c_id) {
-		if (left_c_id > right_c_id) { std::swap(left_c_id, right_c_id); }
-		if (n_bridges == COMPOUNDBRIDGES_IN_BUNDLE) {
-			printf("FATAL ERROR: MAXIMUM bridges in bundle reached. Missing implementation of multiple bundles");
-			exit(1);
-			//return false;
-		}
-			
-		compound_bridges[n_bridges++] = CompoundBridge(left_c_id, right_c_id);
-		return true;
-	}
+	bool addBridge(uint16_t left_c_id, uint16_t right_c_id);
 
-	CompoundBridge* getBelongingBridge(GenericBond* bond) {
-		for (int i = 0; i < n_bridges; i++) {
-			CompoundBridge* bridge = &compound_bridges[i];
-			if (bridge->bondBelongsInBridge(bond)) {
-				return bridge;
-			}
-		}
-		printf("FATAL ERROR: Failed to find belonging bridge");
-		exit(1);
-	}
+	CompoundBridge* getBelongingBridge(GenericBond* bond);
 
 };
 
@@ -499,34 +447,7 @@ struct ParticleRefCompact {
 
 struct CompoundBridgeCompact {
 	CompoundBridgeCompact() {}
-	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) :
-		compound_id_left{bridge->compound_id_left},
-		compound_id_right{bridge->compound_id_right}
-	{
-		n_particles = bridge->n_particles;
-		
-		for (int i = 0; i < n_particles; i++) {
-			particle_refs[i] = ParticleRefCompact(bridge->particle_refs[i]);
-			atom_types[i] = bridge->atom_types[i];
-		}
-		n_singlebonds = bridge->n_singlebonds;
-		for (int i = 0; i < n_singlebonds; i++) {
-			singlebonds[i] = bridge->singlebonds[i];
-		}
-		n_anglebonds = bridge->n_anglebonds;
-		for (int i = 0; i < n_anglebonds; i++) {
-			anglebonds[i] = bridge->anglebonds[i];
-		}
-		n_dihedrals = bridge->n_dihedrals;
-		for (int i = 0; i < n_dihedrals; i++) {
-			dihedrals[i] = bridge->dihedrals[i];
-		}
-
-		if (verbose) {
-			printf("Loading bridge with %d particles %d bonds %d angles %d dihedrals\n", n_particles, n_singlebonds, n_anglebonds, n_dihedrals);
-		}
-		
-	}
+	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose);
 	
 	
 	ParticleRefCompact particle_refs[MAX_PARTICLES_IN_BRIDGE];
@@ -574,11 +495,6 @@ struct CompoundBridgeCompact {
 				dihedrals[index] = bridge->dihedrals[index];
 		}
 	}
-
-
-
-
-
 };
 
 struct CompoundBridgeBundleCompact {

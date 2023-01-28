@@ -3,13 +3,13 @@
 
 void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
-		+ sizeof(Solvent) * MAX_SOLVENTS * 2
+		//+ sizeof(Solvent) * MAX_SOLVENTS * 2
 		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
 	printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
 
 	compounds = genericMoveToDevice(compounds, n_compounds);
-	solvents = genericMoveToDevice(solvents, MAX_SOLVENTS);
+	//solvents = genericMoveToDevice(solvents, MAX_SOLVENTS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
@@ -46,6 +46,10 @@ void Simulation::copyBoxVariables() {
 	compounds_host = new Compound[n_compounds];
 	for (int i = 0; i < n_compounds; i++)
 		compounds_host[i] = box->compounds[i];
+
+	// Need this variable both on host and device
+	total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS
+	box->total_particles_upperbound = total_particles_upperbound;
 }
 
 Simulation::Simulation(SimulationParams& sim_params) :
@@ -66,8 +70,8 @@ void Simulation::deleteBoxMembers() {
 		cudaFree(box->compound_neighborlists);
 		cudaFree(box->solvent_neighborlists);
 
-		cudaFree(box->solvents);
-		cudaFree(box->solvents_next);
+		//cudaFree(box->solvents);
+		//cudaFree(box->solvents_next);
 
 		cudaFree(box->bridge_bundle);		
 		cudaFree(box->bonded_particles_lut_manager);
@@ -79,7 +83,7 @@ void Simulation::deleteBoxMembers() {
 	}
 	else {
 		delete[] box->compounds;	// TODO: Finish this
-		delete[] box->solvents;
+		//delete[] box->solvents;
 		delete[] box->bridge_bundle;
 		delete[] box->compound_neighborlists;
 		delete[] box->solvent_neighborlists;

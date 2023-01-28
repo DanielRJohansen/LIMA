@@ -11,6 +11,7 @@
 #include <cuda.h>
 #include <device_launch_parameters.h>
 #include <cuda_runtime_api.h>
+
 namespace ForceCalc {
 //	-
 };
@@ -72,6 +73,19 @@ namespace EngineUtils {
 		return v_rms;	// [m/s]
 	}
 
+	// For solvents, compound_id = n_compounds and particle_id = solvent_index
+	__device__ static uint32_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+		const uint32_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
+		const uint32_t step_offset = steps_since_transfer * total_particles_upperbound;
+		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		return step_offset + compound_offset + particle_id_local;
+	}
+
+	__host__ static size_t getAlltimeIndexOfParticle(uint64_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+		const uint32_t step_offset = static_cast<uint32_t>(step) * total_particles_upperbound;
+		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		return step_offset + compound_offset + particle_id_local;
+	}
 
 
 };
@@ -190,6 +204,8 @@ namespace LIMAPOSITIONSYSTEM {
 		coords.origo += shift_nm;
 		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}
+
+
 	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
 		coords.rel_positions[threadIdx.x] += shift_lm;
 	}
@@ -224,7 +240,7 @@ namespace LIMAPOSITIONSYSTEM {
 		Coord hyperorigo_right = LIMAPOSITIONSYSTEM::getHyperOrigo(coord_origo_left, coord_origo_right);
 
 		// Calculate necessary shift in relative position for all particles in other, so they share origo with left
-		return (coord_origo_left - hyperorigo_right) * NANO_TO_LIMA;
+		return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
 	}
 
 	//__device__ static void applyPBC(Compound* compound);

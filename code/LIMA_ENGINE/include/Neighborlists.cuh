@@ -12,7 +12,7 @@ struct NListDataCollection {
 		n_compounds = simulation->n_compounds;
 		n_solvents = simulation->n_solvents;
 		compoundstates = new CompoundState[n_compounds];
-		solvents = new Solvent[simulation->n_solvents];
+		//solvents = new Solvent[simulation->n_solvents];
 		compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 		solvent_neighborlists = new NeighborList[MAX_SOLVENTS];
 		cudaMemcpy(compound_neighborlists, simulation->box->compound_neighborlists, sizeof(NeighborList) * n_compounds, cudaMemcpyDeviceToHost);
@@ -32,15 +32,28 @@ struct NListDataCollection {
 			compound_key_positions[i] = compoundstates[i].positions[compounds[i].key_particle_index];
 		}
 		for (int i = 0; i < n_solvents; i++) {
-			solvent_positions[i] = solvents[i].pos;
+			//solvent_positions[i] = solvents[i].pos;
 		}
 	}
+
+	void preparePositionData(const Simulation& simulation) {
+		for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
+			const size_t index = EngineUtils::getAlltimeIndexOfParticle(simulation.getStep(), simulation.total_particles_upperbound, compound_id, 0);
+			compound_key_positions[compound_id] = simulation.traj_buffer[index];
+		}
+		for (int solvent_id = 0; solvent_id < n_solvents; solvent_id++) {
+			const size_t index = EngineUtils::getAlltimeIndexOfParticle(simulation.getStep(), simulation.total_particles_upperbound, simulation.n_compounds, solvent_id);
+			solvent_positions[index] = simulation.traj_buffer[index];
+		}
+	}
+
+
 	int n_compounds;
 	int n_solvents;
 
 	// I guess this is not critical but temp, needed to load pos device->host
 	CompoundState* compoundstates;
-	Solvent* solvents;
+	//Solvent* solvents;
 
 	Float3 compound_key_positions[MAX_COMPOUNDS];
 	Float3 solvent_positions[MAX_SOLVENTS];

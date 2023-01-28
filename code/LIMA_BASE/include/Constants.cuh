@@ -21,7 +21,8 @@ constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 
-constexpr float CUTOFF = 1.1f * NANO_TO_LIMA;				// fm
+constexpr float CUTOFF_NM = 1.1f;
+constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 // -------------------------------------------------------------------------------------------------------------- //
 
 

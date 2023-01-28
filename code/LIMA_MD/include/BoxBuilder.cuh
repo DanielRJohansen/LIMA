@@ -22,10 +22,12 @@ public:
 	// Public for dev reasons only. Not really a permanent solution..
 	CompoundCoords* coordarray = nullptr;
 	CompoundCoords* coordarray_prev = nullptr;
+	SolventCoord* solventcoords = nullptr;
+	SolventCoord* solventcoords_prev = nullptr;
 
 private:
 	void integrateCompound(Compound_Carrier* compound, Simulation* simulation);
-	Solvent createSolvent(Float3 com, float dt);
+	//Solvent createSolvent(Float3 com, float dt);
 
 	bool spaceAvailable(Box* box, Float3 com, double radius);
 	void compoundLinker(Simulation* simulation);									// Temp function

@@ -11,6 +11,55 @@
 //	//printf("Radius %f\n", radius);
 //}
 
+
+
+
+void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
+	// Move pos_t
+	cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+
+	// Move pos_t - 1
+	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_COMPOUNDS;
+	cudaMemcpy(&coordarray_circular_queue[index0_of_prev], coords_prev, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+
+	cudaDeviceSynchronize();
+	if (cudaGetLastError() != cudaSuccess) {
+		fprintf(stderr, "Error during coord's initial configuration copyToDevice\n");
+		exit(1);
+	}
+}
+
+
+static void CoordArrayQueueHelpers::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
+	// Move pos_t
+	cudaMemcpy(solventcoordarray_circular_queue, coords, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+
+	// Move pos_t - 1
+	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_SOLVENTS;
+	cudaMemcpy(&solventcoordarray_circular_queue[index0_of_prev], coords_prev, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+
+	cudaDeviceSynchronize();
+	if (cudaGetLastError() != cudaSuccess) {
+		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
+		exit(1);
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Float3 Compound_Carrier::calcCOM() {
 	Float3 com;
 	for (int i = 0; i < n_particles; i++) {
@@ -98,6 +147,141 @@ Float3 CompoundCollection::calcCOM() {
 	}
 	return com;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+bool CompoundBridge::bondBelongsInBridge(GenericBond* bond) const {
+	return (compound_id_left == bond->compound_ids[0] && compound_id_right == bond->compound_ids[1]);
+}
+bool CompoundBridge::particleAlreadyStored(ParticleRef* p_ref) {
+	for (int i = 0; i < n_particles; i++) {
+		if (particle_refs[i] == *p_ref) {
+			return true;
+		}
+	}
+	return false;
+}
+void CompoundBridge::addParticle(ParticleRef* particle_ref, CompoundCollection* molecule) {
+	if (n_particles == MAX_PARTICLES_IN_BRIDGE) {
+		printf("Too many particles in bridge\n");
+		exit(0);
+	}
+	particle_ref->bridge_id = 0;
+	particle_ref->local_id_bridge = n_particles;
+	atom_types[n_particles] = molecule->compounds[particle_ref->compound_id].atom_types[particle_ref->local_id_compound];
+	particle_refs[n_particles] = *particle_ref;
+	n_particles++;
+	//printf("Adding particle with global id: %d\n", particle_ref->global_id);
+}
+
+void CompoundBridge::addBondParticles(GenericBond* bond, CompoundCollection* molecule) {
+	for (int p = 0; p < bond->n_particles; p++) {
+		if (!particleAlreadyStored(&bond->particles[p])) {
+			addParticle(&bond->particles[p], molecule);
+		}
+	}
+}
+
+void CompoundBridge::addGenericBond(PairBond pb) {
+	if (n_singlebonds == MAX_SINGLEBONDS_IN_BRIDGE) {
+		printf("Cannot add bond to bridge\n");
+		exit(0);
+	}
+	localizeIDs(&pb, 2);
+	singlebonds[n_singlebonds++] = pb;
+}
+void CompoundBridge::addGenericBond(AngleBond ab) {
+	if (n_anglebonds == MAX_ANGLEBONDS_IN_BRIDGE) {
+		printf("Cannot add angle to bridge\n");
+		exit(0);
+	}
+	localizeIDs(&ab, 3);
+	anglebonds[n_anglebonds++] = ab;
+}
+void CompoundBridge::addGenericBond(DihedralBond db) {
+	if (n_dihedrals == MAX_DIHEDRALBONDS_IN_BRIDGE) {
+		printf("Cannot add dihedral to bridge\n");
+		exit(0);
+	}
+	localizeIDs(&db, 4);
+	dihedrals[n_dihedrals++] = db;
+}
+
+
+
+
+
+
+
+
+
+bool CompoundBridgeBundle::addBridge(uint16_t left_c_id, uint16_t right_c_id) {
+	if (left_c_id > right_c_id) { std::swap(left_c_id, right_c_id); }
+
+	if (n_bridges == COMPOUNDBRIDGES_IN_BUNDLE) {
+		printf("FATAL ERROR: MAXIMUM bridges in bundle reached. Missing implementation of multiple bundles");
+		exit(1);
+	}
+
+	compound_bridges[n_bridges++] = CompoundBridge(left_c_id, right_c_id);
+	return true;
+}
+
+CompoundBridge* CompoundBridgeBundle::getBelongingBridge(GenericBond* bond) {
+	for (int i = 0; i < n_bridges; i++) {
+		CompoundBridge* bridge = &compound_bridges[i];
+		if (bridge->bondBelongsInBridge(bond)) {
+			return bridge;
+		}
+	}
+	printf("FATAL ERROR: Failed to find belonging bridge");
+	exit(1);
+}
+
+
+
+
+
+
+CompoundBridgeCompact::CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) :
+	compound_id_left{ bridge->compound_id_left },
+	compound_id_right{ bridge->compound_id_right }
+{
+	n_particles = bridge->n_particles;
+
+	for (int i = 0; i < n_particles; i++) {
+		particle_refs[i] = ParticleRefCompact(bridge->particle_refs[i]);
+		atom_types[i] = bridge->atom_types[i];
+	}
+	n_singlebonds = bridge->n_singlebonds;
+	for (int i = 0; i < n_singlebonds; i++) {
+		singlebonds[i] = bridge->singlebonds[i];
+	}
+	n_anglebonds = bridge->n_anglebonds;
+	for (int i = 0; i < n_anglebonds; i++) {
+		anglebonds[i] = bridge->anglebonds[i];
+	}
+	n_dihedrals = bridge->n_dihedrals;
+	for (int i = 0; i < n_dihedrals; i++) {
+		dihedrals[i] = bridge->dihedrals[i];
+	}
+
+	if (verbose) {
+		printf("Loading bridge with %d particles %d bonds %d angles %d dihedrals\n", n_particles, n_singlebonds, n_anglebonds, n_dihedrals);
+	}
+
+}
+
+
 
 PairBond::PairBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 	// This is only for loading the forcefield, so the ID's refers to id's given in .conf file!

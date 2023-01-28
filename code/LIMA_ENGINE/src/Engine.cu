@@ -9,9 +9,9 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 
 	int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(NeighborList) + sizeof(Float3) * NEIGHBORLIST_MAX_SOLVENTS + sizeof(uint8_t) * NEIGHBORLIST_MAX_SOLVENTS;	
-	int Skernel_shared_mem = sizeof(Float3) * MAX_COMPOUND_PARTICLES + sizeof(uint8_t) * MAX_COMPOUND_PARTICLES + sizeof(Solvent) * THREADS_PER_SOLVENTBLOCK;
+	//int Skernel_shared_mem = sizeof(Float3) * MAX_COMPOUND_PARTICLES + sizeof(uint8_t) * MAX_COMPOUND_PARTICLES + sizeof(Solvent) * THREADS_PER_SOLVENTBLOCK;
 	printf("Compoundkernel shared mem. size: %d B\n", Ckernel_shared_mem);
-	printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);
+	//printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);
 
 
 	this->forcefield_host = forcefield_host;
@@ -148,9 +148,9 @@ void Engine::step() {
 
 	
 	
-	Solvent* temp_s = simulation->box->solvents;
-	simulation->box->solvents = simulation->box->solvents_next;
-	simulation->box->solvents_next = temp_s;
+	//Solvent* temp_s = simulation->box->solvents;
+	//simulation->box->solvents = simulation->box->solvents_next;
+	//simulation->box->solvents_next = temp_s;
 
 
 	

@@ -9,10 +9,10 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	//printf("Building box...\n");
 	printH1("Building box", true, false);
 	simulation->box->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
+	//simulation->box->solvents = new Solvent[MAX_SOLVENTS];
 
 
-	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
+//	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
 
 	//simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
 	//simulation->box->compound_coord_array_prev = new CompoundCoords[MAX_COMPOUNDS];							// Need to manipulate this on host
@@ -20,8 +20,13 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 	// This is where the coords will eventually reside (device)
-	uint64_t n_bytes = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
-	cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes);
+	const uint64_t n_bytes_compoundcoords = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
+	cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes_compoundcoords);
+
+	const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
+	cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
+
+
 	// This is very the coords reside while build (host)
 	coordarray = new CompoundCoords[MAX_COMPOUNDS];
 	coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
@@ -79,17 +84,15 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	simulation->box->forcefield_device_box = new ForceField_NB{ forcefield };// Copy
 	/**simulation->box->forcefield_device_box = forcefield;	*/
 
-	// Need this variable both on host and device
-	simulation->total_particles_upperbound = simulation->box->n_compounds * MAX_COMPOUND_PARTICLES + simulation->box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS
-	simulation->box->total_particles_upperbound = simulation->total_particles_upperbound;											// BAD AMBIGUOUS AND WRONG CONSTANTS
+									// BAD AMBIGUOUS AND WRONG CONSTANTS
 
 
-	cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+	//cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
 
 
 	// Move the positions to the appropriate places in the circular queue
 	CoordArrayQueueHelpers::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
-
+	CoordArrayQueueHelpers::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
 
 
 	
@@ -154,55 +157,55 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 int BoxBuilder::solvateBox(Simulation* simulation)
 {
-	simulation->box->solvents = new Solvent[MAX_SOLVENTS];
-	
-	// First we calculate how to set up the particles in a perfect grid
-	const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
-	const float dist_between_particles = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
-	const float base = box_base + dist_between_particles / 2.f;
-	printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_particles);
+	//simulation->box->solvents = new Solvent[MAX_SOLVENTS];
+	//
+	//// First we calculate how to set up the particles in a perfect grid
+	//const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
+	//const float dist_between_particles = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
+	//const float base = box_base + dist_between_particles / 2.f;
+	//printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_particles);
 
 
-	for (int z_index = 0; z_index < bodies_per_dim; z_index++) {
-		for (int y_index = 0; y_index < bodies_per_dim; y_index++) {
-			for (int x_index = 0; x_index < bodies_per_dim; x_index++) {
-				if (simulation->box->n_solvents == N_SOLVATE_MOLECULES)
-					break;
+	//for (int z_index = 0; z_index < bodies_per_dim; z_index++) {
+	//	for (int y_index = 0; y_index < bodies_per_dim; y_index++) {
+	//		for (int x_index = 0; x_index < bodies_per_dim; x_index++) {
+	//			if (simulation->box->n_solvents == N_SOLVATE_MOLECULES)
+	//				break;
 
-				Float3 solvent_center = Float3(base + dist_between_particles * static_cast<float>(x_index), base + dist_between_particles * static_cast<float>(y_index), base + dist_between_particles * static_cast<float>(z_index));
-				
-				// Randomly offset the particle within 80% of the perfect grid
-				solvent_center += (get3Random() - Float3(0.5f)) * 0.8f * dist_between_particles;
+	//			Float3 solvent_center = Float3(base + dist_between_particles * static_cast<float>(x_index), base + dist_between_particles * static_cast<float>(y_index), base + dist_between_particles * static_cast<float>(z_index));
+	//			
+	//			// Randomly offset the particle within 80% of the perfect grid
+	//			solvent_center += (get3Random() - Float3(0.5f)) * 0.8f * dist_between_particles;
 
-				if (spaceAvailable(simulation->box, solvent_center)) {
-					simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
-				}
-			}
-		}
-	}
-	simulation->total_particles += simulation->box->n_solvents;
-	printf("%d solvents added to box\n", simulation->box->n_solvents);
-	return simulation->box->n_solvents;
+	//			if (spaceAvailable(simulation->box, solvent_center)) {
+	//				simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
+	//			}
+	//		}
+	//	}
+	//}
+	//simulation->total_particles += simulation->box->n_solvents;
+	//printf("%d solvents added to box\n", simulation->box->n_solvents);
+	//return simulation->box->n_solvents;
 }
 
 int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	for (Float3 sol_pos : *solvent_positions) {
-		if (simulation->box->n_solvents == MAX_SOLVENTS) {
-			printf("Too many solvents added!\n\n\n\n");
-			exit(1);
-		}
+	//for (Float3 sol_pos : *solvent_positions) {
+	//	if (simulation->box->n_solvents == MAX_SOLVENTS) {
+	//		printf("Too many solvents added!\n\n\n\n");
+	//		exit(1);
+	//	}
 
-		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
+	//	sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
-			simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
-		}
-	}
+	//	if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+	//		simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
+	//	}
+	//}
 
-	simulation->total_particles += simulation->box->n_solvents;
-	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
-	return simulation->box->n_solvents;
+	//simulation->total_particles += simulation->box->n_solvents;
+	//printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
+	//return simulation->box->n_solvents;
 }
 
 
@@ -244,11 +247,11 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
 }
 
-Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
-	com = com / NORMALIZER * 1e+6;	// concvert to normalized [fm]
-	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR / NORMALIZER;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
-	return Solvent(com, com - solvent_vel * dt);
-}
+//Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
+//	com = com / NORMALIZER * 1e+6;	// concvert to normalized [fm]
+//	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR / NORMALIZER;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
+//	return Solvent(com, com - solvent_vel * dt);
+//}
 /*
 * These two funcitons are in charge of normalizing ALL coordinates!!
 */
@@ -371,13 +374,15 @@ bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 		/*if (minDist(box->compound_state_array[c_index], particle_center) < MIN_NONBONDED_DIST)
 			return false;*/
 	}
-	for (int si = 0; si < box->n_solvents; si++) {
+
+	// THis also no longer works
+	/*for (int si = 0; si < box->n_solvents; si++) {
 		float dist = EngineUtils::calcHyperDist(&box->solvents[si].pos, &particle_center);
 		if (dist < MIN_NONBONDED_DIST) {
 			printf("\tWARNING: Skipping particle with dist %f\n", dist);
 			return false;
 		}
-	}
+	}*/
 
 	return true;
 }

@@ -32,8 +32,8 @@ void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlist
 }
 
 void NListManager::offloadPositionDataNLIST(Simulation* simulation) {
-	if (simulation->n_solvents > 0)
-		cudaMemcpy(nlist_data_collection->solvents, simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
+//	if (simulation->n_solvents > 0)
+//		cudaMemcpy(nlist_data_collection->solvents, simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
 }
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
@@ -46,13 +46,13 @@ void NListManager::pushNlistsToDevice(Simulation* simulation) {
 
 namespace NListUtils {
 
-	bool neighborWithinCutoff(Float3* const pos_a, Float3* const pos_b, const float cutoff_offset) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
+	bool neighborWithinCutoff(Float3* const pos_a, Float3* const pos_b, const float cutoff_lm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 		//Float3 pos_b_temp = *pos_b;
 		//EngineUtils::applyHyperpos(pos_a, &pos_b_temp);
 		float dist = EngineUtils::calcHyperDist(pos_a, pos_b);
 		//float dist = (*pos_a - pos_b_temp).len();
 		
-		return (dist < (CUTOFF + cutoff_offset));
+		return dist < cutoff_lm;
 	}
 
 
@@ -69,7 +69,7 @@ namespace NListUtils {
 				float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].confining_particle_sphere;
 
 				if (id_self < id_neighbor) {
-					if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF)) {
+					if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_LM)) {
 						nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 						nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 						j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
@@ -83,7 +83,7 @@ namespace NListUtils {
 				NeighborList* nlist_neighbor = &nlist_data_collection->solvent_neighborlists[id_neighbor];
 
 				//printf("Dist: %f\n", (nlist_data_collection->compound_key_positions[id_self] - nlist_data_collection->solvent_positions[id_neighbor]).len());
-				if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], cutoff_add_self + CUTOFF) && false) {
+				if (!neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], cutoff_add_self + CUTOFF_LM) && false) {
 					nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::SOLVENT);
 					//	printf("J: %d\n", j);
 					nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
@@ -102,7 +102,7 @@ namespace NListUtils {
 				int id_neighbor = nlist_self->neighborsolvent_ids[j];
 				NeighborList* nlist_neighbor = &nlist_data_collection->solvent_neighborlists[id_neighbor];
 
-				if (!neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], CUTOFF)) {
+				if (!neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], CUTOFF_LM)) {
 					cnt++;
 					if (!nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::SOLVENT))
 						printf("J1: %d id_self %d id_neighbor %d    cnt %d\n", j, id_self, id_neighbor, cnt);
@@ -130,38 +130,36 @@ namespace NListUtils {
 
 	void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection, volatile bool* finished, int* timing, bool* mutex_lock) {	// This is a thread worker-function, so it can't own the object, thus i pass a ref to the engine object..
 		auto t0 = std::chrono::high_resolution_clock::now();
-		Int3 before(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
-		//Int3 before(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
-		//nlist_data_collection->preparePositionData();
+		//Int3 before(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
 
+		// Make key positions addressable in arrays: compound_key_positions and solvent_positions
+		//nlist_data_collection->preparePositionData(simulation->compounds_host);		
+		nlist_data_collection->preparePositionData(*simulation);
 
-		nlist_data_collection->preparePositionData(simulation->compounds_host);		// Makes key positions addressable in arrays: compound_key_positions and solvent_positions
 		// First do culling of neighbors that has left CUTOFF
 		cullDistantNeighbors(simulation, nlist_data_collection);
 
 
-		// First add compound->solvent, compound->compound
+		// Now add compound->solvent, compound->compound
 		for (uint16_t id_self = 0; id_self < simulation->n_compounds; id_self++) {
 
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
 			HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-			float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
+			const float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
 
-			//printf("\nSize to hashtable: %d\n", nlist_self->n_solvent_neighbors);
-			//printf("cutoff %f\n", cutoff_offset);
+
 
 			// Go through all solvents in box!
 			for (uint16_t id_candidate = 0; id_candidate < simulation->n_solvents; id_candidate++) {
 				NeighborList* nlist_candidate = &nlist_data_collection->solvent_neighborlists[id_candidate];
 				//continue;
-				if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], cutoff_add_self + CUTOFF)) {
+				if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], cutoff_add_self + CUTOFF_NM)) {
 					if (hashtable_solventneighbors.insert(id_candidate)) {
 						nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::SOLVENT);
 						nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 					}
 				}
-
 			}
 
 			// Go through all compounds in box, with higher ID than self!
@@ -173,7 +171,7 @@ namespace NListUtils {
 				//if (id_self == 0)
 					//printf("Adding compound %d to %d\n", id_candidate, id_self);
 
-				if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_candidate], cutoff_add_self + cutoff_add_candidate + CUTOFF)) {
+				if (neighborWithinCutoff(&nlist_data_collection->compound_key_positions[id_self], &nlist_data_collection->compound_key_positions[id_candidate], cutoff_add_self + cutoff_add_candidate + CUTOFF_NM)) {
 					if (hashtable_compoundneighbors.insert(id_candidate)) {
 						nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 						nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
@@ -191,7 +189,7 @@ namespace NListUtils {
 
 			for (int id_candidate = id_self + 1; id_candidate < simulation->n_solvents; id_candidate++) {
 				NeighborList* nlist_candidate = &nlist_data_collection->solvent_neighborlists[id_candidate];
-				if (neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], CUTOFF)) {
+				if (neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_candidate], CUTOFF_NM)) {
 					if (hashtable_solventneighbors.insert(id_candidate)) {
 						nlist_self->addId(id_candidate, NeighborList::NEIGHBOR_TYPE::SOLVENT);
 						nlist_candidate->addId(id_self, NeighborList::NEIGHBOR_TYPE::SOLVENT);

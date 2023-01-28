@@ -46,19 +46,17 @@ public:
 	uint32_t total_particles_upperbound = 0;
 
 
-
-	//CompoundCoords* compound_coord_array = nullptr;
-	//CompoundCoords* compound_coord_array_prev = nullptr;
-	//CompoundCoords* compound_coord_array_next = nullptr;
-
 	CompoundCoords* coordarray_circular_queue = nullptr;
+	SolventCoord* solventcoordarray_circular_queue = nullptr;
 
 	NeighborList* compound_neighborlists = nullptr;
 	NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//
 
-	Solvent* solvents = nullptr;
-	Solvent* solvents_next = nullptr;
+	//Solvent* solvents = nullptr;
+	//Solvent* solvents_next = nullptr;
+
+
 
 	ForceField_NB* forcefield_device_box = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
@@ -105,7 +103,7 @@ public:
 		box->step++;
 	}
 	
-	inline uint64_t getStep() { return step; }
+	inline uint64_t getStep() const { return step; }
 	
 
 	bool finished = false;

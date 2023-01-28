@@ -182,18 +182,18 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	return force;
 }
 
-__device__ Float3 computeSolventToSolventLJForces(Float3* self_pos, NeighborList* nlist, Solvent* solvents, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
-	Float3 force(0.f);
-	//if (blockIdx.x + threadIdx.x == 0) printf("n neighbor solvents %d\n", nlist->n_solvent_neighbors);
-	for (int i = 0; i < nlist->n_solvent_neighbors; i++) {
-		Solvent neighbor = solvents[nlist->neighborsolvent_ids[i]];
-		EngineUtils::applyHyperpos(&neighbor.pos, self_pos);
-		force += calcLJForce(self_pos, &neighbor.pos, data_ptr, potE_sum,
-			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
-			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
-	}
-	return force;// *24.f * 1e-9;
-}
+//__device__ Float3 computeSolventToSolventLJForces(Float3* self_pos, NeighborList* nlist, Solvent* solvents, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
+//	Float3 force(0.f);
+//	//if (blockIdx.x + threadIdx.x == 0) printf("n neighbor solvents %d\n", nlist->n_solvent_neighbors);
+//	for (int i = 0; i < nlist->n_solvent_neighbors; i++) {
+//		Solvent neighbor = solvents[nlist->neighborsolvent_ids[i]];
+//		EngineUtils::applyHyperpos(&neighbor.pos, self_pos);
+//		force += calcLJForce(self_pos, &neighbor.pos, data_ptr, potE_sum,
+//			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
+//			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
+//	}
+//	return force;// *24.f * 1e-9;
+//}
 __device__ Float3 computeSolventToCompoundLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
@@ -429,53 +429,22 @@ __device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* 
 
 
 __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
-	const int compound_index = blockIdx.x;
-
-	{
-		const int steps_since_transfer = (box->step % STEPS_PER_LOGTRANSFER);
-		const int step_offset = steps_since_transfer * box->total_particles_upperbound;
-		const int compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
-		const int index = step_offset + compound_offset + threadIdx.x;
-		// Log the previous pos, as this comes after integration, and we do want that juicy pos(t0) ;)
-		//box->traj_buffer[index] = compound.prev_positions[threadIdx.x];
-
-
-		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
-
-		box->potE_buffer[index] = *potE_sum;
-	}
-	//if (blockIdx.x == 0 && threadIdx.x == 0) {
-	//	Float3 pos_prev_temp = compound.prev_positions[threadIdx.x];
-	//	EngineUtils::applyHyperpos(&compound_state.positions[threadIdx.x], &pos_prev_temp);
-	//	const int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * 10;
-	//	box->outdata[0 + step_offset] = (compound_state.positions[threadIdx.x] - pos_prev_temp).len() / box->dt;
-	//	box->outdata[1 + step_offset] = EngineUtils::calcKineticEnergy(&compound_state.positions[threadIdx.x], &pos_prev_temp, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt);
-	//	box->outdata[2 + step_offset] = potE_sum;																											// This does NOT take bridge potE into account!!!!!!!
-	//	box->outdata[3 + step_offset] = force.len();
-	//}
-	//const int step_offset = (box->step % STEPS_PER_TRAINDATATRANSFER) * n_compounds_total * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES;
-	//int compound_offset = blockIdx.x * MAX_COMPOUND_PARTICLES * N_DATAGAN_VALUES;
-	//int particle_offset = threadIdx.x * N_DATAGAN_VALUES;
-	//box->data_GAN[0 + particle_offset + compound_offset + step_offset] = compound_state.positions[threadIdx.x];
-	//box->data_GAN[1 + particle_offset + compound_offset + step_offset] = force_LJ_sol;
-	//box->data_GAN[2 + particle_offset + compound_offset + step_offset] = force;
-	//if (threadIdx.x >= compound.n_particles)
-	//	box->data_GAN[0 + particle_offset + compound_offset + step_offset] = Float3(-1.f);
-	//		box->data_GAN[1 + threadIdx.x * 6 + step_offset] = force_bond + force_angle;
-	//		box->data_GAN[2 + threadIdx.x * 6 + step_offset] = force_LJ_com;
-	//		box->data_GAN[3 + threadIdx.x * 6 + step_offset] = force_LJ_sol;
-			//box->outdata[0 + threadIdx.x * 10]
+	const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, blockIdx.x, threadIdx.x);
+	box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
+	box->potE_buffer[index] = *potE_sum;
 }
 
-__device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_index, Float3& force, Solvent& solvent) {
-	if (thread_active) {
-		int compounds_offset = box->n_compounds * MAX_COMPOUND_PARTICLES;
-		int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
-
-		box->potE_buffer[compounds_offset + solvent_index + step_offset] = force.len();
-		box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
-	}
-}
+//__device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_index, Float3& force, Solvent& solvent) {
+//	if (thread_active) {
+//		//int compounds_offset = box->n_compounds * MAX_COMPOUND_PARTICLES;
+//		//int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
+//			//box->potE_buffer[compounds_offset + solvent_index + step_offset] = force.len();
+//		//box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
+//		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solvent_index);
+//		box->potE_buffer[index] = force.len();
+//		box->traj_buffer[index] = solvent.pos;
+//	}
+//}
 
 __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord, int step) { 
 	if (threadIdx.x == 0) {
@@ -577,21 +546,21 @@ __global__ void compoundKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
-	for (int i = 0; i * blockDim.x < neighborlist.n_solvent_neighbors; i++) {
-		int solvent_nlist_index = i * blockDim.x + threadIdx.x; // index in neighborlist
+	//for (int i = 0; i * blockDim.x < neighborlist.n_solvent_neighbors; i++) {
+	//	int solvent_nlist_index = i * blockDim.x + threadIdx.x; // index in neighborlist
 
-		if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
-			utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
-			EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
-		}
-		__syncthreads();
+	//	if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
+	//		utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
+	//		EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
+	//	}
+	//	__syncthreads();
 
-		if (threadIdx.x < compound.n_particles) {
-			force_LJ_sol += computeSolventToCompoundLJForces(&compound_state.positions[threadIdx.x], blockDim.x, utility_buffer, data_ptr, &potE_sum, compound.atom_types[threadIdx.x]);
-		}
-		__syncthreads();
-	}
-	force += force_LJ_sol;
+	//	if (threadIdx.x < compound.n_particles) {
+	//		force_LJ_sol += computeSolventToCompoundLJForces(&compound_state.positions[threadIdx.x], blockDim.x, utility_buffer, data_ptr, &potE_sum, compound.atom_types[threadIdx.x]);
+	//	}
+	//	__syncthreads();
+	//}
+	//force += force_LJ_sol;
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
@@ -681,83 +650,83 @@ __global__ void solventForceKernel(Box* box) {
 	data_ptr[2] = 9999.f;
 
 
-	Float3 force(0.f);
-	Solvent solvent;
+	//Float3 force(0.f);
+	//Solvent solvent;
 
-	if (thread_active) {
-		solvent = box->solvents[solvent_index];
-	}
+	//if (thread_active) {
+	//	solvent = box->solvents[solvent_index];
+	//}
 
-	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
-	for (int i = 0; i < box->n_compounds; i++) {
-		int n_compound_particles = box->compounds[i].n_particles;
+	//// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
+	//for (int i = 0; i < box->n_compounds; i++) {
+	//	int n_compound_particles = box->compounds[i].n_particles;
 
-		// First all threads help loading the molecule
-		if (threadIdx.x < n_compound_particles) {
-			// First load particles of neighboring compound
-			auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
-			compound_coords.loadData(*coordarray_ptr);
-			LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords.rel_positions, utility_buffer);
+	//	// First all threads help loading the molecule
+	//	if (threadIdx.x < n_compound_particles) {
+	//		// First load particles of neighboring compound
+	//		auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
+	//		compound_coords.loadData(*coordarray_ptr);
+	//		LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords.rel_positions, utility_buffer);
 
-			// Then load atomtypes of neighboring compound
-			utility_buffer_small[threadIdx.x] = box->compounds[i].atom_types[threadIdx.x];
-		}
-		__syncthreads();
+	//		// Then load atomtypes of neighboring compound
+	//		utility_buffer_small[threadIdx.x] = box->compounds[i].atom_types[threadIdx.x];
+	//	}
+	//	__syncthreads();
 
-		//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
-
-
-		if (thread_active) {
-			EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
-			force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
-		}
-		__syncthreads();
-	}
-	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
+	//	//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
 
-
-	// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
-	if (thread_active) {
-		force += computeSolventToSolventLJForces(&solvent.pos, &box->solvent_neighborlists[solvent_index], box->solvents, data_ptr, &potE_sum);
-	}
-	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
-
-
-	//if (solvent_index < box->n_solvents)
-	//	box->traj_buffer[box->n_compounds * MAX_COMPOUND_PARTICLES + solvent_index + (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound] = Float3(0.);
-
-	LogSolventData(thread_active, box, solvent_index, force, solvent);
+	//	if (thread_active) {
+	//		EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
+	//		force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
+	//	}
+	//	__syncthreads();
+	//}
+	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
-	if (thread_active) {
-		int p_index = MAX_COMPOUND_PARTICLES + solvent_index;
-		if (box->step >= RAMPUP_STEPS) {
-			integratePosition(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, &box->thermostat_scalar, p_index, true);
-		}
-		else {
-			integratePositionRampUp(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, box->step);
-		}
 
-		EngineUtils::applyPBC(&solvent.pos);
-	}
+	//// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
+	//if (thread_active) {
+	//	force += computeSolventToSolventLJForces(&solvent.pos, &box->solvent_neighborlists[solvent_index], box->solvents, data_ptr, &potE_sum);
+	//}
+	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
-	if (thread_active) {
-		if (EngineUtils::calcHyperDist(&solvent.pos, &solvent.pos_tsub1) > 0.05) { 
-			printf("Solvent was too fast: %f\n", (solvent.pos - solvent.pos_tsub1).len());
-			box->critical_error_encountered = true; 
-		}
-	}
+	////if (solvent_index < box->n_solvents)
+	////	box->traj_buffer[box->n_compounds * MAX_COMPOUND_PARTICLES + solvent_index + (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound] = Float3(0.);
+
+	//LogSolventData(thread_active, box, solvent_index, force, solvent);
 
 
-	if (thread_active) {
-		if (solvent.pos.x != solvent.pos.x) {
-			solvent.pos.print('s');
-			box->critical_error_encountered = true;
-		}
-		box->solvents_next[solvent_index] = solvent;
-	}
+	//if (thread_active) {
+	//	int p_index = MAX_COMPOUND_PARTICLES + solvent_index;
+	//	if (box->step >= RAMPUP_STEPS) {
+	//		integratePosition(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, &box->thermostat_scalar, p_index, true);
+	//	}
+	//	else {
+	//		integratePositionRampUp(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, box->step);
+	//	}
+
+	//	EngineUtils::applyPBC(&solvent.pos);
+	//}
+
+
+	//if (thread_active) {
+	//	if (EngineUtils::calcHyperDist(&solvent.pos, &solvent.pos_tsub1) > 0.05) { 
+	//		printf("Solvent was too fast: %f\n", (solvent.pos - solvent.pos_tsub1).len());
+	//		box->critical_error_encountered = true; 
+	//	}
+	//}
+
+
+	//if (thread_active) {
+	//	if (solvent.pos.x != solvent.pos.x) {
+	//		solvent.pos.print('s');
+	//		box->critical_error_encountered = true;
+	//	}
+	//	box->solvents_next[solvent_index] = solvent;
+	//}
 }
 #undef solvent_index
 #undef thread_active

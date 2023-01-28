@@ -31,6 +31,9 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	coordarray = new CompoundCoords[MAX_COMPOUNDS];
 	coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
 
+	solventcoords = new SolventCoord[MAX_SOLVENTS];
+	solventcoords_prev = new SolventCoord[MAX_SOLVENTS];
+
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
@@ -91,8 +94,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 
 	// Move the positions to the appropriate places in the circular queue
-	CoordArrayQueueHelpers::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
-	CoordArrayQueueHelpers::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
+	CompoundCoords::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
+	SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
 
 
 	
@@ -186,6 +189,7 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 	//simulation->total_particles += simulation->box->n_solvents;
 	//printf("%d solvents added to box\n", simulation->box->n_solvents);
 	//return simulation->box->n_solvents;
+	return 0;
 }
 
 int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
@@ -206,6 +210,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 	//simulation->total_particles += simulation->box->n_solvents;
 	//printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
 	//return simulation->box->n_solvents;
+	return 0;
 }
 
 

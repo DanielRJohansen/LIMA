@@ -1,7 +1,7 @@
 #include "Engine.cuh"
 
 #pragma warning ( push )
-#pragma warning ( disable: E0020)
+#pragma warning ( disable: E0020 )
 
 // Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
 __constant__ ForceField_NB forcefield_device;

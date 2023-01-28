@@ -30,7 +30,7 @@ void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, Compo
 }
 
 
-static void CoordArrayQueueHelpers::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
+void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
 	// Move pos_t
 	cudaMemcpy(solventcoordarray_circular_queue, coords, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
 

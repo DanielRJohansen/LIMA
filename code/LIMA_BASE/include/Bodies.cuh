@@ -188,6 +188,9 @@ struct CompoundCoords {
 struct SolventCoord {
 	Coord origo{};
 	Coord rel_position{};
+
+	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
+		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
 };
 
 namespace CoordArrayQueueHelpers {
@@ -199,11 +202,6 @@ namespace CoordArrayQueueHelpers {
 		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
 	}
 
-
-
-
-	static void copyInitialCoordConfiguration(SolventCoord* coords,
-		SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue);
 
 	__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue, const int step, const int solvent_id) {
 		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;

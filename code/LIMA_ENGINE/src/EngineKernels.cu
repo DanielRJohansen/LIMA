@@ -71,8 +71,14 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondt
 	results[0] = difference * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
 	results[1] = difference * force_scalar * -1;				// [kg * lm / (mol*ls^2)] = [lN]
 
-	if (0.5f * bondtype->kb * (error * error) > 100000) {
+	if (0.5f * bondtype->kb * (error * error) > 100000 || true) {
 		//printf("error %f    pote %f    force %f\n", error, 0.5f * bondtype->kb * (error * error), force_scalar);
+		//printf("Dif %f\n",difference.len());
+		//printf("len %f\n", (*pos_a - *pos_b).len());
+		//results[0].print('r');
+		//results[1].print('R');
+		//pos_a->print('a');
+		//pos_b->print('b');
 	}
 }
 
@@ -224,7 +230,7 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 		PairBond* pb = nullptr;
 		Float3 forces[2];
 		int bond_index = threadIdx.x + bond_offset * blockDim.x;
-
+		
 		if (bond_index < entity->n_singlebonds) {
 			pb = &entity->singlebonds[bond_index];
 
@@ -235,7 +241,11 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 				forces, potE
 			);
 		}
-
+		if (blockIdx.x == 0 && threadIdx.x == 0) {
+	/*		printf("\nbond_index %d n_bonds %d\n", bond_index, entity->n_singlebonds);
+			forces[0].print('0');
+			forces[1].print('1');*/
+		}
 
 		for (int i = 0; i < blockDim.x; i++) {
 			if (threadIdx.x == i && pb != nullptr) {
@@ -244,6 +254,8 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 			}
 			__syncthreads();
 		}
+
+		
 	}
 	return utility_buffer[threadIdx.x];
 }
@@ -510,8 +522,8 @@ __global__ void compoundKernel(Box* box) {
 
 
 	if (blockIdx.x == 1 && threadIdx.x == 0) {
-		compound_state.positions[0].print('S');
-		force.print('F');
+		//compound_state.positions[0].print('S');
+		//force.print('F');
 	}
 	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
 	{
@@ -767,7 +779,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleRefCompact& p_ref = bridge.particle_refs[particle_id_bridge];
-		particle_coords[particle_id_bridge] = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, p_ref.compound_id)->origo;
+		particle_coords[particle_id_bridge] = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, p_ref.compound_id)->rel_positions[p_ref.local_id_compound];
 
 		// If we are on the right side, we need to shift 
 		if (p_ref.compound_id == bridge.compound_id_right) { particle_coords[particle_id_bridge] += utility_coord; }
@@ -790,9 +802,12 @@ __global__ void compoundBridgeKernel(Box* box) {
 	// --------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	if (particle_id_bridge < bridge.n_particles) {
+		if (blockIdx.x == 0 && threadIdx.x == 0) {
+			//force.print('f');			
+		}
 		ParticleRefCompact* p_ref = &bridge.particle_refs[particle_id_bridge];
-		//box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
-		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = 0;
+		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
+		//box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = 0;
 
 		const int compound_offset = p_ref->compound_id * MAX_COMPOUND_PARTICLES;
 		const int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;

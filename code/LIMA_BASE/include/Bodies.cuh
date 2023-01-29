@@ -448,8 +448,8 @@ struct CompoundBridgeCompact {
 	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose);
 	
 	
-	ParticleRefCompact particle_refs[MAX_PARTICLES_IN_BRIDGE];
-	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE];
+	ParticleRefCompact particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
+	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};
 	uint8_t n_particles = 0;					
 
 	uint16_t n_singlebonds = 0;

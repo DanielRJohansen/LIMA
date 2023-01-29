@@ -275,7 +275,7 @@ struct Atom {
 			return ATOMS;
 		if (s == "bonds")
 			return FINISHED;
-		return current_state;
+		return INACTIVE;
 	}
 
 	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows);

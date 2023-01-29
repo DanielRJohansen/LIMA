@@ -94,6 +94,7 @@ void Environment::prepareForRun() {
 	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
 
 	verifyBox();
+
 	ready_to_run = true;
 }
 

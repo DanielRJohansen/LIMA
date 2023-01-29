@@ -43,7 +43,7 @@ struct NListDataCollection {
 		}
 		for (int solvent_id = 0; solvent_id < n_solvents; solvent_id++) {
 			const size_t index = EngineUtils::getAlltimeIndexOfParticle(simulation.getStep(), simulation.total_particles_upperbound, simulation.n_compounds, solvent_id);
-			solvent_positions[index] = simulation.traj_buffer[index];
+			solvent_positions[solvent_id] = simulation.traj_buffer[index];
 		}
 	}
 
@@ -70,7 +70,7 @@ namespace NListUtils {
 	 extern void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
 		volatile bool* finished, int* timing, bool* mutex_lock);
 
-	extern bool neighborWithinCutoff(Float3* pos_a, Float3* pos_b, float cutoff_offset);
+	extern bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, float cutoff_offset);
 	extern void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
 }
 

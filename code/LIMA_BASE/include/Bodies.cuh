@@ -178,19 +178,23 @@ struct CompoundCoords {
 		if (threadIdx.x == 0) { origo = coords.origo; };
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
-	Coord origo{};
-	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};
+	Coord origo{};									// [nm]
+	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};	// [lm]
 
 	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,
 		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue);
+	__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
 struct SolventCoord {
-	Coord origo{};
-	Coord rel_position{};
+	Coord origo{};									// [nm]
+	Coord rel_position{};							// [lm]
 
 	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
 		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
+
+	__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
+	__host__ Float3 getAbsolutePositionLM();
 };
 
 namespace CoordArrayQueueHelpers {

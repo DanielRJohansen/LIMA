@@ -29,6 +29,10 @@ void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, Compo
 	}
 }
 
+Float3 CompoundCoords::getAbsolutePositionLM(const int particle_index) {
+	return (origo * NANO_TO_LIMA).toFloat3() + rel_positions[particle_index].toFloat3();
+}
+
 
 void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
 	// Move pos_t
@@ -48,8 +52,18 @@ void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCo
 
 
 
+SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
+	SolventCoord coord;
+	const Float3 origo_f = solvent_pos.piecewiseRound();
+	const Float3 relpos_f = (solvent_pos - origo_f) * NANO_TO_LIMA;
+	coord.origo = Coord{ origo_f };
+	coord.rel_position = Coord{ relpos_f };
+	return coord;
+}
 
-
+Float3 SolventCoord::getAbsolutePositionLM() {
+	return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
+}
 
 
 

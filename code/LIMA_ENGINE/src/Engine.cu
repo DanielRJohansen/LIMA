@@ -18,8 +18,10 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	setDeviceConstantMemory();
 
 
+	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = new NListManager(simulation);
-	handleNLISTS(simulation, false, true);				// Fix neighborlists before running
+	bootstrapTrajbufferWithCoords();
+	handleNLISTS(simulation, true, true);
 
 
 	printf("Engine ready\n\n\n");
@@ -114,7 +116,28 @@ void Engine::offloadTrainData() {
 }
 
 
+void Engine::bootstrapTrajbufferWithCoords() {
+	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
+	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
+	SolventCoord* solventcoord_array = new SolventCoord[simulation->n_solvents];
+	cudaMemcpy(solventcoord_array, simulation->box->solventcoordarray_circular_queue, sizeof(SolventCoord) * simulation->n_solvents, cudaMemcpyDeviceToHost);
+
+	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
+		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+			const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
+			simulation->traj_buffer[index] = compoundcoords_array[compound_id].getAbsolutePositionLM(particle_id);
+		}
+	}
+
+	for (int solvent_id = 0; solvent_id < simulation->n_solvents; solvent_id++) {
+		const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
+		simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
+	}
+
+	delete[] compoundcoords_array;
+	delete[] solventcoord_array;
+}
 
 
 

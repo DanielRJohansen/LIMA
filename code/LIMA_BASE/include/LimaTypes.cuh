@@ -88,6 +88,8 @@ struct Float3 {
 	__device__ Float3 norm_fast() {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
+
+	__host__ Float3 piecewiseRound() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }

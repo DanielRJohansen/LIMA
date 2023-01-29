@@ -15,6 +15,8 @@
 
 #include "Printer.h"
 
+#include <memory>
+#include <vector>
 //#include <algorithm>
 
 __global__ void compoundKernel(Box* box);
@@ -54,6 +56,10 @@ private:
 	void offloadLoggingData(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
 	void offloadPositionData();
 	void offloadTrainData();
+
+	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
+	void bootstrapTrajbufferWithCoords();
+
 
 	void handleBoxtemp();
 

@@ -194,23 +194,25 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 
 int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	//for (Float3 sol_pos : *solvent_positions) {
-	//	if (simulation->box->n_solvents == MAX_SOLVENTS) {
-	//		printf("Too many solvents added!\n\n\n\n");
-	//		exit(1);
-	//	}
+	for (Float3 sol_pos : *solvent_positions) {
+		if (simulation->box->n_solvents == MAX_SOLVENTS) {
+			printf("Too many solvents added!\n\n\n\n");
+			exit(1);
+		}
 
-	//	sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
+		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-	//	if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
-	//		simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
-	//	}
-	//}
+		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
+			solventcoords[simulation->box->n_solvents] = SolventCoord::createFromPositionNM(sol_pos);
+			solventcoords_prev[simulation->box->n_solvents] = solventcoords[simulation->box->n_solvents];	// TODO: Add a subtraction here for initial velocity.
+			simulation->box->n_solvents++;
+		}
+	}
 
-	//simulation->total_particles += simulation->box->n_solvents;
-	//printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
-	//return simulation->box->n_solvents;
-	return 0;
+	simulation->total_particles += simulation->box->n_solvents;
+	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
+	return simulation->box->n_solvents;
 }
 
 

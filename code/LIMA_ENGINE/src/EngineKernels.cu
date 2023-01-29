@@ -21,7 +21,6 @@ void Engine::setDeviceConstantMemory() {
 
 
 // ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
-
 __device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
 	return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5;
 }
@@ -324,17 +323,18 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoo
 	box->potE_buffer[index] = *potE_sum;
 }
 
-//__device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_index, Float3& force, Solvent& solvent) {
-//	if (thread_active) {
-//		//int compounds_offset = box->n_compounds * MAX_COMPOUND_PARTICLES;
-//		//int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
-//			//box->potE_buffer[compounds_offset + solvent_index + step_offset] = force.len();
-//		//box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
-//		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solvent_index);
-//		box->potE_buffer[index] = force.len();
-//		box->traj_buffer[index] = solvent.pos;
-//	}
-//}
+__device__ inline void LogSolventData(bool thread_active, Box* box, int solvent_index, Float3& force, const SolventCoord& coord) {
+	if (thread_active) {
+		//int compounds_offset = box->n_compounds * MAX_COMPOUND_PARTICLES;
+		//int step_offset = (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
+			//box->potE_buffer[compounds_offset + solvent_index + step_offset] = force.len();
+		//box->traj_buffer[compounds_offset + solvent_index + step_offset] = solvent.pos;
+		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solvent_index);
+		box->potE_buffer[index] = force.len();
+		box->traj_buffer[index] = coord.getAbsolutePositionLM();
+		//coord.getAbsolutePositionLM().print('A');
+	}
+}
 
 __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord, int step) { 
 	if (threadIdx.x == 0) {
@@ -379,6 +379,8 @@ __global__ void compoundKernel(Box* box) {
 
 	compound.loadData(&box->compounds[blockIdx.x]);
 	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
+
+	// TODO: these compound_coords needs to be made const somehow. Changing these coords during the kernel is way too dangerous.
 	compound_coords.loadData(*coordarray_ptr);
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
 	__syncthreads();
@@ -543,39 +545,47 @@ __global__ void solventForceKernel(Box* box) {
 	data_ptr[2] = 9999.f;
 
 
-	//Float3 force(0.f);
-	//Solvent solvent;
+	Float3 force(0.f);
+	const SolventCoord coord = thread_active ?
+		*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_index) : SolventCoord{};
 
-	//if (thread_active) {
-	//	solvent = box->solvents[solvent_index];
-	//}
+	
 
-	//// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
-	//for (int i = 0; i < box->n_compounds; i++) {
-	//	int n_compound_particles = box->compounds[i].n_particles;
+	if (blockIdx.x == 0 && threadIdx.x == 0) {
+		coord.origo.print();
+		coord.rel_position.print();
+	}
 
-	//	// First all threads help loading the molecule
-	//	if (threadIdx.x < n_compound_particles) {
-	//		// First load particles of neighboring compound
-	//		auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
-	//		compound_coords.loadData(*coordarray_ptr);
-	//		LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords.rel_positions, utility_buffer);
+	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
+	for (int i = 0; i < box->n_compounds; i++) {
+		int n_compound_particles = box->compounds[i].n_particles;
 
-	//		// Then load atomtypes of neighboring compound
-	//		utility_buffer_small[threadIdx.x] = box->compounds[i].atom_types[threadIdx.x];
-	//	}
-	//	__syncthreads();
+		// First all threads help loading the molecule
+		if (threadIdx.x < n_compound_particles) {
+			// First load particles of neighboring compound
+			auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
+			compound_coords.loadData(*coordarray_ptr);
+			LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords.rel_positions, utility_buffer);
 
-	//	//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
+			// Then load atomtypes of neighboring compound
+			utility_buffer_small[threadIdx.x] = box->compounds[i].atom_types[threadIdx.x];
+		}
+		__syncthreads();
+
+	//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
 
-	//	if (thread_active) {
-	//		EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
-	//		force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
-	//	}
-	//	__syncthreads();
-	//}
-	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
+		// Fuck me this is tricky. If we are too far away, we can complete skipå this calculation i guess?
+		// Otherwise, we need to first compute a hyperpos, being careful not to change our original position.
+		// 
+		//Float3 solvent_pos{coord.}
+		if (thread_active) {
+			//EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
+			//force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
+		}
+		__syncthreads();
+	}
+	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
 
@@ -589,7 +599,7 @@ __global__ void solventForceKernel(Box* box) {
 	////if (solvent_index < box->n_solvents)
 	////	box->traj_buffer[box->n_compounds * MAX_COMPOUND_PARTICLES + solvent_index + (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound] = Float3(0.);
 
-	//LogSolventData(thread_active, box, solvent_index, force, solvent);
+	LogSolventData(thread_active, box, solvent_index, force, coord);
 
 
 	//if (thread_active) {
@@ -612,6 +622,11 @@ __global__ void solventForceKernel(Box* box) {
 	//	}
 	//}
 
+
+	if (thread_active) {
+		// TODO: Change this to coord_next
+		*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step + 1, solvent_index) = coord;
+	}
 
 	//if (thread_active) {
 	//	if (solvent.pos.x != solvent.pos.x) {

@@ -3,17 +3,6 @@
 
 
 
-//__host__ void Compound::init() {
-//	center_of_mass = calcCOM();
-//	//printf("")
-//	//radius = singlebonds[0].reference_dist * n_particles * 0.5f;
-//	//center_of_mass.print('C');
-//	//printf("Radius %f\n", radius);
-//}
-
-
-
-
 void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
 	// Move pos_t
 	cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
@@ -61,9 +50,7 @@ SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
 	return coord;
 }
 
-Float3 SolventCoord::getAbsolutePositionLM() {
-	return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
-}
+
 
 
 

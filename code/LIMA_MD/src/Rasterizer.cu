@@ -199,7 +199,9 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset)
     int solvent_id = threadIdx.x + blockIdx.x * THREADS_PER_LOADSOLVENTSATOMSKERNEL;
 
     if (solvent_id < box->n_solvents) {
-//        atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
+        const SolventCoord& coord = *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_id);
+        atoms[solvent_id + offset].pos = coord.getAbsolutePositionLM();
+        //atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
         atoms[solvent_id + offset].mass = SOLVENT_MASS;
         atoms[solvent_id + offset].atom_type = SOL;
     }    

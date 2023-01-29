@@ -94,13 +94,25 @@ void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update)
 
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
-	uint64_t step_offset = (simulation->getStep() - STEPS_PER_LOGTRANSFER) ;	// Tongue in cheek here, i think this is correct...
+	uint64_t step_relative = (simulation->getStep() - STEPS_PER_LOGTRANSFER) ;	// Tongue in cheek here, i think this is correct...
 
-	cudaMemcpy(&simulation->potE_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * steps_to_transfer, cudaMemcpyDeviceToHost);
+	cudaMemcpy(
+		&simulation->potE_buffer[step_relative * simulation->total_particles_upperbound], 
+		simulation->box->potE_buffer, 
+		sizeof(float) * simulation->total_particles_upperbound * steps_to_transfer, 
+		cudaMemcpyDeviceToHost);
 	
-	cudaMemcpy(&simulation->traj_buffer[step_offset * simulation->total_particles_upperbound], simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer, cudaMemcpyDeviceToHost);
+	cudaMemcpy(
+		&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound], 
+		simulation->box->traj_buffer, 
+		sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer, 
+		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(&simulation->logging_data[step_offset * 10], simulation->box->outdata, sizeof(float) * 10 * steps_to_transfer, cudaMemcpyDeviceToHost);
+	cudaMemcpy(
+		&simulation->logging_data[step_relative * 10], 
+		simulation->box->outdata, 
+		sizeof(float) * 10 * steps_to_transfer, 
+		cudaMemcpyDeviceToHost);
 }
 
 void Engine::offloadPositionData() {

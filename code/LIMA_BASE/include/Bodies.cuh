@@ -194,7 +194,9 @@ struct SolventCoord {
 		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
 
 	__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
-	__host__ Float3 getAbsolutePositionLM();
+	__host__ __device__ Float3 getAbsolutePositionLM() const {
+		return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
+	}
 };
 
 namespace CoordArrayQueueHelpers {

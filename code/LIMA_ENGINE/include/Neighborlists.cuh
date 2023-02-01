@@ -37,12 +37,17 @@ struct NListDataCollection {
 	}
 
 	void preparePositionData(const Simulation& simulation) {
+		// Data for the current step has not yet been generated so we need to use the previous step.
+		// For the very first step, engine has cheated and already written the traj from the initial setup.
+		auto step = simulation.getStep();
+		if (step != 0) { step--; }
+		
 		for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
-			const size_t index = EngineUtils::getAlltimeIndexOfParticle(simulation.getStep(), simulation.total_particles_upperbound, compound_id, 0);
+			const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
 			compound_key_positions[compound_id] = simulation.traj_buffer[index];
 		}
 		for (int solvent_id = 0; solvent_id < n_solvents; solvent_id++) {
-			const size_t index = EngineUtils::getAlltimeIndexOfParticle(simulation.getStep(), simulation.total_particles_upperbound, simulation.n_compounds, solvent_id);
+			const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, simulation.n_compounds, solvent_id);
 			solvent_positions[solvent_id] = simulation.traj_buffer[index];
 		}
 	}

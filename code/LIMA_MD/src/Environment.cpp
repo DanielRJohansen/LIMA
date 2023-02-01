@@ -203,8 +203,9 @@ void Environment::handleStatus(Simulation* simulation) {
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->n_steps - simulation->box->step) / 60);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
-		engine->timings = Int3(0, 0, 0);
-
+		//engine->timings = Int3(0, 0, 0);
+		engine->timings.x = 0;
+		engine->timings.y = 0;
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while (simulation->getStep() >= FIRST_INTERRENDER_WAIT && (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}

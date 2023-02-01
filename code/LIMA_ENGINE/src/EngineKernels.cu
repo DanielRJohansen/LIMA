@@ -552,8 +552,8 @@ __global__ void solventForceKernel(Box* box) {
 	
 
 	if (blockIdx.x == 0 && threadIdx.x == 0) {
-		coord.origo.print();
-		coord.rel_position.print();
+		//coord.origo.print();
+		//coord.rel_position.print();
 	}
 
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //

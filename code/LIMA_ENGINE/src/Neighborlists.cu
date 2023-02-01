@@ -176,7 +176,7 @@ namespace NListUtils {
 			for (uint16_t id_other = id_self + 1; id_other < simulation->n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_other];
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
-				float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
+				const float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
 
 				addNeighborIfEligible(hashtable_compoundneighbors, *nlist_self, *nlist_candidate,
 					pos_self, pos_other,

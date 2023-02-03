@@ -6,6 +6,11 @@
 #include <chrono>
 #include <thread>
 
+struct CandidateList {
+	int n_candidates = 0;
+	std::array<uint32_t, NEIGHBORLIST_MAX_SOLVENTS> candidates{};
+};
+
 struct NListDataCollection {
 	//NListDataCollection() {}
 	NListDataCollection(Simulation* simulation) {
@@ -72,11 +77,13 @@ struct NListDataCollection {
 
 
 namespace NListUtils {
-	 extern void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
-		volatile bool* finished, int* timing, bool* mutex_lock);
+	
 
-	extern bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, float cutoff_offset);
+	//extern bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, float cutoff_offset);
 	extern void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
+
+	void static updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
+		volatile bool* finished, int* timing, bool* mutex_lock);
 }
 
 class NListManager {
@@ -97,6 +104,58 @@ public:
 	NListDataCollection* nlist_data_collection = nullptr;
 
 private:
+
+	
+
 	// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	uint64_t prev_update_step = 0;
 };
+
+#include <array>
+
+class SolventBlockCollection {
+public:
+	SolventBlockCollection(const Float3* positions, int n_solvents);
+	void addSolventId(uint32_t id, const Float3& pos);
+
+	// Returns a vector with 1 element per solvent in sim. Each element consists of a vector
+	// of the Ids of nearby solvents of this solvent
+	std::vector<CandidateList> getNeighborSolventForAllSolvents(uint32_t n_solvents);
+
+
+
+
+private:
+	static constexpr int blocks_per_dim = BOX_LEN_NM / CUTOFF_NM;
+	static constexpr int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
+	static constexpr float blocks_per_dim_float = static_cast<float>(blocks_per_dim);
+	static constexpr float uncovered_len = (BOX_LEN - CUTOFF_LM * blocks_per_dim_float);
+	static constexpr float block_len = CUTOFF_LM + uncovered_len / blocks_per_dim_float;
+
+
+	struct SolventBlock {
+		static const int max_solvents_in_block = 512;	// i dunno
+		std::array<uint32_t, max_solvents_in_block> solvent_ids;
+		int n_elements{ 0 };
+		void insert(uint32_t solvent_id) {
+			solvent_ids[n_elements++] = solvent_id;
+		}
+	};
+
+
+
+	std::array<std::array< std::array<SolventBlock, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> m_blocks;
+
+	static Int3 getSolventblockIndex(const Float3& pos);
+	static const int a = blocks_per_dim;
+	static constexpr std::array<Int3, blocks_per_dim> getAllIndices();
+	static constexpr std::array<Int3, 2*2*2> getAdjacentIndicesThatAreGreater(Int3 index);
+
+	SolventBlock& getBlock(Int3 index);
+
+	static void addAllInsideBlock(std::vector<CandidateList>& neighborCandidates,
+		const SolventBlock& block);
+	static void addAllBetweenBlocks(std::vector<CandidateList>& neighborCandidates,
+		const SolventBlock& blocka, const SolventBlock& blockb);
+};
+

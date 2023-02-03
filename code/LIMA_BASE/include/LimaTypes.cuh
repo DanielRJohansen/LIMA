@@ -26,8 +26,8 @@ enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S };
 
 
 struct Int3 {
-	__host__ __device__ Int3() {}
-	__host__ __device__ Int3(int x, int y, int z) : x(x), y(y), z(z) {}
+	__host__ __device__ constexpr Int3() {}
+	__host__ __device__ constexpr Int3(int x, int y, int z) : x(x), y(y), z(z) {}
 
 
 	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }

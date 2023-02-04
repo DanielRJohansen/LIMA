@@ -271,8 +271,12 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ static void updateSolventcoord(SolventCoord& coord) {
 		Coord shift_nm = coord.rel_position / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
 
-		coord.origo += shift_nm;
-		coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+		//coord.origo += shift_nm;
+		//coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+		if (shift_nm.x != 0 ) {
+			coord.rel_position.x = 0;
+		}
+		
 	}
 	//__device__ static void applyPBC(Compound* compound);
 };

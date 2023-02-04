@@ -110,12 +110,12 @@ private:
 	static Int3 getSolventblockIndex(const Float3& pos);
 	
 	static constexpr std::array<Int3, blocks_total> getAllIndices();
-	static constexpr std::array<Int3, 2*2*2> getAdjacentIndicesThatAreGreater(Int3 index);
-	static constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2>, 
+	static constexpr std::array<Int3, 2*2*2 - 1> getAdjacentIndicesThatAreGreater(Int3 index);
+	static constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>,
 		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcGreaterIndices();
 
 
-	const std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2>, 
+	const std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>,
 		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices = precalcGreaterIndices();
 
 	SolventBlock& getBlock(const Int3& index);

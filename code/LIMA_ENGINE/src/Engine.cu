@@ -151,21 +151,18 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	SolventCoord* solventcoord_array = new SolventCoord[simulation->n_solvents];
 	cudaMemcpy(solventcoord_array, simulation->box->solventcoordarray_circular_queue, sizeof(SolventCoord) * simulation->n_solvents, cudaMemcpyDeviceToHost);
 
-	// We need to bootstrap both step-0 which is used for traj-buffer, and step N-1 which is used for integration
-	for (auto stepindex : { 0, STEPS_PER_LOGTRANSFER-1 }) {
-		for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
-			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-				const int index = EngineUtils::getAlltimeIndexOfParticle(stepindex, simulation->total_particles_upperbound, compound_id, particle_id);
-				simulation->traj_buffer[index] = compoundcoords_array[compound_id].getAbsolutePositionLM(particle_id);
-			}
-		}
-
-		for (int solvent_id = 0; solvent_id < simulation->n_solvents; solvent_id++) {
-			const int index = EngineUtils::getAlltimeIndexOfParticle(stepindex, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
-			simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
+	// We need to bootstrap step-0 which is used for traj-buffer
+	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
+		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+			const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
+			simulation->traj_buffer[index] = compoundcoords_array[compound_id].getAbsolutePositionLM(particle_id);
 		}
 	}
-	
+
+	for (int solvent_id = 0; solvent_id < simulation->n_solvents; solvent_id++) {
+		const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
+		simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
+	}
 
 	delete[] compoundcoords_array;
 	delete[] solventcoord_array;

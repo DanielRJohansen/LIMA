@@ -66,19 +66,24 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	return force;
 }
 
-__device__ Float3 computeSolventToSolventLJForces(const SolventCoord& coord_self, const NeighborList* nlist, const SolventCoord* solvent_coords, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToSolventLJForces(const SolventCoord& coord_self, const NeighborList& nlist, const SolventCoord* solvent_coords, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
 	Float3 force{};
 	const Float3 pos_self = coord_self.rel_position.toFloat3();
 
-	for (int i = 0; i < nlist->n_solvent_neighbors; i++) {
-		const SolventCoord& coord_neighbor = solvent_coords[nlist->neighborsolvent_ids[i]];
+	for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
+		const SolventCoord& coord_neighbor = solvent_coords[nlist.neighborsolvent_ids[i]];
 
 		// Check if the two solvents are too far away for Coord's to represent them
 		if (!LIMAPOSITIONSYSTEM::canRepresentRelativeDist(coord_self.origo, coord_neighbor.origo)) { continue; }
-		continue;
+
 		// Take hyperposition here. Both positions are now relative.
 		const Float3 pos_neighbor = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, coord_neighbor).toFloat3();
 
+		if (threadIdx.x == 0 && (pos_self - pos_neighbor).len() == 0) {
+			(pos_self - pos_neighbor).print('d');
+			printf("n id %d id self %d\n\n\n", nlist.neighborsolvent_ids[i], threadIdx.x + blockIdx.x * THREADS_PER_SOLVENTBLOCK);
+		}
+		//continue;
 		force += LimaForcecalc::calcLJForce(&pos_self, &pos_neighbor, data_ptr, potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
@@ -610,7 +615,7 @@ __global__ void solventForceKernel(Box* box) {
 	//// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
 	if (thread_active) {
 		const auto* solventcoords_ptr = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, 0);
-		force += computeSolventToSolventLJForces(coord_self, &box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
+		//force += computeSolventToSolventLJForces(coord_self, box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
 	}
 	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -624,16 +629,19 @@ __global__ void solventForceKernel(Box* box) {
 	if (thread_active) {
 		int step_prev = box->step == 0 ? 0 : box->step - 1;
 		const SolventCoord* coord_tsub1 = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, step_prev, solvent_index);
-		const Coord rel_hypercoord_tsub1 = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, *coord_tsub1);
+		Coord rel_hypercoord_tsub1 = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, *coord_tsub1);
+		// Make the above const, after we get this to work!
 
-		if (threadIdx.x == 0) {
-			force.print('f');
-		}
+		//if (threadIdx.x == 0) {
+		//	force.print('f');
+		//}
+
+		if (step_prev == 0) { rel_hypercoord_tsub1.x -= 1000000; }
 
 		const Coord newRelPos = integratePosition(coord_self.rel_position, rel_hypercoord_tsub1, &force, solvent_mass, box->dt, box->thermostat_scalar);
 		coord_self_next.rel_position = newRelPos;
 
-		//LIMAPOSITIONSYSTEM::updateSolventcoord(coord_self_next);
+		LIMAPOSITIONSYSTEM::updateSolventcoord(coord_self_next);
 		//LIMAPOSITIONSYSTEM::applyPBC(coord_self_next);
 	}
 

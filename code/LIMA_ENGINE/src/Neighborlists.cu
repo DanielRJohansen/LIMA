@@ -338,13 +338,14 @@ constexpr std::array<Int3, SolventBlockCollection::blocks_total> SolventBlockCol
 	return indices;
 }
 
-constexpr std::array<Int3, 2*2*2> SolventBlockCollection::getAdjacentIndicesThatAreGreater(Int3 index)
+constexpr std::array<Int3, 2*2*2-1> SolventBlockCollection::getAdjacentIndicesThatAreGreater(Int3 index)
 {
-	std::array<Int3, 2*2*2> indices{};
+	std::array<Int3, 2*2*2 - 1> indices{};
 	int index1d = 0;
 	for (int z = index.z; z <= index.z + 1; z++) {
 		for (int y = index.y; y <= index.y + 1; y++) {
 			for (int x = index.x; x <= index.x + 1; x++) {
+				if (x == index.x && y == index.y && z == index.z) { continue; }
 				indices[index1d++] = Int3{
 					x < blocks_per_dim ? x : 0, 
 					y < blocks_per_dim ? y : 0,
@@ -356,8 +357,8 @@ constexpr std::array<Int3, 2*2*2> SolventBlockCollection::getAdjacentIndicesThat
 	return indices;
 }
 
-constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim> SolventBlockCollection::precalcGreaterIndices() {
-	std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2>, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices;
+constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim> SolventBlockCollection::precalcGreaterIndices() {
+	std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices;
 	for (int z = 0; z < blocks_per_dim; z++) {
 		for (int y = 0; y < blocks_per_dim; y++) {
 			for (int x = 0; x < blocks_per_dim; x++) {
@@ -374,9 +375,13 @@ SolventBlockCollection::SolventBlock& SolventBlockCollection::getBlock(const Int
 
 void SolventBlockCollection::addAllInsideBlock(std::vector<CandidateList>& neighborCandidates, const SolventBlock& block) {
 	for (auto i = 0; i < block.n_elements; i++) {
-		for (int ii = i; ii < block.n_elements; ii++) {
+		for (int ii = i+1; ii < block.n_elements; ii++) {
 			const auto& id_a = block.solvent_ids[i];
 			const auto& id_b = block.solvent_ids[ii];
+			if (id_a == id_b) {
+				int bb;
+				exit(1);
+			}
 			neighborCandidates[id_a].candidates[neighborCandidates[id_a].n_candidates++] = id_b;
 			neighborCandidates[id_b].candidates[neighborCandidates[id_b].n_candidates++] = id_a;
 		}
@@ -388,6 +393,10 @@ void SolventBlockCollection::addAllBetweenBlocks(std::vector<CandidateList>& nei
 		for (int ib = 0; ib < blockb.n_elements; ib++) {
 			const auto& id_a = blocka.solvent_ids[ia];
 			const auto& id_b = blockb.solvent_ids[ib];
+			if (id_a == id_b) {
+				int bb;
+				exit(1);
+			}
 			neighborCandidates[id_a].candidates[neighborCandidates[id_a].n_candidates++] = id_b;
 			neighborCandidates[id_b].candidates[neighborCandidates[id_b].n_candidates++] = id_a;
 		}

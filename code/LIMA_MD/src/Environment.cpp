@@ -110,8 +110,8 @@ void Environment::run() {
 
 	while (display->checkWindowStatus()) {
 
-		engine->deviceMaster();		// Device first, otherwise offloading data always needs the last datapoint!
-		engine->hostMaster();
+		engine->runOnce();
+
 
 		handleStatus(simulation.get());
 		handleDisplay(simulation.get());

@@ -138,7 +138,10 @@ namespace LIMAPOSITIONSYSTEM {
 		state.positions[threadIdx.x] = getGlobalPosition(coords);
 	}
 
-	
+	__device__ __host__ static bool canRepresentRelativeDist(const Coord& origo_a, const Coord& origo_b) {
+		const auto diff = origo_a - origo_b;
+		return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
+	}
 
 	__device__ static void getRelativePositions(Coord* coords, Float3* positions) {
 		positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
@@ -154,7 +157,7 @@ namespace LIMAPOSITIONSYSTEM {
 	//	// TODO: IMplement
 	//}
 	
-	// For coordinates of OTHER, we find the value in LM that each coord must be shifted, to be aligned with coordinates of self
+	// For coordinates of OTHER, we find the value in LM that each coord must be shifted (+), to be aligned with coordinates of self
 	__device__ static Coord getRelShift(const Coord& origo_self, const Coord& origo_other) {
 		return (origo_self - origo_other) * static_cast<int32_t>(NANO_TO_LIMA);
 	}
@@ -241,6 +244,17 @@ namespace LIMAPOSITIONSYSTEM {
 
 		// Calculate necessary shift in relative position for all particles in other, so they share origo with left
 		return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
+	}
+
+	// Calculates the relative position of movable_solvent, relative to another staticcoords's origo.
+	// Returns false if it is not possible to represent the position as coord. In that case, we should avoid
+	// following computations..
+	__device__ static Coord getRelativeHyperposition(const SolventCoord& static_solvent, const SolventCoord& movable_solvent) {
+		const Coord hyperorigo_other = LIMAPOSITIONSYSTEM::getHyperOrigo(static_solvent.origo, movable_solvent.origo);
+
+		// calc Relative Position Shift from the origo-shift
+		const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
+		return movable_solvent.rel_position + relPosShiftOfMovable;
 	}
 
 	//__device__ static void applyPBC(Compound* compound);

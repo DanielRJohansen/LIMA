@@ -36,10 +36,11 @@ inline NListDataCollection::NListDataCollection(Simulation* simulation) {
 	cudaMemcpy(solvent_neighborlists, simulation->box->solvent_neighborlists, sizeof(NeighborList) * n_solvents, cudaMemcpyDeviceToHost);
 }
 
-void NListDataCollection::preparePositionData(const Simulation& simulation) {
+void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
+	auto step = step_at_update;
+
 	// Data for the current step has not yet been generated so we need to use the previous step.
-	// For the very first step, engine has cheated and already written the traj from the initial setup.
-	auto step = simulation.getStep();
+	// For the very first step, engine has cheated and already written the traj from the initial setup.	
 	if (step != 0) { step--; }
 
 	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
@@ -69,17 +70,19 @@ NListManager::NListManager(Simulation* simulation) {
 	}
 }
 
+// Main sim thread enters this block, so make sure it can leave VERY quickly
+void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlists_mutexlock, bool force_update, bool async, int* timings, bool* critical_error) {
+	const uint32_t step_at_update = simulation->getStep();
 
-void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlists_mutexlock, bool force_update, bool async, int* timings) {
 	if (async && !force_update) {
-		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock);
+		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock, step_at_update);
 		nlist_worker.detach();
 	}
 	else {
-		NListUtils::updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock);
+		NListUtils::updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock, step_at_update);
 	}
 
-	prev_update_step = simulation->getStep();
+	prev_update_step = step_at_update;
 
 	if (force_update) {
 		Int3 n_data(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
@@ -87,10 +90,6 @@ void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlist
 	}
 }
 
-void NListManager::offloadPositionDataNLIST(Simulation* simulation) {
-//	if (simulation->n_solvents > 0)
-//		cudaMemcpy(nlist_data_collection->solvents, simulation->box->solvents, sizeof(Solvent) * simulation->n_solvents, cudaMemcpyDeviceToHost);
-}
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
 	cudaMemcpy(simulation->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
@@ -106,11 +105,6 @@ void NListManager::pushNlistsToDevice(Simulation* simulation) {
 
 
 namespace NListUtils {
-
-
-
-
-
 	void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection) {
 		for (int id_self = 0; id_self < nlist_data_collection->n_compounds; id_self++) {
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
@@ -177,16 +171,13 @@ namespace NListUtils {
 		}
 	}
 
-
-
-
-	void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection, volatile bool* finished, int* timing, bool* mutex_lock) {	// This is a thread worker-function, so it can't own the object, thus i pass a ref to the engine object..
+	// Important: do NOT call getStep during this funciton, as it runs async!!!!
+	// This is a thread worker-function, so it can't own the object, thus i pass a ref to the engine object..
+	void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection, volatile bool* finished, int* timing, bool* mutex_lock, const uint32_t step_at_update) {
 		auto t0 = std::chrono::high_resolution_clock::now();
-		//Int3 before(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
 
 		// Make key positions addressable in arrays: compound_key_positions and solvent_positions
-		//nlist_data_collection->preparePositionData(simulation->compounds_host);		
-		nlist_data_collection->preparePositionData(*simulation);
+		nlist_data_collection->preparePositionData(*simulation, step_at_update);
 
 		// First do culling of neighbors that has left CUTOFF
 		NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);

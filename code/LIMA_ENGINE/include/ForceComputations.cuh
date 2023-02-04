@@ -10,7 +10,7 @@
 
 namespace LimaForcecalc {
 
-__device__ static Float3 calcLJForce(Float3* pos0, Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
+__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
 	// input positions in cartesian coordinates [nm]
 	// sigma [nm]

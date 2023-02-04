@@ -14,7 +14,7 @@ struct CandidateList {
 struct NListDataCollection {
 	NListDataCollection(Simulation* simulation);
 
-	void preparePositionData(const Simulation& simulation);
+	void preparePositionData(const Simulation& simulation, uint32_t step_at_update);
 
 
 	int n_compounds;
@@ -40,7 +40,7 @@ namespace NListUtils {
 	extern void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
 
 	void static updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
-		volatile bool* finished, int* timing, bool* mutex_lock);
+		volatile bool* finished, int* timing, bool* mutex_lock, uint32_t step_at_update);
 }
 
 class NListManager {
@@ -48,12 +48,14 @@ public:
 	NListManager(){}	// This is messy, necessary to 
 	NListManager(Simulation* simulation);
 
-	void updateNeighborLists(Simulation* simulation, bool* unused_lock, bool force_update, bool async, int* timings);
-	void offloadPositionDataNLIST(Simulation* simulation);
+	void updateNeighborLists(Simulation* simulation, bool* unused_lock, bool force_update, 
+		bool async, int* timings, bool* critical_error);
 	void pushNlistsToDevice(Simulation* simulation);
 
 
-	int stepsSinceUpdate(uint64_t currentSimStep) { return static_cast<int>(currentSimStep - prev_update_step); }
+	int stepsSinceUpdate(uint64_t currentSimStep) const { 
+		return static_cast<int>(currentSimStep - prev_update_step); 
+	}
 	uint64_t getPrevUpdateStep() { return prev_update_step; }
 
 

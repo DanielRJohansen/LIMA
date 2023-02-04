@@ -31,6 +31,11 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 
 
+void Engine::runOnce() {
+	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
+	hostMaster();
+}
+
 void Engine::deviceMaster() {
 	EngineUtils::genericErrorCheck("Error before step!");
 	step();
@@ -41,17 +46,19 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if ((simulation->getStep() % STEPS_PER_LOGTRANSFER) == 0) {
 		offloadLoggingData();
-		//offloadPositionData();
+		offloadTrajectory();
+
 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
+		handleNLISTS(simulation, true);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
 	}
 
-	handleNLISTS(simulation, true);
+	
 	
 
 	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp
@@ -68,23 +75,19 @@ void Engine::terminateSimulation() {
 	const int steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
 	if ((steps_since_transfer) > 0) {
 		offloadLoggingData(steps_since_transfer);
+		offloadTrajectory(steps_since_transfer);
 	}
 }
 
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
-
-void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update) {
-
-	if (((nlist_manager->stepsSinceUpdate(simulation->getStep() ) >= STEPS_PER_NLIST_UPDATE) || force_update) && !updatenlists_mutexlock) {
+// maybe rename forceupdate, to wait for update and push?
+void Engine::handleNLISTS(Simulation* simulation, bool async, const bool force_update) {
+	if (neighborlistUpdateRequired() && !updatenlists_mutexlock) {
 		updatenlists_mutexlock = 1;
-		
-		nlist_manager->offloadPositionDataNLIST(simulation);
-		// Lots of waiting time here...
-		cudaDeviceSynchronize();
 
-		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z);
+		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z, &critical_error);
 	}
 
 	if (nlist_manager->updated_neighborlists_ready) {
@@ -94,18 +97,12 @@ void Engine::handleNLISTS(Simulation* simulation, bool async, bool force_update)
 
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
-	uint64_t step_relative = (simulation->getStep() - STEPS_PER_LOGTRANSFER) ;	// Tongue in cheek here, i think this is correct...
+	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
 		&simulation->potE_buffer[step_relative * simulation->total_particles_upperbound], 
 		simulation->box->potE_buffer, 
 		sizeof(float) * simulation->total_particles_upperbound * steps_to_transfer, 
-		cudaMemcpyDeviceToHost);
-	
-	cudaMemcpy(
-		&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound], 
-		simulation->box->traj_buffer, 
-		sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer, 
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
@@ -113,18 +110,39 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		simulation->box->outdata, 
 		sizeof(float) * 10 * steps_to_transfer, 
 		cudaMemcpyDeviceToHost);
+
+	cudaDeviceSynchronize();
 }
 
-void Engine::offloadPositionData() {
-	//uint64_t step_offset = (simulation->getStep() - STEPS_PER_LOGTRANSFER) * simulation->total_particles_upperbound;	// Tongue in cheek here, i think this is correct...
-	//cudaMemcpy(&simulation->traj_buffer[step_offset], simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER, cudaMemcpyDeviceToHost);
+void Engine::offloadTrajectory(const int steps_to_transfer) {
+	uint64_t step_relative = (simulation->getStep() - steps_to_transfer);	// Tongue in cheek here, i think this is correct...
+
+	cudaMemcpy(
+		&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
+		simulation->box->traj_buffer,
+		sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer,
+		cudaMemcpyDeviceToHost
+	);
+
+	cudaDeviceSynchronize();
+	step_at_last_traj_transfer = simulation->getStep();
 }
+
 
 void Engine::offloadTrainData() {
 	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
 	cudaMemcpy(&simulation->traindata_buffer[step_offset], simulation->box->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
 	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
+}
+
+bool Engine::neighborlistUpdateRequired() const {
+	const auto step = simulation->getStep();
+	if (nlist_manager->stepsSinceUpdate(step) >= STEPS_PER_NLIST_UPDATE
+		|| step == 0) {
+		return true;
+	}
+	return false;
 }
 
 

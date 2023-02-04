@@ -41,6 +41,6 @@ title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")
-xlim([0 7000])
+%xlim([0 7000])
 hold off
 %label("Kinetic energy")

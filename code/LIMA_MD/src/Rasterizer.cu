@@ -204,6 +204,18 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset)
         //atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
         atoms[solvent_id + offset].mass = SOLVENT_MASS;
         atoms[solvent_id + offset].atom_type = SOL;
+
+        // This part is for various debugging purposes
+        int query_id = 0;
+        if (solvent_id == query_id) {
+            atoms[solvent_id + offset].atom_type = P;
+        }
+        const auto& nlist = box->solvent_neighborlists[solvent_id];
+        for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
+            if (nlist.neighborsolvent_ids[i] == query_id) {
+                atoms[solvent_id + offset].atom_type = O;
+            }
+        }
     }    
 }
 
@@ -211,27 +223,21 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset)
 
 
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) { 
-    int index = threadIdx.x + blockIdx.x * RAS_THREADS_PER_BLOCK;
+    const int index = threadIdx.x + blockIdx.x * RAS_THREADS_PER_BLOCK;
     
-
     RenderAtom atom = atoms[index];
 
     atom.color = getColor(atom.atom_type);
     atom.radius = (getRadius(atom.atom_type)) / (1.f+atom.pos.y * 0.00000000001f);       // [nm]
 
-    //atoms[index] = atom;
-
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
 
-    //if (threadIdx.x + blockIdx.x == 0) atom.pos.print('r');
     for (int dim = 0; dim < 3; dim++) {
         *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN - 0.5f) *1.8f;
     }
-    //if (threadIdx.x + blockIdx.x == 0) atom.pos.print('R');
-    RenderBall ball(atom.pos, atom.radius, atom.color);
-    if (atom.atom_type == ATOM_TYPE::NONE)
-        ball.disable = true;
+    
+    const RenderBall ball(atom.pos, atom.radius, atom.color, atom.atom_type);
     balls[index] = ball;
 }
 

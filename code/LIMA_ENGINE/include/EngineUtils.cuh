@@ -44,12 +44,12 @@ namespace EngineUtils {
 		return kinE;
 	}
 
-	__device__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
+	__device__ __host__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
 		for (int dim = 0; dim < 3; dim++) {
 			/**current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
 			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);*/
-			*current_position->placeAt(dim) += BOX_LEN_RELATIVE * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN_RELATIVE * (current_position->at(dim) > BOX_LEN_RELATIVE);
+			*current_position->placeAt(dim) += BOX_LEN *(current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
 		}
 	}
 
@@ -257,5 +257,22 @@ namespace LIMAPOSITIONSYSTEM {
 		return movable_solvent.rel_position + relPosShiftOfMovable;
 	}
 
+	__device__ __host__ static void applyPBC(SolventCoord& coord) {	// Only changes position if position is outside of box;
+		Coord& pos = coord.origo;
+		pos.x += BOX_LEN_NM * (pos.x < 0);
+		pos.x -= BOX_LEN_NM * (pos.x > BOX_LEN_NM);
+		pos.y += BOX_LEN_NM * (pos.y < 0);
+		pos.y -= BOX_LEN_NM * (pos.y > BOX_LEN_NM);
+		pos.z += BOX_LEN_NM * (pos.z < 0);
+		pos.z -= BOX_LEN_NM * (pos.z > BOX_LEN_NM);
+	}
+
+	// ReCenter origo of solvent, and the relative pos around said origo
+	__device__ static void updateSolventcoord(SolventCoord& coord) {
+		Coord shift_nm = coord.rel_position / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+
+		coord.origo += shift_nm;
+		coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+	}
 	//__device__ static void applyPBC(Compound* compound);
 };

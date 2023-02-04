@@ -315,10 +315,12 @@ std::vector<CandidateList> SolventBlockCollection::getNeighborSolventForAllSolve
 
 
 Int3 SolventBlockCollection::getSolventblockIndex(const Float3& pos) {
+	Float3 hyperpos = pos;
+	EngineUtils::applyPBC(&hyperpos);
 	return Int3(
-		static_cast<int>(pos.x / block_len),
-		static_cast<int>(pos.y / block_len),
-		static_cast<int>(pos.z / block_len)
+		static_cast<int>(hyperpos.x / block_len),
+		static_cast<int>(hyperpos.y / block_len),
+		static_cast<int>(hyperpos.z / block_len)
 	);
 }
 

@@ -56,6 +56,7 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 		if (i != threadIdx.x && !(*bonded_particles_lut->get(threadIdx.x, i))) {
 			//*potE_sum = 16;
 			//force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
+
 			force += LimaForcecalc::calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
 				compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
@@ -74,7 +75,7 @@ __device__ Float3 computeSolventToSolventLJForces(const SolventCoord& coord_self
 
 		// Check if the two solvents are too far away for Coord's to represent them
 		if (!LIMAPOSITIONSYSTEM::canRepresentRelativeDist(coord_self.origo, coord_neighbor.origo)) { continue; }
-
+		continue;
 		// Take hyperposition here. Both positions are now relative.
 		const Float3 pos_neighbor = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, coord_neighbor).toFloat3();
 
@@ -243,6 +244,21 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
 	}
 }
+
+// This function assumes that coord_tsub1 is already hyperpositioned to coord.
+__device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
+
+	return coord + (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
+
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		//force->print('f');
+		//printf("dt %f mass %f\n", dt, mass);
+		//(*force*dt*dt / mass).print('F');
+		//uint32_t diff = coord.x - x - dx;
+		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+	}
+}
+
 
 __device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const float dt, float* thermostat_scalar, int p_index, bool print = false) {
 	// Force is in ??Newton, [kg * nm /(mol*ns^2)] //	
@@ -464,6 +480,7 @@ __global__ void compoundKernel(Box* box) {
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	{
 		// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
+		// Dont think we need this anymore, if we bootstrap index N-1 with the positions aswell
 		const int actual_stepindex_of_prev = box->step == 0 ? STEPS_PER_LOGTRANSFER - 1 : box->step - 1;
 		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 		if (threadIdx.x == 0) {
@@ -534,6 +551,7 @@ __global__ void compoundKernel(Box* box) {
 
 #define solvent_index (blockIdx.x * blockDim.x + threadIdx.x)
 #define thread_active (solvent_index < box->n_solvents)
+#define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
 __global__ void solventForceKernel(Box* box) {
 	__shared__ Float3 utility_buffer[MAX_COMPOUND_PARTICLES];	
 	__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
@@ -591,8 +609,8 @@ __global__ void solventForceKernel(Box* box) {
 
 	//// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
 	if (thread_active) {
-		//const auto* solventcoords_ptr = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, 0);
-		//force += computeSolventToSolventLJForces(coord_self, &box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
+		const auto* solventcoords_ptr = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, 0);
+		force += computeSolventToSolventLJForces(coord_self, &box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
 	}
 	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -602,44 +620,34 @@ __global__ void solventForceKernel(Box* box) {
 
 	LogSolventData(box, solvent_index, potE_sum, coord_self);
 
-
-	//if (thread_active) {
-	//	int p_index = MAX_COMPOUND_PARTICLES + solvent_index;
-	//	if (box->step >= RAMPUP_STEPS) {
-	//		integratePosition(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, &box->thermostat_scalar, p_index, true);
-	//	}
-	//	else {
-	//		integratePositionRampUp(&solvent.pos, &solvent.pos_tsub1, &force, forcefield_device.particle_parameters[ATOMTYPE_SOL].mass, box->dt, box->step);
-	//	}
-
-	//	EngineUtils::applyPBC(&solvent.pos);
-	//}
-
-
-	//if (thread_active) {
-	//	if (EngineUtils::calcHyperDist(&solvent.pos, &solvent.pos_tsub1) > 0.05) { 
-	//		printf("Solvent was too fast: %f\n", (solvent.pos - solvent.pos_tsub1).len());
-	//		box->critical_error_encountered = true; 
-	//	}
-	//}
-
-
+	SolventCoord coord_self_next{ coord_self };
 	if (thread_active) {
-		// TODO: Change this to coord_next
-		*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step + 1, solvent_index) = coord_self;
+		int step_prev = box->step == 0 ? 0 : box->step - 1;
+		const SolventCoord* coord_tsub1 = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, step_prev, solvent_index);
+		const Coord rel_hypercoord_tsub1 = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, *coord_tsub1);
+
+		if (threadIdx.x == 0) {
+			force.print('f');
+		}
+
+		const Coord newRelPos = integratePosition(coord_self.rel_position, rel_hypercoord_tsub1, &force, solvent_mass, box->dt, box->thermostat_scalar);
+		coord_self_next.rel_position = newRelPos;
+
+		//LIMAPOSITIONSYSTEM::updateSolventcoord(coord_self_next);
+		//LIMAPOSITIONSYSTEM::applyPBC(coord_self_next);
 	}
 
-	//if (thread_active) {
-	//	if (solvent.pos.x != solvent.pos.x) {
-	//		solvent.pos.print('s');
-	//		box->critical_error_encountered = true;
-	//	}
-	//	box->solvents_next[solvent_index] = solvent;
-	//}
+
+
+	// Push new SolventCoord to global mem
+	if (thread_active) {
+		*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step + 1, solvent_index) = coord_self_next;
+	}
+
 }
 #undef solvent_index
 #undef thread_active
-
+#undef solvent_mass
 
 
 

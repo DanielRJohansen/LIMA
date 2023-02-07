@@ -1,7 +1,7 @@
 #include "Neighborlists.cuh"
 #include <algorithm>
 #include <execution>
-
+#include <algorithm>
 
 bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_lm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	const float dist = EngineUtils::calcHyperDist(pos_a, pos_b);
@@ -318,6 +318,9 @@ Int3 SolventBlockCollection::getSolventblockIndex(const Float3& pos) {
 	Float3 hyperpos = pos;
 	EngineUtils::applyPBC(&hyperpos);
 	return Int3(
+		//std::min(std::max(static_cast<int>(hyperpos.x / block_len), 0), blocks_per_dim),
+		//std::min(std::max(static_cast<int>(hyperpos.y / block_len), 0), blocks_per_dim),
+		//std::min(std::max(static_cast<int>(hyperpos.z / block_len), 0), blocks_per_dim)
 		static_cast<int>(hyperpos.x / block_len),
 		static_cast<int>(hyperpos.y / block_len),
 		static_cast<int>(hyperpos.z / block_len)

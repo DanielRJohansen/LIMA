@@ -205,6 +205,7 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset)
         atoms[solvent_id + offset].mass = SOLVENT_MASS;
         atoms[solvent_id + offset].atom_type = SOL;
 
+
         // This part is for various debugging purposes
         int query_id = 0;
         if (solvent_id == query_id) {
@@ -216,7 +217,9 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset)
                 atoms[solvent_id + offset].atom_type = O;
             }
         }
-    }    
+        //if (solvent_id != 440)
+        //    atoms[solvent_id + offset].atom_type = NONE;
+	}
 }
 
 

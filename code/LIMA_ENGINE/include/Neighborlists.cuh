@@ -85,11 +85,11 @@ public:
 
 
 private:
-	static constexpr int blocks_per_dim = BOX_LEN_NM / CUTOFF_NM;
+	static constexpr int blocks_per_dim = CPPD::ceil(BOX_LEN_NM / CUTOFF_NM);
 	static_assert(blocks_per_dim > 1, "Too few solvents blocks in box");
 	static constexpr int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
 	static constexpr float blocks_per_dim_float = static_cast<float>(blocks_per_dim);
-	static constexpr float uncovered_len = (BOX_LEN - CUTOFF_LM * blocks_per_dim_float);
+	static constexpr float uncovered_len = std::max((BOX_LEN - CUTOFF_LM * blocks_per_dim_float), 0.f);
 	// Make the block len a little longer than it needs to be, so we include particles on the box-boundary
 	static constexpr float block_len = CUTOFF_LM + uncovered_len / (blocks_per_dim_float - 1.f);
 

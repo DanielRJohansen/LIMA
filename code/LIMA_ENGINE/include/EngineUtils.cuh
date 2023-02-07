@@ -157,9 +157,9 @@ namespace LIMAPOSITIONSYSTEM {
 	//	// TODO: IMplement
 	//}
 	
-	// For coordinates of OTHER, we find the value in LM that each coord must be shifted (+), to be aligned with coordinates of self
-	__device__ static Coord getRelShift(const Coord& origo_self, const Coord& origo_other) {
-		return (origo_self - origo_other) * static_cast<int32_t>(NANO_TO_LIMA);
+	// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
+	__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
+		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
 	}
 
 	__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
@@ -253,7 +253,10 @@ namespace LIMAPOSITIONSYSTEM {
 		const Coord hyperorigo_other = LIMAPOSITIONSYSTEM::getHyperOrigo(static_solvent.origo, movable_solvent.origo);
 
 		// calc Relative Position Shift from the origo-shift
-		const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
+		//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
+		// 
+		//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(static_solvent.origo, hyperorigo_movable);
+		const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(hyperorigo_other, static_solvent.origo);
 		return movable_solvent.rel_position + relPosShiftOfMovable;
 	}
 
@@ -271,12 +274,25 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ static void updateSolventcoord(SolventCoord& coord) {
 		Coord shift_nm = coord.rel_position / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
 
-		//coord.origo += shift_nm;
-		//coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
-		if (shift_nm.x != 0 ) {
-			coord.rel_position.x = 0;
-		}
+		SolventCoord tmp = coord;
+		coord.origo += shift_nm;
+		coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 		
+		if (blockIdx.x + threadIdx.x == 0 && shift_nm.x != 0) {
+			tmp.origo.print('o');
+			tmp.rel_position.print('r');
+			shift_nm.print('s');
+			coord.origo.print('O');
+			coord.rel_position.print('R');
+		}
 	}
 	//__device__ static void applyPBC(Compound* compound);
 };
+
+namespace CPPD {
+	constexpr int32_t ceil(float num) {
+		return (static_cast<float>(static_cast<int32_t>(num)) == num)
+			? static_cast<int32_t>(num)
+			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
+	}
+}

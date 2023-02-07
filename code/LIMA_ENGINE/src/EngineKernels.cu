@@ -254,7 +254,7 @@ __device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* forc
 __device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
 
 	return coord + (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
-
+	//return coord + Coord{ 1000000, 0, 0 };
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
 		//force->print('f');
 		//printf("dt %f mass %f\n", dt, mass);
@@ -362,12 +362,12 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const
 		Coord querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperOrigo(origo_self, querycompound->origo);
 
 		// calc Relative Position Shift from the origo-shift
-		*utility_coord = LIMAPOSITIONSYSTEM::getRelShift(origo_self, querycompound_hyperorigo);
+		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self);
 	}
 	__syncthreads();
 
 	//Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
-	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] - *utility_coord;
+	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] + *utility_coord;
 	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();
 }
 
@@ -490,8 +490,9 @@ __global__ void compoundKernel(Box* box) {
 		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 		if (threadIdx.x == 0) {
 			Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, coordarray_prev_ptr->origo);
-			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShift(compound_coords.origo, prev_hyper_origo);
+			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
 		}
+		// Im not sure if this is correct..
 		__syncthreads();
 
 		Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] - rel_pos_shift;
@@ -615,13 +616,11 @@ __global__ void solventForceKernel(Box* box) {
 	//// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
 	if (thread_active) {
 		const auto* solventcoords_ptr = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, 0);
-		//force += computeSolventToSolventLJForces(coord_self, box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
+		force += computeSolventToSolventLJForces(coord_self, box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
 	}
 	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-
-	////if (solvent_index < box->n_solvents)
-	////	box->traj_buffer[box->n_compounds * MAX_COMPOUND_PARTICLES + solvent_index + (box->step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound] = Float3(0.);
+	force = Float3{};
 
 	LogSolventData(box, solvent_index, potE_sum, coord_self);
 
@@ -636,13 +635,18 @@ __global__ void solventForceKernel(Box* box) {
 		//	force.print('f');
 		//}
 
-		if (step_prev == 0) { rel_hypercoord_tsub1.x -= 1000000; }
+		if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) { 
+			rel_hypercoord_tsub1.x -= 1000000; 
+			rel_hypercoord_tsub1.z -= 1000000;
+		}
+
 
 		const Coord newRelPos = integratePosition(coord_self.rel_position, rel_hypercoord_tsub1, &force, solvent_mass, box->dt, box->thermostat_scalar);
 		coord_self_next.rel_position = newRelPos;
 
+
 		LIMAPOSITIONSYSTEM::updateSolventcoord(coord_self_next);
-		//LIMAPOSITIONSYSTEM::applyPBC(coord_self_next);
+		LIMAPOSITIONSYSTEM::applyPBC(coord_self_next);
 	}
 
 

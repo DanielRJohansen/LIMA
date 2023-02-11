@@ -221,34 +221,34 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 
 	return utility_buffer[threadIdx.x];
 }
-
-__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt, const float thermostat_scalar) {
-	//EngineUtils::applyHyperpos(pos, pos_tsub1);
-
-	//Float3 temp = *pos;
-	//float prev_vel = (*pos - *pos_tsub1).len();
-	Coord prev_vel = coord - coord_tsub1;
-
-	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	//int32_t x = coord.x;
-	//int32_t dx = coord.x - coord_tsub1.x;
-	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
-	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
-
-	coord += (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
-	//pos->x = x + dx + ddx;
-	//coord.x = x + dx + ddx;
-
-	//Double3 pos_d{ *pos };
-
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		//force->print('f');
-		//printf("dt %f mass %f\n", dt, mass);
-		//(*force*dt*dt / mass).print('F');
-		//uint32_t diff = coord.x - x - dx;
-		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-	}
-}
+//
+//__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt, const float thermostat_scalar) {
+//	//EngineUtils::applyHyperpos(pos, pos_tsub1);
+//
+//	//Float3 temp = *pos;
+//	//float prev_vel = (*pos - *pos_tsub1).len();
+//	Coord prev_vel = coord - coord_tsub1;
+//
+//	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
+//	//int32_t x = coord.x;
+//	//int32_t dx = coord.x - coord_tsub1.x;
+//	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
+//	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
+//
+//	coord += (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
+//	//pos->x = x + dx + ddx;
+//	//coord.x = x + dx + ddx;
+//
+//	//Double3 pos_d{ *pos };
+//
+//	if (threadIdx.x == 0 && blockIdx.x == 0) {
+//		//force->print('f');
+//		//printf("dt %f mass %f\n", dt, mass);
+//		//(*force*dt*dt / mass).print('F');
+//		//uint32_t diff = coord.x - x - dx;
+//		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+//	}
+//}
 
 // This function assumes that coord_tsub1 is already hyperpositioned to coord.
 __device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
@@ -499,6 +499,7 @@ __global__ void compoundKernel(Box* box) {
 
 
 		if (threadIdx.x < compound.n_particles) {
+			// Change this so it handles the return value??!?
 			integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 		}
 		__syncthreads();
@@ -574,13 +575,21 @@ __global__ void solventForceKernel(Box* box) {
 	data_ptr[2] = 9999.f;
 
 
+
+
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
-		solventblock.origo.print();
+		//solventblock.origo.print();
 	}
 	__syncthreads();
 	solventblock.loadData(*solventblock_ptr);
 
+
+	if (threadIdx.x == 0 && blockIdx.x == SolventBlockHelpers::get1dIndex({ 3, 3, 3 })) {
+		printf("\n1d index: %d", SolventBlockHelpers::get1dIndex({ 3, 3, 3 }));
+		solventblock.origo.print('o');
+		solventblock.rel_pos[0].print('r');
+	}
 
 	Float3 force(0.f);
 	//const SolventCoord coord_self = thread_active ? *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_index) : SolventCoord{};
@@ -637,11 +646,27 @@ __global__ void solventForceKernel(Box* box) {
 	//LogSolventData(box, solvent_index, potE_sum, coord_self);
 
 	//SolventCoord coord_self_next{ coord_self };
+	Coord relpos_next{ solventblock.rel_pos[threadIdx.x] };
 	if (thread_active) {
+
+		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
+		//// Make the above const, after we get this to work!
+		if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
+			relpos_prev.x -= 1000000;
+			relpos_prev.z -= 1000000;
+		}
+
+		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
+
+
+
+
+		//-------
+
 		//int step_prev = box->step == 0 ? 0 : box->step - 1;
 		//const SolventCoord* coord_tsub1 = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, step_prev, solvent_index);
 		//Coord rel_hypercoord_tsub1 = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, *coord_tsub1);
-		//// Make the above const, after we get this to work!
+				//// Make the above const, after we get this to work!
 
 		////if (threadIdx.x == 0) {
 		////	force.print('f');
@@ -670,9 +695,16 @@ __global__ void solventForceKernel(Box* box) {
 
 	if (solvent_active) {
 		auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
-		solventblock_next_ptr->rel_pos[threadIdx.x] = Coord(40000, 210000, 21091);//solventblock.rel_pos[threadIdx.x];
+		//solventblock_next_ptr->rel_pos[threadIdx.x] = solventblock.rel_pos[threadIdx.x];
+		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
 		//solventblock_next_ptr->rel_pos[threadIdx.x] = coord_self_next.rel_position;
+
+		if (threadIdx.x == 0) {
+			// TODO: Do something different when we transfer.
+			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		}
 	}
+	
 
 }
 #undef solvent_index

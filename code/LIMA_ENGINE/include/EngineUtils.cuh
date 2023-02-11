@@ -287,6 +287,18 @@ namespace LIMAPOSITIONSYSTEM {
 			coord.rel_position.print('R');
 		}
 	}
+
+	// Get the relpos_prev, if the solvent was in the same solventblock last step
+	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
+		const int step_prev = step == 0 ? 0 : step - 1;
+		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
+		return blockPtr->rel_pos[threadIdx.x];
+	}
+
+	// Get the relpos_prev, if the solvent was NOT in the same solventblock last step
+	//__device__ static Coord getRelposPrevAfterTransfer(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
+
+
 	//__device__ static void applyPBC(Compound* compound);
 };
 

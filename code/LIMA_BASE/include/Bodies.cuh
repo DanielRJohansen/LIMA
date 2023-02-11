@@ -237,7 +237,7 @@ struct SolventBlock {
 struct SolventBlockGrid {
 	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
-	SolventBlock blocks[blocks_per_dim*blocks_per_dim*blocks_per_dim];
+	SolventBlock blocks[blocks_total];
 
 	__device__ __host__ SolventBlock* getBlockPtr(const Coord& index3d);
 	__device__ __host__ SolventBlock* getBlockPtr(int index1d) {
@@ -269,6 +269,8 @@ namespace SolventBlockHelpers {
 		static const int bpd = SolventBlockGrid::blocks_per_dim;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
+
+	
 }
 
 

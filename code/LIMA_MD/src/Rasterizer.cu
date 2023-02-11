@@ -9,16 +9,16 @@
 void mergeSortAPI(RenderBall* balls, int n_balls);
 
 
-RenderBall* Rasterizer::render(Simulation* simulation) {    
-    solvent_offset = simulation->n_compounds * MAX_COMPOUND_PARTICLES;
-    n_threadblocks = (int) ceil((float)simulation->total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
+RenderBall* Rasterizer::render(Simulation* simulation) {
+	solvent_offset = simulation->n_compounds * MAX_COMPOUND_PARTICLES;
+	n_threadblocks = (int)ceil((float)simulation->total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
 
 
 	RenderAtom* atoms = getAllAtoms(simulation);
 
 
-    RenderBall* balls = processAtoms(atoms, simulation);
-    mergeSortAPI(balls, simulation->total_particles_upperbound);
+	RenderBall* balls = processAtoms(atoms, simulation);
+	mergeSortAPI(balls, simulation->total_particles_upperbound);
 
 	return balls;
 }
@@ -39,24 +39,24 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls);
 const int THREADS_PER_LOADSOLVENTSATOMSKERNEL = 100;
 
 RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
-	
+
 
 	RenderAtom* atoms;
-	//cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
-    cudaMalloc(&atoms, sizeof(RenderAtom) * SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK);
+	cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
+	//cudaMalloc(&atoms, sizeof(RenderAtom) * SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK);
 
 
-    int solvent_blocks = (int) ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
+	int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
 
 
 	Box* box = simulation->box;
-    if (simulation->n_compounds > 0)
-	    loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms);
-    if (simulation->n_solvents > 0) {
-        //loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
-        loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box, atoms, solvent_offset);
-    }
-    	
+	if (simulation->n_compounds > 0)
+		loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms);
+	if (simulation->n_solvents > 0) {
+		//loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
+		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box, atoms, solvent_offset);
+	}
+
 	cudaDeviceSynchronize();
 
 	return atoms;
@@ -228,7 +228,7 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
 //}
 
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) {
-    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, threadIdx.x);
+    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x);
 
     if (threadIdx.x < solventblock->n_solvents) {
         const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };

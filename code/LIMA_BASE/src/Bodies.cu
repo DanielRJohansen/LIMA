@@ -92,7 +92,7 @@ void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockg
 			for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
 				for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
 					Coord origo{ x, y, z };	// Doubles as the 3D index of the block!
-					gridqueue_host[i].getBlockPtr(origo)->origo = Coord{1,1,1};
+					gridqueue_host[i].getBlockPtr(origo)->origo = origo;
 				}
 			}
 		}

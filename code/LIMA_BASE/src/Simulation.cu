@@ -48,7 +48,8 @@ void Simulation::copyBoxVariables() {
 		compounds_host[i] = box->compounds[i];
 
 	// Need this variable both on host and device
-	total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS
+	//total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS	
+	total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
 	box->total_particles_upperbound = total_particles_upperbound;
 }
 

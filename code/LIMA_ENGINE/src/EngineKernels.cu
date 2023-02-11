@@ -372,6 +372,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const
 }
 
 
+
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
 
@@ -583,13 +584,13 @@ __global__ void solventForceKernel(Box* box) {
 	}
 	__syncthreads();
 	solventblock.loadData(*solventblock_ptr);
+	__syncthreads();
 
-
-	if (threadIdx.x == 0 && blockIdx.x == SolventBlockHelpers::get1dIndex({ 3, 3, 3 })) {
-		printf("\n1d index: %d", SolventBlockHelpers::get1dIndex({ 3, 3, 3 }));
-		solventblock.origo.print('o');
-		solventblock.rel_pos[0].print('r');
-	}
+	//if (threadIdx.x == 0 && blockIdx.x == SolventBlockHelpers::get1dIndex({ 3, 3, 3 })) {
+	//	printf("\n1d index: %d", SolventBlockHelpers::get1dIndex({ 3, 3, 3 }));
+	//	solventblock.origo.print('o');
+	//	solventblock.rel_pos[0].print('r');
+	//}
 
 	Float3 force(0.f);
 	//const SolventCoord coord_self = thread_active ? *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_index) : SolventCoord{};
@@ -694,18 +695,17 @@ __global__ void solventForceKernel(Box* box) {
 	}
 
 	if (solvent_active) {
-		auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
-		//solventblock_next_ptr->rel_pos[threadIdx.x] = solventblock.rel_pos[threadIdx.x];
-		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-		//solventblock_next_ptr->rel_pos[threadIdx.x] = coord_self_next.rel_position;
-
-		if (threadIdx.x == 0) {
-			// TODO: Do something different when we transfer.
-			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		if (box->step % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
+			EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
+		}
+		else {
+			auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
+			solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+			if (threadIdx.x == 0) {
+				solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+			}
 		}
 	}
-	
-
 }
 #undef solvent_index
 #undef thread_active		// ALSO remove this
@@ -717,7 +717,13 @@ __global__ void solventForceKernel(Box* box) {
 
 
 
+__global__ void solventTransferKernel(Box* box) {
+	SolventBlockTransfermodule* transfermodule_ptr = &box->transfermodule_array[blockIdx.x];
 
+
+
+
+}
 
 
 

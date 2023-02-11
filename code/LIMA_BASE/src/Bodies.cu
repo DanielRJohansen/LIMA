@@ -74,7 +74,7 @@ bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid,
 	cudaMemcpy(grid_circular_queue, &grid, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
 
 	// Move pos_t - 1
-	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1);
+	const int index0_of_prev = (STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
 	cudaMemcpy(&grid_circular_queue[index0_of_prev], &grid_prev, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
 
 	cudaDeviceSynchronize();
@@ -85,9 +85,9 @@ bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid,
 }
 
 
-void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue_device, int n_grids) {
-	auto gridqueue_host = new SolventBlockGrid[n_grids];
-	for (int i = 0; i < n_grids; i++) {
+void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue_device) {
+	auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
+	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
 		for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
 			for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
 				for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
@@ -97,7 +97,7 @@ void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockg
 			}
 		}
 	}
-	cudaMemcpy(solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * n_grids, cudaMemcpyHostToDevice);
+	cudaMemcpy(solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
 	delete[] gridqueue_host;
 }
 

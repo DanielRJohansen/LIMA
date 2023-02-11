@@ -169,6 +169,10 @@ struct CompoundState {							// Maybe delete this soon?
 
 
 
+const int MAX_SOLVENTS_IN_BLOCK = 256;
+const int STEPS_PER_SOLVENTBLOCKTRANSFER = 10;
+const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+static_assert(STEPS_PER_LOGTRANSFER% STEPS_PER_SOLVENTBLOCKTRANSFER == 0, "Illegal blocktransfer stepcount");
 
 
 
@@ -205,7 +209,7 @@ struct SolventCoord {
 
 
 
-const int MAX_SOLVENTS_IN_BLOCK = 256;
+
 // blocks are notcentered 
 struct SolventBlock {
 	__device__ __host__ SolventBlock() {};
@@ -245,14 +249,32 @@ struct SolventBlockGrid {
 	}
 };
 
-class SolventBlockTransfermodule {
+template <int size>
+struct SolventTransferqueue {
+	Coord rel_positions[size];
+	Coord rel_positions_prev[size];	// Adjust rel positions to the new block's origo BEFORE putting it here!
+	int used_size{};
+	__device__ void addElement(int index, const Coord& pos, const Coord& pos_prev) {
+		rel_positions[index] = pos;
+		rel_positions_prev[index] = pos_prev;
+	}
+	__device__ void setUsedSize(int usedsize) {
+		used_size = usedsize;
+	}
+};
+struct SolventBlockTransfermodule {
 	// Only use directly (full plane contact) adjecent blocks
 	static const int n_queues = 6;			// or, adjecent_solvent_blocks
 	static const int max_queue_size = 16;	// Maybe this is a bit dangerous
 
 
 	// Each queue will be owned solely by 1 adjecent solventblock
-	Coord transfer_queues[n_queues][max_queue_size];
+	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
+	SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;
+	Coord* getQueuePtr(const Coord& transfer_direction) {
+		// Fucking magic yo...
+		auto index = transfer_direction.dot(Coord{ 1, 2, 3 }) + 2;
+	}
 
 	//__device__ trans
 };
@@ -262,15 +284,22 @@ namespace SolventBlockHelpers {
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
 		SolventBlockGrid* grid_circular_queue);
 
-	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue, int n_grids);
+	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue);
 	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);
 
 	__device__ __host__ static int get1dIndex(const Coord& index3d) {
 		static const int bpd = SolventBlockGrid::blocks_per_dim;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
-
-	
+	__device__ static Coord get3dIndex(int& index1d) {
+		static const int bpd = SolventBlockGrid::blocks_per_dim;
+		auto z = index1d / (bpd * bpd);
+		index1d -= z * bpd * bpd;
+		auto y = index1d / bpd;
+		index1d -= y * bpd;
+		auto x = index1d;
+		return Coord{ x, y, z };
+	}
 }
 
 

@@ -258,6 +258,7 @@ struct Coord {
 	__host__ __device__ Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
 	//__device__ Coord operator >> (const uint32_t a) const { return Coord(x >> a, y >> a, z >> a); }
 	
+	__host__ __device__ float dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ void print(char c = '_') const { printf(" %c %d %d %d\n", c, x, y, z); }
 
 //	__host__ __device__ float distSqAbs(Coord* a) {

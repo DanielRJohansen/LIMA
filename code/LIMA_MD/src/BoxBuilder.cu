@@ -26,10 +26,10 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
 	cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
 
-	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_LOGTRANSFER;
+	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
 	cudaMalloc(&simulation->box->solventblockgrid_circurlar_queue, n_bytes_solventcoords);
-	SolventBlockHelpers::setupBlockMetaOnDevice(simulation->box->solventblockgrid_circurlar_queue, STEPS_PER_LOGTRANSFER);
-
+	SolventBlockHelpers::setupBlockMetaOnDevice(simulation->box->solventblockgrid_circurlar_queue);
+	cudaMalloc(&simulation->box->transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlockGrid::blocks_total);
 
 
 	// This is very the coords reside while build (host)

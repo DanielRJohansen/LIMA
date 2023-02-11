@@ -16,80 +16,6 @@ namespace ForceCalc {
 //	-
 };
 
-namespace EngineUtils {
-	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
-		for (int i = 0; i < 3; i++) {
-			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
-			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
-			*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);
-		}
-	}
-
-	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
-		Float3 temp = *p2;
-		applyHyperpos(p1, &temp);
-		return (*p1 - temp).len();
-	}
-
-	__device__ __host__ static float calcHyperDistDenormalized(const Float3* p1, const Float3* p2) {
-		Float3 temp = *p2;
-		applyHyperpos(p1, &temp);
-		return (*p1 - temp).len() * NORMALIZER;
-	}
-
-	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
-		const float vel = calcHyperDist(pos1, pos2) / elapsed_time * NORMALIZER;
-		const float kinE = 0.5f * mass * vel * vel;
-		return kinE;
-	}
-
-	__device__ __host__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
-		for (int dim = 0; dim < 3; dim++) {
-			/**current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);*/
-			*current_position->placeAt(dim) += BOX_LEN *(current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
-		}
-	}
-
-	static void __host__ genericErrorCheck(const char* text) {
-		cudaDeviceSynchronize();
-		cudaError_t cuda_status = cudaGetLastError();
-		if (cuda_status != cudaSuccess) {
-			std::cout << "\nCuda error code: " << cuda_status << std::endl;
-			fprintf(stderr, text);
-			exit(1);
-		}
-	}
-
-	//__device__ __host__ static void applyABC(Coord* pos) {
-
-	//}
-
-	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
-		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
-		const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
-		return v_rms;	// [m/s]
-	}
-
-	// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	__device__ static uint32_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
-		const uint32_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
-		const uint32_t step_offset = steps_since_transfer * total_particles_upperbound;
-		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return step_offset + compound_offset + particle_id_local;
-	}
-
-	__host__ static size_t getAlltimeIndexOfParticle(uint64_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
-		const uint32_t step_offset = static_cast<uint32_t>(step) * total_particles_upperbound;
-		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return step_offset + compound_offset + particle_id_local;
-	}
-
-
-};
-
 
 
 
@@ -260,14 +186,18 @@ namespace LIMAPOSITIONSYSTEM {
 		return movable_solvent.rel_position + relPosShiftOfMovable;
 	}
 
+	__device__ __host__ static void applyPBC(Coord& origo) {
+		origo.x += BOX_LEN_NM * (origo.x < 0);
+		origo.x -= BOX_LEN_NM * (origo.x >= BOX_LEN_NM);
+		origo.y += BOX_LEN_NM * (origo.y < 0);
+		origo.y -= BOX_LEN_NM * (origo.y >= BOX_LEN_NM);
+		origo.z += BOX_LEN_NM * (origo.z < 0);
+		origo.z -= BOX_LEN_NM * (origo.z >= BOX_LEN_NM);
+	}
+
 	__device__ __host__ static void applyPBC(SolventCoord& coord) {	// Only changes position if position is outside of box;
 		Coord& pos = coord.origo;
-		pos.x += BOX_LEN_NM * (pos.x < 0);
-		pos.x -= BOX_LEN_NM * (pos.x >= BOX_LEN_NM);
-		pos.y += BOX_LEN_NM * (pos.y < 0);
-		pos.y -= BOX_LEN_NM * (pos.y >= BOX_LEN_NM);
-		pos.z += BOX_LEN_NM * (pos.z < 0);
-		pos.z -= BOX_LEN_NM * (pos.z >= BOX_LEN_NM);
+		applyPBC(pos);
 	}
 
 	// ReCenter origo of solvent, and the relative pos around said origo
@@ -301,6 +231,128 @@ namespace LIMAPOSITIONSYSTEM {
 
 	//__device__ static void applyPBC(Compound* compound);
 };
+
+
+
+
+
+
+
+
+namespace EngineUtils {
+	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
+		for (int i = 0; i < 3; i++) {
+			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
+			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
+			*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);
+		}
+	}
+
+	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
+		Float3 temp = *p2;
+		applyHyperpos(p1, &temp);
+		return (*p1 - temp).len();
+	}
+
+	__device__ __host__ static float calcHyperDistDenormalized(const Float3* p1, const Float3* p2) {
+		Float3 temp = *p2;
+		applyHyperpos(p1, &temp);
+		return (*p1 - temp).len() * NORMALIZER;
+	}
+
+	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
+		const float vel = calcHyperDist(pos1, pos2) / elapsed_time * NORMALIZER;
+		const float kinE = 0.5f * mass * vel * vel;
+		return kinE;
+	}
+
+	__device__ __host__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
+		for (int dim = 0; dim < 3; dim++) {
+			/**current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);*/
+			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
+		}
+	}
+
+	static void __host__ genericErrorCheck(const char* text) {
+		cudaDeviceSynchronize();
+		cudaError_t cuda_status = cudaGetLastError();
+		if (cuda_status != cudaSuccess) {
+			std::cout << "\nCuda error code: " << cuda_status << std::endl;
+			fprintf(stderr, text);
+			exit(1);
+		}
+	}
+
+	//__device__ __host__ static void applyABC(Coord* pos) {
+
+	//}
+
+	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
+		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
+		const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
+		return v_rms;	// [m/s]
+	}
+
+	// For solvents, compound_id = n_compounds and particle_id = solvent_index
+	__device__ static uint32_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+		const uint32_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
+		const uint32_t step_offset = steps_since_transfer * total_particles_upperbound;
+		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		return step_offset + compound_offset + particle_id_local;
+	}
+
+	__host__ static size_t getAlltimeIndexOfParticle(uint64_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+		const uint32_t step_offset = static_cast<uint32_t>(step) * total_particles_upperbound;
+		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		return step_offset + compound_offset + particle_id_local;
+	}
+
+	__device__ int static getNewBlockId(const Coord& transfer_direction) {
+		return 0;
+	}
+
+	__device__ Coord static getTransferDirection(const Coord& relpos) {
+		return Coord{};
+	}
+
+	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const Coord& transfer_direction) {
+		Coord new3dIndex = SolventBlockHelpers::get3dIndex(blockId) + transfer_direction;
+		LIMAPOSITIONSYSTEM::applyPBC(new3dIndex);
+		auto index = SolventBlockHelpers::get1dIndex(new3dIndex);
+		return &transfermodule_array[index];
+	}
+
+	__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
+		const Coord transfer_direction = getTransferDirection(relpos);
+		int new_blockid = getNewBlockId(transfer_direction);
+		if (new_blockid == blockIdx.x) {
+			transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+		}
+		else {
+			//Coord 
+			// TEMP:
+			transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+		}
+	}
+
+	__device__ static void compressTransferqueue(SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> transferqueue) {
+
+		for (int i = 0; i < transferqueue.used_size; i += blockDim.x) {
+
+		}
+	}
+};
+
+
+
+
+
+
+
+
 
 namespace CPPD {
 	constexpr int32_t ceil(float num) {

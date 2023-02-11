@@ -495,6 +495,26 @@ private:
 };
 
 
+template <int size>
+class UniqueIdSet {
+public:
+	UniqueIdSet() {};
+	bool insert(uint16_t unique_id) {
+		bool is_new_entry = !ids[unique_id];
+		ids[unique_id] = true;
+		return is_new_entry;
+	}
+
+	void init(uint16_t* keys, int n_keys) {
+		ids.fill(false);
+		for (int i = 0; i < n_keys; i++) {
+			ids[keys[i]] = true;
+		}
+	}
+private:
+	std::array<bool, size> ids{};
+};
+
 
 
 struct RenderBall {

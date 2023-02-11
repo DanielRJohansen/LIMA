@@ -93,8 +93,11 @@ private:
 	// Make the block len a little longer than it needs to be, so we include particles on the box-boundary
 	static constexpr float block_len = CUTOFF_LM + uncovered_len / (blocks_per_dim_float - 1.f);
 
+	static constexpr int n_greaterblocks_dim = 2;
+	static constexpr int n_gb_len = n_greaterblocks_dim + 1;
+	static constexpr int n_greaterblocks_total = n_gb_len * n_gb_len * n_gb_len - 1;
 
-	struct SolventBlock {
+	struct SolventBlockNlist {
 		static const int max_solvents_in_block = 512;	// i dunno
 		std::array<uint32_t, max_solvents_in_block> solvent_ids;
 		int n_elements{ 0 };
@@ -105,23 +108,27 @@ private:
 
 
 
-	std::array<std::array< std::array<SolventBlock, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> m_blocks;
+	std::array<std::array< std::array<SolventBlockNlist, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> m_blocks;
 
 	static Int3 getSolventblockIndex(const Float3& pos);
 	
 	static constexpr std::array<Int3, blocks_total> getAllIndices();
-	static constexpr std::array<Int3, 2*2*2 - 1> getAdjacentIndicesThatAreGreater(Int3 index);
-	static constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>,
+	static constexpr std::array<Int3, n_greaterblocks_total> getAdjacentIndicesThatAreGreater(Int3 index);
+	static constexpr std::array<std::array<std::array<std::array<Int3, n_greaterblocks_total>,
 		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcGreaterIndices();
 
 
-	const std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>,
-		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices = precalcGreaterIndices();
+	/*const std::array<std::array<std::array<std::array<Int3, n_greaterblocks_total>,
+		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices = precalcGreaterIndices();*/
 
-	SolventBlock& getBlock(const Int3& index);
+	SolventBlockNlist& getBlock(const Int3& index);
 
 	static void addAllInsideBlock(std::vector<CandidateList>& neighborCandidates,
-		const SolventBlock& block);
+		const SolventBlockNlist& block);
 	static void addAllBetweenBlocks(std::vector<CandidateList>& neighborCandidates,
-		const SolventBlock& blocka, const SolventBlock& blockb);
+		const SolventBlockNlist& blocka, const SolventBlockNlist& blockb);
+
+
+
+	
 };

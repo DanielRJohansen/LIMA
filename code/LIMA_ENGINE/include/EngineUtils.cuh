@@ -263,16 +263,17 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ __host__ static void applyPBC(SolventCoord& coord) {	// Only changes position if position is outside of box;
 		Coord& pos = coord.origo;
 		pos.x += BOX_LEN_NM * (pos.x < 0);
-		pos.x -= BOX_LEN_NM * (pos.x > BOX_LEN_NM);
+		pos.x -= BOX_LEN_NM * (pos.x >= BOX_LEN_NM);
 		pos.y += BOX_LEN_NM * (pos.y < 0);
-		pos.y -= BOX_LEN_NM * (pos.y > BOX_LEN_NM);
+		pos.y -= BOX_LEN_NM * (pos.y >= BOX_LEN_NM);
 		pos.z += BOX_LEN_NM * (pos.z < 0);
-		pos.z -= BOX_LEN_NM * (pos.z > BOX_LEN_NM);
+		pos.z -= BOX_LEN_NM * (pos.z >= BOX_LEN_NM);
 	}
 
 	// ReCenter origo of solvent, and the relative pos around said origo
 	__device__ static void updateSolventcoord(SolventCoord& coord) {
-		Coord shift_nm = coord.rel_position / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+		const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
+		Coord shift_nm = coord.rel_position / static_cast<int32_t>(shift_at);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better! 
 
 		SolventCoord tmp = coord;
 		coord.origo += shift_nm;

@@ -24,6 +24,8 @@ public:
 	CompoundCoords* coordarray_prev = nullptr;
 	SolventCoord* solventcoords = nullptr;
 	SolventCoord* solventcoords_prev = nullptr;
+	SolventBlockGrid* solventblocks = nullptr;
+	SolventBlockGrid* solventblocks_prev = nullptr;
 
 private:
 	void integrateCompound(Compound_Carrier* compound, Simulation* simulation);

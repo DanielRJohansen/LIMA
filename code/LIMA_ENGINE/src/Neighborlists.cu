@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <execution>
 #include <algorithm>
+#include <unordered_set>
 
 bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_lm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	const float dist = EngineUtils::calcHyperDist(pos_a, pos_b);
@@ -21,6 +22,27 @@ void inline addNeighborIfEligible(HashTable& currentNeighbors,
 			nlist_other.addId(id_self, neighbortype_self);
 		}
 	}
+}
+
+void inline addNeighborIfEligible(UniqueIdSet<MAX_SOLVENTS>& currentNeighbors,
+	NeighborList& nlist_self, NeighborList& nlist_other,
+	const Float3& pos_self, const Float3& pos_other,
+	const int& id_self, const int& id_other,
+	NeighborList::NEIGHBOR_TYPE neighbortype_self, NeighborList::NEIGHBOR_TYPE neighbortype_other,
+	const float cutoff_extension)
+{
+	if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_LM + cutoff_extension)) {
+		//if (currentNeighbors.insert(id_other)) {
+		//	nlist_self.addId(id_other, neighbortype_other);
+		//	nlist_other.addId(id_self, neighbortype_self);
+		//}
+	}
+}
+
+// Maybe just save this hash table from last nlist update. This does mean that we have to erase the elements, but so be it..
+void initSet(std::unordered_set<uint16_t>& currentNeighbors, uint16_t* keys, int n_keys) {
+	for (int i = 0; i < n_keys; i++)
+		currentNeighbors.insert(keys[i]);
 }
 
 
@@ -222,28 +244,44 @@ namespace NListUtils {
 		}
 
 		// Finally add all solvent->solvent candidates
-		SolventBlockCollection solventblock_collection(nlist_data_collection->solvent_positions, simulation->n_solvents);
-		const auto& neighborCandidatesAll = solventblock_collection.getNeighborSolventForAllSolvents(simulation->n_solvents);
-		auto t2 = std::chrono::high_resolution_clock::now();
+		//SolventBlockCollection solventblock_collection(nlist_data_collection->solvent_positions, simulation->n_solvents);
+		//const auto& neighborCandidatesAll = solventblock_collection.getNeighborSolventForAllSolvents(simulation->n_solvents);
+		//auto t2 = std::chrono::high_resolution_clock::now();
 
-		for (int id_self = 0; id_self < simulation->n_solvents; id_self++) {
-			NeighborList& nlist_self = nlist_data_collection->solvent_neighborlists[id_self];
-			HashTable hashtable_solventneighbors(nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-			const Float3& pos_self = nlist_data_collection->solvent_positions[id_self];
-			const auto& neighborCandidates = neighborCandidatesAll[id_self];
+		//UniqueIdSet<MAX_SOLVENTS> current_neighbors{};
 
-			for (int i = 0; i < neighborCandidates.n_candidates; i++) {
-				const auto id_other = neighborCandidates.candidates[i];
-				NeighborList& nlist_candidate = nlist_data_collection->solvent_neighborlists[id_other];
-				const Float3 pos_other = nlist_data_collection->solvent_positions[id_other];
-				addNeighborIfEligible(hashtable_solventneighbors, nlist_self, nlist_candidate,
-					pos_self, pos_other,
-					id_self, id_other,
-					NeighborList::NEIGHBOR_TYPE::SOLVENT, NeighborList::NEIGHBOR_TYPE::SOLVENT,
-					0.f
-				);
-			}
-		}
+		//for (int id_self = 0; id_self < simulation->n_solvents; id_self++) {
+		//	continue;
+		//	NeighborList& nlist_self = nlist_data_collection->solvent_neighborlists[id_self];
+		//	//HashTable hashtable_solventneighbors(nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
+		//	//std::unordered_set<uint16_t> solvent_neighbors_set(NEIGHBORLIST_MAX_SOLVENTS);
+		//	//initSet(solvent_neighbors_set, nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors);
+		//	current_neighbors.init(nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors);
+
+		//	//int a = solvent_neighbors_set.size();
+		//	const Float3& pos_self = nlist_data_collection->solvent_positions[id_self];
+		//	const auto& neighborCandidates = neighborCandidatesAll[id_self];
+
+		//	for (int i = 0; i < neighborCandidates.n_candidates; i++) {
+		//		const auto id_other = neighborCandidates.candidates[i];
+		//		NeighborList& nlist_candidate = nlist_data_collection->solvent_neighborlists[id_other];
+		//		const Float3 pos_other = nlist_data_collection->solvent_positions[id_other];
+		//		/*addNeighborIfEligible(hashtable_solventneighbors, 
+		//			nlist_self, nlist_candidate,
+		//			pos_self, pos_other,
+		//			id_self, id_other,
+		//			NeighborList::NEIGHBOR_TYPE::SOLVENT, NeighborList::NEIGHBOR_TYPE::SOLVENT,
+		//			0.f
+		//		);*/
+		//		addNeighborIfEligible(current_neighbors,
+		//			nlist_self, nlist_candidate,
+		//			pos_self, pos_other,
+		//			id_self, id_other,
+		//			NeighborList::NEIGHBOR_TYPE::SOLVENT, NeighborList::NEIGHBOR_TYPE::SOLVENT,
+		//			0.f
+		//		);
+		//	}
+		//}
 
 
 
@@ -293,13 +331,13 @@ std::vector<CandidateList> SolventBlockCollection::getNeighborSolventForAllSolve
 
 	for (const auto& index : all_indices) {
 		// First add all index combinations inside the block
-		SolventBlock& block_self = getBlock(index);
+		SolventBlockNlist& block_self = getBlock(index);
 		addAllInsideBlock(neighborCandidates, block_self);
 		//continue;
 		const auto& query_blockindices = getAdjacentIndicesThatAreGreater(index);
 		//const auto& query_blockindices = precalcedGreaterIndices[index.x][index.y][index.z];
 		for (const auto& query_index : query_blockindices) {
-			SolventBlock& block_query = getBlock(query_index);
+			SolventBlockNlist& block_query = getBlock(query_index);
 
 			// Now add all index combinations between blocks
 			addAllBetweenBlocks(neighborCandidates, block_self, block_query);
@@ -341,18 +379,18 @@ constexpr std::array<Int3, SolventBlockCollection::blocks_total> SolventBlockCol
 	return indices;
 }
 
-constexpr std::array<Int3, 2*2*2-1> SolventBlockCollection::getAdjacentIndicesThatAreGreater(Int3 index)
+constexpr std::array<Int3, SolventBlockCollection::n_greaterblocks_total> SolventBlockCollection::getAdjacentIndicesThatAreGreater(Int3 index)
 {
-	std::array<Int3, 2*2*2 - 1> indices{};
+	std::array<Int3, n_greaterblocks_total> indices{};
 	int index1d = 0;
-	for (int z = index.z; z <= index.z + 1; z++) {
-		for (int y = index.y; y <= index.y + 1; y++) {
-			for (int x = index.x; x <= index.x + 1; x++) {
+	for (int z = index.z; z <= index.z + n_greaterblocks_dim; z++) {
+		for (int y = index.y; y <= index.y + n_greaterblocks_dim; y++) {
+			for (int x = index.x; x <= index.x + n_greaterblocks_dim; x++) {
 				if (x == index.x && y == index.y && z == index.z) { continue; }
 				indices[index1d++] = Int3{
-					x < blocks_per_dim ? x : 0, 
-					y < blocks_per_dim ? y : 0,
-					z < blocks_per_dim ? z : 0
+					x < blocks_per_dim ? x : x - blocks_per_dim,
+					y < blocks_per_dim ? y : y - blocks_per_dim,
+					z < blocks_per_dim ? z : z - blocks_per_dim
 				};
 			}
 		}
@@ -360,8 +398,8 @@ constexpr std::array<Int3, 2*2*2-1> SolventBlockCollection::getAdjacentIndicesTh
 	return indices;
 }
 
-constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim> SolventBlockCollection::precalcGreaterIndices() {
-	std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices;
+constexpr std::array<std::array<std::array<std::array<Int3, SolventBlockCollection::n_greaterblocks_total>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim>, SolventBlockCollection::blocks_per_dim> SolventBlockCollection::precalcGreaterIndices() {
+	std::array<std::array<std::array<std::array<Int3, n_greaterblocks_total>, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices;
 	for (int z = 0; z < blocks_per_dim; z++) {
 		for (int y = 0; y < blocks_per_dim; y++) {
 			for (int x = 0; x < blocks_per_dim; x++) {
@@ -372,11 +410,11 @@ constexpr std::array<std::array<std::array<std::array<Int3, 2 * 2 * 2 - 1>, Solv
 	return precalcedGreaterIndices;
 }
 
-SolventBlockCollection::SolventBlock& SolventBlockCollection::getBlock(const Int3& index) {
+SolventBlockCollection::SolventBlockNlist& SolventBlockCollection::getBlock(const Int3& index) {
 	return m_blocks[index.x][index.y][index.z];
 }
 
-void SolventBlockCollection::addAllInsideBlock(std::vector<CandidateList>& neighborCandidates, const SolventBlock& block) {
+void SolventBlockCollection::addAllInsideBlock(std::vector<CandidateList>& neighborCandidates, const SolventBlockNlist& block) {
 	for (auto i = 0; i < block.n_elements; i++) {
 		for (int ii = i+1; ii < block.n_elements; ii++) {
 			const auto& id_a = block.solvent_ids[i];
@@ -391,7 +429,7 @@ void SolventBlockCollection::addAllInsideBlock(std::vector<CandidateList>& neigh
 	}
 }
 
-void SolventBlockCollection::addAllBetweenBlocks(std::vector<CandidateList>& neighborCandidates, const SolventBlock& blocka, const SolventBlock& blockb) {
+void SolventBlockCollection::addAllBetweenBlocks(std::vector<CandidateList>& neighborCandidates, const SolventBlockNlist& blocka, const SolventBlockNlist& blockb) {
 	for (auto ia = 0; ia < blocka.n_elements; ia++) {
 		for (int ib = 0; ib < blockb.n_elements; ib++) {
 			const auto& id_a = blocka.solvent_ids[ia];

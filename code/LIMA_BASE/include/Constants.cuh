@@ -132,7 +132,7 @@ const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
-const int STEPS_PER_NLIST_UPDATE = 50;
+const int STEPS_PER_NLIST_UPDATE = 10;
 
 
 

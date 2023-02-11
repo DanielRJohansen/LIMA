@@ -42,7 +42,9 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	
 
 	RenderAtom* atoms;
-	cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
+	//cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
+    cudaMalloc(&atoms, sizeof(RenderAtom) * SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK);
+
 
     int solvent_blocks = (int) ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
 
@@ -50,8 +52,11 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	Box* box = simulation->box;
     if (simulation->n_compounds > 0)
 	    loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms);
-    if (simulation->n_solvents > 0)
-    	loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
+    if (simulation->n_solvents > 0) {
+        //loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
+        loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box, atoms, solvent_offset);
+    }
+    	
 	cudaDeviceSynchronize();
 
 	return atoms;
@@ -195,35 +200,62 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
     }
 }
 
-__global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset) {
-    int solvent_id = threadIdx.x + blockIdx.x * THREADS_PER_LOADSOLVENTSATOMSKERNEL;
+//__global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset) {
+//    int solvent_id = threadIdx.x + blockIdx.x * THREADS_PER_LOADSOLVENTSATOMSKERNEL;
+//
+//    if (solvent_id < box->n_solvents) {
+//        const SolventCoord& coord = *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_id);
+//        atoms[solvent_id + offset].pos = coord.getAbsolutePositionLM();
+//        //atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
+//        atoms[solvent_id + offset].mass = SOLVENT_MASS;
+//        atoms[solvent_id + offset].atom_type = SOL;
+//
+//
+//        // This part is for various debugging purposes
+//        int query_id = 0;
+//        if (solvent_id == query_id) {
+//            atoms[solvent_id + offset].atom_type = P;
+//        }
+//        const auto& nlist = box->solvent_neighborlists[solvent_id];
+//        for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
+//            if (nlist.neighborsolvent_ids[i] == query_id) {
+//                atoms[solvent_id + offset].atom_type = O;
+//            }
+//        }
+//        //if (solvent_id != 440)
+//        //    atoms[solvent_id + offset].atom_type = NONE;
+//	}
+//}
 
-    if (solvent_id < box->n_solvents) {
-        const SolventCoord& coord = *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_id);
-        atoms[solvent_id + offset].pos = coord.getAbsolutePositionLM();
-        //atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
-        atoms[solvent_id + offset].mass = SOLVENT_MASS;
-        atoms[solvent_id + offset].atom_type = SOL;
+__global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) {
+    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, threadIdx.x);
+
+    if (threadIdx.x < solventblock->n_solvents) {
+        const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };
+
+        RenderAtom atom{};
+        atom.pos = coord.getAbsolutePositionLM();
+        atom.mass = SOLVENT_MASS;
+        atom.atom_type = SOL;
 
 
         // This part is for various debugging purposes
         int query_id = 0;
-        if (solvent_id == query_id) {
-            atoms[solvent_id + offset].atom_type = P;
-        }
-        const auto& nlist = box->solvent_neighborlists[solvent_id];
-        for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
-            if (nlist.neighborsolvent_ids[i] == query_id) {
-                atoms[solvent_id + offset].atom_type = O;
-            }
-        }
+        //if (solvent_id == query_id) {
+        //    atoms[solvent_id + offset].atom_type = P;
+        //}
+        //const auto& nlist = box->solvent_neighborlists[solvent_id];
+        //for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
+        //    if (nlist.neighborsolvent_ids[i] == query_id) {
+        //        atoms[solvent_id + offset].atom_type = O;
+        //    }
+        //}
+        int global_id = threadIdx.x + blockIdx.x * blockDim.x;
+        atoms[global_id] = atom;
         //if (solvent_id != 440)
         //    atoms[solvent_id + offset].atom_type = NONE;
-	}
+    }
 }
-
-
-
 
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) { 
     const int index = threadIdx.x + blockIdx.x * RAS_THREADS_PER_BLOCK;

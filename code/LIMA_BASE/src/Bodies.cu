@@ -36,7 +36,6 @@ void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCo
 		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
 		exit(1);
 	}
-
 }
 
 
@@ -51,14 +50,68 @@ SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
 }
 
 
+SolventBlock* SolventBlockGrid::getBlockPtr(const Coord& index3d)
+{
+	return getBlockPtr(SolventBlockHelpers::get1dIndex(index3d));
+}
+
+
+
+bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord)
+{
+	if (coord.origo.x >= 7 || coord.origo.y >= 7 || coord.origo.z >= 7) {
+		printf("");
+	}
+	return grid.getBlockPtr(coord.origo)->addSolvent(coord.rel_position);
+}
 
 
 
 
 
+bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev, SolventBlockGrid* grid_circular_queue) {
+	// Move pos_t
+	cudaMemcpy(grid_circular_queue, &grid, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
+
+	// Move pos_t - 1
+	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1);
+	cudaMemcpy(&grid_circular_queue[index0_of_prev], &grid_prev, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
+
+	cudaDeviceSynchronize();
+	if (cudaGetLastError() != cudaSuccess) {
+		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
+		exit(1);
+	}
+}
 
 
+void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue_device, int n_grids) {
+	auto gridqueue_host = new SolventBlockGrid[n_grids];
+	for (int i = 0; i < n_grids; i++) {
+		for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
+			for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
+				for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
+					Coord origo{ x, y, z };	// Doubles as the 3D index of the block!
+					gridqueue_host[i].getBlockPtr(origo)->origo = Coord{1,1,1};
+				}
+			}
+		}
+	}
+	cudaMemcpy(solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * n_grids, cudaMemcpyHostToDevice);
+	delete[] gridqueue_host;
+}
 
+void SolventBlockHelpers::setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev) {
+	for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
+		for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
+			for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
+				Coord origo{ x, y, z };	// Doubles as the 3D index of the block!
+				grid->getBlockPtr(origo)->origo = origo;
+				grid_prev->getBlockPtr(origo)->origo = origo;
+			}
+		}
+	}
+}
 
 
 Float3 Compound_Carrier::calcCOM() {

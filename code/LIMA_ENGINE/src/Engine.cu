@@ -188,7 +188,8 @@ void Engine::step() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
-		solventForceKernel << < simulation->blocks_per_solventkernel, THREADS_PER_SOLVENTBLOCK >> > (simulation->box); 
+		//solventForceKernel << < simulation->blocks_per_solventkernel, THREADS_PER_SOLVENTBLOCK >> > (simulation->box); 
+		solventForceKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
 	}
 #endif
 	cudaDeviceSynchronize();

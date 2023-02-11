@@ -26,6 +26,11 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
 	cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
 
+	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_LOGTRANSFER;
+	cudaMalloc(&simulation->box->solventblockgrid_circurlar_queue, n_bytes_solventcoords);
+	SolventBlockHelpers::setupBlockMetaOnDevice(simulation->box->solventblockgrid_circurlar_queue, STEPS_PER_LOGTRANSFER);
+
+
 
 	// This is very the coords reside while build (host)
 	coordarray = new CompoundCoords[MAX_COMPOUNDS];
@@ -33,6 +38,10 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 	solventcoords = new SolventCoord[MAX_SOLVENTS];
 	solventcoords_prev = new SolventCoord[MAX_SOLVENTS];
+
+	solventblocks = new SolventBlockGrid{};
+	solventblocks_prev = new SolventBlockGrid{};
+	SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);
 
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
@@ -96,7 +105,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	// Move the positions to the appropriate places in the circular queue
 	CompoundCoords::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
 	SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
-
+	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circurlar_queue);
 
 	
 	// Permanent Outputs for energy & trajectory analysis
@@ -204,8 +213,14 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 
 		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
-			solventcoords[simulation->box->n_solvents] = SolventCoord::createFromPositionNM(sol_pos);
-			solventcoords_prev[simulation->box->n_solvents] = solventcoords[simulation->box->n_solvents];	// TODO: Add a subtraction here for initial velocity.
+			SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
+			LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
+			
+			solventcoords[simulation->box->n_solvents] = solventcoord;
+			solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
+
+			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks, solventcoord);
+			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks_prev, solventcoord);
 			simulation->box->n_solvents++;
 		}
 	}

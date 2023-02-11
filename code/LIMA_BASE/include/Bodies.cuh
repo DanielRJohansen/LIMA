@@ -187,6 +187,8 @@ struct CompoundCoords {
 };
 
 struct SolventCoord {
+	__device__ __host__ SolventCoord() {}
+	__device__ __host__ SolventCoord(Coord ori , Coord rel) : origo(ori ), rel_position(rel) {}
 	Coord origo{};									// [nm]
 	Coord rel_position{};							// [lm]
 
@@ -199,21 +201,111 @@ struct SolventCoord {
 	}
 };
 
+
+
+
+
+const int MAX_SOLVENTS_IN_BLOCK = 256;
+// blocks are notcentered 
+struct SolventBlock {
+	__device__ __host__ SolventBlock() {};
+	__device__ __host__ void loadMeta(const SolventBlock& block) { 
+		origo = block.origo; 
+		n_solvents = block.n_solvents;
+	}
+	__device__ __host__ void loadData(const SolventBlock& block) {
+		if (threadIdx.x < n_solvents) {
+			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
+		}
+	}
+
+	__device__ __host__ bool addSolvent(const Coord& rel_position) {
+		if (n_solvents == MAX_SOLVENTS_IN_BLOCK) {
+			return false;
+		}
+		rel_pos[n_solvents++] = rel_position;
+		return true;
+	}
+	static constexpr float block_len = 1; // [nm]
+	static_assert((static_cast<int>(BOX_LEN_NM) % static_cast<int>(block_len)) == 0, "Illegal box dimension");
+
+	Coord origo{};
+	uint16_t n_solvents{};
+	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
+};
+
+struct SolventBlockGrid {
+	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
+	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
+	SolventBlock blocks[blocks_per_dim*blocks_per_dim*blocks_per_dim];
+
+	__device__ __host__ SolventBlock* getBlockPtr(const Coord& index3d);
+	__device__ __host__ SolventBlock* getBlockPtr(int index1d) {
+		return &blocks[index1d];
+	}
+};
+
+class SolventBlockTransfermodule {
+	// Only use directly (full plane contact) adjecent blocks
+	static const int n_queues = 6;			// or, adjecent_solvent_blocks
+	static const int max_queue_size = 16;	// Maybe this is a bit dangerous
+
+
+	// Each queue will be owned solely by 1 adjecent solventblock
+	Coord transfer_queues[n_queues][max_queue_size];
+
+	//__device__ trans
+};
+
+namespace SolventBlockHelpers {
+	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord);
+	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
+		SolventBlockGrid* grid_circular_queue);
+
+	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue, int n_grids);
+	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);
+
+	__device__ __host__ static int get1dIndex(const Coord& index3d) {
+		static const int bpd = SolventBlockGrid::blocks_per_dim;
+		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
 namespace CoordArrayQueueHelpers {
-	/*__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords, 
+	/*__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords,
 		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) */
 
-	__device__ static CompoundCoords* getCoordarrayPtr(CompoundCoords* coordarray_circular_queue, int step, int compound_index) {
+	__device__ static CompoundCoords* getCoordarrayPtr(CompoundCoords* coordarray_circular_queue,
+		int step, int compound_index) {
 		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
 		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
 	}
 
 
-	__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue, const int step, const int solvent_id) {
+	__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue,
+		const int step, const int solvent_id) {
 		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;
 		return &solventcoordarray_circular_queue[index0_of_currentstep_coordarray + solvent_id];
 	}
+
+	__device__ static SolventBlock* getSolventBlockPtr(SolventBlockGrid* solventblockgrid_circular_queue,
+		const int step, int solventblock_id) {
+		const int index0_of_currentstep_blockarray = (step % STEPS_PER_LOGTRANSFER);
+		return solventblockgrid_circular_queue[index0_of_currentstep_blockarray].getBlockPtr(solventblock_id);
+	}
 }
+
 
 
 

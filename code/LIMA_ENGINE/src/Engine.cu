@@ -191,6 +191,11 @@ void Engine::step() {
 		//solventForceKernel << < simulation->blocks_per_solventkernel, THREADS_PER_SOLVENTBLOCK >> > (simulation->box); 
 		solventForceKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
 	}
+	cudaDeviceSynchronize();
+	if (simulation->getStep() % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
+		solventTransferKernel <<< SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>>> (simulation->box);
+	}
+
 #endif
 	cudaDeviceSynchronize();
 

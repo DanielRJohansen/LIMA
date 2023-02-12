@@ -216,8 +216,10 @@ bool doBasicBenchmark(Environment& env, const string& folder_name) {
 	return true;
 }
 
-int main() {
 
+
+
+int main() {
 
 
 	/*coordPrecesionBenchmark();

@@ -46,7 +46,7 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	//cudaMalloc(&atoms, sizeof(RenderAtom) * SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK);
 
 
-	int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
+	//int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
 
 
 	Box* box = simulation->box;

@@ -105,7 +105,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	// Move the positions to the appropriate places in the circular queue
 	CompoundCoords::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
 	SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
-	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circurlar_queue);
+	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circurlar_queue, simulation->box->transfermodule_array);
 
 	
 	// Permanent Outputs for energy & trajectory analysis

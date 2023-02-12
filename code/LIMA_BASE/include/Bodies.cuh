@@ -253,24 +253,54 @@ template <int size>
 struct SolventTransferqueue {
 	Coord rel_positions[size];
 	Coord rel_positions_prev[size];	// Adjust rel positions to the new block's origo BEFORE putting it here!
-	int used_size{};
-	__device__ void addElement(int index, const Coord& pos, const Coord& pos_prev) {
-		rel_positions[index] = pos;
-		rel_positions_prev[index] = pos_prev;
+	int n_elements{};
+
+	// Do NOT call on queue residing in global memory
+	__device__ void addElement(const Coord& pos, const Coord& pos_prev) {
+		rel_positions[n_elements] = pos;
+		rel_positions_prev[n_elements] = pos_prev;
+		n_elements++;
 	}
-	__device__ void setUsedSize(int usedsize) {
-		used_size = usedsize;
-	}
+	//__device__ void setUsedSize(int usedsize) {
+	//	n_elements = usedsize;
+	//}
 };
+
 struct SolventBlockTransfermodule {
 	// Only use directly (full plane contact) adjecent blocks
 	static const int n_queues = 6;			// or, adjecent_solvent_blocks
 	static const int max_queue_size = 16;	// Maybe this is a bit dangerous
 
-
+	// I NEED TO FIGURE OUT PREV_POS FOR NON-REMAINING SOLVENTS!!!!
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
-	SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;
+	SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;	// Maybe rename, since i want to fit all positions in here, right? 
+	Coord remain_relpos_prev[MAX_SOLVENTS_IN_BLOCK];
+	int n_remain{};
+	/// <summary>
+	/// </summary>
+	/// <param name="transfer_direction">Relative to the originating block</param>
+	__device__ static int getQueueIndex(const Coord& transfer_direction) {
+		// Fucking magic yo...
+		// Only works if transfer_direction.len() == 1
+		// First op leaves a space at index 3:
+		//{-z, -y, -x, _ x, y, z}
+		const int tmp_index = transfer_direction.dot(Coord{ 1, 2, 3 });
+		// Shift positive values left.
+		return tmp_index > 0 ? tmp_index + 2 : tmp_index + 3;
+	}
+
+	// Maybe too convoluted...
+	static Coord getDirectionFromQueueIndex(const int index) {
+		const int tmp_index = index > 2 ? index - 2 : index - 3;
+		Coord direction{};
+		direction.x += index * (abs(index) == 1);
+		direction.y += index/2 * (abs(index) == 2);
+		direction.x += index/3 * (abs(index) == 3);
+		return direction;
+	}
+
+
 	Coord* getQueuePtr(const Coord& transfer_direction) {
 		// Fucking magic yo...
 		auto index = transfer_direction.dot(Coord{ 1, 2, 3 }) + 2;
@@ -279,19 +309,29 @@ struct SolventBlockTransfermodule {
 	//__device__ trans
 };
 
+using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_queue_size>;
+using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
+
 namespace SolventBlockHelpers {
 	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord);
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
-		SolventBlockGrid* grid_circular_queue);
+		SolventBlockGrid* grid_circular_queue, SolventBlockTransfermodule* transfermodules);
 
 	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue);
 	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);
+
+	__device__ bool static isTransferStep(int step) {
+		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
+	}
+	__device__ bool static isFirstStepAfterTransfer(int step) {
+		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
+	}
 
 	__device__ __host__ static int get1dIndex(const Coord& index3d) {
 		static const int bpd = SolventBlockGrid::blocks_per_dim;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
-	__device__ static Coord get3dIndex(int& index1d) {
+	__device__ static Coord get3dIndex(int index1d) {
 		static const int bpd = SolventBlockGrid::blocks_per_dim;
 		auto z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;

@@ -220,7 +220,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Get the relpos_prev, if the solvent was in the same solventblock last step
 	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
-		const int step_prev = step == 0 ? 0 : step - 1;
+		const int step_prev = step == 0 ? 0 : step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
 		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
 		return blockPtr->rel_pos[threadIdx.x];
 	}
@@ -310,8 +310,10 @@ namespace EngineUtils {
 		return step_offset + compound_offset + particle_id_local;
 	}
 
-	__device__ int static getNewBlockId(const Coord& transfer_direction) {
-		return 0;
+	__device__ int static getNewBlockId(const Coord& transfer_direction, const Coord& origo) {
+		auto newCoord3d = transfer_direction + origo;
+		LIMAPOSITIONSYSTEM::applyPBC(newCoord3d);
+		return SolventBlockHelpers::get1dIndex(newCoord3d);
 	}
 
 	__device__ Coord static getTransferDirection(const Coord& relpos) {
@@ -325,25 +327,30 @@ namespace EngineUtils {
 		return &transfermodule_array[index];
 	}
 
+
+
 	__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
-		const Coord transfer_direction = getTransferDirection(relpos);
-		int new_blockid = getNewBlockId(transfer_direction);
-		if (new_blockid == blockIdx.x) {
-			transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-		}
-		else {
-			//Coord 
-			// TEMP:
-			transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-		}
+		//const Coord transfer_direction = getTransferDirection(relpos);
+		//const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+
+		//int new_blockid = getNewBlockId(transfer_direction, blockId3d);
+		//if (new_blockid == blockIdx.x) {
+		//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+		//}
+		//else {
+		//	// Coord 
+		//	// TEMP:
+		//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+		//	transfermodule_array[new_blockid].getQueuePtr()/
+		//}
 	}
 
-	__device__ static void compressTransferqueue(SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> transferqueue) {
+	/*__device__ static void compressTransferqueue(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>* transferqueues) {
 
 		for (int i = 0; i < transferqueue.used_size; i += blockDim.x) {
 
 		}
-	}
+	}*/
 };
 
 
@@ -355,9 +362,17 @@ namespace EngineUtils {
 
 
 namespace CPPD {
-	constexpr int32_t ceil(float num) {
+	__device__ __host__ constexpr int32_t ceil(float num) {
 		return (static_cast<float>(static_cast<int32_t>(num)) == num)
 			? static_cast<int32_t>(num)
 			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
+	}
+}
+
+// LIMA algorithm Library
+namespace LAL {
+	__device__ constexpr int getBlellochTablesize(int n) {
+		float nf = static_cast<float>(n);
+		return CPPD::ceil(nf * log2f(nf) * 2.f);
 	}
 }

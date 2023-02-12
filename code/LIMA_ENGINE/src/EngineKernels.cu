@@ -373,6 +373,141 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const
 
 
 
+/// <summary>
+/// 
+/// </summary>
+/// <param name="onehot_remainers">Must be size of MAX_SOLVENTS_IN_BLOCK</param>
+/// <param name="utility">Must be large enough to store temporary sums for blelloch sum</param>
+/// <returns></returns>
+__device__ void doBlellochPrefixSum(uint8_t* onehot_remainers, uint8_t* utility) {
+	// Forward scan
+	for (int leap = 1; leap < MAX_SOLVENTS_IN_BLOCK - 1; leap *= 2) {
+		if (threadIdx.x % leap == 0) {
+			int index = threadIdx.x + leap;
+		}
+	}
+
+}
+
+// SLOW
+__device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
+	for (int i = 1; i < n_elements; i++) {
+		if (threadIdx.x == i) {
+			onehot_remainers[i] = onehot_remainers[i - 1];
+		}
+		__syncthreads();
+	}
+}
+
+__device__ void computePrefixSum(const bool remain, uint8_t* utility_buffer, int n_elements) {
+	if (remain) {
+		utility_buffer[threadIdx.x] = 1;
+	}
+	__syncthreads();
+	doSequentialPrefixSum(utility_buffer, n_elements);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/// <summary>
+/// </summary>
+/// <param name="solventblock">In shared memory</param>
+/// <param name="transferqueues">In shared memory</param>
+/// <param name="relpos_next">Register</param>
+/// <param name="transfermodules">Global memory</param>
+__device__ void doSequentialForwarding(const SolventBlock& solventblock, STransferQueue* transferqueues, const Coord& relpos_next, SolventBlockTransfermodule* transfermodules) {
+	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
+	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
+
+	// Sequential insertion in shared memory
+	for (int i = 0; i < solventblock.n_solvents; i++) {
+		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
+			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_direction);
+			transferqueues[queue_index].addElement(relpos_next, solventblock.rel_pos[threadIdx.x]);
+		}
+		__syncthreads();
+	}
+
+	// Coaslescing copying to global memory
+	for (int queue_index = 0; queue_index < 6; queue_index++) {
+		STransferQueue& queue_local = transferqueues[queue_index];
+		if (threadIdx.x < queue_local.n_elements) {
+			const auto transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
+			const int blockid_global = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
+
+			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
+			queue_global->rel_positions[threadIdx.x] = queue_local.rel_positions[threadIdx.x];
+			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x];
+		}
+	}
+}
+
+/// <summary>
+/// Must be run AFTER doSequentialForwarding, as it erases all information about the transferring solvents
+/// </summary>
+/// <param name="solventblock_current">Solventblock in shared memory</param>
+/// <param name="solventblock_next">Solventblock belong to cudablock at next step in global memory</param>
+/// <param name="relpos_next"></param>
+/// <param name="utility_buffer">Buffer of min size MAX_SOLVENTS_IN_BLOCK, maybe more for computing prefix sum</param>
+/// <param name="remain_transfermodule">Transfermodule belonging to cudablock</param>
+__device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global, 
+	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* remain_transfermodule) {
+	// Clear buffer
+	utility_buffer[threadIdx.x] = 0;
+
+	// Find out which threads want to transfer their respective solvent
+	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
+	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
+	const bool remain = new_blockid == blockIdx.x;
+
+	// Compute prefix sum
+	computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
+	if (remain) {
+		utility_buffer[threadIdx.x] = 1;
+	}
+	__syncthreads();
+	doSequentialPrefixSum(utility_buffer, solventblock_current_local.n_solvents);
+	const uint8_t& solventindex_new = utility_buffer[threadIdx.x];
+
+
+	if (remain) {
+		// Overwrite what will be posrel_prev at the next step
+		// 
+		// FUUUUCK; i cannot write to another block at current step, since i dont know if that block has computed yet. So the posprev must go via the transfermodule.
+		//solventblock_current_global->rel_pos[solventindex_new] = relpos;	// Write to shared memory;
+		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
+		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
+	}
+	const int nsolventsinblock_next = __syncthreads_count(remain);
+
+
+	if (threadIdx.x == 0) {
+		//solventblock_current_global->n_solvents = nsolventsinblock_next;
+		remain_transfermodule->n_remain = nsolventsinblock_next;
+		solventblock_next_global->n_solvents = nsolventsinblock_next;
+	}
+
+	// Tmp implementation
+
+
+
+	// Proper implementation
+	
+
+}
+
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
 
@@ -562,12 +697,17 @@ __global__ void compoundKernel(Box* box) {
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x))
+//#define istransferstep (std::is_same<T, )
 
 __global__ void solventForceKernel(Box* box) {
 	__shared__ Float3 utility_buffer[MAX_COMPOUND_PARTICLES];	
-	__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
+	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
+	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ CompoundCoords compound_coords;	// For neighboring compounds
 	__shared__ SolventBlock solventblock;
+	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transfer_queues;		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
+	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
+
 
 	float potE_sum = 0;
 	float data_ptr[4];	// Pot, force, closest particle, ?
@@ -648,9 +788,14 @@ __global__ void solventForceKernel(Box* box) {
 
 	//SolventCoord coord_self_next{ coord_self };
 	Coord relpos_next{ solventblock.rel_pos[threadIdx.x] };
-	if (thread_active) {
+	if (solvent_active) {
 
-		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
+		Coord relpos_prev = SolventBlockHelpers::isFirstStepAfterTransfer(box->step)
+			? box->transfermodule_array[blockIdx.x].remain_queue.rel_positions_prev[threadIdx.x]
+			: LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
+
+		
+
 		//// Make the above const, after we get this to work!
 		if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
 			relpos_prev.x -= 1000000;
@@ -716,13 +861,17 @@ __global__ void solventForceKernel(Box* box) {
 
 
 
-
+// This is run before step.inc(), but will always publish results to the first array in grid!
 __global__ void solventTransferKernel(Box* box) {
 	SolventBlockTransfermodule* transfermodule_ptr = &box->transfermodule_array[blockIdx.x];
+	
+	SolventBlock* solventblock_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
 
 
-
-
+	// Temp implementation:
+	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
+	solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
+	//transfermodule_ptr->remain_queue.rel_positions[threadIdx.x] = Coord{1,0,1};
 }
 
 

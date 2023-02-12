@@ -22,7 +22,7 @@
 __global__ void compoundKernel(Box* box);
 __global__ void solventForceKernel(Box* box);
 __global__ void compoundBridgeKernel(Box* box);
-
+__global__ void solventTransferKernel(Box* box);
 
 
 class Engine {

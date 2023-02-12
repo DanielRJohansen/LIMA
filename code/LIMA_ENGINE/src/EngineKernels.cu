@@ -399,12 +399,14 @@ __device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements)
 	}
 }
 
-__device__ void computePrefixSum(const bool remain, uint8_t* utility_buffer, int n_elements) {
+__device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, int n_elements) {
 	if (remain) {
 		utility_buffer[threadIdx.x] = 1;
 	}
 	__syncthreads();
 	doSequentialPrefixSum(utility_buffer, n_elements);
+	//doBlellochPrefixSum
+	return utility_buffer[threadIdx.x];
 }
 
 
@@ -451,6 +453,7 @@ __device__ void doSequentialForwarding(const SolventBlock& solventblock, STransf
 			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x];
 		}
 	}
+	__syncthreads();
 }
 
 /// <summary>
@@ -472,40 +475,22 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
 	const bool remain = new_blockid == blockIdx.x;
 
-	// Compute prefix sum
-	computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
-	if (remain) {
-		utility_buffer[threadIdx.x] = 1;
-	}
-	__syncthreads();
-	doSequentialPrefixSum(utility_buffer, solventblock_current_local.n_solvents);
-	const uint8_t& solventindex_new = utility_buffer[threadIdx.x];
-
+	// Compute prefix sum to find new index of solvent belonging to thread
+	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
 
 	if (remain) {
-		// Overwrite what will be posrel_prev at the next step
-		// 
-		// FUUUUCK; i cannot write to another block at current step, since i dont know if that block has computed yet. So the posprev must go via the transfermodule.
-		//solventblock_current_global->rel_pos[solventindex_new] = relpos;	// Write to shared memory;
+		// Send current pos at threadindex to prevpos at the new index
 		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
+		// Send the next pos 
 		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
 	}
-	const int nsolventsinblock_next = __syncthreads_count(remain);
 
-
+	
 	if (threadIdx.x == 0) {
-		//solventblock_current_global->n_solvents = nsolventsinblock_next;
+		const int nsolventsinblock_next = __syncthreads_count(remain);
 		remain_transfermodule->n_remain = nsolventsinblock_next;
 		solventblock_next_global->n_solvents = nsolventsinblock_next;
 	}
-
-	// Tmp implementation
-
-
-
-	// Proper implementation
-	
-
 }
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
@@ -705,7 +690,7 @@ __global__ void solventForceKernel(Box* box) {
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ CompoundCoords compound_coords;	// For neighboring compounds
 	__shared__ SolventBlock solventblock;
-	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transfer_queues;		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
+	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 
 
@@ -790,10 +775,11 @@ __global__ void solventForceKernel(Box* box) {
 	Coord relpos_next{ solventblock.rel_pos[threadIdx.x] };
 	if (solvent_active) {
 
-		Coord relpos_prev = SolventBlockHelpers::isFirstStepAfterTransfer(box->step)
-			? box->transfermodule_array[blockIdx.x].remain_queue.rel_positions_prev[threadIdx.x]
-			: LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
+		//Coord relpos_prev = SolventBlockHelpers::isFirstStepAfterTransfer(box->step)
+		//	? box->transfermodule_array[blockIdx.x].remain_queue.rel_positions_prev[threadIdx.x]
+		//	: LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
 
+		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
 		
 
 		//// Make the above const, after we get this to work!
@@ -840,16 +826,30 @@ __global__ void solventForceKernel(Box* box) {
 	}
 
 	if (solvent_active) {
-		if (box->step % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
-			EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
+		auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
+
+		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		if (threadIdx.x == 0) {
+			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
 		}
-		else {
-			auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
-			solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-			if (threadIdx.x == 0) {
-				solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-			}
-		}
+
+		//if (box->step % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
+		//	//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
+
+		//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		//	if (threadIdx.x == 0) {
+		//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		//	}
+
+		//	//doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
+		//	//purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
+		//}
+		//else {
+		//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		//	if (threadIdx.x == 0) {
+		//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		//	}
+		//}
 	}
 }
 #undef solvent_index

@@ -372,7 +372,7 @@ namespace CoordArrayQueueHelpers {
 
 	__device__ static SolventBlock* getSolventBlockPtr(SolventBlockGrid* solventblockgrid_circular_queue,
 		const int step, int solventblock_id) {
-		const int index0_of_currentstep_blockarray = (step % STEPS_PER_LOGTRANSFER);
+		const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
 		return solventblockgrid_circular_queue[index0_of_currentstep_blockarray].getBlockPtr(solventblock_id);
 	}
 }

@@ -184,7 +184,7 @@ void Engine::step() {
 	if (simulation->n_compounds > 0) {
 		compoundKernel << < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
 	}
-	cudaDeviceSynchronize();
+	cudaDeviceSynchronize();	// Prolly not necessary
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
@@ -195,9 +195,8 @@ void Engine::step() {
 	if (simulation->getStep() % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
 		solventTransferKernel <<< SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>>> (simulation->box);
 	}
-
-#endif
 	cudaDeviceSynchronize();
+#endif
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 

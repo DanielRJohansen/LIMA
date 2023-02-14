@@ -389,11 +389,11 @@ __device__ void doBlellochPrefixSum(uint8_t* onehot_remainers, uint8_t* utility)
 
 }
 
-// SLOW
+// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 __device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
 	for (int i = 1; i < n_elements; i++) {
 		if (threadIdx.x == i) {
-			onehot_remainers[i] = onehot_remainers[i - 1];
+			onehot_remainers[i] += onehot_remainers[i - 1];
 		}
 		__syncthreads();
 	}
@@ -404,9 +404,9 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 		utility_buffer[threadIdx.x] = 1;
 	}
 	__syncthreads();
-	doSequentialPrefixSum(utility_buffer, n_elements);
+	doSequentialPrefixSum(utility_buffer, n_elements);	
 	//doBlellochPrefixSum
-	return utility_buffer[threadIdx.x];
+	return utility_buffer[threadIdx.x] - 1;	// Underflow here doesn't matter, as the underflowing threads wont remain anyways :)
 }
 
 
@@ -473,10 +473,25 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
-	const bool remain = new_blockid == blockIdx.x;
+	const bool remain1 = (new_blockid == blockIdx.x) && (threadIdx.x < solventblock_current_local.n_solvents);
+	const bool remain = (transfer_direction.x + transfer_direction.y + transfer_direction.z == 0) && (threadIdx.x < solventblock_current_local.n_solvents);
+
+	if (remain1 != remain) {
+		printf("remain %d %d\n", remain, remain1);
+		transfer_direction.print('t');
+	}
+
+	if (!remain && (threadIdx.x < solventblock_current_local.n_solvents) && blockIdx.x == 0) {
+		transfer_direction.print('T');
+		relpos_next.print('R');
+	}
 
 	// Compute prefix sum to find new index of solvent belonging to thread
 	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
+
+	if (blockIdx.x == 0) {
+		//printf("Thread %d newid %d\n", threadIdx.x, solventindex_new);
+	}
 
 	if (remain) {
 		// Send current pos at threadindex to prevpos at the new index
@@ -485,9 +500,12 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
 	}
 
-	
+	const int nsolventsinblock_next = __syncthreads_count(remain);
 	if (threadIdx.x == 0) {
-		const int nsolventsinblock_next = __syncthreads_count(remain);
+		//if (nsolventsinblock_next != solventblock_current_local.n_solvents || blockIdx.x == 0) { 
+		if (blockIdx.x == 0) {
+			printf("\nN remain:%d %d\n", nsolventsinblock_next, solventblock_current_local.n_solvents); 
+		}
 		remain_transfermodule->n_remain = nsolventsinblock_next;
 		solventblock_next_global->n_solvents = nsolventsinblock_next;
 	}
@@ -824,33 +842,31 @@ __global__ void solventForceKernel(Box* box) {
 	if (thread_active) {
 		//*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step + 1, solvent_index) = coord_self_next;
 	}
+	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
 
 	if (solvent_active) {
-		auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
 
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-		if (threadIdx.x == 0) {
-			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		}
-
-		//if (box->step % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
-		//	//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
-
-		//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-		//	if (threadIdx.x == 0) {
-		//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		//	}
-
-		//	//doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
-		//	//purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
-		//}
-		//else {
-		//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-		//	if (threadIdx.x == 0) {
-		//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		//	}
-		//}
+		
 	}
+	if (threadIdx.x == 0) {
+		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		if (blockIdx.x == 0) { printf("\n sending %d\n", solventblock.n_solvents); }
+	}
+
+	if (SolventBlockHelpers::isTransferStep(box->step)) {
+		//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
+
+		//doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
+		purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
+	}
+	//else {
+	//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+	//	if (threadIdx.x == 0) {
+	//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+	//	}
+	//}
+	
 }
 #undef solvent_index
 #undef thread_active		// ALSO remove this
@@ -863,14 +879,18 @@ __global__ void solventForceKernel(Box* box) {
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
 __global__ void solventTransferKernel(Box* box) {
-	SolventBlockTransfermodule* transfermodule_ptr = &box->transfermodule_array[blockIdx.x];
+	SolventBlockTransfermodule* transfermodule = &box->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
+	SolventBlock* solventblock_current = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x);
+	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
 
-
+	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
+	if (threadIdx.x < transfermodule->n_remain) {
+		solventblock_current->rel_pos[threadIdx.x] = transfermodule->remain_relpos_prev[threadIdx.x];
+	}
 	// Temp implementation:
 	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
-	solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
+	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
 	//transfermodule_ptr->remain_queue.rel_positions[threadIdx.x] = Coord{1,0,1};
 }
 

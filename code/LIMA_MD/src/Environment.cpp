@@ -49,11 +49,11 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	//assert(simulation->n_steps % STEPS_PER_THERMOSTAT == 0);
 	//assert(simulation->n_steps % STEPS_PER_TRAINDATATRANSFER == 0);
 
-	assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
+	static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
 	//assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
-	assert(THREADS_PER_SOLVENTBLOCK >= MAX_COMPOUND_PARTICLES);
+	static_assert(THREADS_PER_SOLVENTBLOCK >= MAX_COMPOUND_PARTICLES);
 
-	assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
+	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
 
 
 	printf("Simulation parameters verified\n");

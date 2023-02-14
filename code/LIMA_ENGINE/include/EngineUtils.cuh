@@ -17,7 +17,18 @@ namespace ForceCalc {
 };
 
 
+namespace CPPD {
+	__device__ __host__ constexpr int32_t ceil(float num) {
+		return (static_cast<float>(static_cast<int32_t>(num)) == num)
+			? static_cast<int32_t>(num)
+			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
+	}
 
+	template <typename T>
+	__device__ static int max (const T& l, const T& r) {
+		return r > l ? r : l;
+	}
+}
 
 
 
@@ -219,11 +230,13 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Get the relpos_prev, if the solvent was in the same solventblock last step
-	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
-		const int step_prev = step == 0 ? 0 : step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
+	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int current_step) {
+		const int step_prev = current_step == 0 ? 0 : current_step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
 		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
 		return blockPtr->rel_pos[threadIdx.x];
 	}
+
+	//__device__ static bool willSolventRe
 
 	// Get the relpos_prev, if the solvent was NOT in the same solventblock last step
 	//__device__ static Coord getRelposPrevAfterTransfer(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
@@ -316,10 +329,6 @@ namespace EngineUtils {
 		return SolventBlockHelpers::get1dIndex(newCoord3d);
 	}
 
-	__device__ Coord static getTransferDirection(const Coord& relpos) {
-		return Coord{};
-	}
-
 	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const Coord& transfer_direction) {
 		Coord new3dIndex = SolventBlockHelpers::get3dIndex(blockId) + transfer_direction;
 		LIMAPOSITIONSYSTEM::applyPBC(new3dIndex);
@@ -327,7 +336,32 @@ namespace EngineUtils {
 		return &transfermodule_array[index];
 	}
 
+	__device__ static Coord getOnehotDirection(const Coord& coord, int32_t threshold) {
+		int32_t max_val{ CPPD::max(
+			CPPD::max(std::abs(coord.x), std::abs(coord.y)),
+			std::abs(coord.z))
+		};
+		if (max_val > threshold) {
+			// Could be optimized by using threshold as a template argument
+			if (blockIdx.x == 0) {
+				coord.print('c');
+				(coord / max_val).print('o');
+				auto a = Coord{};
+				a.print('e');
+			}
+			return coord / max_val;
+		}
+			
+		return Coord{};
+	}
 
+	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
+	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
+	__device__ static Coord getTransferDirection(const Coord& relpos) {
+		const int32_t blocklen_half = static_cast<int32_t>(NANO_TO_LIMA) / 2;
+		const Coord rel_blockcenter{ blocklen_half };
+		return EngineUtils::getOnehotDirection(relpos - rel_blockcenter, blocklen_half);
+	}
 
 	__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
 		//const Coord transfer_direction = getTransferDirection(relpos);
@@ -361,13 +395,7 @@ namespace EngineUtils {
 
 
 
-namespace CPPD {
-	__device__ __host__ constexpr int32_t ceil(float num) {
-		return (static_cast<float>(static_cast<int32_t>(num)) == num)
-			? static_cast<int32_t>(num)
-			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
-	}
-}
+
 
 // LIMA algorithm Library
 namespace LAL {

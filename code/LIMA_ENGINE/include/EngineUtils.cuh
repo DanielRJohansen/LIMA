@@ -211,6 +211,18 @@ namespace LIMAPOSITIONSYSTEM {
 		applyPBC(pos);
 	}
 
+	// Moves origo when necessary, so all relpos dimensions are positive
+	__host__ static void forceRelposPositive(SolventCoord& coord) {
+		for (int i = 0; i < 3; i++) {
+			if (*coord.rel_position.get(i) < 0) {
+				(*coord.origo.get(i))--;
+				(*coord.rel_position.get(i)) += static_cast<int32_t>(NANO_TO_LIMA);
+			}
+		}
+	}
+
+
+
 	// ReCenter origo of solvent, and the relative pos around said origo
 	__device__ static void updateSolventcoord(SolventCoord& coord) {
 		const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
@@ -343,12 +355,6 @@ namespace EngineUtils {
 		};
 		if (max_val > threshold) {
 			// Could be optimized by using threshold as a template argument
-			if (blockIdx.x == 0) {
-				coord.print('c');
-				(coord / max_val).print('o');
-				auto a = Coord{};
-				a.print('e');
-			}
 			return coord / max_val;
 		}
 			

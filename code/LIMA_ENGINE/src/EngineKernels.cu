@@ -444,13 +444,25 @@ __device__ void doSequentialForwarding(const SolventBlock& solventblock, STransf
 	// Coaslescing copying to global memory
 	for (int queue_index = 0; queue_index < 6; queue_index++) {
 		STransferQueue& queue_local = transferqueues[queue_index];
-		if (threadIdx.x < queue_local.n_elements) {
-			const auto transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
-			const int blockid_global = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
 
+		if (threadIdx.x < queue_local.n_elements) {
+
+			const Coord transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
+			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
-			queue_global->rel_positions[threadIdx.x] = queue_local.rel_positions[threadIdx.x];
-			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x];
+
+			// We now change the relpos to fit the new origo.
+			queue_global->rel_positions[threadIdx.x]	  = queue_local.rel_positions[threadIdx.x]		- transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
+			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x] - transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
+
+			if (threadIdx.x == 0) {
+				if (queue_global->n_elements != 0) { printf("N elements was: %d\n", queue_global->n_elements); }
+
+				queue_global->n_elements = queue_local.n_elements;
+				if (queue_local.n_elements != 0) {
+					printf("\nTransferring %d elements\n", queue_local.n_elements);
+				}
+			}
 		}
 	}
 	__syncthreads();
@@ -503,9 +515,6 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 	const int nsolventsinblock_next = __syncthreads_count(remain);
 	if (threadIdx.x == 0) {
 		//if (nsolventsinblock_next != solventblock_current_local.n_solvents || blockIdx.x == 0) { 
-		if (blockIdx.x == 0) {
-			printf("\nN remain:%d %d\n", nsolventsinblock_next, solventblock_current_local.n_solvents); 
-		}
 		remain_transfermodule->n_remain = nsolventsinblock_next;
 		solventblock_next_global->n_solvents = nsolventsinblock_next;
 	}
@@ -802,8 +811,8 @@ __global__ void solventForceKernel(Box* box) {
 
 		//// Make the above const, after we get this to work!
 		if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
-			relpos_prev.x -= 1000000;
-			relpos_prev.z -= 1000000;
+			relpos_prev.x -= 2000000;
+			relpos_prev.z -= 2000000;
 		}
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
@@ -851,13 +860,13 @@ __global__ void solventForceKernel(Box* box) {
 	}
 	if (threadIdx.x == 0) {
 		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		if (blockIdx.x == 0) { printf("\n sending %d\n", solventblock.n_solvents); }
+		//if (blockIdx.x == 0) { printf("\n sending %d\n", solventblock.n_solvents); }
 	}
 
 	if (SolventBlockHelpers::isTransferStep(box->step)) {
 		//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
 
-		//doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
+		doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
 		purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
 	}
 	//else {
@@ -887,6 +896,29 @@ __global__ void solventTransferKernel(Box* box) {
 	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
 	if (threadIdx.x < transfermodule->n_remain) {
 		solventblock_current->rel_pos[threadIdx.x] = transfermodule->remain_relpos_prev[threadIdx.x];
+	}
+
+	int n_solvents_next = transfermodule->n_remain;
+	for (int queue_index = 0; queue_index < SolventBlockTransfermodule::n_queues; queue_index++) {
+		auto* queue = &transfermodule->transfer_queues[queue_index];
+		if (threadIdx.x < queue->n_elements) {
+			const int incoming_index = n_solvents_next + threadIdx.x;
+			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
+			solventblock_current->rel_pos[incoming_index] = queue->rel_positions_prev[threadIdx.x];
+		}
+		n_solvents_next += queue->n_elements;
+
+		// Signal that all elements of the queues have been moved
+		__syncthreads();
+		if (threadIdx.x == 0) {
+			queue->n_elements = 0;
+		}
+	}
+
+	// Finally update the solventblock_next with how many solvents it now contains
+	if (threadIdx.x == 0) {
+		solventblock_next->n_solvents = n_solvents_next;
+		
 	}
 	// Temp implementation:
 	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];

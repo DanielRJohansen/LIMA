@@ -214,6 +214,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
 			SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
+			LIMAPOSITIONSYSTEM::forceRelposPositive(solventcoord);
 			LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
 			
 			solventcoords[simulation->box->n_solvents] = solventcoord;

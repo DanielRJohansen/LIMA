@@ -199,7 +199,7 @@ void Environment::postRunEvents() {
 
 void Environment::handleStatus(Simulation* simulation) {
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
-		printf("\r\tStep #%06d", simulation->box->step);
+		printf("\r\tStep #%06d", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->n_steps - simulation->box->step) / 60);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);

@@ -82,12 +82,6 @@ bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid,
 		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
 		exit(1);
 	}
-
-	for (int i = 0; i < SolventBlockGrid::blocks_total; i++) {
-		// Copy the rel positions to the transferblock, since the kernel thinks a transfer happened at step -1.
-		cudaMemcpy(transfermodules[i].remain_queue.rel_positions_prev, grid_prev.blocks[i].rel_pos, sizeof(Coord) * MAX_SOLVENTS_IN_BLOCK, cudaMemcpyHostToDevice);
-	}
-	
 }
 
 

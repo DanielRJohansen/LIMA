@@ -274,9 +274,9 @@ struct SolventBlockTransfermodule {
 	// I NEED TO FIGURE OUT PREV_POS FOR NON-REMAINING SOLVENTS!!!!
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
-	SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;	// Maybe rename, since i want to fit all positions in here, right? 
+	//SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;	// Maybe rename, since i want to fit all positions in here, right? 
 	Coord remain_relpos_prev[MAX_SOLVENTS_IN_BLOCK];
-	int n_remain{};
+	int n_remain = 0;
 	/// <summary>
 	/// </summary>
 	/// <param name="transfer_direction">Relative to the originating block</param>

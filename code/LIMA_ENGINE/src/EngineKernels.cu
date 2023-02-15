@@ -720,6 +720,10 @@ __global__ void solventForceKernel(Box* box) {
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 
+	// Init queue. Is is necessary?
+	if (threadIdx.x < 6) { 
+		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>();
+	}
 
 	float potE_sum = 0;
 	float data_ptr[4];	// Pot, force, closest particle, ?

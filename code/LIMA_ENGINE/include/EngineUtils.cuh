@@ -355,11 +355,27 @@ namespace EngineUtils {
 		};
 		if (max_val > threshold) {
 			// Could be optimized by using threshold as a template argument
-			return coord / max_val;
+			Coord onehot =  coord / max_val;
+			// Handle the case where some coordinates are identical
+			onehot.y = onehot.x != 0 ? 0 : onehot.y;
+			onehot.z = onehot.x != onehot.y ? 0 : onehot.z;	// x and y can't both be 1, since x already has priority over x
+			return onehot;
 		}
-			
+
 		return Coord{};
 	}
+	//__device__ static Coord getOnehotDirection(const Coord& coord, int32_t threshold) {
+	//	int32_t max_val{ CPPD::max(
+	//		CPPD::max(std::abs(coord.x), std::abs(coord.y)),
+	//		std::abs(coord.z))
+	//	};
+	//	if (max_val > threshold) {
+	//		// Could be optimized by using threshold as a template argument
+	//		return coord / max_val;
+	//	}
+	//		
+	//	return Coord{};
+	//}
 
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}

@@ -94,10 +94,6 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 
 	simulation->box->forcefield_device_box = new ForceField_NB{ forcefield };// Copy
-	/**simulation->box->forcefield_device_box = forcefield;	*/
-
-									// BAD AMBIGUOUS AND WRONG CONSTANTS
-
 
 	//cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
 

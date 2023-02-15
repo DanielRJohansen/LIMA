@@ -25,7 +25,7 @@ void DisplayV2::drawFilledCircle(const RenderBall& ball) {
         glVertex3f(
             ball.pos.x + (ball.radius * cos(i * twicePi / triangleAmount)),
             ball.pos.z + (ball.radius * sin(i * twicePi / triangleAmount)),
-            ball.pos.y
+            -ball.pos.y
         );
     }
     glEnd();

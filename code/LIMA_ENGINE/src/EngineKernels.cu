@@ -432,6 +432,8 @@ __device__ void doSequentialForwarding(const SolventBlock& solventblock, STransf
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
 
+	//if ()
+
 	// Sequential insertion in shared memory
 	for (int i = 0; i < solventblock.n_solvents; i++) {
 		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
@@ -459,7 +461,7 @@ __device__ void doSequentialForwarding(const SolventBlock& solventblock, STransf
 				if (queue_global->n_elements != 0) { printf("N elements was: %d\n", queue_global->n_elements); }
 
 				queue_global->n_elements = queue_local.n_elements;
-				if (queue_local.n_elements != 0) {
+				if (queue_local.n_elements > 10) {
 					printf("\nTransferring %d elements\n", queue_local.n_elements);
 				}
 			}
@@ -493,9 +495,9 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 		transfer_direction.print('t');
 	}
 
-	if (!remain && (threadIdx.x < solventblock_current_local.n_solvents) && blockIdx.x == 0) {
-		transfer_direction.print('T');
-		relpos_next.print('R');
+	if (!remain && (threadIdx.x < solventblock_current_local.n_solvents)) {
+		//transfer_direction.print('T');
+		//relpos_next.print('R');
 	}
 
 	// Compute prefix sum to find new index of solvent belonging to thread
@@ -814,39 +816,14 @@ __global__ void solventForceKernel(Box* box) {
 		
 
 		//// Make the above const, after we get this to work!
-		if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
-			relpos_prev.x -= 2000000;
-			relpos_prev.z -= 2000000;
+		//if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
+		if (box->step == 0) {
+			relpos_prev.x -= 100000;
+			relpos_prev.z -= 100000;
+			relpos_prev.y += 1000000;
 		}
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
-
-
-
-
-		//-------
-
-		//int step_prev = box->step == 0 ? 0 : box->step - 1;
-		//const SolventCoord* coord_tsub1 = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, step_prev, solvent_index);
-		//Coord rel_hypercoord_tsub1 = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, *coord_tsub1);
-				//// Make the above const, after we get this to work!
-
-		////if (threadIdx.x == 0) {
-		////	force.print('f');
-		////}
-
-		//if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) { 
-		//	rel_hypercoord_tsub1.x -= 1000000; 
-		//	rel_hypercoord_tsub1.z -= 1000000;
-		//}
-
-
-		//const Coord newRelPos = integratePosition(coord_self.rel_position, rel_hypercoord_tsub1, &force, solvent_mass, box->dt, box->thermostat_scalar);
-		//coord_self_next.rel_position = newRelPos;
-
-
-		//LIMAPOSITIONSYSTEM::updateSolventcoord(coord_self_next);
-		//LIMAPOSITIONSYSTEM::applyPBC(coord_self_next);
 	}
 
 
@@ -902,6 +879,7 @@ __global__ void solventTransferKernel(Box* box) {
 		solventblock_current->rel_pos[threadIdx.x] = transfermodule->remain_relpos_prev[threadIdx.x];
 	}
 
+	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
 	for (int queue_index = 0; queue_index < SolventBlockTransfermodule::n_queues; queue_index++) {
 		auto* queue = &transfermodule->transfer_queues[queue_index];
@@ -922,7 +900,6 @@ __global__ void solventTransferKernel(Box* box) {
 	// Finally update the solventblock_next with how many solvents it now contains
 	if (threadIdx.x == 0) {
 		solventblock_next->n_solvents = n_solvents_next;
-		
 	}
 	// Temp implementation:
 	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];

@@ -6,11 +6,6 @@
 #include <chrono>
 #include <thread>
 
-struct CandidateList {
-	int n_candidates = 0;
-	std::array<uint32_t, NEIGHBORLIST_MAX_SOLVENTS> candidates{};
-};
-
 struct NListDataCollection {
 	NListDataCollection(Simulation* simulation);
 
@@ -34,8 +29,6 @@ struct NListDataCollection {
 
 
 namespace NListUtils {
-	
-
 	//extern bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, float cutoff_offset);
 	extern void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
 
@@ -63,72 +56,6 @@ public:
 	NListDataCollection* nlist_data_collection = nullptr;
 
 private:
-
-	
-
 	// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	uint64_t prev_update_step = 0;
-};
-
-#include <array>
-
-class SolventBlockCollection {
-public:
-	SolventBlockCollection(const Float3* positions, int n_solvents);
-	void addSolventId(uint32_t id, const Float3& pos);
-
-	// Returns a vector with 1 element per solvent in sim. Each element consists of a vector
-	// of the Ids of nearby solvents of this solvent
-	std::vector<CandidateList> getNeighborSolventForAllSolvents(uint32_t n_solvents);
-
-
-
-
-private:
-	static constexpr int blocks_per_dim = CPPD::ceil(BOX_LEN_NM / CUTOFF_NM);
-	static_assert(blocks_per_dim > 1, "Too few solvents blocks in box");
-	static constexpr int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
-	static constexpr float blocks_per_dim_float = static_cast<float>(blocks_per_dim);
-	static constexpr float uncovered_len = std::max((BOX_LEN - CUTOFF_LM * blocks_per_dim_float), 0.f);
-	// Make the block len a little longer than it needs to be, so we include particles on the box-boundary
-	static constexpr float block_len = CUTOFF_LM + uncovered_len / (blocks_per_dim_float - 1.f);
-
-	static constexpr int n_greaterblocks_dim = 2;
-	static constexpr int n_gb_len = n_greaterblocks_dim + 1;
-	static constexpr int n_greaterblocks_total = n_gb_len * n_gb_len * n_gb_len - 1;
-
-	struct SolventBlockNlist {
-		static const int max_solvents_in_block = 512;	// i dunno
-		std::array<uint32_t, max_solvents_in_block> solvent_ids;
-		int n_elements{ 0 };
-		void insert(uint32_t solvent_id) {
-			solvent_ids[n_elements++] = solvent_id;
-		}
-	};
-
-
-
-	std::array<std::array< std::array<SolventBlockNlist, blocks_per_dim>, blocks_per_dim>, blocks_per_dim> m_blocks;
-
-	static Int3 getSolventblockIndex(const Float3& pos);
-	
-	static constexpr std::array<Int3, blocks_total> getAllIndices();
-	static constexpr std::array<Int3, n_greaterblocks_total> getAdjacentIndicesThatAreGreater(Int3 index);
-	static constexpr std::array<std::array<std::array<std::array<Int3, n_greaterblocks_total>,
-		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcGreaterIndices();
-
-
-	/*const std::array<std::array<std::array<std::array<Int3, n_greaterblocks_total>,
-		blocks_per_dim>, blocks_per_dim>, blocks_per_dim> precalcedGreaterIndices = precalcGreaterIndices();*/
-
-	SolventBlockNlist& getBlock(const Int3& index);
-
-	static void addAllInsideBlock(std::vector<CandidateList>& neighborCandidates,
-		const SolventBlockNlist& block);
-	static void addAllBetweenBlocks(std::vector<CandidateList>& neighborCandidates,
-		const SolventBlockNlist& blocka, const SolventBlockNlist& blockb);
-
-
-
-	
 };

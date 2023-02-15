@@ -69,7 +69,7 @@ bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const
 
 
 
-bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev, SolventBlockGrid* grid_circular_queue, SolventBlockTransfermodule* transfermodules) {
+bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev, SolventBlockGrid* grid_circular_queue) {
 	// Move pos_t
 	cudaMemcpy(grid_circular_queue, &grid, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
 

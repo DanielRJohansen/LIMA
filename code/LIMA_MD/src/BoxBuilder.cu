@@ -23,11 +23,11 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	const uint64_t n_bytes_compoundcoords = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
 	cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes_compoundcoords);
 
-	const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
-	cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
+	//const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
+	//cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
 
 	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
-	cudaMalloc(&simulation->box->solventblockgrid_circurlar_queue, n_bytes_solventcoords);
+	cudaMalloc(&simulation->box->solventblockgrid_circurlar_queue, n_bytes_solventblockgrids);
 	SolventBlockHelpers::setupBlockMetaOnDevice(simulation->box->solventblockgrid_circurlar_queue);
 	cudaMalloc(&simulation->box->transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlockGrid::blocks_total);
 
@@ -100,8 +100,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	// Move the positions to the appropriate places in the circular queue
 	CompoundCoords::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
-	SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
-	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circurlar_queue, simulation->box->transfermodule_array);
+	//SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
+	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circurlar_queue);
 
 	
 	// Permanent Outputs for energy & trajectory analysis

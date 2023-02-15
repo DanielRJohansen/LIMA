@@ -148,8 +148,8 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
 	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
-	SolventCoord* solventcoord_array = new SolventCoord[simulation->n_solvents];
-	cudaMemcpy(solventcoord_array, simulation->box->solventcoordarray_circular_queue, sizeof(SolventCoord) * simulation->n_solvents, cudaMemcpyDeviceToHost);
+	//SolventCoord* solventcoord_array = new SolventCoord[simulation->n_solvents];
+	//cudaMemcpy(solventcoord_array, simulation->box->solventcoordarray_circular_queue, sizeof(SolventCoord) * simulation->n_solvents, cudaMemcpyDeviceToHost);
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
@@ -161,11 +161,11 @@ void Engine::bootstrapTrajbufferWithCoords() {
 
 	for (int solvent_id = 0; solvent_id < simulation->n_solvents; solvent_id++) {
 		const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
-		simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
+		//simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
 	}
 
 	delete[] compoundcoords_array;
-	delete[] solventcoord_array;
+	//delete[] solventcoord_array;
 }
 
 
@@ -179,7 +179,7 @@ void Engine::step() {
 	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
 		compoundBridgeKernel << < simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box);	// Must come before compoundKernel()		// DANGER
 	}
-		
+
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
 		compoundKernel << < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
@@ -193,7 +193,7 @@ void Engine::step() {
 	}
 	cudaDeviceSynchronize();
 	if (simulation->getStep() % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
-		solventTransferKernel <<< SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>>> (simulation->box);
+		solventTransferKernel <<< SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size>>> (simulation->box);
 	}
 	cudaDeviceSynchronize();
 #endif
@@ -203,19 +203,6 @@ void Engine::step() {
 	EngineUtils::genericErrorCheck("Error during step\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 
 
-	
-	
-	//Solvent* temp_s = simulation->box->solvents;
-	//simulation->box->solvents = simulation->box->solvents_next;
-	//simulation->box->solvents_next = temp_s;
-
-
-	
-	
-	
-	
-	
-	//cudaMemcpy(simulation->box->solvents, simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyDeviceToDevice);
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 	auto t2 = std::chrono::high_resolution_clock::now();

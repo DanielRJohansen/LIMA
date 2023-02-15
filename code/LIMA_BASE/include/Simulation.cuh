@@ -47,7 +47,6 @@ public:
 
 
 	CompoundCoords* coordarray_circular_queue = nullptr;
-	SolventCoord* solventcoordarray_circular_queue = nullptr;
 	SolventBlockGrid* solventblockgrid_circurlar_queue = nullptr;
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
@@ -55,8 +54,6 @@ public:
 	NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//
 
-	//Solvent* solvents = nullptr;
-	//Solvent* solvents_next = nullptr;
 
 
 

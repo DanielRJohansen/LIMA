@@ -315,7 +315,7 @@ using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
 namespace SolventBlockHelpers {
 	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord);
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
-		SolventBlockGrid* grid_circular_queue, SolventBlockTransfermodule* transfermodules);
+		SolventBlockGrid* grid_circular_queue);
 
 	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue);
 	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);

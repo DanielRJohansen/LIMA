@@ -162,35 +162,6 @@ namespace NListUtils {
 				}
 			}
 		}
-
-
-		for (int id_self = 0; id_self < nlist_data_collection->n_solvents; id_self++) {																// Cull solvent-solvent
-			NeighborList* nlist_self = &nlist_data_collection->solvent_neighborlists[id_self];
-
-			int cnt = 0;
-
-			for (int j = 0; j < nlist_self->n_solvent_neighbors; j++) {			/// NOT FINISHED HERE
-				int id_neighbor = nlist_self->neighborsolvent_ids[j];
-				NeighborList* nlist_neighbor = &nlist_data_collection->solvent_neighborlists[id_neighbor];
-
-				if (!neighborWithinCutoff(&nlist_data_collection->solvent_positions[id_self], &nlist_data_collection->solvent_positions[id_neighbor], CUTOFF_LM)) {
-					cnt++;
-					if (!nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::SOLVENT))
-						printf("J1: %d id_self %d id_neighbor %d    cnt %d\n", j, id_self, id_neighbor, cnt);
-					if (!nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::SOLVENT)) {
-						printf("J2: %d of %d.   id_self %d id_neighbor %d count: %d\n", j, nlist_self->n_solvent_neighbors, id_self, id_neighbor, cnt);
-						for (int i = 0; i < nlist_self->n_solvent_neighbors; i++) {
-							printf("neighbor %d\n", nlist_self->neighborsolvent_ids[i]);
-						}
-						printf("\n\n\n");
-						exit(1);
-					}
-
-
-					j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
-				}
-			}
-		}
 	}
 
 	// Important: do NOT call getStep during this funciton, as it runs async!!!!
@@ -242,50 +213,6 @@ namespace NListUtils {
 				);
 			}
 		}
-
-		// Finally add all solvent->solvent candidates
-		//SolventBlockCollection solventblock_collection(nlist_data_collection->solvent_positions, simulation->n_solvents);
-		//const auto& neighborCandidatesAll = solventblock_collection.getNeighborSolventForAllSolvents(simulation->n_solvents);
-		//auto t2 = std::chrono::high_resolution_clock::now();
-
-		//UniqueIdSet<MAX_SOLVENTS> current_neighbors{};
-
-		//for (int id_self = 0; id_self < simulation->n_solvents; id_self++) {
-		//	continue;
-		//	NeighborList& nlist_self = nlist_data_collection->solvent_neighborlists[id_self];
-		//	//HashTable hashtable_solventneighbors(nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-		//	//std::unordered_set<uint16_t> solvent_neighbors_set(NEIGHBORLIST_MAX_SOLVENTS);
-		//	//initSet(solvent_neighbors_set, nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors);
-		//	current_neighbors.init(nlist_self.neighborsolvent_ids, (int)nlist_self.n_solvent_neighbors);
-
-		//	//int a = solvent_neighbors_set.size();
-		//	const Float3& pos_self = nlist_data_collection->solvent_positions[id_self];
-		//	const auto& neighborCandidates = neighborCandidatesAll[id_self];
-
-		//	for (int i = 0; i < neighborCandidates.n_candidates; i++) {
-		//		const auto id_other = neighborCandidates.candidates[i];
-		//		NeighborList& nlist_candidate = nlist_data_collection->solvent_neighborlists[id_other];
-		//		const Float3 pos_other = nlist_data_collection->solvent_positions[id_other];
-		//		/*addNeighborIfEligible(hashtable_solventneighbors, 
-		//			nlist_self, nlist_candidate,
-		//			pos_self, pos_other,
-		//			id_self, id_other,
-		//			NeighborList::NEIGHBOR_TYPE::SOLVENT, NeighborList::NEIGHBOR_TYPE::SOLVENT,
-		//			0.f
-		//		);*/
-		//		addNeighborIfEligible(current_neighbors,
-		//			nlist_self, nlist_candidate,
-		//			pos_self, pos_other,
-		//			id_self, id_other,
-		//			NeighborList::NEIGHBOR_TYPE::SOLVENT, NeighborList::NEIGHBOR_TYPE::SOLVENT,
-		//			0.f
-		//		);
-		//	}
-		//}
-
-
-
-
 		Int3 after(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
 		//Int3 after(nlist_data_collection->solvent_neighborlists[193].n_compound_neighbors, nlist_data_collection->solvent_neighborlists[193].n_solvent_neighbors, 0);
 
@@ -297,9 +224,6 @@ namespace NListUtils {
 		//printf("\nSetup time: %d, nlist time: %d\n",
 		//	(int)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t0).count(),
 		//	(int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t2).count());
-
-
-
 
 		// SIGNALING MAIN THREAD //
 		*finished = 1;		// Thread terminates here!

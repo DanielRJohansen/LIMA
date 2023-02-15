@@ -804,24 +804,13 @@ __global__ void solventForceKernel(Box* box) {
 
 	//LogSolventData(box, solvent_index, potE_sum, coord_self);
 
-	//SolventCoord coord_self_next{ coord_self };
-	Coord relpos_next{ solventblock.rel_pos[threadIdx.x] };
+
+	Coord relpos_next{};
 	if (solvent_active) {
-
-		//Coord relpos_prev = SolventBlockHelpers::isFirstStepAfterTransfer(box->step)
-		//	? box->transfermodule_array[blockIdx.x].remain_queue.rel_positions_prev[threadIdx.x]
-		//	: LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
-
 		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
-		
 
 		//// Make the above const, after we get this to work!
-		//if (box->step == 0 && blockIdx.x == 0 && threadIdx.x == 0) {
-		if (box->step == 0) {
-			relpos_prev.x -= 100000;
-			relpos_prev.z -= 100000;
-			relpos_prev.y += 1000000;
-		}
+		if (box->step == 0) { relpos_prev -= Coord{ 100000, -100000 ,100000 }; }
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
 	}
@@ -875,9 +864,10 @@ __global__ void solventTransferKernel(Box* box) {
 	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
 
 	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
-	if (threadIdx.x < transfermodule->n_remain) {
-		solventblock_current->rel_pos[threadIdx.x] = transfermodule->remain_relpos_prev[threadIdx.x];
+	for (int index = threadIdx.x; index < transfermodule->n_remain; index += blockDim.x) {
+		solventblock_current->rel_pos[index] = transfermodule->remain_relpos_prev[index];
 	}
+
 
 	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
@@ -901,10 +891,6 @@ __global__ void solventTransferKernel(Box* box) {
 	if (threadIdx.x == 0) {
 		solventblock_next->n_solvents = n_solvents_next;
 	}
-	// Temp implementation:
-	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
-	//solventblock_ptr->rel_pos[threadIdx.x] = transfermodule_ptr->remain_queue.rel_positions[threadIdx.x];
-	//transfermodule_ptr->remain_queue.rel_positions[threadIdx.x] = Coord{1,0,1};
 }
 
 
@@ -968,28 +954,5 @@ __global__ void compoundBridgeKernel(Box* box) {
 		box->potE_buffer[p_ref->local_id_compound + compound_offset + step_offset] = potE_sum;
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*	VELOCITY VERLET STORMER
-__device__ void integratePosition(CompactParticle* particle, Float3* particle_pos, Float3* particle_force, double* dt) {
-	*particle_pos = *particle_pos + (particle->vel + *particle_force * (0.5 / particle->mass) * *dt) * *dt;
-}
-__device__ void integrateVelocity(CompactParticle* particle, Float3* particle_force, double* dt) {
-	particle->vel = particle->vel + (*particle_force + particle->force_prev) * (0.5 / particle->mass) * *dt;
-}
-*/
 
 #pragma warning (pop)

@@ -228,7 +228,7 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
 //}
 
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) {
-    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x);
+    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x);
 
     if (threadIdx.x < solventblock->n_solvents) {
         const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };

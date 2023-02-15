@@ -198,12 +198,12 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__device__ __host__ static void applyPBC(Coord& origo) {
-		origo.x += BOX_LEN_NM * (origo.x < 0);
-		origo.x -= BOX_LEN_NM * (origo.x >= BOX_LEN_NM);
-		origo.y += BOX_LEN_NM * (origo.y < 0);
-		origo.y -= BOX_LEN_NM * (origo.y >= BOX_LEN_NM);
-		origo.z += BOX_LEN_NM * (origo.z < 0);
-		origo.z -= BOX_LEN_NM * (origo.z >= BOX_LEN_NM);
+		origo.x += BOX_LEN_NM_INT * (origo.x < 0);
+		origo.x -= BOX_LEN_NM_INT * (origo.x >= BOX_LEN_NM_INT);
+		origo.y += BOX_LEN_NM_INT * (origo.y < 0);
+		origo.y -= BOX_LEN_NM_INT * (origo.y >= BOX_LEN_NM_INT);
+		origo.z += BOX_LEN_NM_INT * (origo.z < 0);
+		origo.z -= BOX_LEN_NM_INT * (origo.z >= BOX_LEN_NM_INT);
 	}
 
 	__device__ __host__ static void applyPBC(SolventCoord& coord) {	// Only changes position if position is outside of box;

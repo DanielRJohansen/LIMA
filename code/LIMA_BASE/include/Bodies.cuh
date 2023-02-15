@@ -169,9 +169,7 @@ struct CompoundState {							// Maybe delete this soon?
 
 
 
-const int MAX_SOLVENTS_IN_BLOCK = 256;
-const int STEPS_PER_SOLVENTBLOCKTRANSFER = 10;
-const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+
 static_assert(STEPS_PER_LOGTRANSFER% STEPS_PER_SOLVENTBLOCKTRANSFER == 0, "Illegal blocktransfer stepcount");
 
 
@@ -214,7 +212,7 @@ struct SolventCoord {
 struct SolventBlock {
 	__device__ __host__ SolventBlock() {};
 	__device__ __host__ void loadMeta(const SolventBlock& block) { 
-		origo = block.origo; 
+		origo = block.origo; // Not necessary, is given by the blockIdx.x
 		n_solvents = block.n_solvents;
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
@@ -327,6 +325,7 @@ namespace SolventBlockHelpers {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
 	}
 
+	// Only use this if if the index3d is inside the box!
 	__device__ __host__ static int get1dIndex(const Coord& index3d) {
 		static const int bpd = SolventBlockGrid::blocks_per_dim;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;

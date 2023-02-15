@@ -33,7 +33,8 @@ constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr float BOX_LEN_NM = 7.f;
+const int BOX_LEN_NM_INT = 7;
+constexpr float BOX_LEN_NM = static_cast<float>(BOX_LEN_NM_INT);
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
@@ -70,6 +71,10 @@ const bool POSTSIM_ANAL = true;
 const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
 const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
+
+const int MAX_SOLVENTS_IN_BLOCK = 256;
+const int STEPS_PER_SOLVENTBLOCKTRANSFER = 50;
+const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -126,7 +131,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.1f / static_cast<float>(STEPS_PER_THER
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 20;
+const int STEPS_PER_RENDER = 10;
 constexpr float FORCED_INTERRENDER_TIME = 10.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //

@@ -260,6 +260,7 @@ struct Coord {
 	
 	__host__ __device__ int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ void print(char c = '_') const { printf(" %c %d %d %d\n", c, x, y, z); }
+	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
 	__host__ int32_t* get(int dim) {
 		switch (dim)

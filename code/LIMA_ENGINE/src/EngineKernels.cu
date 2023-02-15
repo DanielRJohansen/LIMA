@@ -66,25 +66,15 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	return force;
 }
 
-__device__ Float3 computeSolventToSolventLJForces(const SolventCoord& coord_self, const NeighborList& nlist, const SolventCoord* solvent_coords, float* data_ptr, float* potE_sum) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* relpos_others, int n_elements, bool exclude_own_index, float* data_ptr, float& potE_sum) {	// Specific to solvent kernel
 	Float3 force{};
-	const Float3 pos_self = coord_self.rel_position.toFloat3();
 
-	for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
-		const SolventCoord& coord_neighbor = solvent_coords[nlist.neighborsolvent_ids[i]];
+	for (int i = 0; i < n_elements; i++) {
 
-		// Check if the two solvents are too far away for Coord's to represent them
-		if (!LIMAPOSITIONSYSTEM::canRepresentRelativeDist(coord_self.origo, coord_neighbor.origo)) { continue; }
+		// If computing within block, dont compute force against thread's solvent
+		if (exclude_own_index && threadIdx.x == i) { continue; }
 
-		// Take hyperposition here. Both positions are now relative.
-		const Float3 pos_neighbor = LIMAPOSITIONSYSTEM::getRelativeHyperposition(coord_self, coord_neighbor).toFloat3();
-
-		if (threadIdx.x == 0 && (pos_self - pos_neighbor).len() == 0) {
-			(pos_self - pos_neighbor).print('d');
-			printf("n id %d id self %d\n\n\n", nlist.neighborsolvent_ids[i], threadIdx.x + blockIdx.x * THREADS_PER_SOLVENTBLOCK);
-		}
-		//continue;
-		force += LimaForcecalc::calcLJForce(&pos_self, &pos_neighbor, data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForce(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
 	}
@@ -432,8 +422,6 @@ __device__ void doSequentialForwarding(const SolventBlock& solventblock, STransf
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
 
-	//if ()
-
 	// Sequential insertion in shared memory
 	for (int i = 0; i < solventblock.n_solvents; i++) {
 		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
@@ -707,14 +695,12 @@ __global__ void compoundKernel(Box* box) {
 
 
 #define solvent_index (blockIdx.x * blockDim.x + threadIdx.x)
-#define thread_active (solvent_index < box->n_solvents)	// Remove this once shift is complete.
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
-#define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x))
-//#define istransferstep (std::is_same<T, )
-
+#define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x))
+static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 __global__ void solventForceKernel(Box* box) {
-	__shared__ Float3 utility_buffer[MAX_COMPOUND_PARTICLES];	
+	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ CompoundCoords compound_coords;	// For neighboring compounds
@@ -722,7 +708,11 @@ __global__ void solventForceKernel(Box* box) {
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 
-	// Init queue. Is is necessary?
+	// Doubles as block_index_3d!
+	const Coord block_origo = SolventBlockHelpers::get3dIndex(blockIdx.x);
+
+
+	// Init queue, otherwise it will contain wierd values
 	if (threadIdx.x < 6) { 
 		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>();
 	}
@@ -751,6 +741,7 @@ __global__ void solventForceKernel(Box* box) {
 	//}
 
 	Float3 force(0.f);
+	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
 	//const SolventCoord coord_self = thread_active ? *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_index) : SolventCoord{};
 
 	
@@ -783,34 +774,58 @@ __global__ void solventForceKernel(Box* box) {
 		// Otherwise, we need to first compute a hyperpos, being careful not to change our original position.
 		// 
 		//Float3 solvent_pos{coord.}
-		if (thread_active) {
-			//EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
-			//force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
-		}
+		//if (thread_active) {
+		//	//EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
+		//	//force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
+		//}
 		__syncthreads();
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
 
-	//// --------------------------------------------------------------- Solvent Interactions --------------------------------------------------------------- //
-	if (thread_active) {
-		//const auto* solventcoords_ptr = CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, 0);
-		//force += computeSolventToSolventLJForces(coord_self, box->solvent_neighborlists[solvent_index], solventcoords_ptr, data_ptr, &potE_sum);
+	// --------------------------------------------------------------- Intrablock Solvent Interactions ----------------------------------------------------- //
+	if (solvent_active) {
+		utility_buffer[threadIdx.x] = solventblock.rel_pos[threadIdx.x].toFloat3();
 	}
-	//// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
+	__syncthreads();
+	if (solvent_active) {		
+		force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
+	}
+	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	force = Float3{};
+	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
+	for (int x = -1; x < 2; x++) {
+		for (int y = -1; y < 2; y++) {
+			for (int z = -1; z < 2; z++) {
+				const Coord dir{ x,y,z };
+				if (dir.isZero()) { continue; }
+				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
+				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockindex_neighbor);
+				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+
+				if (threadIdx.x < nsolvents_neighbor) {
+					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + (dir * static_cast<int32_t>(NANO_TO_LIMA))).toFloat3();
+				}
+				__syncthreads();
+
+				force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+			}
+		}
+	}
+	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
+
+	//force = Float3{};
 
 	//LogSolventData(box, solvent_index, potE_sum, coord_self);
 
 
 	Coord relpos_next{};
 	if (solvent_active) {
-		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circurlar_queue, blockIdx.x, box->step);
+		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 
 		//// Make the above const, after we get this to work!
-		if (box->step == 0) { relpos_prev -= Coord{ 100000, -100000 ,100000 }; }
+		//if (box->step == 0) { relpos_prev -= Coord{ 100000, -100000 ,100000 }; }
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
 	}
@@ -818,20 +833,8 @@ __global__ void solventForceKernel(Box* box) {
 
 
 	// Push new SolventCoord to global mem
-	if (thread_active) {
-		//*CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step + 1, solvent_index) = coord_self_next;
-	}
-	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
+	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step + 1, blockIdx.x);
 
-	if (solvent_active) {
-
-		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-		
-	}
-	if (threadIdx.x == 0) {
-		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		//if (blockIdx.x == 0) { printf("\n sending %d\n", solventblock.n_solvents); }
-	}
 
 	if (SolventBlockHelpers::isTransferStep(box->step)) {
 		//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
@@ -839,16 +842,15 @@ __global__ void solventForceKernel(Box* box) {
 		doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
 		purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
 	}
-	//else {
-	//	solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
-	//	if (threadIdx.x == 0) {
-	//		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-	//	}
-	//}
+	else {
+		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		if (threadIdx.x == 0) {
+			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		}
+	}
 	
 }
 #undef solvent_index
-#undef thread_active		// ALSO remove this
 #undef solvent_mass
 #undef solvent_active
 #undef solventblock_ptr
@@ -860,8 +862,8 @@ __global__ void solventForceKernel(Box* box) {
 __global__ void solventTransferKernel(Box* box) {
 	SolventBlockTransfermodule* transfermodule = &box->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_current = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step, blockIdx.x);
-	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circurlar_queue, box->step + 1, blockIdx.x);
+	SolventBlock* solventblock_current = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x);
+	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step + 1, blockIdx.x);
 
 	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
 	for (int index = threadIdx.x; index < transfermodule->n_remain; index += blockDim.x) {

@@ -31,6 +31,8 @@ constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove thi
 //constexpr double SOLVENT_MASS = 12.0107 * 1e-3;	// kg/mol
 //constexpr double COMPOUNDPARTICLE_MASS = 12.0107 * 1e-3;
 
+const int DEBUGDATAF3_NVARS = 4;
+
 // This goes on Device
 class Box {
 public:
@@ -72,7 +74,7 @@ public:
 
 	float* outdata = nullptr;			// Temp, for longging values to whatever
 	Float3* data_GAN = nullptr;			// Only works if theres 1 compounds right now.
-
+	Float3* debugdataf3 = nullptr;
 
 	float thermostat_scalar = 1.f;
 };

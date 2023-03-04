@@ -170,7 +170,7 @@ struct CompoundState {							// Maybe delete this soon?
 
 
 
-static_assert(STEPS_PER_LOGTRANSFER% STEPS_PER_SOLVENTBLOCKTRANSFER == 0, "Illegal blocktransfer stepcount");
+//static_assert(STEPS_PER_LOGTRANSFER% STEPS_PER_SOLVENTBLOCKTRANSFER == 0, "Illegal blocktransfer stepcount");
 
 
 
@@ -216,15 +216,18 @@ struct SolventBlock {
 		n_solvents = block.n_solvents;
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
+		rel_pos[threadIdx.x] = Float3{};	// temp
 		if (threadIdx.x < n_solvents) {
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
+			ids[threadIdx.x] = block.ids[threadIdx.x];
 		}
 	}
 
-	__device__ __host__ bool addSolvent(const Coord& rel_position) {
+	__host__ bool addSolvent(const Coord& rel_position, uint32_t id) {
 		if (n_solvents == MAX_SOLVENTS_IN_BLOCK) {
 			return false;
 		}
+		ids[n_solvents] = id;
 		rel_pos[n_solvents++] = rel_position;
 		return true;
 	}
@@ -232,8 +235,9 @@ struct SolventBlock {
 	static_assert((static_cast<int>(BOX_LEN_NM) % static_cast<int>(block_len)) == 0, "Illegal box dimension");
 
 	Coord origo{};
-	uint16_t n_solvents{};
+	uint16_t n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
+	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 };
 
 struct SolventBlockGrid {
@@ -251,14 +255,29 @@ template <int size>
 struct SolventTransferqueue {
 	Coord rel_positions[size];
 	Coord rel_positions_prev[size];	// Adjust rel positions to the new block's origo BEFORE putting it here!
-	int n_elements{};
+	uint32_t ids[size];
+	int n_elements = 0;
 
 	// Do NOT call on queue residing in global memory
-	__device__ void addElement(const Coord& pos, const Coord& pos_prev) {
+	__device__ bool addElement(const Coord& pos, const Coord& pos_prev, uint32_t id) {
+		if (n_elements >= size) { 
+			printf("\nTried to add too many solvents in outgoing transferqueue\n"); 
+			return false;
+		}
 		rel_positions[n_elements] = pos;
 		rel_positions_prev[n_elements] = pos_prev;
+		ids[n_elements] = id;
 		n_elements++;
+		return true;
 	}
+
+	// Insert relative to thread calling.
+	__device__ void fastInsert(const Coord& relpos, const Coord& relpos_prev, const int id, const Coord& transfer_dir) {
+		rel_positions[threadIdx.x]		= relpos - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+		rel_positions_prev[threadIdx.x] = relpos_prev - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+		ids[threadIdx.x] = id;
+	}
+
 	//__device__ void setUsedSize(int usedsize) {
 	//	n_elements = usedsize;
 	//}
@@ -267,7 +286,7 @@ struct SolventTransferqueue {
 struct SolventBlockTransfermodule {
 	// Only use directly (full plane contact) adjecent blocks
 	static const int n_queues = 6;			// or, adjecent_solvent_blocks
-	static const int max_queue_size = 16;	// Maybe this is a bit dangerous
+	static const int max_queue_size = 64;	// Maybe this is a bit dangerous
 
 	// I NEED TO FIGURE OUT PREV_POS FOR NON-REMAINING SOLVENTS!!!!
 	// Each queue will be owned solely by 1 adjecent solventblock
@@ -299,26 +318,24 @@ struct SolventBlockTransfermodule {
 	}
 
 
-	Coord* getQueuePtr(const Coord& transfer_direction) {
-		// Fucking magic yo...
-		auto index = transfer_direction.dot(Coord{ 1, 2, 3 }) + 2;
-	}
-
-	//__device__ trans
+	//Coord* getQueuePtr(const Coord& transfer_direction) {
+	//	// Fucking magic yo...
+	//	auto index = transfer_direction.dot(Coord{ 1, 2, 3 }) + 2;
+	//}
 };
 
 using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_queue_size>;
 using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
 
 namespace SolventBlockHelpers {
-	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord);
+	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id);
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
 		SolventBlockGrid* grid_circular_queue);
 
 	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue);
 	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);
 
-	__device__ bool static isTransferStep(int step) {
+	__device__ __host__ bool static isTransferStep(int step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
 	}
 	__device__ bool static isFirstStepAfterTransfer(int step) {
@@ -338,6 +355,10 @@ namespace SolventBlockHelpers {
 		index1d -= y * bpd;
 		auto x = index1d;
 		return Coord{ x, y, z };
+	}
+
+	__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
+		return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();
 	}
 }
 

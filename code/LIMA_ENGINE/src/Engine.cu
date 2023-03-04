@@ -192,10 +192,12 @@ void Engine::step() {
 		solventForceKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
 	}
 	cudaDeviceSynchronize();
-	if (simulation->getStep() % STEPS_PER_SOLVENTBLOCKTRANSFER == SOLVENTBLOCK_TRANSFERSTEP) {
+	EngineUtils::genericErrorCheck("Error after solventForceKernel");
+	if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
 		solventTransferKernel <<< SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size>>> (simulation->box);
 	}
 	cudaDeviceSynchronize();
+	EngineUtils::genericErrorCheck("Error after solventTransferKernel");
 #endif
 
 	auto t1 = std::chrono::high_resolution_clock::now();

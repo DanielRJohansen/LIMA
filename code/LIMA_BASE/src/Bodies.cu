@@ -57,12 +57,12 @@ SolventBlock* SolventBlockGrid::getBlockPtr(const Coord& index3d)
 
 
 
-bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord)
+bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id)
 {
 	if (coord.origo.x >= 7 || coord.origo.y >= 7 || coord.origo.z >= 7) {
 		printf("");
 	}
-	return grid.getBlockPtr(coord.origo)->addSolvent(coord.rel_position);
+	return grid.getBlockPtr(coord.origo)->addSolvent(coord.rel_position, solvent_id);
 }
 
 

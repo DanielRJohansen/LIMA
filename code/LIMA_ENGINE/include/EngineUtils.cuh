@@ -6,7 +6,7 @@
 
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
-#include <math.h>
+#include <cmath>
 
 #include <cuda.h>
 #include <device_launch_parameters.h>
@@ -16,6 +16,8 @@ namespace ForceCalc {
 //	-
 };
 
+#include "cuda/std/cmath"
+//#include "cuda/std//utility"
 
 namespace CPPD {
 	__device__ __host__ constexpr int32_t ceil(float num) {
@@ -25,8 +27,12 @@ namespace CPPD {
 	}
 
 	template <typename T>
-	__device__ static int max (const T& l, const T& r) {
+	__device__ __host__ static T max(const T l, const T r) {
 		return r > l ? r : l;
+	}
+
+	__device__ __host__ static int32_t abs(const int32_t val) {
+		return val < 0 ? -val : val;
 	}
 }
 
@@ -305,15 +311,11 @@ namespace EngineUtils {
 		cudaDeviceSynchronize();
 		cudaError_t cuda_status = cudaGetLastError();
 		if (cuda_status != cudaSuccess) {
-			std::cout << "\nCuda error code: " << cuda_status << std::endl;
+			std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
 			fprintf(stderr, text);
 			exit(1);
 		}
 	}
-
-	//__device__ __host__ static void applyABC(Coord* pos) {
-
-	//}
 
 	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
 		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
@@ -348,14 +350,68 @@ namespace EngineUtils {
 		return &transfermodule_array[index];
 	}
 
-	__device__ static Coord getOnehotDirection(const Coord& coord, int32_t threshold) {
-		int32_t max_val{ CPPD::max(
-			CPPD::max(std::abs(coord.x), std::abs(coord.y)),
+	__device__ static Coord getOnehotDirection(const Coord coord, int32_t threshold) {
+		const int32_t magnitude_x = std::abs(coord.x);
+		const int32_t magnitude_y = std::abs(coord.y);
+		const int32_t magnitude_z = std::abs(coord.z);
+
+		if (magnitude_x < threshold && magnitude_y < threshold && magnitude_z < threshold) { return Coord{ 0,0,0 }; }
+
+		// Determine which magnitude is the largest
+		if (magnitude_x >= magnitude_y && magnitude_x >= magnitude_z) {
+			// The x component has the largest magnitude
+			return Coord{ coord.x < 0 ? -1 : 1, 0, 0 };
+		}
+		else if (magnitude_y >= magnitude_x && magnitude_y >= magnitude_z) {
+			// The y component has the largest magnitude
+			return Coord{ 0, coord.y < 0 ? -1 : 1, 0 };
+		}
+		else {
+			// The z component has the largest magnitude
+			return Coord{ 0, 0, coord.z < 0 ? -1 : 1 };
+		}
+	}
+	__device__ static Coord getOnehotDirection1(const Coord coord, int32_t threshold) {
+		
+		//if (coord.x > 0 && coord.x != std::abs(coord.x)) {
+		//	printf("\n %d %d\n", coord.x, std::abs(coord.x));
+		//}
+		//if (coord.y > 0 && coord.y != std::abs(coord.y)) {
+		//	printf("\n %d %d\n", coord.y, std::abs(coord.y));
+		//}
+		//if (coord.z > 0 && coord.z != std::abs(coord.z)) {
+		//	printf("\n %d %d\n", coord.z, std::abs(coord.z));
+		//}
+
+
+		const int32_t max_val{ 
+			CPPD::max(
+			int32_t{CPPD::max(std::abs(coord.x), std::abs(coord.y))},
 			std::abs(coord.z))
 		};
+
+		int max2 = std::abs(coord.x);
+		if (std::abs(coord.y) > max2) { max2 = std::abs(coord.y); }
+		if (std::abs(coord.z) > max2) { max2 = std::abs(coord.z); }
+
+		int max3 = CPPD::max(coord.x, coord.y);
+		max3 = CPPD::max(coord.z, max3);
+
 		if (max_val > threshold) {
 			// Could be optimized by using threshold as a template argument
 			Coord onehot =  coord / max_val;
+			if (onehot.x + onehot.y + onehot.z > 1) {
+				//printf("\nMax val %d max2 %d max3 %d\n", max_val, max2, max3);
+				onehot.print('O');
+				coord.print('C');
+				//printf("\nABS: Max  %d  %d  %d\n", std::abs(coord.x), std::abs(coord.y), std::abs(coord.z));
+				//printf("issame %d %d %d\n", coord.x == std::abs(coord.x), coord.y == std::abs(coord.y), coord.z == std::abs(coord.z));
+				printf("x %d %d %d\n", coord.x, CPPD::abs(coord.x), coord.x < 0);
+				printf("y %d %d %d\n", coord.y, CPPD::abs(coord.y), coord.x < 0);
+				printf("z %d %d %d\n", coord.z, CPPD::abs(coord.z), coord.x < 0);
+				printf("\n");
+				//__nvvm_atom_max()
+			}
 			// Handle the case where some coordinates are identical
 			onehot.y = onehot.x != 0 ? 0 : onehot.y;
 			onehot.z = onehot.x != onehot.y ? 0 : onehot.z;	// x and y can't both be 1, since x already has priority over x
@@ -363,6 +419,14 @@ namespace EngineUtils {
 		}
 
 		return Coord{};
+	}
+
+	// returns an int between -21 and 21
+	__device__ static int genPseudoRandomNum(int& seed) {
+		const unsigned int a = 1664525;
+		const unsigned int c = 1013904223;
+		seed = a * seed + c;
+		return seed / 100000000;
 	}
 	//__device__ static Coord getOnehotDirection(const Coord& coord, int32_t threshold) {
 	//	int32_t max_val{ CPPD::max(
@@ -379,27 +443,35 @@ namespace EngineUtils {
 
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
-	__device__ static Coord getTransferDirection(const Coord& relpos) {
+	__device__ static Coord getTransferDirection(const Coord relpos) {
 		const int32_t blocklen_half = static_cast<int32_t>(NANO_TO_LIMA) / 2;
 		const Coord rel_blockcenter{ blocklen_half };
+		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half ) {
+			printf("\nWe have underflow!\n");
+			relpos.print('R');
+		}
+		if (relpos.x > INT32_MAX - blocklen_half || relpos.y > INT32_MAX - blocklen_half || relpos.z > INT32_MAX - blocklen_half) {
+			printf("\nWe have overflow!\n");
+			relpos.print('R');
+		}
 		return EngineUtils::getOnehotDirection(relpos - rel_blockcenter, blocklen_half);
 	}
 
-	__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
-		//const Coord transfer_direction = getTransferDirection(relpos);
-		//const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	//__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
+	//	//const Coord transfer_direction = getTransferDirection(relpos);
+	//	//const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 
-		//int new_blockid = getNewBlockId(transfer_direction, blockId3d);
-		//if (new_blockid == blockIdx.x) {
-		//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-		//}
-		//else {
-		//	// Coord 
-		//	// TEMP:
-		//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-		//	transfermodule_array[new_blockid].getQueuePtr()/
-		//}
-	}
+	//	//int new_blockid = getNewBlockId(transfer_direction, blockId3d);
+	//	//if (new_blockid == blockIdx.x) {
+	//	//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+	//	//}
+	//	//else {
+	//	//	// Coord 
+	//	//	// TEMP:
+	//	//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
+	//	//	transfermodule_array[new_blockid].getQueuePtr()/
+	//	//}
+	//}
 
 	/*__device__ static void compressTransferqueue(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>* transferqueues) {
 

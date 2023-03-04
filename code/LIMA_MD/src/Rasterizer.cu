@@ -199,45 +199,28 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
         atoms[global_id].atom_type = ATOM_TYPE::NONE;
     }
 }
-
-//__global__ void loadSolventatomsKernel(Box* box, RenderAtom * atoms, int offset) {
-//    int solvent_id = threadIdx.x + blockIdx.x * THREADS_PER_LOADSOLVENTSATOMSKERNEL;
-//
-//    if (solvent_id < box->n_solvents) {
-//        const SolventCoord& coord = *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_id);
-//        atoms[solvent_id + offset].pos = coord.getAbsolutePositionLM();
-//        //atoms[solvent_id + offset].pos = box->solvents[solvent_id].pos;
-//        atoms[solvent_id + offset].mass = SOLVENT_MASS;
-//        atoms[solvent_id + offset].atom_type = SOL;
-//
-//
-//        // This part is for various debugging purposes
-//        int query_id = 0;
-//        if (solvent_id == query_id) {
-//            atoms[solvent_id + offset].atom_type = P;
-//        }
-//        const auto& nlist = box->solvent_neighborlists[solvent_id];
-//        for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
-//            if (nlist.neighborsolvent_ids[i] == query_id) {
-//                atoms[solvent_id + offset].atom_type = O;
-//            }
-//        }
-//        //if (solvent_id != 440)
-//        //    atoms[solvent_id + offset].atom_type = NONE;
-//	}
-//}
+#include <algorithm> 
+#include <cuda/std/cmath>
 
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) {
     SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x);
+    SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step == 0 ? 0 : box->step-1, blockIdx.x);
 
     if (threadIdx.x < solventblock->n_solvents) {
         const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };
 
-        RenderAtom atom{};
-        atom.pos = coord.getAbsolutePositionLM();
-        atom.mass = SOLVENT_MASS;
-        atom.atom_type = SOL;
+		RenderAtom atom{};
+		atom.pos = coord.getAbsolutePositionLM();
+		atom.mass = SOLVENT_MASS;
+		atom.atom_type = SOL;
 
+		// Debug
+		float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
+        float point1nm = NANO_TO_LIMA * 0.1f;
+		float color_scalar = velocity / point1nm * 255.f;
+		uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));
+		atom.color = Int3(color_red, 0, 255 - color_red);
+		//printf("vel %f, %d\n", velocity, color_red);
 
         // This part is for various debugging purposes
         int query_id = 0;
@@ -262,7 +245,9 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     
     RenderAtom atom = atoms[index];
 
-    atom.color = getColor(atom.atom_type);
+    
+    //atom.color = getColor(atom.atom_type);
+
     atom.radius = (getRadius(atom.atom_type)) / (1.f+atom.pos.y * 0.00000000001f);       // [nm]
 
     // Convert units to normalized units for OpenGL

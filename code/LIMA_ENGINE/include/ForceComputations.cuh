@@ -25,6 +25,15 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 
+
+	if (((*pos1 - *pos0) * force_scalar).len() > 100) {
+		printf("\nID: %d\n", threadIdx.x + blockIdx.x*blockDim.x);
+		((*pos1 - *pos0) * force_scalar).print('f');
+		pos0->print('0');
+		pos1->print('1');
+		printf("dist nm %f\n", sqrt(dist_sq) / NANO_TO_LIMA);
+	}
+
 #ifdef LIMA_VERBOSE
 	//if (threadIdx.x == 0 && blockIdx.x == 0) {
 	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;

@@ -107,8 +107,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	// Permanent Outputs for energy & trajectory analysis
 	int n_points = simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER;
 	printf("n points %d\n", n_points);
-	printf("Malloc %.2f KB on device for data buffers\n",(float) ((sizeof(double) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-3));
-	printf("Malloc %.2f MB on host for data buffers\n", (float) ((sizeof(double) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
+	printf("Malloc %.2f MB on device for data buffers\n",(float) ((sizeof(double) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
+	printf("Malloc %.2f MB on host for data buffers\n", (float) ((sizeof(double) * simulation->total_particles_upperbound * simulation->n_steps + sizeof(Float3) * simulation->total_particles_upperbound * simulation->n_steps) * 1e-6));
 	cudaMallocManaged(&simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
 	simulation->potE_buffer = new float[simulation->total_particles_upperbound * simulation->n_steps];
 
@@ -117,7 +117,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	simulation->temperature_buffer = new float[simulation->n_steps / STEPS_PER_THERMOSTAT + 1];
 
-
+	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
+	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
 
 
 
@@ -129,7 +130,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
 	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER;
 	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
-	printf("Reserving %.2f MB device mem for logging + training data\n", (float) ((total_bytes) * 1e-6));
+	printf("Reserving %.4f MB device mem for logging + training data\n", (float) ((total_bytes) * 1e-6));
 	cudaMallocManaged(&simulation->box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
 
 	cudaMallocManaged(&simulation->box->data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER);
@@ -137,7 +138,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	uint64_t n_loggingdata_host = 10 * simulation->n_steps;
 	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * (uint64_t) simulation->n_steps;
-	printf("Reserving %.2f GB host mem for logging + training data\n",(float) (sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
+	printf("Reserving %.4f GB host mem for logging + training data\n",(float) (sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
 	simulation->logging_data = new float[n_loggingdata_host];
 	simulation->traindata_buffer = new Float3[n_traindata_host];
 
@@ -216,8 +217,8 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 			solventcoords[simulation->box->n_solvents] = solventcoord;
 			solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
 
-			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks, solventcoord);
-			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks_prev, solventcoord);
+			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks, solventcoord, simulation->box->n_solvents);
+			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks_prev, solventcoord, simulation->box->n_solvents);
 			simulation->box->n_solvents++;
 		}
 	}

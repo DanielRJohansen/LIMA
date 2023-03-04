@@ -259,7 +259,12 @@ struct Coord {
 	//__device__ Coord operator >> (const uint32_t a) const { return Coord(x >> a, y >> a, z >> a); }
 	
 	__host__ __device__ int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
-	__host__ __device__ void print(char c = '_') const { printf(" %c %d %d %d\n", c, x, y, z); }
+	__host__ __device__ void print(char c = '_', bool nl=1) const { 
+		if (nl) printf(" %c %d %d %d\n", c, x, y, z);
+		else printf(" %c %d %d %d", c, x, y, z);
+	}
+	__host__ __device__ void printS(char c = '_') const { 
+		printf(" %c %d %d %d\n", c, x / 1000000, y / 1000000, z / 1000000); }
 	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
 	__host__ int32_t* get(int dim) {
@@ -301,6 +306,10 @@ struct Coord {
 //	}
 };
 
+// HOW THE FUCK DO I MAKE THIS WORK??!
+//__host__ __device__ std::string& operator+(std::string& lhs, const Coord rhs) {
+//	return lhs += " " + std::to_string(rhs.x) + " " + std::to_string(rhs.y) + " " + std::to_string(rhs.z);
+//}
 
 struct BoundingBox {
 	BoundingBox() {}

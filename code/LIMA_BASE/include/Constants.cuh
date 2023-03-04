@@ -73,7 +73,7 @@ const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
 const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
-const int STEPS_PER_SOLVENTBLOCKTRANSFER = 50;
+const int STEPS_PER_SOLVENTBLOCKTRANSFER = 3;
 const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -131,7 +131,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.1f / static_cast<float>(STEPS_PER_THER
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 10;
+const int STEPS_PER_RENDER = 1;
 constexpr float FORCED_INTERRENDER_TIME = 10.f;		// [ms] Set to 0 for full speed sim
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //
@@ -146,7 +146,7 @@ const int STEPS_PER_NLIST_UPDATE = 10;
 
 
 // THERMOSTAT PARAMETERS
-const int STEPS_PER_LOGTRANSFER = 50;		// Must be >= 3	why?
+const int STEPS_PER_LOGTRANSFER =  50;		// Must be >= 3	why?
 //const int STEPS_PER_TRAJTRANSFER = 100;
 
 // Logging constants

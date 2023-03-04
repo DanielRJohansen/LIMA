@@ -171,6 +171,8 @@ void Environment::postRunEvents() {
 		dumpToFile(simulation->potE_buffer, simulation->getStep() * simulation->total_particles_upperbound, out_dir + "potE.bin");
 	}
 
+	dumpToFile(simulation->box->debugdataf3, simulation->getStep() * simulation->total_particles_upperbound * DEBUGDATAF3_NVARS, out_dir + "debugf3.bin");
+
 #ifndef __linux__
 	if (!simulation->box->critical_error_encountered && 0) {	// Skipping for now
 		string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
@@ -230,8 +232,8 @@ bool Environment::handleTermination(Simulation* simulation)
 		simulation->finished = true;
 		return true;
 	}		
-	//if (simulation->box->critical_error_encountered)
-		//return true;
+	if (simulation->box->critical_error_encountered)
+		return true;
 
 	return false;
 }

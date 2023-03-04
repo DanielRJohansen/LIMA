@@ -218,9 +218,8 @@ bool doBasicBenchmark(Environment& env, const string& folder_name) {
 
 
 
-
+#include "EngineUtils.cuh"
 int main() {
-
 
 	/*coordPrecesionBenchmark();
 	return 0;*/

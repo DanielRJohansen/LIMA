@@ -29,6 +29,22 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 }
 
 
+// Must be called with ALL threads in a block
+__device__ Coord getRandomCoord(int lcg_seed) {
+	Coord randcoord;
+	for (int i = 0; i < blockDim.x; i++) {
+		if (threadIdx.x == i) {
+			randcoord = Coord{
+				EngineUtils::genPseudoRandomNum(lcg_seed),
+				EngineUtils::genPseudoRandomNum(lcg_seed),
+				EngineUtils::genPseudoRandomNum(lcg_seed)
+			};
+		}
+		__syncthreads();
+	}
+	return randcoord;
+}
+
 
 __device__ Float3 computerIntercompoundLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
 	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {
@@ -211,34 +227,6 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 
 	return utility_buffer[threadIdx.x];
 }
-//
-//__device__ void integratePosition(Coord& coord, Coord& coord_tsub1, Float3* force, const float mass, const double dt, const float thermostat_scalar) {
-//	//EngineUtils::applyHyperpos(pos, pos_tsub1);
-//
-//	//Float3 temp = *pos;
-//	//float prev_vel = (*pos - *pos_tsub1).len();
-//	Coord prev_vel = coord - coord_tsub1;
-//
-//	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-//	//int32_t x = coord.x;
-//	//int32_t dx = coord.x - coord_tsub1.x;
-//	//int32_t ddx = static_cast<int32_t>(force->x * dt * dt / static_cast<double>(mass));
-//	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
-//
-//	coord += (coord - coord_tsub1) * thermostat_scalar + *force * dt * dt / mass;
-//	//pos->x = x + dx + ddx;
-//	//coord.x = x + dx + ddx;
-//
-//	//Double3 pos_d{ *pos };
-//
-//	if (threadIdx.x == 0 && blockIdx.x == 0) {
-//		//force->print('f');
-//		//printf("dt %f mass %f\n", dt, mass);
-//		//(*force*dt*dt / mass).print('F');
-//		//uint32_t diff = coord.x - x - dx;
-//		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-//	}
-//}
 
 // This function assumes that coord_tsub1 is already hyperpositioned to coord.
 __device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
@@ -341,10 +329,16 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoo
 	box->potE_buffer[index] = *potE_sum;
 }
 
-__device__ inline void LogSolventData(Box* box, const int solvent_id, const float& potE, const SolventCoord& coord) {
-	const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solvent_id);
-	box->potE_buffer[index] = potE;
-	box->traj_buffer[index] = coord.getAbsolutePositionLM();
+__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force) {
+	if (solvent_active) {
+		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, blockIdx.x * blockDim.x + threadIdx.x);
+		box->potE_buffer[index] = potE;
+		box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
+
+		if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);
+		const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;
+		box->debugdataf3[debug_index] = Float3(500);// Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
+	}
 }
 
 __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord, int step) { 
@@ -396,7 +390,9 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 	__syncthreads();
 	doSequentialPrefixSum(utility_buffer, n_elements);	
 	//doBlellochPrefixSum
-	return utility_buffer[threadIdx.x] - 1;	// Underflow here doesn't matter, as the underflowing threads wont remain anyways :)
+
+	const uint8_t solventindex_new = utility_buffer[threadIdx.x] - 1; // Underflow here doesn't matter, as the underflowing threads wont remain anyways :)
+	return solventindex_new;	
 }
 
 
@@ -406,9 +402,83 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 
 
 
+__device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const Coord& blockId3d) {
+
+	// Sequential insertion in shared memory
+	for (int i = 0; i < solventblock_current_local.n_solvents; i++) {
+		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
+			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_dir);
+
+			if (queue_index < 0 || queue_index > 5) { printf("\nGot unexpected queue index %d\n", queue_index); transfer_dir.print(); }
+			if (!transferqueues[queue_index].addElement(relpos_next, solventblock_current_local.rel_pos[threadIdx.x], solventblock_current_local.ids[threadIdx.x]))
+			{
+				printf("What the fuck\n");
+			}
+		}
+		__syncthreads();
+	}
+
+	// Coaslescing copying to global memory
+	for (int queue_index = 0; queue_index < 6; queue_index++) {
+		const STransferQueue& queue_local = transferqueues[queue_index];
+
+		if (threadIdx.x < queue_local.n_elements) {
+
+			const Coord transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
+			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
+			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
+			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
+
+			queue_global->fastInsert(
+				queue_local.rel_positions[threadIdx.x], 
+				queue_local.rel_positions_prev[threadIdx.x], 
+				queue_local.ids[threadIdx.x], 
+				transferdir_queue);
+
+			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
+			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }			
+		}
+	}
+	__syncthreads();
+
+}
+
+__device__ void compressRemainers(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
+	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* remain_transfermodule, const bool remain) {
+
+	// Compute prefix sum to find new index of solvent belonging to thread
+	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
 
 
+	if (remain) {
+		// Send current pos at threadindex to prevpos at the new index
+		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
+		// Send the next pos 
+		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
+		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
+	}
 
+	const int nsolventsinblock_next = __syncthreads_count(remain);
+	if (threadIdx.x == 0) {
+		remain_transfermodule->n_remain = nsolventsinblock_next;
+		solventblock_next_global->n_solvents = nsolventsinblock_next;	// Doesn't matter, since the transfer kernel handles this. Enabled for debugging now..
+	}
+}
+
+__device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
+	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
+
+	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? EngineUtils::getTransferDirection(relpos_next) : Coord{ 0 };
+	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
+	const bool doTransfer = blockIdx.x != new_blockid;
+
+	
+	transferOut(transfer_dir, solventblock_current_local, new_blockid, relpos_next, transferqueues_local, transfermodules_global, blockId3d);
+
+	SolventBlockTransfermodule* remain_transfermodule = &transfermodules_global[blockIdx.x];
+	compressRemainers(solventblock_current_local, solventblock_next_global, relpos_next, utility_buffer, remain_transfermodule, !doTransfer);
+}
 
 
 /// <summary>
@@ -417,39 +487,79 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 /// <param name="transferqueues">In shared memory</param>
 /// <param name="relpos_next">Register</param>
 /// <param name="transfermodules">Global memory</param>
-__device__ void doSequentialForwarding(const SolventBlock& solventblock, STransferQueue* transferqueues, const Coord& relpos_next, SolventBlockTransfermodule* transfermodules) {
-	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
+__device__ void doTransferOut(const SolventBlock& solventblock, STransferQueue* transferqueues, const Coord& relpos_next, SolventBlockTransfermodule* transfermodules) {
+
+	// Default values for non-active threads
+	Coord transfer_direction{};
+	int new_blockid = blockIdx.x;
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
-	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
+
+	if (threadIdx.x < solventblock.n_solvents) {
+		transfer_direction = EngineUtils::getTransferDirection(relpos_next);
+		new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
+	}
 
 	// Sequential insertion in shared memory
 	for (int i = 0; i < solventblock.n_solvents; i++) {
 		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
 			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_direction);
-			transferqueues[queue_index].addElement(relpos_next, solventblock.rel_pos[threadIdx.x]);
+			if (queue_index < 0 || queue_index > 5) { printf("\nGot unexpected queue index %d\n"); }
+			if (!transferqueues[queue_index].addElement(relpos_next, solventblock.rel_pos[threadIdx.x], solventblock.ids[threadIdx.x]))
+			{
+				printf("What the fuck\n");
+			}
 		}
 		__syncthreads();
 	}
 
 	// Coaslescing copying to global memory
 	for (int queue_index = 0; queue_index < 6; queue_index++) {
-		STransferQueue& queue_local = transferqueues[queue_index];
+		const STransferQueue& queue_local = transferqueues[queue_index];
 
 		if (threadIdx.x < queue_local.n_elements) {
 
 			const Coord transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
+			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
+
+			//queue_local.rel_positions[threadIdx.x].print('l', 0); transferdir_queue.print('t');
+			//printf(std::string{ "\nTransferring" } + queue_local.rel_positions[threadIdx.x]);
+			const auto& r = queue_local.rel_positions[threadIdx.x];
+			const auto& d = transferdir_queue;
+			//printf("\n Transferring %d %d %d along dir %d %d %d\n", r.x, r.y, r.z, d.x, d.y, d.z);
+
 
 			// We now change the relpos to fit the new origo.
 			queue_global->rel_positions[threadIdx.x]	  = queue_local.rel_positions[threadIdx.x]		- transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
 			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x] - transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
+			queue_global->ids[threadIdx.x] = queue_local.ids[threadIdx.x];
+
+
+
+
+
+
+
+			// Debugging
+			if (   queue_global->rel_positions[threadIdx.x].x < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				|| queue_global->rel_positions[threadIdx.x].y < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				|| queue_global->rel_positions[threadIdx.x].z < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				) {
+				printf("\n");
+				transferdir_queue.print('t');
+				queue_local.rel_positions[threadIdx.x].print('q');
+				queue_global->rel_positions[threadIdx.x].print('Q');
+			}
 
 			if (threadIdx.x == 0) {
-				if (queue_global->n_elements != 0) { printf("N elements was: %d\n", queue_global->n_elements); }
+				if (queue_global->n_elements != 0) { 
+					printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index); 
+					transferdir_queue.print('d');
+				}
 
 				queue_global->n_elements = queue_local.n_elements;
-				if (queue_local.n_elements > 10) {
+				if (queue_local.n_elements > 15) {
 					printf("\nTransferring %d elements\n", queue_local.n_elements);
 				}
 			}
@@ -475,13 +585,7 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
-	const bool remain1 = (new_blockid == blockIdx.x) && (threadIdx.x < solventblock_current_local.n_solvents);
-	const bool remain = (transfer_direction.x + transfer_direction.y + transfer_direction.z == 0) && (threadIdx.x < solventblock_current_local.n_solvents);
-
-	if (remain1 != remain) {
-		printf("remain %d %d\n", remain, remain1);
-		transfer_direction.print('t');
-	}
+	const bool remain = (new_blockid == blockIdx.x) && (threadIdx.x < solventblock_current_local.n_solvents);
 
 	if (!remain && (threadIdx.x < solventblock_current_local.n_solvents)) {
 		//transfer_direction.print('T');
@@ -490,6 +594,7 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 
 	// Compute prefix sum to find new index of solvent belonging to thread
 	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
+	if (solventindex_new < 0 || solventindex_new > 255) { printf("\nGot unexpected solvent remain index"); }
 
 	if (blockIdx.x == 0) {
 		//printf("Thread %d newid %d\n", threadIdx.x, solventindex_new);
@@ -500,6 +605,7 @@ __device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventbl
 		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
 		// Send the next pos 
 		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
+		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
 	}
 
 	const int nsolventsinblock_next = __syncthreads_count(remain);
@@ -690,11 +796,14 @@ __global__ void compoundKernel(Box* box) {
 
 
 
+#include "cuda/std/cmath"
+#include "math.h"
 
 
+#include <curand.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
-
-#define solvent_index (blockIdx.x * blockDim.x + threadIdx.x)
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x))
@@ -708,14 +817,19 @@ __global__ void solventForceKernel(Box* box) {
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 
+	__shared__ int lcg_seed;
+	lcg_seed = 12345;
+
 	// Doubles as block_index_3d!
 	const Coord block_origo = SolventBlockHelpers::get3dIndex(blockIdx.x);
 
 
 	// Init queue, otherwise it will contain wierd values
 	if (threadIdx.x < 6) { 
-		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>();
+		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
 	}
+
+
 
 	float potE_sum = 0;
 	float data_ptr[4];	// Pot, force, closest particle, ?
@@ -723,7 +837,9 @@ __global__ void solventForceKernel(Box* box) {
 		data_ptr[i] = 0;
 	data_ptr[2] = 9999.f;
 
-
+	// temp
+	utility_buffer[threadIdx.x] = Float3{0};
+	utility_buffer_small[threadIdx.x] = 0;
 
 
 	if (threadIdx.x == 0) {
@@ -734,17 +850,9 @@ __global__ void solventForceKernel(Box* box) {
 	solventblock.loadData(*solventblock_ptr);
 	__syncthreads();
 
-	//if (threadIdx.x == 0 && blockIdx.x == SolventBlockHelpers::get1dIndex({ 3, 3, 3 })) {
-	//	printf("\n1d index: %d", SolventBlockHelpers::get1dIndex({ 3, 3, 3 }));
-	//	solventblock.origo.print('o');
-	//	solventblock.rel_pos[0].print('r');
-	//}
 
 	Float3 force(0.f);
 	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
-	//const SolventCoord coord_self = thread_active ? *CoordArrayQueueHelpers::getSolventcoordPtr(box->solventcoordarray_circular_queue, box->step, solvent_index) : SolventCoord{};
-
-	
 
 	if (blockIdx.x == 0 && threadIdx.x == 0) {
 		//coord.origo.print();
@@ -795,12 +903,16 @@ __global__ void solventForceKernel(Box* box) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
-	for (int x = -1; x < 2; x++) {
-		for (int y = -1; y < 2; y++) {
-			for (int z = -1; z < 2; z++) {
+	const int query_range = 3;
+	for (int x = -query_range; x <= query_range; x++) {
+		for (int y = -query_range; y <= query_range; y++) {
+			for (int z = -query_range; z <= query_range; z++) {
 				const Coord dir{ x,y,z };
 				if (dir.isZero()) { continue; }
+
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
+				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
+
 				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockindex_neighbor);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 
@@ -809,25 +921,41 @@ __global__ void solventForceKernel(Box* box) {
 				}
 				__syncthreads();
 
-				force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+				if (solvent_active) {
+					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+				}
 			}
 		}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
-
+	//if (box->step > 200)
 	//force = Float3{};
 
-	//LogSolventData(box, solvent_index, potE_sum, coord_self);
+	LogSolventData(box, potE_sum, solventblock, solvent_active, force);
 
+	const Coord randcoord = getRandomCoord(lcg_seed);
 
 	Coord relpos_next{};
 	if (solvent_active) {
-		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
+		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 
 		//// Make the above const, after we get this to work!
-		//if (box->step == 0) { relpos_prev -= Coord{ 100000, -100000 ,100000 }; }
+		const int scalar = 100000;
+		
+		
+
+		//if (box->step == 0) { relpos_prev -= randcoord * scalar; }
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
+		auto dif = (relpos_next - relpos_prev);
+		if (std::abs(dif.x) > 15000000 || std::abs(dif.y) > 15000000 || std::abs(dif.z) > 15000000) { 
+			printf("\nFuck mee %d\n", solventblock.ids[threadIdx.x]);
+			dif.printS('D'); 
+			force.print('F');
+			relpos_prev.printS('p');
+			relpos_next.printS('n');
+			box->critical_error_encountered = true;
+		}
 	}
 
 
@@ -835,15 +963,18 @@ __global__ void solventForceKernel(Box* box) {
 	// Push new SolventCoord to global mem
 	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step + 1, blockIdx.x);
 
-
 	if (SolventBlockHelpers::isTransferStep(box->step)) {
 		//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
 
-		doSequentialForwarding(solventblock, transferqueues, relpos_next, box->transfermodule_array);
-		purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
+		//doTransferOut(solventblock, transferqueues, relpos_next, box->transfermodule_array);
+		//purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
+
+		transferOutAndCompressRemainders(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
+
 	}
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
 		if (threadIdx.x == 0) {
 			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
 		}
@@ -867,9 +998,13 @@ __global__ void solventTransferKernel(Box* box) {
 
 	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
 	for (int index = threadIdx.x; index < transfermodule->n_remain; index += blockDim.x) {
+		if (index > 255) { printf("\nWhat the fuck\n"); }
 		solventblock_current->rel_pos[index] = transfermodule->remain_relpos_prev[index];
 	}
 
+	if (solventblock_next->n_solvents != transfermodule->n_remain) {
+		printf("YOooooooooooooooooooooooooooooooooooooooooooo %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);
+	}
 
 	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
@@ -877,7 +1012,11 @@ __global__ void solventTransferKernel(Box* box) {
 		auto* queue = &transfermodule->transfer_queues[queue_index];
 		if (threadIdx.x < queue->n_elements) {
 			const int incoming_index = n_solvents_next + threadIdx.x;
+
+			if (queue->rel_positions[threadIdx.x].x == 0) { queue->rel_positions[threadIdx.x].print('I'); }
+
 			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
+			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];
 			solventblock_current->rel_pos[incoming_index] = queue->rel_positions_prev[threadIdx.x];
 		}
 		n_solvents_next += queue->n_elements;

@@ -27,7 +27,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 
 
 	if (((*pos1 - *pos0) * force_scalar).len() > 100) {
-		printf("\nID: %d\n", threadIdx.x + blockIdx.x*blockDim.x);
+		printf("\nBlock %d thread %d type1 %d\n", blockIdx.x, threadIdx.x, type1);
 		((*pos1 - *pos0) * force_scalar).print('f');
 		pos0->print('0');
 		pos1->print('1');

@@ -92,7 +92,7 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 
 		force += LimaForcecalc::calcLJForce(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
-			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon);
+			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon, exclude_own_index);
 	}
 	return force;// *24.f * 1e-9;
 }
@@ -329,7 +329,7 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoo
 	box->potE_buffer[index] = *potE_sum;
 }
 
-__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force) {
+__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity) {
 	if (solvent_active) {
 		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, blockIdx.x * blockDim.x + threadIdx.x);
 		box->potE_buffer[index] = potE;
@@ -337,7 +337,10 @@ __device__ inline void LogSolventData(Box* box, const float& potE, const Solvent
 
 		if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);
 		const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;
-		box->debugdataf3[debug_index] = Float3(500);// Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
+		//box->debugdataf3[debug_index] = Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
+		box->debugdataf3[debug_index] = force;
+		box->debugdataf3[debug_index + 1] = velocity;
+		box->debugdataf3[debug_index + 2] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock) / NANO_TO_LIMA;
 	}
 }
 
@@ -358,7 +361,6 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const
 
 
 /// <summary>
-/// 
 /// </summary>
 /// <param name="onehot_remainers">Must be size of MAX_SOLVENTS_IN_BLOCK</param>
 /// <param name="utility">Must be large enough to store temporary sums for blelloch sum</param>
@@ -505,11 +507,6 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 		remain_transfermodule->n_remain = nsolventsinblock_next;
 		solventblock_next_global->n_solvents = nsolventsinblock_next;	// Doesn't matter, since the transfer kernel handles this. Enabled for debugging now..
 	}
-
-	if (threadIdx.x >= nsolventsinblock_next) {
-		solventblock_next_global->rel_pos[threadIdx.x] = Coord{42, 42, 42};
-	}
-
 }
 
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
@@ -843,7 +840,8 @@ __global__ void solventForceKernel(Box* box) {
 	//if (box->step > 200)
 	//force = Float3{};
 
-	LogSolventData(box, potE_sum, solventblock, solvent_active, force);
+	const Float3 velocity = relpos_self - LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step).toFloat3();
+	LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity);
 
 	const Coord randcoord = getRandomCoord(lcg_seed);
 

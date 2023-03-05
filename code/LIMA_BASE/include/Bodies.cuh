@@ -218,6 +218,11 @@ struct SolventBlock {
 	__device__ __host__ void loadData(const SolventBlock& block) {
 		rel_pos[threadIdx.x] = Float3{};	// temp
 		if (threadIdx.x < n_solvents) {
+
+			if (block.rel_pos[threadIdx.x] == Coord{ 0 }) {
+				printf("Loading zeroes blockid %d nsol %d\n", blockIdx.x, n_solvents);
+			}
+
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 		}
@@ -245,7 +250,7 @@ struct SolventBlockGrid {
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
 	SolventBlock blocks[blocks_total];
 
-	__device__ __host__ SolventBlock* getBlockPtr(const Coord& index3d);
+	__host__ SolventBlock* getBlockPtr(const Coord& index3d);
 	__device__ __host__ SolventBlock* getBlockPtr(int index1d) {
 		return &blocks[index1d];
 	}
@@ -291,11 +296,10 @@ struct SolventBlockTransfermodule {
 	// I NEED TO FIGURE OUT PREV_POS FOR NON-REMAINING SOLVENTS!!!!
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
-	//SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK> remain_queue;	// Maybe rename, since i want to fit all positions in here, right? 
+
 	Coord remain_relpos_prev[MAX_SOLVENTS_IN_BLOCK];
 	int n_remain = 0;
-	/// <summary>
-	/// </summary>
+
 	/// <param name="transfer_direction">Relative to the originating block</param>
 	__device__ static int getQueueIndex(const Coord& transfer_direction) {
 		// Fucking magic yo...
@@ -332,8 +336,9 @@ namespace SolventBlockHelpers {
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
 		SolventBlockGrid* grid_circular_queue);
 
-	void setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue);
-	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);
+	void createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue);
+	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);	// Is this used?
+	__host__ void createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array);
 
 	__device__ __host__ bool static isTransferStep(int step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
@@ -360,6 +365,7 @@ namespace SolventBlockHelpers {
 	__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
 		return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();
 	}
+
 }
 
 

@@ -52,6 +52,7 @@ SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
 
 SolventBlock* SolventBlockGrid::getBlockPtr(const Coord& index3d)
 {
+	if (index3d.x >= BOX_LEN_NM_INT || index3d.y >= BOX_LEN_NM_INT || index3d.z >= BOX_LEN_NM_INT) { printf("BAD 3D index\n"); exit(1); }
 	return getBlockPtr(SolventBlockHelpers::get1dIndex(index3d));
 }
 
@@ -85,7 +86,10 @@ bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid,
 }
 
 
-void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockgrid_circularqueue_device) {
+void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue_device) {
+	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
+	cudaMalloc(solventblockgrid_circularqueue_device, n_bytes_solventblockgrids);
+
 	auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
 	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
 		for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
@@ -97,8 +101,24 @@ void SolventBlockHelpers::setupBlockMetaOnDevice(SolventBlockGrid* solventblockg
 			}
 		}
 	}
-	cudaMemcpy(solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
+	cudaMemcpy(*solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
 	delete[] gridqueue_host;
+}
+
+__host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array) {
+	const size_t array_bytesize = sizeof(SolventBlockTransfermodule) * SolventBlockGrid::blocks_total;
+
+	// Allocate the memory on device
+	cudaMalloc(transfermodule_array, array_bytesize);
+
+	// Initialize the memory on host, then transfer to dest on device
+	auto array_host = new SolventBlockTransfermodule[SolventBlockGrid::blocks_total];
+	for (int i = 0; i < SolventBlockGrid::blocks_total; i++) {
+		array_host[i].n_remain = 0;
+	}
+	cudaMemcpy(*transfermodule_array, array_host, array_bytesize, cudaMemcpyHostToDevice);
+
+	delete[] array_host;
 }
 
 void SolventBlockHelpers::setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev) {

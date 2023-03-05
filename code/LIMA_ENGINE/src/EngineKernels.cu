@@ -401,8 +401,13 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 
 
 
-
-__device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const Coord& blockId3d) {
+/// <summary></summary>
+/// <param name="solventblock">In shared memory</param>
+/// <param name="transferqueues">In shared memory</param>
+/// <param name="relpos_next">Register</param>
+/// <param name="transfermodules">Global memory</param>
+__device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, 
+	const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const Coord& blockId3d) {
 
 	// Sequential insertion in shared memory
 	for (int i = 0; i < solventblock_current_local.n_solvents; i++) {
@@ -435,14 +440,51 @@ __device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solve
 				queue_local.ids[threadIdx.x], 
 				transferdir_queue);
 
+
+
+
+			// Debugging
+			if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+				) {
+				printf("\n");
+				transferdir_queue.print('t');
+				queue_local.rel_positions[threadIdx.x].print('q');
+				queue_global->rel_positions[threadIdx.x].print('Q');
+			}
+
+			if (threadIdx.x == 0) {
+				if (queue_global->n_elements != 0) {
+					printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
+					transferdir_queue.print('d');
+				}
+
+				queue_global->n_elements = queue_local.n_elements;
+				if (queue_local.n_elements > 15) {
+					printf("\nTransferring %d elements\n", queue_local.n_elements);
+				}
+			}
+			
+
+
+
 			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
-			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }			
+			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }
 		}
 	}
 	__syncthreads();
-
 }
 
+
+/// <summary>
+/// Must be run AFTER transferOut, as it erases all information about the transferring solvents
+/// </summary>
+/// <param name="solventblock_current">Solventblock in shared memory</param>
+/// <param name="solventblock_next">Solventblock belong to cudablock at next step in global memory</param>
+/// <param name="relpos_next"></param>
+/// <param name="utility_buffer">Buffer of min size MAX_SOLVENTS_IN_BLOCK, maybe more for computing prefix sum</param>
+/// <param name="remain_transfermodule">Transfermodule belonging to cudablock</param>
 __device__ void compressRemainers(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* remain_transfermodule, const bool remain) {
 
@@ -463,6 +505,11 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 		remain_transfermodule->n_remain = nsolventsinblock_next;
 		solventblock_next_global->n_solvents = nsolventsinblock_next;	// Doesn't matter, since the transfer kernel handles this. Enabled for debugging now..
 	}
+
+	if (threadIdx.x >= nsolventsinblock_next) {
+		solventblock_next_global->rel_pos[threadIdx.x] = Coord{42, 42, 42};
+	}
+
 }
 
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
@@ -471,150 +518,15 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
 	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? EngineUtils::getTransferDirection(relpos_next) : Coord{ 0 };
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
-	const bool doTransfer = blockIdx.x != new_blockid;
+	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	
 	transferOut(transfer_dir, solventblock_current_local, new_blockid, relpos_next, transferqueues_local, transfermodules_global, blockId3d);
 
 	SolventBlockTransfermodule* remain_transfermodule = &transfermodules_global[blockIdx.x];
-	compressRemainers(solventblock_current_local, solventblock_next_global, relpos_next, utility_buffer, remain_transfermodule, !doTransfer);
+	compressRemainers(solventblock_current_local, solventblock_next_global, relpos_next, utility_buffer, remain_transfermodule, remain);
 }
 
-
-/// <summary>
-/// </summary>
-/// <param name="solventblock">In shared memory</param>
-/// <param name="transferqueues">In shared memory</param>
-/// <param name="relpos_next">Register</param>
-/// <param name="transfermodules">Global memory</param>
-__device__ void doTransferOut(const SolventBlock& solventblock, STransferQueue* transferqueues, const Coord& relpos_next, SolventBlockTransfermodule* transfermodules) {
-
-	// Default values for non-active threads
-	Coord transfer_direction{};
-	int new_blockid = blockIdx.x;
-	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
-
-	if (threadIdx.x < solventblock.n_solvents) {
-		transfer_direction = EngineUtils::getTransferDirection(relpos_next);
-		new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
-	}
-
-	// Sequential insertion in shared memory
-	for (int i = 0; i < solventblock.n_solvents; i++) {
-		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
-			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_direction);
-			if (queue_index < 0 || queue_index > 5) { printf("\nGot unexpected queue index %d\n"); }
-			if (!transferqueues[queue_index].addElement(relpos_next, solventblock.rel_pos[threadIdx.x], solventblock.ids[threadIdx.x]))
-			{
-				printf("What the fuck\n");
-			}
-		}
-		__syncthreads();
-	}
-
-	// Coaslescing copying to global memory
-	for (int queue_index = 0; queue_index < 6; queue_index++) {
-		const STransferQueue& queue_local = transferqueues[queue_index];
-
-		if (threadIdx.x < queue_local.n_elements) {
-
-			const Coord transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
-			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
-			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
-			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
-
-			//queue_local.rel_positions[threadIdx.x].print('l', 0); transferdir_queue.print('t');
-			//printf(std::string{ "\nTransferring" } + queue_local.rel_positions[threadIdx.x]);
-			const auto& r = queue_local.rel_positions[threadIdx.x];
-			const auto& d = transferdir_queue;
-			//printf("\n Transferring %d %d %d along dir %d %d %d\n", r.x, r.y, r.z, d.x, d.y, d.z);
-
-
-			// We now change the relpos to fit the new origo.
-			queue_global->rel_positions[threadIdx.x]	  = queue_local.rel_positions[threadIdx.x]		- transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
-			queue_global->rel_positions_prev[threadIdx.x] = queue_local.rel_positions_prev[threadIdx.x] - transferdir_queue * static_cast<int32_t>(NANO_TO_LIMA);
-			queue_global->ids[threadIdx.x] = queue_local.ids[threadIdx.x];
-
-
-
-
-
-
-
-			// Debugging
-			if (   queue_global->rel_positions[threadIdx.x].x < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				|| queue_global->rel_positions[threadIdx.x].y < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				|| queue_global->rel_positions[threadIdx.x].z < -2*static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				) {
-				printf("\n");
-				transferdir_queue.print('t');
-				queue_local.rel_positions[threadIdx.x].print('q');
-				queue_global->rel_positions[threadIdx.x].print('Q');
-			}
-
-			if (threadIdx.x == 0) {
-				if (queue_global->n_elements != 0) { 
-					printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index); 
-					transferdir_queue.print('d');
-				}
-
-				queue_global->n_elements = queue_local.n_elements;
-				if (queue_local.n_elements > 15) {
-					printf("\nTransferring %d elements\n", queue_local.n_elements);
-				}
-			}
-		}
-	}
-	__syncthreads();
-}
-
-/// <summary>
-/// Must be run AFTER doSequentialForwarding, as it erases all information about the transferring solvents
-/// </summary>
-/// <param name="solventblock_current">Solventblock in shared memory</param>
-/// <param name="solventblock_next">Solventblock belong to cudablock at next step in global memory</param>
-/// <param name="relpos_next"></param>
-/// <param name="utility_buffer">Buffer of min size MAX_SOLVENTS_IN_BLOCK, maybe more for computing prefix sum</param>
-/// <param name="remain_transfermodule">Transfermodule belonging to cudablock</param>
-__device__ void purgeTransfersAndCompressRemaining(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global, 
-	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* remain_transfermodule) {
-	// Clear buffer
-	utility_buffer[threadIdx.x] = 0;
-
-	// Find out which threads want to transfer their respective solvent
-	const Coord transfer_direction = EngineUtils::getTransferDirection(relpos_next);
-	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
-	const int new_blockid = EngineUtils::getNewBlockId(transfer_direction, blockId3d);
-	const bool remain = (new_blockid == blockIdx.x) && (threadIdx.x < solventblock_current_local.n_solvents);
-
-	if (!remain && (threadIdx.x < solventblock_current_local.n_solvents)) {
-		//transfer_direction.print('T');
-		//relpos_next.print('R');
-	}
-
-	// Compute prefix sum to find new index of solvent belonging to thread
-	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
-	if (solventindex_new < 0 || solventindex_new > 255) { printf("\nGot unexpected solvent remain index"); }
-
-	if (blockIdx.x == 0) {
-		//printf("Thread %d newid %d\n", threadIdx.x, solventindex_new);
-	}
-
-	if (remain) {
-		// Send current pos at threadindex to prevpos at the new index
-		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
-		// Send the next pos 
-		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
-		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
-	}
-
-	const int nsolventsinblock_next = __syncthreads_count(remain);
-	if (threadIdx.x == 0) {
-		//if (nsolventsinblock_next != solventblock_current_local.n_solvents || blockIdx.x == 0) { 
-		remain_transfermodule->n_remain = nsolventsinblock_next;
-		solventblock_next_global->n_solvents = nsolventsinblock_next;
-	}
-}
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
@@ -941,9 +853,6 @@ __global__ void solventForceKernel(Box* box) {
 
 		//// Make the above const, after we get this to work!
 		const int scalar = 100000;
-		
-		
-
 		//if (box->step == 0) { relpos_prev -= randcoord * scalar; }
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
@@ -964,13 +873,7 @@ __global__ void solventForceKernel(Box* box) {
 	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step + 1, blockIdx.x);
 
 	if (SolventBlockHelpers::isTransferStep(box->step)) {
-		//EngineUtils::doSolventTransfer(relpos_next, solventblock.rel_pos[threadIdx.x], box->transfermodule_array);
-
-		//doTransferOut(solventblock, transferqueues, relpos_next, box->transfermodule_array);
-		//purgeTransfersAndCompressRemaining(solventblock, solventblock_next_ptr,	relpos_next, utility_buffer_small, &box->transfermodule_array[blockIdx.x]);
-
 		transferOutAndCompressRemainders(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
-
 	}
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;

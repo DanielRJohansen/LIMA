@@ -482,32 +482,7 @@ namespace EngineUtils {
 };
 
 
-struct CompoundGridNode {
-public:
-	__host__ void addCompound(int16_t compound_id);
-	__device__ int16_t getNElements() { return n_nearby_compounds; }
-	__device__ int16_t getElement(int index) { return nearby_compound_ids[index]; }
 
-private:
-	static const int max_elements = 64;
-	// A particle belonging to this node coord, can iterate through this list
-	// to find all appropriate nearby compounds;
-	int16_t nearby_compound_ids[64];	// MAX_COMPOUNDS HARD LIMIT
-	int16_t n_nearby_compounds = 0;
-};
-
-// Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
-class CompoundGrid : private BoxGrid<CompoundGridNode> {
-
-	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist
-	Coord compound_origos[MAX_COMPOUNDS];
-
-
-
-
-};
-
-using CompoundGrid = BoxGrid<CompoundGridNode>;
 
 
 

@@ -43,6 +43,8 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	solventblocks_prev = new SolventBlockGrid{};
 	SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);
 
+	CompoundGrid::createCompoundGrid(&simulation->box->compound_grid);
+
 	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 

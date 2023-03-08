@@ -231,3 +231,43 @@ namespace NListUtils {
 	}
 
 }
+
+void NListManager::updateCompoundGrid(Simulation* simulation) {
+	//cudaMemcpy(
+	//	compoundgrid_host->getOrigosPtr(),
+	//	simulation->box->compound_grid->getOrigosPtr(),
+	//	sizeof(CompoundGrid),
+	//	cudaMemcpyDeviceToHost
+	//);
+
+	//distributeCompoundsInGrid(simulation);
+	//transferCompoundgridToDevice(simulation);
+}
+
+void NListManager::bootstrapCompoundgrid(Simulation* simulation) {
+	compoundgrid_host = new CompoundGrid{};
+
+	//CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
+	//cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+
+	//// We need to bootstrap origo's before we can use the normal functionality to find neighbors
+	//for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
+	//	compoundgrid_host->getOrigosPtr()[compound_id] = compoundcoords_array[compound_id].origo;
+	//}
+	//delete[] compoundcoords_array;
+
+	//distributeCompoundsInGrid(simulation);
+	//transferCompoundgridToDevice(simulation);
+}
+
+void NListManager::distributeCompoundsInGrid(Simulation* simulation) {
+	for (int compound_index = 0; compound_index < simulation->n_compounds; compound_index++) {
+		const Coord& compound_origo = compoundgrid_host->getOrigosPtr()[compound_index];
+		auto& node = *compoundgrid_host->getBlockPtr(compound_origo);
+		node.addCompound(compound_index);
+	}
+}
+
+void NListManager::transferCompoundgridToDevice(Simulation* simulation) {
+	//cudaMemcpy(simulation->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+}

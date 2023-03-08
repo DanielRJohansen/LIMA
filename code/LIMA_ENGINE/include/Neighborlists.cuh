@@ -52,10 +52,32 @@ public:
 	uint64_t getPrevUpdateStep() { return prev_update_step; }
 
 
+	// The new stuff
+	void updateCompoundGrid(Simulation* simulation);
+	void bootstrapCompoundgrid(Simulation* simulation);
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
 	volatile bool updated_neighborlists_ready = 0;
 	NListDataCollection* nlist_data_collection = nullptr;
 
 private:
 	// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	uint64_t prev_update_step = 0;
+
+
+	void distributeCompoundsInGrid(Simulation* simulation);
+	void transferCompoundgridToDevice(Simulation* simulation);
+	CompoundGrid* compoundgrid_host = nullptr;
 };

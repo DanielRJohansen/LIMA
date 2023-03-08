@@ -465,3 +465,13 @@ bool NeighborList::removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
 
 	return false;
 }
+
+
+
+__host__ void CompoundGridNode::addCompound(int16_t compound_id)
+{
+	if (n_nearby_compounds == max_elements) {
+		throw std::exception("Failed to add compound to CompoundGridNode\n");
+	}
+	nearby_compound_ids[n_nearby_compounds++] = compound_id;
+}

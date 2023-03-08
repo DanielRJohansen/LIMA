@@ -20,6 +20,7 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = new NListManager(simulation);
+	nlist_manager->bootstrapCompoundgrid(simulation);
 	bootstrapTrajbufferWithCoords();
 	handleNLISTS(simulation, true, true);
 

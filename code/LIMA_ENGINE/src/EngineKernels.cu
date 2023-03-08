@@ -74,7 +74,8 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 			//force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 
 			force += LimaForcecalc::calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
-				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
+				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), 
+				calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
 				compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
 			);// *24.f * 1e-9;
 		}
@@ -107,13 +108,15 @@ __device__ Float3 computeSolventToCompoundLJForces(Float3* self_pos, int n_parti
 	}
 	return force;// *24.f * 1e-9;
 }
-__device__ Float3 computeCompoundToSolventLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self, uint8_t* atomtypes_others) {	// Assumes all positions are 
+__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr, float* potE_sum, const uint8_t* atomtypes_others) {	// Assumes all positions are 
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForce(self_pos, &positions[i], data_ptr, potE_sum,
-			(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[atomtypes_others[i]].sigma) * 0.5f,
-			(forcefield_device.particle_parameters[atomtype_self].epsilon + forcefield_device.particle_parameters[atomtypes_others[i]].epsilon) * 0.5,
-			atomtype_self, atomtypes_others[i]
+		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, potE_sum,
+			calcSigma(ATOMTYPE_SOL, atomtypes_others[i]),
+			calcEpsilon(ATOMTYPE_SOL, atomtypes_others[i])
+		//	(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[atomtypes_others[i]].sigma) * 0.5f,
+		//	(forcefield_device.particle_parameters[atomtype_self].epsilon + forcefield_device.particle_parameters[atomtypes_others[i]].epsilon) * 0.5,
+		//atomtype_self, atomtypes_others[i]
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -347,7 +350,7 @@ __device__ inline void LogSolventData(Box* box, const float& potE, const Solvent
 	}
 }
 
-__device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord, int step) { 
+__device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
 	if (threadIdx.x == 0) {
 		Coord querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperOrigo(origo_self, querycompound->origo);
 
@@ -582,7 +585,7 @@ __global__ void compoundKernel(Box* box) {
 		//compound_state.positions[0].print('S');
 		//force.print('F');
 	}
-	// ------------------------------------------------------------ Intramolecular Operations ------------------------------------------------------------ //
+	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		__syncthreads();
@@ -595,14 +598,14 @@ __global__ void compoundKernel(Box* box) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
-	// --------------------------------------------------------------- Intermolecular forces --------------------------------------------------------------- //	
+	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		
 
 
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord, box->step);
+		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord);
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		bonded_particles_lut.load(*compoundpair_lut);
@@ -702,7 +705,7 @@ __global__ void compoundKernel(Box* box) {
 	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step + 1, blockIdx.x);
 	coordarray_next_ptr->loadData(compound_coords);
 }
-#undef compound_id
+#undef compound_index
 
 
 
@@ -724,11 +727,11 @@ __global__ void solventForceKernel(Box* box) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
-	__shared__ CompoundCoords compound_coords;	// For neighboring compounds
 	__shared__ SolventBlock solventblock;
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
-
+	__shared__ int utility_int;
+	__shared__ Coord utility_coord;
 	__shared__ int lcg_seed;
 	lcg_seed = 12345;
 
@@ -771,48 +774,58 @@ __global__ void solventForceKernel(Box* box) {
 		//coord.rel_position.print();
 	}
 
-	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //
-	for (int i = 0; i < box->n_compounds; i++) {
-		//int n_compound_particles = box->compounds[i].n_particles;
-
-		//// First all threads help loading the molecule
-		//if (threadIdx.x < n_compound_particles) {
-		//	// First load particles of neighboring compound
-		//	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
-		//	compound_coords.loadData(*coordarray_ptr);
-		//	LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords.rel_positions, utility_buffer);
-
-		//	// Then load atomtypes of neighboring compound
-		//	utility_buffer_small[threadIdx.x] = box->compounds[i].atom_types[threadIdx.x];
-		//}
-		//__syncthreads();
-
-	//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
-
-
-		// Fuck me this is tricky. If we are too far away, we can complete skipå this calculation i guess?
-		// Otherwise, we need to first compute a hyperpos, being careful not to change our original position.
-		// 
-		//Float3 solvent_pos{coord.}
-		//if (thread_active) {
-		//	//EngineUtils::applyHyperpos(&utility_buffer[0], &solvent.pos);									// Move own particle in relation to compound-key-position
-		//	//force += computeCompoundToSolventLJForces(&solvent.pos, n_compound_particles, utility_buffer, data_ptr, &potE_sum, ATOMTYPE_SOL, utility_buffer_small);
-		//}
+	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
+	{
+		// Thread 0 finds n nearby compounds
+		CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
+		if (threadIdx.x) { utility_int = compoundgridnode->getNElements(); }
 		__syncthreads();
+
+		for (int i = 0; i < utility_int; i++) {
+			const int16_t neighborcompound_index = compoundgridnode->getElement(i);
+			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
+			const int n_compound_particles = neighborcompound->n_particles;
+
+			// First all threads help loading the molecule
+			if (threadIdx.x < n_compound_particles) {
+				// First load particles of neighboring compound
+				CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
+				getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);
+
+				// Then load atomtypes of neighboring compound
+				utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
+			}
+			__syncthreads();
+
+			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
+
+			// Fuck me this is tricky. If we are too far away, we can complete skipå this calculation i guess?
+			// Otherwise, we need to first compute a hyperpos, being careful not to change our original position.
+			//Float3 solvent_pos{coord.}
+			if (solvent_active) {
+				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, &potE_sum, utility_buffer_small);
+			}
+			__syncthreads();
+		}
 	}
+
+
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
 
 	// --------------------------------------------------------------- Intrablock Solvent Interactions ----------------------------------------------------- //
-	if (solvent_active) {
-		utility_buffer[threadIdx.x] = solventblock.rel_pos[threadIdx.x].toFloat3();
-	}
-	__syncthreads();
-	if (solvent_active) {		
-		force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
-	}
-	__syncthreads(); // Sync since use of utility
+	{
+		__syncthreads(); // Sync since use of utility
+		if (solvent_active) {
+			utility_buffer[threadIdx.x] = solventblock.rel_pos[threadIdx.x].toFloat3();
+		}
+		__syncthreads();
+		if (solvent_active) {
+			force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
+		}
+		__syncthreads(); // Sync since use of utility
+	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //

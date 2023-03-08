@@ -52,6 +52,8 @@ public:
 	SolventBlockGrid* solventblockgrid_circular_queue = nullptr;
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
+	CompoundGrid* compound_grid = nullptr;
+
 	NeighborList* compound_neighborlists = nullptr;
 	NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//

@@ -171,7 +171,9 @@ void Environment::postRunEvents() {
 		dumpToFile(simulation->potE_buffer, simulation->getStep() * simulation->total_particles_upperbound, out_dir + "potE.bin");
 	}
 
+#ifdef USEDEBUGF3
 	dumpToFile(simulation->box->debugdataf3, simulation->getStep() * simulation->total_particles_upperbound * DEBUGDATAF3_NVARS, out_dir + "debugf3.bin");
+#endif 
 
 #ifndef __linux__
 	if (!simulation->box->critical_error_encountered && 0) {	// Skipping for now

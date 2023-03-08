@@ -133,11 +133,12 @@ struct Float3 {
 	}
 
 
-	__host__ __device__ void print(char c = '_') const {
-		if (len() < 10000)
-			printf("%c %.10f %.10f %.10f\n", c, x, y, z);
+	__host__ __device__ void print(char c = '_', bool prefix_newline=false) const {
+		char nl = prefix_newline ? '\n' : ' ';
+		if (len() < 1000)
+			printf("%c %c %.12f %.12f %.12f\n",nl, c, x, y, z);
 		else
-			printf("%c %.0f\t %.0f\t %.0f\n", c, x, y, z);
+			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
 
 

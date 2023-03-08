@@ -331,16 +331,19 @@ __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoo
 
 __device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity) {
 	if (solvent_active) {
-		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, blockIdx.x * blockDim.x + threadIdx.x);
+		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solventblock.ids[threadIdx.x]);
 		box->potE_buffer[index] = potE;
 		box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
 
 		if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);
+
+#ifdef USEDEBUGF3
 		const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;
 		//box->debugdataf3[debug_index] = Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
 		box->debugdataf3[debug_index] = force;
 		box->debugdataf3[debug_index + 1] = velocity;
 		box->debugdataf3[debug_index + 2] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock) / NANO_TO_LIMA;
+#endif
 	}
 }
 
@@ -512,7 +515,7 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
-	const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	const Coord blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
 	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? EngineUtils::getTransferDirection(relpos_next) : Coord{ 0 };
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
@@ -730,7 +733,7 @@ __global__ void solventForceKernel(Box* box) {
 	lcg_seed = 12345;
 
 	// Doubles as block_index_3d!
-	const Coord block_origo = SolventBlockHelpers::get3dIndex(blockIdx.x);
+	const Coord block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
 
 
 	// Init queue, otherwise it will contain wierd values
@@ -809,10 +812,11 @@ __global__ void solventForceKernel(Box* box) {
 	if (solvent_active) {		
 		force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
 	}
+	__syncthreads(); // Sync since use of utility
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
-	const int query_range = 3;
+	const int query_range = 1;
 	for (int x = -query_range; x <= query_range; x++) {
 		for (int y = -query_range; y <= query_range; y++) {
 			for (int z = -query_range; z <= query_range; z++) {
@@ -825,10 +829,11 @@ __global__ void solventForceKernel(Box* box) {
 				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockindex_neighbor);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 
+				__syncthreads();	// Dont load buffer before all are finished with the previous iteration
 				if (threadIdx.x < nsolvents_neighbor) {
 					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + (dir * static_cast<int32_t>(NANO_TO_LIMA))).toFloat3();
 				}
-				__syncthreads();
+				__syncthreads();	// Dont use till buffer is ready by all
 
 				if (solvent_active) {
 					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
@@ -837,23 +842,17 @@ __global__ void solventForceKernel(Box* box) {
 		}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
-	//if (box->step > 200)
-	//force = Float3{};
 
 	const Float3 velocity = relpos_self - LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step).toFloat3();
 	LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity);
 
-	const Coord randcoord = getRandomCoord(lcg_seed);
-
 	Coord relpos_next{};
-	if (solvent_active) {
-		Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 
-		//// Make the above const, after we get this to work!
-		const int scalar = 100000;
-		//if (box->step == 0) { relpos_prev -= randcoord * scalar; }
+	if (solvent_active) {
+		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 
 		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
+
 		auto dif = (relpos_next - relpos_prev);
 		if (std::abs(dif.x) > 15000000 || std::abs(dif.y) > 15000000 || std::abs(dif.z) > 15000000) { 
 			printf("\nFuck mee %d\n", solventblock.ids[threadIdx.x]);

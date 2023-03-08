@@ -53,7 +53,7 @@ SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
 SolventBlock* SolventBlockGrid::getBlockPtr(const Coord& index3d)
 {
 	if (index3d.x >= BOX_LEN_NM_INT || index3d.y >= BOX_LEN_NM_INT || index3d.z >= BOX_LEN_NM_INT) { printf("BAD 3D index\n"); exit(1); }
-	return getBlockPtr(SolventBlockHelpers::get1dIndex(index3d));
+	return getBlockPtr(SolventBlockGrid::get1dIndex(index3d));
 }
 
 

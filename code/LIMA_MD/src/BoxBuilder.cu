@@ -117,9 +117,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	simulation->temperature_buffer = new float[simulation->n_steps / STEPS_PER_THERMOSTAT + 1];
 
+#ifdef USEDEBUGF3
 	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
 	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
-
+#endif
 
 
 

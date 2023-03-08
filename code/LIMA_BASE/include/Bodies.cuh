@@ -245,16 +245,36 @@ struct SolventBlock {
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 };
 
-struct SolventBlockGrid {
+
+
+
+template <typename NodeType>
+struct BoxGrid {
 	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
-	SolventBlock blocks[blocks_total];
+	NodeType blocks[blocks_total];
 
-	__host__ SolventBlock* getBlockPtr(const Coord& index3d);
-	__device__ __host__ SolventBlock* getBlockPtr(int index1d) {
+	__host__ NodeType* getBlockPtr(const Coord& index3d);
+	__device__ __host__ NodeType* getBlockPtr(int index1d) {
 		return &blocks[index1d];
 	}
+
+	__device__ __host__ static int get1dIndex(const Coord& index3d) {
+		static const int bpd = blocks_per_dim;
+		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
+	}
+	__device__ static Coord get3dIndex(int index1d) {
+		static const int bpd = blocks_per_dim;
+		auto z = index1d / (bpd * bpd);
+		index1d -= z * bpd * bpd;
+		auto y = index1d / bpd;
+		index1d -= y * bpd;
+		auto x = index1d;
+		return Coord{ x, y, z };
+	}
 };
+
+using SolventBlockGrid = BoxGrid<SolventBlock>;
 
 template <int size>
 struct SolventTransferqueue {
@@ -348,19 +368,7 @@ namespace SolventBlockHelpers {
 	}
 
 	// Only use this if if the index3d is inside the box!
-	__device__ __host__ static int get1dIndex(const Coord& index3d) {
-		static const int bpd = SolventBlockGrid::blocks_per_dim;
-		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
-	}
-	__device__ static Coord get3dIndex(int index1d) {
-		static const int bpd = SolventBlockGrid::blocks_per_dim;
-		auto z = index1d / (bpd * bpd);
-		index1d -= z * bpd * bpd;
-		auto y = index1d / bpd;
-		index1d -= y * bpd;
-		auto x = index1d;
-		return Coord{ x, y, z };
-	}
+
 
 	__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
 		return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();

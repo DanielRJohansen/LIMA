@@ -340,13 +340,13 @@ namespace EngineUtils {
 	__device__ int static getNewBlockId(const Coord& transfer_direction, const Coord& origo) {
 		auto newCoord3d = transfer_direction + origo;
 		LIMAPOSITIONSYSTEM::applyPBC(newCoord3d);
-		return SolventBlockHelpers::get1dIndex(newCoord3d);
+		return SolventBlockGrid::get1dIndex(newCoord3d);
 	}
 
 	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const Coord& transfer_direction) {
-		Coord new3dIndex = SolventBlockHelpers::get3dIndex(blockId) + transfer_direction;
+		Coord new3dIndex = SolventBlockGrid::get3dIndex(blockId) + transfer_direction;
 		LIMAPOSITIONSYSTEM::applyPBC(new3dIndex);
-		auto index = SolventBlockHelpers::get1dIndex(new3dIndex);
+		auto index = SolventBlockGrid::get1dIndex(new3dIndex);
 		return &transfermodule_array[index];
 	}
 
@@ -482,10 +482,32 @@ namespace EngineUtils {
 };
 
 
+struct CompoundGridNode {
+public:
+	__host__ void addCompound(int16_t compound_id);
+	__device__ int16_t getNElements() { return n_nearby_compounds; }
+	__device__ int16_t getElement(int index) { return nearby_compound_ids[index]; }
+
+private:
+	static const int max_elements = 64;
+	// A particle belonging to this node coord, can iterate through this list
+	// to find all appropriate nearby compounds;
+	int16_t nearby_compound_ids[64];	// MAX_COMPOUNDS HARD LIMIT
+	int16_t n_nearby_compounds = 0;
+};
+
+// Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
+class CompoundGrid : private BoxGrid<CompoundGridNode> {
+
+	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist
+	Coord compound_origos[MAX_COMPOUNDS];
 
 
 
 
+};
+
+using CompoundGrid = BoxGrid<CompoundGridNode>;
 
 
 

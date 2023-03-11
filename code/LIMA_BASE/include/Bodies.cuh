@@ -254,8 +254,12 @@ struct BoxGrid {
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
 	NodeType blocks[blocks_total];
 
-	__host__ NodeType* getBlockPtr(const Coord& index3d);
-	__device__ __host__ NodeType* getBlockPtr(int index1d) {
+	__host__ NodeType* getBlockPtr(const Coord& index3d) {
+		if (index3d.x >= BOX_LEN_NM_INT || index3d.y >= BOX_LEN_NM_INT || index3d.z >= BOX_LEN_NM_INT) { 
+			printf("BAD 3D index\n"); exit(1); }
+		return getBlockPtr(BoxGrid::get1dIndex(index3d));
+	}
+	__device__ __host__ NodeType* getBlockPtr(const int index1d) {
 		return &blocks[index1d];
 	}
 
@@ -742,12 +746,12 @@ private:
 // Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
 class CompoundGrid : public BoxGrid<CompoundGridNode> {
 public:
-
+	CompoundGrid(){}
 
 	// Function called by compound kernels before nlist update
 	__device__ void signalOrigo(Coord origo) {
 		if (threadIdx.x == 0) {
-			compound_origos[blockIdx.x] = origo;
+			//compound_origos[blockIdx.x] = origo;
 		}
 	}
 
@@ -755,7 +759,7 @@ public:
 	__host__ Coord* getOrigosPtr() { return compound_origos; }
 
 	// Returns ptr to the list of CompoundGridNodes on device. Transmit to from host
-	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }
+	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }	// DOes this even make sense? Just use getBlockPtr?
 
 	__host__ static void createCompoundGrid(CompoundGrid** box_compoundgridptr) {
 		auto grid_host = new CompoundGrid{};

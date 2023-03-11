@@ -233,41 +233,86 @@ namespace NListUtils {
 }
 
 void NListManager::updateCompoundGrid(Simulation* simulation) {
-	//cudaMemcpy(
-	//	compoundgrid_host->getOrigosPtr(),
-	//	simulation->box->compound_grid->getOrigosPtr(),
-	//	sizeof(CompoundGrid),
-	//	cudaMemcpyDeviceToHost
-	//);
+	cudaMemcpy(
+		compoundgrid_host->getOrigosPtr(),
+		simulation->box->compound_grid->getOrigosPtr(),
+		sizeof(CompoundGrid),
+		cudaMemcpyDeviceToHost
+	);
 
-	//distributeCompoundsInGrid(simulation);
-	//transferCompoundgridToDevice(simulation);
+	distributeCompoundsInGrid(simulation);
+	transferCompoundgridToDevice(simulation);
 }
 
 void NListManager::bootstrapCompoundgrid(Simulation* simulation) {
 	compoundgrid_host = new CompoundGrid{};
 
-	//CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
-	//cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
+	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
-	//// We need to bootstrap origo's before we can use the normal functionality to find neighbors
-	//for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
-	//	compoundgrid_host->getOrigosPtr()[compound_id] = compoundcoords_array[compound_id].origo;
-	//}
-	//delete[] compoundcoords_array;
+	// We need to bootstrap origo's before we can use the normal functionality to find neighbors
+	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
+		compoundgrid_host->getOrigosPtr()[compound_id] = compoundcoords_array[compound_id].origo;
+	}
+	delete[] compoundcoords_array;
 
-	//distributeCompoundsInGrid(simulation);
-	//transferCompoundgridToDevice(simulation);
+	distributeCompoundsInGrid(simulation);
+	transferCompoundgridToDevice(simulation);
 }
 
 void NListManager::distributeCompoundsInGrid(Simulation* simulation) {
 	for (int compound_index = 0; compound_index < simulation->n_compounds; compound_index++) {
 		const Coord& compound_origo = compoundgrid_host->getOrigosPtr()[compound_index];
-		auto& node = *compoundgrid_host->getBlockPtr(compound_origo);
+		CompoundGridNode& node = *compoundgrid_host->getBlockPtr(compound_origo);
 		node.addCompound(compound_index);
 	}
 }
 
+void NListManager::assignNearbyCompoundsToGridnodes(Simulation* simulation) {
+	for (int z = 0; z < CompoundGrid::blocks_per_dim; z++) {
+		for (int y = 0; y < CompoundGrid::blocks_per_dim; y++) {
+			for (int x = 0; x < CompoundGrid::blocks_per_dim; x++) {
+				Coord node_origo{ x, y, z };	// Doubles as the 3D index of the block!
+				auto node_self = compoundgrid_host->getBlockPtr(node_origo);
+
+				const int query_range = 1;
+				for (int x = -query_range; x <= query_range; x++) {
+					for (int y = -query_range; y <= query_range; y++) {
+						for (int z = -query_range; z <= query_range; z++) {
+							Coord query_origo = node_origo + Coord{ x,y,z };
+							LIMAPOSITIONSYSTEM::applyPBC(query_origo);
+							auto node_query = compoundgrid_host->getBlockPtr(query_origo);
+
+							for (int i = 0; i < node_query->getNElements(); i++) {
+
+							}
+
+
+							const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
+							if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
+
+							const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockindex_neighbor);
+							const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+
+							__syncthreads();	// Dont load buffer before all are finished with the previous iteration
+							if (threadIdx.x < nsolvents_neighbor) {
+								utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + (dir * static_cast<int32_t>(NANO_TO_LIMA))).toFloat3();
+							}
+							__syncthreads();	// Dont use till buffer is ready by all
+
+							if (solvent_active) {
+								force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+							}
+						}
+					}
+				}
+
+			}
+		}
+	}
+	
+}
+
 void NListManager::transferCompoundgridToDevice(Simulation* simulation) {
-	//cudaMemcpy(simulation->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
 }

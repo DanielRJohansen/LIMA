@@ -78,6 +78,7 @@ private:
 
 
 	void distributeCompoundsInGrid(Simulation* simulation);
+	void assignNearbyCompoundsToGridnodes(Simulation* simulation);
 	void transferCompoundgridToDevice(Simulation* simulation);
 	CompoundGrid* compoundgrid_host = nullptr;
 };

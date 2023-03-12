@@ -730,16 +730,20 @@ struct ForceField_NB {
 
 
 struct CompoundGridNode {
-public:
-	__host__ void addCompound(int16_t compound_id);
-	__device__ int16_t getNElements() { return n_nearby_compounds; }
-	__device__ int16_t getElement(int index) { return nearby_compound_ids[index]; }
+	__host__ void addNearbyCompound(int16_t compound_id);
+	__host__ void addAssociatedCompound(int16_t compound_id);
 
-private:
+
 	static const int max_elements = 64;
+
+	// Contains only compounds that are CLOSEST to this specific node
+	int16_t associated_ids[8]{};
+	int16_t n_associated_compounds = 0;
+
+	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;
-	int16_t nearby_compound_ids[64]{};	// MAX_COMPOUNDS HARD LIMIT
+	int16_t nearby_compound_ids[max_elements]{};	// MAX_COMPOUNDS HARD LIMIT
 	int16_t n_nearby_compounds = 0;
 };
 

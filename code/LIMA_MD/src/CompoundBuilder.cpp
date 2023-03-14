@@ -122,10 +122,12 @@ void CompoundBuilder::loadParticles(CompoundCollection* compound_collection, vec
 
 		if (record.residue_name == "SOL") { continue; }		
 
-		bool new_molecule = record.moleculeID != current_molecule_id;
+		const bool new_molecule = record.moleculeID != current_molecule_id;
 		current_molecule_id = record.moleculeID;
 
-		if (record.residue_seq_number != current_res_id) {
+		const bool new_residue = record.residue_seq_number != current_res_id;
+
+		if (new_residue) {
 			if (current_compound == nullptr || !current_compound->hasRoomForRes() || new_molecule) {	// TODO: Make this better............. probe how many particles beforehand
 				//molecule->compound_bridge_bundle.addBridge(current_compound_id, current_compound_id + 1);
 

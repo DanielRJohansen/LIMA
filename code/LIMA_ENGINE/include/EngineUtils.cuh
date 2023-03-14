@@ -40,12 +40,19 @@ namespace CPPD {
 
 
 namespace LIMAPOSITIONSYSTEM {
-	//static Coord coordFromAbsPos(Float3 pos)
+	
+	/// <summary>
+	/// Transfer external coordinates to internal multi-range LIMA coordinates
+	/// </summary>
+	/// <param name="state">Absolute positions of particles as float [nm]</param>
+	/// <param name="key_particle_index">Index of centermost particle of compound</param>
+	/// <returns></returns>
 	static CompoundCoords positionCompound(CompoundState& state,  int key_particle_index=0) {
 		CompoundCoords compoundcoords{};
-		//Float3& key_pos = state.positions[key_particle_index];
-		//compoundcoords.origo = Float3(key_pos);	
-		compoundcoords.origo = Float3(0);	// Temp, use the one above in future
+
+		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
+		compoundcoords.origo = Coord{ state.positions[key_particle_index] };
+		//compoundcoords.origo = Coord(0);	// Temp, use the one above in future
 
 		double default_norm_dist = 1.0;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
 

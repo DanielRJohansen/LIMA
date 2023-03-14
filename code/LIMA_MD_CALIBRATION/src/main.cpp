@@ -93,14 +93,14 @@ bool doPoolBenchmark(Environment& env) {
 	std::vector<float> std_devs;
 
 	for (auto temp : particle_temps) {
-		auto vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp) * 2.f; //  *2 as 1 particles stores the velocity of both at temperature temp. [m/s]
-		int steps_for_full_interaction = 10000000 / static_cast<int>(vel);
+		const float vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp) * 2.f; //  *2 as 1 particles stores the velocity of both at temperature temp. [m/s]
+		int steps_for_full_interaction = 40000000 / static_cast<int>(vel);
 		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		env.CreateSimulation(conf, topol, work_folder);
 
 		
 		auto coordarray_prev_ptr = env.getCoordarrayPtr("prev");
-		coordarray_prev_ptr[1].rel_positions[0] += (Float3(1, 0, 0) * vel) * dt;	// convert vel from fm/fs to Lm/fs
+		coordarray_prev_ptr[0].rel_positions[0] -= Coord{ (Float3(1, 0, 0) * vel) * dt };	// convert vel from fm/fs to Lm/fs
 
 		env.run();
 
@@ -172,8 +172,8 @@ bool doAngleBenchmark(Environment& env) {
 		// First rotate particle #3 to the relaxed position + the error angle
 		Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
 		p3_pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
-		coordarray_ptr[0].rel_positions[2] = p3_pos;
-		coordarray_prev_ptr[0].rel_positions[2] = p3_pos;
+		//coordarray_ptr[0].rel_positions[2] = p3_pos;		// Temp disabled, fix soon plz
+		//coordarray_prev_ptr[0].rel_positions[2] = p3_pos;		// Temp disabled, fix soon plz
 
 		// Now center all 3 particles
 		for (auto i = 0; i < 3; i++) {
@@ -228,12 +228,12 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(env);
+	doPoolBenchmark(env);
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);
 	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");
 	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
-	doBasicBenchmark(env, "SolventBenchmark");
+	//doBasicBenchmark(env, "SolventBenchmark");
 	return 0;
 }

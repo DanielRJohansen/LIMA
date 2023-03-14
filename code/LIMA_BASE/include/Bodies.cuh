@@ -180,6 +180,7 @@ struct CompoundCoords {
 		if (threadIdx.x == 0) { origo = coords.origo; };
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
+
 	Coord origo{};									// [nm]
 	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};	// [lm]
 
@@ -216,7 +217,7 @@ struct SolventBlock {
 		n_solvents = block.n_solvents;
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
-		rel_pos[threadIdx.x] = Float3{};	// temp
+		rel_pos[threadIdx.x] = Coord{};	// temp
 		if (threadIdx.x < n_solvents) {
 
 			if (block.rel_pos[threadIdx.x] == Coord{ 0 }) {

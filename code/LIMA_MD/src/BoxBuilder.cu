@@ -245,6 +245,8 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 	CompoundState state_prev{};
 	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
+
+
 	for (int i = 0; i < compound->n_particles; i++) {
 		state.positions[i] = compound->state.positions[i];
 		state.n_particles++;

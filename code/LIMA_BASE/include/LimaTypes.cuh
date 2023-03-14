@@ -241,7 +241,7 @@ struct Coord {
 	int32_t x = 0, y = 0, z = 0;
 
 	__device__ __host__ Coord() {};
-	__device__ __host__ Coord(Float3 pos_abs) {
+	__device__ __host__ explicit Coord(Float3 pos_abs) {
 		x = static_cast<int32_t>(pos_abs.x);
 		y = static_cast<int32_t>(pos_abs.y);
 		z = static_cast<int32_t>(pos_abs.z);

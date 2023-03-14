@@ -169,11 +169,9 @@ __host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos, int ato
 }
 
 __host__ void Compound_Carrier::calcParticleSphere() {
-	Float3 com = calcCOM();// calcCOM(compound);
+	Float3 com = calcCOM();
 
-	//float furthest = LONG_MIN;
-	float furthest = FLT_MIN;
-	//float closest = LONG_MAX;
+	float furthest = 0.f;
 	float closest = FLT_MAX;
 	int closest_index = 0;
 

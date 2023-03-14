@@ -187,13 +187,19 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
     if (local_id < box->compounds[compound_id].n_particles) {
         //atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(box->compound_coord_array[compound_id]);
         auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, compound_id);
-        atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);
+
+        RenderAtom atom{};
+        atom.pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);
 
 
         //atoms[global_id].pos.print('A');
-        atoms[global_id].mass = SOLVENT_MASS;                                                         // TEMP
+        atom.mass = SOLVENT_MASS;                                                         // TEMP
         //atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_types[local_id]);
-        atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_color_types[local_id]);
+        atom.atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_color_types[local_id]);
+
+        atom.color = getColor(atom.atom_type);
+
+        atoms[global_id] = atom;
     }
     else {
         atoms[global_id].atom_type = ATOM_TYPE::NONE;

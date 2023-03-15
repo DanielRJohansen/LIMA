@@ -532,45 +532,6 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 
 
-// ---------------------------------------------------------------------------------------- Integration -------------------------------------------------------------------------------------------//
-
-
-
-__device__ void integrateCompound(const Compound& compound, CompoundCoords& compound_coords, const Box* box, Coord& rel_pos_shift, const Float3 force) {
-	// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
-	// Dont think we need this anymore, if we bootstrap index N-1 with the positions aswell
-	const int actual_stepindex_of_prev = box->step == 0 ? STEPS_PER_LOGTRANSFER - 1 : box->step - 1;
-	const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
-	if (threadIdx.x == 0) {
-		Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, coordarray_prev_ptr->origo);
-		rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
-	}
-	// Im not sure if this is correct..
-	__syncthreads();
-
-	Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] - rel_pos_shift;
-
-	//if (threadIdx.x == 0 && blockIdx.x == 0) {
-	//	printf("Step %d Stepindex %d\n", box->step, actual_stepindex_of_prev);
-	//	compound_coords.rel_positions[threadIdx.x].print('c');
-	//	prev_rel_pos.print('p');
-	//}
-
-
-	if (threadIdx.x < compound.n_particles) {
-		// Change this so it handles the return value??!?
-		compound_coords.rel_positions[threadIdx.x] = integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
-		//return integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
-	}
-	//return Coord{};
-}
-
-
-
-
-
-
-
 
 
 
@@ -624,10 +585,6 @@ __global__ void compoundKernel(Box* box) {
 	Float3 force_LJ_sol(0.f);
 
 
-	if (blockIdx.x == 1 && threadIdx.x == 0) {
-		//compound_state.positions[0].print('S');
-		//force.print('F');
-	}
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
@@ -645,8 +602,6 @@ __global__ void compoundKernel(Box* box) {
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		
-
-
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord);
 
@@ -686,7 +641,23 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
-	integrateCompound(compound, compound_coords, box, rel_pos_shift, force);
+	{
+		// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
+		// Dont think we need this anymore, if we bootstrap index N-1 with the positions aswell
+		const int actual_stepindex_of_prev = box->step == 0 ? STEPS_PER_LOGTRANSFER - 1 : box->step - 1;
+		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
+
+		if (threadIdx.x == 0) {
+			Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, coordarray_prev_ptr->origo);
+			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
+		}
+		__syncthreads();
+
+		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
+		if (threadIdx.x < compound.n_particles) {
+			compound_coords.rel_positions[threadIdx.x] = integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
+		}
+	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
 
 
@@ -694,29 +665,22 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 	
 	{
+		auto oold = compound_coords.origo;
 		__shared__ Coord shift_lm;
 		if (threadIdx.x == 0) {
 			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords);
 		}
 		__syncthreads();
 
-		//if (threadIdx.x == 0 && blockIdx.x == 1) {
-		//	shift_lm.print('S');
-		//}
 
 		LIMAPOSITIONSYSTEM::shiftRelPos(compound_coords, shift_lm);
 		__syncthreads();
+
+		
 	}
 	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
 	__syncthreads();
-
-	//if (threadIdx.x == 0 && blockIdx.x == 0) LIMAPOSITIONSYSTEM::getGlobalPositionNM(compound_coords).print('a');
-	//EngineUtils::applyHyperpos(&compound_state.positions[0], &compound_state.positions[threadIdx.x]);	// So all particles follows p0
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
-	//if (threadIdx.x == 0 && blockIdx.x == 1) {
-	//	//compound_coords.origo.print('a');
-	//	compound_coords.rel_positions[0].print('A');
-	//}
 
 	LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol);
 
@@ -812,7 +776,7 @@ __global__ void solventForceKernel(Box* box) {
 			// First all threads help loading the molecule
 			if (threadIdx.x < n_compound_particles) {
 				// First load particles of neighboring compound
-				CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
+				const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
 				getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);
 
 				// Then load atomtypes of neighboring compound

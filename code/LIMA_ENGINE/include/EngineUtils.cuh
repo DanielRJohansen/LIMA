@@ -145,15 +145,7 @@ namespace LIMAPOSITIONSYSTEM {
 	// Keep in mind that origo is in nm and rel_pos are in lm
 	// ONLY CALL FROM THREAD 0
 	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
-		//Coord shift_nm = -coords.rel_positions[keyparticle_index] / static_cast<uint32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-
-		Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-		
-		if (threadIdx.x == 0 && blockIdx.x == 1) {
-			//printf("x %d shift.x %d  shift_out%d\n", coords.rel_positions[keyparticle_index].x, shift_nm.x, shift_nm.x * static_cast<int32_t>(NANO_TO_LIMA));
-			//printf("%d %d %d\n", shift_nm.x, shift_nm.y, shift_nm.z);
-		}
-		
+		const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
 		coords.origo += shift_nm;
 		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}

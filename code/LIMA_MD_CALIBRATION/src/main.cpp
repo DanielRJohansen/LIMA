@@ -94,7 +94,7 @@ bool doPoolBenchmark(Environment& env) {
 
 	for (auto temp : particle_temps) {
 		const float vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp) * 2.f; //  *2 as 1 particles stores the velocity of both at temperature temp. [m/s]
-		int steps_for_full_interaction = 40000000 / static_cast<int>(vel);
+		int steps_for_full_interaction = 5000000 / static_cast<int>(vel);
 		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		env.CreateSimulation(conf, topol, work_folder);
 
@@ -228,8 +228,8 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	doPoolBenchmark(env);
-	//doSpringBenchmark(env);
+	//doPoolBenchmark(env);
+	doSpringBenchmark(env);
 	//doAngleBenchmark(env);
 	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");

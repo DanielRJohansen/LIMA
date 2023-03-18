@@ -78,8 +78,8 @@ bool doProteinBenchmark(Environment& env) {
 	return true;
 }
 
-bool doPoolBenchmark(Environment& env) {
-	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
+bool doPoolBenchmark(Environment& env, const string& foldername) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" +foldername + "/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
 	const float particle_mass = 12.011000f * 1e-3f;
@@ -228,8 +228,9 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(env);
-	doSpringBenchmark(env);
+	doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
+	//doPoolBenchmark(env, "PoolCompSol");	// One 1 particle molecule colliding with 1 solvent
+	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);
 	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");

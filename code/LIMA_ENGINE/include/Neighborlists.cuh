@@ -13,18 +13,18 @@ struct NListDataCollection {
 
 
 	int n_compounds;
-	int n_solvents;
+	//int n_solvents;
 
 	// I guess this is not critical but temp, needed to load pos device->host
-	CompoundState* compoundstates;
+	CompoundState* compoundstates = nullptr;
 	//Solvent* solvents;
 
 	Float3 compound_key_positions[MAX_COMPOUNDS];
 	Float3 solvent_positions[MAX_SOLVENTS];
 
 	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
-	NeighborList* compound_neighborlists;
-	NeighborList* solvent_neighborlists;
+	NeighborList* compound_neighborlists = nullptr;
+	CompoundGrid* compoundgrid = nullptr;
 };
 
 
@@ -34,6 +34,12 @@ namespace NListUtils {
 
 	void static updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
 		volatile bool* finished, int* timing, bool* mutex_lock, uint32_t step_at_update);
+
+	void updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist);
+	void static distributeCompoundsInGrid(Simulation* simulation, CompoundGrid* compoundgrid_host);
+	void static assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist);
+	void static transferCompoundgridToDevice(Simulation* simulation, CompoundGrid* compoundgrid_host);
+	bool static isNearby(const Simulation& simulation, const Coord& node_origo, const int querycompound_id, CompoundGrid* compoundgrid_host);
 }
 
 class NListManager {
@@ -53,7 +59,6 @@ public:
 
 
 	// The new stuff
-	void updateCompoundGrid(Simulation* simulation);
 	void bootstrapCompoundgrid(Simulation* simulation);
 	
 
@@ -75,10 +80,4 @@ public:
 private:
 	// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	uint64_t prev_update_step = 0;
-
-
-	void distributeCompoundsInGrid(Simulation* simulation);
-	void assignNearbyCompoundsToGridnodes(Simulation* simulation);
-	void transferCompoundgridToDevice(Simulation* simulation);
-	CompoundGrid* compoundgrid_host = nullptr;
 };

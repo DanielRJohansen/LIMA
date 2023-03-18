@@ -116,6 +116,11 @@ public:
 	__host__ bool addId(uint16_t new_id, NEIGHBOR_TYPE nt);
 	__host__ bool removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt);
 
+	__host__ void addGridnode(uint16_t gridnode_id);
+	__host__ void removeGridnode(uint16_t gridnode_id);
+
+
+
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;
 		n_solvent_neighbors = nl_ptr->n_solvent_neighbors;
@@ -134,6 +139,11 @@ public:
 	uint16_t n_compound_neighbors = 0;
 	uint16_t neighborsolvent_ids[NEIGHBORLIST_MAX_SOLVENTS];
 	uint16_t n_solvent_neighbors = 0;
+
+	static const int max_gridnodes = 24;
+	uint16_t gridnode_ids[max_gridnodes];
+	uint8_t n_gridnodes;
+
 	int associated_id = -1;
 
 };
@@ -752,6 +762,10 @@ struct CompoundGridNode {
 class CompoundGrid : public BoxGrid<CompoundGridNode> {
 public:
 	CompoundGrid(){}
+
+	void reset() {
+
+	}
 
 	// Function called by compound kernels before nlist update
 	__device__ void signalOrigo(Coord origo) {

@@ -20,7 +20,7 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = new NListManager(simulation);
-	nlist_manager->bootstrapCompoundgrid(simulation);
+	//nlist_manager->bootstrapCompoundgrid(simulation);
 	bootstrapTrajbufferWithCoords();
 	handleNLISTS(simulation, true, true);
 
@@ -164,6 +164,8 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
 		//simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
 	}
+
+	EngineUtils::genericErrorCheck("Error after trajbuffer bootstrapping.");
 
 	delete[] compoundcoords_array;
 	//delete[] solventcoord_array;

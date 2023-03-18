@@ -458,6 +458,23 @@ bool NeighborList::removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
 }
 
 
+__host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
+	if (n_gridnodes == max_gridnodes) { throw ("No room for more nearby gridnodes"); }
+	gridnode_ids[n_gridnodes++] = gridnode_id;
+}
+
+
+__host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
+	for (int i = 0; i < n_gridnodes; i++) {
+		if (gridnode_ids[i] == gridnode_id) {
+			gridnode_ids[i] = gridnode_ids[n_gridnodes - 1];
+			n_gridnodes--;
+			return;
+		}
+	}
+	throw("Failed to remove gridnode from nlist");
+}
+
 
 __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {

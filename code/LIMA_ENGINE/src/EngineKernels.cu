@@ -359,9 +359,9 @@ __device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const
 	}
 	__syncthreads();
 
-	//Coord prev_rel_pos = box->compound_coord_array_prev[blockIdx.x].rel_positions[threadIdx.x] - rel_pos_shift;
+	// Eventually i could make it so i only copy the active particles in the compound
 	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] + *utility_coord;
-	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();
+	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();	
 }
 
 
@@ -774,21 +774,17 @@ __global__ void solventForceKernel(Box* box) {
 			const int n_compound_particles = neighborcompound->n_particles;
 
 			// First all threads help loading the molecule
-			if (threadIdx.x < n_compound_particles) {
-				// First load particles of neighboring compound
-				const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
-				getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);
 
-				// Then load atomtypes of neighboring compound
-				utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
-			}
+			// First load particles of neighboring compound
+			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
+			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);
+			// Then load atomtypes of neighboring compound
+			utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
 			__syncthreads();
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
-			// Fuck me this is tricky. If we are too far away, we can complete skipå this calculation i guess?
-			// Otherwise, we need to first compute a hyperpos, being careful not to change our original position.
-			//Float3 solvent_pos{coord.}
+			// Fuck me this is tricky. If we are too far away, we can complete skip this calculation i guess?
 			if (solvent_active) {
 				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, &potE_sum, utility_buffer_small);
 			}

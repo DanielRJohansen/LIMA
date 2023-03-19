@@ -478,6 +478,22 @@ namespace EngineUtils {
 
 		}
 	}*/
+
+	// This function assumes that coord_tsub1 is already hyperpositioned to coord.
+	__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
+
+		return coord + (coord - coord_tsub1) * thermostat_scalar + Coord{ *force * dt * dt / mass };
+		//return coord + Coord{ 1000000, 0, 0 };
+		if (threadIdx.x == 0 && blockIdx.x == 0) {
+			//force->print('f');
+			//printf("dt %f mass %f\n", dt, mass);
+			//(*force*dt*dt / mass).print('F');
+			//uint32_t diff = coord.x - x - dx;
+			//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
+		}
+	}
+
+
 };
 
 

@@ -89,7 +89,8 @@ bool doPoolBenchmark(Environment& env, const string& foldername) {
 
 	auto* sim_params = env.getSimparamRef();
 
-	std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
+	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
+	std::vector<float> particle_temps{ 1200 };
 	std::vector<float> std_devs;
 
 	for (auto temp : particle_temps) {

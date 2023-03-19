@@ -233,99 +233,8 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 }
 
 
-// This function assumes that coord_tsub1 is already hyperpositioned to coord.
-__device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
-
-	return coord + (coord - coord_tsub1) * thermostat_scalar + Coord{ *force * dt * dt / mass };
-	//return coord + Coord{ 1000000, 0, 0 };
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		//force->print('f');
-		//printf("dt %f mass %f\n", dt, mass);
-		//(*force*dt*dt / mass).print('F');
-		//uint32_t diff = coord.x - x - dx;
-		//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-	}
-}
 
 
-__device__ void integratePosition(Float3* pos, Float3* pos_tsub1, Float3* force, const float mass, const float dt, float* thermostat_scalar, int p_index, bool print = false) {
-	// Force is in ??Newton, [kg * nm /(mol*ns^2)] //	
-
-	// Always do hyperpos first!				TODO: Remove, as this is now done by moving the origo, right?
-	//EngineUtils::applyHyperpos(pos, pos_tsub1);
-
-	Float3 temp = *pos;
-	float prev_vel = (*pos - *pos_tsub1).len();
-
-	// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	/*double x = pos->x;
-	double dx = pos->x - pos_tsub1->x;
-	double ddx = force->x * dt * dt / static_cast<double>(mass);*/
-
-	// Without thermostat
-	//*pos += (*pos - *pos_tsub1) + *force * dt * (dt / static_cast<double>(mass));
-	*pos += (*pos - *pos_tsub1) * thermostat_scalar + *force * dt * (dt / static_cast<double>(mass));
-	//pos->x = x + dx + ddx;
-
-
-	//Double3 pos_d{ *pos };
-
-	if (threadIdx.x + blockIdx.x == 0) {
-		//printf("step %d f %f\n", 0, force->x);
-		//float actual_x = x * NORMALIZER * LIMA_SCALE;
-		//double diff = (double)pos->x - x - dx;
-		//printf("x  %.10f  dx %.10f  force %.10f ddx %.10f    x_ %.10f   dif %.10f\n", x, dx, force->x, ddx, dx + ddx, diff);
-	}
-	////*pos += x_;
-	////*pos = Float3{ pos_new.x, pos_new.y, pos_new.z };
-	//if (print && threadIdx.x == 1) {
-	//	//printf("Thread %d    prev_vel %f    Force scalar %f    Acc %.10f    Change %.10f\n", threadIdx.x, prev_vel, force->len(), acc, (*pos - *pos_tsub1).len() - prev_vel);
-	//	//x.print();
-	
-	//		//printf("x  %.8f  dx %.8f   ddx %.8f    x_ %.8f   dif %.8f\n", x_rel.len(), dx.len(), ddx.len(), x_.len(), ((x_new_abs) - *pos).len());
-	//	//pos->print('f');
-	//	//pos_new.print('d');
-	//}
-
-	*pos_tsub1 = temp;
-
-#ifdef LIMA_VERBOSE
-	if ((*pos - *pos_tsub1).len() > 0.1) {
-		printf("\nP_index %d Thread %d blockId %d\tForce %f mass  %f \Dist %f\n", p_index, threadIdx.x, blockIdx.x, force->len(), mass, (*pos - *pos_tsub1).len());
-		//printf("\nP_index %d Thread %d blockId %d\tForce %f mass  %f \tFrom %f %f %f\tTo %f %f %f\n", p_index, threadIdx.x, blockIdx.x, force->len(), mass, pos_tsub1->x, pos_tsub1->y, pos_tsub1->z, pos->x, pos->y, pos->z);		
-	}
-#endif
-}
-
-__device__ void integratePositionRampUp(Float3* pos, Float3* pos_tsub1, Float3* force, const double mass, const double dt, int step) {
-	EngineUtils::applyHyperpos(pos, pos_tsub1);
-
-	Float3 temp = *pos;
-	float prev_vel = (*pos - *pos_tsub1).len();
-
-	*pos = *pos * 2.f - *pos_tsub1 + *force * (dt / mass) * dt;		// [nm] - [nm] + [kg/mol*m*/s ^ 2] / [kg / mol] * [s] ^ 2 * (1e-9) ^ 2 = > [nm] - [nm] + []
-	*pos_tsub1 = temp;
-
-	Float3 delta_pos = *pos - *pos_tsub1;
-	float dist = delta_pos.len();
-	//float vel_scalar = std::min(1.f, prev_vel / new_vel);
-
-	float rampup_progress = static_cast<float>(step + 1) / static_cast<float>(RAMPUP_STEPS);
-	float vel_scalar = MAX_RAMPUP_DIST / dist;				// Scalar so dist of vector will be MAX_RAMPUP_DIST
-	vel_scalar = vel_scalar <= 1.f ? vel_scalar : 1.f;		// Constrain scalar so we never accelerate any vector
-	vel_scalar += (1.f - vel_scalar) * rampup_progress;		// Move the scalar closer to 1., as we get closer to finishing rampup
-	*pos = *pos_tsub1 + delta_pos * vel_scalar;
-
-	{
-	// Ensure that particles cannot increase their momentum during rampup
-	//Float3 delta_pos = *pos - *pos_tsub1;
-	//float new_vel = delta_pos.len();
-	////float vel_scalar = std::min(1.f, prev_vel / new_vel);
-	//float vel_scalar = prev_vel / new_vel;
-	//vel_scalar = vel_scalar <= 1.01f ? vel_scalar : 1.01f;
-	//*pos = *pos_tsub1 + delta_pos * vel_scalar;
-	}
-}
 
 
 __device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
@@ -625,7 +534,7 @@ __global__ void compoundKernel(Box* box) {
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
 		const Coord solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
-		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, solventblock_id);		
+		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, solventblock_id);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
 		const Coord relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo);
@@ -636,26 +545,9 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 
 		force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], nsolvents_neighbor, utility_buffer, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
+		force = Float3{};
 	}
 
-
-
-
-	//for (int i = 0; i * blockDim.x < neighborlist.n_solvent_neighbors; i++) {
-	//	int solvent_nlist_index = i * blockDim.x + threadIdx.x; // index in neighborlist
-
-	//	if (solvent_nlist_index < neighborlist.n_solvent_neighbors) {
-	//		utility_buffer[threadIdx.x] = box->solvents[neighborlist.neighborsolvent_ids[solvent_nlist_index]].pos;
-	//		EngineUtils::applyHyperpos(&compound_state.positions[0], &utility_buffer[threadIdx.x]);
-	//	}
-	//	__syncthreads();
-
-	//	if (threadIdx.x < compound.n_particles) {
-	//		force_LJ_sol += computeSolventToCompoundLJForces(&compound_state.positions[threadIdx.x], blockDim.x, utility_buffer, data_ptr, &potE_sum, compound.atom_types[threadIdx.x]);
-	//	}
-	//	__syncthreads();
-	//}
-	//force += force_LJ_sol;
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
@@ -676,7 +568,7 @@ __global__ void compoundKernel(Box* box) {
 
 		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
 		if (threadIdx.x < compound.n_particles) {
-			compound_coords.rel_positions[threadIdx.x] = integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
+			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
@@ -747,6 +639,7 @@ __global__ void solventForceKernel(Box* box) {
 	const Coord block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
 
 
+
 	// Init queue, otherwise it will contain wierd values
 	if (threadIdx.x < 6) { 
 		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
@@ -773,6 +666,9 @@ __global__ void solventForceKernel(Box* box) {
 	solventblock.loadData(*solventblock_ptr);
 	__syncthreads();
 
+	if (solvent_active)
+		block_origo.print('o');
+
 
 	Float3 force(0.f);
 	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
@@ -796,7 +692,7 @@ __global__ void solventForceKernel(Box* box) {
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
-			//if (n_compound_particles > 0 && solvent_active) { printf("\n%d\n", n_compound_particles); }
+			if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
@@ -811,6 +707,7 @@ __global__ void solventForceKernel(Box* box) {
 			// Fuck me this is tricky. If we are too far away, we can complete skip this calculation i guess?
 			if (solvent_active) {
 				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, &potE_sum, utility_buffer_small);
+				//force.print('f');
 			}
 			__syncthreads();
 		}
@@ -871,7 +768,7 @@ __global__ void solventForceKernel(Box* box) {
 	if (solvent_active) {
 		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 
-		relpos_next = integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
+		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
 
 		auto dif = (relpos_next - relpos_prev);
 		if (std::abs(dif.x) > 15000000 || std::abs(dif.y) > 15000000 || std::abs(dif.z) > 15000000) { 

@@ -97,11 +97,12 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 	}
 	return force;// *24.f * 1e-9;
 }
-__device__ Float3 computeSolventToCompoundLJForces(Float3* self_pos, int n_particles, Float3* positions, float* data_ptr, float* potE_sum, uint8_t atomtype_self) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, Float3* positions, float* data_ptr, float& potE_sum, const uint8_t atomtype_self) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForce(self_pos, &positions[i], data_ptr, potE_sum,
-			calcSigma(atomtype_self, ATOMTYPE_SOL), calcEpsilon(atomtype_self, ATOMTYPE_SOL)
+		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, &potE_sum,
+			calcSigma(atomtype_self, ATOMTYPE_SOL), 
+			calcEpsilon(atomtype_self, ATOMTYPE_SOL)
 			//(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma) * 0.5f,
 			//sqrtf(forcefield_device.particle_parameters[atomtype_self].epsilon * forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon)
 		);
@@ -230,6 +231,7 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 
 	return utility_buffer[threadIdx.x];
 }
+
 
 // This function assumes that coord_tsub1 is already hyperpositioned to coord.
 __device__ Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
@@ -620,6 +622,25 @@ __global__ void compoundKernel(Box* box) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
+	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
+		const int solventblock_id = neighborlist.gridnode_ids[i];
+		const Coord solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
+		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, solventblock_id);		
+		const int nsolvents_neighbor = solventblock->n_solvents;
+
+		const Coord relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo);
+		__syncthreads();	// Dont load buffer before all are finished with the previous iteration
+		if (threadIdx.x < nsolvents_neighbor) {
+			utility_buffer[threadIdx.x] = (solventblock->rel_pos[threadIdx.x] + relpos_shift).toFloat3();
+		}
+		__syncthreads();
+
+		force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], nsolvents_neighbor, utility_buffer, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
+	}
+
+
+
+
 	//for (int i = 0; i * blockDim.x < neighborlist.n_solvent_neighbors; i++) {
 	//	int solvent_nlist_index = i * blockDim.x + threadIdx.x; // index in neighborlist
 
@@ -765,16 +786,19 @@ __global__ void solventForceKernel(Box* box) {
 	{
 		// Thread 0 finds n nearby compounds
 		CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
-		if (threadIdx.x) { utility_int = compoundgridnode->n_nearby_compounds; }
+		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
 		__syncthreads();
+
+
 
 		for (int i = 0; i < utility_int; i++) {
 			const int16_t neighborcompound_index = compoundgridnode->nearby_compound_ids[i];
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
-			// First all threads help loading the molecule
+			//if (n_compound_particles > 0 && solvent_active) { printf("\n%d\n", n_compound_particles); }
 
+			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
 			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);
@@ -909,7 +933,7 @@ __global__ void solventTransferKernel(Box* box) {
 		if (threadIdx.x < queue->n_elements) {
 			const int incoming_index = n_solvents_next + threadIdx.x;
 
-			if (queue->rel_positions[threadIdx.x].x == 0) { queue->rel_positions[threadIdx.x].print('I'); }
+			//if (queue->rel_positions[threadIdx.x].x == 0) { queue->rel_positions[threadIdx.x].print('I'); }
 
 			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
 			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];

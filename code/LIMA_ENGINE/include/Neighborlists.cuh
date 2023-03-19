@@ -20,7 +20,7 @@ struct NListDataCollection {
 	//Solvent* solvents;
 
 	Float3 compound_key_positions[MAX_COMPOUNDS];
-	Float3 solvent_positions[MAX_SOLVENTS];
+	Coord compound_origos[MAX_COMPOUNDS];
 
 	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
 	NeighborList* compound_neighborlists = nullptr;
@@ -31,15 +31,17 @@ struct NListDataCollection {
 namespace NListUtils {
 	//extern bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, float cutoff_offset);
 	extern void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
+	void static matchCompoundNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection);
 
 	void static updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection,
 		volatile bool* finished, int* timing, bool* mutex_lock, uint32_t step_at_update);
 
 	void updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist);
-	void static distributeCompoundsInGrid(Simulation* simulation, CompoundGrid* compoundgrid_host);
+	void static distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection);
 	void static assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist);
 	void static transferCompoundgridToDevice(Simulation* simulation, CompoundGrid* compoundgrid_host);
-	bool static isNearby(const Simulation& simulation, const Coord& node_origo, const int querycompound_id, CompoundGrid* compoundgrid_host);
+	bool static isNearby(const Simulation& simulation, const Coord& node_origo, 
+		const int querycompound_id, NListDataCollection& nlist_data_collection);
 }
 
 class NListManager {
@@ -60,18 +62,6 @@ public:
 
 	// The new stuff
 	void bootstrapCompoundgrid(Simulation* simulation);
-	
-
-
-
-
-
-
-
-
-
-
-
 
 
 	volatile bool updated_neighborlists_ready = 0;

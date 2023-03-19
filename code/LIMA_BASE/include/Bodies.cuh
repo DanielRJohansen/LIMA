@@ -124,6 +124,7 @@ public:
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;
 		n_solvent_neighbors = nl_ptr->n_solvent_neighbors;
+		n_gridnodes = nl_ptr->n_gridnodes;
 	}
 	__device__ void loadData(NeighborList* nl_ptr) {
 		if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
@@ -131,6 +132,10 @@ public:
 		for (int i = threadIdx.x;  i < n_solvent_neighbors; i += blockDim.x) {// Same as THREADS_PER_COMPOUNDBLOCK
 			neighborsolvent_ids[i] = nl_ptr->neighborsolvent_ids[i];
 			i += blockDim.x;	
+		}
+
+		if (threadIdx.x < n_gridnodes) {
+			gridnode_ids[threadIdx.x] = nl_ptr->gridnode_ids[threadIdx.x];
 		}
 	}
 
@@ -142,7 +147,7 @@ public:
 
 	static const int max_gridnodes = 24;
 	uint16_t gridnode_ids[max_gridnodes];
-	uint8_t n_gridnodes;
+	uint8_t n_gridnodes = 0;
 
 	int associated_id = -1;
 
@@ -775,7 +780,7 @@ public:
 	}
 
 	// Returns pointer to the list of origos on device. Receive on host
-	__host__ Coord* getOrigosPtr() { return compound_origos; }
+	//__host__ Coord* getOrigosPtr() { return compound_origos; }
 
 	// Returns ptr to the list of CompoundGridNodes on device. Transmit to from host
 	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }	// DOes this even make sense? Just use getBlockPtr?
@@ -788,7 +793,7 @@ public:
 		delete[] grid_host;
 	}
 
-private:
+//private:
 	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist
-	Coord compound_origos[MAX_COMPOUNDS];
+	//Coord compound_origos[MAX_COMPOUNDS];
 };

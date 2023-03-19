@@ -81,7 +81,6 @@ void Engine::terminateSimulation() {
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
-// maybe rename forceupdate, to wait for update and push?
 void Engine::handleNLISTS(Simulation* simulation, bool async, const bool force_update) {
 	if (neighborlistUpdateRequired() && !updatenlists_mutexlock) {
 		updatenlists_mutexlock = 1;
@@ -149,9 +148,6 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
 	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
-	//SolventCoord* solventcoord_array = new SolventCoord[simulation->n_solvents];
-	//cudaMemcpy(solventcoord_array, simulation->box->solventcoordarray_circular_queue, sizeof(SolventCoord) * simulation->n_solvents, cudaMemcpyDeviceToHost);
-
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
@@ -160,15 +156,11 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		}
 	}
 
-	for (int solvent_id = 0; solvent_id < simulation->n_solvents; solvent_id++) {
-		const int index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, simulation->n_compounds, solvent_id);
-		//simulation->traj_buffer[index] = solventcoord_array[solvent_id].getAbsolutePositionLM();
-	}
+
 
 	EngineUtils::genericErrorCheck("Error after trajbuffer bootstrapping.");
 
 	delete[] compoundcoords_array;
-	//delete[] solventcoord_array;
 }
 
 

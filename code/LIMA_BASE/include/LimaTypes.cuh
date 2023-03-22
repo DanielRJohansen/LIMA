@@ -296,7 +296,9 @@ struct Coord {
 //
 //		return diff_f.lenSquared();
 //	}
-	__host__ __device__ Float3 toFloat3() const { return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); }
+	__host__ __device__ Float3 toFloat3() const { 
+		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
+	}
 //
 //private:
 //	

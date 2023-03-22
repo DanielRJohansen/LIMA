@@ -70,22 +70,15 @@ namespace LIMAPOSITIONSYSTEM {
 		return compoundcoords;
 	}
 
-	__device__ static Float3 getGlobalPositionNM(CompoundCoords& coords) {
-		return coords.origo.toFloat3() + coords.rel_positions[threadIdx.x].toFloat3() / NANO_TO_LIMA;
-	}
-
-	__device__ static Float3 getGlobalPositionFM(CompoundCoords& coords) {
-		return coords.origo.toFloat3() * NANO_TO_FEMTO + coords.rel_positions[threadIdx.x].toFloat3() * LIMA_TO_FEMTO;
-	}
-
 	// Returns position in LimaMetres
 	__device__ static Float3 getGlobalPosition(const CompoundCoords& coords) {
 		return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
 	}
 
-	// Returns positions in LimaMetres
-	__device__ static void getGlobalPositions(CompoundCoords& coords, CompoundState& state) {
-		state.positions[threadIdx.x] = getGlobalPosition(coords);
+	// Transforms the relative coords to relative float positions.
+	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const int n_elements) {
+		if (threadIdx.x < n_elements)
+			positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
 	}
 
 	__device__ __host__ static bool canRepresentRelativeDist(const Coord& origo_a, const Coord& origo_b) {
@@ -93,19 +86,9 @@ namespace LIMAPOSITIONSYSTEM {
 		return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
 	}
 
-	__device__ static void getRelativePositions(Coord* coords, Float3* positions) {
-		positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
-	}
 
-	__device__ static void getRelativePositions(CompoundCoords& coords, CompoundState& state) {
-		//state.positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
-		//or 
-		getRelativePositions(coords.rel_positions, state.positions);
-	}
 
-	//static void applyHyperpos(CompoundCoords& lhs, CompoundCoords& rhs) {
-	//	// TODO: IMplement
-	//}
+
 	
 	// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
 	__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
@@ -124,6 +107,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
+
 	//static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
 	//	applyHyperpos(lhs, rhs);
 
@@ -134,6 +118,7 @@ namespace LIMAPOSITIONSYSTEM {
 	//	};
 	//}
 
+	// Gets hyperorigo of other
 	__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
 		Coord temp = other;
 		applyHyperpos(self, temp);
@@ -149,33 +134,8 @@ namespace LIMAPOSITIONSYSTEM {
 		coords.origo += shift_nm;
 		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}
-
-
 	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
 		coords.rel_positions[threadIdx.x] += shift_lm;
-	}
-
-
-	static void moveCoordinate(Coord& coord, Float3 delta /*[nm]*/) {	// TODO: some checks to make this safe
-		Coord delta_c{ delta / LIMA_TO_FEMTO };
-		coord += delta_c;
-	}
-
-	__device__ static void applyPBC(CompoundCoords& coords) {
-		if (threadIdx.x != 0) { return; }
-		coords.origo.x += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.x < 0);
-		coords.origo.x -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.x > static_cast<int32_t>(BOX_LEN_NM));
-		coords.origo.y += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.y < 0);
-		coords.origo.y -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.y > static_cast<int32_t>(BOX_LEN_NM));
-		coords.origo.z += static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.z < 0);
-		coords.origo.z -= static_cast<int32_t>(BOX_LEN_NM) * (coords.origo.z > static_cast<int32_t>(BOX_LEN_NM));
-	}
-
-	// DANGEROUS: Only wraps around once! Min is assumed to be 0
-	__device__ static int getIntegarWraparound(int num, const int max) {
-		num += max * (num < 0);
-		num -= max * (num > max);
-		return num;
 	}
 
 	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
@@ -188,19 +148,19 @@ namespace LIMAPOSITIONSYSTEM {
 		return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
 	}
 
-	// Calculates the relative position of movable_solvent, relative to another staticcoords's origo.
-	// Returns false if it is not possible to represent the position as coord. In that case, we should avoid
-	// following computations..
-	__device__ static Coord getRelativeHyperposition(const SolventCoord& static_solvent, const SolventCoord& movable_solvent) {
-		const Coord hyperorigo_other = LIMAPOSITIONSYSTEM::getHyperOrigo(static_solvent.origo, movable_solvent.origo);
+	//// Calculates the relative position of movable_solvent, relative to another staticcoords's origo.
+	//// Returns false if it is not possible to represent the position as coord. In that case, we should avoid
+	//// following computations..
+	//__device__ static Coord getRelativeHyperposition(const SolventCoord& static_solvent, const SolventCoord& movable_solvent) {
+	//	const Coord hyperorigo_other = LIMAPOSITIONSYSTEM::getHyperOrigo(static_solvent.origo, movable_solvent.origo);
 
-		// calc Relative Position Shift from the origo-shift
-		//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
-		// 
-		//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(static_solvent.origo, hyperorigo_movable);
-		const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(hyperorigo_other, static_solvent.origo);
-		return movable_solvent.rel_position + relPosShiftOfMovable;
-	}
+	//	// calc Relative Position Shift from the origo-shift
+	//	//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
+	//	// 
+	//	//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(static_solvent.origo, hyperorigo_movable);
+	//	const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(hyperorigo_other, static_solvent.origo);
+	//	return movable_solvent.rel_position + relPosShiftOfMovable;
+	//}
 
 	__device__ __host__ static void applyPBC(Coord& origo) {
 		origo.x += BOX_LEN_NM_INT * (origo.x < 0);
@@ -211,20 +171,14 @@ namespace LIMAPOSITIONSYSTEM {
 		origo.z -= BOX_LEN_NM_INT * (origo.z >= BOX_LEN_NM_INT);
 	}
 
-	__device__ __host__ static void applyPBC(SolventCoord& coord) {	// Only changes position if position is outside of box;
-		Coord& pos = coord.origo;
-		applyPBC(pos);
+	__device__ __host__ static void applyPBC(SolventCoord& coord) { applyPBC(coord.origo); }
+
+	__device__ static void applyPBC(CompoundCoords& coords) {
+		if (threadIdx.x != 0) { return; }
+		applyPBC(coords.origo);		
 	}
 
-	// Moves origo when necessary, so all relpos dimensions are positive
-	__host__ static void forceRelposPositive(SolventCoord& coord) {
-		for (int i = 0; i < 3; i++) {
-			if (*coord.rel_position.get(i) < 0) {
-				(*coord.origo.get(i))--;
-				(*coord.rel_position.get(i)) += static_cast<int32_t>(NANO_TO_LIMA);
-			}
-		}
-	}
+
 
 
 
@@ -252,6 +206,83 @@ namespace LIMAPOSITIONSYSTEM {
 		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
 		return blockPtr->rel_pos[threadIdx.x];
 	}
+
+
+
+
+
+
+
+
+
+
+	__device__ static Coord getOnehotDirection(const Coord relpos, const int32_t threshold) {
+		const int32_t magnitude_x = std::abs(relpos.x);
+		const int32_t magnitude_y = std::abs(relpos.y);
+		const int32_t magnitude_z = std::abs(relpos.z);
+
+		//if (magnitude_x <= threshold && magnitude_y <= threshold && magnitude_z <= threshold) { return Coord{ 0,0,0 }; }	// This sadly means that there are multiple correct positions for a particle :(
+
+		// Including at bottomleftfront, excluding at toprightback
+		if (   relpos.x < -threshold || relpos.x >= threshold
+			|| relpos.y < -threshold || relpos.y >= threshold
+			|| relpos.z < -threshold || relpos.z >= threshold)
+		{
+			// Determine which magnitude is the largest
+			if (magnitude_x >= magnitude_y && magnitude_x >= magnitude_z) {
+				// The x component has the largest magnitude
+				return Coord{ relpos.x < 0 ? -1 : 1, 0, 0 };
+			}
+			else if (magnitude_y >= magnitude_z) { // The y component has the largest magnitude			
+				return Coord{ 0, relpos.y < 0 ? -1 : 1, 0 };
+			}
+			else { // The z component has the largest magnitude		
+				return Coord{ 0, 0, relpos.z < 0 ? -1 : 1 };
+			}
+		}
+		else {
+			return Coord{ 0 };
+		}		
+	}
+
+	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
+	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
+	__device__ static Coord getTransferDirection(const Coord relpos) {
+		//const int32_t blocklen_half = static_cast<int32_t>(NANO_TO_LIMA) / 2;
+		const int32_t blocklen_half = static_cast<int32_t>(SolventBlockGrid::node_len) / 2;
+		const Coord rel_blockcenter{ blocklen_half };
+		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half) {
+			printf("\nWe have underflow!\n");
+			relpos.print('R');
+		}
+		if (relpos.x > INT32_MAX - blocklen_half || relpos.y > INT32_MAX - blocklen_half || relpos.z > INT32_MAX - blocklen_half) {
+			printf("\nWe have overflow!\n");
+			relpos.print('R');
+		}
+		//return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos + rel_blockcenter, blocklen_half);
+		return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos, blocklen_half);
+	}
+
+	/// <summary>
+	/// Shifts the position 1/2 blocklen so we can find the appropriate origo by 
+	/// </summary>
+	/// <param name="position">Absolute position of solvent [nm] </param>
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const Float3& position) {
+		//const Float3 blockcenter_relative{ SolventBlockGrid::node_len / 2.f / NANO_TO_LIMA };	// [nm]
+		//const Float3 position_adjusted = position + blockcenter_relative;						// [nm]
+
+		//const Float3 origo_f = position_adjusted.piecewiseRound();								// [nm]
+		const Float3 origo_f = position.piecewiseRound();
+		const Float3 relpos_f = (position - origo_f) * NANO_TO_LIMA;							// [lm}
+
+		SolventCoord solventcoord{ Coord{origo_f}, Coord{relpos_f } };
+		applyPBC(solventcoord);
+		return solventcoord;
+	}
+
+
+
+
 
 	//__device__ static bool willSolventRe
 
@@ -349,76 +380,7 @@ namespace EngineUtils {
 		return &transfermodule_array[index];
 	}
 
-	__device__ static Coord getOnehotDirection(const Coord coord, int32_t threshold) {
-		const int32_t magnitude_x = std::abs(coord.x);
-		const int32_t magnitude_y = std::abs(coord.y);
-		const int32_t magnitude_z = std::abs(coord.z);
 
-		if (magnitude_x < threshold && magnitude_y < threshold && magnitude_z < threshold) { return Coord{ 0,0,0 }; }
-
-		// Determine which magnitude is the largest
-		if (magnitude_x >= magnitude_y && magnitude_x >= magnitude_z) {
-			// The x component has the largest magnitude
-			return Coord{ coord.x < 0 ? -1 : 1, 0, 0 };
-		}
-		else if (magnitude_y >= magnitude_x && magnitude_y >= magnitude_z) {
-			// The y component has the largest magnitude
-			return Coord{ 0, coord.y < 0 ? -1 : 1, 0 };
-		}
-		else {
-			// The z component has the largest magnitude
-			return Coord{ 0, 0, coord.z < 0 ? -1 : 1 };
-		}
-	}
-	__device__ static Coord getOnehotDirection1(const Coord coord, int32_t threshold) {
-		
-		//if (coord.x > 0 && coord.x != std::abs(coord.x)) {
-		//	printf("\n %d %d\n", coord.x, std::abs(coord.x));
-		//}
-		//if (coord.y > 0 && coord.y != std::abs(coord.y)) {
-		//	printf("\n %d %d\n", coord.y, std::abs(coord.y));
-		//}
-		//if (coord.z > 0 && coord.z != std::abs(coord.z)) {
-		//	printf("\n %d %d\n", coord.z, std::abs(coord.z));
-		//}
-
-
-		const int32_t max_val{ 
-			CPPD::max(
-			int32_t{CPPD::max(std::abs(coord.x), std::abs(coord.y))},
-			std::abs(coord.z))
-		};
-
-		int max2 = std::abs(coord.x);
-		if (std::abs(coord.y) > max2) { max2 = std::abs(coord.y); }
-		if (std::abs(coord.z) > max2) { max2 = std::abs(coord.z); }
-
-		int max3 = CPPD::max(coord.x, coord.y);
-		max3 = CPPD::max(coord.z, max3);
-
-		if (max_val > threshold) {
-			// Could be optimized by using threshold as a template argument
-			Coord onehot =  coord / max_val;
-			if (onehot.x + onehot.y + onehot.z > 1) {
-				//printf("\nMax val %d max2 %d max3 %d\n", max_val, max2, max3);
-				onehot.print('O');
-				coord.print('C');
-				//printf("\nABS: Max  %d  %d  %d\n", std::abs(coord.x), std::abs(coord.y), std::abs(coord.z));
-				//printf("issame %d %d %d\n", coord.x == std::abs(coord.x), coord.y == std::abs(coord.y), coord.z == std::abs(coord.z));
-				printf("x %d %d %d\n", coord.x, CPPD::abs(coord.x), coord.x < 0);
-				printf("y %d %d %d\n", coord.y, CPPD::abs(coord.y), coord.x < 0);
-				printf("z %d %d %d\n", coord.z, CPPD::abs(coord.z), coord.x < 0);
-				printf("\n");
-				//__nvvm_atom_max()
-			}
-			// Handle the case where some coordinates are identical
-			onehot.y = onehot.x != 0 ? 0 : onehot.y;
-			onehot.z = onehot.x != onehot.y ? 0 : onehot.z;	// x and y can't both be 1, since x already has priority over x
-			return onehot;
-		}
-
-		return Coord{};
-	}
 
 	// returns an int between -21 and 21
 	__device__ static int genPseudoRandomNum(int& seed) {
@@ -427,57 +389,6 @@ namespace EngineUtils {
 		seed = a * seed + c;
 		return seed / 100000000;
 	}
-	//__device__ static Coord getOnehotDirection(const Coord& coord, int32_t threshold) {
-	//	int32_t max_val{ CPPD::max(
-	//		CPPD::max(std::abs(coord.x), std::abs(coord.y)),
-	//		std::abs(coord.z))
-	//	};
-	//	if (max_val > threshold) {
-	//		// Could be optimized by using threshold as a template argument
-	//		return coord / max_val;
-	//	}
-	//		
-	//	return Coord{};
-	//}
-
-	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
-	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
-	__device__ static Coord getTransferDirection(const Coord relpos) {
-		const int32_t blocklen_half = static_cast<int32_t>(NANO_TO_LIMA) / 2;
-		const Coord rel_blockcenter{ blocklen_half };
-		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half ) {
-			printf("\nWe have underflow!\n");
-			relpos.print('R');
-		}
-		if (relpos.x > INT32_MAX - blocklen_half || relpos.y > INT32_MAX - blocklen_half || relpos.z > INT32_MAX - blocklen_half) {
-			printf("\nWe have overflow!\n");
-			relpos.print('R');
-		}
-		return EngineUtils::getOnehotDirection(relpos - rel_blockcenter, blocklen_half);
-	}
-
-	//__device__ static void doSolventTransfer(const Coord& relpos, const Coord& relpos_prev, SolventBlockTransfermodule* transfermodule_array) {
-	//	//const Coord transfer_direction = getTransferDirection(relpos);
-	//	//const Coord blockId3d = SolventBlockHelpers::get3dIndex(blockIdx.x);
-
-	//	//int new_blockid = getNewBlockId(transfer_direction, blockId3d);
-	//	//if (new_blockid == blockIdx.x) {
-	//	//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-	//	//}
-	//	//else {
-	//	//	// Coord 
-	//	//	// TEMP:
-	//	//	transfermodule_array[blockIdx.x].remain_queue.addElement(threadIdx.x, relpos, relpos_prev);
-	//	//	transfermodule_array[new_blockid].getQueuePtr()/
-	//	//}
-	//}
-
-	/*__device__ static void compressTransferqueue(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>* transferqueues) {
-
-		for (int i = 0; i < transferqueue.used_size; i += blockDim.x) {
-
-		}
-	}*/
 
 	// This function assumes that coord_tsub1 is already hyperpositioned to coord.
 	__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const double dt, const float thermostat_scalar) {
@@ -497,7 +408,32 @@ namespace EngineUtils {
 };
 
 
+namespace LIMADEBUG {
+	__device__ void static transferOut(STransferQueue* queue_global, const STransferQueue& queue_local, const Coord& transferdir_queue, const int queue_index) {
+		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+			|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+			) {
+			printf("\n");
+			transferdir_queue.print('t');
+			queue_local.rel_positions[threadIdx.x].print('q');
+			queue_global->rel_positions[threadIdx.x].print('Q');
+		}
 
+		if (threadIdx.x == 0) {
+			if (queue_global->n_elements != 0) {
+				printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
+				transferdir_queue.print('d');
+			}
+
+			queue_global->n_elements = queue_local.n_elements;
+			if (queue_local.n_elements > 15) {
+				printf("\nTransferring %d elements\n", queue_local.n_elements);
+			}
+		}
+	}
+
+};
 
 
 

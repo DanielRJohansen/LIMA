@@ -40,24 +40,24 @@ void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCo
 
 
 
-SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
-	SolventCoord coord;
-	const Float3 origo_f = solvent_pos.piecewiseRound();
-	const Float3 relpos_f = (solvent_pos - origo_f) * NANO_TO_LIMA;
-	coord.origo = Coord{ origo_f };
-	coord.rel_position = Coord{ relpos_f };
-	return coord;
-}
+//SolventCoord SolventCoord::createFromPositionNM(const Float3& solvent_pos) {
+//	SolventCoord coord;
+//	const Float3 origo_f = solvent_pos.piecewiseRound();
+//	const Float3 relpos_f = (solvent_pos - origo_f) * NANO_TO_LIMA;
+//	coord.origo = Coord{ origo_f };
+//	coord.rel_position = Coord{ relpos_f };
+//	return coord;
+//}
 
 
 
-bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id)
-{
-	if (coord.origo.x >= 7 || coord.origo.y >= 7 || coord.origo.z >= 7) {
-		printf("");
-	}
-	return grid.getBlockPtr(coord.origo)->addSolvent(coord.rel_position, solvent_id);
-}
+//bool SolventBlockHelpers::insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id)
+//{
+//	if (coord.origo.x >= 7 || coord.origo.y >= 7 || coord.origo.z >= 7) {
+//		printf("");
+//	}
+//	return grid.getBlockPtr(coord.origo)->addSolvent(coord.rel_position, solvent_id);
+//}
 
 
 

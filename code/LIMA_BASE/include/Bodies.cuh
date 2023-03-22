@@ -159,22 +159,7 @@ public:
 
 
 
-const int MAX_PAIRBONDS = 128;
-const int MAX_ANGLEBONDS = 256;
-const int MAX_DIHEDRALS = 384;
-struct CompoundState {							// Maybe delete this soon?
-	__device__ void setMeta(int n_p) {
-		n_particles = n_p;
-	}
-	__device__ void loadData(CompoundState* state) {
-		if (threadIdx.x < n_particles)
-			positions[threadIdx.x] = state->positions[threadIdx.x];
-	}
 
-
-	Float3 positions[MAX_COMPOUND_PARTICLES];
-	uint8_t n_particles = 0;
-};
 
 
 
@@ -204,6 +189,28 @@ struct CompoundCoords {
 	__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
+const int MAX_PAIRBONDS = 128;
+const int MAX_ANGLEBONDS = 256;
+const int MAX_DIHEDRALS = 384;
+struct CompoundState {							// Maybe delete this soon?
+	__device__ void setMeta(int n_p) {
+		n_particles = n_p;
+	}
+	/*__device__ void loadData(CompoundState* state) {
+		if (threadIdx.x < n_particles)
+			positions[threadIdx.x] = state->positions[threadIdx.x];
+	}*/
+	__device__ void loadData(const CompoundCoords& coords) {
+		if (threadIdx.x < n_particles)
+			positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
+	}
+
+
+
+	Float3 positions[MAX_COMPOUND_PARTICLES];
+	uint8_t n_particles = 0;
+};
+
 struct SolventCoord {
 	__device__ __host__ SolventCoord() {}
 	__device__ __host__ SolventCoord(Coord ori , Coord rel) : origo(ori ), rel_position(rel) {}
@@ -213,7 +220,7 @@ struct SolventCoord {
 	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
 		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
 
-	__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
+	//__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
 	__host__ __device__ Float3 getAbsolutePositionLM() const {
 		return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
 	}
@@ -252,7 +259,7 @@ struct SolventBlock {
 		rel_pos[n_solvents++] = rel_position;
 		return true;
 	}
-	static constexpr float block_len = 1; // [nm]
+	static constexpr float block_len = 1; // [nm]	// TODO: Remove this, there should only be node_len of BoxGrid
 	static_assert((static_cast<int>(BOX_LEN_NM) % static_cast<int>(block_len)) == 0, "Illegal box dimension");
 
 	Coord origo{};
@@ -265,16 +272,21 @@ struct SolventBlock {
 
 
 template <typename NodeType>
-struct BoxGrid {
+class BoxGrid {
+public:
+	static constexpr float node_len = 1.f * NANO_TO_LIMA;	// [lm]
 	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
 	NodeType blocks[blocks_total];
 
+	// This function assumes the user has used PBC
 	__host__ NodeType* getBlockPtr(const Coord& index3d) {
 		if (index3d.x >= BOX_LEN_NM_INT || index3d.y >= BOX_LEN_NM_INT || index3d.z >= BOX_LEN_NM_INT) { 
 			printf("BAD 3D index\n"); exit(1); }
 		return getBlockPtr(BoxGrid::get1dIndex(index3d));
 	}
+
+	// This function assumes the user has used PBC
 	__device__ __host__ NodeType* getBlockPtr(const int index1d) {
 		return &blocks[index1d];
 	}
@@ -294,7 +306,13 @@ struct BoxGrid {
 	}
 };
 
-using SolventBlockGrid = BoxGrid<SolventBlock>;
+class SolventBlockGrid : public BoxGrid<SolventBlock> {
+public:
+	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id) {
+		// TODO: Implement safety feature checking and failing if PBC is not met!
+		return getBlockPtr(coord.origo)->addSolvent(coord.rel_position, solvent_id);
+	}
+};
 
 template <int size>
 struct SolventTransferqueue {
@@ -372,7 +390,7 @@ using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_que
 using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
 
 namespace SolventBlockHelpers {
-	bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id);
+	//bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id);
 	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
 		SolventBlockGrid* grid_circular_queue);
 

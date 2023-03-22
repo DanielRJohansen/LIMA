@@ -192,7 +192,7 @@ namespace NListUtils {
 
 void NListUtils::updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist) {
 	*nlist->compoundgrid = CompoundGrid{};	// Reset the grid
-	printf("\n clear \n");
+	//printf("\n clear \n");
 	// Load the origo's of each compound
 	//cudaMemcpy(
 	//	nlist->compoundgrid->getOrigosPtr(),
@@ -268,7 +268,7 @@ void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListD
 									node_self->addNearbyCompound(querycompound_id);	// Add compound so solvents can see it
 									nlist_data_collection->compound_neighborlists[querycompound_id].addGridnode(nodeself_id);	// Add grid so compound can see solvents
 
-									if (node_origo == Coord{ 4,3,3 }) { printf("\nAdding %d\n", querycompound_id); }
+									//if (node_origo == Coord{ 4,3,3 }) { printf("\nAdding %d\n", querycompound_id); }
 								}
 							}
 						}

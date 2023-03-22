@@ -214,15 +214,18 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 
 		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
-			SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
-			LIMAPOSITIONSYSTEM::forceRelposPositive(solventcoord);
-			LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
+			//SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
+			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(sol_pos);
+
+			//LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
 			
-			solventcoords[simulation->box->n_solvents] = solventcoord;
+			solventcoords[simulation->box->n_solvents] = solventcoord;	// REMOVE soon?
 			solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
 
-			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks, solventcoord, simulation->box->n_solvents);
-			SolventBlockHelpers::insertSolventcoordInGrid(*solventblocks_prev, solventcoord, simulation->box->n_solvents);
+
+			solventblocks->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+			solventblocks_prev->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+
 			simulation->box->n_solvents++;
 		}
 	}

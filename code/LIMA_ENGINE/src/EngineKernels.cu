@@ -348,7 +348,7 @@ __device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solve
 
 		if (threadIdx.x < queue_local.n_elements) {
 
-			const Coord transferdir_queue = EngineUtils::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
+			const Coord transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
 			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
@@ -363,30 +363,8 @@ __device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solve
 
 
 			// Debugging
-			if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-				) {
-				printf("\n");
-				transferdir_queue.print('t');
-				queue_local.rel_positions[threadIdx.x].print('q');
-				queue_global->rel_positions[threadIdx.x].print('Q');
-			}
-
-			if (threadIdx.x == 0) {
-				if (queue_global->n_elements != 0) {
-					printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
-					transferdir_queue.print('d');
-				}
-
-				queue_global->n_elements = queue_local.n_elements;
-				if (queue_local.n_elements > 15) {
-					printf("\nTransferring %d elements\n", queue_local.n_elements);
-				}
-			}
+			LIMADEBUG::transferOut(queue_global, queue_local, transferdir_queue, queue_index);
 			
-
-
 
 			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
 			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }
@@ -430,7 +408,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
 	const Coord blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
-	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? EngineUtils::getTransferDirection(relpos_next) : Coord{ 0 };
+	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : Coord{ 0 };
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
@@ -462,6 +440,7 @@ __global__ void compoundKernel(Box* box) {
 	__shared__ Coord utility_coord;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
+
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
 		compound_state.setMeta(compound.n_particles);
@@ -480,7 +459,7 @@ __global__ void compoundKernel(Box* box) {
 	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
 	__syncthreads();
 
-	LIMAPOSITIONSYSTEM::getRelativePositions(compound_coords, compound_state);
+	compound_state.loadData(compound_coords);
 	__syncthreads();
 
 
@@ -666,8 +645,11 @@ __global__ void solventForceKernel(Box* box) {
 	solventblock.loadData(*solventblock_ptr);
 	__syncthreads();
 
-	if (solvent_active)
-		block_origo.print('o');
+	if (solvent_active) {
+		block_origo.print('\n');
+		solventblock.rel_pos[threadIdx.x].print('r');
+	}
+		
 
 
 	Float3 force(0.f);
@@ -677,7 +659,7 @@ __global__ void solventForceKernel(Box* box) {
 		//coord.origo.print();
 		//coord.rel_position.print();
 	}
-
+	
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
@@ -884,7 +866,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 	__syncthreads();
 
 	// Load the now shifted relative coords into float3 positions for force calcs.
-	LIMAPOSITIONSYSTEM::getRelativePositions(particle_coords, positions);
+	LIMAPOSITIONSYSTEM::getRelativePositions(particle_coords, positions, bridge.n_particles);
 
 	float potE_sum = 0;
 	Float3 force{};

@@ -523,8 +523,9 @@ __global__ void compoundKernel(Box* box) {
 		}
 		__syncthreads();
 
-		force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], nsolvents_neighbor, utility_buffer, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
-		force = Float3{};
+		if (threadIdx.x < compound.n_particles) {
+			force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], nsolvents_neighbor, utility_buffer, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
+		}
 	}
 
 #endif
@@ -646,8 +647,8 @@ __global__ void solventForceKernel(Box* box) {
 	__syncthreads();
 
 	if (solvent_active) {
-		block_origo.print('\n');
-		solventblock.rel_pos[threadIdx.x].print('r');
+		//block_origo.print('\n');
+		//solventblock.rel_pos[threadIdx.x].print('r');
 	}
 		
 
@@ -674,7 +675,7 @@ __global__ void solventForceKernel(Box* box) {
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
-			if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
+			//if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound

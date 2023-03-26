@@ -145,7 +145,7 @@ public:
 	uint16_t neighborsolvent_ids[NEIGHBORLIST_MAX_SOLVENTS];
 	uint16_t n_solvent_neighbors = 0;
 
-	static const int max_gridnodes = 24;
+	static const int max_gridnodes = 27;
 	uint16_t gridnode_ids[max_gridnodes];
 	uint8_t n_gridnodes = 0;
 

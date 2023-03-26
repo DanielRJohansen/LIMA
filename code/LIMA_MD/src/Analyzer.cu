@@ -293,7 +293,7 @@ void printRow(string title, vector<float>& vec) {
 		title, { 
 			getMin(vec), 
 			getMax(vec), 
-			getStdDev(vec) / vec.front(),
+			Analyzer::getStdDevNorm(vec),
 			(vec.back() - vec.front()) / vec.front() });
 }
 

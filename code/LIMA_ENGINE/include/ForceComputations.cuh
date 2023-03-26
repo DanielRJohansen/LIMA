@@ -10,44 +10,7 @@
 
 namespace LimaForcecalc {
 
-__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
-	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
-	// input positions in cartesian coordinates [nm]
-	// sigma [nm]
-	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
-	// Returns force in J/mol*M		?????????????!?!?//
-
-	// Directly from book
-	float dist_sq = (*pos1 - *pos0).lenSquared();
-	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
-	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
-
-	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
-
-
-	if (((*pos1 - *pos0) * force_scalar).len() > 100) {
-		printf("\nBlock %d thread %d type1 %d\n", blockIdx.x, threadIdx.x, type1);
-		((*pos1 - *pos0) * force_scalar).print('f');
-		pos0->print('0');
-		pos1->print('1');
-		printf("dist nm %f\n", sqrt(dist_sq) / NANO_TO_LIMA);
-	}
-
-#ifdef LIMA_VERBOSE
-	//if (threadIdx.x == 0 && blockIdx.x == 0) {
-	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
-	//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
-	//}
-	pos0->print('0');
-	pos0->print('1');
-}
-#endif
-return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
-}
-
-
-
+// ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
 
 __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, PairBond* bondtype, Float3* results, float* potE) {
 	// Calculates bond force on both particles					//
@@ -147,10 +110,46 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 }
 
 
+// ------------------------------------------------------------------------------------------- LJ Forces -------------------------------------------------------------------------------------------//
+
+__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
+	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
+	// input positions in cartesian coordinates [nm]
+	// sigma [nm]
+	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
+	// Returns force in J/mol*M		?????????????!?!?//
+
+	
+
+	// Directly from book
+	float dist_sq = (*pos1 - *pos0).lenSquared();
+	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
+	s = s * s * s;
+	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+
+	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 
 
+	if (((*pos1 - *pos0) * force_scalar).len() > 100) {
+		printf("\nBlock %d thread %d type1 %d\n", blockIdx.x, threadIdx.x, type1);
+		((*pos1 - *pos0) * force_scalar).print('f');
+		pos0->print('0');
+		pos1->print('1');
+		printf("dist nm %f\n", sqrt(dist_sq) / NANO_TO_LIMA);
+	}
+	//printf("\ndist: %d %f force %f\n", threadIdx.x, (*pos0 - *pos1).len() / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len());
 
-
+#ifdef LIMA_VERBOSE
+	//if (threadIdx.x == 0 && blockIdx.x == 0) {
+	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
+	//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
+	//}
+	pos0->print('0');
+	pos0->print('1');
+}
+#endif
+return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
+	}
 
 
 }	// End of namespace LimaForcecalc

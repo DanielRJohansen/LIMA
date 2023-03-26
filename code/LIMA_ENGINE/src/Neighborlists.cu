@@ -245,6 +245,7 @@ bool NListUtils::isNearby(const Simulation& simulation, const Coord& node_origo,
 }
 
 void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
+	//nlist_data_collection->compound_origos[0].print('C');
 	for (int z = 0; z < CompoundGrid::blocks_per_dim; z++) {
 		for (int y = 0; y < CompoundGrid::blocks_per_dim; y++) {
 			for (int x = 0; x < CompoundGrid::blocks_per_dim; x++) {
@@ -253,7 +254,7 @@ void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListD
 				auto nodeself_id = CompoundGrid::get1dIndex(node_origo);
 
 
-				const int query_range = 2;
+				const int query_range = 1;
 				for (int x = -query_range; x <= query_range; x++) {
 					for (int y = -query_range; y <= query_range; y++) {
 						for (int z = -query_range; z <= query_range; z++) {
@@ -264,11 +265,15 @@ void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListD
 							for (int i = 0; i < node_query->n_associated_compounds; i++) {
 								const int querycompound_id = node_query->associated_ids[i];
 
-								if (isNearby(*simulation, node_origo, querycompound_id, *nlist_data_collection)) {
+								if (isNearby(*simulation, node_origo, querycompound_id, *nlist_data_collection) || true) {
 									node_self->addNearbyCompound(querycompound_id);	// Add compound so solvents can see it
 									nlist_data_collection->compound_neighborlists[querycompound_id].addGridnode(nodeself_id);	// Add grid so compound can see solvents
 
-									//if (node_origo == Coord{ 4,3,3 }) { printf("\nAdding %d\n", querycompound_id); }
+									if (node_origo == Coord{ 4,4,4 } || true) { 
+										//printf("\nAdding  to \n", querycompound_id); 
+										//nlist_data_collection->compound_origos[querycompound_id].print('C');
+										//node_origo.print('N');
+									}
 								}
 							}
 						}

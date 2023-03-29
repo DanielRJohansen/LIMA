@@ -44,8 +44,7 @@ constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
 
 constexpr float BOX_LEN_FM = BOX_LEN * LIMA_TO_FEMTO;
 constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
-constexpr float BOX_LEN_RELATIVE = BOX_LEN / NORMALIZER;
-constexpr float BOX_LEN_RELATIVE_HALF = BOX_LEN_RELATIVE / 2.f;
+
 // -------------------------------------------------------------------------------------------------------------- //
 
 

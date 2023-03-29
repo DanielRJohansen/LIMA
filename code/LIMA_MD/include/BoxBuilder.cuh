@@ -74,7 +74,7 @@ private:
 	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 
-	const float MIN_NONBONDED_DIST = 0.2f / NORMALIZER;
+	const float MIN_NONBONDED_DIST = 0.2f;
 
 
 	// If molecule is offset, each solvent from .gro file must be aswell

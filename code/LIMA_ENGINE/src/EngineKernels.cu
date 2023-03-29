@@ -260,9 +260,9 @@ __device__ inline void LogSolventData(Box* box, const float& potE, const Solvent
 	}
 }
 
-__device__ void getCompoundHyperpositionsAsFloat3(const Coord& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
+__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
 	if (threadIdx.x == 0) {
-		Coord querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperOrigo(origo_self, querycompound->origo);
+		NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
 		// calc Relative Position Shift from the origo-shift
 		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self);
@@ -406,8 +406,8 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
-	const Coord blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
-	const Coord transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : Coord{ 0 };
+	const NodeIndex blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
+	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{ 0 };
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
@@ -540,7 +540,7 @@ __global__ void compoundKernel(Box* box) {
 		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 
 		if (threadIdx.x == 0) {
-			Coord prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperOrigo(compound_coords.origo, coordarray_prev_ptr->origo);
+			NodeIndex prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, coordarray_prev_ptr->origo);
 			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
 		}
 		__syncthreads();
@@ -615,7 +615,7 @@ __global__ void solventForceKernel(Box* box) {
 	lcg_seed = 12345;
 
 	// Doubles as block_index_3d!
-	const Coord block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
+	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
 
 
 
@@ -719,7 +719,7 @@ __global__ void solventForceKernel(Box* box) {
 	for (int x = -query_range; x <= query_range; x++) {
 		for (int y = -query_range; y <= query_range; y++) {
 			for (int z = -query_range; z <= query_range; z++) {
-				const Coord dir{ x,y,z };
+				const NodeIndex dir{ x,y,z };
 				if (dir.isZero()) { continue; }
 
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);

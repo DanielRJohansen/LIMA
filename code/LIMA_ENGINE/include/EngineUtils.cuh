@@ -48,7 +48,7 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; }
 	
 	// Position in nm
-	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
+	__device__ __host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
 		const float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
 		return NodeIndex{ static_cast<int>(position.x / factor), static_cast<int>(position.y / factor) ,static_cast<int>(position.z / factor) };
 	}
@@ -64,7 +64,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// relpos in LM
-	__device__ static Float3 relposToAbsolutePosition(const Coord& relpos) {
+	__device__ __host__ static Float3 relposToAbsolutePosition(const Coord& relpos) {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
@@ -127,8 +127,11 @@ namespace LIMAPOSITIONSYSTEM {
 
 	
 	// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
-	__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
+	/*__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
 		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
+	}*/
+	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
+		return nodeIndexToCoord(from - to);
 	}
 
 	//__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
@@ -274,7 +277,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	//__device__ static Coord getOnehotDirectionEdgeblock(const Coord relpos, const Coord thresholdInward, const Coord thresholdOutward)
 
-	__device__ static Coord getOnehotDirection(const Coord relpos, const int32_t threshold) {
+	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
 		const int32_t magnitude_x = std::abs(relpos.x);
 		const int32_t magnitude_y = std::abs(relpos.y);
 		const int32_t magnitude_z = std::abs(relpos.z);
@@ -289,23 +292,23 @@ namespace LIMAPOSITIONSYSTEM {
 			// Determine which magnitude is the largest
 			if (magnitude_x >= magnitude_y && magnitude_x >= magnitude_z) {
 				// The x component has the largest magnitude
-				return Coord{ relpos.x < 0 ? -1 : 1, 0, 0 };
+				return NodeIndex{ relpos.x < 0 ? -1 : 1, 0, 0 };
 			}
 			else if (magnitude_y >= magnitude_z) { // The y component has the largest magnitude			
-				return Coord{ 0, relpos.y < 0 ? -1 : 1, 0 };
+				return NodeIndex{ 0, relpos.y < 0 ? -1 : 1, 0 };
 			}
 			else { // The z component has the largest magnitude		
-				return Coord{ 0, 0, relpos.z < 0 ? -1 : 1 };
+				return NodeIndex{ 0, 0, relpos.z < 0 ? -1 : 1 };
 			}
 		}
 		else {
-			return Coord{ 0 };
+			return NodeIndex{};
 		}		
 	}
 
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
-	__device__ static Coord getTransferDirection(const Coord relpos) {
+	__device__ static NodeIndex getTransferDirection(const Coord relpos) {
 		const int32_t blocklen_half = BOXGRID_NODE_LEN_i / 2;
 		const Coord rel_blockcenter{ blocklen_half };
 		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half) {

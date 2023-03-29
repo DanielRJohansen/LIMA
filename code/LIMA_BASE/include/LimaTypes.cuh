@@ -329,6 +329,8 @@ struct NodeIndex : public Int3 {
 	__host__ __device__ Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
+
+	__device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 };
 
 

@@ -41,6 +41,28 @@ namespace CPPD {
 
 namespace LIMAPOSITIONSYSTEM {
 	
+	// Safe to call with any Coord
+	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
+
+	// Safe to call with relatively small node indexes. If the index has proponents larger than what a coord can represent, then :(((
+	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; }
+	
+	// Position in nm
+	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
+		const float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
+		return NodeIndex{ static_cast<int>(position.x / factor), static_cast<int>(position.y / factor) ,static_cast<int>(position.z / factor) };
+	}
+	// Inverse to the above, used to position compound
+	__host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
+		const float factor = BOXGRID_NODE_LEN / NANO_TO_LIMA;
+		return Float3{ static_cast<float>(node_index.x) * factor,  static_cast<float>(node_index.y) * factor,  static_cast<float>(node_index.z) * factor };
+	}
+	
+	__host__ static Coord absolutePositionToRelativeCoordinate(const Float3& position) {
+		if (absolutePositionToNodeIndex(position) != NodeIndex{}) { throw "Tried to place a position that was not correcly assigned a node"; }
+
+	}
+
 	/// <summary>
 	/// Transfer external coordinates to internal multi-range LIMA coordinates
 	/// </summary>
@@ -51,21 +73,20 @@ namespace LIMAPOSITIONSYSTEM {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
-		compoundcoords.origo = Coord{ state.positions[key_particle_index] };
+		//compoundcoords.origo = Coord{ state.positions[key_particle_index] };
 		//compoundcoords.origo = Coord(0);	// Temp, use the one above in future
-
-		double default_norm_dist = 1.0;	// By default, 2 nm has a relative distance of 1.0 (int float) and 2^29 (uint32_t
+		compoundcoords.origo = absolutePositionToNodeIndex(state.positions[key_particle_index]);
 
 		for (int i = 0; i < state.n_particles; i++) {
-			double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compoundcoords.origo.x)) / default_norm_dist;
-			double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compoundcoords.origo.y)) / default_norm_dist;
-			double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compoundcoords.origo.z)) / default_norm_dist;
+			//double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compoundcoords.origo.x)) / default_norm_dist;
+			//double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compoundcoords.origo.y)) / default_norm_dist;
+			//double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compoundcoords.origo.z)) / default_norm_dist;
 
-			Float3 rel_pos_nm{ x, y, z };
-			Coord rel_coord{ rel_pos_nm * NANO_TO_LIMA };
-			compoundcoords.rel_positions[i] = rel_coord;
+			//Float3 rel_pos_nm{ x, y, z };
+			//Coord rel_coord{ rel_pos_nm * NANO_TO_LIMA };
 
-
+			Float3 relpos_nm = state.positions[i] - nodeIndexToAbsolutePosition(compoundcoords.origo);
+			compoundcoords.rel_positions[i] = absolutePositionToRelativeCoordinate(relpos_nm);
 		}
 		return compoundcoords;
 	}
@@ -95,17 +116,25 @@ namespace LIMAPOSITIONSYSTEM {
 		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
 	}
 
-	__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
-		movable_coord.x += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) > static_cast<int32_t>( BOX_LEN_HALF_NM));
-		movable_coord.x -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
+	//__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
+	//	movable_coord.x += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) > static_cast<int32_t>( BOX_LEN_HALF_NM));
+	//	movable_coord.x -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
 
-		movable_coord.y += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) > static_cast<int32_t>(BOX_LEN_HALF_NM));
-		movable_coord.y -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
+	//	movable_coord.y += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) > static_cast<int32_t>(BOX_LEN_HALF_NM));
+	//	movable_coord.y -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
 
-		movable_coord.z += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) > static_cast<int32_t>(BOX_LEN_HALF_NM));
-		movable_coord.z -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
+	//	movable_coord.z += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) > static_cast<int32_t>(BOX_LEN_HALF_NM));
+	//	movable_coord.z -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
+	//}
+	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
+		const NodeIndex difference = static_index - movable_index;
+		movable_index.x += BOXGRID_N_NODES * ((difference.x) >  (BOXGRID_N_NODES / 2));
+		movable_index.x -= BOXGRID_N_NODES * ((difference.x) < -(BOXGRID_N_NODES / 2));
+		movable_index.y += BOXGRID_N_NODES * ((difference.y) >  (BOXGRID_N_NODES / 2));
+		movable_index.y -= BOXGRID_N_NODES * ((difference.y) < -(BOXGRID_N_NODES / 2));
+		movable_index.z += BOXGRID_N_NODES * ((difference.z) >  (BOXGRID_N_NODES / 2));
+		movable_index.z -= BOXGRID_N_NODES * ((difference.z) < -(BOXGRID_N_NODES / 2));
 	}
-
 
 
 	//static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
@@ -119,33 +148,44 @@ namespace LIMAPOSITIONSYSTEM {
 	//}
 
 	// Gets hyperorigo of other
-	__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
-		Coord temp = other;
+	//__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
+	//	Coord temp = other;
+	//	applyHyperpos(self, temp);
+	//	return temp;
+	//}
+	__device__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
+		NodeIndex temp = other;
 		applyHyperpos(self, temp);
 		return temp;
 	}
+
 
 	// The following two functions MUST ALWAYS be used together
 	// Shift refers to the wanted difference in the relative positions, thus origo must move -shift.
 	// Keep in mind that origo is in nm and rel_pos are in lm
 	// ONLY CALL FROM THREAD 0
 	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
-		const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-		coords.origo += shift_nm;
-		return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+		//const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
+		const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
+		//coords.origo += shift_nm;
+		coords.origo += shift_node;
+		return -nodeIndexToCoord(shift_node);
+		//return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}
 	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
 		coords.rel_positions[threadIdx.x] += shift_lm;
 	}
 
+	// This function is only used in bridge, and can be made alot smarter with that context. TODO
 	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
-		Coord& coord_origo_left = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_left)->origo;
-		Coord& coord_origo_right = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_right)->origo;
+		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_left)->origo;
+		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_right)->origo;
 
-		Coord hyperorigo_right = LIMAPOSITIONSYSTEM::getHyperOrigo(coord_origo_left, coord_origo_right);
-
-		// Calculate necessary shift in relative position for all particles in other, so they share origo with left
-		return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
+		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
+		const NodeIndex nodeshift_right = nodeindex_left - hypernodeindex_right;
+		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
+		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
+		return nodeIndexToCoord(nodeshift_right);
 	}
 
 	//// Calculates the relative position of movable_solvent, relative to another staticcoords's origo.
@@ -162,13 +202,13 @@ namespace LIMAPOSITIONSYSTEM {
 	//	return movable_solvent.rel_position + relPosShiftOfMovable;
 	//}
 
-	__device__ __host__ static void applyPBC(Coord& origo) {
-		origo.x += BOX_LEN_NM_INT * (origo.x < 0);
-		origo.x -= BOX_LEN_NM_INT * (origo.x >= BOX_LEN_NM_INT);
-		origo.y += BOX_LEN_NM_INT * (origo.y < 0);
-		origo.y -= BOX_LEN_NM_INT * (origo.y >= BOX_LEN_NM_INT);
-		origo.z += BOX_LEN_NM_INT * (origo.z < 0);
-		origo.z -= BOX_LEN_NM_INT * (origo.z >= BOX_LEN_NM_INT);
+	__device__ __host__ static void applyPBC(NodeIndex& origo) {
+		origo.x += BOXGRID_N_NODES * (origo.x < 0);
+		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
+		origo.y += BOXGRID_N_NODES * (origo.y < 0);
+		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
+		origo.z += BOXGRID_N_NODES * (origo.z < 0);
+		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
 	}
 
 	__device__ __host__ static void applyPBC(SolventCoord& coord) { applyPBC(coord.origo); }
@@ -184,17 +224,20 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// ReCenter origo of solvent, and the relative pos around said origo
 	__device__ static void updateSolventcoord(SolventCoord& coord) {
-		const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
-		Coord shift_nm = coord.rel_position / static_cast<int32_t>(shift_at);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better! 
+		//const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
+		//Coord shift_nm = coord.rel_position / static_cast<int32_t>(shift_at);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better! 
+		//const NodeIndex node_shift = coord.rel_position / (BOXGRID_NODE_LEN_i / 2)
+		const NodeIndex node_shift = LIMAPOSITIONSYSTEM::coordToNodeIndex(coord.rel_position * 2);	// If the coord is more than halfway to the next node, we shift it.
 
 		SolventCoord tmp = coord;
-		coord.origo += shift_nm;
-		coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+		coord.origo += node_shift;
+		//coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
+		coord.rel_position -= LIMAPOSITIONSYSTEM::nodeIndexToCoord(node_shift);
 		
-		if (blockIdx.x + threadIdx.x == 0 && shift_nm.x != 0) {
+		if (blockIdx.x + threadIdx.x == 0 && node_shift.x != 0) {
 			tmp.origo.print('o');
 			tmp.rel_position.print('r');
-			shift_nm.print('s');
+			node_shift.print('s');
 			coord.origo.print('O');
 			coord.rel_position.print('R');
 		}
@@ -248,8 +291,7 @@ namespace LIMAPOSITIONSYSTEM {
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
 	__device__ static Coord getTransferDirection(const Coord relpos) {
-		//const int32_t blocklen_half = static_cast<int32_t>(NANO_TO_LIMA) / 2;
-		const int32_t blocklen_half = static_cast<int32_t>(SolventBlockGrid::node_len) / 2;
+		const int32_t blocklen_half = BOXGRID_NODE_LEN_i / 2;
 		const Coord rel_blockcenter{ blocklen_half };
 		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half) {
 			printf("\nWe have underflow!\n");
@@ -367,16 +409,16 @@ namespace EngineUtils {
 		return step_offset + compound_offset + particle_id_local;
 	}
 
-	__device__ int static getNewBlockId(const Coord& transfer_direction, const Coord& origo) {
-		auto newCoord3d = transfer_direction + origo;
-		LIMAPOSITIONSYSTEM::applyPBC(newCoord3d);
-		return SolventBlockGrid::get1dIndex(newCoord3d);
+	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
+		NodeIndex new_nodeindex = transfer_direction + origo;
+		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
+		return SolventBlockGrid::get1dIndex(new_nodeindex);
 	}
 
-	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const Coord& transfer_direction) {
-		Coord new3dIndex = SolventBlockGrid::get3dIndex(blockId) + transfer_direction;
-		LIMAPOSITIONSYSTEM::applyPBC(new3dIndex);
-		auto index = SolventBlockGrid::get1dIndex(new3dIndex);
+	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
+		NodeIndex new_nodeindex = SolventBlockGrid::get3dIndex(blockId) + transfer_direction;
+		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
+		auto index = SolventBlockGrid::get1dIndex(new_nodeindex);
 		return &transfermodule_array[index];
 	}
 

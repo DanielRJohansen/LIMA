@@ -181,12 +181,12 @@ struct CompoundCoords {
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
 
-	Coord origo{};									// [nm]
+	NodeIndex origo{};								// [nm]
 	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};	// [lm]
 
 	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,
 		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue);
-	__host__ Float3 getAbsolutePositionLM(int particle_id);
+	//__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
 const int MAX_PAIRBONDS = 128;
@@ -213,17 +213,17 @@ struct CompoundState {							// Maybe delete this soon?
 
 struct SolventCoord {
 	__device__ __host__ SolventCoord() {}
-	__device__ __host__ SolventCoord(Coord ori , Coord rel) : origo(ori ), rel_position(rel) {}
-	Coord origo{};									// [nm]
+	__device__ __host__ SolventCoord(NodeIndex ori , Coord rel) : origo(ori ), rel_position(rel) {}
+	NodeIndex origo{};									// [nm]
 	Coord rel_position{};							// [lm]
 
 	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
 		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
 
 	//__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
-	__host__ __device__ Float3 getAbsolutePositionLM() const {
-		return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
-	}
+	//__host__ __device__ Float3 getAbsolutePositionLM() const {
+	//	return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
+	//}
 };
 
 
@@ -262,7 +262,7 @@ struct SolventBlock {
 	static constexpr float block_len = 1; // [nm]	// TODO: Remove this, there should only be node_len of BoxGrid
 	static_assert((static_cast<int>(BOX_LEN_NM) % static_cast<int>(block_len)) == 0, "Illegal box dimension");
 
-	Coord origo{};
+	NodeIndex origo{};
 	uint16_t n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
@@ -271,16 +271,18 @@ struct SolventBlock {
 
 
 static constexpr float BOXGRID_NODE_LEN = 1.2f * NANO_TO_LIMA;	// [lm]
+static constexpr int32_t BOXGRID_NODE_LEN_i = static_cast<int>(BOXGRID_NODE_LEN);
+static const int BOXGRID_N_NODES = static_cast<int>(BOX_LEN / BOXGRID_NODE_LEN);
 template <typename NodeType>
 class BoxGrid {
 public:
-	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
-	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
+	//static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
+	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
 	NodeType blocks[blocks_total];
 
 	// This function assumes the user has used PBC
-	__host__ NodeType* getBlockPtr(const Coord& index3d) {
-		if (index3d.x >= blocks_per_dim || index3d.y >= blocks_per_dim || index3d.z >= blocks_per_dim) {
+	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
+		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES) {
 			printf("BAD 3D index\n"); exit(1); }
 		return getBlockPtr(BoxGrid::get1dIndex(index3d));
 	}
@@ -290,21 +292,19 @@ public:
 		return &blocks[index1d];
 	}
 
-	__device__ __host__ static int get1dIndex(const Coord& index3d) {
-		static const int bpd = blocks_per_dim;
+	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
+		static const int bpd = BOXGRID_N_NODES;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
-	__device__ static Coord get3dIndex(int index1d) {
+	__device__ static NodeIndex get3dIndex(int index1d) {
 		static const int bpd = blocks_per_dim;
 		auto z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
 		auto y = index1d / bpd;
 		index1d -= y * bpd;
 		auto x = index1d;
-		return Coord{ x, y, z };
-	}
-
-	
+		return NodeIndex{ x, y, z };
+	}	
 };
 
 class SolventBlockGrid : public BoxGrid<SolventBlock> {
@@ -409,9 +409,9 @@ namespace SolventBlockHelpers {
 	// Only use this if if the index3d is inside the box!
 
 
-	__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
-		return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();
-	}
+	//__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
+	//	return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();
+	//}
 
 }
 

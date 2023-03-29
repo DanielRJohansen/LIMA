@@ -27,7 +27,7 @@ enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S };
 
 struct Int3 {
 	__host__ __device__ constexpr Int3() {}
-	__host__ __device__ constexpr Int3(int x, int y, int z) : x(x), y(y), z(z) {}
+	__host__ __device__ constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
 
 
 	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
@@ -35,6 +35,14 @@ struct Int3 {
 	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
 	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int)floor((float)x * a), (int)floor((float)y * a), (int)floor((float)z * a)); }
 
+	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; };
+
+	__host__ __device__ bool operator== (const Int3& a) const = default;
+
+	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
+		char nl = prefix_newline ? '\n' : ' ';
+		printf("%c %c %.0f\t %.0f\t %.0f\n", nl, c, x, y, z);
+	}
 
 	int x = 0, y = 0, z = 0;
 };
@@ -310,6 +318,23 @@ struct Coord {
 //		};
 //	}
 };
+
+struct NodeIndex : public Int3 {
+	NodeIndex() : Int3() {}
+	NodeIndex(const int& x, const int& y, const int& z) : Int3(x,y,z) {}
+	NodeIndex(const Int3& a) : Int3(a) {}
+
+	__host__ __device__ Float3 toFloat3() const {
+		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+	}
+};
+
+
+
+
+
+
+
 
 // HOW THE FUCK DO I MAKE THIS WORK??!
 //__host__ __device__ std::string& operator+(std::string& lhs, const Coord rhs) {

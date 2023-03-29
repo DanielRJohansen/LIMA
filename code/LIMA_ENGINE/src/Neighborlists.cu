@@ -235,7 +235,7 @@ void NListUtils::distributeCompoundsInGrid(Simulation* simulation, NListDataColl
 	}
 }
 
-bool NListUtils::isNearby(const Simulation& simulation, const Coord& node_origo, const int querycompound_id, NListDataCollection& nlist_data_collection) {
+bool NListUtils::isNearby(const Simulation& simulation, const NodeIndex& node_origo, const int querycompound_id, NListDataCollection& nlist_data_collection) {
 	//const Float3 querycompound_origo = (compoundgrid_host->getOrigosPtr()[querycompound_id]).toFloat3();
 	const Float3 querycompound_origo = nlist_data_collection.compound_origos[querycompound_id].toFloat3();
 	const float dist = (querycompound_origo - node_origo.toFloat3()).len();
@@ -246,10 +246,10 @@ bool NListUtils::isNearby(const Simulation& simulation, const Coord& node_origo,
 
 void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
 	//nlist_data_collection->compound_origos[0].print('C');
-	for (int z = 0; z < CompoundGrid::blocks_per_dim; z++) {
-		for (int y = 0; y < CompoundGrid::blocks_per_dim; y++) {
-			for (int x = 0; x < CompoundGrid::blocks_per_dim; x++) {
-				const Coord node_origo{ x, y, z };	// Doubles as the 3D index of the block!
+	for (int z = 0; z < BOXGRID_N_NODES; z++) {
+		for (int y = 0; y < BOXGRID_N_NODES; y++) {
+			for (int x = 0; x < BOXGRID_N_NODES; x++) {
+				const NodeIndex node_origo{ x, y, z };	// Doubles as the 3D index of the block!
 				auto node_self = nlist_data_collection->compoundgrid->getBlockPtr(node_origo);
 				auto nodeself_id = CompoundGrid::get1dIndex(node_origo);
 
@@ -258,7 +258,7 @@ void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListD
 				for (int x = -query_range; x <= query_range; x++) {
 					for (int y = -query_range; y <= query_range; y++) {
 						for (int z = -query_range; z <= query_range; z++) {
-							Coord query_origo = node_origo + Coord{ x,y,z };
+							NodeIndex query_origo = node_origo + NodeIndex{ x,y,z };
 							LIMAPOSITIONSYSTEM::applyPBC(query_origo);
 							const auto node_query = nlist_data_collection->compoundgrid->getBlockPtr(query_origo);
 
@@ -269,7 +269,7 @@ void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListD
 									node_self->addNearbyCompound(querycompound_id);	// Add compound so solvents can see it
 									nlist_data_collection->compound_neighborlists[querycompound_id].addGridnode(nodeself_id);	// Add grid so compound can see solvents
 
-									if (node_origo == Coord{ 4,4,4 } || true) { 
+									if (node_origo == NodeIndex{ 4,4,4 } || true) { 
 										//printf("\nAdding  to \n", querycompound_id); 
 										//nlist_data_collection->compound_origos[querycompound_id].print('C');
 										//node_origo.print('N');

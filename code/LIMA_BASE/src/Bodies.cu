@@ -18,9 +18,9 @@ void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, Compo
 	}
 }
 
-Float3 CompoundCoords::getAbsolutePositionLM(const int particle_index) {
-	return (origo * NANO_TO_LIMA).toFloat3() + rel_positions[particle_index].toFloat3();
-}
+//Float3 CompoundCoords::getAbsolutePositionLM(const int particle_index) {
+//	return (origo * NANO_TO_LIMA).toFloat3() + rel_positions[particle_index].toFloat3();
+//}
 
 
 void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
@@ -85,10 +85,10 @@ void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblock
 
 	auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
 	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
-		for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
-			for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
-				for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
-					Coord origo{ x, y, z };	// Doubles as the 3D index of the block!
+		for (int z = 0; z < BOXGRID_N_NODES; z++) {
+			for (int y = 0; y < BOXGRID_N_NODES; y++) {
+				for (int x = 0; x < BOXGRID_N_NODES; x++) {
+					NodeIndex origo{ x, y, z };	// Doubles as the 3D index of the block!
 					gridqueue_host[i].getBlockPtr(origo)->origo = origo;
 				}
 			}
@@ -115,10 +115,10 @@ __host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlo
 }
 
 void SolventBlockHelpers::setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev) {
-	for (int z = 0; z < SolventBlockGrid::blocks_per_dim; z++) {
-		for (int y = 0; y < SolventBlockGrid::blocks_per_dim; y++) {
-			for (int x = 0; x < SolventBlockGrid::blocks_per_dim; x++) {
-				Coord origo{ x, y, z };	// Doubles as the 3D index of the block!
+	for (int z = 0; z < BOXGRID_N_NODES; z++) {
+		for (int y = 0; y < BOXGRID_N_NODES; y++) {
+			for (int x = 0; x < BOXGRID_N_NODES; x++) {
+				NodeIndex origo{ x, y, z };	// Doubles as the 3D index of the block!
 				grid->getBlockPtr(origo)->origo = origo;
 				grid_prev->getBlockPtr(origo)->origo = origo;
 			}

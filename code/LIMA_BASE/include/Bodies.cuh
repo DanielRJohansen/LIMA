@@ -297,7 +297,7 @@ public:
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
 	__device__ static NodeIndex get3dIndex(int index1d) {
-		static const int bpd = blocks_per_dim;
+		static const int bpd = BOXGRID_N_NODES;
 		auto z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
 		auto y = index1d / bpd;

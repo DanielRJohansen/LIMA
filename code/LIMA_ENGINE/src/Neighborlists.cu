@@ -35,22 +35,24 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 	EngineUtils::genericErrorCheck("Error creating NListDataCollection");
 }
 
-void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
-
-	// Data for the current step has not yet been generated so we need to use the previous step.
-	// For the very first step, engine has cheated and already written the traj from the initial setup.	
-	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
-
-	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
-		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
-
-		const Float3 pos_lm = simulation.traj_buffer[index];	// Absolute position of key particle
-		const Coord origo_nm = Coord{ pos_lm / NANO_TO_LIMA };	// Division before cast, otherwise overflow!
-
-		compound_key_positions[compound_id] = pos_lm;
-		compound_origos[compound_id] = origo_nm;
-	}
-}
+// This doesn't currently work
+//void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
+//
+//	// Data for the current step has not yet been generated so we need to use the previous step.
+//	// For the very first step, engine has cheated and already written the traj from the initial setup.	
+//	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
+//
+//	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
+//		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
+//
+//		//const Float3 pos_lm = simulation.traj_buffer[index];	// Absolute position of key particle
+//		//const Coord origo_nm = Coord{ pos_lm / NANO_TO_LIMA };	// Division before cast, otherwise overflow!
+//
+//		//compound_key_positions[compound_id] = pos_lm;
+//		//compound_origos[compound_id] = origo_nm;
+//		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::
+//	}
+//}
 
 
 
@@ -137,7 +139,7 @@ namespace NListUtils {
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
 			HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
 			const float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
-			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];
+			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
 
 			// Go through all compounds in box, with higher ID than self!
 			for (uint16_t id_other = id_self + 1; id_other < simulation->n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
@@ -227,21 +229,25 @@ void NListUtils::updateCompoundGrid(Simulation* simulation, NListDataCollection*
 
 void NListUtils::distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection) {
 	for (int compound_index = 0; compound_index < simulation->n_compounds; compound_index++) {
-		const Coord& compound_origo = nlist_data_collection.compound_origos[compound_index];
-		CompoundGridNode& node = *nlist_data_collection.compoundgrid->getBlockPtr(compound_origo);
+		const NodeIndex& compound_nodeindex = nlist_data_collection.compound_origos[compound_index];
+		CompoundGridNode& node = *nlist_data_collection.compoundgrid->getBlockPtr(compound_nodeindex);
 		//const Coord& compound_origo = compoundgrid_host->getOrigosPtr()[compound_index];
 		//CompoundGridNode& node = *compoundgrid_host->getBlockPtr(compound_origo);
 		node.addAssociatedCompound(compound_index);
 	}
 }
 
-bool NListUtils::isNearby(const Simulation& simulation, const NodeIndex& node_origo, const int querycompound_id, NListDataCollection& nlist_data_collection) {
+bool NListUtils::isNearby(const Simulation& simulation, const NodeIndex& nodeindex_self, const int querycompound_id, NListDataCollection& nlist_data_collection) {
 	//const Float3 querycompound_origo = (compoundgrid_host->getOrigosPtr()[querycompound_id]).toFloat3();
-	const Float3 querycompound_origo = nlist_data_collection.compound_origos[querycompound_id].toFloat3();
-	const float dist = (querycompound_origo - node_origo.toFloat3()).len();
-	const float querycompound_radius = simulation.compounds_host[querycompound_id].confining_particle_sphere;
+	//const Float3 querycompound_origo = nlist_data_collection.compound_origos[querycompound_id].toFloat3();
+	//const float dist = (querycompound_origo - node_origo.toFloat3()).len();
+	const NodeIndex nodeindex_querycompound = nlist_data_collection.compound_origos[querycompound_id];
+	const float dist_nm = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_querycompound - nodeindex_self).len();
 
-	return dist < (CUTOFF_NM + querycompound_radius);
+
+	const float querycompound_radius = simulation.compounds_host[querycompound_id].confining_particle_sphere;	// Is this nm or lm?=?!??!!
+
+	return dist_nm < (CUTOFF_NM + querycompound_radius);
 }
 
 void NListUtils::assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {

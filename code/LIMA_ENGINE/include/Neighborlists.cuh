@@ -19,8 +19,8 @@ struct NListDataCollection {
 	CompoundState* compoundstates = nullptr;
 	//Solvent* solvents;
 
-	Float3 compound_key_positions[MAX_COMPOUNDS];
-	Coord compound_origos[MAX_COMPOUNDS];
+	Float3 compound_key_positions[MAX_COMPOUNDS];	// [nm]
+	//NodeIndex compound_origos[MAX_COMPOUNDS];
 
 	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
 	NeighborList* compound_neighborlists = nullptr;
@@ -40,7 +40,7 @@ namespace NListUtils {
 	void static distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection);
 	void static assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist);
 	void static transferCompoundgridToDevice(Simulation* simulation, CompoundGrid* compoundgrid_host);
-	bool static isNearby(const Simulation& simulation, const Coord& node_origo, 
+	bool static isNearby(const Simulation& simulation, const NodeIndex& nodeindex, 
 		const int querycompound_id, NListDataCollection& nlist_data_collection);
 }
 

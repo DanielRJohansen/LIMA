@@ -42,7 +42,7 @@ namespace CPPD {
 namespace LIMAPOSITIONSYSTEM {
 	
 	// Safe to call with any Coord
-	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
+	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN_i, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
 
 	// Safe to call with relatively small node indexes. If the index has proponents larger than what a coord can represent, then :(((
 	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; }
@@ -53,14 +53,29 @@ namespace LIMAPOSITIONSYSTEM {
 		return NodeIndex{ static_cast<int>(position.x / factor), static_cast<int>(position.y / factor) ,static_cast<int>(position.z / factor) };
 	}
 	// Inverse to the above, used to position compound
-	__host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
+	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
 		const float factor = BOXGRID_NODE_LEN / NANO_TO_LIMA;
 		return Float3{ static_cast<float>(node_index.x) * factor,  static_cast<float>(node_index.y) * factor,  static_cast<float>(node_index.z) * factor };
 	}
 	
 	__host__ static Coord absolutePositionToRelativeCoordinate(const Float3& position) {
 		if (absolutePositionToNodeIndex(position) != NodeIndex{}) { throw "Tried to place a position that was not correcly assigned a node"; }
+		return Coord{ position * NANO_TO_LIMA };
+	}
 
+	// relpos in LM
+	__device__ static Float3 relposToAbsolutePosition(const Coord& relpos) {
+		return relpos.toFloat3() / NANO_TO_LIMA;
+	}
+
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position) {
+		const NodeIndex nodeindex = absolutePositionToNodeIndex(position);
+		const Coord relpos = absolutePositionToRelativeCoordinate(position - nodeIndexToAbsolutePosition(nodeindex));
+		return std::make_tuple(nodeindex, relpos);
+	}
+
+	__device__ __host__ static Float3 getAbsolutePositionNM(const NodeIndex& nodeindex, const Coord& coord) {
+		return nodeIndexToAbsolutePosition(nodeindex) + relposToAbsolutePosition(coord);
 	}
 
 	/// <summary>
@@ -91,10 +106,10 @@ namespace LIMAPOSITIONSYSTEM {
 		return compoundcoords;
 	}
 
-	// Returns position in LimaMetres
-	__device__ static Float3 getGlobalPosition(const CompoundCoords& coords) {
-		return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
-	}
+	//// Returns position in LimaMetres
+	//__device__ static Float3 getGlobalPosition(const CompoundCoords& coords) {
+	//	return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
+	//}
 
 	// Transforms the relative coords to relative float positions.
 	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const int n_elements) {
@@ -317,7 +332,12 @@ namespace LIMAPOSITIONSYSTEM {
 		const Float3 origo_f = position.piecewiseRound();
 		const Float3 relpos_f = (position - origo_f) * NANO_TO_LIMA;							// [lm}
 
-		SolventCoord solventcoord{ Coord{origo_f}, Coord{relpos_f } };
+		//const auto [nodeindex, relpos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
+		NodeIndex nodeindex; Coord relpos;
+		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
+
+		//SolventCoord solventcoord{ Coord{origo_f}, Coord{relpos_f } };
+		SolventCoord solventcoord{ nodeindex, relpos };
 		applyPBC(solventcoord);
 		return solventcoord;
 	}
@@ -361,11 +381,11 @@ namespace EngineUtils {
 	__device__ __host__ static float calcHyperDistDenormalized(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
 		applyHyperpos(p1, &temp);
-		return (*p1 - temp).len() * NORMALIZER;
+		return (*p1 - temp).len();
 	}
 
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
-		const float vel = calcHyperDist(pos1, pos2) / elapsed_time * NORMALIZER;
+		const float vel = calcHyperDist(pos1, pos2) / elapsed_time;
 		const float kinE = 0.5f * mass * vel * vel;
 		return kinE;
 	}

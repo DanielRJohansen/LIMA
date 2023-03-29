@@ -72,7 +72,7 @@ public:
 	bool critical_error_encountered = 0;
 
 	float* potE_buffer = nullptr;		// For total energy summation
-	Float3* traj_buffer = nullptr;
+	Float3* traj_buffer = nullptr;		// Absolute positions [nm]
 
 	float* outdata = nullptr;			// Temp, for longging values to whatever
 	Float3* data_GAN = nullptr;			// Only works if theres 1 compounds right now.
@@ -114,7 +114,7 @@ public:
 
 
 	float* potE_buffer = nullptr;	// Not really a buffer yet, just one large array that holds full simulation data
-	Float3* traj_buffer = nullptr;	// Positions in [fm]
+	Float3* traj_buffer = nullptr;	// Positions in [nm]
 	float* temperature_buffer = nullptr;
 	int n_temp_values = 0;
 	Float3* traindata_buffer = nullptr;		// Position and force data for all particles, for NN training

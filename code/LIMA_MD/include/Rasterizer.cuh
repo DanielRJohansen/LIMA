@@ -9,9 +9,9 @@ const int RAS_THREADS_PER_BLOCK = 64;
 
 
 struct RenderAtom {
-	Float3 pos;
-	float mass = 0;
-	float radius = 0;
+	Float3 pos{};		// [nm]
+	float mass = 0;		// [kg/mol]
+	float radius = 0;	// [??]
 	Int3 color{};
 	ATOM_TYPE atom_type = ATOM_TYPE::NONE;
 };

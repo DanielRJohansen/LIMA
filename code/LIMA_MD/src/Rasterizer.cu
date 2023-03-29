@@ -213,15 +213,17 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) 
     SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step == 0 ? 0 : box->step-1, blockIdx.x);
 
     if (threadIdx.x < solventblock->n_solvents) {
-        const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };
+        //const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };
 
 		RenderAtom atom{};
-		atom.pos = coord.getAbsolutePositionLM();
+		//atom.pos = coord.getAbsolutePositionLM();
+        atom.pos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock->origo, solventblock->rel_pos[threadIdx.x]);
 		atom.mass = SOLVENT_MASS;
 		atom.atom_type = SOL;
 
 		// Debug
-		float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
+		//float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
+        float velocity = 1.f;
         float point1nm = NANO_TO_LIMA * 0.1f;
 		float color_scalar = velocity / point1nm * 255.f;
 		uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));

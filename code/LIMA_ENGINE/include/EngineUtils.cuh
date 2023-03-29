@@ -214,7 +214,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 
-
+	//__device__ static Coord getOnehotDirectionEdgeblock(const Coord relpos, const Coord thresholdInward, const Coord thresholdOutward)
 
 	__device__ static Coord getOnehotDirection(const Coord relpos, const int32_t threshold) {
 		const int32_t magnitude_x = std::abs(relpos.x);

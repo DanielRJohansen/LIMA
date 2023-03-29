@@ -270,18 +270,17 @@ struct SolventBlock {
 
 
 
-
+static constexpr float BOXGRID_NODE_LEN = 1.2f * NANO_TO_LIMA;	// [lm]
 template <typename NodeType>
 class BoxGrid {
 public:
-	static constexpr float node_len = 1.f * NANO_TO_LIMA;	// [lm]
 	static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
 	static const int blocks_total = blocks_per_dim * blocks_per_dim * blocks_per_dim;
 	NodeType blocks[blocks_total];
 
 	// This function assumes the user has used PBC
 	__host__ NodeType* getBlockPtr(const Coord& index3d) {
-		if (index3d.x >= BOX_LEN_NM_INT || index3d.y >= BOX_LEN_NM_INT || index3d.z >= BOX_LEN_NM_INT) { 
+		if (index3d.x >= blocks_per_dim || index3d.y >= blocks_per_dim || index3d.z >= blocks_per_dim) {
 			printf("BAD 3D index\n"); exit(1); }
 		return getBlockPtr(BoxGrid::get1dIndex(index3d));
 	}
@@ -304,6 +303,8 @@ public:
 		auto x = index1d;
 		return Coord{ x, y, z };
 	}
+
+	
 };
 
 class SolventBlockGrid : public BoxGrid<SolventBlock> {

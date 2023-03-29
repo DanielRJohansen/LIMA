@@ -34,8 +34,7 @@ constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-const int BOX_LEN_NM_INT = 7;
-constexpr float BOX_LEN_NM = static_cast<float>(BOX_LEN_NM_INT);
+constexpr float BOX_LEN_NM = 7.2f;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;

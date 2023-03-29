@@ -5,6 +5,10 @@
 #pragma warning ( push )
 #pragma warning ( disable: E0020 )
 
+
+
+// ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
+
 // Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
 __constant__ ForceField_NB forcefield_device;
 
@@ -17,10 +21,6 @@ void Engine::setDeviceConstantMemory() {
 	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
 }
 
-
-
-
-// ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
 __device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
 	return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5;
 }
@@ -28,6 +28,8 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
 }
 
+
+// ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
 
 // Must be called with ALL threads in a block
 __device__ Coord getRandomCoord(int lcg_seed) {
@@ -103,8 +105,6 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, &potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOL), 
 			calcEpsilon(atomtype_self, ATOMTYPE_SOL)
-			//(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma) * 0.5f,
-			//sqrtf(forcefield_device.particle_parameters[atomtype_self].epsilon * forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon)
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -115,9 +115,6 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, potE_sum,
 			calcSigma(ATOMTYPE_SOL, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOL, atomtypes_others[i])
-		//	(forcefield_device.particle_parameters[atomtype_self].sigma + forcefield_device.particle_parameters[atomtypes_others[i]].sigma) * 0.5f,
-		//	(forcefield_device.particle_parameters[atomtype_self].epsilon + forcefield_device.particle_parameters[atomtypes_others[i]].epsilon) * 0.5,
-		//atomtype_self, atomtypes_others[i]
 		);
 	}
 	return force;// *24.f * 1e-9;

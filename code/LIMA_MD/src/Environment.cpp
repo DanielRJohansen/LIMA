@@ -54,7 +54,12 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_SOLVENTBLOCK >= MAX_COMPOUND_PARTICLES);
 
 	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
+	
+	auto a = std::roundf(std::abs(BOX_LEN / SolventBlockGrid::node_len)) * SolventBlockGrid::node_len;// -BOX_LEN_NM;
 
+
+	// Assert that boxlen is a multiple of nodelen
+	assert(static_cast<int>(BOX_LEN_NM*10) % static_cast<int>(SolventBlockGrid::node_len* 10.f) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
 
 	printf("Simulation parameters verified\n");
 }

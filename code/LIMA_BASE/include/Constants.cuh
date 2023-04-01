@@ -138,9 +138,10 @@ constexpr float FORCED_INTERRENDER_TIME = 10.f;		// [ms] Set to 0 for full speed
 const int FIRST_INTERRENDER_WAIT = RAMPUP_STEPS;
 // -------------------------------------------------------------------------------------------------------------- //
 
-
+// -------------------------------------------- Neighborlist Parameters ----------------------------------------- //
 const int STEPS_PER_NLIST_UPDATE = 10;
-
+const bool ALLOW_ASYNC_NLISTUPDATE = true;
+// -------------------------------------------------------------------------------------------------------------- //
 
 
 

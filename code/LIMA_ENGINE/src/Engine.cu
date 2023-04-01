@@ -22,7 +22,7 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	nlist_manager = new NListManager(simulation);
 	//nlist_manager->bootstrapCompoundgrid(simulation);
 	bootstrapTrajbufferWithCoords();
-	handleNLISTS(simulation, true, true);
+	nlist_manager->handleNLISTS(simulation, true, true, &timings.z);
 
 
 	printf("Engine ready\n\n\n");
@@ -53,7 +53,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
-		handleNLISTS(simulation, true);
+		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.z);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
@@ -80,18 +80,18 @@ void Engine::terminateSimulation() {
 
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
-
-void Engine::handleNLISTS(Simulation* simulation, bool async, const bool force_update) {
-	if (neighborlistUpdateRequired() && !updatenlists_mutexlock) {
-		updatenlists_mutexlock = 1;
-
-		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z, &critical_error);
-	}
-
-	if (nlist_manager->updated_neighborlists_ready) {
-		nlist_manager->pushNlistsToDevice(simulation);
-	}
-}
+//
+//void Engine::handleNLISTS(Simulation* simulation, bool async, const bool force_update) {
+//	if (neighborlistUpdateRequired() && !updatenlists_mutexlock) {
+//		updatenlists_mutexlock = 1;
+//
+//		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z, &critical_error);
+//	}
+//
+//	if (nlist_manager->updated_neighborlists_ready) {
+//		nlist_manager->pushNlistsToDevice(simulation);
+//	}
+//}
 
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
@@ -134,14 +134,14 @@ void Engine::offloadTrainData() {
 	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
 }
 
-bool Engine::neighborlistUpdateRequired() const {
-	const auto step = simulation->getStep();
-	if (nlist_manager->stepsSinceUpdate(step) >= STEPS_PER_NLIST_UPDATE
-		|| step == 0) {
-		return true;
-	}
-	return false;
-}
+//bool Engine::neighborlistUpdateRequired() const {
+//	const auto step = simulation->getStep();
+//	if (nlist_manager->stepsSinceUpdate(step) >= STEPS_PER_NLIST_UPDATE
+//		|| step == 0) {
+//		return true;
+//	}
+//	return false;
+//}
 
 
 void Engine::bootstrapTrajbufferWithCoords() {

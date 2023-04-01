@@ -54,7 +54,7 @@ private:
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	NListManager* nlist_manager = nullptr;
-	void handleNLISTS(Simulation* simulation, bool async = true, bool force_update=false);
+	//void handleNLISTS(Simulation* simulation, bool async = true, bool force_update=false);
 	void setDeviceConstantMemory();
 
 

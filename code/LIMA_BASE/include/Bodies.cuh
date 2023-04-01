@@ -376,14 +376,15 @@ struct SolventBlockTransfermodule {
 	}
 
 	// Maybe too convoluted...
-	static NodeIndex getDirectionFromQueueIndex(const int index) {
-		const int tmp_index = index > 2 ? index - 2 : index - 3;
-		NodeIndex direction{};
-		direction.x += index * (abs(index) == 1);
-		direction.y += index/2 * (abs(index) == 2);
-		direction.x += index/3 * (abs(index) == 3);
-		return direction;
-	}
+	// I THINK THIS IS WRONG:, it should be using temp_index no?
+	//static NodeIndex getDirectionFromQueueIndex(const int index) {
+	//	const int tmp_index = index > 2 ? index - 2 : index - 3;
+	//	NodeIndex direction{};
+	//	direction.x += index * (abs(index) == 1);
+	//	direction.y += index/2 * (abs(index) == 2);
+	//	direction.x += index/3 * (abs(index) == 3);
+	//	return direction;
+	//}
 
 
 	//Coord* getQueuePtr(const Coord& transfer_direction) {
@@ -763,8 +764,6 @@ struct ForceField_NB {
 };
 
 
-#pragma warning (pop)
-
 
 
 
@@ -814,10 +813,18 @@ public:
 
 		cudaMalloc(box_compoundgridptr, sizeof(CompoundGrid));
 		cudaMemcpy(*box_compoundgridptr, grid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
-		delete[] grid_host;
+		delete grid_host;
 	}
 
 //private:
 	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist
 	//Coord compound_origos[MAX_COMPOUNDS];
 };
+
+
+
+
+
+
+
+#pragma warning (pop)

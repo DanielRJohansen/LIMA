@@ -234,35 +234,11 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 
 
 
-__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
-	const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, blockIdx.x, threadIdx.x);
-	box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
-	box->potE_buffer[index] = *potE_sum;
-}
 
-__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity) {
-	if (solvent_active) {
-		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solventblock.ids[threadIdx.x]);
-		//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
-		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
-		box->potE_buffer[index] = potE;
-		
-
-		if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);
-
-#ifdef USEDEBUGF3
-		const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;
-		//box->debugdataf3[debug_index] = Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
-		box->debugdataf3[debug_index] = force;
-		box->debugdataf3[debug_index + 1] = velocity;
-		box->debugdataf3[debug_index + 2] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock) / NANO_TO_LIMA;
-#endif
-	}
-}
 
 __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
 	if (threadIdx.x == 0) {
-		NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
+		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
 		// calc Relative Position Shift from the origo-shift
 		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self);
@@ -270,7 +246,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	__syncthreads();
 
 	// Eventually i could make it so i only copy the active particles in the compound
-	Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] + *utility_coord;
+	const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] + *utility_coord;
 	output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();	
 }
 
@@ -573,7 +549,7 @@ __global__ void compoundKernel(Box* box) {
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol);
+	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol);
 
 	if (force.len() > 2e+10) {
 		printf("\n\nCritical force %.0f           block %d thread %d\n\n\n", force.len(), blockIdx.x, threadIdx.x);
@@ -673,7 +649,7 @@ __global__ void solventForceKernel(Box* box) {
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
-			if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
+			
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
@@ -682,6 +658,12 @@ __global__ void solventForceKernel(Box* box) {
 			// Then load atomtypes of neighboring compound
 			utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
 			__syncthreads();
+
+			if (n_compound_particles > 0 && solvent_active) { 
+				//printf("\nthreadIdx %d n_comp_particles %d self_origo %d %d %d ns %d\n", threadIdx.x, n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); 
+				//utility_buffer[0].print('r');
+				//coordarray_ptr->origo.print('o');
+			}
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
@@ -743,7 +725,7 @@ __global__ void solventForceKernel(Box* box) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	const Float3 velocity = relpos_self - LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step).toFloat3();
-	LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity);
+	EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity);
 
 	Coord relpos_next{};
 

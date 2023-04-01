@@ -21,6 +21,8 @@ constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all unit
 constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
+const int PICO_TO_LIMA = 100000;
+
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
@@ -34,7 +36,8 @@ constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr float BOX_LEN_NM = 7.2f;
+constexpr int _BOX_LEN_PM = 7200;
+constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;

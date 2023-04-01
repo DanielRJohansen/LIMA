@@ -263,7 +263,7 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
 
     for (int dim = 0; dim < 3; dim++) {
-        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN - 0.5f) *1.8f;
+        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f) *1.8f;
     }
     
     const RenderBall ball(atom.pos, atom.radius, atom.color, atom.atom_type);

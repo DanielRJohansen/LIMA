@@ -269,9 +269,9 @@ struct SolventBlock {
 };
 
 
-
-static constexpr float BOXGRID_NODE_LEN = 1.2f * NANO_TO_LIMA;	// [lm]
-static constexpr int32_t BOXGRID_NODE_LEN_i = static_cast<int>(BOXGRID_NODE_LEN);
+static constexpr int BOXGRID_NODE_LEN_pico = 1200;
+static constexpr float BOXGRID_NODE_LEN = static_cast<float>(BOXGRID_NODE_LEN_pico * PICO_TO_LIMA);	// [lm]
+static constexpr int32_t BOXGRID_NODE_LEN_i = BOXGRID_NODE_LEN_pico * PICO_TO_LIMA;
 static const int BOXGRID_N_NODES = static_cast<int>(BOX_LEN / BOXGRID_NODE_LEN);
 template <typename NodeType>
 class BoxGrid {
@@ -282,7 +282,8 @@ public:
 
 	// This function assumes the user has used PBC
 	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
-		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES) {
+		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
+		|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			printf("BAD 3D index\n"); exit(1); }
 		return getBlockPtr(BoxGrid::get1dIndex(index3d));
 	}
@@ -336,9 +337,11 @@ struct SolventTransferqueue {
 	}
 
 	// Insert relative to thread calling.
-	__device__ void fastInsert(const Coord& relpos, const Coord& relpos_prev, const int id, const Coord& transfer_dir) {
-		rel_positions[threadIdx.x]		= relpos - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
-		rel_positions_prev[threadIdx.x] = relpos_prev - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+	__device__ void fastInsert(const Coord& relpos, const Coord& relpos_prev, const int id) {
+		//rel_positions[threadIdx.x]		= relpos - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+		//rel_positions_prev[threadIdx.x] = relpos_prev - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+		rel_positions[threadIdx.x] = relpos;
+		rel_positions_prev[threadIdx.x] = relpos_prev;
 		ids[threadIdx.x] = id;
 	}
 
@@ -360,20 +363,22 @@ struct SolventBlockTransfermodule {
 	int n_remain = 0;
 
 	/// <param name="transfer_direction">Relative to the originating block</param>
-	__device__ static int getQueueIndex(const Coord& transfer_direction) {
+	__device__ static int getQueueIndex(const NodeIndex& transfer_direction) {
 		// Fucking magic yo...
 		// Only works if transfer_direction.len() == 1
 		// First op leaves a space at index 3:
 		//{-z, -y, -x, _ x, y, z}
-		const int tmp_index = transfer_direction.dot(Coord{ 1, 2, 3 });
+		//const int tmp_index = transfer_direction.dot(NodeIndex{ 1, 2, 3 });
+		int tmp_index = transfer_direction.x * 1 + transfer_direction.y * 2 + transfer_direction.z * 3;
 		// Shift positive values left.
-		return tmp_index > 0 ? tmp_index + 2 : tmp_index + 3;
+		tmp_index = tmp_index > 0 ? tmp_index + 2 : tmp_index + 3;
+		return tmp_index;
 	}
 
 	// Maybe too convoluted...
-	static Coord getDirectionFromQueueIndex(const int index) {
+	static NodeIndex getDirectionFromQueueIndex(const int index) {
 		const int tmp_index = index > 2 ? index - 2 : index - 3;
-		Coord direction{};
+		NodeIndex direction{};
 		direction.x += index * (abs(index) == 1);
 		direction.y += index/2 * (abs(index) == 2);
 		direction.x += index/3 * (abs(index) == 3);

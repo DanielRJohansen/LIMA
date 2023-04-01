@@ -19,8 +19,8 @@ struct NListDataCollection {
 	CompoundState* compoundstates = nullptr;
 	//Solvent* solvents;
 
-	Float3 compound_key_positions[MAX_COMPOUNDS];	// [nm]
-	//NodeIndex compound_origos[MAX_COMPOUNDS];
+	Float3 compound_key_positions[MAX_COMPOUNDS];	// [nm] absolute position
+	NodeIndex compound_origos[MAX_COMPOUNDS];		// compound's corresponding gridnode
 
 	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
 	NeighborList* compound_neighborlists = nullptr;

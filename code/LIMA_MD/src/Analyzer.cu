@@ -50,7 +50,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
 
-	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps);
+	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
 	const float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
@@ -90,7 +90,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->total_particles_upperbound];
 
 	float mass = 12.011000 * 1e-3f;
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt*2.f);
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt*2.f / NANO_TO_LIMA);	// convert [ls] to [ns]
 
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->total_particles_upperbound];
 

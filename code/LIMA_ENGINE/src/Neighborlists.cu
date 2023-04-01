@@ -36,23 +36,22 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 }
 
 // This doesn't currently work
-//void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
-//
-//	// Data for the current step has not yet been generated so we need to use the previous step.
-//	// For the very first step, engine has cheated and already written the traj from the initial setup.	
-//	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
-//
-//	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
-//		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
-//
-//		//const Float3 pos_lm = simulation.traj_buffer[index];	// Absolute position of key particle
-//		//const Coord origo_nm = Coord{ pos_lm / NANO_TO_LIMA };	// Division before cast, otherwise overflow!
-//
-//		//compound_key_positions[compound_id] = pos_lm;
-//		//compound_origos[compound_id] = origo_nm;
-//		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::
-//	}
-//}
+void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
+
+	// Data for the current step has not yet been generated so we need to use the previous step.
+	// For the very first step, engine has cheated and already written the traj from the initial setup.	
+	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
+
+	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
+		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
+
+		compound_key_positions[compound_id] = simulation.traj_buffer[index];
+		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(simulation.traj_buffer[index]);
+		if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
+			int a = 0;
+		}
+	}
+}
 
 
 

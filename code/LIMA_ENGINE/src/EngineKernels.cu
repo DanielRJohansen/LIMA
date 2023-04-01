@@ -324,8 +324,8 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 /// <param name="transferqueues">In shared memory</param>
 /// <param name="relpos_next">Register</param>
 /// <param name="transfermodules">Global memory</param>
-__device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, 
-	const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const Coord& blockId3d) {
+__device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, 
+	const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const NodeIndex& blockId3d) {
 
 	// Sequential insertion in shared memory
 	for (int i = 0; i < solventblock_current_local.n_solvents; i++) {
@@ -347,16 +347,15 @@ __device__ void transferOut(const Coord& transfer_dir, const SolventBlock& solve
 
 		if (threadIdx.x < queue_local.n_elements) {
 
-			const Coord transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
+			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
 			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
 
 			queue_global->fastInsert(
-				queue_local.rel_positions[threadIdx.x], 
-				queue_local.rel_positions_prev[threadIdx.x], 
-				queue_local.ids[threadIdx.x], 
-				transferdir_queue);
+				queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
+				queue_local.rel_positions_prev[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
+				queue_local.ids[threadIdx.x]);
 
 
 
@@ -407,7 +406,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
 	const NodeIndex blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
-	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{ 0 };
+	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{};
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
@@ -511,7 +510,7 @@ __global__ void compoundKernel(Box* box) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const Coord solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
+		const NodeIndex solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
 		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, solventblock_id);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
@@ -674,7 +673,7 @@ __global__ void solventForceKernel(Box* box) {
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
-			//if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
+			if (n_compound_particles > 0 && solvent_active) { printf("\nn compP %d self origo %d %d %d ns %d\n", n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); }
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
@@ -728,11 +727,12 @@ __global__ void solventForceKernel(Box* box) {
 				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockindex_neighbor);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 
-				__syncthreads();	// Dont load buffer before all are finished with the previous iteration
+				// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
+				__syncthreads();
 				if (threadIdx.x < nsolvents_neighbor) {
-					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + (dir * static_cast<int32_t>(NANO_TO_LIMA))).toFloat3();
+					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir)).toFloat3();	// TODO: CHECH THAT THIS MINUS IS NOT SUPPOSED TO BE + as it was before this change!
 				}
-				__syncthreads();	// Dont use till buffer is ready by all
+				__syncthreads();
 
 				if (solvent_active) {
 					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);

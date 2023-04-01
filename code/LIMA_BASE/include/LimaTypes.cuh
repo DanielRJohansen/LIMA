@@ -42,7 +42,7 @@ struct Int3 {
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
-		printf("%c %c %.0f\t %.0f\t %.0f\n", nl, c, x, y, z);
+		printf("%c %c %d\t %d\t %d\n", nl, c, x, y, z);
 	}
 
 	int x = 0, y = 0, z = 0;
@@ -326,6 +326,7 @@ struct NodeIndex : public Int3 {
 	__host__ __device__ NodeIndex(const int& x, const int& y, const int& z) : Int3(x,y,z) {}
 	__host__ __device__ NodeIndex(const Int3& a) : Int3(a) {}
 
+	//__host__ __device__ int32_t dot(const NodeIndex& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}

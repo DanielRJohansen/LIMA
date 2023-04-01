@@ -395,7 +395,7 @@ float minDist(CompoundState& compoundstate, Float3 particle_pos) {
 
 bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
 {
-	particle_center = particle_center / NORMALIZER;
+	particle_center = particle_center;
 	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
 		//if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
 

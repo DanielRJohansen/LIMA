@@ -80,19 +80,6 @@ void Engine::terminateSimulation() {
 
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
-//
-//void Engine::handleNLISTS(Simulation* simulation, bool async, const bool force_update) {
-//	if (neighborlistUpdateRequired() && !updatenlists_mutexlock) {
-//		updatenlists_mutexlock = 1;
-//
-//		nlist_manager->updateNeighborLists(simulation, &updatenlists_mutexlock, force_update, async, &timings.z, &critical_error);
-//	}
-//
-//	if (nlist_manager->updated_neighborlists_ready) {
-//		nlist_manager->pushNlistsToDevice(simulation);
-//	}
-//}
-
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
@@ -134,14 +121,6 @@ void Engine::offloadTrainData() {
 	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
 }
 
-//bool Engine::neighborlistUpdateRequired() const {
-//	const auto step = simulation->getStep();
-//	if (nlist_manager->stepsSinceUpdate(step) >= STEPS_PER_NLIST_UPDATE
-//		|| step == 0) {
-//		return true;
-//	}
-//	return false;
-//}
 
 
 void Engine::bootstrapTrajbufferWithCoords() {

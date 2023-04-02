@@ -70,14 +70,13 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
-
 	// -------------------------------------------------------- Position Conversion -------------------------------------------------------- //
 
 	// Safe to call with any Coord
 	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN_i, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
 
 	// Position in nm
-	__device__ __host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
+	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
 		const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
 		NodeIndex nodeindex{
 			static_cast<int>(std::roundf(position.x / nodelen_nm)),
@@ -106,7 +105,11 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 	
 	__host__ static Coord absolutePositionToRelativeCoordinate(const Float3& position) {
-		if (absolutePositionToNodeIndex(position) != NodeIndex{}) { throw "Tried to place a position that was not correcly assigned a node"; }
+		float epsilon = 1.1;
+		if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
+			throw "Tried to place a position that was not correcly assigned a node"; 
+		}
+
 		return Coord{ position * NANO_TO_LIMA };
 	}
 
@@ -115,7 +118,10 @@ namespace LIMAPOSITIONSYSTEM {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position) {
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position) {		
+		Float3 hyperpos = position;
+		applyPBC(hyperpos);
+
 		const NodeIndex nodeindex = absolutePositionToNodeIndex(position);
 		const Coord relpos = absolutePositionToRelativeCoordinate(position - nodeIndexToAbsolutePosition(nodeindex));
 		return std::make_tuple(nodeindex, relpos);

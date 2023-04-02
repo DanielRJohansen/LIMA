@@ -10,7 +10,7 @@ namespace LSS {
 	static constexpr float _nodescale = 1e-3f;	// 1 node unit is 1e-3 nano
 
 
-	static constexpr float nodeToLima
+	//static constexpr float nodeToLima
 
 
 }

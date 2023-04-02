@@ -45,8 +45,6 @@ public:
 
 private:
 	Simulation* simulation;
-	//ForceFieldMaker FFM;
-
 
 
 	// -------------------------------------- GPU LOAD -------------------------------------- //
@@ -54,7 +52,6 @@ private:
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	NListManager* nlist_manager = nullptr;
-	//void handleNLISTS(Simulation* simulation, bool async = true, bool force_update=false);
 	void setDeviceConstantMemory();
 
 
@@ -62,8 +59,6 @@ private:
 	void offloadLoggingData(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
 	void offloadTrajectory(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
 	void offloadTrainData();
-
-	bool neighborlistUpdateRequired() const;
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();

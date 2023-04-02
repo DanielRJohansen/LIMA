@@ -40,12 +40,22 @@ struct Int3 {
 	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
+	__host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
+
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
 		printf("%c %c %d\t %d\t %d\n", nl, c, x, y, z);
 	}
 
 	int x = 0, y = 0, z = 0;
+};
+
+/// <summary>
+/// Absolute position in [lm]
+/// </summary>
+struct Position {
+
+	int64_t x = 0, y = 0, z = 0;
 };
 
 struct Coord;
@@ -70,20 +80,20 @@ struct Float3 {
 	__host__ __device__ inline void operator -= (const Float3 a) { x -= a.x; y -= a.y; z -= a.z; }
 	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
 
-	__device__ inline Float3 mul_highres(const double d) const {
-		return Float3(
-			static_cast<float>(static_cast<double>(x) * d),
-			static_cast<float>(static_cast<double>(y) * d),
-			static_cast<float>(static_cast<double>(z) * d)
-		);
-	}
-	__device__ inline Float3 add_highres(const Float3 a) const {
-		return Float3(
-			static_cast<float>(static_cast<double>(x) + static_cast<double>(a.x)),
-			static_cast<float>(static_cast<double>(y) + static_cast<double>(a.y)),
-			static_cast<float>(static_cast<double>(z) + static_cast<double>(a.z))
-		);
-	}
+	//__device__ inline Float3 mul_highres(const double d) const {
+	//	return Float3(
+	//		static_cast<float>(static_cast<double>(x) * d),
+	//		static_cast<float>(static_cast<double>(y) * d),
+	//		static_cast<float>(static_cast<double>(z) * d)
+	//	);
+	//}
+	//__device__ inline Float3 add_highres(const Float3 a) const {
+	//	return Float3(
+	//		static_cast<float>(static_cast<double>(x) + static_cast<double>(a.x)),
+	//		static_cast<float>(static_cast<double>(y) + static_cast<double>(a.y)),
+	//		static_cast<float>(static_cast<double>(z) + static_cast<double>(a.z))
+	//	);
+	//}
 
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
@@ -207,6 +217,14 @@ struct Float3 {
 		}
 	}
 
+	__host__ float largestMagnitudeElement() const {
+		const Float3 m = this->abs();
+		return std::max(
+			std::max(m.x, m.y),
+			m.z
+		);
+	}
+
 	// Not used right now!
 	__host__ __device__ static Float3 centerOfMass(Float3* arr_ptr, uint32_t arr_size) {	// Only run before sim, so we can cast to double without slowing sim
 		Float3 sum = Float3(0, 0, 0);
@@ -234,9 +252,13 @@ struct Double3 {
 	__host__ __device__ inline Double3 operator + (const Double3 a) const { return Double3(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ inline void operator += (const Float3 a) { x += (double)a.x; y += (double)a.y; z += (double)a.z; }
 	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
-
+	__host__ __device__ inline Double3 operator - (const Double3 a) const { return Double3(x - a.x, y - a.y, z - a.z); }
 
 	__host__ __device__ inline double len() { return (double)sqrt(x * x + y * y + z * z); }
+
+	__host__ __device__ Float3 toFloat3() const {
+		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+	}
 
 	__host__ __device__ void print(char c = '_') {
 		printf("%c %.10f %.10f %.10f\n", c, x, y, z);
@@ -332,6 +354,14 @@ struct NodeIndex : public Int3 {
 	}
 
 	__device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+
+	__host__ int largestMagnitudeElement() const {
+		const Int3 m = this->abs();
+		return std::max(
+			std::max(m.x, m.y), 
+			m.z
+		);
+	}
 };
 
 

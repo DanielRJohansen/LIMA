@@ -40,7 +40,6 @@ namespace CPPD {
 
 
 namespace LIMAPOSITIONSYSTEM {
-
 	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
 
 	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
@@ -69,19 +68,46 @@ namespace LIMAPOSITIONSYSTEM {
 		applyPBC(coords.origo);
 	}
 
+	__device__ __host__ static void applyPBC(Position& position) {
+		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
+		int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
+		position.x += BOX_LEN * (position.x + offset < 0);
+		position.x -= BOX_LEN * (position.x + offset >= BOX_LEN);
+		position.y += BOX_LEN * (position.y + offset < 0);
+		position.y -= BOX_LEN * (position.y + offset >= BOX_LEN);
+		position.z += BOX_LEN * (position.z + offset < 0);
+		position.z -= BOX_LEN * (position.z + offset >= BOX_LEN);
+	}
 
 	// -------------------------------------------------------- Position Conversion -------------------------------------------------------- //
+
+	__host__ static Position createPosition(const NodeIndex& nodeindex) {
+		return Position{
+			nodeindex.x * BOXGRID_NODE_LEN_i,
+			nodeindex.y * BOXGRID_NODE_LEN_i,
+			nodeindex.z * BOXGRID_NODE_LEN_i
+		};
+	}
 
 	// Safe to call with any Coord
 	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN_i, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
 
-	// Position in nm
 	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
 		const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
 		NodeIndex nodeindex{
-			static_cast<int>(std::roundf(position.x / nodelen_nm)),
-			static_cast<int>(std::roundf(position.y / nodelen_nm)),
-			static_cast<int>(std::roundf(position.z / nodelen_nm))
+			static_cast<int>(position.x / nodelen_nm),
+			static_cast<int>(position.y / nodelen_nm),
+			static_cast<int>(position.z / nodelen_nm)
+		};
+		applyPBC(nodeindex);
+		return nodeindex;
+	}
+
+	__host__ static NodeIndex absolutePositionToNodeIndex(const Position& position) {
+		NodeIndex nodeindex{
+			static_cast<int>(position.x / BOXGRID_NODE_LEN_i),
+			static_cast<int>(position.y / BOXGRID_NODE_LEN_i),
+			static_cast<int>(position.z / BOXGRID_NODE_LEN_i)
 		};
 		applyPBC(nodeindex);
 		return nodeindex;
@@ -103,14 +129,33 @@ namespace LIMAPOSITIONSYSTEM {
 			static_cast<float>(node_index.z) * nodelen_nm
 		};
 	}
+	//__device__ __host__ static Position nodeIndexToPosition(const NodeIndex& node_index) {
+	//	const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
+	//	return Position{
+	//		node_index.x * BOXGRID_NODE_LEN_i,
+	//		node_index.y * BOXGRID_NODE_LEN_i,
+	//		node_index.z * BOXGRID_NODE_LEN_i		};
+	//}
+
 	
-	__host__ static Coord absolutePositionToRelativeCoordinate(const Float3& position) {
-		float epsilon = 1.1;
-		if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
-			throw "Tried to place a position that was not correcly assigned a node"; 
+	__host__ static Coord getRelativeCoord(const Position& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
+		//float epsilon = 1.1;
+		//if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
+		//	throw "Tried to place a position that was not correcly assigned a node"; 
+		//}
+
+		// Subtract nodeindex from abs position to get relative position
+		const Position relpos = absolute_position - createPosition(nodeindex);
+
+		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * max_node_diff) {
+			auto f = absolute_position.toFloat3();
+			auto o = createPosition(nodeindex).toFloat3();
+			auto r = relpos.toFloat3();
+			auto p = createPosition(nodeindex);
+			throw "Tried to place a position that was not correcly assigned a node";
 		}
 
-		return Coord{ position * NANO_TO_LIMA };
+		return Coord{ static_cast<int32_t>(relpos.x), static_cast<int32_t>(relpos.y), static_cast<int32_t>(relpos.z) };
 	}
 
 	// relpos in LM
@@ -118,12 +163,9 @@ namespace LIMAPOSITIONSYSTEM {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position) {		
-		Float3 hyperpos = position;
-		applyPBC(hyperpos);
-
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Position& position) {
 		const NodeIndex nodeindex = absolutePositionToNodeIndex(position);
-		const Coord relpos = absolutePositionToRelativeCoordinate(position - nodeIndexToAbsolutePosition(nodeindex));
+		const Coord relpos = getRelativeCoord(position, nodeindex);
 		return std::make_tuple(nodeindex, relpos);
 	}
 
@@ -137,24 +179,15 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
 	/// <returns></returns>
-	static CompoundCoords positionCompound(CompoundState& state,  int key_particle_index=0) {
+	static CompoundCoords positionCompound(const std::vector<Position>& positions,  int key_particle_index=0) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
-		//compoundcoords.origo = Coord{ state.positions[key_particle_index] };
-		//compoundcoords.origo = Coord(0);	// Temp, use the one above in future
-		compoundcoords.origo = absolutePositionToNodeIndex(state.positions[key_particle_index]);
+		compoundcoords.origo = absolutePositionToNodeIndex(positions[key_particle_index]);
 
-		for (int i = 0; i < state.n_particles; i++) {
-			//double x = (static_cast<double>(state.positions[i].x) - static_cast<double>(compoundcoords.origo.x)) / default_norm_dist;
-			//double y = (static_cast<double>(state.positions[i].y) - static_cast<double>(compoundcoords.origo.y)) / default_norm_dist;
-			//double z = (static_cast<double>(state.positions[i].z) - static_cast<double>(compoundcoords.origo.z)) / default_norm_dist;
-
-			//Float3 rel_pos_nm{ x, y, z };
-			//Coord rel_coord{ rel_pos_nm * NANO_TO_LIMA };
-			auto a = nodeIndexToAbsolutePosition(compoundcoords.origo);
-			Float3 relpos_nm = state.positions[i] - nodeIndexToAbsolutePosition(compoundcoords.origo);
-			compoundcoords.rel_positions[i] = absolutePositionToRelativeCoordinate(relpos_nm);
+		for (int i = 0; i < positions.size(); i++) {
+			// Allow some leeway, as different particles in compound may fit different gridnodes
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 2);	
 		}
 		return compoundcoords;
 	}
@@ -359,17 +392,20 @@ namespace LIMAPOSITIONSYSTEM {
 	/// Shifts the position 1/2 blocklen so we can find the appropriate origo by 
 	/// </summary>
 	/// <param name="position">Absolute position of solvent [nm] </param>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const Float3& position) {
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const Position& position) {
 		//const Float3 blockcenter_relative{ SolventBlockGrid::node_len / 2.f / NANO_TO_LIMA };	// [nm]
 		//const Float3 position_adjusted = position + blockcenter_relative;						// [nm]
 
 		//const Float3 origo_f = position_adjusted.piecewiseRound();								// [nm]
-		const Float3 origo_f = position.piecewiseRound();
-		const Float3 relpos_f = (position - origo_f) * NANO_TO_LIMA;							// [lm}
+		//const Float3 origo_f = position.piecewiseRound();
+		//const Float3 relpos_f = (position - origo_f) * NANO_TO_LIMA;							// [lm}
+
+		Position hyperpos = position;
+		applyPBC(hyperpos);
 
 		//const auto [nodeindex, relpos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
 		NodeIndex nodeindex; Coord relpos;
-		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
+		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement(hyperpos);
 
 		//SolventCoord solventcoord{ Coord{origo_f}, Coord{relpos_f } };
 		SolventCoord solventcoord{ nodeindex, relpos };

@@ -215,7 +215,11 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
 			//SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
-			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(sol_pos);
+
+			const Float3 pos_lm = sol_pos * NANO_TO_LIMA;
+			Position position{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
+
+			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 
 			//LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
 			
@@ -245,27 +249,37 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 {
 	compound->init();
 
-	CompoundState state{};
-	CompoundState state_prev{};
+	//CompoundState state{};
+	//CompoundState state_prev{};
+	std::vector<Position> positions;
+	std::vector<Position> positions_prev;
+	positions.reserve(MAX_COMPOUND_PARTICLES);
+	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
+
 	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 
 
 	for (int i = 0; i < compound->n_particles; i++) {
-		state.positions[i] = compound->state.positions[i];
-		state.n_particles++;
+		//state.positions[i] = compound->state.positions[i];
+		//state.n_particles++;
+		//
+		//Float3 atom_pos_sub1 = state.positions[i] - compound_united_vel * simulation->dt;
+		//state_prev.positions[i] = atom_pos_sub1;
+		//state_prev.n_particles++;
+		const Float3 pos_lm = compound->state.positions[i] * NANO_TO_LIMA;
+		positions.push_back(Position{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) });
 
-		Float3 atom_pos_sub1 = state.positions[i] - compound_united_vel * simulation->dt;
-		state_prev.positions[i] = atom_pos_sub1;
-		state_prev.n_particles++;
+		const Float3 pos_lm_prev = (compound->state.positions[i] - compound_united_vel * simulation->dt)* NANO_TO_LIMA;
+		positions_prev.push_back(Position{ static_cast<int64_t>(pos_lm_prev.x), static_cast<int64_t>(pos_lm_prev.y), static_cast<int64_t>(pos_lm_prev.z) });
 	}
 
 
-	CompoundCoords& coords = coordarray[simulation->box->n_compounds];
-	CompoundCoords& coords_prev = coordarray_prev[simulation->box->n_compounds];
+	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
-	coords = LIMAPOSITIONSYSTEM::positionCompound(state, 0);
-	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(state_prev, 0);
+	//coords = LIMAPOSITIONSYSTEM::positionCompound(state, 0);
+	//coords_prev = LIMAPOSITIONSYSTEM::positionCompound(state_prev, 0);
 	
 
 	/*for (int i = 0; i < compound->n_particles; i++) {

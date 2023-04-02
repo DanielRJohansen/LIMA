@@ -50,13 +50,7 @@ struct Int3 {
 	int x = 0, y = 0, z = 0;
 };
 
-/// <summary>
-/// Absolute position in [lm]
-/// </summary>
-struct Position {
 
-	int64_t x = 0, y = 0, z = 0;
-};
 
 struct Coord;
 struct Float3 {
@@ -362,6 +356,35 @@ struct NodeIndex : public Int3 {
 			m.z
 		);
 	}
+};
+
+/// <summary>
+/// Absolute position in [lm]
+/// </summary>
+struct Position {
+	Position() = default;
+	Position(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
+
+	__host__ __device__ void operator += (const int64_t& a) { x += a; y += a; z += a; };
+	__host__ __device__ void operator -= (const int64_t& a) { x -= a; y -= a; z -= a; };
+	inline Position operator - (const Position& a) const { return Position{ x - a.x, y - a.y, z - a.z }; }
+
+	Position abs() const { return Position{ std::abs(x), std::abs(y), std::abs(z) }; }
+
+	int64_t largestMagnitudeElement() const {
+		const Position m = this->abs();
+		return std::max(
+			std::max(m.x, m.y),
+			m.z
+		);
+	}
+
+	// Returns the position as a Float3 in nm
+	Float3 toFloat3() const { 
+		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } / NANO_TO_LIMA; 
+	}
+
+	int64_t x = 0, y = 0, z = 0;
 };
 
 

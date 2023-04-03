@@ -66,6 +66,9 @@ private:
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	void prepareForRun();
+
+	void sayHello();
+
 	//Display* display;
 	DisplayV2* display = nullptr;
 	//Interface* interface = nullptr;

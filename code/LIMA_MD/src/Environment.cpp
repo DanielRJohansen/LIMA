@@ -9,6 +9,7 @@ using std::string;
 
 Environment::Environment() {
 	display = new DisplayV2();
+	sayHello();
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
@@ -101,6 +102,20 @@ void Environment::prepareForRun() {
 	verifyBox();
 
 	ready_to_run = true;
+}
+
+void Environment::sayHello() {
+	std::ifstream file("logo_ascii.txt");
+	std::string file_contents((std::istreambuf_iterator<char>(file)),
+		std::istreambuf_iterator<char>());
+
+	cout << "\033[1;32m"; // set text color to green
+	cout << "Hello, World!\n";
+	cout << "\033[0m"; // reset text color
+
+
+	int a = 0;
+
 }
 
 

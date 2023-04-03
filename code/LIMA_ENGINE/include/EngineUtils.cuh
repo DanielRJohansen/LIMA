@@ -71,12 +71,12 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ __host__ static void applyPBC(Position& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
-		position.x += BOX_LEN * (position.x + offset < 0);
-		position.x -= BOX_LEN * (position.x + offset >= BOX_LEN);
-		position.y += BOX_LEN * (position.y + offset < 0);
-		position.y -= BOX_LEN * (position.y + offset >= BOX_LEN);
-		position.z += BOX_LEN * (position.z + offset < 0);
-		position.z -= BOX_LEN * (position.z + offset >= BOX_LEN);
+		position.x += BOX_LEN_i * (position.x + offset < 0);
+		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
+		position.y += BOX_LEN_i * (position.y + offset < 0);
+		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
+		position.z += BOX_LEN_i * (position.z + offset < 0);
+		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
 	}
 
 	// -------------------------------------------------------- Position Conversion -------------------------------------------------------- //
@@ -104,10 +104,11 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__host__ static NodeIndex absolutePositionToNodeIndex(const Position& position) {
+		int offset = BOXGRID_NODE_LEN_i / 2;
 		NodeIndex nodeindex{
-			static_cast<int>(position.x / BOXGRID_NODE_LEN_i),
-			static_cast<int>(position.y / BOXGRID_NODE_LEN_i),
-			static_cast<int>(position.z / BOXGRID_NODE_LEN_i)
+			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
+			static_cast<int>((position.y + offset) / BOXGRID_NODE_LEN_i),
+			static_cast<int>((position.z + offset) / BOXGRID_NODE_LEN_i)
 		};
 		applyPBC(nodeindex);
 		return nodeindex;
@@ -129,15 +130,7 @@ namespace LIMAPOSITIONSYSTEM {
 			static_cast<float>(node_index.z) * nodelen_nm
 		};
 	}
-	//__device__ __host__ static Position nodeIndexToPosition(const NodeIndex& node_index) {
-	//	const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
-	//	return Position{
-	//		node_index.x * BOXGRID_NODE_LEN_i,
-	//		node_index.y * BOXGRID_NODE_LEN_i,
-	//		node_index.z * BOXGRID_NODE_LEN_i		};
-	//}
 
-	
 	__host__ static Coord getRelativeCoord(const Position& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
 		//float epsilon = 1.1;
 		//if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
@@ -146,12 +139,12 @@ namespace LIMAPOSITIONSYSTEM {
 
 		// Subtract nodeindex from abs position to get relative position
 		const Position relpos = absolute_position - createPosition(nodeindex);
+		auto f = absolute_position.toFloat3();
+		auto o = createPosition(nodeindex).toFloat3();
+		auto r = relpos.toFloat3();
+		auto p = createPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * max_node_diff) {
-			auto f = absolute_position.toFloat3();
-			auto o = createPosition(nodeindex).toFloat3();
-			auto r = relpos.toFloat3();
-			auto p = createPosition(nodeindex);
 			throw "Tried to place a position that was not correcly assigned a node";
 		}
 
@@ -192,13 +185,8 @@ namespace LIMAPOSITIONSYSTEM {
 		return compoundcoords;
 	}
 
-	//// Returns position in LimaMetres
-	//__device__ static Float3 getGlobalPosition(const CompoundCoords& coords) {
-	//	return coords.origo.toFloat3() * NANO_TO_LIMA + coords.rel_positions[threadIdx.x].toFloat3();
-	//}
-
 	// Transforms the relative coords to relative float positions.
-	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const int n_elements) {
+	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const unsigned int n_elements) {
 		if (threadIdx.x < n_elements)
 			positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
 	}
@@ -220,36 +208,6 @@ namespace LIMAPOSITIONSYSTEM {
 		return nodeIndexToCoord(from - to);
 	}
 
-	//__device__ static void applyHyperpos(const Coord& static_coord, Coord& movable_coord) {
-	//	movable_coord.x += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) > static_cast<int32_t>( BOX_LEN_HALF_NM));
-	//	movable_coord.x -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.x - movable_coord.x) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
-
-	//	movable_coord.y += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) > static_cast<int32_t>(BOX_LEN_HALF_NM));
-	//	movable_coord.y -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.y - movable_coord.y) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
-
-	//	movable_coord.z += static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) > static_cast<int32_t>(BOX_LEN_HALF_NM));
-	//	movable_coord.z -= static_cast<int32_t>(BOX_LEN_NM) * ((static_coord.z - movable_coord.z) < static_cast<int32_t>(-BOX_LEN_HALF_NM));
-	//}
-
-
-
-
-	//static void alignCoordinates(CompoundCoords& lhs, CompoundCoords& rhs) {
-	//	applyHyperpos(lhs, rhs);
-
-	//	Coord common_origo = {
-	//		std::min(lhs.origo.x, rhs.origo.x) + ((std::max(lhs.origo.x, rhs.origo.x) - std::min(lhs.origo.x, rhs.origo.x)) / 2),
-	//		std::min(lhs.origo.y, rhs.origo.y) + ((std::max(lhs.origo.y, rhs.origo.y) - std::min(lhs.origo.y, rhs.origo.y)) / 2),
-	//		std::min(lhs.origo.z, rhs.origo.z) + ((std::max(lhs.origo.z, rhs.origo.z) - std::min(lhs.origo.z, rhs.origo.z)) / 2)
-	//	};
-	//}
-
-	// Gets hyperorigo of other
-	//__device__ static Coord getHyperOrigo(const Coord& self, const Coord& other) {
-	//	Coord temp = other;
-	//	applyHyperpos(self, temp);
-	//	return temp;
-	//}
 	__device__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
 		NodeIndex temp = other;
 		applyHyperpos(self, temp);
@@ -284,21 +242,6 @@ namespace LIMAPOSITIONSYSTEM {
 		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
 		return nodeIndexToCoord(nodeshift_right);
 	}
-
-	//// Calculates the relative position of movable_solvent, relative to another staticcoords's origo.
-	//// Returns false if it is not possible to represent the position as coord. In that case, we should avoid
-	//// following computations..
-	//__device__ static Coord getRelativeHyperposition(const SolventCoord& static_solvent, const SolventCoord& movable_solvent) {
-	//	const Coord hyperorigo_other = LIMAPOSITIONSYSTEM::getHyperOrigo(static_solvent.origo, movable_solvent.origo);
-
-	//	// calc Relative Position Shift from the origo-shift
-	//	//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShift(static_solvent.origo, hyperorigo_other);
-	//	// 
-	//	//const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(static_solvent.origo, hyperorigo_movable);
-	//	const Coord relPosShiftOfMovable = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(hyperorigo_other, static_solvent.origo);
-	//	return movable_solvent.rel_position + relPosShiftOfMovable;
-	//}
-
 
 
 
@@ -434,37 +377,52 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 namespace EngineUtils {
-	__device__ __host__ static inline void applyHyperpos(const Float3* static_particle, Float3* movable_particle) {
+
+	// -------------------------------------------------------- Functions in NM - doesnt fit well here! -------------------------------------------------------- //
+	// Assumes positions in NM
+	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
+		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
+		const float boxlenhalf_nm = boxlen_nm / 2.f;
+
 		for (int i = 0; i < 3; i++) {
-			//*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
-			//*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);	// use at not X!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			*movable_particle->placeAt(i) += BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) > BOX_LEN_HALF);
-			*movable_particle->placeAt(i) -= BOX_LEN * ((static_particle->at(i) - movable_particle->at(i)) < -BOX_LEN_HALF);
+			*movable_particle->placeAt(i) += boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) > boxlenhalf_nm);
+			*movable_particle->placeAt(i) -= boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) < -boxlenhalf_nm);
 		}
 	}
 
-	__device__ __host__ static float calcHyperDist(const Float3* p1, const Float3* p2) {
+	// Assumes positions in NM
+	__device__ __host__ static float calcHyperDistNM(const Float3* p1, const Float3* p2) {
 		Float3 temp = *p2;
-		applyHyperpos(p1, &temp);
+		applyHyperposNM(p1, &temp);
 		return (*p1 - temp).len();
 	}
 
-	__device__ __host__ static float calcHyperDistDenormalized(const Float3* p1, const Float3* p2) {
-		Float3 temp = *p2;
-		applyHyperpos(p1, &temp);
-		return (*p1 - temp).len();
-	}
-
+	// Assumes positions in NM
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
-		const float vel = calcHyperDist(pos1, pos2) / elapsed_time;
+		auto dist = calcHyperDistNM(pos1, pos2);
+		if (dist > 1.f) {
+			printf("DIST: %f\n", dist);
+			pos1->print('1');
+			pos2->print('2');
+		}
+
+		const float vel = calcHyperDistNM(pos1, pos2) / elapsed_time;
 		const float kinE = 0.5f * mass * vel * vel;
 		return kinE;
 	}
+	// -------------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	__device__ __host__ static void applyPBC(Float3* current_position) {	// Only changes position if position is outside of box;
+
+
+
+
+
+
+
+
+	// Position in [nm]
+	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
 		for (int dim = 0; dim < 3; dim++) {
-			/**current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);*/
 			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
 			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
 		}
@@ -564,6 +522,14 @@ namespace EngineUtils {
 		}
 	}
 
+
+
+	// Slow function, never for device
+	__host__ static float calcDistance(const NodeIndex& o1, const Coord& relpos1, const NodeIndex& o2, const Coord& relpos2) {
+		auto pos1 = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(o1, relpos1);
+		auto pos2 = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(o2, relpos2);
+		return (pos1 - pos2).len();
+	}
 };
 
 

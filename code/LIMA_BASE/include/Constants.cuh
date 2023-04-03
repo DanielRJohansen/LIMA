@@ -20,6 +20,7 @@ constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
 constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
+
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 const int PICO_TO_LIMA = 100000;
 
@@ -38,6 +39,8 @@ constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr int _BOX_LEN_PM = 7200;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
+
+const int BOX_LEN_i = _BOX_LEN_PM * PICO_TO_LIMA;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;

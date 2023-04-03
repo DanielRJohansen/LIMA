@@ -219,6 +219,7 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) 
 		RenderAtom atom{};
 		//atom.pos = coord.getAbsolutePositionLM();
         atom.pos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock->origo, solventblock->rel_pos[threadIdx.x]);
+        EngineUtils::applyPBCNM(&atom.pos);   // TMP, dunno if i wanna do this.
 		atom.mass = SOLVENT_MASS;
 		atom.atom_type = SOL;
 

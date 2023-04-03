@@ -130,12 +130,12 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 
 
-	if (((*pos1 - *pos0) * force_scalar).len() > 100 || true) {
+	if (((*pos1 - *pos0) * force_scalar).len() > 1000  && blockIdx.x == 165) {
 		//printf("\nBlock %d thread %d type1 %d\n", blockIdx.x, threadIdx.x, type1);
 		//((*pos1 - *pos0) * force_scalar).print('f');
-		//pos0->print('0');
-		//pos1->print('1');
-		//printf("dist nm %f force %f\n", sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len());
+		pos0->print('0');
+		pos1->print('1');
+		printf("dist nm %f force %f sigma %f \n", sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma/NANO_TO_LIMA);
 	}
 	//printf("\ndist: %d %f force %f\n", threadIdx.x, (*pos0 - *pos1).len() / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len());
 

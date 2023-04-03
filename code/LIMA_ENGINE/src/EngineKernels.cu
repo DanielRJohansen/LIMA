@@ -71,16 +71,15 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	Float3 force(0.f);
 	if (threadIdx.x >= compound->n_particles) { return force; }
 	for (int i = 0; i < compound->n_particles; i++) {
-		if (i != threadIdx.x && !(*bonded_particles_lut->get(threadIdx.x, i))) {
-			//*potE_sum = 16;
-			//force += calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 
-			force += LimaForcecalc::calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
-				calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]), 
-				calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
-				compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
-			);// *24.f * 1e-9;
-		}
+		// Skip if particle is self or bonded
+		if (i == threadIdx.x && (*bonded_particles_lut->get(threadIdx.x, i))) { continue; }
+
+		force += LimaForcecalc::calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
+			calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]),
+			calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
+			compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]
+		);// *24.f * 1e-9;
 	}
 	return force;
 }
@@ -259,12 +258,11 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 /// <returns></returns>
 __device__ void doBlellochPrefixSum(uint8_t* onehot_remainers, uint8_t* utility) {
 	// Forward scan
-	for (int leap = 1; leap < MAX_SOLVENTS_IN_BLOCK - 1; leap *= 2) {
-		if (threadIdx.x % leap == 0) {
-			int index = threadIdx.x + leap;
-		}
-	}
-
+	//for (int leap = 1; leap < MAX_SOLVENTS_IN_BLOCK - 1; leap *= 2) {
+	//	if (threadIdx.x % leap == 0) {
+	//		int index = threadIdx.x + leap;
+	//	}
+	//}
 }
 
 // SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
@@ -532,7 +530,6 @@ __global__ void compoundKernel(Box* box) {
 
 	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 	
 	{
-		auto oold = compound_coords.origo;
 		__shared__ Coord shift_lm;
 		if (threadIdx.x == 0) {
 			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords);
@@ -703,6 +700,16 @@ __global__ void solventForceKernel(Box* box) {
 				const NodeIndex dir{ x,y,z };
 				if (dir.isZero()) { continue; }
 
+				//continue; // DANGER
+
+
+
+
+
+
+
+
+
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
 				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
 
@@ -712,7 +719,7 @@ __global__ void solventForceKernel(Box* box) {
 				// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
 				__syncthreads();
 				if (threadIdx.x < nsolvents_neighbor) {
-					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir)).toFloat3();	// TODO: CHECH THAT THIS MINUS IS NOT SUPPOSED TO BE + as it was before this change!
+					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir)).toFloat3();	
 				}
 				__syncthreads();
 

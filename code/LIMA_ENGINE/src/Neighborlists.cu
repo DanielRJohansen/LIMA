@@ -5,7 +5,7 @@
 #include <unordered_set>
 
 bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_lm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
-	const float dist = EngineUtils::calcHyperDist(pos_a, pos_b);
+	const float dist = EngineUtils::calcHyperDistNM(pos_a, pos_b);
 	return dist < cutoff_lm;
 }
 

@@ -230,7 +230,36 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 			solventblocks->addSolventToGrid(solventcoord, simulation->box->n_solvents);
 			solventblocks_prev->addSolventToGrid(solventcoord, simulation->box->n_solvents);
 
+			if (solventcoord.origo == NodeIndex{ 1,0,0 } &&
+				(solventblocks->getBlockPtr(1)->n_solvents == 26 || solventblocks->getBlockPtr(1)->n_solvents == 37)
+				) {
+				int h = 0;
+			}
+
 			simulation->box->n_solvents++;
+		}
+	}
+
+	for (int sbi = 0; sbi < SolventBlockGrid::blocks_total; sbi++) {
+		auto sb = solventblocks->getBlockPtr(sbi);
+		for (int i = 0; i < sb->n_solvents; i++) {
+			auto posi = sb->rel_pos[i];
+
+
+			for (int sbj = sbi; sbj < SolventBlockGrid::blocks_total; sbj++) {
+				auto sb2 = solventblocks->getBlockPtr(sbj);
+				for (int j = 0; j < sb2->n_solvents; j++) {
+
+					if (sbi == sbj && i == j) { continue; }	// same solvent
+
+					auto posj = sb2->rel_pos[j];
+
+					auto dist = EngineUtils::calcDistance(sb->origo, posi, sb2->origo, posj);
+					if (dist < 0.1) {
+						int a = 0;
+					}
+				}
+			}
 		}
 	}
 
@@ -249,8 +278,6 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 {
 	compound->init();
 
-	//CompoundState state{};
-	//CompoundState state_prev{};
 	std::vector<Position> positions;
 	std::vector<Position> positions_prev;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
@@ -401,7 +428,7 @@ float minDist(CompoundState& compoundstate, Float3 particle_pos) {
 	float mindist = 999999;
 	for (size_t i = 0; i < compoundstate.n_particles; i++) {
 		//float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
-		float dist = EngineUtils::calcHyperDist(&compoundstate.positions[i], &particle_pos);
+		float dist = EngineUtils::calcHyperDistNM(&compoundstate.positions[i], &particle_pos);		// Hmmm doesn't fit the namespace...
 		mindist = std::min(mindist, dist);
 	}
 	return mindist;

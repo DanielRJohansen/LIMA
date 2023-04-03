@@ -386,10 +386,10 @@ void Dihedraltype::assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals,
 		Dihedraltype* dihedral = &topol_dihedrals->at(i);
 
 		//printf("Accessing atoms %d %d %d %d\n", dihedral->id1, dihedral->id2, dihedral->id3, dihedral->id4);
-		dihedral->type1 = atoms.at(static_cast<size_t>(dihedral->id1 - 1)).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		dihedral->type2 = atoms.at(static_cast<size_t>(dihedral->id2 - 1)).atomtype_bond;
-		dihedral->type3 = atoms.at(static_cast<size_t>(dihedral->id3 - 1)).atomtype_bond;
-		dihedral->type4 = atoms.at(static_cast<size_t>(dihedral->id4 - 1)).atomtype_bond;
+		dihedral->type1 = atoms.at(static_cast<size_t>(dihedral->id1) - 1).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+		dihedral->type2 = atoms.at(static_cast<size_t>(dihedral->id2) - 1).atomtype_bond;
+		dihedral->type3 = atoms.at(static_cast<size_t>(dihedral->id3) - 1).atomtype_bond;
+		dihedral->type4 = atoms.at(static_cast<size_t>(dihedral->id4) - 1).atomtype_bond;
 		dihedral->sort();
 		//cout << bond->type1 << '\t' << bond->type2 << endl;;
 	}

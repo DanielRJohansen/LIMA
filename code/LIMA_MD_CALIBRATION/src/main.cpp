@@ -229,12 +229,12 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
+	doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
 	//doPoolBenchmark(env, "PoolCompSol");	// One 1 particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);
 	//doBasicBenchmark(env, "TorsionBenchmark");
-	doBasicBenchmark(env, "Met");
+	//doBasicBenchmark(env, "Met");
 	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	//doBasicBenchmark(env, "SolventBenchmark");
 	return 0;

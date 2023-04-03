@@ -68,14 +68,14 @@ public:
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
 	uint32_t step = 0;
-	float dt = 0;
-	bool critical_error_encountered = 0;
+	float dt = 0;								// [ls]
+	bool critical_error_encountered = false;
 
-	float* potE_buffer = nullptr;		// For total energy summation
-	Float3* traj_buffer = nullptr;		// Absolute positions [nm]
+	float* potE_buffer = nullptr;				// For total energy summation
+	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 
-	float* outdata = nullptr;			// Temp, for longging values to whatever
-	Float3* data_GAN = nullptr;			// Only works if theres 1 compounds right now.
+	float* outdata = nullptr;					// Temp, for longging values to whatever
+	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
 	Float3* debugdataf3 = nullptr;
 
 	float thermostat_scalar = 1.f;

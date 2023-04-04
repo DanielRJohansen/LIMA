@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <format>
 
+#include "Utilities.h"
+
 ///////////////////////////////// READ HERE FIRST /////////////////////////////////
 // ffbonded.itp and ffnonbonden.itp has different atomtypes. 
 // The purpose if this bit of code is to compress all forcefield parameters so they can fit on a GPU more easily
@@ -77,9 +79,7 @@ struct FTHelpers {
 			}
 			if (!type_already_found)
 				atom_types.push_back(row[1]);
-		}
-
-		printf("%zd atom types in conf\n", atom_types.size());
+		}		
 
 		return atom_types;
 	}
@@ -237,7 +237,6 @@ struct NB_Atomtype {
 				break;
 			}
 		}
-		printf("%lld atom types read from file\n", records.size());
 		return records;
 	}
 	static NB_Atomtype findRecord(vector<NB_Atomtype>* records, string type) {
@@ -251,7 +250,7 @@ struct NB_Atomtype {
 	static bool typeIsPresent(vector<NB_Atomtype>* records, string type) {
 		return (findRecord(records, type).type != "");
 	}
-	static vector<NB_Atomtype> filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map);
+	static vector<NB_Atomtype> filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map, LimaLogger& logger, bool print_mappings);
 };
 
 

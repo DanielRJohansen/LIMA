@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include "Utilities.h"
 
 struct Map;
 struct NB_Atomtype;
@@ -8,10 +9,10 @@ struct NB_Atomtype;
 class ForcefieldMaker {
 public:
 	ForcefieldMaker(
-		std::string workdir,
-		std::string default_ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/",
-		std::string conf_file = "conf.gro",
-		std::string topol_file = "topol.top"
+		const std::string& workdir,
+		const std::string& default_ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/",
+		const std::string& conf_file = "conf.gro",
+		const std::string& topol_file = "topol.top"
 	);
 
 	void prepSimulationForcefield();
@@ -29,7 +30,7 @@ private:
 	std::string ff_nonbonded_path = "";
 	
 
-
+	LimaLogger logger;
 
 
 

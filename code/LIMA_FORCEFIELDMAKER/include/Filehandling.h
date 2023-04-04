@@ -5,12 +5,14 @@
 #include <fstream>
 #include <vector>
 #include <sstream>
-
-#include <climits>		// INT_MAX
+#include <filesystem>
+#include <climits>
 
 #include "ForcefieldTypes.h"
+#include "Utilities.h"
 
-#include <filesystem>
+
+
 
 namespace fs = std::filesystem;
 
@@ -84,13 +86,12 @@ public:
 		return row;
 	}
 
-	static vector<vector<string>> readFile(string path, vector<char> ignores = {';', '#', '!'}, bool internal_file=false) {
+	static vector<vector<string>> readFile(const string& path, LimaLogger& logger, vector<char> ignores = {';', '#', '!'}, bool internal_file=false) {
 
 		fstream file;
 		file.open(path);
-		cout << "Reading file " << path << endl;
+		logger.print(std::format("Reading file {}\n", path));
 
-		//vector<char> ignores = { ';', '#', '!' };
 		vector<vector<string>> rows;
 		int row_cnt = 0;
 		int ignore_cnt = 0;
@@ -110,7 +111,9 @@ public:
 				rows.push_back(parseRowExternal(line));
 			row_cnt++;
 		}
-		printf("%d rows read. %d rows ignored\n", row_cnt, ignore_cnt);
+		//printf("%d rows read. %d rows ignored\n", row_cnt, ignore_cnt);
+		logger.print(std::format("{} rows read. {} rows ignored\n", row_cnt, ignore_cnt));
+
 
 		return rows;
 	}

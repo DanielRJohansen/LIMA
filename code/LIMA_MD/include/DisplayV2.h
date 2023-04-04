@@ -8,16 +8,17 @@
 #include <GLFW/glfw3.h>
 #endif
 
-
+#include <string>
 
 #include "Rasterizer.cuh"
 #include "LimaTypes.cuh"
+#include "Utilities.h"
 
 #include <chrono>
 
-class DisplayV2 {
+class Display {
 public:
-	DisplayV2();
+	Display();
 	void render(Simulation* simulation);
 	void animate(Trajectory* traj);
 
@@ -25,6 +26,7 @@ public:
 	void terminate(); 
 
 private:
+	LimaLogger logger;
 	Rasterizer rasterizer;
 	bool initGLFW();
 

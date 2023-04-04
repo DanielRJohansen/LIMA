@@ -23,9 +23,10 @@ using std::string;
 //string mol_path = FileHelpers::pathJoin(sim_path, "Molecule");
 //string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
-ForcefieldMaker::ForcefieldMaker( string workdir, string default_ff_dir, string conf_file, string topol_file) :
+ForcefieldMaker::ForcefieldMaker(const string& workdir, const string& default_ff_dir, const string& conf_file, const string& topol_file) :
 	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
-	forcefield_dir(default_ff_dir)
+	forcefield_dir(default_ff_dir), 
+	logger(LimaLogger::LogMode::compact, "forcefieldmaker", workdir)
 {
 	ff_bonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffbonded.txt");
 	ff_nonbonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffnonbonded.txt");
@@ -40,14 +41,16 @@ ForcefieldMaker::ForcefieldMaker( string workdir, string default_ff_dir, string 
 
 
 vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
-//	vector<vector<string>> simconf_rows = readFile("C:\\PROJECTS\\Quantom\\Molecules\\t4lys_full\\conf.gro");
-	vector<vector<string>> simconf_rows = Reader::readFile(conf_path);
+	vector<vector<string>> simconf_rows = Reader::readFile(conf_path, logger);
 	vector<string> simconf = FTHelpers::parseConf(simconf_rows);
+	logger.print(std::format("{} atom types in conf\n", simconf.size()));
 
-	vector<vector<string>> ffnonbonded_rows = Reader::readFile(ff_nonbonded_path, {'/'}, true);
+
+	vector<vector<string>> ffnonbonded_rows = Reader::readFile(ff_nonbonded_path, logger, {'/'}, true);
 	vector<NB_Atomtype> ffnonbonded = NB_Atomtype::parseNonbonded(ffnonbonded_rows);
+	logger.print(std::format("{} atom types read from file\n", ffnonbonded.size()));
 
-	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, map);
+	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, map, logger, false);
 }
 
 vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map) {
@@ -102,10 +105,10 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	// These two vectors contain information about all types, but are parsed individually. This is very slightly slower, but MUCH more readable!
 //	vector<vector<string>> ffbonded_rows = readFile("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\ffbonded.itp");
 	//vector<vector<string>> ffbonded_rows = readFile(sim_path + "/Forcefield/ffbonded.itp");
-	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, { '/' }, true);
+	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, logger, { '/' }, true);
 	//	vector<vector<string>> topology_rows = readFile("C:\\PROJECTS\\Quantom\\Molecules\\t4lys_full\\topol.top");
 		//vector<vector<string>> topology_rows = readFile(sim_path + "/Molecule/topol.top");
-	vector<vector<string>> topology_rows = Reader::readFile(topol_path);
+	vector<vector<string>> topology_rows = Reader::readFile(topol_path, logger);
 
 
 	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map);
@@ -130,7 +133,22 @@ void ForcefieldMaker::prepSimulationForcefield() {
 		topology_angles,
 		topology_dihedrals
 	);
+	logger.print("Prepare Forcefield has finished\n");
+	logger.finishSection();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //void mergeForcefieldFiles() {
 //	vector<string> files;
@@ -158,5 +176,3 @@ void ForcefieldMaker::prepSimulationForcefield() {
 //	Printer::printFFNonbonded(FileHelpers::pathJoin(forcefield_path, "LIMA_ffnonbonded.txt"), FM.ff_nonbonded);
 //	Printer::printFFBonded(FileHelpers::pathJoin(forcefield_path, "LIMA_ffbonded.txt"), FM.ff_bondtypes, FM.ff_angletypes, FM.ff_dihedraltypes);
 //}
-
-

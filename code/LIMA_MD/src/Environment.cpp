@@ -9,7 +9,7 @@ using std::string;
 
 Environment::Environment() {
 	sayHello();
-	display = new DisplayV2();
+	display = new Display();
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
@@ -116,12 +116,8 @@ void Environment::sayHello() {
 
 	cout << "\033[1;32m"; // set text color to green
 	cout << file_contents;
-	printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n");
+	printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n\n");
 	cout << "\033[0m"; // reset text color
-
-
-
-
 }
 
 

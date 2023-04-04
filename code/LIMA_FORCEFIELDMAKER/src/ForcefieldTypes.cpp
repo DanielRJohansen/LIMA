@@ -6,8 +6,7 @@
 using std::cout, std::endl;
 
 
-
-vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map) {
+vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map, LimaLogger& logger, bool print_mappings) {
 	vector<NB_Atomtype> filtered_list;
 
 	filtered_list.push_back(forcefield[0]);				// Solvent is not present in topology, so we force it to be added here!
@@ -44,12 +43,18 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 		}
 
 	}
-	printf("Filtered ff down to %lld entries (%lld bytes)\n", filtered_list.size(), sizeof(float) * 3 * filtered_list.size());
-	printf("Aliases (%d): \n", map->n_mappings);
-	for (int i = 0; i < map->n_mappings; i++) {
-		//cout << map->mappings[i].left << "    " << map->mappings[i].right << endl;
+	
+	logger.print(std::format("Filtered ff down to {} entries ({} bytes)\n", 
+		filtered_list.size(), sizeof(float) * 3 * filtered_list.size()));
+
+	if (print_mappings) {
+		logger.print(std::format("Aliases ({}): \t", map->n_mappings));
+		for (int i = 0; i < map->n_mappings; i++) {
+			logger.print(std::format("\t{} -> {}\n", map->mappings[i].left, map->mappings[i].right));
+		}
+		logger.print("\n");
 	}
-	printf("\n\n\n");
+
 	return filtered_list;
 }
 

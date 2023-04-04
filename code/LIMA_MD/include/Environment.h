@@ -70,7 +70,7 @@ private:
 	void sayHello();
 
 	//Display* display;
-	DisplayV2* display = nullptr;
+	Display* display = nullptr;
 	//Interface* interface = nullptr;
 	
 	Forcefield forcefield{VerbosityLevel::V1};

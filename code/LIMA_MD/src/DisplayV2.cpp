@@ -1,15 +1,18 @@
 #include "DisplayV2.h"
 
 
-DisplayV2::DisplayV2() {
+Display::Display() :
+    logger(LimaLogger::LogMode::compact, "forcefieldmaker") 
+{    
 #ifdef ENABLE_DISPLAY
     int success = initGLFW();
 #endif
-    printf("Display initialized\n");
+    logger.print("Display initialized\n");
+    logger.finishSection();
 }
 
 
-void DisplayV2::drawFilledCircle(const RenderBall& ball) {
+void Display::drawFilledCircle(const RenderBall& ball) {
     float light = 0.5;
     Int3 shaded_color = ball.color * light;
     glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
@@ -32,14 +35,14 @@ void DisplayV2::drawFilledCircle(const RenderBall& ball) {
 }
 
 
-void DisplayV2::drawBalls(RenderBall* balls, int n_balls) {
+void Display::drawBalls(RenderBall* balls, int n_balls) {
     for (int i = n_balls-1; i >= 0; i--) {
         RenderBall& ball = balls[i];
         if (!ball.disable) { drawFilledCircle(ball); }
     }
 }
 
-void DisplayV2::render(Simulation* simulation) {
+void Display::render(Simulation* simulation) {
 #ifdef ENABLE_DISPLAY
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -60,7 +63,7 @@ void DisplayV2::render(Simulation* simulation) {
 #endif
 }
 
-bool DisplayV2::checkWindowStatus() {
+bool Display::checkWindowStatus() {
 #ifdef ENABLE_DISPLAY
     glfwPollEvents();
     if (glfwWindowShouldClose(window)) {
@@ -72,17 +75,18 @@ bool DisplayV2::checkWindowStatus() {
     return true;
 }
 
-bool DisplayV2::initGLFW() {
-    printf("Initializing display...  ");
+bool Display::initGLFW() {
+    
+    logger.print("Initializing display...\n");
 
     /* Initialize the library */
     if (!glfwInit()) {
-        printf("GLFW failed to initialize\n");
+        printf("\nGLFW failed to initialize\n");
         exit(0);
     }
 
     /* Create a windowed mode window and its OpenGL context */
-    printf("Loading window --->");
+    logger.print("Loading window --->");
     window = glfwCreateWindow(display_width, display_height, "LIMA - Molecular Dynamics Engine", NULL, NULL);
     if (!window)
     {
@@ -90,7 +94,7 @@ bool DisplayV2::initGLFW() {
         return 0;
     }
     glfwSetWindowPos(window, screensize[0] - display_width, 0);
-    printf("done\n");
+    logger.print("done\n");
 
     /* Make the window's context current */
     glfwMakeContextCurrent(window);

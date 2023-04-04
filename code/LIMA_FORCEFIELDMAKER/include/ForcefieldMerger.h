@@ -7,10 +7,10 @@
 class ForcefieldMerger
 {
 public:
-	void mergeForcefields(vector<string> file_paths){
+	void mergeForcefields(vector<string> file_paths, LimaLogger& logger){
 
 		for (string path : file_paths) {
-			vector<vector<string>> rows = Reader::readFile(path);
+			vector<vector<string>> rows = Reader::readFile(path, logger);
 			parseNBAtomtypes(rows, &ff_nonbonded);
 			parseBondtypes(rows, &ff_bondtypes);
 			parseAngletypes(rows, &ff_angletypes);

@@ -308,33 +308,11 @@ struct Coord {
 			throw std::exception("Requested bad dimension");
 		}
 	}
-//	__host__ __device__ float distSqAbs(Coord* a) {
-//		// Calc distances along all three dimensions, and convert to Float3
-//		Coord diff = this->difference(a);
-//		Float3 diff_f{ static_cast<float>(diff.x), static_cast<float>(diff.y), static_cast<float>(diff.z) };
-//
-//		// Calc distances along all three dimensions in x/(2^32)
-//		diff_f *= BOX_LEN;
-//		uint32_t uu = UINT32_MAX;
-////		float f = static_cast<float>(uu);
-//		diff_f = diff_f / static_cast<float>(uu);
-//
-//		return diff_f.lenSquared();
-//	}
 
 	__host__ __device__ Float3 toFloat3() const { 
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
 	}
-//
-//private:
-//	
-//	__host__ __device__ Coord difference(Coord* a) const {
-//		return Coord{
-//			std::max(x, a->x) - std::min(x, a->x),
-//			std::max(y, a->y) - std::min(y, a->y),
-//			std::max(z, a->z) - std::min(z, a->z)
-//		};
-//	}
+
 };
 
 struct NodeIndex : public Int3 {

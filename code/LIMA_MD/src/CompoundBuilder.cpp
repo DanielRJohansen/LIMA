@@ -258,7 +258,7 @@ void CompoundBuilder::addBond(CompoundCollection* compound_collection, ParticleR
 	}
 		
 
-	PairBond* bondtype = forcefield->getBondType(maps[0].global_id, maps[1].global_id);
+	SingleBond* bondtype = forcefield->getBondType({ maps[0].global_id, maps[1].global_id });
 
 	distributeLJIgnores(compound_collection, maps, 2);				// DANGER
 
@@ -269,7 +269,7 @@ void CompoundBuilder::addBond(CompoundCollection* compound_collection, ParticleR
 			exit(0);
 		}
 
-		compound->singlebonds[compound->n_singlebonds++] = PairBond(maps[0].local_id_compound, maps[1].local_id_compound, bondtype->b0, bondtype->kb);
+		compound->singlebonds[compound->n_singlebonds++] = SingleBond(maps[0].local_id_compound, maps[1].local_id_compound, bondtype->b0, bondtype->kb);
 
 
 	}
@@ -279,8 +279,8 @@ void CompoundBuilder::addBond(CompoundCollection* compound_collection, ParticleR
 		// To create the single-bond we need to access bridge_local_indexes			
 		CompoundBridge* bridge = compound_bridge_bundle->getBelongingBridge(&g_bond);
 		bridge->addBondParticles(&g_bond, compound_collection);
-		//bridge->addSinglebond(PairBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
-		bridge->addGenericBond(PairBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
+		//bridge->addSinglebond(SingleBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
+		bridge->addGenericBond(SingleBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
 	}
 }
 
@@ -294,7 +294,7 @@ void CompoundBuilder::addAngle(CompoundCollection* compound_collection, Particle
 
 
 
-	AngleBond* angletype = forcefield->getAngleType(maps[0].global_id, maps[1].global_id, maps[2].global_id);
+	AngleBond* angletype = forcefield->getAngleType({ maps[0].global_id, maps[1].global_id, maps[2].global_id });
 
 	distributeLJIgnores(compound_collection, maps, 3);
 
@@ -325,7 +325,7 @@ void CompoundBuilder::addDihedral(CompoundCollection* molecule, ParticleRef* map
 		return;
 
 
-	DihedralBond* dihedraltype = forcefield->getDihedralType(maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id);
+	DihedralBond* dihedraltype = forcefield->getDihedralType({ maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id });
 
 	distributeLJIgnores(molecule, maps, 4);
 

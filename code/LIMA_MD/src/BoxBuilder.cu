@@ -70,7 +70,7 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
 
 	for (int c = 0; c < compound_collection->n_compounds; c++) {
-		Compound_Carrier* compound = &compound_collection->compounds[c];
+		Compound_Carrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
 		for (int i = 0; i < compound->n_particles; i++) {
 			//compound->prev_positions[i] += offset;
 			/*compound->state.positions[i] += offset;
@@ -213,15 +213,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
 		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
-			//simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(sol_pos, simulation->dt);
-			//SolventCoord solventcoord = SolventCoord::createFromPositionNM(sol_pos); // Const cast after pbc?
-
-			const Float3 pos_lm = sol_pos * NANO_TO_LIMA;
-			Position position{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
-
+			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 
-			//LIMAPOSITIONSYSTEM::applyPBC(solventcoord);
 			
 			solventcoords[simulation->box->n_solvents] = solventcoord;	// REMOVE soon?
 			solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
@@ -278,8 +272,8 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 {
 	compound->init();
 
-	std::vector<Position> positions;
-	std::vector<Position> positions_prev;
+	std::vector<LimaPosition> positions;
+	std::vector<LimaPosition> positions_prev;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
 
@@ -287,32 +281,16 @@ void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simul
 
 
 
-	for (int i = 0; i < compound->n_particles; i++) {
-		//state.positions[i] = compound->state.positions[i];
-		//state.n_particles++;
-		//
-		//Float3 atom_pos_sub1 = state.positions[i] - compound_united_vel * simulation->dt;
-		//state_prev.positions[i] = atom_pos_sub1;
-		//state_prev.n_particles++;
-		const Float3 pos_lm = compound->state.positions[i] * NANO_TO_LIMA;
-		positions.push_back(Position{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) });
+	for (int i = 0; i < compound->n_particles; i++) {		
+		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(compound->state.positions[i]));
 
-		const Float3 pos_lm_prev = (compound->state.positions[i] - compound_united_vel * simulation->dt)* NANO_TO_LIMA;
-		positions_prev.push_back(Position{ static_cast<int64_t>(pos_lm_prev.x), static_cast<int64_t>(pos_lm_prev.y), static_cast<int64_t>(pos_lm_prev.z) });
+		const Float3 pos_prev_nm = (compound->state.positions[i] - compound_united_vel * simulation->dt);
+		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}
 
 
 	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
 	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
-
-	//coords = LIMAPOSITIONSYSTEM::positionCompound(state, 0);
-	//coords_prev = LIMAPOSITIONSYSTEM::positionCompound(state_prev, 0);
-	
-
-	/*for (int i = 0; i < compound->n_particles; i++) {
-		state->positions[i] *= 1.f/NORMALIZER;
-		state_prev->positions[i] *= 1.f/ NORMALIZER;
-	}*/
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
 }

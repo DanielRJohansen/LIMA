@@ -256,7 +256,7 @@ void CompoundBridge::addBondParticles(GenericBond* bond, CompoundCollection* mol
 	}
 }
 
-void CompoundBridge::addGenericBond(PairBond pb) {
+void CompoundBridge::addGenericBond(SingleBond pb) {
 	if (n_singlebonds == MAX_SINGLEBONDS_IN_BRIDGE) {
 		printf("Cannot add bond to bridge\n");
 		exit(0);
@@ -348,7 +348,7 @@ CompoundBridgeCompact::CompoundBridgeCompact(CompoundBridge* bridge, bool verbos
 
 
 
-PairBond::PairBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
+SingleBond::SingleBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 	// This is only for loading the forcefield, so the ID's refers to id's given in .conf file!
 	atom_indexes[0] = id1;
 	atom_indexes[1] = id2;

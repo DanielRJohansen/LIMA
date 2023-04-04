@@ -4,9 +4,9 @@
 #include <algorithm>
 #include <unordered_set>
 
-bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_lm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
+bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_nm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	const float dist = EngineUtils::calcHyperDistNM(pos_a, pos_b);
-	return dist < cutoff_lm;
+	return dist < cutoff_nm;
 }
 
 void inline addNeighborIfEligible(HashTable& currentNeighbors,
@@ -16,7 +16,7 @@ void inline addNeighborIfEligible(HashTable& currentNeighbors,
 	NeighborList::NEIGHBOR_TYPE neighbortype_self, NeighborList::NEIGHBOR_TYPE neighbortype_other,
 	const float cutoff_extension)
 {
-	if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_LM + cutoff_extension)) {
+	if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_NM + cutoff_extension)) {
 		if (currentNeighbors.insert(id_other)) {
 			nlist_self.addId(id_other, neighbortype_other);
 			nlist_other.addId(id_self, neighbortype_self);
@@ -45,18 +45,14 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
 		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
 
-		compound_key_positions[compound_id] = simulation.traj_buffer[index];
-		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(simulation.traj_buffer[index]);
+		compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
+		const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
+		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
 		if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
 			int a = 0;
 		}
 	}
 }
-
-
-
-
-
 
 
 

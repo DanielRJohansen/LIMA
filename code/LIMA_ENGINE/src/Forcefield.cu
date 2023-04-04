@@ -6,7 +6,7 @@
 
 using namespace LIMA_Print;
 
-
+const int min_reserve_size = 10000;	// This should NOT be permanent...
 
 Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 
@@ -43,33 +43,58 @@ int Forcefield::getAtomtypeID(int global_id) {
 	return nb_atomtype_ids[global_id];
 }
 
-PairBond* Forcefield::getBondType(int id1, int id2) {
-	for (int i = 0; i < n_topol_bonds; i++) {
-		if (topol_bonds[i].atom_indexes[0] == id1 && topol_bonds[i].atom_indexes[1] == id2) {
-			return &topol_bonds[i];
+template <int array_length>
+bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> query_ids) {
+	for (int i = 0; i < array_length; i++) {
+		if (topolbonds[i] != query_ids[i]) { return false; }
+	}
+	return true;
+}
+
+SingleBond* Forcefield::getBondType(std::array<int, 2> ids) {
+	//for (int i = 0; i < n_topol_bonds; i++) {
+	//	if (topol_bonds[i].atom_indexes[0] == id1 && topol_bonds[i].atom_indexes[1] == id2) {
+	//		return &topol_bonds[i];
+	//	}
+	//}
+	for (auto& singlebond : topol_bonds) {
+		if (isMatch(singlebond.atom_indexes, ids)) {
+			return &singlebond;
 		}
 	}
-	printf("Bond not found with ids %d %d\n", id1, id2);
+	printf("Bond not found with ids %d %d\n", ids[0], ids[1]);
 	exit(0);
 }
 
-AngleBond* Forcefield::getAngleType(int id1, int id2, int id3) {
-	for (int i = 0; i < n_topol_angles; i++) {
-		if (topol_angles[i].atom_indexes[0] == id1 && topol_angles[i].atom_indexes[1] == id2 && topol_angles[i].atom_indexes[2] == id3) {
-			return &topol_angles[i];
+AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) {
+	//for (int i = 0; i < n_topol_angles; i++) {
+	//	if (topol_angles[i].atom_indexes[0] == id1 && topol_angles[i].atom_indexes[1] == id2 && topol_angles[i].atom_indexes[2] == id3) {
+	//		return &topol_angles[i];
+	//	}
+	//}
+	for (auto& anglebond : topol_angles) {
+		if (isMatch(anglebond.atom_indexes, ids)) {
+			return &anglebond;
 		}
 	}
-	printf("Angle not found with ids %d %d %d\n", id1, id2, id3);
+
+	printf("Angle not found with ids %d %d %d\n", ids[0], ids[1], ids[2]);
 	exit(0);
 }
 
-DihedralBond* Forcefield::getDihedralType(int id1, int id2, int id3, int id4) {
-	for (int i = 0; i < n_topol_dihedrals; i++) {
+DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) {
+	/*for (int i = 0; i < n_topol_dihedrals; i++) {
 		if (topol_dihedrals[i].atom_indexes[0] == id1 && topol_dihedrals[i].atom_indexes[1] == id2 && topol_dihedrals[i].atom_indexes[2] == id3 && topol_dihedrals[i].atom_indexes[3] == id4) {
 			return &topol_dihedrals[i];
 		}
+	}*/
+	for (auto& dihedralbond : topol_dihedrals) {
+		if (isMatch(dihedralbond.atom_indexes, ids)) {
+			return &dihedralbond;
+		}
 	}
-	printf("Dihedral not found with ids %d %d %d %d\n", id1, id2, id3, id4);
+
+	printf("Dihedral not found with ids %d %d %d %d\n", ids[0], ids[1], ids[2], ids[3]);
 	exit(0);
 }
 
@@ -130,9 +155,9 @@ int* Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// r
 	return atomtype_ids;
 }
 
-PairBond* Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
-	PairBond* bonds = new PairBond[10000];
-	int ptr = 0;
+std::vector<SingleBond> Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
+	std::vector<SingleBond> singlebonds;
+	singlebonds.reserve(min_reserve_size);
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : forcefield_rows) {
@@ -142,21 +167,22 @@ PairBond* Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
 		}
 
 		if (current_state == BONDS) {
-			bonds[ptr++] = PairBond(
+			singlebonds.push_back(SingleBond(
 				stoi(row[0]), 
 				stoi(row[1]), 
-				stof(row[4]) * NANO_TO_LIMA,						/* convert [nm] to [lm]*/
-				stof(row[5]) / (NANO_TO_LIMA * NANO_TO_LIMA));		/* convert [J/(mol * nm^2)] to [J/(mol * nm * lm)*/ // I dont know why, but one of the "nm" might be the direction unitvector?? i am confused...
+				stof(row[4]) * NANO_TO_LIMA,						// convert [nm] to [lm]*/
+				stof(row[5]) / (NANO_TO_LIMA * NANO_TO_LIMA)		// convert [J/(mol * nm^2)] to [J/(mol * nm * lm) I dont know why, but one of the "nm" might be the direction unitvector?? i am confused...
+			));		
 		}
 	}
-	n_topol_bonds = ptr;
-	if (vl >= V1) { printf("%d bonds loaded\n", ptr); }
-	return bonds;
+	if (vl >= V1) { printf("%d bonds loaded\n", singlebonds.size()); }
+	return singlebonds;
 }
 
-AngleBond* Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
-	AngleBond* angles = new AngleBond[10000];
-	int ptr = 0;
+std::vector<AngleBond> Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
+	std::vector<AngleBond> anglebonds;
+	anglebonds.reserve(min_reserve_size);
+
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : forcefield_rows) {
@@ -166,18 +192,18 @@ AngleBond* Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
 		}
 
 		if (current_state == ANGLES) {
-			angles[ptr++] = AngleBond(stoi(row[0]), stoi(row[1]), stoi(row[2]), stof(row[6]) , stof(row[7]));		// Assumes radians here
+			anglebonds.push_back(AngleBond(stoi(row[0]), stoi(row[1]), stoi(row[2]), stof(row[6]) , stof(row[7])));		// Assumes radians here
 		}
 
 	}
-	n_topol_angles = ptr;
-	if (vl >= V1) { printf("%d angles loaded\n", ptr); }
-	return angles;
+	if (vl >= V1) { printf("%d angles loaded\n", anglebonds.size()); }
+	return anglebonds;
 }
 
-DihedralBond* Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows) {
-	DihedralBond* dihedrals = new DihedralBond[10000];
-	int ptr = 0;
+std::vector<DihedralBond> Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows) {
+	std::vector<DihedralBond> dihedralbonds;
+	dihedralbonds.reserve(min_reserve_size);
+
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : forcefield_rows) {
@@ -190,13 +216,20 @@ DihedralBond* Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows)
 		}
 
 		if (current_state == DIHEDRALS) {
-			dihedrals[ptr++] = DihedralBond(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3]), stof(row[8]), abs(stof(row[9])), stoi(row[10]));			// MIGHT HAVE TO DO AN ABS() ON K_PHI, SINCE IT IS NEGATIVE SOMETIMES??? WHAT THE FUCKKKKKKKKKK CHEMISTS?????!?!?!
+			dihedralbonds.push_back(DihedralBond(
+				stoi(row[0]), 
+				stoi(row[1]), 
+				stoi(row[2]), 
+				stoi(row[3]), 
+				stof(row[8]),
+				abs(stof(row[9])), // MIGHT HAVE TO DO AN ABS() ON K_PHI, SINCE IT IS NEGATIVE SOMETIMES??? WHAT THE FUCKKKKKKKKKK CHEMISTS?????!?!?!
+				stoi(row[10])
+			));			
 			//has_been_enabled = true;
 		}
 	}
-	n_topol_dihedrals = ptr;
-	if (vl >= V1) { printf("%d dihedrals loaded\n", ptr); }
-	return dihedrals;
+	if (vl >= V1) { printf("%d dihedrals loaded\n", dihedralbonds.size()); }
+	return dihedralbonds;
 }
 
 

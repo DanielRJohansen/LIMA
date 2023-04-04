@@ -8,8 +8,8 @@ using namespace LIMA_Print;
 using std::string;
 
 Environment::Environment() {
-	display = new DisplayV2();
 	sayHello();
+	display = new DisplayV2();
 }
 
 void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
@@ -22,7 +22,7 @@ void Environment::CreateSimulation(string conf_path, string topol_path, string w
 	prepFF(conf_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	CompoundBuilder compoundbuilder(&forcefield, V1);
+	CompoundBuilder compoundbuilder(&forcefield, CRITICAL_INFO);
 	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(conf_path, topol_path);
 
 	boxbuilder.buildBox(simulation.get());
@@ -104,17 +104,23 @@ void Environment::prepareForRun() {
 	ready_to_run = true;
 }
 
+
 void Environment::sayHello() {
-	std::ifstream file("logo_ascii.txt");
+	std::ifstream file(main_dir+"resources/logo_ascii.txt");
+	if (!file) {
+		throw std::runtime_error("Failed to open file logo file");
+	}
+
 	std::string file_contents((std::istreambuf_iterator<char>(file)),
 		std::istreambuf_iterator<char>());
 
 	cout << "\033[1;32m"; // set text color to green
-	cout << "Hello, World!\n";
+	cout << file_contents;
+	printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n");
 	cout << "\033[0m"; // reset text color
 
 
-	int a = 0;
+
 
 }
 

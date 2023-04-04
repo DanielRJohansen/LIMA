@@ -44,12 +44,22 @@ namespace LIMAPOSITIONSYSTEM {
 
 	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
 		const NodeIndex difference = static_index - movable_index;
-		movable_index.x += BOXGRID_N_NODES * ((difference.x) > (BOXGRID_N_NODES / 2));
-		movable_index.x -= BOXGRID_N_NODES * ((difference.x) < -(BOXGRID_N_NODES / 2));
-		movable_index.y += BOXGRID_N_NODES * ((difference.y) > (BOXGRID_N_NODES / 2));
-		movable_index.y -= BOXGRID_N_NODES * ((difference.y) < -(BOXGRID_N_NODES / 2));
-		movable_index.z += BOXGRID_N_NODES * ((difference.z) > (BOXGRID_N_NODES / 2));
-		movable_index.z -= BOXGRID_N_NODES * ((difference.z) < -(BOXGRID_N_NODES / 2));
+		movable_index.x += BOXGRID_N_NODES * (difference.x > (BOXGRID_N_NODES / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
+		movable_index.x -= BOXGRID_N_NODES * (difference.x < -(BOXGRID_N_NODES / 2));
+		movable_index.y += BOXGRID_N_NODES * (difference.y > (BOXGRID_N_NODES / 2));
+		movable_index.y -= BOXGRID_N_NODES * (difference.y < -(BOXGRID_N_NODES / 2));
+		movable_index.z += BOXGRID_N_NODES * (difference.z > (BOXGRID_N_NODES / 2));
+		movable_index.z -= BOXGRID_N_NODES * (difference.z < -(BOXGRID_N_NODES / 2));
+	}
+
+	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {
+		const LimaPosition difference = static_position - movable_position;
+		movable_position.x += BOX_LEN_i * (difference.x > BOX_LEN_i / 2);
+		movable_position.x -= BOX_LEN_i * (difference.x < -BOX_LEN_i / 2);
+		movable_position.y += BOX_LEN_i * (difference.y > BOX_LEN_i / 2);
+		movable_position.y -= BOX_LEN_i * (difference.y < -BOX_LEN_i / 2);
+		movable_position.z += BOX_LEN_i * (difference.z > BOX_LEN_i / 2);
+		movable_position.z -= BOX_LEN_i * (difference.z < -BOX_LEN_i / 2);
 	}
 
 	__device__ __host__ static void applyPBC(NodeIndex& origo) {
@@ -68,7 +78,7 @@ namespace LIMAPOSITIONSYSTEM {
 		applyPBC(coords.origo);
 	}
 
-	__device__ __host__ static void applyPBC(Position& position) {
+	__device__ __host__ static void applyPBC(LimaPosition& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
 		position.x += BOX_LEN_i * (position.x + offset < 0);
@@ -79,31 +89,24 @@ namespace LIMAPOSITIONSYSTEM {
 		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
 	}
 
-	// -------------------------------------------------------- Position Conversion -------------------------------------------------------- //
+	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
 
-	__host__ static Position createPosition(const NodeIndex& nodeindex) {
-		return Position{
+	__host__ static LimaPosition createLimaPosition(const NodeIndex& nodeindex) {
+		return LimaPosition{
 			nodeindex.x * BOXGRID_NODE_LEN_i,
 			nodeindex.y * BOXGRID_NODE_LEN_i,
 			nodeindex.z * BOXGRID_NODE_LEN_i
 		};
 	}
-
+	__host__ static LimaPosition createLimaPosition(const Float3& pos_nm) {
+		const Float3 pos_lm = pos_nm * NANO_TO_LIMA;
+		return LimaPosition{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
+	}
+	
 	// Safe to call with any Coord
 	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN_i, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
 
-	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
-		const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
-		NodeIndex nodeindex{
-			static_cast<int>(position.x / nodelen_nm),
-			static_cast<int>(position.y / nodelen_nm),
-			static_cast<int>(position.z / nodelen_nm)
-		};
-		applyPBC(nodeindex);
-		return nodeindex;
-	}
-
-	__host__ static NodeIndex absolutePositionToNodeIndex(const Position& position) {
+	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position) {
 		int offset = BOXGRID_NODE_LEN_i / 2;
 		NodeIndex nodeindex{
 			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
@@ -131,18 +134,21 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	__host__ static Coord getRelativeCoord(const Position& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
+	__host__ static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
 		//float epsilon = 1.1;
 		//if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
 		//	throw "Tried to place a position that was not correcly assigned a node"; 
 		//}
 
 		// Subtract nodeindex from abs position to get relative position
-		const Position relpos = absolute_position - createPosition(nodeindex);
-		auto f = absolute_position.toFloat3();
-		auto o = createPosition(nodeindex).toFloat3();
-		auto r = relpos.toFloat3();
-		auto p = createPosition(nodeindex);
+		LimaPosition hyperpos = absolute_position;
+		LIMAPOSITIONSYSTEM::applyHyperpos(createLimaPosition(nodeindex), hyperpos);
+		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
+		auto absposf = absolute_position.toFloat3();
+		auto abs_hyperposf = hyperpos.toFloat3();
+		auto origof = createLimaPosition(nodeindex).toFloat3();
+		auto relposf = relpos.toFloat3();
+		auto p = createLimaPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * max_node_diff) {
 			throw "Tried to place a position that was not correcly assigned a node";
@@ -156,7 +162,7 @@ namespace LIMAPOSITIONSYSTEM {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Position& position) {
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const LimaPosition& position) {
 		const NodeIndex nodeindex = absolutePositionToNodeIndex(position);
 		const Coord relpos = getRelativeCoord(position, nodeindex);
 		return std::make_tuple(nodeindex, relpos);
@@ -172,7 +178,7 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
 	/// <returns></returns>
-	static CompoundCoords positionCompound(const std::vector<Position>& positions,  int key_particle_index=0) {
+	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index=0) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
@@ -332,41 +338,23 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	/// <summary>
-	/// Shifts the position 1/2 blocklen so we can find the appropriate origo by 
+	/// Shifts the position 1/2 blocklen so we can find the appropriate origo.
+	/// Applies PBC to the solvent
 	/// </summary>
 	/// <param name="position">Absolute position of solvent [nm] </param>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const Position& position) {
-		//const Float3 blockcenter_relative{ SolventBlockGrid::node_len / 2.f / NANO_TO_LIMA };	// [nm]
-		//const Float3 position_adjusted = position + blockcenter_relative;						// [nm]
-
-		//const Float3 origo_f = position_adjusted.piecewiseRound();								// [nm]
-		//const Float3 origo_f = position.piecewiseRound();
-		//const Float3 relpos_f = (position - origo_f) * NANO_TO_LIMA;							// [lm}
-
-		Position hyperpos = position;
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const LimaPosition& position) {
+		LimaPosition hyperpos = position;
 		applyPBC(hyperpos);
 
 		//const auto [nodeindex, relpos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
 		NodeIndex nodeindex; Coord relpos;
 		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement(hyperpos);
 
-		//SolventCoord solventcoord{ Coord{origo_f}, Coord{relpos_f } };
 		SolventCoord solventcoord{ nodeindex, relpos };
 		applyPBC(solventcoord);
 		return solventcoord;
 	}
 
-
-
-
-
-	//__device__ static bool willSolventRe
-
-	// Get the relpos_prev, if the solvent was NOT in the same solventblock last step
-	//__device__ static Coord getRelposPrevAfterTransfer(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int step) {
-
-
-	//__device__ static void applyPBC(Compound* compound);
 };
 
 
@@ -420,7 +408,7 @@ namespace EngineUtils {
 
 
 
-	// Position in [nm]
+	// LimaPosition in [nm]
 	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
 		for (int dim = 0; dim < 3; dim++) {
 			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
@@ -484,8 +472,6 @@ namespace EngineUtils {
 	// This function assumes that coord_tsub1 is already hyperpositioned to coord.
 	__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const float dt, const float thermostat_scalar) {
 
-		return coord + (coord - coord_tsub1) * thermostat_scalar + Coord{ *force * dt * dt / mass };
-		//return coord + Coord{ 1000000, 0, 0 };
 		if (threadIdx.x == 0 && blockIdx.x == 0) {
 			//force->print('f');
 			//printf("dt %f mass %f\n", dt, mass);
@@ -493,6 +479,8 @@ namespace EngineUtils {
 			//uint32_t diff = coord.x - x - dx;
 			//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
 		}
+
+		return coord + (coord - coord_tsub1) * thermostat_scalar + Coord{ *force * dt * dt / mass };
 	}
 
 

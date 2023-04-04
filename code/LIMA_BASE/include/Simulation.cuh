@@ -117,7 +117,7 @@ public:
 	Float3* traj_buffer = nullptr;	// Positions in [nm]
 	float* temperature_buffer = nullptr;
 	int n_temp_values = 0;
-	Float3* traindata_buffer = nullptr;		// Position and force data for all particles, for NN training
+	Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
 	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 
 	uint32_t total_particles_upperbound = 0;

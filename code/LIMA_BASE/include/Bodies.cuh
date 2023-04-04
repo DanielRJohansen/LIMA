@@ -44,15 +44,15 @@ struct NBAtomtype {
 };
 
 
-struct PairBond {	// IDS and indexes are used interchangeably here!
-	PairBond(){}
-	PairBond(int id1, int id2, float b0, float kb);
+struct SingleBond {	// IDS and indexes are used interchangeably here!
+	SingleBond(){}
+	SingleBond(int id1, int id2, float b0, float kb);
 
-	PairBond(uint32_t particleindex_a, uint32_t particleindex_b) {
+	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
 	}
-	PairBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
+	SingleBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
 		b0(ref_dist), kb(kb) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
@@ -480,7 +480,7 @@ struct Compound {
 	//double radius = 0;
 
 	uint16_t n_singlebonds = 0;
-	PairBond singlebonds[MAX_PAIRBONDS];
+	SingleBond singlebonds[MAX_PAIRBONDS];
 
 	uint16_t n_anglebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS];
@@ -614,7 +614,7 @@ struct CompoundBridge {
 	int n_bonds = 0;
 	
 
-	PairBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
+	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
 	uint16_t n_singlebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
 	uint16_t n_anglebonds = 0;
@@ -629,7 +629,7 @@ struct CompoundBridge {
 
 
 
-	void addGenericBond(PairBond pb);
+	void addGenericBond(SingleBond pb);
 	void addGenericBond(AngleBond ab);
 	void addGenericBond(DihedralBond db);
 
@@ -694,7 +694,7 @@ struct CompoundBridgeCompact {
 	uint8_t n_particles = 0;					
 
 	uint16_t n_singlebonds = 0;
-	PairBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
+	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
 
 	uint16_t n_anglebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];

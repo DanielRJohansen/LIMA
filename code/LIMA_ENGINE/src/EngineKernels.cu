@@ -48,7 +48,7 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 }
 
 
-__device__ Float3 computerIntercompoundLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
+__device__ Float3 computeIntercompoundLJForces(Float3* self_pos, uint8_t atomtype_self, float* potE_sum, uint32_t global_id_self, float* data_ptr,
 	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {
 	Float3 force(0.f);
 	
@@ -63,6 +63,8 @@ __device__ Float3 computerIntercompoundLJForces(Float3* self_pos, uint8_t atomty
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
+		//if (force.len() != 0.f)
+		//	printf("Force: %.14f\n", force.len());
 	}
 	return force;// *24.f * 1e-9;
 }
@@ -73,7 +75,7 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	for (int i = 0; i < compound->n_particles; i++) {
 
 		// Skip if particle is self or bonded
-		if (i == threadIdx.x && (*bonded_particles_lut->get(threadIdx.x, i))) { continue; }
+		if (i == threadIdx.x || (*bonded_particles_lut->get(threadIdx.x, i))) { continue; }
 
 		force += LimaForcecalc::calcLJForce(&compound_state->positions[threadIdx.x], &compound_state->positions[i], data_ptr, potE_sum,
 			calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]),
@@ -123,7 +125,7 @@ template <typename T>	// Can either be Compound or CompoundBridgeCompact
 __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* utility_buffer, float* potE) {	// only works if n threads >= n bonds
 	utility_buffer[threadIdx.x] = Float3(0.f);
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < entity->n_singlebonds; bond_offset++) {
-		PairBond* pb = nullptr;
+		SingleBond* pb = nullptr;
 		Float3 forces[2];
 		int bond_index = threadIdx.x + bond_offset * blockDim.x;
 		
@@ -239,7 +241,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
-		// calc Relative Position Shift from the origo-shift
+		// calc Relative LimaPosition Shift from the origo-shift
 		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self);
 	}
 	__syncthreads();
@@ -446,7 +448,6 @@ __global__ void compoundKernel(Box* box) {
 	Float3 force = compound.forces[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
 
-
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
@@ -472,7 +473,7 @@ __global__ void compoundKernel(Box* box) {
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
-			force += computerIntercompoundLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
+			force += computeIntercompoundLJForces(&compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], &potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 				&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 		}
 		__syncthreads();
@@ -503,7 +504,7 @@ __global__ void compoundKernel(Box* box) {
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-
+	//force = Float3(0);
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
 	{
@@ -520,6 +521,7 @@ __global__ void compoundKernel(Box* box) {
 
 		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
 		if (threadIdx.x < compound.n_particles) {
+	
 			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 		}
 	}

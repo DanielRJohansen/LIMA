@@ -361,18 +361,18 @@ struct NodeIndex : public Int3 {
 /// <summary>
 /// Absolute position in [lm]
 /// </summary>
-struct Position {
-	Position() = default;
-	Position(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
+struct LimaPosition {
+	LimaPosition() = default;
+	LimaPosition(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
 
 	__host__ __device__ void operator += (const int64_t& a) { x += a; y += a; z += a; };
 	__host__ __device__ void operator -= (const int64_t& a) { x -= a; y -= a; z -= a; };
-	inline Position operator - (const Position& a) const { return Position{ x - a.x, y - a.y, z - a.z }; }
+	inline LimaPosition operator - (const LimaPosition& a) const { return LimaPosition{ x - a.x, y - a.y, z - a.z }; }
 
-	Position abs() const { return Position{ std::abs(x), std::abs(y), std::abs(z) }; }
+	LimaPosition abs() const { return LimaPosition{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	int64_t largestMagnitudeElement() const {
-		const Position m = this->abs();
+		const LimaPosition m = this->abs();
 		return std::max(
 			std::max(m.x, m.y),
 			m.z

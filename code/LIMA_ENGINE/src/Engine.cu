@@ -160,15 +160,17 @@ void Engine::step() {
 		compoundKernel << < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
 	}
 	cudaDeviceSynchronize();	// Prolly not necessary
+	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
 		solventForceKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
-	}
-	cudaDeviceSynchronize();
-	EngineUtils::genericErrorCheck("Error after solventForceKernel");
-	if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
-		solventTransferKernel <<< SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size>>> (simulation->box);
+
+		cudaDeviceSynchronize();
+		EngineUtils::genericErrorCheck("Error after solventForceKernel");
+		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
+			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box);
+		}
 	}
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error after solventTransferKernel");

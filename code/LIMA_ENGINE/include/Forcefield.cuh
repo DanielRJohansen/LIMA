@@ -27,9 +27,9 @@ public:
 
 	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id);
-	PairBond* getBondType(int id1, int id2);
-	AngleBond* getAngleType(int id1, int id2, int id3);
-	DihedralBond* getDihedralType(int id1, int id2, int id3, int id4);
+	SingleBond* getBondType(std::array<int, 2> ids);
+	AngleBond* getAngleType(std::array<int, 3> ids);
+	DihedralBond* getDihedralType(std::array<int, 4> ids);
 
 
 
@@ -65,12 +65,9 @@ private:
 	NBAtomtype* nb_atomtypes = nullptr;
 	int n_nb_atomtypes = 0;
 
-	PairBond* topol_bonds = nullptr;
-	int n_topol_bonds = 0;
-	AngleBond* topol_angles = nullptr;
-	int n_topol_angles = 0;
-	DihedralBond* topol_dihedrals = nullptr;
-	int n_topol_dihedrals = 0; 
+	std::vector<SingleBond> topol_bonds;
+	std::vector<AngleBond> topol_angles;
+	std::vector<DihedralBond> topol_dihedrals;
 
 	VerbosityLevel vl = SILENT;
 
@@ -103,9 +100,9 @@ private:
 
 	int* parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
 
-	PairBond* parseBonds(vector<vector<string>> forcefield_rows);
-	AngleBond* parseAngles(vector<vector<string>> forcefield_rows);
-	DihedralBond* parseDihedrals(vector<vector<string>> forcefield_rows);
+	std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
+	std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);
+	std::vector<DihedralBond> parseDihedrals(vector<vector<string>> forcefield_rows);
 	
 	void loadAtomypesIntoForcefield();
 

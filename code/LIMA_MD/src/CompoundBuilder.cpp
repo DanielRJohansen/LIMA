@@ -705,6 +705,7 @@ void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol
 
 	createCompoundsAndBridges();
 
+	distributeBondsToCompoundsAndBridges();
 	//createBondedParticlesLUT();
 }
 
@@ -931,7 +932,6 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 	compounds.push_back(CompoundFactory{ 0 });
 
 	int current_residue_id = residues[0].id;
-	CompoundFactory& current_compound = compounds[0];
 
 	for (int residue_index = 0; residue_index < residues.size(); residue_index++) {
 		const Residue& residue = residues[residue_index];
@@ -950,8 +950,9 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 				compounds.push_back(compounds.size());
 			}
 			// If we are bonded, but no more room, start new compound and make bridge
-			else if (!current_compound.hasRoomForRes(residue.atoms.size())) {
+			else if (!compounds.back().hasRoomForRes(residue.atoms.size())) {
 				compounds.push_back(compounds.size());
+
 				int id_left = compounds.size() - 2;
 				int id_right = compounds.size() - 1;
 
@@ -966,11 +967,11 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 		// Add all atoms of residue to current compound
 		for (auto& atom : residue.atoms) {
 			// First add the new information to the particle
-			particle_info[atom.id].compound_index = current_compound.id;
-			particle_info[atom.id].local_id_compound = current_compound.n_particles;
+			particle_info[atom.id].compound_index = compounds.back().id;
+			particle_info[atom.id].local_id_compound = compounds.back().n_particles;
 
 			// Then add the particle to the compound
-			current_compound.addParticle(
+			compounds.back().addParticle(
 				atom.position,
 				forcefield->getAtomtypeID(atom.id),
 				forcefield->atomTypeToIndex(atom.name[0])
@@ -1023,7 +1024,7 @@ std::array<int, 2> getTheTwoDifferentIds(std::array<int, n_ids> particle_ids, co
 }
 
 template <int n_ids>
-BridgeFactory& getBridge(std::vector<BridgeFactory> bridges,const std::array<int, n_ids>& ids, const std::vector<ParticleInfo>& particle_info) {
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<int, n_ids>& ids, const std::vector<ParticleInfo>& particle_info) {
 	auto compound_ids = getTheTwoDifferentIds(ids, particle_info);
 
 	for (BridgeFactory& bridge : bridges) {
@@ -1088,7 +1089,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 
 void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id) {
-	if (n_particles == MAX_COMPOUND_PARTICLES) {
+	if (n_particles >= MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
 	}

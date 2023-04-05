@@ -260,7 +260,7 @@ private:
 
 	CompoundCollection compound_collection;
 
-
+	CompoundBridgeBundle* compound_bridge_bundle = nullptr;		// DISLIKE THIS
 
 
 
@@ -293,4 +293,8 @@ private:
 	void matchBondedResidues();
 
 	void createCompounds();
+
+	void createCompoundBridges();
+
+	void createBondedParticlesLUT();
 };

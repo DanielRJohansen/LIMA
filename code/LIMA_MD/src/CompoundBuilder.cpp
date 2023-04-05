@@ -702,6 +702,12 @@ void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol
 	loadTopology(topol_path);
 
 	matchBondedResidues();
+
+	createCompounds();
+
+	createCompoundBridges();
+
+	createBondedParticlesLUT();
 }
 
 
@@ -914,6 +920,8 @@ void MoleculeBuilder::createCompounds() {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
 
+	compound_collection.compound_bridge_bundle = new CompoundBridgeBundleCompact;
+
 	compound_collection.compounds.push_back(CompoundCarrier{ 0 });
 
 	int current_residue_id = residues[0].id;
@@ -935,7 +943,8 @@ void MoleculeBuilder::createCompounds() {
 			// If we are bonded, but no more room, start new compound and make bridge
 			else if (!current_compound.hasRoomForRes(residue.atoms.size())) {
 				compound_collection.compounds.push_back(compound_collection.compounds.size());
-
+				compound_bridge_bundle->addBridge(current_residue_id, residue.id);
+				//compound_collection.compound_bridges.addBridge(current_residue_id, residue.id);	// Better solution maybe..
 			}
 
 			current_residue_id = residue.id;

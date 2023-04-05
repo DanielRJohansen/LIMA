@@ -588,6 +588,7 @@ struct CompoundCollection {
 	int n_compounds = 0;
 	//Compound* compounds = nullptr;
 	std::vector<CompoundCarrier> compounds;
+	std::vector<CompoundBridge> compound_bridges;	// The new stuff!
 	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;

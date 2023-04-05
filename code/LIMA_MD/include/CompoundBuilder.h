@@ -9,7 +9,7 @@
 
 #include "Constants.cuh"
 #include "Forcefield.cuh"
-
+#include "Utilities.h"
 
 using namespace std;
 
@@ -49,6 +49,7 @@ struct Topology {
 	vector<bonds_data_entry> bonds_data;
 };
 
+enum TopologyMode { INACTIVE, ATOMS, BOND, ANGLE, DIHEDRAL };
 
 // The compound-builder must be unique to a single conf.gro-topol.top file pair!
 using namespace std;
@@ -89,7 +90,6 @@ private:
 	void calcParticleSphere(Compound* compound);
 
 
-	enum TopologyMode { INACTIVE, ATOMS, BOND, ANGLE, DIHEDRAL };
 	bool setMode(vector<string>& entry, TopologyMode& current_mode);
 	void loadMaps(ParticleRef* maps, vector<string>* record, int n);
 	void addGeneric(CompoundCollection* molecule, vector<string>* record, TopologyMode mode);
@@ -183,3 +183,114 @@ private:
 
 
 
+
+
+
+
+
+
+
+
+
+
+struct GroRecord {
+	int residue_number{};
+	std::string residue_name{};
+	std::string atom_name{};
+	int atom_number{};
+	Float3 position{};
+	Float3 velocity{};
+};
+
+struct AtomEntry {	// Vague defined class, temporarily holding information
+	AtomEntry(const int id, const Float3& position, const std::string name) : 
+		id(id), position(position), name(name) {}
+
+	const int id;				// Unique 1-indexed id, given by gro (I hope its unique..)
+	const Float3 position;
+	const std::string name;
+	//const Float3 velocity;	// to be added later...
+};
+
+struct Residue {
+	// Ballpark max size. Dont use for hard constraints, this is only for loosely reserving memory
+	static const int max_size_soft = 24;
+
+	Residue(int gro_id, int id, const std::string& name) : 
+		gro_id(gro_id), id(id), name(name) { atoms.reserve(max_size_soft); }
+
+	const int gro_id;					// NOT UNIQUE. Used ONLY to spot when a new residue occurs in a gro file
+	const int id;						// Unique id given by LIMA
+	const std::string name;				// 3 letter residue name
+
+	std::vector<AtomEntry> atoms;
+	std::vector<int> bondedresidue_ids;	// Lima Ids of residue with which this shares a singlebond
+};
+
+struct ParticleBondRefs {
+	std::vector<SingleBond*> singlebonds{};
+	std::vector<AngleBond*> anglebonds{};
+	std::vector<DihedralBond*> dihedralbonds{};
+};
+
+
+
+
+class MoleculeBuilder {
+public:
+	MoleculeBuilder(Forcefield* ff, const std::string& work_dir="", VerbosityLevel vl = SILENT);
+
+	void buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens = true);
+
+
+	const vector<Residue> getResidues() { return residues; }
+	const vector<Float3> getSolventPositions() { return solvent_positions; }
+
+
+private:
+	// Members, seen in the order they are filled in
+	std::vector<Residue> residues;
+	std::vector<Float3> solvent_positions;
+	int64_t n_particles_in_residues = 0;
+
+	std::vector<SingleBond> singlebonds;
+	std::vector<AngleBond> anglebonds;
+	std::vector<DihedralBond> dihedralbonds;
+	std::vector<ParticleBondRefs> particle_bonds_lut;	// Uses gro 1-indexed 
+
+	CompoundCollection compound_collection;
+
+
+
+
+
+
+
+
+	LimaLogger logger;
+	VerbosityLevel verbosity_level;
+	const Forcefield* forcefield;
+
+
+
+
+
+
+
+	// ------------------------------------ HELPER FUNCTIONS ------------------------------------ //
+
+	// Only works for fixed positions gro files!! Meaning max, 99.999 particles
+	void loadResiduesAndSolvents(const std::string gro_path);
+
+	// Loads all bonds, and sets references to these for each particle - HEAVY!
+	void loadTopology(const std::string& topol_path);
+
+	/// <summary>
+	/// Goes through all the residues, and fills the bondedresidue_ids vector. 
+	/// The particle_bonds_lut is used to determine whether particles of two different 
+	/// share a bond.
+	/// </summary>
+	void matchBondedResidues();
+
+	void createCompounds();
+};

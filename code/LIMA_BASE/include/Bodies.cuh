@@ -46,6 +46,7 @@ struct NBAtomtype {
 
 struct SingleBond {	// IDS and indexes are used interchangeably here!
 	SingleBond(){}
+	SingleBond(std::array<int, 2> ids); // Used when loading topology only
 	SingleBond(int id1, int id2, float b0, float kb);
 
 	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
@@ -67,6 +68,7 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 
 struct AngleBond {
 	AngleBond() {}
+	AngleBond(std::array<int, 3> ids); // Used when loading topology only
 	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
@@ -77,6 +79,7 @@ struct AngleBond {
 
 struct DihedralBond {
 	DihedralBond() {}
+	DihedralBond(std::array<int, 4> ids); // Used when loading topology only
 	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n);
 
 	float phi_0 = 0.f;
@@ -504,6 +507,9 @@ struct Compound {
 	__host__ bool hasRoomForRes() {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + MAX_ATOMS_IN_RESIDUE) <= MAX_COMPOUND_PARTICLES;
 	}
+	__host__ bool hasRoomForRes(int n_particles_in_res) {					// TODO: Implement, that it checks n atoms in res
+		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
+	}
 	//---------------------------------------------------------------------------------//
 
 //	__device__ void loadMeta(Compound* compound);
@@ -555,8 +561,8 @@ struct Compound {
 
 // Helper class containing some compound information we will not bring with us to the device
 // This means, all functions are host only!
-struct Compound_Carrier : public Compound {
-	Compound_Carrier(int id) : compound_id(id) {}
+struct CompoundCarrier : public Compound {
+	CompoundCarrier(int id) : compound_id(id) {}
 
 	int compound_id = -1;
 	CompoundState state;	// [nm], Absolute values 
@@ -581,7 +587,7 @@ struct CompoundCollection {
 	CompoundCollection();
 	int n_compounds = 0;
 	//Compound* compounds = nullptr;
-	std::vector<Compound_Carrier> compounds;
+	std::vector<CompoundCarrier> compounds;
 	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;

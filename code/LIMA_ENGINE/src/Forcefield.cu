@@ -35,7 +35,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 }
 
 
-int Forcefield::getAtomtypeID(int global_id) {
+int Forcefield::getAtomtypeID(int global_id) const {
 	if (global_id > n_atoms || global_id == 0) {	// 0 is an error, as atoms are 1-indexed
 		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", global_id);
 		exit(0);

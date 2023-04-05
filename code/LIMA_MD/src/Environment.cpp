@@ -12,25 +12,28 @@ Environment::Environment() {
 	display = new Display();
 }
 
-void Environment::CreateSimulation(string conf_path, string topol_path, string work_folder) {
+void Environment::CreateSimulation(string gro_path, string topol_path, string work_folder) {
 	simulation = std::make_unique<Simulation>(sim_params);
 
 	verifySimulationParameters();
 
 	this->work_folder = work_folder;
 
-	prepFF(conf_path, topol_path);									// TODO: Make check in here whether we can skip this!
+	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
+	MoleculeBuilder moleculebuilder(&forcefield, work_folder);
+	moleculebuilder.buildMolecules(gro_path, topol_path);
+
 	CompoundBuilder compoundbuilder(&forcefield, CRITICAL_INFO);
-	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(conf_path, topol_path);
+	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(gro_path, topol_path);
 
 	boxbuilder.buildBox(simulation.get());
 	boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);
-	vector<Float3> solvent_positions = compoundbuilder.getSolventPositions(conf_path);
+	vector<Float3> solvent_positions = compoundbuilder.getSolventPositions(gro_path);
 	boxbuilder.solvateBox(simulation.get(), &solvent_positions);
 #endif
 

@@ -127,7 +127,7 @@ void SolventBlockHelpers::setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBl
 }
 
 
-Float3 Compound_Carrier::calcCOM() {
+Float3 CompoundCarrier::calcCOM() {
 	Float3 com;
 	for (int i = 0; i < n_particles; i++) {
 		com += state.positions[i] / static_cast<float>(n_particles);
@@ -135,7 +135,7 @@ Float3 Compound_Carrier::calcCOM() {
 	return com;
 }
 
-__host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos) {	// TODO: Delete?
+__host__ void CompoundCarrier::addParticle(int atomtype_id, Float3 pos) {	// TODO: Delete?
 	if (n_particles == MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
@@ -149,7 +149,7 @@ __host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos) {	// TO
 	n_particles++;
 }
 
-__host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
+__host__ void CompoundCarrier::addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id) {
 	if (n_particles == MAX_COMPOUND_PARTICLES) {
 		printf("ERROR: Cannot add particle to compound!\n");
 		exit(1);
@@ -168,7 +168,7 @@ __host__ void Compound_Carrier::addParticle(int atomtype_id, Float3 pos, int ato
 	n_particles++;
 }
 
-__host__ void Compound_Carrier::calcParticleSphere() {
+__host__ void CompoundCarrier::calcParticleSphere() {
 	Float3 com = calcCOM();
 
 	float furthest = 0.f;
@@ -347,6 +347,11 @@ CompoundBridgeCompact::CompoundBridgeCompact(CompoundBridge* bridge, bool verbos
 }
 
 
+SingleBond::SingleBond(std::array<int, n_atoms> ids) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
 
 SingleBond::SingleBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 	// This is only for loading the forcefield, so the ID's refers to id's given in .conf file!
@@ -354,10 +359,22 @@ SingleBond::SingleBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 	atom_indexes[1] = id2;
 }
 
+AngleBond::AngleBond(std::array<int, n_atoms> ids) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
+
 AngleBond::AngleBond(int id1, int id2, int id3, float theta_0, float k_theta) : theta_0(theta_0), k_theta(k_theta) {
 	atom_indexes[0] = id1;
 	atom_indexes[1] = id2;
 	atom_indexes[2] = id3;
+}
+
+DihedralBond::DihedralBond(std::array<int, n_atoms> ids) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
 }
 
 DihedralBond::DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n) : phi_0(phi_0), k_phi(k_phi), n(n) {

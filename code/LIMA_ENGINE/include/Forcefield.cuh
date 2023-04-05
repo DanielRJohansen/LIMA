@@ -26,7 +26,7 @@ public:
 
 
 	void loadForcefield(std::string molecule_dir);
-	int getAtomtypeID(int global_id);
+	int getAtomtypeID(int global_id) const;
 	SingleBond* getBondType(std::array<int, 2> ids);
 	AngleBond* getAngleType(std::array<int, 3> ids);
 	DihedralBond* getDihedralType(std::array<int, 4> ids);
@@ -38,7 +38,7 @@ public:
 	}
 
 
-	int atomTypeToIndex(char atom) {
+	int atomTypeToIndex(const char& atom) const {
 		if (atom == 'C')
 			return 1;
 		if (atom == 'O')

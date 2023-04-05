@@ -24,7 +24,7 @@ public:
         normal,
         compact
     };
-
+    LimaLogger(const LimaLogger& log) = delete;
     LimaLogger(const LogMode mode, const std::string& name, const std::string& folder="");
     ~LimaLogger();
 

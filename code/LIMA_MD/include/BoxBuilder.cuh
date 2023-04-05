@@ -28,7 +28,7 @@ public:
 	SolventBlockGrid* solventblocks_prev = nullptr;
 
 private:
-	void integrateCompound(Compound_Carrier* compound, Simulation* simulation);
+	void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
 	//Solvent createSolvent(Float3 com, float dt);
 
 	bool spaceAvailable(Box* box, Float3 com, double radius);

@@ -70,7 +70,7 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
 
 	for (int c = 0; c < compound_collection->n_compounds; c++) {
-		Compound_Carrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
+		CompoundCarrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
 		for (int i = 0; i < compound->n_particles; i++) {
 			//compound->prev_positions[i] += offset;
 			/*compound->state.positions[i] += offset;
@@ -268,7 +268,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 /*
 * These two funcitons are in charge of normalizing ALL coordinates!!
 */
-void BoxBuilder::integrateCompound(Compound_Carrier* compound, Simulation* simulation)
+void BoxBuilder::integrateCompound(CompoundCarrier* compound, Simulation* simulation)
 {
 	compound->init();
 

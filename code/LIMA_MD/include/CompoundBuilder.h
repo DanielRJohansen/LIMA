@@ -227,10 +227,48 @@ struct Residue {
 	std::vector<int> bondedresidue_ids;	// Lima Ids of residue with which this shares a singlebond
 };
 
-struct ParticleBondRefs {
-	std::vector<SingleBond*> singlebonds{};
-	std::vector<AngleBond*> anglebonds{};
-	std::vector<DihedralBond*> dihedralbonds{};
+class CompoundFactory : public Compound {
+public:
+	CompoundFactory() {}
+	CompoundFactory(const int id) : id(id) {}
+
+	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id);
+	int id = -1;	// unique lima id
+
+	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
+};
+
+struct ParticleInfo {
+	std::vector<std::array<int, 2>*> singlebonds{};		// gro id's of particles in the bond
+	std::vector<std::array<int, 3>*> anglebonds{};		// gro id's of particles in the bond
+	std::vector<std::array<int, 4>*> dihedralbonds{};	// gro id's of particles in the bond
+
+	// First available when added to compound
+	CompoundFactory* compound_ref = nullptr;
+	int local_id_compound = -1;	// index in compound
+	
+	// First available (if) when added to bridge
+	int local_id_bridge = -1;	// index in bridge
+};
+
+
+
+
+class BridgeFactory : public CompoundBridgeCompact {
+public:
+	BridgeFactory( const std::array<CompoundFactory*, 2> refs) : compound_refs(refs) {
+		compound_id_left = refs[0]->id;
+		compound_id_right = refs[1]->id;
+	}
+
+	void addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype);
+
+	const std::array<CompoundFactory*, 2> compound_refs;
+
+
+private:
+	// Integrates the particle if it is not already, and returns its index relative to this bridge
+	int getBridgelocalIdOfParticle(ParticleInfo& particle_info);
 };
 
 
@@ -253,16 +291,18 @@ private:
 	std::vector<Float3> solvent_positions;
 	int64_t n_particles_in_residues = 0;
 
-	std::vector<SingleBond> singlebonds;
-	std::vector<AngleBond> anglebonds;
-	std::vector<DihedralBond> dihedralbonds;
-	std::vector<ParticleBondRefs> particle_bonds_lut;	// Uses gro 1-indexed 
+	std::vector<std::array<int, 2>> singlebonds;	// gro id's of particles
+	std::vector<std::array<int, 3>> anglebonds;		// gro id's of particles
+	std::vector<std::array<int, 4>> dihedralbonds;	// gro id's of particles
+	std::vector<ParticleInfo> particle_info;		// Uses gro 1-indexed 
 
-	CompoundCollection compound_collection;
-
-	CompoundBridgeBundle* compound_bridge_bundle = nullptr;		// DISLIKE THIS
+	//CompoundCollection compound_collection;
 
 
+	//CompoundBridgeBundle* compound_bridge_bundle = nullptr;		// DISLIKE THIS
+
+	std::vector<CompoundFactory> compounds;
+	std::vector<BridgeFactory> compound_bridges;
 
 
 
@@ -292,9 +332,13 @@ private:
 	/// </summary>
 	void matchBondedResidues();
 
-	void createCompounds();
+	// TODO: Put correct references in the bridges too!
+	void createCompoundsAndBridges();
 
-	void createCompoundBridges();
+	void distributeBondsToCompoundsAndBridges();
+
+	template <int n_ids>
+	bool spansTwoCompounds(std::array<int, n_ids> bond_ids);
 
 	void createBondedParticlesLUT();
 };

@@ -573,6 +573,8 @@ struct CompoundCarrier : public Compound {
 	void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id);
 	void calcParticleSphere();
 
+	void addSingleBond();
+
 	void init() { calcCOM(); }
 	Float3 calcCOM();
 
@@ -583,12 +585,13 @@ using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 
 
 struct CompoundBridgeBundleCompact;
+//struct CompoundBridge;
 struct CompoundCollection {
 	CompoundCollection();
 	int n_compounds = 0;
 	//Compound* compounds = nullptr;
 	std::vector<CompoundCarrier> compounds;
-	std::vector<CompoundBridge> compound_bridges;	// The new stuff!
+	//std::vector<CompoundBridge> compound_bridges;	// The new stuff!
 	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
 	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
 	uint32_t n_atoms_total = 0;
@@ -682,13 +685,19 @@ struct CompoundBridgeBundle {
 
 struct ParticleRefCompact {
 	ParticleRefCompact() {}
+
+	// Used by moleculebuilder only
+	ParticleRefCompact(int compund_id, int local_id_compound) : 
+		compound_id(compound_id), local_id_compound(local_id_compound) {}
+
+	// To be deleted!
 	ParticleRefCompact(ParticleRef pref) : compound_id(pref.compound_id), local_id_compound(pref.local_id_compound),
 	global_id(pref.global_id) {}
 
 	int compound_id = -1;
 	int local_id_compound = -1;
 
-	int global_id = -1; // temp
+	int global_id = -1; // temp TODO: REMOVE SOON!
 };
 
 struct CompoundBridgeCompact {

@@ -51,7 +51,7 @@ bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> que
 	return true;
 }
 
-SingleBond* Forcefield::getBondType(std::array<int, 2> ids) {
+const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
 	//for (int i = 0; i < n_topol_bonds; i++) {
 	//	if (topol_bonds[i].atom_indexes[0] == id1 && topol_bonds[i].atom_indexes[1] == id2) {
 	//		return &topol_bonds[i];
@@ -66,7 +66,7 @@ SingleBond* Forcefield::getBondType(std::array<int, 2> ids) {
 	exit(0);
 }
 
-AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) {
+const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
 	//for (int i = 0; i < n_topol_angles; i++) {
 	//	if (topol_angles[i].atom_indexes[0] == id1 && topol_angles[i].atom_indexes[1] == id2 && topol_angles[i].atom_indexes[2] == id3) {
 	//		return &topol_angles[i];
@@ -82,7 +82,7 @@ AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) {
 	exit(0);
 }
 
-DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) {
+const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
 	/*for (int i = 0; i < n_topol_dihedrals; i++) {
 		if (topol_dihedrals[i].atom_indexes[0] == id1 && topol_dihedrals[i].atom_indexes[1] == id2 && topol_dihedrals[i].atom_indexes[2] == id3 && topol_dihedrals[i].atom_indexes[3] == id4) {
 			return &topol_dihedrals[i];

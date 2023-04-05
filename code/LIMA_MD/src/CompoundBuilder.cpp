@@ -258,7 +258,7 @@ void CompoundBuilder::addBond(CompoundCollection* compound_collection, ParticleR
 	}
 		
 
-	SingleBond* bondtype = forcefield->getBondType({ maps[0].global_id, maps[1].global_id });
+	const SingleBond* bondtype = forcefield->getBondType({ maps[0].global_id, maps[1].global_id });
 
 	distributeLJIgnores(compound_collection, maps, 2);				// DANGER
 
@@ -294,7 +294,7 @@ void CompoundBuilder::addAngle(CompoundCollection* compound_collection, Particle
 
 
 
-	AngleBond* angletype = forcefield->getAngleType({ maps[0].global_id, maps[1].global_id, maps[2].global_id });
+	const AngleBond* angletype = forcefield->getAngleType({ maps[0].global_id, maps[1].global_id, maps[2].global_id });
 
 	distributeLJIgnores(compound_collection, maps, 3);
 
@@ -325,7 +325,7 @@ void CompoundBuilder::addDihedral(CompoundCollection* molecule, ParticleRef* map
 		return;
 
 
-	DihedralBond* dihedraltype = forcefield->getDihedralType({ maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id });
+	const DihedralBond* dihedraltype = forcefield->getDihedralType({ maps[0].global_id, maps[1].global_id, maps[2].global_id, maps[3].global_id });
 
 	distributeLJIgnores(molecule, maps, 4);
 
@@ -703,11 +703,9 @@ void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol
 
 	matchBondedResidues();
 
-	createCompounds();
+	createCompoundsAndBridges();
 
-	createCompoundBridges();
-
-	createBondedParticlesLUT();
+	//createBondedParticlesLUT();
 }
 
 
@@ -828,7 +826,7 @@ bool setMode(const std::vector<string>& row, TopologyMode& current_mode, int& di
 void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 	
 	// First setup the lut
-	particle_bonds_lut.resize(n_particles_in_residues + 1);	// +1 because the extern particle indices are 1-indexed
+	particle_info.resize(n_particles_in_residues + 1);	// +1 because the extern particle indices are 1-indexed
 
 	logger.print(std::format("Reading topology from file {}\n", topol_path));
 
@@ -852,27 +850,27 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 		case BOND:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]) };
-			singlebonds.push_back(SingleBond{ extern_indices });							// First create the bond
+			singlebonds.push_back(extern_indices);							// First create the bond
 			for (int index : extern_indices) {
-				particle_bonds_lut[index].singlebonds.push_back(&singlebonds.back());		// Then make all involved particles reference this bond
+				particle_info[index].singlebonds.push_back(&singlebonds.back());		// Then make all involved particles reference this bond
 			}
 			break;
 		}			
 		case ANGLE:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]), stoi(line[2]) };
-			anglebonds.push_back(AngleBond{ extern_indices });
+			anglebonds.push_back( extern_indices );
 			for (int index : extern_indices) {
-				particle_bonds_lut[index].anglebonds.push_back(&anglebonds.back());
+				particle_info[index].anglebonds.push_back(&anglebonds.back());
 			}
 			break;
 		}			
 		case DIHEDRAL:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]), stoi(line[2]), stoi(line[3]) };
-			dihedralbonds.push_back(DihedralBond{ extern_indices });
+			dihedralbonds.push_back( extern_indices );
 			for (int index : extern_indices) {
-				particle_bonds_lut[index].dihedralbonds.push_back(&dihedralbonds.back());
+				particle_info[index].dihedralbonds.push_back(&dihedralbonds.back());
 			}
 			break;
 		}			
@@ -883,12 +881,12 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 	}
 }
 
-bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleBondRefs>& particle_bonds_lut) {
+bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleInfo>& particle_bonds_lut) {
 	for (auto& atom_left : left.atoms) {
 		for (auto bond : particle_bonds_lut[atom_left.id].singlebonds) {
 			for (auto& atom_right : right.atoms) {
-				if ((bond->atom_indexes[0] == atom_left.id && bond->atom_indexes[1] == atom_right.id)
-					|| (bond->atom_indexes[1] == atom_left.id && bond->atom_indexes[0] == atom_right.id)
+				if ((bond->at(0) == atom_left.id && bond->at(1) == atom_right.id)
+					|| (bond->at(1) == atom_left.id && bond->at(0) == atom_right.id)
 					) {
 					return true;
 				}
@@ -903,7 +901,7 @@ void MoleculeBuilder::matchBondedResidues() {
 		Residue& residue_left = residues[i];
 		Residue& residue_right = residues[i + 1];
 
-		if (areBonded(residue_left, residue_right, particle_bonds_lut)) {
+		if (areBonded(residue_left, residue_right, particle_info)) {
 			residue_left.bondedresidue_ids.push_back(i + 1);
 			residue_right.bondedresidue_ids.push_back(i);
 		}
@@ -915,36 +913,43 @@ void MoleculeBuilder::matchBondedResidues() {
 
 
 #include <algorithm>
-
-void MoleculeBuilder::createCompounds() {
+#include <iterator>
+void MoleculeBuilder::createCompoundsAndBridges() {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
 
-	compound_collection.compound_bridge_bundle = new CompoundBridgeBundleCompact;
 
-	compound_collection.compounds.push_back(CompoundCarrier{ 0 });
+	
+	compounds.push_back(CompoundFactory{ 0 });
 
 	int current_residue_id = residues[0].id;
-	CompoundCarrier& current_compound = compound_collection.compounds[0];
+	CompoundFactory& current_compound = compounds[0];
 
-	for (const Residue& residue : residues) {
+	for (int residue_index = 0; residue_index < residues.size(); residue_index++) {
+		const Residue& residue = residues[residue_index];
+
 		const bool new_residue = residue.id != current_residue_id;
+		bool bridges_to_previous_compound = false;
 
 		// If necessary start new compound
 		if (new_residue) {
-			const auto bonded_ids = residue.bondedresidue_ids;
+			const auto& bonded_ids = residue.bondedresidue_ids;
 			const bool is_bonded_with_previous_residue = std::find(bonded_ids.begin(), bonded_ids.end(), current_residue_id) != bonded_ids.end();
 
 			
 			// If the new residue is a different molecule, start a new compound
 			if (!is_bonded_with_previous_residue) {
-				compound_collection.compounds.push_back(compound_collection.compounds.size());
+				compounds.push_back(compounds.size());
 			}
 			// If we are bonded, but no more room, start new compound and make bridge
 			else if (!current_compound.hasRoomForRes(residue.atoms.size())) {
-				compound_collection.compounds.push_back(compound_collection.compounds.size());
-				compound_bridge_bundle->addBridge(current_residue_id, residue.id);
-				//compound_collection.compound_bridges.addBridge(current_residue_id, residue.id);	// Better solution maybe..
+				compounds.push_back(compounds.size());
+				CompoundFactory* left = &compounds[-2];
+				CompoundFactory* right = &compounds[1];
+
+				compound_bridges.push_back(BridgeFactory{ { left, right } });
+
+				bridges_to_previous_compound = true;
 			}
 
 			current_residue_id = residue.id;
@@ -952,11 +957,155 @@ void MoleculeBuilder::createCompounds() {
 
 		// Add all atoms of residue to current compound
 		for (auto& atom : residue.atoms) {
+			// First add the new information to the particle
+			particle_info[atom.id].compound_ref = &current_compound;
+			particle_info[atom.id].local_id_compound = current_compound.n_particles;
+
+			// Then add the particle to the compound
 			current_compound.addParticle(
-				forcefield->getAtomtypeID(atom.id),
 				atom.position,
-				forcefield->atomTypeToIndex(atom.name[0]),
-				atom.id);
-		}	
+				forcefield->getAtomtypeID(atom.id),
+				forcefield->atomTypeToIndex(atom.name[0])
+				);
+		}
+
+		if (bridges_to_previous_compound) {
+			// TODO: Create particle references to this and previous compounds in the bridge!
+		}
 	}
+}
+
+
+
+
+
+
+
+template <int n_ids>
+bool MoleculeBuilder::spansTwoCompounds(std::array<int, n_ids> bond_ids) {
+	const CompoundFactory* compound_left = particle_info[bond_ids[0]].compound_ref;
+
+	for (int i = 1; i < n_ids; i++) {
+		if (compound_left != particle_info[bond_ids[i]].compound_ref) {
+			return true;
+		}
+	}
+	return false;
+}
+
+template <int n_ids>
+std::array<int, 2> getTheTwoDifferentIds(std::array<int, n_ids> particle_ids, const std::vector<ParticleInfo>& particle_info) {
+	std::array<int, 2> out = { particle_info[particle_ids[0]].compound_ref->id, -1 };
+
+	for (int i = 1; i < n_ids; i++) {
+		int compoundid_of_particle = particle_info[particle_ids[i]].compound_ref->id;
+		if (compoundid_of_particle != out[0]) {
+			out[1] = compoundid_of_particle;
+			break;
+		}
+	}
+
+	if (out[1] == -1) { throw std::exception("Failed to find the second compound of bridge"); }
+
+	if (out[0] > out[1]) {
+		swap(out[0], out[1]);
+	}
+
+	return out;
+}
+
+template <int n_ids>
+BridgeFactory& getBridge(std::vector<BridgeFactory> bridges,const std::array<int, n_ids>& ids, const std::vector<ParticleInfo>& particle_info) {
+	auto compound_ids = getTheTwoDifferentIds(ids, particle_info);
+
+	for (BridgeFactory& bridge : bridges) {
+		if (bridge.compound_id_left == compound_ids[0] && bridge.compound_id_right == compound_ids[1]) {	// I assume they are ordered by size here
+			return bridge;
+		}
+	}
+
+	throw std::exception("Failed to find the bridge");
+}
+
+void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
+	for (auto& bond_ids : singlebonds) {	// gro 1-indexed ids
+		const SingleBond& bondtype = *forcefield->getBondType({ bond_ids[0], bond_ids[1]});
+
+		if (spansTwoCompounds(bond_ids)) {
+
+			BridgeFactory& bridge = getBridge(compound_bridges, bond_ids, particle_info);
+			bridge.addSingleBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]]}, bondtype);
+		}
+		else {
+			CompoundFactory& compound = *particle_info[bond_ids[0]].compound_ref;
+			int localid1 = particle_info[bond_ids[0]].local_id_compound;
+			int localid2 = particle_info[bond_ids[1]].local_id_compound;
+			compound.singlebonds[compound.n_singlebonds++] = SingleBond(localid1, localid2, bondtype.b0, bondtype.kb);
+		}
+	}
+}
+
+/*
+* 	SingleBond* bondtype = forcefield->getBondType({ maps[0].global_id, maps[1].global_id });
+
+	distributeLJIgnores(compound_collection, maps, 2);				// DANGER
+
+	if (!g_bond.spansTwoCompounds()) {
+		Compound* compound = &compound_collection->compounds[maps[0].compound_id];
+		if (compound->n_singlebonds == MAX_PAIRBONDS) {
+			printf("Too many bonds in compound\n");
+			exit(0);
+		}
+
+		compound->singlebonds[compound->n_singlebonds++] = SingleBond(maps[0].local_id_compound, maps[1].local_id_compound, bondtype->b0, bondtype->kb);
+
+
+	}
+	else {
+
+		// First, we need to make sure all bond particles are added to the bridge.
+		// To create the single-bond we need to access bridge_local_indexes			
+		CompoundBridge* bridge = compound_bridge_bundle->getBelongingBridge(&g_bond);
+		bridge->addBondParticles(&g_bond, compound_collection);
+		//bridge->addSinglebond(SingleBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
+		bridge->addGenericBond(SingleBond(bondtype->b0, bondtype->kb, maps[0].global_id, maps[1].global_id));
+*/
+
+
+
+
+
+
+
+
+void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id) {
+	if (n_particles == MAX_COMPOUND_PARTICLES) {
+		printf("ERROR: Cannot add particle to compound!\n");
+		exit(1);
+	}
+
+	positions[n_particles] = position;
+
+	atom_types[n_particles] = atomtype_id;
+	atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
+
+
+	n_particles++;
+}
+
+void BridgeFactory::addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype) {
+	singlebonds[n_singlebonds++] = SingleBond{
+		getBridgelocalIdOfParticle(particle_info[0]),
+		getBridgelocalIdOfParticle(particle_info[1]),
+		bondtype.b0,
+		bondtype.kb
+	};
+}
+
+int BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
+	if (particle_info.local_id_bridge == -1) {
+		particle_info.local_id_bridge = n_particles;
+		particle_refs[n_particles++] = ParticleRefCompact{ particle_info.compound_ref->id, particle_info.local_id_compound };
+	}
+	return particle_info.local_id_bridge;
 }

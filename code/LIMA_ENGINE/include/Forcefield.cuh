@@ -27,9 +27,9 @@ public:
 
 	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id) const;
-	SingleBond* getBondType(std::array<int, 2> ids);
-	AngleBond* getAngleType(std::array<int, 3> ids);
-	DihedralBond* getDihedralType(std::array<int, 4> ids);
+	const SingleBond* getBondType(std::array<int, 2> ids) const;
+	const AngleBond* getAngleType(std::array<int, 3> ids) const;
+	const DihedralBond* getDihedralType(std::array<int, 4> ids) const;
 
 
 

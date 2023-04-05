@@ -239,12 +239,12 @@ public:
 };
 
 struct ParticleInfo {
-	std::vector<std::array<int, 2>*> singlebonds{};		// gro id's of particles in the bond
-	std::vector<std::array<int, 3>*> anglebonds{};		// gro id's of particles in the bond
-	std::vector<std::array<int, 4>*> dihedralbonds{};	// gro id's of particles in the bond
+	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
+	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
+	std::vector<int> dihedralbonds_indices;		// lima indices of the bond in moleculebuilder
 
 	// First available when added to compound
-	CompoundFactory* compound_ref = nullptr;
+	int compound_index = -1;
 	int local_id_compound = -1;	// index in compound
 	
 	// First available (if) when added to bridge
@@ -256,14 +256,13 @@ struct ParticleInfo {
 
 class BridgeFactory : public CompoundBridgeCompact {
 public:
-	BridgeFactory( const std::array<CompoundFactory*, 2> refs) : compound_refs(refs) {
-		compound_id_left = refs[0]->id;
-		compound_id_right = refs[1]->id;
+	BridgeFactory( const std::array<int, 2> compound_ids) {
+		compound_id_left = compound_ids[0];
+		compound_id_right = compound_ids[1];
 	}
 
 	void addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype);
 
-	const std::array<CompoundFactory*, 2> compound_refs;
 
 
 private:

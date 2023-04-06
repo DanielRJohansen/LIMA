@@ -189,7 +189,7 @@ bool doAngleBenchmark(Environment& env) {
 		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
 	}
 
-	LIMA_Print::printMatlabVec("bond_len_errors", angle_errors);
+	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
 	return true;
@@ -229,11 +229,11 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
+	//doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
 	//doPoolBenchmark(env, "PoolCompSol");	// One 1 particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
-	//doAngleBenchmark(env);
-	//doBasicBenchmark(env, "TorsionBenchmark");
+	//doAngleBenchmark(env);	// Doesn't work currently
+	doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");
 	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	//doBasicBenchmark(env, "SolventBenchmark");

@@ -228,7 +228,7 @@ struct Residue {
 };
 
 struct ParticleInfo {
-	bool ignore = false;						// Particle is discarded at load
+	bool isUsed = false;						// false if discarded at load, or simply never found
 
 	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
 	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder

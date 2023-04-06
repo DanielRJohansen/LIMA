@@ -806,8 +806,7 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 
 		GroRecord record = parseGroLine(line);
 
-		if (record.atom_name[0] == 'H' && ignore_hydrogens) { 
-			particle_info[record.atom_number].ignore = true;
+		if (record.atom_name[0] == 'H' && ignore_hydrogens) { 			
 			continue; 
 		}
 
@@ -831,6 +830,13 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 			residues.back().atoms.push_back(AtomEntry{ record.atom_number, record.position, record.atom_name });
 			n_particles_in_residues++;
 		}
+
+		// In some cases the atoms aren't numbered.- Then we need to expand the lut
+		// IF this happens once, it may happen many times more, so we expand to twice the necessary size.
+		if (record.atom_number >= particle_info.size()) {
+			particle_info.resize(record.atom_number * 2);
+		}
+		particle_info[record.atom_number].isUsed = true;
 	}
 }
 
@@ -872,7 +878,7 @@ bool setMode(const std::vector<string>& row, TopologyMode& current_mode, int& di
 template <int n_ids> 
 bool allParticlesExist(std::array<int, n_ids> gro_ids, const std::vector<ParticleInfo>& particle_info) {
 	for (auto id : gro_ids) {
-		if (particle_info[id].ignore) {
+		if (id >= particle_info.size() || !particle_info[id].isUsed) {
 			return false;
 		}
 	}

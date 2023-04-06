@@ -706,7 +706,7 @@ void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol
 	createCompoundsAndBridges();
 
 	distributeBondsToCompoundsAndBridges();
-	//createBondedParticlesLUT();
+
 }
 
 
@@ -751,10 +751,16 @@ GroRecord parseGroLine(const std::string& line) {
 
 void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 
+	const bool ignore_hydrogens = true;
+
 	int64_t line_cnt = -1;
 
-
 	std::vector<string> lines = readFile(gro_path);
+
+	// First setup the lut. +1 because the extern particle indices are 1-indexed
+	// We need to set this up now, because we will index it with the gro ids, of which there is almost 1 per line in the .gro file
+	particle_info.resize(lines.size() + 1);	// 
+
 	for (const auto& line : lines) {
 		line_cnt++;
 		
@@ -770,6 +776,11 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 		if (line.size() < 44) { continue; }	// Should only happen at the end. TODO: Extract box size here. Make sure it is the same as the constant var!
 
 		GroRecord record = parseGroLine(line);
+
+		if (record.atom_name[0] == 'H' && ignore_hydrogens) { 
+			particle_info[record.atom_number].ignore = true;
+			continue; 
+		}
 
 		// Is Solvent
 		if (record.residue_name == "WATER" || record.residue_name == "SOL") {
@@ -787,6 +798,7 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 				int unique_res_id = residues.size();
 				residues.push_back(Residue{ record.residue_number, unique_res_id, record.residue_name });
 			}
+
 			residues.back().atoms.push_back(AtomEntry{ record.atom_number, record.position, record.atom_name });
 			n_particles_in_residues++;
 		}
@@ -828,11 +840,17 @@ bool setMode(const std::vector<string>& row, TopologyMode& current_mode, int& di
 	return false;
 }
 
-void MoleculeBuilder::loadTopology(const std::string& topol_path) {
-	
-	// First setup the lut
-	particle_info.resize(n_particles_in_residues + 1);	// +1 because the extern particle indices are 1-indexed
+template <int n_ids> 
+bool allParticlesExist(std::array<int, n_ids> gro_ids, const std::vector<ParticleInfo>& particle_info) {
+	for (auto id : gro_ids) {
+		if (particle_info[id].ignore) {
+			return false;
+		}
+	}
+	return true;
+}
 
+void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 	logger.print(std::format("Reading topology from file {}\n", topol_path));
 
 	int line_cnt = 0;
@@ -855,6 +873,8 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 		case BOND:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]) };
+			if (!allParticlesExist(extern_indices, particle_info)) { break; }
+
 			singlebonds.push_back(extern_indices);							// First create the bond
 			for (int index : extern_indices) {
 				particle_info[index].singlebonds_indices.push_back(singlebonds.size()-1);		// Then make all involved particles reference this bond
@@ -866,6 +886,8 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 		case ANGLE:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]), stoi(line[2]) };
+			if (!allParticlesExist(extern_indices, particle_info)) { break; }
+
 			anglebonds.push_back( extern_indices );
 			for (int index : extern_indices) {
 				particle_info[index].anglebonds_indices.push_back(anglebonds.size()-1);
@@ -875,6 +897,8 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 		case DIHEDRAL:
 		{
 			std::array extern_indices = { stoi(line[0]), stoi(line[1]), stoi(line[2]), stoi(line[3]) };
+			if (!allParticlesExist(extern_indices, particle_info)) { break; }
+
 			dihedralbonds.push_back( extern_indices );
 			for (int index : extern_indices) {
 				particle_info[index].dihedralbonds_indices.push_back(dihedralbonds.size()-1);
@@ -884,7 +908,6 @@ void MoleculeBuilder::loadTopology(const std::string& topol_path) {
 		default:
 			break;
 		}
-
 	}
 }
 
@@ -926,8 +949,6 @@ void MoleculeBuilder::matchBondedResidues() {
 void MoleculeBuilder::createCompoundsAndBridges() {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
-
-
 	
 	compounds.push_back(CompoundFactory{ 0 });
 
@@ -976,10 +997,6 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 				forcefield->getAtomtypeID(atom.id),
 				forcefield->atomTypeToIndex(atom.name[0])
 				);
-		}
-
-		if (bridges_to_previous_compound) {
-			// TODO: Create particle references to this and previous compounds in the bridge!
 		}
 	}
 }
@@ -1036,22 +1053,76 @@ BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<i
 	throw std::exception("Failed to find the bridge");
 }
 
+
+template <int n_ids>
+void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<ParticleInfo>& particle_info, const std::array<int, n_ids> gro_ids) {
+
+	for (auto id_self : gro_ids) {
+		for (auto id_other : gro_ids) {
+			if (id_self == id_other) { continue; }
+
+			BondedParticlesLUT* lut = bplut_man->get(particle_info[id_self].compound_index, particle_info[id_other].compound_index);
+			lut->set(particle_info[id_self].local_id_compound, particle_info[id_other].local_id_compound, true);
+		}
+	}
+}
+
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
+
+	bp_lut_manager = new BondedParticlesLUTManager{0};
+
+	// Distribute single bonds
 	for (auto& bond_ids : singlebonds) {	// gro 1-indexed ids
 		const SingleBond& bondtype = *forcefield->getBondType({ bond_ids[0], bond_ids[1]});
 
+		// First add the bond information to either bridge or compound
 		if (spansTwoCompounds(bond_ids)) {
-
 			BridgeFactory& bridge = getBridge(compound_bridges, bond_ids, particle_info);
 			bridge.addSingleBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]]}, bondtype);
 		}
 		else {
 			const int compound_id = particle_info[bond_ids[0]].compound_index;
 			CompoundFactory& compound = compounds.at(compound_id);
-			int localid1 = particle_info[bond_ids[0]].local_id_compound;
-			int localid2 = particle_info[bond_ids[1]].local_id_compound;
-			compound.singlebonds[compound.n_singlebonds++] = SingleBond(localid1, localid2, bondtype.b0, bondtype.kb);
+			compound.addSingleBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]] }, bondtype);
 		}
+
+		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+	}
+
+	// Distribute angle bonds
+	for (auto& bond_ids : anglebonds) {    // gro 1-indexed ids
+		const AngleBond& bondtype = *forcefield->getAngleType({ bond_ids[0], bond_ids[1], bond_ids[2] });
+
+		// First add the bond information to either bridge or compound
+		if (spansTwoCompounds(bond_ids)) {
+			BridgeFactory& bridge = getBridge(compound_bridges, bond_ids, particle_info);
+			bridge.addAngleBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]], particle_info[bond_ids[2]] }, bondtype);
+		}
+		else {
+			const int compound_id = particle_info[bond_ids[0]].compound_index;
+			CompoundFactory& compound = compounds.at(compound_id);
+			compound.addAngleBond({ particle_info[bond_ids[0]],	particle_info[bond_ids[1]],	particle_info[bond_ids[2]] }, bondtype);
+		}
+
+		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+	}
+
+	// Distribute dihedral bonds
+	for (auto& bond_ids : dihedralbonds) {    // gro 1-indexed ids
+		const DihedralBond& bondtype = *forcefield->getDihedralType({ bond_ids[0], bond_ids[1], bond_ids[2], bond_ids[3] });
+
+		// First add the bond information to either bridge or compound
+		if (spansTwoCompounds(bond_ids)) {
+			BridgeFactory& bridge = getBridge(compound_bridges, bond_ids, particle_info);
+			bridge.addDihedralBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]], particle_info[bond_ids[2]], particle_info[bond_ids[3]] }, bondtype);
+		}
+		else {
+			const int compound_id = particle_info[bond_ids[0]].compound_index;
+			CompoundFactory& compound = compounds.at(compound_id);
+			compound.addDihedralBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]], particle_info[bond_ids[2]], particle_info[bond_ids[3]] }, bondtype);
+		}
+
+		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
 	}
 }
 
@@ -1103,12 +1174,69 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	n_particles++;
 }
 
+void CompoundFactory::addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype)
+{
+	singlebonds[n_singlebonds++] = SingleBond(
+		particle_info[0].local_id_compound,
+		particle_info[1].local_id_compound,
+		bondtype.b0,
+		bondtype.kb
+	);
+}
+
+void CompoundFactory::addAngleBond(std::array<ParticleInfo, 3> particle_info, const AngleBond& bondtype)
+{
+	anglebonds[n_anglebonds++] = AngleBond(
+		particle_info[0].local_id_compound,
+		particle_info[1].local_id_compound,
+		particle_info[2].local_id_compound,
+		bondtype.theta_0,
+		bondtype.k_theta
+	);
+}
+
+void CompoundFactory::addDihedralBond(std::array<ParticleInfo, 4> particle_info, const DihedralBond& bondtype)
+{
+	dihedrals[n_dihedrals++] = DihedralBond(
+		particle_info[0].local_id_compound,
+		particle_info[1].local_id_compound,
+		particle_info[2].local_id_compound,
+		particle_info[3].local_id_compound,
+		bondtype.phi_0,
+		bondtype.k_phi,
+		bondtype.n
+	);
+}
+
+
 void BridgeFactory::addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype) {
 	singlebonds[n_singlebonds++] = SingleBond{
 		getBridgelocalIdOfParticle(particle_info[0]),
 		getBridgelocalIdOfParticle(particle_info[1]),
 		bondtype.b0,
 		bondtype.kb
+	};
+}
+
+void BridgeFactory::addAngleBond(std::array<ParticleInfo, 3> particle_info, const AngleBond& bondtype) {
+	anglebonds[n_anglebonds++] = AngleBond{
+		getBridgelocalIdOfParticle(particle_info[0]),
+		getBridgelocalIdOfParticle(particle_info[1]),
+		getBridgelocalIdOfParticle(particle_info[2]),
+		bondtype.theta_0,
+		bondtype.k_theta
+	};
+}
+
+void BridgeFactory::addDihedralBond(std::array<ParticleInfo, 4> particle_info, const DihedralBond& bondtype) {
+	dihedrals[n_dihedrals++] = DihedralBond{
+		getBridgelocalIdOfParticle(particle_info[0]),
+		getBridgelocalIdOfParticle(particle_info[1]),
+		getBridgelocalIdOfParticle(particle_info[2]),
+		getBridgelocalIdOfParticle(particle_info[3]),
+		bondtype.phi_0,
+		bondtype.k_phi,
+		bondtype.n
 	};
 }
 

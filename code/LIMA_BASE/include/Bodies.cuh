@@ -84,7 +84,7 @@ struct DihedralBond {
 
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
-	uint8_t n = 0;								// WTF is this? xD
+	uint8_t n = 0;		// n parameter, how many energy equilibriums does the dihedral have
 	uint32_t atom_indexes[4] = {0,0,0,0};
 	const static int n_atoms = 4;
 };
@@ -687,7 +687,7 @@ struct ParticleRefCompact {
 	ParticleRefCompact() {}
 
 	// Used by moleculebuilder only
-	ParticleRefCompact(int compund_id, int local_id_compound) : 
+	ParticleRefCompact(int compound_id, int local_id_compound) : 
 		compound_id(compound_id), local_id_compound(local_id_compound) {}
 
 	// To be deleted!

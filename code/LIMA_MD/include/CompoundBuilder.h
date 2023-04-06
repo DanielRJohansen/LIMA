@@ -227,6 +227,21 @@ struct Residue {
 	std::vector<int> bondedresidue_ids;	// Lima Ids of residue with which this shares a singlebond
 };
 
+struct ParticleInfo {
+	bool ignore = false;						// Particle is discarded at load
+
+	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
+	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
+	std::vector<int> dihedralbonds_indices;		// lima indices of the bond in moleculebuilder
+
+	// First available when added to compound
+	int compound_index = -1;
+	int local_id_compound = -1;	// index in compound
+
+	// First available (if) when added to bridge
+	int local_id_bridge = -1;	// index in bridge
+};
+
 class CompoundFactory : public Compound {
 public:
 	CompoundFactory() {}
@@ -235,24 +250,13 @@ public:
 	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id);
 	int id = -1;	// unique lima id
 
+	void addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype);
+	void addAngleBond(std::array<ParticleInfo, 3> particle_info, const AngleBond& bondtype);
+	void addDihedralBond(std::array<ParticleInfo, 4> particle_info, const DihedralBond& bondtype);
+
+
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
 };
-
-struct ParticleInfo {
-	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
-	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
-	std::vector<int> dihedralbonds_indices;		// lima indices of the bond in moleculebuilder
-
-	// First available when added to compound
-	int compound_index = -1;
-	int local_id_compound = -1;	// index in compound
-	
-	// First available (if) when added to bridge
-	int local_id_bridge = -1;	// index in bridge
-};
-
-
-
 
 class BridgeFactory : public CompoundBridgeCompact {
 public:
@@ -262,7 +266,8 @@ public:
 	}
 
 	void addSingleBond(std::array<ParticleInfo, 2> particle_info, const SingleBond& bondtype);
-
+	void addAngleBond(std::array<ParticleInfo, 3> particle_info, const AngleBond& bondtype);
+	void addDihedralBond(std::array<ParticleInfo, 4> particle_info, const DihedralBond& bondtype);
 
 
 private:
@@ -310,7 +315,7 @@ private:
 	VerbosityLevel verbosity_level;
 	const Forcefield* forcefield;
 
-
+	BondedParticlesLUTManager* bp_lut_manager = nullptr;
 
 
 
@@ -338,6 +343,4 @@ private:
 
 	template <int n_ids>
 	bool spansTwoCompounds(std::array<int, n_ids> bond_ids);
-
-	void createBondedParticlesLUT();
 };

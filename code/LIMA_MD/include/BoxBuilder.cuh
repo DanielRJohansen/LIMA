@@ -11,13 +11,13 @@ public:
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation);
-	void addCompoundCollection(Simulation* simulation, CompoundCollection* coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
-	void addCompoundCollection(Simulation* simulation, const CompoundCollection2& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	//void addCompoundCollection(Simulation* simulation, CompoundCollection* coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	void addCompoundCollection(Simulation* simulation, const CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
 	void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation, const ForceField_NB& forcefield);
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
-	int solvateBox(Simulation* simulation, std::vector<Float3> *solvate_positions);	// Returns # of solvate compounds placed
+	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
 
 	// Used for creating the positions host, moved to GPU before simulation start.
@@ -30,7 +30,7 @@ public:
 	SolventBlockGrid* solventblocks_prev = nullptr;
 
 private:
-	void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
+	//void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
 	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
 
 

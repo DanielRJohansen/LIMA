@@ -6,6 +6,8 @@
 
 using namespace LIMA_Print;
 using std::string;
+using std::cout;
+using std::printf;
 
 Environment::Environment() {
 	sayHello();
@@ -22,25 +24,18 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	MoleculeBuilder moleculebuilder(&forcefield, work_folder);
-	CompoundCollection2 collection = moleculebuilder.buildMolecules(gro_path, topol_path);
+	//MoleculeBuilder moleculebuilder(&forcefield, work_folder);
+	//CompoundCollection collection = moleculebuilder.buildMolecules(gro_path, topol_path);
 
-
-
-	CompoundBuilder compoundbuilder(&forcefield, CRITICAL_INFO);
-	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(gro_path, topol_path);
+	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 
 	boxbuilder.buildBox(simulation.get());
 	//boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
 	boxbuilder.addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
-	//boxbuilder.solvateBox(simulation);
-	vector<Float3> solvent_positions = compoundbuilder.getSolventPositions(gro_path);
-	boxbuilder.solvateBox(simulation.get(), &solvent_positions);
+	boxbuilder.solvateBox(simulation.get(), collection.solvent_positions);
 #endif
-
-	//delete[] mol_6lzm_10.compounds;
 }
 
 
@@ -127,9 +122,6 @@ void Environment::sayHello() {
 }
 
 
-
-
-
 void Environment::run() {
 	if (!ready_to_run) { prepareForRun(); }
 	printH1("Simulation started", true, false);
@@ -157,11 +149,9 @@ void Environment::run() {
 	}
 }
 
-
-
 void Environment::postRunEvents() {
 	
-	const std::string out_dir = work_folder + "/Steps_" + to_string(simulation->getStep()) + "/";
+	const std::string out_dir = work_folder + "/Steps_" + std::to_string(simulation->getStep()) + "/";
 
 	std::filesystem::current_path(work_folder);
 	std::filesystem::create_directories(out_dir);
@@ -207,10 +197,10 @@ void Environment::postRunEvents() {
 	if (!simulation->box->critical_error_encountered && 0) {	// Skipping for now
 		string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
 			+ out_dir + " "
-			+ to_string(simulation->getStep()) + " "
+			+ std::to_string(simulation->getStep()) + " "
 			+ "0" + " "											// do_shuffle
-			+ to_string(simulation->n_compounds) + " "
-			+ to_string(MAX_COMPOUND_PARTICLES)
+			+ std::to_string(simulation->n_compounds) + " "
+			+ std::to_string(MAX_COMPOUND_PARTICLES)
 			;
 
 		cout << data_processing_command << "\n\n";
@@ -337,7 +327,7 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 	char* file_path;
 	file_path = &file_path_s[0];
 	printf("Writing %.03Lf MB to binary file ", (long double) sizeof(T) * n_datapoints * 1e-6);
-	cout << file_path << endl;
+	cout << file_path << '\n';
 
 	FILE* file;
 

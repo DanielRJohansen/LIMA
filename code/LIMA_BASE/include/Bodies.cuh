@@ -18,23 +18,6 @@
 
 //--------------------------- THE FOLLOWING IS FOR HANDLING INTRAMOLECULAR FORCES ---------------------------//
 
-struct ParticleRef {		 // Maybe call map instead?
-	ParticleRef() {}
-	ParticleRef(int g, int c, int l) : global_id(g), compound_id(c), local_id_compound(l) {}
-
-	int global_id = -1;		// refers to the id in conf file!
-
-	// For designated compound
-	int compound_id = -1;
-	int local_id_compound = -1;		// Particles id in compound
-
-	// For designated compound_bridge
-	int bridge_id = -1;
-	int local_id_bridge = -1;
-
-	__host__ inline bool operator == (const ParticleRef a) const { return (global_id == a.global_id); }
-};
-
 struct NBAtomtype {
 	NBAtomtype(){}
 	NBAtomtype(float m, float s, float e) : mass(m), sigma(s), epsilon(e) {}
@@ -89,23 +72,7 @@ struct DihedralBond {
 	const static int n_atoms = 4;
 };
 
-struct GenericBond {				// ONLY used during creation, never on device!
-	enum BONDTYPES { SINGLE, ANGLE, DIHEDRAL, PAIR };
 
-	GenericBond() {}
-	GenericBond(ParticleRef* particle_refs, int n);
-
-	bool spansTwoCompounds();
-	bool allParticlesExist();
-
-
-	int compound_ids[2] = { -1,-1 };		// Can either span 1 or 2 compounds. If more, then undefined behaviour
-
-	void* bond_ref = nullptr;
-
-	ParticleRef particles[4] = {};
-	int n_particles = 0;
-};
 
 
 
@@ -157,23 +124,6 @@ public:
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//static_assert(STEPS_PER_LOGTRANSFER% STEPS_PER_SOLVENTBLOCKTRANSFER == 0, "Illegal blocktransfer stepcount");
 
 
 
@@ -559,122 +509,11 @@ struct Compound {
 
 };
 
-// Helper class containing some compound information we will not bring with us to the device
-// This means, all functions are host only!
-struct CompoundCarrier : public Compound {
-	CompoundCarrier(int id) : compound_id(id) {}
-
-	int compound_id = -1;
-	CompoundState state;	// [nm], Absolute values 
-	CompoundState state_tsub1;		// [nm], Absolute values 
-
-
-	void addParticle(int atomtype_id, Float3 pos);// Is this ever used?
-	void addParticle(int atomtype_id, Float3 pos, int atomtype_color_id, int global_id);
-	void calcParticleSphere();
-
-	void addSingleBond();
-
-	void init() { calcCOM(); }
-	Float3 calcCOM();
-
-};
 
 using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
 using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 
 
-struct CompoundBridgeBundleCompact;
-//struct CompoundBridge;
-struct CompoundCollection {
-	CompoundCollection();
-	int n_compounds = 0;
-	//Compound* compounds = nullptr;
-	std::vector<CompoundCarrier> compounds;
-	//std::vector<CompoundBridge> compound_bridges;	// The new stuff!
-	CompoundBridgeBundleCompact* compound_bridge_bundle = nullptr;
-	//CompoundBridgeBundle compound_bridge_bundle;	// Special compound, for special kernel. For now we only need one
-	uint32_t n_atoms_total = 0;
-
-	Float3 calcCOM();
-
-	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
-
-	~CompoundCollection() {
-		//printf("Deleting\n");		// Huh, this deletes too early. I better implement properly at some point.
-		//delete[] compounds;
-	}
-};
-
-
-
-struct CompoundBridge {
-	CompoundBridge() {}
-	CompoundBridge(uint16_t id_left, uint16_t id_right): compound_id_left(id_left), compound_id_right(id_right) {
-	}
-
-	uint16_t compound_id_left{};
-	uint16_t compound_id_right{};
-	ParticleRef particle_refs[MAX_PARTICLES_IN_BRIDGE];
-	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE];
-	int n_particles = 0;
-
-
-
-
-	GenericBond bonds[MAX_DIHEDRALBONDS_IN_BRIDGE*4];
-	int n_bonds = 0;
-	
-
-	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
-	uint16_t n_singlebonds = 0;
-	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
-	uint16_t n_anglebonds = 0;
-	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
-	uint16_t n_dihedrals = 0;
-
-	bool bondBelongsInBridge(GenericBond* bond) const;
-	bool particleAlreadyStored(ParticleRef* p_ref);
-	void addParticle(ParticleRef* particle_ref, CompoundCollection* molecule);
-
-	void addBondParticles(GenericBond* bond, CompoundCollection* molecule);
-
-
-
-	void addGenericBond(SingleBond pb);
-	void addGenericBond(AngleBond ab);
-	void addGenericBond(DihedralBond db);
-
-private:
-
-	template <typename T>
-	void localizeIDs(T* bond, int n) {
-		// First reassign the global indexes of the bond with local indexes of the bridge
-		for (int p = 0; p < n; p++) {						
-			for (int i = 0; i < n_particles; i++) {
-				if (bond->atom_indexes[p] == particle_refs[i].global_id) {
-					bond->atom_indexes[p] = particle_refs[i].local_id_bridge;
-					break;
-				}
-			}
-		}
-	}
-};
-
-
-
-
-struct CompoundBridgeBundle {
-	//ParticleRef particles[MAX_COMPOUND_PARTICLES * 2];
-	//int n_particles = 0;
-	CompoundBridge compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
-	int n_bridges = 0;
-
-	bool addBridge(uint16_t left_c_id, uint16_t right_c_id);
-
-	CompoundBridge* getBelongingBridge(GenericBond* bond);
-
-};
 
 
 
@@ -682,32 +521,24 @@ struct CompoundBridgeBundle {
 
 
 
-
-
-
-struct ParticleRefCompact {
-	ParticleRefCompact() {}
+struct ParticleReference {
+	ParticleReference() {}
 
 	// Used by moleculebuilder only
-	ParticleRefCompact(int compound_id, int local_id_compound) : 
+	ParticleReference(int compound_id, int local_id_compound) : 
 		compound_id(compound_id), local_id_compound(local_id_compound) {}
 
-	// To be deleted!
-	ParticleRefCompact(ParticleRef pref) : compound_id(pref.compound_id), local_id_compound(pref.local_id_compound),
-	global_id(pref.global_id) {}
 
 	int compound_id = -1;
 	int local_id_compound = -1;
 
-	int global_id = -1; // temp TODO: REMOVE SOON!
+	//int global_id = -1; // For debug
 };
 
-struct CompoundBridgeCompact {
-	CompoundBridgeCompact() {}
-	CompoundBridgeCompact(const CompoundBridge& bridge, bool verbose);
+struct CompoundBridge {
+	CompoundBridge() {}	
 	
-	
-	ParticleRefCompact particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
+	ParticleReference particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
 	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};
 	uint8_t n_particles = 0;					
 
@@ -724,13 +555,13 @@ struct CompoundBridgeCompact {
 	uint16_t compound_id_right{};
 
 	// -------------- Device functions ------------- //
-	__device__ void loadMeta(CompoundBridgeCompact* bridge) {
+	__device__ void loadMeta(CompoundBridge* bridge) {
 		n_particles = bridge->n_particles;
 		n_singlebonds = bridge->n_singlebonds;
 		n_anglebonds = bridge->n_anglebonds;
 		n_dihedrals = bridge->n_dihedrals;
 	}
-	__device__ void loadData(CompoundBridgeCompact* bridge) {
+	__device__ void loadData(CompoundBridge* bridge) {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
@@ -758,24 +589,16 @@ struct CompoundBridgeBundleCompact {
 	CompoundBridgeBundleCompact() {}
 	CompoundBridgeBundleCompact(const std::vector<CompoundBridge>& bridges) {
 		for (int i = 0; i < bridges.size(); i++) {
-			compound_bridges[i] = CompoundBridgeCompact{ bridges[i], false };
+			compound_bridges[i] = bridges[i];//CompoundBridge{ bridges[i], false };
 		}
 		n_bridges = bridges.size();
 	}
 
 
-	// OLD: 
-	CompoundBridgeBundleCompact(CompoundBridgeBundle* bundle, bool verbose=false);
-
-	CompoundBridgeCompact compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
+	CompoundBridge compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
 	int n_bridges = 0;
 };
 
-
-
-struct SlidingActionGroupModule {
-	uint8_t pairs [64][64] = {};
-};
 
 
 

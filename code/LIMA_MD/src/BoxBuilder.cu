@@ -60,37 +60,37 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 		exit(1);
 	}
 }
+//
+//void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
+//	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
+//	//Float3 offset = desired_molecule_center - compound_collection->calcCOM();
+//
+//	//printf("CompoundCollection offset for centering: ");
+//	//offset.print(' ');
+//	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
+//
+//	for (int c = 0; c < compound_collection->n_compounds; c++) {
+//		CompoundCarrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
+//		for (int i = 0; i < compound->n_particles; i++) {
+//			//compound->prev_positions[i] += offset;
+//			/*compound->state.positions[i] += offset;
+//			compound->state_tsub1.positions[i] += offset;*/
+//		}
+//		integrateCompound(compound, simulation);
+//	}
+//
+//	simulation->total_compound_particles = compound_collection->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
+//	simulation->total_particles += compound_collection->n_atoms_total;
+//
+//	
+//	*simulation->box->bridge_bundle = *compound_collection->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+//
+//	simulation->box->bonded_particles_lut_manager = compound_collection->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
+//
+//	printf("CompoundCollection added to box\n");
+//}
 
-void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
-	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
-	//Float3 offset = desired_molecule_center - compound_collection->calcCOM();
-
-	//printf("CompoundCollection offset for centering: ");
-	//offset.print(' ');
-	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
-
-	for (int c = 0; c < compound_collection->n_compounds; c++) {
-		CompoundCarrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
-		for (int i = 0; i < compound->n_particles; i++) {
-			//compound->prev_positions[i] += offset;
-			/*compound->state.positions[i] += offset;
-			compound->state_tsub1.positions[i] += offset;*/
-		}
-		integrateCompound(compound, simulation);
-	}
-
-	simulation->total_compound_particles = compound_collection->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
-	simulation->total_particles += compound_collection->n_atoms_total;
-
-	
-	*simulation->box->bridge_bundle = *compound_collection->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
-
-	simulation->box->bonded_particles_lut_manager = compound_collection->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
-
-	printf("CompoundCollection added to box\n");
-}
-
-void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCollection2& compound_collection) {
+void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {
 		integrateCompound(compound, simulation);
 	}
@@ -218,9 +218,9 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 	return 0;
 }
 
-int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	for (Float3 sol_pos : *solvent_positions) {
+	for (Float3 sol_pos : solvent_positions) {
 		if (simulation->box->n_solvents == MAX_SOLVENTS) {
 			printf("Too many solvents added!\n\n\n\n");
 			exit(1);
@@ -274,7 +274,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 	}
 
 	simulation->total_particles += simulation->box->n_solvents;
-	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions->size());
+	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions.size());
 	return simulation->box->n_solvents;
 }
 
@@ -284,32 +284,32 @@ int BoxBuilder::solvateBox(Simulation* simulation, std::vector<Float3>* solvent_
 /*
 * These two funcitons are in charge of normalizing ALL coordinates!!
 */
-void BoxBuilder::integrateCompound(CompoundCarrier* compound, Simulation* simulation)
-{
-	compound->init();
-
-	std::vector<LimaPosition> positions;
-	std::vector<LimaPosition> positions_prev;
-	positions.reserve(MAX_COMPOUND_PARTICLES);
-	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
-
-	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
-
-
-
-	for (int i = 0; i < compound->n_particles; i++) {		
-		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(compound->state.positions[i]));
-
-		const Float3 pos_prev_nm = (compound->state.positions[i] - compound_united_vel * simulation->dt);
-		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
-	}
-
-
-	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
-	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
-
-	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
-}
+//void BoxBuilder::integrateCompound(CompoundCarrier* compound, Simulation* simulation)
+//{
+//	compound->init();
+//
+//	std::vector<LimaPosition> positions;
+//	std::vector<LimaPosition> positions_prev;
+//	positions.reserve(MAX_COMPOUND_PARTICLES);
+//	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
+//
+//	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+//
+//
+//
+//	for (int i = 0; i < compound->n_particles; i++) {		
+//		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(compound->state.positions[i]));
+//
+//		const Float3 pos_prev_nm = (compound->state.positions[i] - compound_united_vel * simulation->dt);
+//		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
+//	}
+//
+//
+//	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+//	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
+//
+//	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
+//}
 
 void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* simulation)
 {

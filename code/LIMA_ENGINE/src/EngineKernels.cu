@@ -121,7 +121,7 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 	return force;// *24.f * 1e-9;
 }
 
-template <typename T>	// Can either be Compound or CompoundBridgeCompact
+template <typename T>	// Can either be Compound or CompoundBridge
 __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* utility_buffer, float* potE) {	// only works if n threads >= n bonds
 	utility_buffer[threadIdx.x] = Float3(0.f);
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < entity->n_singlebonds; bond_offset++) {
@@ -158,7 +158,7 @@ __device__ Float3 computePairbondForces(T* entity, Float3* positions, Float3* ut
 	return utility_buffer[threadIdx.x];
 }
 
-template <typename T>	// Can either be Compound or CompoundBridgeCompact
+template <typename T>	// Can either be Compound or CompoundBridge
 __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* utility_buffer, float* potE) {
 	utility_buffer[threadIdx.x] = Float3(0);
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < entity->n_anglebonds; bond_offset++) {
@@ -193,7 +193,7 @@ __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* u
 	return utility_buffer[threadIdx.x];
 }
 
-template <typename T>	// Can either be Compound or CompoundBridgeCompact
+template <typename T>	// Can either be Compound or CompoundBridge
 __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* utility_buffer, float* potE) {
 	utility_buffer[threadIdx.x] = Float3(0.f);
 
@@ -830,7 +830,7 @@ __global__ void solventTransferKernel(Box* box) {
 
 #define particle_id_bridge threadIdx.x
 __global__ void compoundBridgeKernel(Box* box) {
-	__shared__ CompoundBridgeCompact bridge;
+	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];							// waaaaay too biggg
 	__shared__ Coord particle_coords[MAX_PARTICLES_IN_BRIDGE];
@@ -848,7 +848,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 	__syncthreads();
 
 	if (particle_id_bridge < bridge.n_particles) {
-		ParticleRefCompact& p_ref = bridge.particle_refs[particle_id_bridge];
+		ParticleReference& p_ref = bridge.particle_refs[particle_id_bridge];
 		particle_coords[particle_id_bridge] = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, p_ref.compound_id)->rel_positions[p_ref.local_id_compound];
 
 		// If we are on the right side, we need to shift 
@@ -875,7 +875,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 		if (blockIdx.x == 0 && threadIdx.x == 0) {
 			//force.print('f');			
 		}
-		ParticleRefCompact* p_ref = &bridge.particle_refs[particle_id_bridge];
+		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
 		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
 		//box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = 0;
 

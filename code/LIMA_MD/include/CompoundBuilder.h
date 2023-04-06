@@ -275,19 +275,24 @@ private:
 	int getBridgelocalIdOfParticle(ParticleInfo& particle_info);
 };
 
+struct CompoundCollection2 {
+	const std::vector<CompoundFactory>& compounds;
+	const int64_t total_compound_particles;
 
+	BondedParticlesLUTManager* bp_lut_manager;
+
+	const CompoundBridgeBundleCompact bridgebundle;
+
+
+	const std::vector<Float3>& solvent_positions;
+};
 
 
 class MoleculeBuilder {
 public:
 	MoleculeBuilder(Forcefield* ff, const std::string& work_dir="", VerbosityLevel vl = SILENT);
 
-	void buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens = true);
-
-
-	const vector<Residue> getResidues() { return residues; }
-	const vector<Float3> getSolventPositions() { return solvent_positions; }
-
+	CompoundCollection2 buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens = true);
 
 private:
 	// Members, seen in the order they are filled in
@@ -300,22 +305,20 @@ private:
 	std::vector<std::array<int, 4>> dihedralbonds;	// gro id's of particles
 	std::vector<ParticleInfo> particle_info;		// Uses gro 1-indexed 
 
-	//CompoundCollection compound_collection;
-
-
-	//CompoundBridgeBundle* compound_bridge_bundle = nullptr;		// DISLIKE THIS
-
 	std::vector<CompoundFactory> compounds;
 	std::vector<BridgeFactory> compound_bridges;
+
+	BondedParticlesLUTManager* bp_lut_manager = nullptr;
+
+
 
 
 
 
 	LimaLogger logger;
-	VerbosityLevel verbosity_level;
+	const VerbosityLevel verbosity_level;
 	const Forcefield* forcefield;
 
-	BondedParticlesLUTManager* bp_lut_manager = nullptr;
 
 
 

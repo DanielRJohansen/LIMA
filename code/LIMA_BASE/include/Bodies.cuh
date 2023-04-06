@@ -606,6 +606,8 @@ struct CompoundCollection {
 	}
 };
 
+
+
 struct CompoundBridge {
 	CompoundBridge() {}
 	CompoundBridge(uint16_t id_left, uint16_t id_right): compound_id_left(id_left), compound_id_right(id_right) {
@@ -702,7 +704,7 @@ struct ParticleRefCompact {
 
 struct CompoundBridgeCompact {
 	CompoundBridgeCompact() {}
-	CompoundBridgeCompact(CompoundBridge* bridge, bool verbose);
+	CompoundBridgeCompact(const CompoundBridge& bridge, bool verbose);
 	
 	
 	ParticleRefCompact particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
@@ -754,7 +756,17 @@ struct CompoundBridgeCompact {
 
 struct CompoundBridgeBundleCompact {
 	CompoundBridgeBundleCompact() {}
+	CompoundBridgeBundleCompact(const std::vector<CompoundBridge>& bridges) {
+		for (int i = 0; i < bridges.size(); i++) {
+			compound_bridges[i] = CompoundBridgeCompact{ bridges[i], false };
+		}
+		n_bridges = bridges.size();
+	}
+
+
+	// OLD: 
 	CompoundBridgeBundleCompact(CompoundBridgeBundle* bundle, bool verbose=false);
+
 	CompoundBridgeCompact compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
 	int n_bridges = 0;
 };

@@ -2,6 +2,7 @@
 #include "Bodies.cuh"
 #include "Simulation.cuh"
 #include <vector>
+#include "CompoundBuilder.h"
 
 class BoxBuilder
 {
@@ -11,6 +12,7 @@ public:
 	};
 	void buildBox(Simulation* simulation);
 	void addCompoundCollection(Simulation* simulation, CompoundCollection* coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	void addCompoundCollection(Simulation* simulation, const CompoundCollection2& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
 	void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation, const ForceField_NB& forcefield);
@@ -29,7 +31,8 @@ public:
 
 private:
 	void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
-	//Solvent createSolvent(Float3 com, float dt);
+	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
+
 
 	bool spaceAvailable(Box* box, Float3 com, double radius);
 	void compoundLinker(Simulation* simulation);									// Temp function

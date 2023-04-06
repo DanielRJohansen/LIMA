@@ -90,6 +90,22 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 	printf("CompoundCollection added to box\n");
 }
 
+void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCollection2& compound_collection) {
+	for (const CompoundFactory& compound : compound_collection.compounds) {
+		integrateCompound(compound, simulation);
+	}
+
+	simulation->total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
+	simulation->total_particles += compound_collection.total_compound_particles;
+
+
+	*simulation->box->bridge_bundle = compound_collection.bridgebundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+
+	simulation->box->bonded_particles_lut_manager = compound_collection.bp_lut_manager;	// TODO: release a unique ptr here!
+
+	printf("CompoundCollection added to box\n");
+}
+
 void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {
 	// Load meta information
 	simulation->copyBoxVariables();
@@ -293,6 +309,29 @@ void BoxBuilder::integrateCompound(CompoundCarrier* compound, Simulation* simula
 	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
 	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
+}
+
+void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* simulation)
+{
+	std::vector<LimaPosition> positions;
+	std::vector<LimaPosition> positions_prev;
+	positions.reserve(MAX_COMPOUND_PARTICLES);
+	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
+
+	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+
+	for (int i = 0; i < compound.n_particles; i++) {
+		const Float3& extern_position = compound.positions[i];
+		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
+
+		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->dt);
+		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
+	}
+
+	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
+
+	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };
 }
 
 //Solvent BoxBuilder::createSolvent(Float3 com, float dt) {

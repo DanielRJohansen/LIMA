@@ -192,7 +192,7 @@ CompoundBridgeBundleCompact::CompoundBridgeBundleCompact(CompoundBridgeBundle* b
 	n_bridges = bundle->n_bridges;
 	//printf("Transferring %d %d bridges\n", n_bridges, bundle->n_bridges);
 	for (int i = 0; i < n_bridges; i++) {
-		compound_bridges[i] = CompoundBridgeCompact(&bundle->compound_bridges[i], verbose);
+		compound_bridges[i] = CompoundBridgeCompact(bundle->compound_bridges[i], verbose);
 		//printf("bridge %d has %d particles\n\n", i, compound_bridges[i].n_particles);
 	}
 }
@@ -317,27 +317,27 @@ CompoundBridge* CompoundBridgeBundle::getBelongingBridge(GenericBond* bond) {
 
 
 
-CompoundBridgeCompact::CompoundBridgeCompact(CompoundBridge* bridge, bool verbose) :
-	compound_id_left{ bridge->compound_id_left },
-	compound_id_right{ bridge->compound_id_right }
+CompoundBridgeCompact::CompoundBridgeCompact(const CompoundBridge& bridge, bool verbose) :
+	compound_id_left{ bridge.compound_id_left },
+	compound_id_right{ bridge.compound_id_right }
 {
-	n_particles = bridge->n_particles;
+	n_particles = bridge.n_particles;
 
 	for (int i = 0; i < n_particles; i++) {
-		particle_refs[i] = ParticleRefCompact(bridge->particle_refs[i]);
-		atom_types[i] = bridge->atom_types[i];
+		particle_refs[i] = ParticleRefCompact(bridge.particle_refs[i]);
+		atom_types[i] = bridge.atom_types[i];
 	}
-	n_singlebonds = bridge->n_singlebonds;
+	n_singlebonds = bridge.n_singlebonds;
 	for (int i = 0; i < n_singlebonds; i++) {
-		singlebonds[i] = bridge->singlebonds[i];
+		singlebonds[i] = bridge.singlebonds[i];
 	}
-	n_anglebonds = bridge->n_anglebonds;
+	n_anglebonds = bridge.n_anglebonds;
 	for (int i = 0; i < n_anglebonds; i++) {
-		anglebonds[i] = bridge->anglebonds[i];
+		anglebonds[i] = bridge.anglebonds[i];
 	}
-	n_dihedrals = bridge->n_dihedrals;
+	n_dihedrals = bridge.n_dihedrals;
 	for (int i = 0; i < n_dihedrals; i++) {
-		dihedrals[i] = bridge->dihedrals[i];
+		dihedrals[i] = bridge.dihedrals[i];
 	}
 
 	if (verbose) {

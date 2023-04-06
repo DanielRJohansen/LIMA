@@ -643,7 +643,22 @@ vector<string> CompoundBuilder::splitAtomnameFromId(vector<string> words) {
 
 
 
-
+bool isLineCommented(const std::string& input, const std::vector<char>& comment_markers = { ';', '#' }) {
+	// Iterate through each character in the string
+	for (char c : input) {
+		// If the character is not a space, check if it's a comment marker
+		if (!std::isspace(c)) {
+			// Iterate through each comment marker in the vector
+			for (char comment_marker : comment_markers) {
+				if (c == comment_marker) {
+					return true; // The first non-space character is a comment marker
+				}
+			}
+			return false; // The first non-space character is not a comment marker
+		}
+	}
+	return false; // The string is empty or contains only spaces
+}
 
 std::vector<std::string> readFile(const std::string& file_path) {
 	// Check if file exists
@@ -657,6 +672,7 @@ std::vector<std::string> readFile(const std::string& file_path) {
 	std::vector<std::string> lines;
 	std::string line;
 	while (std::getline(file, line)) {
+		if (isLineCommented(line)) {continue;} // Skip comments
 		lines.push_back(line);
 	}
 
@@ -693,7 +709,7 @@ MoleculeBuilder::MoleculeBuilder(Forcefield* ff, const std::string& work_dir, Ve
 	forcefield(ff) 
 {}
 
-void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens) {
+CompoundCollection2 MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens) {
 
 	printH2("Building molecules", true, false);
 
@@ -707,6 +723,18 @@ void MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol
 
 	distributeBondsToCompoundsAndBridges();
 
+	CompoundBridgeBundleCompact bridges_compact;
+	for (int i = 0; i < compound_bridges.size(); i++) {
+		bridges_compact.compound_bridges[i] = compound_bridges[i];
+	}
+	bridges_compact.n_bridges = compound_bridges.size();
+
+	return CompoundCollection2{ 
+		compounds, 
+		n_particles_in_residues,
+		bp_lut_manager, 
+		bridges_compact,
+		solvent_positions };
 }
 
 
@@ -766,11 +794,12 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 		
 		if (line_cnt == 0) { continue; }	// Title is irrelevant
 		if (line_cnt == 1) {				// 2nd line is particle count
-			const int64_t atoms_total = stoll(line);
+			const int64_t atoms_total = stoll(line);	// Only a ballpark number!
 
 			// Reserve enough vectorspace to handle all particles being either in residues or solvents
 			residues.reserve(atoms_total / Residue::max_size_soft);	// Misses the mark when some residues are smaller..
 			solvent_positions.reserve(atoms_total);
+			continue;
 		}
 
 		if (line.size() < 44) { continue; }	// Should only happen at the end. TODO: Extract box size here. Make sure it is the same as the constant var!
@@ -929,7 +958,7 @@ bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleIn
 }
 
 void MoleculeBuilder::matchBondedResidues() {
-	for (size_t i = 0; i < residues.size() - 1; i++) {
+	for (int i = 0; i < static_cast<int>(residues.size()) - 1; i++) {
 		Residue& residue_left = residues[i];
 		Residue& residue_right = residues[i + 1];
 

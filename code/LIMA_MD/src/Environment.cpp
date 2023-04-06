@@ -23,13 +23,16 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	MoleculeBuilder moleculebuilder(&forcefield, work_folder);
-	moleculebuilder.buildMolecules(gro_path, topol_path);
+	CompoundCollection2 collection = moleculebuilder.buildMolecules(gro_path, topol_path);
+
+
 
 	CompoundBuilder compoundbuilder(&forcefield, CRITICAL_INFO);
 	CompoundCollection mol_6lzm_10 = compoundbuilder.buildCompoundCollection(gro_path, topol_path);
 
 	boxbuilder.buildBox(simulation.get());
-	boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
+	//boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
+	boxbuilder.addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
 	//boxbuilder.solvateBox(simulation);

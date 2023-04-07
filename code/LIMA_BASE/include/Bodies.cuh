@@ -190,6 +190,9 @@ struct SolventBlock {
 	__device__ __host__ void loadMeta(const SolventBlock& block) { 
 		origo = block.origo; // Not necessary, is given by the blockIdx.x
 		n_solvents = block.n_solvents;
+		if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
+			printf("Too many solvents in block!\n");
+		}
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
 		rel_pos[threadIdx.x] = Coord{};	// temp

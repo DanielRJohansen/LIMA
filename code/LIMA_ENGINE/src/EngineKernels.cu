@@ -97,7 +97,7 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		force += LimaForcecalc::calcLJForce(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon,
-			ATOMTYPE_SOL- exclude_own_index, ATOMTYPE_SOL- exclude_own_index
+			ATOMTYPE_SOL- exclude_own_index, i
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -282,16 +282,16 @@ __device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements)
 	for (int i = 1; i < n_elements; i++) {
 		if (threadIdx.x == i) {
 			onehot_remainers[i] += onehot_remainers[i - 1];
+			if (onehot_remainers[i] > 230) { printf("Sequential-Prefix-Sum algo is about to crash!"); }
 		}
 		__syncthreads();
 	}
 }
 
 __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, int n_elements) {
-	if (remain) {
-		utility_buffer[threadIdx.x] = 1;
-	}
+	utility_buffer[threadIdx.x] = static_cast<uint8_t>(remain);
 	__syncthreads();
+
 	doSequentialPrefixSum(utility_buffer, n_elements);	
 	//doBlellochPrefixSum
 
@@ -526,7 +526,7 @@ __global__ void compoundKernel(Box* box) {
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	//force = Float3(0);
+
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
 	{
@@ -536,14 +536,13 @@ __global__ void compoundKernel(Box* box) {
 		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 
 		if (threadIdx.x == 0) {
-			NodeIndex prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, coordarray_prev_ptr->origo);
+			const NodeIndex prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, coordarray_prev_ptr->origo);
 			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
 		}
 		__syncthreads();
 
 		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
-		if (threadIdx.x < compound.n_particles) {
-	
+		if (threadIdx.x < compound.n_particles) {	
 			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 		}
 	}
@@ -698,7 +697,7 @@ __global__ void solventForceKernel(Box* box) {
 	{
 		__syncthreads(); // Sync since use of utility
 		if (solvent_active) {
-			utility_buffer[threadIdx.x] = solventblock.rel_pos[threadIdx.x].toFloat3();
+			utility_buffer[threadIdx.x] = relpos_self;
 		}
 		__syncthreads();
 		if (solvent_active) {
@@ -797,8 +796,10 @@ __global__ void solventTransferKernel(Box* box) {
 	}
 
 	if (solventblock_next->n_solvents != transfermodule->n_remain) {
-		printf("YOooooooooooooooooooooooooooooooooooooooooooo %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);
+		printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);
 	}
+
+	//if (blockIdx.x == 47) { printf("Block 47 has %d remains\n", transfermodule->n_remain); }
 
 	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
@@ -812,6 +813,7 @@ __global__ void solventTransferKernel(Box* box) {
 			solventblock_current->rel_pos[incoming_index] = queue->rel_positions_prev[threadIdx.x];
 		}
 		n_solvents_next += queue->n_elements;
+		//if (blockIdx.x == 47) { printf("Block 47 has %d incoming\n", queue->n_elements); }
 
 		// Signal that all elements of the queues have been moved
 		__syncthreads();

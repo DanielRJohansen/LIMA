@@ -7,8 +7,19 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
 
+	/*
+	* 	__shared__ Compound compound;				// Mostly bond information
+	__shared__ CompoundState compound_state;	// Relative position in [lm]
+	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
+	__shared__ NeighborList neighborlist;		
+	__shared__ BondedParticlesLUT bonded_particles_lut;
+	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
+	__shared__ Coord utility_coord;
+	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
-	int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(NeighborList) + sizeof(Float3) * NEIGHBORLIST_MAX_SOLVENTS + sizeof(uint8_t) * NEIGHBORLIST_MAX_SOLVENTS;	
+	*/
+	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
+	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 	//int Skernel_shared_mem = sizeof(Float3) * MAX_COMPOUND_PARTICLES + sizeof(uint8_t) * MAX_COMPOUND_PARTICLES + sizeof(Solvent) * THREADS_PER_SOLVENTBLOCK;
 	printf("Compoundkernel shared mem. size: %d B\n", Ckernel_shared_mem);
 	//printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);

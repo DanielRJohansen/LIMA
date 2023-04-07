@@ -142,9 +142,9 @@ struct CompoundCoords {
 	//__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
-const int MAX_PAIRBONDS = 128;
-const int MAX_ANGLEBONDS = 256;
-const int MAX_DIHEDRALS = 384;
+const int MAX_PAIRBONDS = 64;
+const int MAX_ANGLEBONDS = 128;
+const int MAX_DIHEDRALS = 256;
 struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {
 		n_particles = n_p;

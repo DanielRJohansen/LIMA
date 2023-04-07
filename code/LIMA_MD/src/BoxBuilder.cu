@@ -60,35 +60,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 		exit(1);
 	}
 }
-//
-//void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection* compound_collection) {
-//	Float3 desired_molecule_center = Float3(BOX_LEN_HALF);	// Convert from [fm] to [nm]
-//	//Float3 offset = desired_molecule_center - compound_collection->calcCOM();
-//
-//	//printf("CompoundCollection offset for centering: ");
-//	//offset.print(' ');
-//	//most_recent_offset_applied = offset;			// Needed so solvents can be offset identically later. Not needed if making solvent positions using LIMA
-//
-//	for (int c = 0; c < compound_collection->n_compounds; c++) {
-//		CompoundCarrier* compound = &compound_collection->compounds[c]; // Compound 45 is off. Locate the error Okay so it is a new chain, we apparently down check wheter they have a bond!
-//		for (int i = 0; i < compound->n_particles; i++) {
-//			//compound->prev_positions[i] += offset;
-//			/*compound->state.positions[i] += offset;
-//			compound->state_tsub1.positions[i] += offset;*/
-//		}
-//		integrateCompound(compound, simulation);
-//	}
-//
-//	simulation->total_compound_particles = compound_collection->n_atoms_total;						// TODO: Unknown behavior, if multiple molecules are added!
-//	simulation->total_particles += compound_collection->n_atoms_total;
-//
-//	
-//	*simulation->box->bridge_bundle = *compound_collection->compound_bridge_bundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
-//
-//	simulation->box->bonded_particles_lut_manager = compound_collection->bonded_particles_lut_manager;	// TODO: release a unique ptr here!
-//
-//	printf("CompoundCollection added to box\n");
-//}
+
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {

@@ -233,10 +233,11 @@ int main() {
 	//doPoolBenchmark(env, "PoolCompSol");	// One 1 particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);	// Doesn't work currently
-	doBasicBenchmark(env, "TorsionBenchmark");
+	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");
 	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	//doBasicBenchmark(env, "SolventBenchmark");
-	//doBasicBenchmark(env, "4ake");
+	doBasicBenchmark(env, "T4Lysozyme");
+	//doBasicBenchmark(env, "4ake");// TOO big, almost 20 nm long!
 	return 0;
 }

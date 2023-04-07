@@ -136,6 +136,9 @@ void Environment::run() {
 		handleStatus(simulation.get());
 		handleDisplay(simulation.get());
 
+		// Deadspin to slow down rendering for visual debugging :)
+		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
+
 		if (handleTermination(simulation.get())) {
 			break;
 		}
@@ -229,9 +232,7 @@ void Environment::handleStatus(Simulation* simulation) {
 		engine->timings.x = 0;
 		engine->timings.y = 0;
 
-		// Deadspin to slow down rendering for visual debugging :)
-		while (simulation->getStep() >= FIRST_INTERRENDER_WAIT && (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
-
+		
 		time0 = std::chrono::high_resolution_clock::now();
 	}
 }

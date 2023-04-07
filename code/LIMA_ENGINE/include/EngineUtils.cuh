@@ -31,6 +31,11 @@ namespace CPPD {
 		return r > l ? r : l;
 	}
 
+	template <typename T>
+	__device__ __host__ static T min(const T l, const T r) {
+		return r < l ? r : l;
+	}
+
 	__device__ __host__ static int32_t abs(const int32_t val) {
 		return val < 0 ? -val : val;
 	}

@@ -2,7 +2,9 @@
 
 
 
-#define LIMA_DEBUGMODE
+#define LIMASAFEMODE 1
+
+#define LIMADEBUGMODE 1
 //#define LIMA_SAFERUN		// Use this for?
 //#define LIMA_VERBOSE
 
@@ -99,10 +101,12 @@ const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 // Related to compound bridges
 const int COMPOUNDBRIDGES_IN_BUNDLE = 96;
-const int MAX_PARTICLES_IN_BRIDGE = 64;
-const int MAX_SINGLEBONDS_IN_BRIDGE = 32;
-const int MAX_ANGLEBONDS_IN_BRIDGE = 32;
+const int MAX_PARTICLES_IN_BRIDGE = 32;
+const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
+const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
+
+const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shift
 
 // Related to forcefield / constant memory
 const int MAX_ATOM_TYPES = 32;

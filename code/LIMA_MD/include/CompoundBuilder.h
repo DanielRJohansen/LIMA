@@ -87,6 +87,7 @@ struct Residue {
 
 struct ParticleInfo {
 	bool isUsed = false;						// false if discarded at load, or simply never found
+	int gro_id = -1;
 
 	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
 	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
@@ -106,15 +107,19 @@ public:
 	CompoundFactory() {}
 	CompoundFactory(const int id) : id(id) {}
 
-	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id);
+	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id);
 	int id = -1;	// unique lima id
 
 	void addSingleBond(const std::array<ParticleInfo, 2>& particle_info, const SingleBond& bondtype);
 	void addAngleBond(const std::array<ParticleInfo, 3>& particle_info, const AngleBond& bondtype);
 	void addDihedralBond(const std::array<ParticleInfo, 4>& particle_info, const DihedralBond& bondtype);
 
+	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
+		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
+	}
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
+	int gro_ids[MAX_COMPOUND_PARTICLES];		// For debug
 };
 
 

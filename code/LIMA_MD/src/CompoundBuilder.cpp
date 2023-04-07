@@ -238,7 +238,9 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 		if (record.atom_number >= particle_info.size()) {
 			particle_info.resize(record.atom_number * 2);
 		}
+
 		particle_info[record.atom_number].isUsed = true;
+		particle_info[record.atom_number].gro_id = record.atom_number;
 	}
 }
 
@@ -432,7 +434,8 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 			compounds.back().addParticle(
 				atom.position,
 				forcefield->getAtomtypeID(atom.id),
-				forcefield->atomTypeToIndex(atom.name[0])
+				forcefield->atomTypeToIndex(atom.name[0]),
+				particle_info[atom.id].gro_id
 				);
 		}
 	}
@@ -566,23 +569,24 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
 
-void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id) {
+void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id) {
 	if (n_particles >= MAX_COMPOUND_PARTICLES) {
-		printf("ERROR: Cannot add particle to compound!\n");
-		exit(1);
+		throw std::exception("Failed to add particle to compound");
 	}
-
+	
+	// Variables only present in factory
 	positions[n_particles] = position;
+	gro_ids[n_particles] = gro_id;
 
+	// Variables present in Compound
 	atom_types[n_particles] = atomtype_id;
 	atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
-
 
 	n_particles++;
 }
 
-void CompoundFactory::addSingleBond(const std::array<ParticleInfo, 2>& particle_info, const SingleBond& bondtype)
-{
+void CompoundFactory::addSingleBond(const std::array<ParticleInfo, 2>& particle_info, const SingleBond& bondtype) {
+	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
 		particle_info[0].local_id_compound,
 		particle_info[1].local_id_compound,
@@ -591,8 +595,8 @@ void CompoundFactory::addSingleBond(const std::array<ParticleInfo, 2>& particle_
 	);
 }
 
-void CompoundFactory::addAngleBond(const std::array<ParticleInfo, 3>& particle_info, const AngleBond& bondtype)
-{
+void CompoundFactory::addAngleBond(const std::array<ParticleInfo, 3>& particle_info, const AngleBond& bondtype) {
+	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
 		particle_info[0].local_id_compound,
 		particle_info[1].local_id_compound,
@@ -602,8 +606,8 @@ void CompoundFactory::addAngleBond(const std::array<ParticleInfo, 3>& particle_i
 	);
 }
 
-void CompoundFactory::addDihedralBond(const std::array<ParticleInfo, 4>& particle_info, const DihedralBond& bondtype)
-{
+void CompoundFactory::addDihedralBond(const std::array<ParticleInfo, 4>& particle_info, const DihedralBond& bondtype) {
+	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
 		particle_info[0].local_id_compound,
 		particle_info[1].local_id_compound,
@@ -617,6 +621,7 @@ void CompoundFactory::addDihedralBond(const std::array<ParticleInfo, 4>& particl
 
 
 void BridgeFactory::addSingleBond(std::array<ParticleInfo*, 2> particle_info, const SingleBond& bondtype) {
+	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
 		getBridgelocalIdOfParticle(*particle_info[0]),
 		getBridgelocalIdOfParticle(*particle_info[1]),
@@ -626,6 +631,7 @@ void BridgeFactory::addSingleBond(std::array<ParticleInfo*, 2> particle_info, co
 }
 
 void BridgeFactory::addAngleBond(std::array<ParticleInfo*, 3> particle_info, const AngleBond& bondtype) {
+	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
 		getBridgelocalIdOfParticle(*particle_info[0]),
 		getBridgelocalIdOfParticle(*particle_info[1]),
@@ -636,6 +642,7 @@ void BridgeFactory::addAngleBond(std::array<ParticleInfo*, 3> particle_info, con
 }
 
 void BridgeFactory::addDihedralBond(std::array<ParticleInfo*, 4> particle_info, const DihedralBond& bondtype) {
+	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		getBridgelocalIdOfParticle(*particle_info[0]),
 		getBridgelocalIdOfParticle(*particle_info[1]),
@@ -649,8 +656,15 @@ void BridgeFactory::addDihedralBond(std::array<ParticleInfo*, 4> particle_info, 
 
 int BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 	if (particle_info.local_id_bridge == -1) {
+		if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
 		particle_info.local_id_bridge = n_particles;
-		particle_refs[n_particles++] = ParticleReference{ particle_info.compound_index, particle_info.local_id_compound };
+		particle_refs[n_particles++] = ParticleReference{ 
+			particle_info.compound_index, 
+			particle_info.local_id_compound,
+#ifdef LIMADEBUGMODE
+			particle_info.gro_id
+#endif
+		};
 	}
 	return particle_info.local_id_bridge;
 }

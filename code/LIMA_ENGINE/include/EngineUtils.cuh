@@ -243,15 +243,24 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
+	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
 	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
 		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_left)->origo;
 		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_right)->origo;
 
+
 		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
-		const NodeIndex nodeshift_right = nodeindex_left - hypernodeindex_right;
+		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
+
+#ifdef LIMASAFEMODE
+		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
+			printf("Shifting compound further than what is safe!");
+		}
+#endif
+
 		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
 		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
-		return nodeIndexToCoord(nodeshift_right);
+		return nodeIndexToCoord(nodeshift_right_to_left * -1);
 	}
 
 
@@ -550,6 +559,30 @@ namespace LIMADEBUG {
 			}
 		}
 	}
+
+
+	__device__ void static compoundIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered) {
+		const auto dif = (relpos_next - relpos_prev);
+		const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
+		if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 3.f) {
+			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+			dif.printS('D');
+			force.print('F');
+			critical_error_encountered = true;
+		}
+	}
+
+	__device__ void static solventIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered, int id) {
+		const auto dif = (relpos_next - relpos_prev);
+		const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
+		if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff) {
+			printf("\nSolvent %d moving too fast\n", id);
+			dif.printS('D');
+			force.print('F');
+			critical_error_encountered = true;
+		}
+	}
+
 
 };
 

@@ -40,6 +40,8 @@ struct Int3 {
 	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
+	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+
 	__host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
@@ -102,6 +104,9 @@ struct Float3 {
 		return *this * (1.f / len());
 	}
 
+	__device__ bool isNan() const {
+		return isnan(x) || isnan(y) || isnan(z);
+	}
 	__host__ Float3 piecewiseRound() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
@@ -153,7 +158,6 @@ struct Float3 {
 		else
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
-
 
 
 	__host__ __device__ void rotateAroundOrigo(Float3 pitch_yaw_roll) {	//pitch around x, yaw around z, tilt around y

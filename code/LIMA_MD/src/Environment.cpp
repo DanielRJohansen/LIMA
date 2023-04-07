@@ -47,7 +47,7 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	//assert(BOX_LEN >= CUTOFF + 0.5f);
 	//assert(simulation->n_compounds <= 1);	// Otherwise data_GAN goes haywire
 
-	assert(simulation->n_steps % STEPS_PER_LOGTRANSFER == 0);
+	//assert(simulation->n_steps % STEPS_PER_LOGTRANSFER == 0);
 	//assert(simulation->n_steps % STEPS_PER_THERMOSTAT == 0);
 	//assert(simulation->n_steps % STEPS_PER_TRAINDATATRANSFER == 0);
 

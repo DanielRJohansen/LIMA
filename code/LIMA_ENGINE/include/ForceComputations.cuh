@@ -17,27 +17,26 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, SingleBond* bon
 	// Calculates forces as J/mol*M								//
 	// kb [J/(mol*lm^2)]
 	Float3 difference = *pos_a - *pos_b;						//	[lm]
-	float error = difference.len() - bondtype->b0;				//	[lm]
+	const float error = difference.len() - bondtype->b0;				//	[lm]
 
 	*potE += 0.5f * bondtype->kb * (error * error);				// [J/mol]
 
-	float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
+	const float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
 	difference = difference.norm();								// dif_unit_vec, but shares variable with dif
 	results[0] = difference * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
-	results[1] = difference * force_scalar * -1;				// [kg * lm / (mol*ls^2)] = [lN]
+	results[1] = difference * force_scalar * -1.f;				// [kg * lm / (mol*ls^2)] = [lN]
 
-	if (0.5f * bondtype->kb * (error * error) > 100000 || true) {
-		//printf("error %f    pote %f    force %f\n", error, 0.5f * bondtype->kb * (error * error), force_scalar);
-		//printf("Dif %f\n",difference.len());
-		//printf("len %f\n", (*pos_a - *pos_b).len());
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.1f) {
+		printf("\nSingleBond: error: %f [nm] b0 %f [nm] force %f\n", error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
 		//results[0].print('r');
 		//results[1].print('R');
 		//pos_a->print('a');
 		//pos_b->print('b');
 	}
+#endif
 }
-
 
 __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3* pos_right, AngleBond* angletype, Float3* results, float* potE) {
 	const Float3 v1 = (*pos_left - *pos_middle).norm();
@@ -62,10 +61,11 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	results[2] = inward_force_direction2 * (torque / (*pos_right - *pos_middle).len());
 	results[1] = (results[0] + results[2]) * -1.f;
 
-
-	if (threadIdx.x == 2 && blockIdx.x == 0 || 1) {
-		//printf("\nangle %f error %f force %f t0 %f kt %f\n", angle, error, force_scalar, angletype->theta_0, angletype->k_theta);
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.1f) {
+		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 [rad] %f kt %f\n", angle, error, results[0], angletype->theta_0, angletype->k_theta);
 	}
+#endif
 }
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
 	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();
@@ -95,7 +95,8 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 		printf("angle neg %d\n", angle_is_negative);
 		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
 		float pot = dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
-		printf("torsion %f     torque: %f    pot %f     phi_0 %f k_phi %f\n", torsion, torque, pot, dihedral->phi_0, dihedral->k_phi);
+		printf("\ntorsion %f [rad]    torque: %f    pot %f     phi_0 %f [rad] k_phi %f\n", 
+			torsion, torque, pot, dihedral->phi_0, dihedral->k_phi);
 	}
 
 
@@ -107,6 +108,13 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	//results[2] = (results[0] + results[3]) * -1.f * 0.5;
 	results[1] = (results[0]) * -1.f;
 	results[2] = (results[3]) * -1.f;
+
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.5f) {
+		printf("\nDihedralBond: torsion %f [rad] torque: %f phi_0 [rad] %f k_phi %f\n", 
+			torsion, torque, dihedral->phi_0, dihedral->k_phi);
+	}
+#endif
 }
 
 
@@ -119,36 +127,28 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
 	// Returns force in J/mol*M		?????????????!?!?//
 
-	
 
 	// Directly from book
-	float dist_sq = (*pos1 - *pos0).lenSquared();
+	const float dist_sq = (*pos1 - *pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);// *FEMTO_TO_LIMA* FEMTO_TO_LIMA;	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	const float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
 
+	const Float3 force = (*pos1 - *pos0) * force_scalar;
 
-	if ((*pos1 - *pos0).len() < 0.11 * NANO_TO_LIMA) {
-		printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
-		//((*pos1 - *pos0) * force_scalar).print('f');
-		pos0->print('0');
-		pos1->print('1');
-		printf("dist nm %f force %f sigma %f t1 %d t2 %d\n", sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma/NANO_TO_LIMA, type1, type2);
+#ifdef LIMASAFEMODE
+	if (force > 0.1f) {
+		//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
+		////((*pos1 - *pos0) * force_scalar).print('f');
+		//pos0->print('0');
+		//pos1->print('1');
+		printf("\nLJ Force: dist nm %f force %f sigma %f t1 %d t2 %d\n", sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma/NANO_TO_LIMA, type1, type2);
 	}
-	//printf("\ndist: %d %f force %f\n", threadIdx.x, (*pos0 - *pos1).len() / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len());
-
-#ifdef LIMA_VERBOSE
-	//if (threadIdx.x == 0 && blockIdx.x == 0) {
-	//	float dist = (*pos0 - *pos1).len() * NORMALIZER;
-	//	printf("\ndist %f force %f pot %f, sigma %f, s %f distsq %f eps %.10f\n", dist, force_scalar * (*pos1 - *pos0).len(), *potE, sigma * NORMALIZER, s, dist_sq, epsilon);
-	//}
-	pos0->print('0');
-	pos0->print('1');
-}
 #endif
-return (*pos1 - *pos0) * force_scalar;										// GN/mol [(kg*nm)/(ns^2*mol)]
+
+	return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
 	}
 
 

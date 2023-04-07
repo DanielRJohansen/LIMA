@@ -142,9 +142,9 @@ struct CompoundCoords {
 	//__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
-const int MAX_PAIRBONDS = 64;
-const int MAX_ANGLEBONDS = 128;
-const int MAX_DIHEDRALS = 256;
+const int MAX_SINGLEBONDS_IN_COMPOUND = 64;
+const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
+const int MAX_DIHEDRALBONDS_IN_COMPOUND = 256;
 struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {
 		n_particles = n_p;
@@ -416,10 +416,9 @@ namespace CoordArrayQueueHelpers {
 
 
 struct Compound {
-	__host__ __device__  Compound() {}	// {}
+	__host__ __device__  Compound() {}
 
-
-	uint8_t n_particles = 0;					// MAX 256 particles!!!!0
+	uint8_t n_particles = 0;					// MAX 255 particles
 	//Float3 prev_positions[MAX_COMPOUND_PARTICLES];;			// Should this really belong to the compound and not the box?
 	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -427,7 +426,7 @@ struct Compound {
 
 	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
 
-#ifdef LIMA_DEBUGMODE
+#ifdef LIMADEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
 #endif
 
@@ -436,36 +435,17 @@ struct Compound {
 	//double radius = 0;
 
 	uint16_t n_singlebonds = 0;
-	SingleBond singlebonds[MAX_PAIRBONDS];
+	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
 
 	uint16_t n_anglebonds = 0;
-	AngleBond anglebonds[MAX_ANGLEBONDS];
+	AngleBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
 
 	uint16_t n_dihedrals = 0;
-	DihedralBond dihedrals[MAX_DIHEDRALS];
+	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = 404;		// particle which started at center. Used for PBC, applyhyperpos, and neighborlist search.
 	float confining_particle_sphere = 0;		// All particles in compound are PROBABLY within this radius !!!! I think it is nm now, please change to lm!!
 
-
-	//---------------------------------------------------------------------------------//
-
-	// Only call this if the compound has already been assigned particles & bonds
-	/*
-	__host__ bool intersects(Compound a) {
-		return (a.center_of_mass - center_of_mass).len() < (a.radius + radius + max_LJ_dist);
-	}*/
-
-
-	__host__ bool hasRoomForRes() {					// TODO: Implement, that it checks n atoms in res
-		return ((int)n_particles + MAX_ATOMS_IN_RESIDUE) <= MAX_COMPOUND_PARTICLES;
-	}
-	__host__ bool hasRoomForRes(int n_particles_in_res) {					// TODO: Implement, that it checks n atoms in res
-		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
-	}
-	//---------------------------------------------------------------------------------//
-
-//	__device__ void loadMeta(Compound* compound);
 
 	__device__ void loadMeta(Compound* compound) {
 		n_particles = compound->n_particles;
@@ -474,7 +454,6 @@ struct Compound {
 		n_dihedrals = compound->n_dihedrals;
 	}
 
-	//__device__ void loadData(Compound* compound);
 	__device__ void loadData(Compound* compound) {
 		if (threadIdx.x < n_particles) {
 			//prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
@@ -509,7 +488,6 @@ struct Compound {
 				dihedrals[index] = compound->dihedrals[index];
 		}
 	}
-
 };
 
 
@@ -527,10 +505,17 @@ using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 struct ParticleReference {
 	ParticleReference() {}
 
+#ifdef LIMADEBUGMODE
+	// Used by moleculebuilder only
+	ParticleReference(int compound_id, int local_id_compound, int gro_id) :
+		compound_id(compound_id), local_id_compound(local_id_compound), gro_id(gro_id)
+	{}
+	int gro_id = -1;
+#else
 	// Used by moleculebuilder only
 	ParticleReference(int compound_id, int local_id_compound) : 
 		compound_id(compound_id), local_id_compound(local_id_compound) {}
-
+#endif
 
 	int compound_id = -1;
 	int local_id_compound = -1;
@@ -545,13 +530,13 @@ struct CompoundBridge {
 	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};
 	uint8_t n_particles = 0;					
 
-	uint16_t n_singlebonds = 0;
+	uint8_t n_singlebonds = 0;
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
 
-	uint16_t n_anglebonds = 0;
+	uint8_t n_anglebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
 
-	uint16_t n_dihedrals = 0;
+	uint8_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
 
 	uint16_t compound_id_left{};
@@ -563,6 +548,9 @@ struct CompoundBridge {
 		n_singlebonds = bridge->n_singlebonds;
 		n_anglebonds = bridge->n_anglebonds;
 		n_dihedrals = bridge->n_dihedrals;
+
+		compound_id_left = bridge->compound_id_left;
+		compound_id_right = bridge->compound_id_right;
 	}
 	__device__ void loadData(CompoundBridge* bridge) {
 		if (threadIdx.x < n_particles) {
@@ -570,7 +558,7 @@ struct CompoundBridge {
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
 		}
 		
-		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
+		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {	// TODO: Remove for loop, make static check that nparticles is larger than max bonds!
 			int index = i * blockDim.x + threadIdx.x;
 			if (index < n_singlebonds)
 				singlebonds[index] = bridge->singlebonds[index];

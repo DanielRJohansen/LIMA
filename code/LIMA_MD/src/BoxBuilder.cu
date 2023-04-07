@@ -296,6 +296,10 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 		const Float3& extern_position = compound.positions[i];
 		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
 
+		if (compound.gro_ids[i] == 177 ) {
+			int a = 0;
+		}
+
 		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->dt);
 		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}

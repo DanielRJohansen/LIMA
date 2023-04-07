@@ -114,7 +114,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	EngineUtils::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
 	const auto n_steps = simulation->getStep();
-	if (simulation->getStep() < 1) { return Analyzer::AnalyzedPackage(); }
+	if (simulation->getStep() < 3) { return Analyzer::AnalyzedPackage(); }
 
 	//printf("Analyzer malloc %.4f GB on host\n", sizeof(Float3) * analysable_steps * 1e-9);
 	//Float3* average_energy = new Float3[analysable_steps];
@@ -284,11 +284,12 @@ float getStdDev(std::vector<float>& vec) {
 }
 
 float Analyzer::getStdDevNorm(std::vector<float>& vec) {
-
+	if (vec.empty()) { return 0.f; }
 	return vec.front() != 0.f ? getStdDev(vec) / vec.front() : 0.f;
 }
 
 void printRow(string title, vector<float>& vec) {
+	if (vec.empty()) { return; }
 	LIMA_Printer::printTableRow(
 		title, { 
 			getMin(vec), 

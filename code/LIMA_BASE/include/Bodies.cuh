@@ -115,7 +115,7 @@ public:
 	uint16_t neighborsolvent_ids[NEIGHBORLIST_MAX_SOLVENTS];
 	uint16_t n_solvent_neighbors = 0;
 
-	static const int max_gridnodes = 27;
+	static const int max_gridnodes = 48;
 	uint16_t gridnode_ids[max_gridnodes];
 	uint8_t n_gridnodes = 0;
 
@@ -432,7 +432,6 @@ struct Compound {
 
 
 	Float3 center_of_mass = Float3(0, 0, 0);
-	//double radius = 0;
 
 	uint16_t n_singlebonds = 0;
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
@@ -443,8 +442,8 @@ struct Compound {
 	uint16_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 
-	int key_particle_index = 404;		// particle which started at center. Used for PBC, applyhyperpos, and neighborlist search.
-	float confining_particle_sphere = 0;		// All particles in compound are PROBABLY within this radius !!!! I think it is nm now, please change to lm!!
+	int key_particle_index = -1;			// Index of particle initially closest to CoM
+	float confining_particle_sphere = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 
 
 	__device__ void loadMeta(Compound* compound) {

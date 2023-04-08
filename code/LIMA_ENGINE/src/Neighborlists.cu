@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <unordered_set>
 
+
+// ------------------------------------------------------------------------------------------- PRIVATE HELPERS -------------------------------------------------------------------------------------------//
+
+
 bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_nm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 	const float dist = EngineUtils::calcHyperDistNM(pos_a, pos_b);
 	return dist < cutoff_nm;
@@ -35,7 +39,6 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 	EngineUtils::genericErrorCheck("Error creating NListDataCollection");
 }
 
-// This doesn't currently work
 void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
 
 	// Data for the current step has not yet been generated so we need to use the previous step.
@@ -47,10 +50,10 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 
 		compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
 		const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
-		compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
-		if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
-			int a = 0;
-		}
+		//compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
+		//if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
+		//	int a = 0;
+		//}
 	}
 }
 
@@ -96,7 +99,7 @@ namespace NListUtils {
 			for (uint16_t id_other = id_self + 1; id_other < simulation->n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_other];
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
-				const float cutoff_add_candidate = simulation->compounds_host[id_self].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
+				const float cutoff_add_candidate = simulation->compounds_host[id_other].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
 
 				addNeighborIfEligible(hashtable_compoundneighbors, *nlist_self, *nlist_candidate,
 					pos_self, pos_other,
@@ -109,56 +112,31 @@ namespace NListUtils {
 	}
 
 
-
-
-
-
-
-
 	void distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection) {
 		for (int compound_index = 0; compound_index < simulation->n_compounds; compound_index++) {
-			const NodeIndex& compound_nodeindex = nlist_data_collection.compound_origos[compound_index];
-			CompoundGridNode& node = *nlist_data_collection.compoundgrid->getBlockPtr(compound_nodeindex);
-			//const Coord& compound_origo = compoundgrid_host->getOrigosPtr()[compound_index];
-			//CompoundGridNode& node = *compoundgrid_host->getBlockPtr(compound_origo);
+			const Float3& compound_position = nlist_data_collection.compound_key_positions[compound_index];
+			const NodeIndex& nearest_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_position);
+
+			CompoundGridNode& node = *nlist_data_collection.compoundgrid->getBlockPtr(nearest_nodeindex);
+
 			node.addAssociatedCompound(compound_index);
 		}
 	}
 
 
+	bool isNearby(const Simulation& simulation, const NodeIndex& nodeindex_self, const int querycompound_id, NListDataCollection& nlist_data) {
+		const Float3& querycompound_pos = nlist_data.compound_key_positions[querycompound_id];
 
-	//void NListManager::bootstrapCompoundgrid(Simulation* simulation) {
-	//	nlist_data_collection->compoundgrid = new CompoundGrid{};
-	//
-	//	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
-	//	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
-	//
-	//	// We need to bootstrap origo's before we can use the normal functionality to find neighbors
-	//	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
-	//		nlist_data_collection->compoundgrid->getOrigosPtr()[compound_id] = compoundcoords_array[compound_id].origo;
-	//	}
-	//	delete[] compoundcoords_array;
-	//	
-	//	EngineUtils::genericErrorCheck("Here");
-	//
-	//	NListUtils::distributeCompoundsInGrid(simulation, nlist_data_collection->compoundgrid);
-	//	NListUtils::assignNearbyCompoundsToGridnodes(simulation, nlist_data_collection);
-	//	NListUtils::transferCompoundgridToDevice(simulation, nlist_data_collection->compoundgrid);
-	//}
+		const Float3 currentnode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_self);
 
+		const float dist = EngineUtils::calcHyperDistNM(&querycompound_pos, &currentnode_pos);
 
-
-	bool isNearby(const Simulation& simulation, const NodeIndex& nodeindex_self, const int querycompound_id, NListDataCollection& nlist_data_collection) {
-		//const Float3 querycompound_origo = (compoundgrid_host->getOrigosPtr()[querycompound_id]).toFloat3();
-		//const Float3 querycompound_origo = nlist_data_collection.compound_origos[querycompound_id].toFloat3();
-		//const float dist = (querycompound_origo - node_origo.toFloat3()).len();
-		const NodeIndex nodeindex_querycompound = nlist_data_collection.compound_origos[querycompound_id];
-		const float dist_nm = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_querycompound - nodeindex_self).len();
-
+		//const NodeIndex nodeindex_querycompound = nlist_data_collection.compound_origos[querycompound_id];
+		//const float dist = LIMAPOSITIONSYSTEM::calcHyperDist(nodeindex_querycompound, nodeindex_self);
 
 		const float querycompound_radius = simulation.compounds_host[querycompound_id].confining_particle_sphere;	// Is this nm or lm?=?!??!!
 
-		return dist_nm < (CUTOFF_NM + querycompound_radius);
+		return dist < (CUTOFF_NM + querycompound_radius);
 	}
 
 	void assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
@@ -171,7 +149,7 @@ namespace NListUtils {
 					int nodeself_id = CompoundGrid::get1dIndex(node_origo);
 
 
-					const int query_range = 1;
+					const int query_range = 2;
 					for (int x = -query_range; x <= query_range; x++) {
 						for (int y = -query_range; y <= query_range; y++) {
 							for (int z = -query_range; z <= query_range; z++) {
@@ -182,15 +160,9 @@ namespace NListUtils {
 								for (int i = 0; i < node_query->n_associated_compounds; i++) {
 									const int querycompound_id = node_query->associated_ids[i];
 
-									if (isNearby(*simulation, node_origo, querycompound_id, *nlist_data_collection) || true) {
+									if (isNearby(*simulation, node_origo, querycompound_id, *nlist_data_collection)) {
 										node_self->addNearbyCompound(querycompound_id);	// Add compound so solvents can see it
 										nlist_data_collection->compound_neighborlists[querycompound_id].addGridnode(nodeself_id);	// Add grid so compound can see solvents
-
-										if (node_origo == NodeIndex{ 3,3,3 }) {
-											//printf("\nAdding  to %d\n", querycompound_id); 
-											//nlist_data_collection->compound_origos[querycompound_id].print('C');
-											//node_origo.print('N');
-										}
 									}
 								}
 							}
@@ -204,14 +176,6 @@ namespace NListUtils {
 
 	void updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist) {
 		*nlist->compoundgrid = CompoundGrid{};	// Reset the grid
-		//printf("\n clear \n");
-		// Load the origo's of each compound
-		//cudaMemcpy(
-		//	nlist->compoundgrid->getOrigosPtr(),
-		//	simulation->box->compound_grid->getOrigosPtr(),
-		//	sizeof(Coord) * MAX_COMPOUNDS,
-		//	cudaMemcpyDeviceToHost
-		//);
 
 		distributeCompoundsInGrid(simulation, *nlist);
 		assignNearbyCompoundsToGridnodes(simulation, nlist);
@@ -262,9 +226,7 @@ namespace NListUtils {
 
 
 
-
-
-
+// ------------------------------------------------------------------------------------------- PUBLIC INTERFACE -------------------------------------------------------------------------------------------//
 
 NListManager::NListManager(Simulation* simulation) {
 	nlist_data_collection = new NListDataCollection(simulation);
@@ -318,25 +280,6 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 	}
 }
 
-//
-//void NListManager::updateNeighborLists(Simulation* simulation, bool* updatenlists_mutexlock, bool force_update, bool async, int* timings, bool* critical_error) {
-//	const uint32_t step_at_update = simulation->getStep();
-//
-//	if (async && !force_update) {
-//		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock, step_at_update);
-//		nlist_worker.detach();
-//	}
-//	else {
-//		NListUtils::updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, timings, updatenlists_mutexlock, step_at_update);
-//	}
-//
-//	prev_update_step = step_at_update;
-//
-//	if (force_update) {
-//		Int3 n_data(nlist_data_collection->compound_neighborlists[0].n_compound_neighbors, nlist_data_collection->compound_neighborlists[0].n_solvent_neighbors, 0);
-//		printf("\nEntity neighbors: %d %d\n", n_data.x, n_data.y);
-//	}
-//}
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
 	cudaMemcpy(simulation->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);

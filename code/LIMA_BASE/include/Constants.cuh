@@ -80,7 +80,7 @@ const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
 const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
-const int STEPS_PER_SOLVENTBLOCKTRANSFER = 6;	// If we go below 2, we might see issue in solventtransfers
+const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
 const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -127,7 +127,7 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
-const bool ENABLE_BOXTEMP	= false;		// Calc box-temp
+const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
 const bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 50;			// Must be >= 3 why?
@@ -140,7 +140,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.1f / static_cast<float>(STEPS_PER_THER
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 1;
+const int STEPS_PER_RENDER = 20;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

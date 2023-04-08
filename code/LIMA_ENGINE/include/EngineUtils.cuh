@@ -47,7 +47,7 @@ namespace CPPD {
 namespace LIMAPOSITIONSYSTEM {
 	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
 
-	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
+	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
 		const NodeIndex difference = static_index - movable_index;
 		movable_index.x += BOXGRID_N_NODES * (difference.x > (BOXGRID_N_NODES / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
 		movable_index.x -= BOXGRID_N_NODES * (difference.x < -(BOXGRID_N_NODES / 2));
@@ -108,9 +108,16 @@ namespace LIMAPOSITIONSYSTEM {
 		return LimaPosition{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
 	}
 	
-	// Safe to call with any Coord
-	__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { return NodeIndex{ coord.x / BOXGRID_NODE_LEN_i, coord.y / BOXGRID_NODE_LEN_i , coord.z / BOXGRID_NODE_LEN_i }; }
+	//// Safe to call with any Coord
+	//__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { 
+	//	return NodeIndex{ 
+	//		coord.x / BOXGRID_NODE_LEN_i, 
+	//		coord.y / BOXGRID_NODE_LEN_i , 
+	//		coord.z / BOXGRID_NODE_LEN_i 
+	//	}; 
+	//}
 
+	// Converts to nodeindex, applies PBC
 	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position) {
 		int offset = BOXGRID_NODE_LEN_i / 2;
 		NodeIndex nodeindex{
@@ -121,6 +128,19 @@ namespace LIMAPOSITIONSYSTEM {
 		applyPBC(nodeindex);
 		return nodeindex;
 	}
+
+	// Used only for neighborlist. Might be temp. Input-position in nm!
+	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
+		float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
+		NodeIndex nodeindex{
+			static_cast<int32_t>(std::roundf(position.x * factor)),
+			static_cast<int32_t>(std::roundf(position.y * factor)),
+			static_cast<int32_t>(std::roundf(position.z * factor))
+		};
+		applyPBC(nodeindex);
+		return nodeindex;
+	}
+
 	/// <summary>
 	/// Converts a nodeindex to a relative position in [lm]. ONLY safe to call with relatively small node indexes. 
 	/// If the index has proponents larger than what a coord can represent, then :((( 
@@ -129,7 +149,7 @@ namespace LIMAPOSITIONSYSTEM {
 	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; }
 	
 
-	// Inverse to the above, used to position compound
+	// Returns absolute position of nodeindex [nm]
 	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
 		const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
 		return Float3{ 
@@ -219,7 +239,8 @@ namespace LIMAPOSITIONSYSTEM {
 		return nodeIndexToCoord(from - to);
 	}
 
-	__device__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
+	// Get hyper index of "other"
+	__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
 		NodeIndex temp = other;
 		applyHyperpos(self, temp);
 		return temp;
@@ -232,7 +253,14 @@ namespace LIMAPOSITIONSYSTEM {
 	// ONLY CALL FROM THREAD 0
 	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
 		//const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-		const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
+		//const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
+
+		const NodeIndex shift_node = NodeIndex{
+			coords.rel_positions[keyparticle_index].x / (BOXGRID_NODE_LEN_i/2),	// /2 so we switch to new index once we are halfway there
+			coords.rel_positions[keyparticle_index].y / (BOXGRID_NODE_LEN_i/2),
+			coords.rel_positions[keyparticle_index].z / (BOXGRID_NODE_LEN_i/2)
+		};
+
 		//coords.origo += shift_nm;
 		coords.origo += shift_node;
 		return -nodeIndexToCoord(shift_node);
@@ -273,7 +301,13 @@ namespace LIMAPOSITIONSYSTEM {
 		//const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
 		//Coord shift_nm = coord.rel_position / static_cast<int32_t>(shift_at);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better! 
 		//const NodeIndex node_shift = coord.rel_position / (BOXGRID_NODE_LEN_i / 2)
-		const NodeIndex node_shift = LIMAPOSITIONSYSTEM::coordToNodeIndex(coord.rel_position * 2);	// If the coord is more than halfway to the next node, we shift it.
+		//const NodeIndex node_shift = LIMAPOSITIONSYSTEM::coordToNodeIndex(coord.rel_position * 2);	// If the coord is more than halfway to the next node, we shift it.
+
+		const NodeIndex node_shift{
+			coord.rel_position.x / (BOXGRID_NODE_LEN_i / 2),	// If the coord is more than halfway to the next node, we shift it.
+			coord.rel_position.y / (BOXGRID_NODE_LEN_i / 2),
+			coord.rel_position.z / (BOXGRID_NODE_LEN_i / 2)
+		};
 
 		SolventCoord tmp = coord;
 		coord.origo += node_shift;
@@ -369,6 +403,11 @@ namespace LIMAPOSITIONSYSTEM {
 		return solventcoord;
 	}
 
+	__host__ static float calcHyperDist(const NodeIndex& left, const NodeIndex& right) {
+		const NodeIndex right_hyper = getHyperNodeIndex(left, right);
+		const NodeIndex diff = right_hyper - left;
+		return nodeIndexToAbsolutePosition(diff).len();
+	}
 };
 
 
@@ -399,7 +438,7 @@ namespace EngineUtils {
 		return (*p1 - temp).len();
 	}
 
-	// Assumes positions in NM
+	// Positions in [nm] and time in [ns]
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
 		auto dist = calcHyperDistNM(pos1, pos2);
 		if (dist > 1.f) {
@@ -408,7 +447,7 @@ namespace EngineUtils {
 			pos2->print('2');
 		}
 
-		const float vel = calcHyperDistNM(pos1, pos2) / elapsed_time;
+		const float vel = dist / elapsed_time;
 		const float kinE = 0.5f * mass * vel * vel;
 		return kinE;
 	}
@@ -568,6 +607,7 @@ namespace LIMADEBUG {
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
 			dif.printS('D');
 			force.print('F');
+			relpos_next.printS('R');
 			critical_error_encountered = true;
 		}
 	}

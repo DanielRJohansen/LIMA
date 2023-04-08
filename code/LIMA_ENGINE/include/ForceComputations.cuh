@@ -139,7 +139,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	const Float3 force = (*pos1 - *pos0) * force_scalar;
 
 #ifdef LIMASAFEMODE
-	if (force > 0.1f) {
+	if (force > 0.5f) {
 		//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
 		////((*pos1 - *pos0) * force_scalar).print('f');
 		//pos0->print('0');

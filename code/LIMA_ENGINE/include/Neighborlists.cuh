@@ -15,15 +15,14 @@ struct NListDataCollection {
 	void preparePositionData(const Simulation& simulation, uint32_t step_at_update);
 
 
-	int n_compounds;
-	//int n_solvents;
+	int n_compounds = -1;
 
 	// I guess this is not critical but temp, needed to load pos device->host
 	CompoundState* compoundstates = nullptr;
 	//Solvent* solvents;
 
 	Float3 compound_key_positions[MAX_COMPOUNDS];	// [nm] absolute position
-	NodeIndex compound_origos[MAX_COMPOUNDS];		// compound's corresponding gridnode
+	//NodeIndex compound_origos[MAX_COMPOUNDS];		// compound's corresponding gridnode
 
 	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
 	NeighborList* compound_neighborlists = nullptr;

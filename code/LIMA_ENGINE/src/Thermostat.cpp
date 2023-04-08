@@ -16,7 +16,7 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 		for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
 			Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
 			Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt * 1.f);			// Doesnt work, use forcefield_host!!
+			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt / NANO_TO_LIMA);
 
 			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
@@ -52,6 +52,11 @@ void Engine::handleBoxtemp() {
 
 	simulation->temperature_buffer[simulation->n_temp_values++] = temp_package.temperature;
 
+	simulation->temperature = temp;	// For display :)
+
+	// Early return if no thermostat
+	if (!APPLY_THERMOSTAT || simulation->getStep() < FIRST_THERMOSTAT_APPLICATION_STEP) { return; }
+
 	// So we avoid dividing by 0
 	float temp_safe = temp == 0.f ? 1 : temp;
 	float temp_scalar = target_temp / temp_safe;
@@ -60,26 +65,7 @@ void Engine::handleBoxtemp() {
 	temp_scalar = std::clamp(temp_scalar, 1.f-MAX_THERMOSTAT_SCALER, 1.f + MAX_THERMOSTAT_SCALER);
 	// Apply 1/n scalar for n steps.
 
-
-	uint64_t step = simulation->getStep();
-	if (step >= FIRST_TEMPERATURE_PRINT_STEP && PRINT_TEMP && std::abs(temp - target_temp) > 100.f) {
-		LIMA_Printer::printNameValuePairs(
-			"Temperature", temp,
-			"Avg kinE sol", temp_package.avg_kinE_solvent,
-			"Avg kinE comp", temp_package.avg_kinE_compound,
-			"Max kinE sol", temp_package.max_kinE_solvent,
-			"Max kinE comp", temp_package.max_kinE_compound
-		);
-	}
-	
-	if (APPLY_THERMOSTAT && step >= FIRST_THERMOSTAT_APPLICATION_STEP) {
-		simulation->box->thermostat_scalar = temp_scalar;
-
-		if (temp_scalar != temp_scalar) {//} || abs(temp_scalar) == "inf") {
-			printf("Scalar: %f\n", simulation->box->thermostat_scalar);
-			exit(0);
-		}
-	}
+	simulation->box->thermostat_scalar = temp_scalar;
 }
 
 

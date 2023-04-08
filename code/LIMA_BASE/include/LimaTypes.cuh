@@ -297,7 +297,7 @@ struct Coord {
 	}
 	// Print in pico, assuming baseline is lima
 	__host__ __device__ void printS(char c = '_') const { 
-		printf(" %c %d %d %d\n", c, x / 100000, y / 100000, z / 100000); }
+		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
 	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
 	__host__ int32_t* get(int dim) {

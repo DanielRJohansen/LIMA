@@ -42,6 +42,13 @@ void Display::drawBalls(RenderBall* balls, int n_balls) {
     }
 }
 
+
+
+
+
+
+
+
 void Display::render(Simulation* simulation) {
 #ifdef ENABLE_DISPLAY
     auto start = std::chrono::high_resolution_clock::now();
@@ -49,11 +56,13 @@ void Display::render(Simulation* simulation) {
     RenderBall* balls = rasterizer.render(simulation);
     glClear(GL_COLOR_BUFFER_BIT);
 
-
     drawBalls(balls, simulation->total_particles_upperbound);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);
+
+    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, simulation->getStep(), simulation->temperature);
+    glfwSetWindowTitle(window, window_text.c_str());
 
     delete[] balls;
 
@@ -87,13 +96,13 @@ bool Display::initGLFW() {
 
     /* Create a windowed mode window and its OpenGL context */
     logger.print("Loading window --->");
-    window = glfwCreateWindow(display_width, display_height, "LIMA - Molecular Dynamics Engine", NULL, NULL);
+    window = glfwCreateWindow(display_width, display_height, window_title.c_str(), NULL, NULL);
     if (!window)
     {
         glfwTerminate();
         return 0;
     }
-    glfwSetWindowPos(window, screensize[0] - display_width, 0);
+    glfwSetWindowPos(window, screensize[0] - display_width - 50, 50);
     logger.print("done\n");
 
     /* Make the window's context current */

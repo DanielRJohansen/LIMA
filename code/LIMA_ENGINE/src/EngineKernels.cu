@@ -552,7 +552,26 @@ __global__ void compoundKernel(Box* box) {
 		if (threadIdx.x < compound.n_particles) {	
 			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 
-			LIMADEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
+			//LIMADEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
+
+
+
+
+
+			const auto dif = (compound_coords.rel_positions[threadIdx.x] - prev_rel_pos);
+			const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
+			if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 8.f) {
+				printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+				dif.printS('D');
+				force.print('F');
+				LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('o');
+				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('A');
+
+				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(NodeIndex{}, (compound_coords.rel_positions[threadIdx.x] - compound_coords.rel_positions[0])).print('E');
+
+
+				box->critical_error_encountered = true;
+			}
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //

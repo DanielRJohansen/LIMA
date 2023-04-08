@@ -39,7 +39,7 @@ private:
 	}
 
 
-
+	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 
 	GLFWwindow* window = nullptr;
 

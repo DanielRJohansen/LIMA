@@ -130,6 +130,8 @@ public:
 	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
 
+	float temperature = -1.f;			// Current temperature [k]
+
 	Box* box;
 	bool box_is_on_device = false;
 

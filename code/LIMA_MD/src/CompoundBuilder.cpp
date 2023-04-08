@@ -55,6 +55,9 @@ private:
 
 	void distributeBondsToCompoundsAndBridges();
 
+	// Find index of centermost particle, find "radius" of compound
+	void calcCompoundMetaInfo();
+
 	template <int n_ids>
 	bool spansTwoCompounds(std::array<int, n_ids> bond_ids);
 };
@@ -125,6 +128,8 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 	createCompoundsAndBridges();
 
 	distributeBondsToCompoundsAndBridges();
+
+	calcCompoundMetaInfo();
 
 	CompoundBridgeBundleCompact bridges_compact(
 		std::vector<CompoundBridge>(compound_bridges.begin(), compound_bridges.end())
@@ -563,6 +568,55 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 		}
 
 		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+	}
+}
+
+
+
+
+
+Float3 calcCOM(const Float3* positions, int n_elems) {
+	Float3 com{};
+	for (int i = 0; i < n_elems; i++) {
+		com += positions[i];
+	}
+	return com / static_cast<float>(n_elems);
+}
+
+int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com) {
+	int closest_particle_index = 0;
+	float closest_particle_distance = std::numeric_limits<float>::infinity();
+	for (int i = 0; i < n_elems; i++) {
+		float particle_distance = (positions[i] - com).len();
+		if (particle_distance < closest_particle_distance) {
+			closest_particle_distance = particle_distance;
+			closest_particle_index = i;
+		}
+	}
+	return closest_particle_index;
+}
+
+int indexOfParticleFurthestFromCom(Float3* positions, int n_elems, const Float3& com) {
+	int furthest_particle_index = 0;
+	float furthest_particle_distance = 0.0f;
+	for (int i = 0; i < n_elems; i++) {
+		float particle_distance = (positions[i] - com).len();
+		if (particle_distance > furthest_particle_distance) {
+			furthest_particle_distance = particle_distance;
+			furthest_particle_index = i;
+		}
+	}
+	return furthest_particle_index;
+}
+
+void MoleculeBuilder::calcCompoundMetaInfo() {
+	for (auto& compound : compounds) {
+		const Float3 com = calcCOM(compound.positions, compound.n_particles);
+		compound.key_particle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
+
+		const int indexOfFurthestParticle = indexOfParticleFurthestFromCom(compound.positions, compound.n_particles, com);
+		const Float3& furthestParticle = compound.positions[indexOfFurthestParticle];
+		compound.confining_particle_sphere = (furthestParticle - com).len() * 1.2f;	// Add 20% leeway
 	}
 }
 

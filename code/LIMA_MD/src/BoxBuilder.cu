@@ -307,7 +307,7 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
 	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
-	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };
+	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 
 //Solvent BoxBuilder::createSolvent(Float3 com, float dt) {

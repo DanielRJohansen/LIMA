@@ -1,6 +1,8 @@
 #include "CompoundBuilder.h"
 
 #include "Printer.h"
+#include "EngineUtils.cuh"
+
 
 #include <algorithm>
 #include <format>
@@ -578,7 +580,9 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 Float3 calcCOM(const Float3* positions, int n_elems) {
 	Float3 com{};
 	for (int i = 0; i < n_elems; i++) {
-		com += positions[i];
+		Float3 pos = positions[i];
+		EngineUtils::applyHyperposNM(&positions[i], &pos);	// Hyperpos around particle 0, since we dont know key position yet
+		com += pos;
 	}
 	return com / static_cast<float>(n_elems);
 }
@@ -587,9 +591,10 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 	int closest_particle_index = 0;
 	float closest_particle_distance = std::numeric_limits<float>::infinity();
 	for (int i = 0; i < n_elems; i++) {
-		float particle_distance = (positions[i] - com).len();
-		if (particle_distance < closest_particle_distance) {
-			closest_particle_distance = particle_distance;
+		//float particle_distance = (positions[i] - com).len();
+		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
+		if (dist < closest_particle_distance) {
+			closest_particle_distance = dist;
 			closest_particle_index = i;
 		}
 	}
@@ -600,23 +605,30 @@ int indexOfParticleFurthestFromCom(Float3* positions, int n_elems, const Float3&
 	int furthest_particle_index = 0;
 	float furthest_particle_distance = 0.0f;
 	for (int i = 0; i < n_elems; i++) {
-		float particle_distance = (positions[i] - com).len();
-		if (particle_distance > furthest_particle_distance) {
-			furthest_particle_distance = particle_distance;
+		//float particle_distance = (positions[i] - com).len();
+		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
+		if (dist > furthest_particle_distance) {
+			furthest_particle_distance = dist;
 			furthest_particle_index = i;
 		}
 	}
 	return furthest_particle_index;
 }
-
 void MoleculeBuilder::calcCompoundMetaInfo() {
 	for (auto& compound : compounds) {
-		const Float3 com = calcCOM(compound.positions, compound.n_particles);
+		const Float3 com = calcCOM(compound.positions, compound.n_particles);	
 		compound.key_particle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
 
-		const int indexOfFurthestParticle = indexOfParticleFurthestFromCom(compound.positions, compound.n_particles, com);
+
+		const Float3& key_pos = compound.positions[compound.key_particle_index];
+		const int indexOfFurthestParticle = indexOfParticleFurthestFromCom(compound.positions, compound.n_particles, key_pos);
 		const Float3& furthestParticle = compound.positions[indexOfFurthestParticle];
-		compound.confining_particle_sphere = (furthestParticle - com).len() * 1.2f;	// Add 20% leeway
+		const float radius = EngineUtils::calcHyperDistNM(&furthestParticle, &key_pos);
+
+		compound.confining_particle_sphere = radius * 1.2f;	// Add 20% leeway
+
+		if (compound.confining_particle_sphere > 1.8f) { 
+			throw std::exception("Compound radius spans more than 1.8 nm!"); }
 	}
 }
 

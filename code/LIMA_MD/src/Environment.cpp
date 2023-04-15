@@ -69,7 +69,7 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 void Environment::verifyBox() {
 	for (int c = 0; c < simulation->n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
-		if ((simulation->compounds_host[c].confining_particle_sphere * 1.1) > BOX_LEN_HALF) {
+		if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
 			printf("Compound %d too large for simulation-box\n", c);
 			exit(1);
 		}

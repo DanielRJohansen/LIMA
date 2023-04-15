@@ -443,7 +443,7 @@ struct Compound {
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
-	float confining_particle_sphere = 0;	// [nm] All particles in compound are PROBABLY within this radius 
+	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 
 
 	__device__ void loadMeta(Compound* compound) {

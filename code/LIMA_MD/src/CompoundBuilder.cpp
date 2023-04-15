@@ -213,7 +213,7 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 
 		if (line.size() < 44) { continue; }	// Should only happen at the end. TODO: Extract box size here. Make sure it is the same as the constant var!
 
-		GroRecord record = parseGroLine(line);
+		const GroRecord record = parseGroLine(line);
 
 		if (record.atom_name[0] == 'H' && ignore_hydrogens) { 			
 			continue; 
@@ -226,15 +226,17 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 		else {	// Is in residue
 			// Belongs to current residue?
 			if (!residues.empty() && residues.back().gro_id == record.residue_number) {				
+				// Do nothing
 
 				// SAFETY CHECK: This is likely because we have molecules consisting of only 1 residue, so we can figure out which belongs to the same molecule!
 				if (residues.back().name != record.residue_name) { throw std::exception("Something went seriously wrong when handling the .gro file!"); }	
-				// Do nothing
 			}
 			else {	// Create new residue
 				int unique_res_id = residues.size();
 				residues.push_back(Residue{ record.residue_number, unique_res_id, record.residue_name });
 			}
+
+
 
 			residues.back().atoms.push_back(AtomEntry{ record.atom_number, record.position, record.atom_name });
 			n_particles_in_residues++;
@@ -625,9 +627,9 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 		const Float3& furthestParticle = compound.positions[indexOfFurthestParticle];
 		const float radius = EngineUtils::calcHyperDistNM(&furthestParticle, &key_pos);
 
-		compound.confining_particle_sphere = radius * 1.2f;	// Add 20% leeway
+		compound.radius = radius * 1.2f;	// Add 20% leeway
 
-		if (compound.confining_particle_sphere > 1.8f) { 
+		if (compound.radius > 1.5f) { 
 			throw std::exception("Compound radius spans more than 1.8 nm!"); }
 	}
 }
@@ -640,8 +642,14 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 		throw std::exception("Failed to add particle to compound");
 	}
 	
+	// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
+	Float3 hyperpos = position;
+	if (n_particles > 0) {
+		EngineUtils::applyHyperposNM(&positions[0], &hyperpos);
+	}
+
 	// Variables only present in factory
-	positions[n_particles] = position;
+	positions[n_particles] = hyperpos;
 	gro_ids[n_particles] = gro_id;
 
 	// Variables present in Compound

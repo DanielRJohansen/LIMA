@@ -63,14 +63,14 @@ namespace NListUtils {
 	void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist) {
 		for (int id_self = 0; id_self < nlist->n_compounds; id_self++) {
 			NeighborList* nlist_self = &nlist->compound_neighborlists[id_self];
-			float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
+			float cutoff_add_self = simulation->compounds_host[id_self].radius;
 
 
 			// Cull compound-compound
 			for (int j = 0; j < nlist_self->n_compound_neighbors; j++) {
 				int id_neighbor = nlist_self->neighborcompound_ids[j];
 				NeighborList* nlist_neighbor = &nlist->compound_neighborlists[id_neighbor];
-				float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].confining_particle_sphere;
+				float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].radius;
 
 				if (id_self < id_neighbor) {
 					if (!neighborWithinCutoff(&nlist->compound_key_positions[id_self], &nlist->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_LM)) {
@@ -92,14 +92,14 @@ namespace NListUtils {
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
 			HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
-			const float cutoff_add_self = simulation->compounds_host[id_self].confining_particle_sphere;
+			const float cutoff_add_self = simulation->compounds_host[id_self].radius;
 			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
 
 			// Go through all compounds in box, with higher ID than self!
 			for (uint16_t id_other = id_self + 1; id_other < simulation->n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_other];
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
-				const float cutoff_add_candidate = simulation->compounds_host[id_other].confining_particle_sphere;	// THIS IS BORKEN SINCE LIMAMETRES
+				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;	// THIS IS BORKEN SINCE LIMAMETRES
 
 				addNeighborIfEligible(hashtable_compoundneighbors, *nlist_self, *nlist_candidate,
 					pos_self, pos_other,
@@ -134,7 +134,7 @@ namespace NListUtils {
 		//const NodeIndex nodeindex_querycompound = nlist_data_collection.compound_origos[querycompound_id];
 		//const float dist = LIMAPOSITIONSYSTEM::calcHyperDist(nodeindex_querycompound, nodeindex_self);
 
-		const float querycompound_radius = simulation.compounds_host[querycompound_id].confining_particle_sphere;	// Is this nm or lm?=?!??!!
+		const float querycompound_radius = simulation.compounds_host[querycompound_id].radius;	// Is this nm or lm?=?!??!!
 
 		return dist < (CUTOFF_NM + querycompound_radius);
 	}

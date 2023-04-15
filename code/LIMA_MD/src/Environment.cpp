@@ -372,3 +372,8 @@ CompoundCoords* Environment::getCoordarrayPtr(std::string selector)
 	assert(false);
 	return NULL;
 }
+
+SolventBlockGrid* Environment::getAllSolventBlocksPrev()
+{
+	return boxbuilder.solventblocks_prev;
+}

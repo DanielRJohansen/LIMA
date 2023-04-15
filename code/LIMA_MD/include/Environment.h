@@ -55,11 +55,12 @@ public:
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 
-	// Functions for dev only
+	// Functions for dev only : TODO move to child whioch inherits all as public
 	SimulationParams* getSimparamRef();
 	Simulation* getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	CompoundCoords* getCoordarrayPtr(std::string selector = "current" /*"current"|"prev"*/);
+	SolventBlockGrid* getAllSolventBlocksPrev();
 
 
 private:

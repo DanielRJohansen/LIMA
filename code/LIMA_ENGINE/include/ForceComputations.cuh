@@ -23,17 +23,13 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, SingleBond* bon
 
 	const float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
-	difference = difference.norm();								// dif_unit_vec, but shares variable with dif
-	results[0] = difference * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
-	results[1] = difference * force_scalar * -1.f;				// [kg * lm / (mol*ls^2)] = [lN]
+	Float3 dir = difference.norm();								// dif_unit_vec, but shares variable with dif
+	results[0] = dir * force_scalar;							// [kg * lm / (mol*ls^2)] = [lN]
+	results[1] = dir * force_scalar * -1.f;						// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMASAFEMODE
-	if (results[0].len() > 0.1f) {
-		printf("\nSingleBond: error: %f [nm] b0 %f [nm] force %f\n", error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
-		//results[0].print('r');
-		//results[1].print('R');
-		//pos_a->print('a');
-		//pos_b->print('b');
+	if (results[0].len() > 0.5f) {
+		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
 	}
 #endif
 }

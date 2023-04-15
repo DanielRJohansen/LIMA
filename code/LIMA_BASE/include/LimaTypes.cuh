@@ -94,13 +94,13 @@ struct Float3 {
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
-	__host__ __device__ Float3 norm() {
+	__host__ __device__ Float3 norm() const {
 		float l = len();
 		if (l)
 			return *this * (1.f / l);
 		return Float3{};
 	}
-	__device__ Float3 norm_fast() {		// Unsafe, may divide by 0
+	__device__ Float3 norm_fast() const {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
 

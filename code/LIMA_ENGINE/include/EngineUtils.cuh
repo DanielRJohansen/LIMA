@@ -325,7 +325,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Get the relpos_prev, if the solvent was in the same solventblock last step
 	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int current_step) {
-		const int step_prev = current_step == 0 ? 0 : current_step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
+		const int step_prev = current_step == 0 ? STEPS_PER_SOLVENTBLOCKTRANSFER-1 : current_step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
 		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
 		return blockPtr->rel_pos[threadIdx.x];
 	}
@@ -479,10 +479,28 @@ namespace EngineUtils {
 		}
 	}
 
-	static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
-		const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
-		const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
-		return v_rms;	// [m/s]
+	//static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
+	//	const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)
+	//	const float v_rms = static_cast<float>(sqrt(3.f * R * temperature / mass));
+	//	return v_rms;	// [m/s]
+	//}
+	
+	//static float tempToVelocity(float temperature /*[K]*/, float mass /*[kg/mol]*/) {
+	//	const float kNA = BOLTZMANNCONSTANT * AVOGADROSNUMBER;			// k * mol
+	//	const float v_rms = std::sqrt(3 * kNA * temperature / mass);	// Calculate root-mean-square velocity
+	//	return v_rms * std::sqrt(2);									// Convert to most probable velocity
+	//}
+
+	// Calculate mean speed of particles
+	//sqrt((8RT)/(piM))
+	static float tempToVelocity(double temperature /*[K]*/, double mass /*[kg/mol]*/) {
+		return sqrt(3.0 * BOLTZMANNCONSTANT * temperature / (mass/AVOGADROSNUMBER));
+	}
+	// http://hyperphysics.phy-astr.gsu.edu/hbase/Kinetic/kintem.html
+
+	static double kineticEnergyToTemperature(long double kineticEnergy /*[J]*/, int numParticles) {
+		double temperature = kineticEnergy * (2.0 / 3.0) / (BOLTZMANNCONSTANT * numParticles);
+		return (temperature);
 	}
 
 	// For solvents, compound_id = n_compounds and particle_id = solvent_index
@@ -623,6 +641,10 @@ namespace LIMADEBUG {
 		}
 	}
 
+	// 
+	//__device__ bool static forceTooLarge(const Float3& force, const float threshold=0.5) { // 
+
+	//}
 
 };
 

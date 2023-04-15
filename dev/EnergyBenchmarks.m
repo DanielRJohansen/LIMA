@@ -5,9 +5,9 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 1000;
+n_steps = 10000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" ];
-benchmark = benchmarks(9);
+benchmark = benchmarks(7);
 % ------------------------------------ %
 
 workdir = "C:/PROJECTS/Quantom/Simulation/" + benchmark + "/Steps_" + string(n_steps)
@@ -41,6 +41,15 @@ title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")
-%xlim([0 20])
+%xlim([0 100])
 hold off
 %label("Kinetic energy")
+
+
+%
+AN = 6.022*10^23;
+m = 0.012 / AN
+v = 1822;
+k1 = 0.5 * 0.012 *v*v/AN
+k2 = 0.5*m*v*v
+

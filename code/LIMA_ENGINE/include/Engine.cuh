@@ -94,5 +94,9 @@ private:
 };
 
 struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
-	float temperature{}, avg_kinE_compound{}, max_kinE_compound{}, avg_kinE_solvent{}, max_kinE_solvent{};
+	float temperature = 0;			// [k]
+	float avg_kinE_compound = 0;	// [J/mol]
+	float max_kinE_compound = 0;	// [J/mol]
+	float avg_kinE_solvent = 0;		// [J/mol]
+	float max_kinE_solvent = 0;		// [J/mol]
 };

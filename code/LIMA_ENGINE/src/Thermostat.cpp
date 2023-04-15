@@ -10,34 +10,36 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	const uint64_t step_offset_b = (step - 1) * simulation->total_particles_upperbound;
 	const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 
-	long double sum_kinE_compound = 0.;
+	long double sum_kinE_compound = 0.;	// [J/mol]
 	for (uint64_t c = 0; c < simulation->n_compounds; c++) {
 		uint64_t compound_offset = c * MAX_COMPOUND_PARTICLES;
 		for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
-			Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
-			Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-			float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt / NANO_TO_LIMA);
+			const Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
+			const Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
+			const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, simulation->dt / NANO_TO_LIMA);
 
 			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
 		}
 	}
-	package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->total_compound_particles));
+	//package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->total_compound_particles));
+	//package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / AVOGADROSNUMBER);
 
-	long double sum_kinE_solvents = 0.;
+	long double sum_kinE_solvents = 0.;	// [J/mol]
 	for (int i = 0; i < simulation->n_solvents; i++) {
-		Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
-		Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
-		float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[0].mass, simulation->dt * 1.f);
+		const Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
+		const Float3 posb = simulation->traj_buffer[i + solvent_offset + step_offset_b];
+		const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[0].mass, simulation->dt / NANO_TO_LIMA);
 
 		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
 		sum_kinE_solvents += static_cast<float>(kinE);
 	}
 	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->n_solvents));
 
-
-	float avg_kinE = static_cast<float>((sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->total_particles));
-	package.temperature = avg_kinE * 2.f / (3.f * 8.3145f);
+	const long double total_kinE = (sum_kinE_compound + sum_kinE_solvents) / AVOGADROSNUMBER;
+	//const float avg_kinE = static_cast<float>((sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->total_particles));
+	//package.temperature = avg_kinE * 2.f / (3.f * 8.3145f);
+	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->total_particles);
 
 	return package;
 }
@@ -47,7 +49,7 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 void Engine::handleBoxtemp() {
 	const float target_temp = 310.f;				// [k]
 	const TemperaturPackage temp_package = getBoxTemperature(simulation, forcefield_host);
-	float temp = temp_package.temperature;
+	const float temp = temp_package.temperature;
 
 
 	simulation->temperature_buffer[simulation->n_temp_values++] = temp_package.temperature;

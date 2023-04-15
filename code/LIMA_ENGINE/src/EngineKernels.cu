@@ -771,7 +771,6 @@ __global__ void solventForceKernel(Box* box) {
 
 	if (solvent_active) {
 		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
-
 		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
 
 		LIMADEBUG::solventIntegration(relpos_prev, relpos_next, force, box->critical_error_encountered, solventblock.ids[threadIdx.x]);

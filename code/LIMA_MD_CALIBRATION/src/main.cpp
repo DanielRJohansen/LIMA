@@ -78,11 +78,12 @@ bool doProteinBenchmark(Environment& env) {
 	return true;
 }
 
+// Test assumes two carbons particles in conf
 bool doPoolBenchmark(Environment& env, const string& foldername) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" +foldername + "/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
-	const float particle_mass = 12.011000f * 1e-3f;
+	const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 	
 	env.loadSimParams(work_folder + "sim_params.txt");
 	const float dt = env.getSimparamRef()->dt;
@@ -90,18 +91,77 @@ bool doPoolBenchmark(Environment& env, const string& foldername) {
 	auto* sim_params = env.getSimparamRef();
 
 	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
-	std::vector<float> particle_temps{ 800, 1200, 2400 };
+	std::vector<float> particle_temps{ 400, 800, 1200};
 	std::vector<float> std_devs;
 
 	for (auto temp : particle_temps) {
-		const float vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp) * 2.f; //  *2 as 1 particles stores the velocity of both at temperature temp. [m/s]
-		int steps_for_full_interaction = 5000000 / static_cast<int>(vel);
+		//const float vel = EngineUtils::calcSpeedOfParticle(particle_mass, temp) * 2.f; //  *2 as 1 particles stores the velocity of both at temperature temp. [m/s]
+		const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+		int steps_for_full_interaction = 8000000 / static_cast<int>(vel);
 		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		env.CreateSimulation(conf, topol, work_folder);
 
 		
 		auto coordarray_prev_ptr = env.getCoordarrayPtr("prev");
-		coordarray_prev_ptr[0].rel_positions[0] -= Coord{ (Float3(1, 0, 0) * vel) * dt };	// convert vel from fm/fs to Lm/fs
+		coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * dt };	
+		coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * dt };
+
+
+		env.run();
+
+		auto analytics = env.getAnalyzedPackage();
+		Analyzer::printEnergy(analytics);
+		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+	}
+
+	LIMA_Print::printMatlabVec("temperature", particle_temps);
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
+	return true;
+}
+
+// Test assumes two carbons particles in conf
+bool doPoolCompSolBenchmark(Environment& env, const string& foldername) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + foldername + "/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+	//const float particle_mass = 12.011000f / 1000.f;	// kg/mol
+
+	env.loadSimParams(work_folder + "sim_params.txt");
+	const float dt = env.getSimparamRef()->dt;
+
+	auto* sim_params = env.getSimparamRef();
+
+	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
+	std::vector<float> particle_temps{ 400, 800, 1200 };
+	std::vector<float> std_devs;
+
+	for (auto temp : particle_temps) {
+		// Give the carbon a velocity
+		{
+			const float vel = EngineUtils::tempToVelocity(temp, 12.011000f / 1000.f);	// [m/s] <=> [lm/ls]
+			int steps_for_full_interaction = 8000000 / static_cast<int>(vel);
+			sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+			env.CreateSimulation(conf, topol, work_folder);
+
+			auto coordarray_prev_ptr = env.getCoordarrayPtr("prev");
+			coordarray_prev_ptr[0].rel_positions[0] += Coord{ Float3(-1, 0, 0) * vel * dt };
+		}
+		
+		// Give the solvent a velocty
+		{
+			// We need to also give the solvent velocity. But we don't know which block it is in....
+			const float vel = EngineUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
+			auto solventblockgridprev = env.getAllSolventBlocksPrev();
+			for (int i = 0; i < solventblockgridprev->blocks_total; i++) {
+				auto block = solventblockgridprev->getBlockPtr(i);
+				if (block->n_solvents == 1) {
+					block->rel_pos[0] += Coord{ Float3{1, 0, 0} *vel * dt };
+					int a = 0;
+				}
+			}
+		}
+		
 
 		env.run();
 
@@ -229,15 +289,15 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(env, "Pool");			// Two 1 particle molecules colliding
-	//doPoolBenchmark(env, "PoolCompSol");	// One 1 particle molecule colliding with 1 solvent
+	//doPoolBenchmark(env, "Pool");			// Two 1-particle molecules colliding
+	//doPoolCompSolBenchmark(env, "PoolCompSol");	// One 1-particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);	// Doesn't work currently
 	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");
-	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
+	doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	//doBasicBenchmark(env, "SolventBenchmark");
-	doBasicBenchmark(env, "T4Lysozyme");
+	//doBasicBenchmark(env, "T4Lysozyme");
 	//doBasicBenchmark(env, "4ake");// TOO big, almost 20 nm long!
 	return 0;
 }

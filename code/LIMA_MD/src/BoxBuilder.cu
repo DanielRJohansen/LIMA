@@ -32,8 +32,8 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 	// This is very the coords reside while build (host)
-	coordarray = new CompoundCoords[MAX_COMPOUNDS];
-	coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
+	//coordarray = new CompoundCoords[MAX_COMPOUNDS];
+	//coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
 
 	solventcoords = new SolventCoord[MAX_SOLVENTS];
 	solventcoords_prev = new SolventCoord[MAX_SOLVENTS];
@@ -89,7 +89,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 
 	// Move the positions to the appropriate places in the circular queue
-	CompoundCoords::copyInitialCoordConfiguration(coordarray, coordarray_prev, simulation->box->coordarray_circular_queue);
+	CompoundCoords::copyInitialCoordConfiguration(coordarray.data(), coordarray_prev.data(), simulation->box->coordarray_circular_queue);
 	//SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
 	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
 

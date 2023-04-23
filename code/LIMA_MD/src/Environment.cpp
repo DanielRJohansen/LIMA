@@ -365,12 +365,11 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 	return &postsim_anal_package;
 }
 
-CompoundCoords* Environment::getCoordarrayPtr(std::string selector)
+std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::string selector)
 {
 	if (selector == "current") return boxbuilder.coordarray;
 	if (selector == "prev") return boxbuilder.coordarray_prev;
 	assert(false);
-	return NULL;
 }
 
 SolventBlockGrid* Environment::getAllSolventBlocksPrev()

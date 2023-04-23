@@ -2,7 +2,9 @@
 
 
 
-
+// TODO: This function should take in the array instead of the raw ptr, to ensure the correct size is transferred
+// Also verify somehow that the destination has the same size as the source, so we dont leave any undefined bytes on device, which could
+// cause problems between sequential simulations
 void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
 	// Move pos_t
 	cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);

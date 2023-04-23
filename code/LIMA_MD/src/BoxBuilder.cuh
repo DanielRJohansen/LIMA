@@ -21,8 +21,8 @@ public:
 
 	// Used for creating the positions host, moved to GPU before simulation start.
 	// Public for dev reasons only. Not really a permanent solution..
-	CompoundCoords* coordarray = nullptr;
-	CompoundCoords* coordarray_prev = nullptr;
+	std::array<CompoundCoords, MAX_COMPOUNDS> coordarray;
+	std::array<CompoundCoords, MAX_COMPOUNDS> coordarray_prev;
 	SolventCoord* solventcoords = nullptr;
 	SolventCoord* solventcoords_prev = nullptr;
 	SolventBlockGrid* solventblocks = nullptr;

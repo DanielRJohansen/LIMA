@@ -273,8 +273,8 @@ namespace LIMAPOSITIONSYSTEM {
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
 	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
 	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
-		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_left)->origo;
-		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayPtr(coordarray_circular_queue, step, compound_index_right)->origo;
+		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
+		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
 
 
 		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
@@ -491,7 +491,7 @@ namespace EngineUtils {
 	//	return v_rms * std::sqrt(2);									// Convert to most probable velocity
 	//}
 
-	// Calculate mean speed of particles
+	// Calculate mean speed of particles. [K], [kg/mol]
 	//sqrt((8RT)/(piM))
 	static float tempToVelocity(double temperature /*[K]*/, double mass /*[kg/mol]*/) {
 		return sqrt(3.0 * BOLTZMANNCONSTANT * temperature / (mass/AVOGADROSNUMBER));

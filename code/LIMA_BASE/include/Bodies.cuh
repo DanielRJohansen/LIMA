@@ -392,7 +392,7 @@ namespace CoordArrayQueueHelpers {
 	/*__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords,
 		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) */
 
-	__device__ static CompoundCoords* getCoordarrayPtr(CompoundCoords* coordarray_circular_queue,
+	__device__ static CompoundCoords* getCoordarrayRef(CompoundCoords* coordarray_circular_queue,
 		int step, int compound_index) {
 		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
 		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];

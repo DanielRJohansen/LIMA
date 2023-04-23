@@ -186,7 +186,7 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
     
     if (local_id < box->compounds[compound_id].n_particles) {
         //atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(box->compound_coord_array[compound_id]);
-        auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, compound_id);
+        auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, compound_id);
 
         RenderAtom atom{};
         //atom.pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);

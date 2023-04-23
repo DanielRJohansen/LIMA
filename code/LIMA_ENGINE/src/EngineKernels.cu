@@ -437,7 +437,7 @@ __global__ void compoundKernel(Box* box) {
 
 
 	compound.loadData(&box->compounds[blockIdx.x]);
-	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, blockIdx.x);
+	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, blockIdx.x);
 
 	// TODO: these compound_coords needs to be made const somehow. Changing these coords during the kernel is way too dangerous.
 	compound_coords.loadData(*coordarray_ptr);
@@ -482,7 +482,7 @@ __global__ void compoundKernel(Box* box) {
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		
-		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_id);
+		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord);
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
@@ -540,7 +540,7 @@ __global__ void compoundKernel(Box* box) {
 		// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
 		// Dont think we need this anymore, if we bootstrap index N-1 with the positions aswell
 		const int actual_stepindex_of_prev = box->step == 0 ? STEPS_PER_LOGTRANSFER - 1 : box->step - 1;
-		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
+		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
 
 		if (threadIdx.x == 0) {
 			const NodeIndex prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, coordarray_prev_ptr->origo);
@@ -604,7 +604,7 @@ __global__ void compoundKernel(Box* box) {
 		box->critical_error_encountered = true;
 	}
 
-	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step + 1, blockIdx.x);
+	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step + 1, blockIdx.x);
 	coordarray_next_ptr->loadData(compound_coords);
 }
 #undef compound_index
@@ -691,7 +691,7 @@ __global__ void solventForceKernel(Box* box) {
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
-			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, neighborcompound_index);
+			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, neighborcompound_index);
 			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);	// This should take n_comp_part aswell!
 
 			// Then load atomtypes of neighboring compound
@@ -871,7 +871,7 @@ __global__ void compoundBridgeKernel(Box* box) {
 
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference& p_ref = bridge.particle_refs[particle_id_bridge];
-		const CompoundCoords* coordarray = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, box->step, p_ref.compound_id);
+		const CompoundCoords* coordarray = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, p_ref.compound_id);
 		Coord relpos = coordarray->rel_positions[p_ref.local_id_compound];
 
 		// If we are on the right side, we need to shift 
@@ -903,8 +903,8 @@ __global__ void compoundBridgeKernel(Box* box) {
 			auto p2 = bridge.particle_refs[bond.atom_indexes[1]];
 
 			
-			NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, 0, bridge.compound_id_left)->origo;
-			NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayPtr(box->coordarray_circular_queue, 0, bridge.compound_id_right)->origo;
+			NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, 0, bridge.compound_id_left)->origo;
+			NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, 0, bridge.compound_id_right)->origo;
 
 			auto o1 = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_left);
 			auto o2 = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_right);

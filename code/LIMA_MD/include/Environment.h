@@ -57,7 +57,7 @@ public:
 	SimulationParams* getSimparamRef();
 	Simulation* getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
-	CompoundCoords* getCoordarrayPtr(std::string selector = "current" /*"current"|"prev"*/);
+	std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
 	SolventBlockGrid* getAllSolventBlocksPrev();
 
 

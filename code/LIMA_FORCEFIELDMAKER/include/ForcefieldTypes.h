@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <format>
 
-#include "Utilities.h"
+#include "LIMA_BASE/include/Utilities.h"
 
 ///////////////////////////////// READ HERE FIRST /////////////////////////////////
 // ffbonded.itp and ffnonbonden.itp has different atomtypes. 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Forcefield.cuh"
-#include "Printer.h"
-#include "EngineUtils.cuh"
+#include "LIMA_ENGINE/include/Forcefield.cuh"
+#include "LIMA_BASE/include/Printer.h"
+#include "LIMA_ENGINE/include/EngineUtils.cuh"
 
 using namespace LIMA_Print;
 

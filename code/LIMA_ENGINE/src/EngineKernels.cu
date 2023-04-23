@@ -1,6 +1,6 @@
-#include "Engine.cuh"
+#include "LIMA_ENGINE/include/Engine.cuh"
 
-#include "ForceComputations.cuh"
+#include "LIMA_ENGINE/include/ForceComputations.cuh"
 
 #pragma warning ( push )
 #pragma warning ( disable: E0020 )

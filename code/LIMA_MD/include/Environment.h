@@ -2,25 +2,23 @@
 
 //#include "QuantomTypes.cuh"
 
-#include "Bodies.cuh"
+#include "LIMA_BASE/include/Bodies.cuh"
 //#include "Display.h"
-#include "DisplayV2.h"
-#include "Interface.h"
-#include "Engine.cuh"
-#include "Analyzer.cuh"
-#include "CompoundBuilder.h"
-#include "VirtualPathMaker.h"
-#include "BoxBuilder.cuh"
+#include "LIMA_MD/include/DisplayV2.h"
+#include "LIMA_MD/include/Interface.h"
+#include "LIMA_ENGINE/include/Engine.cuh"
+#include "LIMA_MD/include/Analyzer.cuh"
+#include "LIMA_MD/include/CompoundBuilder.h"
+#include "LIMA_MD/include/VirtualPathMaker.h"
+#include "LIMA_MD/src/BoxBuilder.cuh"
 
 
 // For logging
 #include <fstream>
 #include <string>
 #include <assert.h>  
-
 #include <stdlib.h>
 #include <stdio.h>
-
 #include <memory>
 
 
@@ -29,7 +27,7 @@
 #endif
 
 
-#include "ForcefieldMaker.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
 
 
 
@@ -96,7 +94,7 @@ private:
 	std::string main_dir = "../"
 #else
 	std::chrono::steady_clock::time_point time0;
-	std::string main_dir = "../../../Users/Daniel/git_repo/LIMA/";
+	std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
 #endif
 
 

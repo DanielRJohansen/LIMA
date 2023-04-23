@@ -4,16 +4,16 @@
 #include <chrono>
 #include <thread>
 
-#include "Constants.cuh"
-#include "LimaTypes.cuh"
-#include "Simulation.cuh"
+#include "LIMA_BASE/include/Constants.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_BASE/include/Simulation.cuh"
 #include "Forcefield.cuh"
 
 
 #include "Neighborlists.cuh"
 #include "EngineUtils.cuh"
 
-#include "Printer.h"
+#include "LIMA_BASE/include/Printer.h"
 
 #include <memory>
 #include <vector>

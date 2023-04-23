@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cuda_runtime.h>
+//#include <cuda_runtime.h>
 
-#include "LimaTypes.cuh"
-#include "Constants.cuh"
-#include "Bodies.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_BASE/include/Constants.cuh"
+#include "LIMA_BASE/include/Bodies.cuh"
 
 
 

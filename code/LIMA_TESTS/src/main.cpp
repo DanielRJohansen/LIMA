@@ -1,13 +1,16 @@
-#include "MDCalibrations.h"
-#include "Environment.h"
+#include "LIMA_TESTS/include/MDStability.h"
 
-#include "LimaTypes.cuh"
+#include "LIMA_MD/include/Environment.h"
+#include "LIMA_BASE/include/Printer.h"
+#include "LIMA_BASE/include/Utilities.h"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_ENGINE/include/EngineUtils.cuh"
+
 
 #include <iostream>
 #include <string>
 #include <algorithm>
-#include "Printer.h"
-#include "Utilities.h"
+
 
 //bool coordPrecesionBenchmark() {
 //	Float3 pos1{ 3.5, 4, 4 };
@@ -279,7 +282,7 @@ bool doBasicBenchmark(Environment& env, const string& folder_name) {
 
 
 
-#include "EngineUtils.cuh"
+
 int main() {
 
 	/*coordPrecesionBenchmark();
@@ -295,9 +298,10 @@ int main() {
 	//doAngleBenchmark(env);	// Doesn't work currently
 	//doBasicBenchmark(env, "TorsionBenchmark");
 	//doBasicBenchmark(env, "Met");
-	doBasicBenchmark(env, "T4LysozymeNoSolvent");
+	//doBasicBenchmark(env, "T4LysozymeNoSolvent");
 	//doBasicBenchmark(env, "SolventBenchmark");
-	//doBasicBenchmark(env, "T4Lysozyme");
+	doBasicBenchmark(env, "T4Lysozyme");
 	//doBasicBenchmark(env, "4ake");// TOO big, almost 20 nm long!
+
 	return 0;
 }

@@ -1,20 +1,23 @@
 #pragma once
 
-#include "Simulation.cuh"
+#include "LIMA_BASE/include/Simulation.cuh"
+
+
+#include <string>
+
+#include "LIMA_MD/src/Rasterizer.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_BASE/include/Utilities.h"
+
+#include <chrono>
+
+
 #ifndef __linux__
-#include <glfw3.h>
+#include <GLFW/include/glfw3.h>	// Do not include windows.h after glfw
 #define ENABLE_DISPLAY 
 #else
 #include <GLFW/glfw3.h>
 #endif
-
-#include <string>
-
-#include "Rasterizer.cuh"
-#include "LimaTypes.cuh"
-#include "Utilities.h"
-
-#include <chrono>
 
 class Display {
 public:

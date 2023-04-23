@@ -1,7 +1,6 @@
-#include "CompoundBuilder.h"
-
-#include "Printer.h"
-#include "EngineUtils.cuh"
+#include "LIMA_MD/include/CompoundBuilder.h"
+#include "LIMA_BASE/include/Printer.h"
+#include "LIMA_ENGINE/include/EngineUtils.cuh"
 
 
 #include <algorithm>

@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <climits>
 
-#include "ForcefieldTypes.h"
-#include "Utilities.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
+#include "LIMA_BASE/include/Utilities.h"
 
 
 

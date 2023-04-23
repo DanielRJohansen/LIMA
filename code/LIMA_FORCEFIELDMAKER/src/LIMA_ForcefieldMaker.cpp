@@ -1,11 +1,10 @@
 #include <vector>
 
-#include "ForcefieldTypes.h"
-#include "Filehandling.h"
-#include "ForcefieldMerger.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
+#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldMerger.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
 
-
-#include "ForcefieldMaker.h"
 #include <filesystem>
 #include <assert.h>
 #include <format>

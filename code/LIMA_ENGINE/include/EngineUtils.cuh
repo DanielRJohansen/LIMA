@@ -1,22 +1,22 @@
 #pragma once
 
 #include<iostream>
-#include "LimaTypes.cuh"
-#include "Constants.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_BASE/include/Constants.cuh"
 
-#include "Simulation.cuh"
+#include "LIMA_BASE/include/Simulation.cuh"
 #include "Forcefield.cuh"
 #include <cmath>
 
-#include <cuda.h>
-#include <device_launch_parameters.h>
-#include <cuda_runtime_api.h>
+//#include <cuda.h>
+//#include <device_launch_parameters.h>
+//#include <cuda_runtime_api.h>
 
 namespace ForceCalc {
 //	-
 };
 
-#include "cuda/std/cmath"
+//#include "cuda/std/cmath"
 //#include "cuda/std//utility"
 
 namespace CPPD {

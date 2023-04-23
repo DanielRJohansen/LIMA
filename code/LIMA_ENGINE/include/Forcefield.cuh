@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Bodies.cuh"
+#include "LIMA_BASE/include/Bodies.cuh"
 //#include "Simulation.cuh"
-#include "Filehandling.h"
+#include "LIMA_BASE/include/Filehandling.h"
 #include <string>
 #include <vector>
 

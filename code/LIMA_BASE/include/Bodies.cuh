@@ -36,7 +36,7 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
 	}
-	SingleBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :
+	SingleBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :	// TODO this is duplicate, remove!
 		b0(ref_dist), kb(kb) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;

@@ -1,15 +1,15 @@
 #pragma once
 
 
-#include "Bodies.cuh"
+#include "LIMA_BASE/include/Bodies.cuh"
 #include <string.h>
 #include <fstream>
 #include <vector>
 #include <array>
 
-#include "Constants.cuh"
-#include "Forcefield.cuh"
-#include "Utilities.h"
+#include "LIMA_BASE/include/Constants.cuh"
+#include "LIMA_ENGINE/include/Forcefield.cuh"
+#include "LIMA_BASE/include/Utilities.h"
 
 
 

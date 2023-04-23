@@ -1,12 +1,12 @@
 #pragma once
 
-#include "LimaTypes.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
 #include <iostream>
 #include <chrono>
 #include <cstring>
 #include <string>
-#include "Simulation.cuh"
-#include "Engine.cuh"
+#include "LIMA_BASE/include/Simulation.cuh"
+#include "LIMA_ENGINE/include/Engine.cuh"
 #include <vector>
 
 //#include "Forcefield.cuh"

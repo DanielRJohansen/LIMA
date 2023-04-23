@@ -1,4 +1,4 @@
-#include "VirtualPathMaker.h"
+#include "LIMA_MD/include/VirtualPathMaker.h"
 
 Float3* VirtualPathMaker::makeVirtualPath(Float3* particle_positions, Float3* forces, int n_steps)
 {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LimaTypes.cuh"
-#include "Simulation.cuh"
+#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LIMA_BASE/include/Simulation.cuh"
 #include "EngineUtils.cuh"
 #include <chrono>
 #include <thread>

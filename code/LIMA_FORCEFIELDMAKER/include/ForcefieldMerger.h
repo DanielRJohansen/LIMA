@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ForcefieldTypes.h"
-#include "Filehandling.h"
+#include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
+#include "LIMA_BASE/include/Filehandling.h"
 
 
 class ForcefieldMerger

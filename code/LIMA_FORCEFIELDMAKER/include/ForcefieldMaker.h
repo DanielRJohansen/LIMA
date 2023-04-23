@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "Utilities.h"
+#include "LIMA_BASE/include/Utilities.h"
 
 struct Map;
 struct NB_Atomtype;

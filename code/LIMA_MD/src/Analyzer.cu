@@ -276,16 +276,16 @@ float getStdDev(std::vector<float>& vec) {
 
 	double mean = getMean(vec);
 
-	double err_sum = 0;
-	for (auto elem : vec) { err_sum += (elem - mean) * (elem - mean); }
+	double variance = 0;
+	for (auto elem : vec) { variance += (elem - mean) * (elem - mean); }
 
-	double mean_err_sq = err_sum / static_cast<double>(vec.size());
-	return static_cast<float>(std::abs(std::sqrt(mean_err_sq)));
+	double deviation = variance / static_cast<double>(vec.size());
+	return static_cast<float>(std::abs(std::sqrt(deviation)));
 }
 
-float Analyzer::getStdDevNorm(std::vector<float>& vec) {
+float Analyzer::getVarianceCoefficient(std::vector<float>& vec) {
 	if (vec.empty()) { return 0.f; }
-	return vec.front() != 0.f ? getStdDev(vec) / vec.front() : 0.f;
+	return getStdDev(vec) / getMean(vec);
 }
 
 void printRow(string title, vector<float>& vec) {
@@ -294,7 +294,8 @@ void printRow(string title, vector<float>& vec) {
 		title, { 
 			getMin(vec), 
 			getMax(vec), 
-			Analyzer::getStdDevNorm(vec),
+			//Analyzer::getVarianceCoefficient(vec),
+			getStdDev(vec),
 			(vec.back() - vec.front()) / vec.front() });
 }
 

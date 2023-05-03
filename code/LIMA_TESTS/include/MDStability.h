@@ -14,6 +14,8 @@
 #include <algorithm>
 
 #include <iostream>
+#include <optional>
+
 
 bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) {
 	Environment env{};
@@ -28,24 +30,17 @@ bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) 
 
 	auto analytics = env.getAnalyzedPackage();
 	Analyzer::printEnergy(analytics);
-	float std_dev = Analyzer::getStdDevNorm(analytics->total_energy);
+	float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 
 	LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
 
 	return std_dev < max_dev;
 }
 
-bool doSmallMoleculeTranslationTest() {
-	return true;
-}
+bool doMoleculeTranslationTest(std::string foldername) {
+	auto env = TestUtils::basicSetup(foldername, SimulationParams{100, 10000});
 
-bool doLargeMoleculeTranslationTest() {
-	auto env = TestUtils::basicSetup("T4LysozymeNoSolvent");
-
-	env.getSimparamRef()->dt = 100;
-	env.getSimparamRef()->n_steps = 2000;
-
-	const float vel = EngineUtils::tempToVelocity(600, 0.012f);	// [m/s] <=> [lm/ls]
+	const float vel = EngineUtils::tempToVelocity(300, 0.012f);	// [m/s] <=> [lm/ls]
 	const float dt = env.getSimparamRef()->dt;
 
 	const auto dir = Float3{ -1.f, -1.f, -1.f }.norm();	// Inv since we move the pos_prev

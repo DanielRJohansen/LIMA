@@ -82,6 +82,7 @@ public:
 };
 
 // All members of this struct are double's so they can be parsed easily by std::map, without using variant
+// TODO: Change these to optionals, so we can easily overload only those which values exist
 struct SimulationParams {
 	void overloadParams(std::map<std::string, double>& dict);
 

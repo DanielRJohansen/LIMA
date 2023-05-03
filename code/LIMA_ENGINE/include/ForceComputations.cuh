@@ -115,8 +115,16 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 
 
 // ------------------------------------------------------------------------------------------- LJ Forces -------------------------------------------------------------------------------------------//
+enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };
 
-__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, int type1 = -1, int type2 = -1) {
+
+__device__ static const char* calcLJOriginString[] = {
+	"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter"
+};
+
+__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, 
+	CalcLJOrigin originSelect, /*For debug only*/
+	int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
 	// input positions in cartesian coordinates [nm]
 	// sigma [nm]
@@ -140,7 +148,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 		////((*pos1 - *pos0) * force_scalar).print('f');
 		//pos0->print('0');
 		//pos1->print('1');
-		printf("\nLJ Force: dist nm %f force %f sigma %f t1 %d t2 %d\n", sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma/NANO_TO_LIMA, type1, type2);
+		printf("\nLJ Force %s: dist nm %f force %f sigma %f t1 %d t2 %d\n",calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma/NANO_TO_LIMA, type1, type2);
 	}
 #endif
 

@@ -7,7 +7,7 @@
 class BoxBuilder
 {
 public:
-	BoxBuilder() {
+	BoxBuilder(const LimaLogger& logger) : m_logger(logger) {
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation);
@@ -63,6 +63,7 @@ private:
 	const float box_len = BOX_LEN;
 	const float box_base = 0;
 
+	const LimaLogger m_logger;
 
 
 

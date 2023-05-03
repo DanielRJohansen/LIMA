@@ -221,6 +221,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		}
 	}
 
+	// Loop through all solvents and make sure noone are too close to eachother. Also
+	std::vector<float> closestNeighbor(simulation->box->n_solvents, FLT_MAX);
+	int solvent_index = 0;
 	for (int sbi = 0; sbi < SolventBlockGrid::blocks_total; sbi++) {
 		auto sb = solventblocks->getBlockPtr(sbi);
 		for (int i = 0; i < sb->n_solvents; i++) {
@@ -236,11 +239,15 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 					auto posj = sb2->rel_pos[j];
 
 					auto dist = EngineUtils::calcDistance(sb->origo, posi, sb2->origo, posj);
+
+					closestNeighbor[solvent_index] = std::min(closestNeighbor[solvent_index], dist);
 					if (dist < 0.1) {
 						int a = 0;
 					}
 				}
 			}
+
+			solvent_index++;
 		}
 	}
 

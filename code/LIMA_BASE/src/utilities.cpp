@@ -2,10 +2,10 @@
 #include <filesystem>
 #include <iostream>
 
-LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::string& folder) : mode(mode), enable_logging(folder!="") {
+LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder) : mode(mode), enable_logging(workfolder !="") {
 
     if (enable_logging) {
-        const auto log_dir = folder + "/logs/";
+        const auto log_dir = workfolder + "/logs/";
         std::filesystem::create_directories(log_dir);
         const auto logFilePath = log_dir + name + "_log.txt";
         logFile.open(logFilePath, std::ios::out | std::ios::app);

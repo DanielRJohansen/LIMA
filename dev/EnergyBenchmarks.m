@@ -6,8 +6,8 @@ clc
 
 % Edit these to select the correct data
 n_steps = 10000;
-benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" ];
-benchmark = benchmarks(7);
+benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
+benchmark = "Met";
 % ------------------------------------ %
 
 workdir = "C:/PROJECTS/Quantom/Simulation/" + benchmark + "/Steps_" + string(n_steps)
@@ -15,24 +15,18 @@ file = fopen(workdir + "/energy.bin", "rb");
 energy_data = fread(file, 'single');
 fclose(file);
 
-
-n_elements = length(energy_data)/3
+n_elements = length(energy_data)/3;
 energy_data = reshape(energy_data, [3, n_elements])';
-
-
-
-
-%tiledlayout(2,1)
-%nexttile
 
 potE = energy_data(:,1);
 kinE = energy_data(:,2);
 totalE = energy_data(:,3);
 %totalE = kinE + potE;
+
 x = 1:length(potE);
 
-
-
+% Plot original data
+subplot(2,1,1)
 plot(x, potE);
 hold on
 plot(x, kinE);
@@ -41,11 +35,30 @@ title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")
-%xlim([0 100])
+xlim([0 200])
 hold off
-%label("Kinetic energy")
+
+% Calculate and plot derivatives
+dt = 1; % time step in fs
+d_potE = diff(potE)/dt;
+d_kinE = diff(kinE)/dt;
+d_totalE = diff(totalE)/dt;
+x_deriv = x(1:end-1);
+
+subplot(2,1,2)
+plot(x_deriv, d_potE);
+hold on
+plot(x_deriv, d_kinE);
+plot(x_deriv, d_totalE);
+title(benchmark + " - Energy derivatives")
+legend("d(Potential energy)/dt", "d(Kinetic energy)/dt", "d(Total energy)/dt");
+ylabel("Derivative of energy [J/mol/fs]")
+xlabel("time [fs]")
+xlim([0 200])
+hold off
 
 
+%% 
 %
 AN = 6.022*10^23;
 m = 0.012 / AN

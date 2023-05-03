@@ -54,14 +54,18 @@ int main() {
 	//doPoolCompSolBenchmark(env, "PoolCompSol");	// One 1-particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);	// Doesn't work currently
+	
+
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
-	//loadAndRunBasicSimulation(env, "Met");
+	//loadAndRunBasicSimulation("Met");
+	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
-	//loadAndRunBasicSimulation("SolventBenchmark", 0.0002);
+	loadAndRunBasicSimulation("SolventBenchmark", 0.0002);
 	//loadAndRunBasicSimulation(env, "T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
-	//doSmallMoleculeTranslationTest();
-	doLargeMoleculeTranslationTest();
+	
+	//doMoleculeTranslationTest("T4LysozymeNoSolventSmall");
+	//doMoleculeTranslationTest("T4LysozymeNoSolvent");
 
 
 	return 0;

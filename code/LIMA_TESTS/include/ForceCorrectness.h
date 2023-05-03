@@ -37,7 +37,7 @@ bool doPoolBenchmark(float max_dev=0.007) {
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
-		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
 	}
 
 	LIMA_Print::printMatlabVec("temperature", particle_temps);
@@ -96,7 +96,7 @@ bool doPoolCompSolBenchmark(float max_dev = 0.01) {
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
-		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
 	}
 
 	LIMA_Print::printMatlabVec("temperature", particle_temps);
@@ -135,7 +135,7 @@ bool doSpringBenchmark() {
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
-		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
 	}
 
 	LIMA_Print::printMatlabVec("bond_len_errors", bond_len_errors);
@@ -180,7 +180,7 @@ bool doAngleBenchmark() {
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
-		std_devs.push_back(Analyzer::getStdDevNorm(analytics->total_energy));
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
 	}
 
 	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);

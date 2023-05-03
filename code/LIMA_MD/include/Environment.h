@@ -74,7 +74,7 @@ private:
 	
 	Forcefield forcefield{VerbosityLevel::V1};
 	Analyzer analyzer;
-	BoxBuilder boxbuilder;
+	BoxBuilder* boxbuilder = nullptr;
 
 	std::string work_folder = "";
 	SimulationParams sim_params{};

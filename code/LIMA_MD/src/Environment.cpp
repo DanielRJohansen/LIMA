@@ -16,6 +16,7 @@ Environment::Environment() {
 
 void Environment::CreateSimulation(string gro_path, string topol_path, string work_folder) {
 	simulation = std::make_unique<Simulation>(sim_params);
+	boxbuilder = new BoxBuilder(LimaLogger{LimaLogger::LogMode::compact, "boxbuilder", work_folder});
 
 	verifySimulationParameters();
 
@@ -29,12 +30,12 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 
-	boxbuilder.buildBox(simulation.get());
-	//boxbuilder.addCompoundCollection(simulation.get(), &mol_6lzm_10);
-	boxbuilder.addCompoundCollection(simulation.get(), collection);
+	boxbuilder->buildBox(simulation.get());
+	//boxbuilder->addCompoundCollection(simulation.get(), &mol_6lzm_10);
+	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
-	boxbuilder.solvateBox(simulation.get(), collection.solvent_positions);
+	boxbuilder->solvateBox(simulation.get(), collection.solvent_positions);
 #endif
 }
 
@@ -95,7 +96,7 @@ void Environment::verifyBox() {
 }
 
 void Environment::prepareForRun() {
-	boxbuilder.finishBox(simulation.get(), forcefield.getNBForcefield());
+	boxbuilder->finishBox(simulation.get(), forcefield.getNBForcefield());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
 	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
@@ -322,7 +323,7 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 
 
 
-
+// Todo: move this to the utilities.h file
 template <typename T>
 void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s) {	
 	char* file_path;
@@ -367,12 +368,12 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 
 std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::string selector)
 {
-	if (selector == "current") return boxbuilder.coordarray;
-	if (selector == "prev") return boxbuilder.coordarray_prev;
+	if (selector == "current") return boxbuilder->coordarray;
+	if (selector == "prev") return boxbuilder->coordarray_prev;
 	assert(false);
 }
 
 SolventBlockGrid* Environment::getAllSolventBlocksPrev()
 {
-	return boxbuilder.solventblocks_prev;
+	return boxbuilder->solventblocks_prev;
 }

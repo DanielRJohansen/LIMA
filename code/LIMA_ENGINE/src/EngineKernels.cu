@@ -355,7 +355,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 
 
 			// Debugging
-			LIMADEBUG::transferOut(queue_global, queue_local, transferdir_queue, queue_index);
+			LIMAKERNELDEBUG::transferOut(queue_global, queue_local, transferdir_queue, queue_index);
 			
 
 			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
@@ -557,7 +557,7 @@ __global__ void compoundKernel(Box* box) {
 		if (threadIdx.x < compound.n_particles) {	
 			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass, box->dt, box->thermostat_scalar);
 
-			//LIMADEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
+			//LIMAKERNELDEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
 
 
 
@@ -661,23 +661,13 @@ __global__ void solventForceKernel(Box* box) {
 	}
 	__syncthreads();
 	solventblock.loadData(*solventblock_ptr);
-	__syncthreads();
-
-	if (solvent_active) {
-		//block_origo.print('\n');
-		//solventblock.rel_pos[threadIdx.x].print('r');
-	}
-		
+	__syncthreads();	
 
 
 	Float3 force(0.f);
 	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
 
-	if (blockIdx.x == 0 && threadIdx.x == 0) {
-		//coord.origo.print();
-		//coord.rel_position.print();
-	}
-	
+
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
@@ -776,7 +766,7 @@ __global__ void solventForceKernel(Box* box) {
 		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, box->step);
 		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, box->dt, box->thermostat_scalar);
 
-		LIMADEBUG::solventIntegration(relpos_prev, relpos_next, force, box->critical_error_encountered, solventblock.ids[threadIdx.x]);
+		LIMAKERNELDEBUG::solventIntegration(relpos_prev, relpos_next, force, box->critical_error_encountered, solventblock.ids[threadIdx.x]);
 	}
 
 

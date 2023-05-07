@@ -592,7 +592,7 @@ namespace EngineUtils {
 };
 
 
-namespace LIMADEBUG {
+namespace LIMAKERNELDEBUG {
 	__device__ void static transferOut(STransferQueue* queue_global, const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
 		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
 			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
@@ -648,7 +648,13 @@ namespace LIMADEBUG {
 
 };
 
+namespace DEBUGUTILS {
 
+	/// <summary>
+	/// Puts the nearest solvent of each solvent in the out vector.
+	/// </summary>
+	void findAllNearestSolventSolvent(SolventBlockGrid* solventblockgrid, size_t n_solvents, std::vector<float>& out);
+}
 
 
 

@@ -7,7 +7,9 @@
 class BoxBuilder
 {
 public:
-	BoxBuilder(const LimaLogger& logger) : m_logger(logger) {
+	BoxBuilder(const string& workdir) :
+		m_logger(LimaLogger::LogMode::compact, "boxbuilder", workdir)
+	{
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation);

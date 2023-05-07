@@ -60,7 +60,8 @@ int main() {
 	//loadAndRunBasicSimulation("Met");
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
-	loadAndRunBasicSimulation("SolventBenchmark", 0.0002);
+	testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
+	//loadAndRunBasicSimulation("SolventBenchmark", 0.0002);
 	//loadAndRunBasicSimulation(env, "T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

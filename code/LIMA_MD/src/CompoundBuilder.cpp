@@ -734,7 +734,7 @@ int BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 		particle_refs[n_particles++] = ParticleReference{ 
 			particle_info.compound_index, 
 			particle_info.local_id_compound,
-#ifdef LIMADEBUGMODE
+#ifdef LIMAKERNELDEBUGMODE
 			particle_info.gro_id
 #endif
 		};

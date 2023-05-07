@@ -4,7 +4,7 @@
 
 #define LIMASAFEMODE 1
 
-#define LIMADEBUGMODE 1
+#define LIMAKERNELDEBUGMODE 1
 //#define LIMA_SAFERUN		// Use this for?
 //#define LIMA_VERBOSE
 

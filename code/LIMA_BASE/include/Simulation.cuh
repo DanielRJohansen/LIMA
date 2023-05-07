@@ -34,8 +34,7 @@ constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove thi
 const int DEBUGDATAF3_NVARS = 4;
 
 // This goes on Device
-class Box {
-public:
+struct Box {
 	Box() {}
 	//~Box();
 	void moveToDevice();				// Loses pointer to RAM location!

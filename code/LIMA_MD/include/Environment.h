@@ -48,6 +48,7 @@ public:
 	void handleDisplay(Simulation* simulation);
 	bool handleTermination(Simulation* simulation);
 	void prepFF(string conf_path, string topol_path);
+	void prepareForRun();
 
 	void loadSimParams(const std::string& path);
 	void renderTrajectory(string trj_path);
@@ -59,12 +60,13 @@ public:
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
 	SolventBlockGrid* getAllSolventBlocksPrev();
-
+	std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
+	const std::string& getWorkdir() { return work_folder; }
 
 private:
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
-	void prepareForRun();
+	
 
 	void sayHello();
 
@@ -101,4 +103,3 @@ private:
 
 
 };
-

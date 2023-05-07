@@ -17,15 +17,8 @@
 #include <optional>
 
 
-bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) {
-	Environment env{};
-	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + folder_name + "/";
-	const std::string conf = work_folder + "molecule/conf.gro";
-	const std::string topol = work_folder + "molecule/topol.top";
-
-	env.loadSimParams(work_folder + "sim_params.txt");
-	env.CreateSimulation(conf, topol, work_folder);
-
+bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) {	
+	auto env = TestUtils::basicSetup(folder_name, std::nullopt);
 	env.run();
 
 	auto analytics = env.getAnalyzedPackage();
@@ -60,7 +53,29 @@ bool doMoleculeTranslationTest(std::string foldername) {
 	return TestUtils::verifyStability(env, 0.08);
 }
 
+bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing() {
+	SimulationParams params{ .dt = 5, .n_steps = 1000 };
 
+	auto env = TestUtils::basicSetup("SolventBenchmark", params);
+	env.prepareForRun();	// Lock down simulation
+	
+	LimaLogger logger{ LimaLogger::LogMode::compact, "nearestSolSolTest", env.getWorkdir() };
+
+	
+
+	std::vector<float> closestSolvent;
+	auto solventgrid = env.getCurrentSolventblockGrid();
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid.get(), env.getSim()->box->n_solvents, closestSolvent);
+	logger.printToFile("solsoldist_prerun.bin", closestSolvent);
+
+	env.run();
+
+	solventgrid = env.getCurrentSolventblockGrid();
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid.get(), env.getSim()->box->n_solvents, closestSolvent);
+	logger.printToFile("solsoldist_postrun.bin", closestSolvent);
+
+	return 1;
+}
 
 
 

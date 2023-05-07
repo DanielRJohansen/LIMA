@@ -399,17 +399,25 @@ namespace CoordArrayQueueHelpers {
 	}
 
 
-	__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue,
-		const int step, const int solvent_id) {
-		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;
-		return &solventcoordarray_circular_queue[index0_of_currentstep_coordarray + solvent_id];
+	__device__ static SolventBlockGrid* getSolventblockGridPtr(SolventBlockGrid* solventblockgrid_circular_queue,
+		const int step) {
+			const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
+			return &solventblockgrid_circular_queue[index0_of_currentstep_blockarray];
 	}
 
 	__device__ static SolventBlock* getSolventBlockPtr(SolventBlockGrid* solventblockgrid_circular_queue,
-		const int step, int solventblock_id) {
-		const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
-		return solventblockgrid_circular_queue[index0_of_currentstep_blockarray].getBlockPtr(solventblock_id);
+		const int step, const int solventblock_id) {
+		//const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
+		//return solventblockgrid_circular_queue[index0_of_currentstep_blockarray].getBlockPtr(solventblock_id);
+		return getSolventblockGridPtr(solventblockgrid_circular_queue, step)->getBlockPtr(solventblock_id);
 	}
+
+	// WTF is this??
+	//__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue,
+	//	const int step, const int solvent_id) {
+	//	const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;
+	//	return &solventcoordarray_circular_queue[index0_of_currentstep_coordarray + solvent_id];
+	//}
 }
 
 
@@ -426,7 +434,7 @@ struct Compound {
 
 	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
 
-#ifdef LIMADEBUGMODE
+#ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
 #endif
 
@@ -504,7 +512,7 @@ using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
 struct ParticleReference {
 	ParticleReference() {}
 
-#ifdef LIMADEBUGMODE
+#ifdef LIMAKERNELDEBUGMODE
 	// Used by moleculebuilder only
 	ParticleReference(int compound_id, int local_id_compound, int gro_id) :
 		compound_id(compound_id), local_id_compound(local_id_compound), gro_id(gro_id)

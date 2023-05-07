@@ -16,7 +16,7 @@ Environment::Environment() {
 
 void Environment::CreateSimulation(string gro_path, string topol_path, string work_folder) {
 	simulation = std::make_unique<Simulation>(sim_params);
-	boxbuilder = new BoxBuilder(LimaLogger{LimaLogger::LogMode::compact, "boxbuilder", work_folder});
+	boxbuilder = new BoxBuilder(work_folder);
 
 	verifySimulationParameters();
 
@@ -213,8 +213,8 @@ void Environment::postRunEvents() {
 #endif
 
 	// KILL simulation
-	simulation.release();
-	engine.release();
+	//simulation.release();
+	//engine.release();
 	ready_to_run = false;
 
 	printH2("Post-run events finished Finished", true, true);
@@ -375,5 +375,16 @@ std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::st
 
 SolventBlockGrid* Environment::getAllSolventBlocksPrev()
 {
+	assert(!ready_to_run);	// Only valid before simulation is locked
 	return boxbuilder->solventblocks_prev;
+}
+
+std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
+{
+	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, simulation->getStep());
+
+	auto grid_host = std::make_unique<SolventBlockGrid>();
+	cudaMemcpy(grid_host.get(), gridptr_device, sizeof(SolventBlockGrid), cudaMemcpyDeviceToHost);
+
+	return grid_host;
 }

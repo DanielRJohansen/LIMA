@@ -222,34 +222,36 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	}
 
 	// Loop through all solvents and make sure noone are too close to eachother. Also
-	std::vector<float> closestNeighbor(simulation->box->n_solvents, FLT_MAX);
-	int solvent_index = 0;
-	for (int sbi = 0; sbi < SolventBlockGrid::blocks_total; sbi++) {
-		auto sb = solventblocks->getBlockPtr(sbi);
-		for (int i = 0; i < sb->n_solvents; i++) {
-			auto posi = sb->rel_pos[i];
+	//std::vector<float> closestNeighbor;
+	//DEBUGUTILS::findAllNearestSolventSolvent(solventblocks, simulation->box->n_solvents, closestNeighbor);
+	//int solvent_index = 0;
+	//for (int sbi = 0; sbi < SolventBlockGrid::blocks_total; sbi++) {
+	//	auto sb = solventblocks->getBlockPtr(sbi);
+	//	for (int i = 0; i < sb->n_solvents; i++) {
+	//		auto posi = sb->rel_pos[i];
 
+	//		// Loop through all solvents at equal or greater index
+	//		for (int sbj = sbi; sbj < SolventBlockGrid::blocks_total; sbj++) {
+	//			auto sb2 = solventblocks->getBlockPtr(sbj);
+	//			for (int j = 0; j < sb2->n_solvents; j++) {
 
-			for (int sbj = sbi; sbj < SolventBlockGrid::blocks_total; sbj++) {
-				auto sb2 = solventblocks->getBlockPtr(sbj);
-				for (int j = 0; j < sb2->n_solvents; j++) {
+	//				if (sbi == sbj && i == j) { continue; }	// same solvent
 
-					if (sbi == sbj && i == j) { continue; }	// same solvent
+	//				auto posj = sb2->rel_pos[j];
 
-					auto posj = sb2->rel_pos[j];
+	//				auto dist = EngineUtils::calcDistance(sb->origo, posi, sb2->origo, posj);
 
-					auto dist = EngineUtils::calcDistance(sb->origo, posi, sb2->origo, posj);
+	//				closestNeighbor[solvent_index] = std::min(closestNeighbor[solvent_index], dist);
+	//				if (dist < 0.1) {
+	//					int a = 0;
+	//				}
+	//			}
+	//		}
 
-					closestNeighbor[solvent_index] = std::min(closestNeighbor[solvent_index], dist);
-					if (dist < 0.1) {
-						int a = 0;
-					}
-				}
-			}
-
-			solvent_index++;
-		}
-	}
+	//		solvent_index++;
+	//	}
+	//}
+	//m_logger.printToFile("nearestsolventsolvent.bin", closestNeighbor);
 
 	simulation->total_particles += simulation->box->n_solvents;
 	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions.size());
@@ -258,36 +260,6 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 
 
-
-/*
-* These two funcitons are in charge of normalizing ALL coordinates!!
-*/
-//void BoxBuilder::integrateCompound(CompoundCarrier* compound, Simulation* simulation)
-//{
-//	compound->init();
-//
-//	std::vector<LimaPosition> positions;
-//	std::vector<LimaPosition> positions_prev;
-//	positions.reserve(MAX_COMPOUND_PARTICLES);
-//	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
-//
-//	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
-//
-//
-//
-//	for (int i = 0; i < compound->n_particles; i++) {		
-//		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(compound->state.positions[i]));
-//
-//		const Float3 pos_prev_nm = (compound->state.positions[i] - compound_united_vel * simulation->dt);
-//		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
-//	}
-//
-//
-//	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
-//	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
-//
-//	simulation->box->compounds[simulation->box->n_compounds++] = *compound;
-//}
 
 void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* simulation)
 {
@@ -316,6 +288,24 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //Solvent BoxBuilder::createSolvent(Float3 com, float dt) {
 //	com = com / NORMALIZER * 1e+6;	// concvert to normalized [fm]
 //	Float3 solvent_vel = Float3(random(), random(), random()).norm() * v_rms * VEL_RMS_SCALAR / NORMALIZER;		// TODO: I dont know, but i think we need to freeze solvents to avoid unrealisticly large forces at step 1
@@ -325,36 +315,6 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 * These two funcitons are in charge of normalizing ALL coordinates!!
 */
 
-
-
-//void BoxBuilder::placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies)
-//{
-//	int copies_placed = 0;
-//	while (copies_placed < n_copies) {
-//		Compound* c = randomizeCompound(template_compound);
-//
-//		if (spaceAvailable(simulation->box, c)) {
-//			integrateCompound(c, simulation);
-//			copies_placed++;
-//		}
-//		delete c;
-//	}
-//
-//
-//	// Temporary check that no to molecules placed are colliding.
-//	for (uint32_t i = 0; i < simulation->box->n_compounds; i++) {
-//		Compound* c = &simulation->box->compounds[i];
-//		for (uint32_t ii = 0; ii < simulation->box->n_compounds; ii++) {
-//			Compound* c2 = &simulation->box->compounds[ii];
-//			if (ii != i) {
-//				if (!verifyPairwiseParticleMindist(c, c2)) {
-//					printf("Illegal compound positioning %d %d\n", i, ii);
-//					exit(0);
-//				}				
-//			}
-//		}
-//	}
-//}
 
 //Compound* BoxBuilder::randomizeCompound(Compound* original_compound)
 //{

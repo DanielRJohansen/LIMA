@@ -422,6 +422,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 
 #define compound_index blockIdx.x
+template <bool em_variant>
 __global__ void compoundKernel(Box* box) {
 	__shared__ Compound compound;				// Mostly bond information
 	__shared__ CompoundState compound_state;	// Relative position in [lm]
@@ -461,7 +462,9 @@ __global__ void compoundKernel(Box* box) {
 	for (int i = 0; i < 4; i++)
 		data_ptr[i] = 0;
 	data_ptr[2] = 9999;
-	data_ptr[3] = box->step + 1;
+
+	if constexpr (em_variant)
+		data_ptr[3] = box->step + 1;
 
 
 	Float3 force = compound.forces[threadIdx.x];
@@ -620,6 +623,7 @@ __global__ void compoundKernel(Box* box) {
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x))
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
+
 __global__ void solventForceKernel(Box* box) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];

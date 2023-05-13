@@ -54,3 +54,45 @@ private:
     void clearLine();
     bool clear_next = false;
 };
+
+
+namespace LAL {
+
+
+    template<typename T>
+    class optional {
+    private:
+        bool hasValue;
+        T _value;
+
+    public:
+        optional() : hasValue(false), _value() {}
+
+        optional(const T& value) : hasValue(true), _value(value) {}
+
+        optional(T&& value) : hasValue(true), _value(std::move(value)) {}
+
+        optional& operator=(const T& value) {
+            this->_value = value;
+            hasValue = true;
+            return *this;
+        }
+
+        optional& operator=(T&& value) {
+            this->_value = std::move(value);
+            hasValue = true;
+            return *this;
+        }
+
+        T value() const {
+            if (!hasValue) {
+                throw std::exception("No value present in optional.");
+            }
+            return _value;
+        }
+
+        explicit operator bool() const {
+            return hasValue;
+        }
+    };    
+}

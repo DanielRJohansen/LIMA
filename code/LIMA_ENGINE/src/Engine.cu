@@ -163,12 +163,12 @@ void Engine::step() {
 	cudaDeviceSynchronize();
 
 	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
-		compoundBridgeKernel << < simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box);	// Must come before compoundKernel()		// DANGER
+		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box);	// Must come before compoundKernel()		// DANGER
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel << < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
+		compoundKernel<false><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
 	}
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");

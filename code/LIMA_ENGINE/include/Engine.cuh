@@ -19,7 +19,11 @@
 #include <vector>
 //#include <algorithm>
 
+template <bool em_variant>
 __global__ void compoundKernel(Box* box);
+template __global__ void compoundKernel<true>(Box* box);
+template __global__ void compoundKernel<false>(Box* box);
+
 __global__ void solventForceKernel(Box* box);
 __global__ void compoundBridgeKernel(Box* box);
 __global__ void solventTransferKernel(Box* box);

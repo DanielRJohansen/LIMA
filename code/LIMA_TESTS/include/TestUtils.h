@@ -1,7 +1,5 @@
 #pragma once
 
-#include "LIMA_TESTS/include/TestUtils.h"
-
 #include "LIMA_MD/include/Environment.h"
 #include "LIMA_BASE/include/Printer.h"
 #include "LIMA_BASE/include/Utilities.h"
@@ -16,12 +14,15 @@
 #include <iostream>
 #include <optional>
 
+//#include <cuda/std/detail/libcxx/include/optional>
+
+
 namespace TestUtils {
 
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
-	Environment basicSetup(const std::string& foldername, std::optional<SimulationParams> simparams) {
+	Environment basicSetup(const std::string& foldername, LAL::optional<SimulationParams> simparams) {
 		Environment env{};
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + foldername + "/";
 		const std::string conf = work_folder + "molecule/conf.gro";
@@ -47,3 +48,5 @@ namespace TestUtils {
 		return (std_dev < max_dev);
 	}
 }
+
+

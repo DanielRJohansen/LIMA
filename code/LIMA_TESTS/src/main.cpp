@@ -1,6 +1,6 @@
 #include "LIMA_TESTS/include/ForceCorrectness.h"
 #include "LIMA_TESTS/include/MDStability.h"
-
+#include "LIMA_TESTS/src/EnergyMinimization.cuh"
 
 
 //

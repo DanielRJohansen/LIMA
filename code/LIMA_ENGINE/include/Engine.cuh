@@ -24,7 +24,11 @@ __global__ void compoundKernel(Box* box);
 template __global__ void compoundKernel<true>(Box* box);
 template __global__ void compoundKernel<false>(Box* box);
 
+template <bool em_variant>
 __global__ void solventForceKernel(Box* box);
+template __global__ void solventForceKernel<true>(Box* box);
+template __global__ void solventForceKernel<false>(Box* box);
+
 __global__ void compoundBridgeKernel(Box* box);
 __global__ void solventTransferKernel(Box* box);
 
@@ -36,10 +40,9 @@ public:
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
 	// I'm sure that will help the branch predictor alot!
-	void runOnce();
+	template <bool em_variant> void step();
 
-	void deviceMaster();
-	void hostMaster();
+
 	void terminateSimulation();
 
 	Int3 timings = Int3(0, 0, 0);
@@ -47,12 +50,13 @@ public:
 
 	ForceField_NB getForcefield() { return forcefield_host; }
 
+
 private:
 	Simulation* simulation;
 
 
-	// -------------------------------------- GPU LOAD -------------------------------------- //
-	void step();
+	void hostMaster();
+	template <bool em_variant> void deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	NListManager* nlist_manager = nullptr;
@@ -96,6 +100,13 @@ private:
 	cudaError_t cuda_status;
 	bool critical_error = false;	// Not used yet
 };
+
+template void Engine::deviceMaster<false>();
+template void Engine::deviceMaster<true>();
+template void Engine::step<false>();
+template void Engine::step<true>();
+
+
 
 struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
 	float temperature = 0;			// [k]

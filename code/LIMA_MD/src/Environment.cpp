@@ -123,7 +123,7 @@ void Environment::sayHello() {
 }
 
 
-void Environment::run() {
+void Environment::run(bool em_variant) {
 	if (!ready_to_run) { prepareForRun(); }
 	printH1("Simulation started", true, false);
 
@@ -131,8 +131,10 @@ void Environment::run() {
 
 	while (display->checkWindowStatus()) {
 
-		engine->runOnce();
-
+		if (em_variant)
+			engine->step<true>();
+		else
+			engine->step<false>();
 
 		handleStatus(simulation.get());
 		handleDisplay(simulation.get());

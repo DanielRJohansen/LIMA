@@ -1,5 +1,5 @@
-#include "LIMA_TESTS/include/ForceCorrectness.h"
-#include "LIMA_TESTS/include/MDStability.h"
+#include "LIMA_TESTS/src/ForceCorrectness.h"
+#include "LIMA_TESTS/src/MDStability.cuh"
 #include "LIMA_TESTS/src/EnergyMinimization.cuh"
 
 
@@ -60,8 +60,8 @@ int main() {
 	//loadAndRunBasicSimulation("Met");
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
-	testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	//loadAndRunBasicSimulation("SolventBenchmark", 0.0002);
+	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
+	loadAndEMAndRunBasicSimulation("SolventBenchmark", 0.0002);
 	//loadAndRunBasicSimulation(env, "T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

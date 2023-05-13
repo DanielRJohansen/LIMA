@@ -42,7 +42,7 @@ public:
 
 	void CreateSimulation(string conf_filename, string topol_filename, std::string work_folder);
 
-	void run();
+	void run(bool em_variant=false);
 	void postRunEvents();
 	void handleStatus(Simulation* simulation);
 	void handleDisplay(Simulation* simulation);

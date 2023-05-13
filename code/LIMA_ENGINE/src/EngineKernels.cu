@@ -88,6 +88,7 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	return force;
 }
 
+template <bool em_variant>
 __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* relpos_others, int n_elements, bool exclude_own_index, float* data_ptr, float& potE_sum) {	// Specific to solvent kernel
 	Float3 force{};
 
@@ -96,7 +97,7 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		// If computing within block, dont compute force against thread's solvent
 		if (exclude_own_index && threadIdx.x == i) { continue; }
 
-		force += LimaForcecalc::calcLJForce(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
+		force += LimaForcecalc::calcLJForce<em_variant>(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon,
 			exclude_own_index ? LimaForcecalc::CalcLJOrigin::SolSolIntra : LimaForcecalc::CalcLJOrigin::SolSolInter,
@@ -623,7 +624,7 @@ __global__ void compoundKernel(Box* box) {
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x))
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
-
+template <bool em_variant>
 __global__ void solventForceKernel(Box* box) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
@@ -726,7 +727,7 @@ __global__ void solventForceKernel(Box* box) {
 		}
 		__syncthreads();
 		if (solvent_active) {
-			force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
+			force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -754,7 +755,7 @@ __global__ void solventForceKernel(Box* box) {
 				__syncthreads();
 
 				if (solvent_active) {
-					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+					force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
 				}
 			}
 		}

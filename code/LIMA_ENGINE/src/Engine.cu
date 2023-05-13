@@ -43,15 +43,14 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 
 
-void Engine::runOnce() {
-	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
-	hostMaster();
-}
-
-void Engine::deviceMaster() {
+template<bool em_variant> void Engine::step() {
 	EngineUtils::genericErrorCheck("Error before step!");
-	step();
+
+	deviceMaster<false>();	// Device first, otherwise offloading data always needs the last datapoint!
+	hostMaster();
+
 	EngineUtils::genericErrorCheck("Error after step!");
+
 }
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
@@ -147,8 +146,6 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		}
 	}
 
-
-
 	EngineUtils::genericErrorCheck("Error after trajbuffer bootstrapping.");
 
 	delete[] compoundcoords_array;
@@ -158,7 +155,8 @@ void Engine::bootstrapTrajbufferWithCoords() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-void Engine::step() {
+template <bool em_variant>
+void Engine::deviceMaster() {
 	auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
@@ -168,14 +166,14 @@ void Engine::step() {
 
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel<false><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
+		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
 	}
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
-		solventForceKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
+		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
 
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Error after solventForceKernel");

@@ -21,10 +21,7 @@ public:
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
 
-	// Used for creating the positions host, moved to GPU before simulation start.
-	// Public for dev reasons only. Not really a permanent solution..
-	std::array<CompoundCoords, MAX_COMPOUNDS> coordarray;
-	std::array<CompoundCoords, MAX_COMPOUNDS> coordarray_prev;
+
 	SolventCoord* solventcoords = nullptr;
 	SolventCoord* solventcoords_prev = nullptr;
 	SolventBlockGrid* solventblocks = nullptr;

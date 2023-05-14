@@ -80,6 +80,9 @@ struct Box {
 	float thermostat_scalar = 1.f;
 };
 
+
+
+
 // All members of this struct are double's so they can be parsed easily by std::map, without using variant
 // TODO: Change these to optionals, so we can easily overload only those which values exist
 struct SimulationParams {
@@ -132,7 +135,8 @@ public:
 
 	float temperature = -1.f;			// Current temperature [k]
 
-	Box* box;
+	std::unique_ptr<Box> box;
+	//Box* box;
 	bool box_is_on_device = false;
 
 	Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search

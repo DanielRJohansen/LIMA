@@ -25,9 +25,6 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	//MoleculeBuilder moleculebuilder(&forcefield, work_folder);
-	//CompoundCollection collection = moleculebuilder.buildMolecules(gro_path, topol_path);
-
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 
 	boxbuilder->buildBox(simulation.get());
@@ -39,6 +36,9 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 #endif
 }
 
+void Environment::CreateSimulation(const Box& boxorigin) {
+
+}
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
@@ -110,7 +110,7 @@ void Environment::prepareForRun() {
 void Environment::sayHello() {
 	std::ifstream file(main_dir+"resources/logo_ascii.txt");
 	if (!file) {
-		throw std::runtime_error("Failed to open file logo file");
+		throw std::runtime_error("Failed to open logo file");
 	}
 
 	std::string file_contents((std::istreambuf_iterator<char>(file)),
@@ -368,12 +368,13 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 	return &postsim_anal_package;
 }
 
-std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::string selector)
-{
-	if (selector == "current") return boxbuilder->coordarray;
-	if (selector == "prev") return boxbuilder->coordarray_prev;
-	assert(false);
-}
+//std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::string selector)
+//{
+//	//if (selector == "current") return boxbuilder->coordarray;
+//	//if (selector == "prev") return boxbuilder->coordarray_prev;
+//	assert(false);
+//	return std::array<CompoundCoords, MAX_COMPOUNDS>{};
+//}
 
 SolventBlockGrid* Environment::getAllSolventBlocksPrev()
 {

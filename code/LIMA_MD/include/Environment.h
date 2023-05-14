@@ -42,6 +42,11 @@ public:
 
 	void CreateSimulation(string conf_filename, string topol_filename, std::string work_folder);
 
+	/// <summary>
+	/// Create a simulation that starts from where boxorigin is currently
+	/// </summary>
+	void CreateSimulation(const Box& boxorigin);
+
 	void run(bool em_variant=false);
 	void postRunEvents();
 	void handleStatus(Simulation* simulation);
@@ -58,7 +63,7 @@ public:
 	SimulationParams* getSimparamRef();
 	Simulation* getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
-	std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
+	//std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
 	SolventBlockGrid* getAllSolventBlocksPrev();
 	std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
 	const std::string& getWorkdir() { return work_folder; }

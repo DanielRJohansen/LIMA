@@ -451,7 +451,7 @@ private:
 template<typename T>
 T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	T* gpu_ptr = nullptr;
-	int bytesize = n_elements * sizeof(T);
+	size_t bytesize = n_elements * sizeof(T);
 
 	cudaMallocManaged(&gpu_ptr, bytesize);
 	cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);

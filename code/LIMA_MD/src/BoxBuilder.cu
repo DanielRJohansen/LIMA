@@ -19,8 +19,10 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 	// This is where the coords will eventually reside (device)
-	const uint64_t n_bytes_compoundcoords = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
-	cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes_compoundcoords);
+	//const uint64_t n_bytes_compoundcoords = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
+	//cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes_compoundcoords);
+	simulation->box->coordarray_circular_queue = new CompoundCoords[MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER];
+
 
 	//const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
 	//cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
@@ -89,7 +91,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 
 	// Move the positions to the appropriate places in the circular queue
-	CompoundCoords::copyInitialCoordConfiguration(coordarray.data(), coordarray_prev.data(), simulation->box->coordarray_circular_queue);
+	//CompoundCoords::copyInitialCoordConfiguration(coordarray.data(), coordarray_prev.data(), simulation->box->coordarray_circular_queue);
+	genericMoveToDevice(simulation->box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	//cudaMemcpy(simulation->box->coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+	// 
 	//SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
 	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
 
@@ -282,8 +287,14 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}
 
-	coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
-	coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
+	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, 0, simulation->box->n_compounds);
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+
+	CompoundCoords& coords_prev = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER-1, simulation->box->n_compounds);
+	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+
+	//coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
+	//coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
 	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }

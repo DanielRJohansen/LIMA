@@ -33,8 +33,8 @@ RenderBall* Rasterizer::render(Simulation* simulation) {
 
 
 
-__global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms);
-__global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset);
+__global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int step);
+__global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step);
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls);
 const int THREADS_PER_LOADSOLVENTSATOMSKERNEL = 100;
 
@@ -49,12 +49,12 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	//int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
 
 
-	Box* box = simulation->box;
+	Box* box = simulation->box.get();
 	if (simulation->n_compounds > 0)
-		loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms);
+		loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms, simulation->simparams_host.step);
 	if (simulation->n_solvents > 0) {
 		//loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
-		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box, atoms, solvent_offset);
+		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box.get(), atoms, solvent_offset, simulation->simparams_host.step);
 	}
 
 	cudaDeviceSynchronize();
@@ -178,7 +178,7 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
 
 
 
-__global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {                                                            // TODO: CAN ONLY HANDLE ONE COMPOUND!!!
+__global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int step) {                                                            // TODO: CAN ONLY HANDLE ONE COMPOUND!!!
     int local_id = threadIdx.x;
     int compound_id = blockIdx.x;
     int global_id = threadIdx.x + blockIdx.x * blockDim.x;
@@ -186,7 +186,7 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
     
     if (local_id < box->compounds[compound_id].n_particles) {
         //atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(box->compound_coord_array[compound_id]);
-        auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, box->step, compound_id);
+        auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, step, compound_id);
 
         RenderAtom atom{};
         //atom.pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);
@@ -209,9 +209,9 @@ __global__ void loadCompoundatomsKernel(Box * box, RenderAtom * atoms) {        
 #include <algorithm> 
 #include <cuda/std/cmath>
 
-__global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset) {
-    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step, blockIdx.x);
-    SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, box->step == 0 ? 0 : box->step-1, blockIdx.x);
+__global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step) {
+    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step, blockIdx.x);
+    SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step == 0 ? 0 : step-1, blockIdx.x);
 
     if (threadIdx.x < solventblock->n_solvents) {
         //const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };

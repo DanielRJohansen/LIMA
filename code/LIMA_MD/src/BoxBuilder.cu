@@ -53,7 +53,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact{};
 	//simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
-	simulation->box->dt = simulation->dt;
+	//simulation->box->dt = simulation->dt;	// Now done during movetodevice
 
 	cudaDeviceSynchronize();
 	if (cudaGetLastError() != cudaSuccess) {
@@ -99,18 +99,20 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
 
 	
+	const auto n_steps = simulation->simparams_host.constparams.n_steps;
+
 	// Permanent Outputs for energy & trajectory analysis
 	int n_points = simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER;
 	printf("n points %d\n", n_points);
 	printf("Malloc %.2f MB on device for data buffers\n",(float) ((sizeof(double) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
-	printf("Malloc %.2f MB on host for data buffers\n", (float) ((sizeof(double) * simulation->total_particles_upperbound * simulation->n_steps + sizeof(Float3) * simulation->total_particles_upperbound * simulation->n_steps) * 1e-6));
+	printf("Malloc %.2f MB on host for data buffers\n", (float) ((sizeof(double) * simulation->total_particles_upperbound * n_steps + sizeof(Float3) * simulation->total_particles_upperbound * n_steps) * 1e-6));
 	cudaMallocManaged(&simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
-	simulation->potE_buffer = new float[simulation->total_particles_upperbound * simulation->n_steps];
+	simulation->potE_buffer = new float[simulation->total_particles_upperbound * n_steps];
 
 	cudaMallocManaged(&simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);
-	simulation->traj_buffer = new Float3[simulation->total_particles_upperbound * simulation->n_steps];
+	simulation->traj_buffer = new Float3[simulation->total_particles_upperbound * simulation->simparams_host.constparams.n_steps];
 
-	simulation->temperature_buffer = new float[simulation->n_steps / STEPS_PER_THERMOSTAT + 1];
+	simulation->temperature_buffer = new float[n_steps / STEPS_PER_THERMOSTAT + 1];
 
 #ifdef USEDEBUGF3
 	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
@@ -131,9 +133,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	cudaMallocManaged(&simulation->box->data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER);
 
-
-	uint64_t n_loggingdata_host = 10 * simulation->n_steps;
-	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * (uint64_t) simulation->n_steps;
+	uint64_t n_loggingdata_host = 10 * n_steps;
+	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * (uint64_t) n_steps;
 	printf("Reserving %.4f GB host mem for logging + training data\n",(float) (sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
 	simulation->logging_data = new float[n_loggingdata_host];
 	simulation->traindata_buffer = new Float3[n_traindata_host];
@@ -204,7 +205,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+		if (spaceAvailable(*simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 
@@ -283,7 +284,7 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 			int a = 0;
 		}
 
-		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->dt);
+		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->simparams_host.constparams.dt);
 		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}
 
@@ -404,10 +405,10 @@ float minDist(CompoundState& compoundstate, Float3 particle_pos) {
 	return mindist;
 }
 
-bool BoxBuilder::spaceAvailable(Box* box, Float3 particle_center, bool verbose)
+bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool verbose)
 {
 	particle_center = particle_center;
-	for (uint32_t c_index = 0; c_index < box->n_compounds; c_index++) {
+	for (uint32_t c_index = 0; c_index < box.n_compounds; c_index++) {
 		//if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
 
 		// This no longer works, as box doesn't store compound state arrays!

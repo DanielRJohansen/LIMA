@@ -555,15 +555,15 @@ namespace EngineUtils {
 	}
 
 
-	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol) {
-		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, blockIdx.x, threadIdx.x);
+	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol, uint32_t step) {
+		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->total_particles_upperbound, blockIdx.x, threadIdx.x);
 		box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		box->potE_buffer[index] = *potE_sum;
 	}
 
-	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity) {
+	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity, uint32_t step) {
 		if (solvent_active) {
-			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(box->step, box->total_particles_upperbound, box->n_compounds, solventblock.ids[threadIdx.x]);
+			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->total_particles_upperbound, box->n_compounds, solventblock.ids[threadIdx.x]);
 			//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
 			box->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			box->potE_buffer[index] = potE;

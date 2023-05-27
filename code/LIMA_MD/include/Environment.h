@@ -53,14 +53,16 @@ public:
 	void handleDisplay(Simulation* simulation);
 	bool handleTermination(Simulation* simulation);
 	void prepFF(string conf_path, string topol_path);
-	void prepareForRun();
+
+	// Return if cannot run
+	bool prepareForRun();
 
 	void loadSimParams(const std::string& path);
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
-	SimulationParams* getSimparamRef();
+	InputSimParams* getSimparamRef();
 	Simulation* getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	//std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
@@ -84,9 +86,9 @@ private:
 	BoxBuilder* boxbuilder = nullptr;
 
 	std::string work_folder = "";
-	SimulationParams sim_params{};
+	InputSimParams sim_params{};
 
-	bool ready_to_run = false;
+	//bool ready_to_run = false;
 
 	// These should be in interface maybe?
 	template <typename T>

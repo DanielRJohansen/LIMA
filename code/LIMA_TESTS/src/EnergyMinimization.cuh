@@ -9,7 +9,7 @@
 
 bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing() {
 	//SimulationParams params{ .dt = 5, .n_steps = 1000 };
-	SimulationParams params{ 5, 1000 };
+	InputSimParams params{ 5, 1000 };
 
 	auto env = TestUtils::basicSetup("SolventBenchmark", { params });
 	env.prepareForRun();	// Lock down simulation

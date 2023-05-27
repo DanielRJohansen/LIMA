@@ -24,7 +24,10 @@ void Box::moveToDevice() {
 }
 
 void Simulation::moveToDevice() {
-	box = genericMoveToDevice(box, 1);
+	box.reset(genericMoveToDevice(box.release(), 1));
+
+	genericCopyToDevice(simparams_host, &simparams_device, 1);
+
 	cudaDeviceSynchronize();
 	if (cudaGetLastError() != cudaSuccess) {
 		fprintf(stderr, "Error during Simulation Host->Device transfer\n");
@@ -53,15 +56,14 @@ void Simulation::copyBoxVariables() {
 	box->total_particles_upperbound = total_particles_upperbound;
 }
 
-Simulation::Simulation(SimulationParams& sim_params) :
-	dt(sim_params.dt),	// convert [ns] to [fs]
-	n_steps(sim_params.n_steps)
+Simulation::Simulation(InputSimParams& ip) :
+	simparams_host{ SimParamsConst{ip.n_steps, ip.dt} }
 {
-	box = new Box();
+	box = std::make_unique<Box>();
 }
 Simulation::~Simulation() {
 	deleteBoxMembers();
-	delete box;
+
 }
 
 void Simulation::deleteBoxMembers() {
@@ -93,7 +95,7 @@ void Simulation::deleteBoxMembers() {
 	}
 }
 
-void SimulationParams::overloadParams(std::map<std::string, double>& dict) {
+void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
 	overloadParam(dict, &n_steps, "n_steps");
 }

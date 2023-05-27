@@ -8,30 +8,43 @@
 
 struct ForceField_NB;
 
-#ifndef __linux__
-//const string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\molecules\\t4lys_full\\";
-//const std::string MOL_FOLDER = "C:\\PROJECTS\\Quantom\\Simulation\\Molecule\\";
-//const std::string OUT_DIR = "C:\\PROJECTS\\Quantom\\Simulation\\";
-#else
-//const string MOL_FOLDER = "../Compounds/t4lys/";
-const string MOL_FOLDER = "../../Simulation/Molecule/";
-//const string OUT_DIR = "/home/lima/Desktop/LIMA";
-const string OUT_DIR = "../../Simulation/";
-#endif
-
-
-
-
-//const int BLOCKS_PER_SOLVENTKERNEL = ceil((float)N_SOLVATE_MOLECULES / (float)THREADS_PER_SOLVENTBLOCK);
-
 
 
 
 constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
 //constexpr double SOLVENT_MASS = 12.0107 * 1e-3;	// kg/mol
-//constexpr double COMPOUNDPARTICLE_MASS = 12.0107 * 1e-3;
 
 const int DEBUGDATAF3_NVARS = 4;
+
+
+// All members of this struct are double's so they can be parsed easily by std::map, without using variant
+// TODO: Change these to optionals, so we can easily overload only those which values exist
+struct InputSimParams {
+	void overloadParams(std::map<std::string, double>& dict);
+
+	float dt = 100.f;	// [ls]
+	uint32_t n_steps = 1000;
+private:
+	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
+		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
+	}
+};
+
+struct SimParamsConst {
+	uint32_t n_steps;
+	float dt;									// [ls]
+};
+
+struct SimParams {
+	SimParams(const SimParamsConst& spc) : constparams(spc) {}
+	uint32_t step = 0;
+	bool critical_error_encountered = false;
+	float thermostat_scalar = 1.f;
+
+	const SimParamsConst constparams;
+
+};
+
 
 // This goes on Device
 struct Box {
@@ -65,10 +78,10 @@ struct Box {
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
-
-	uint32_t step = 0;
-	float dt = 0;								// [ls]
-	bool critical_error_encountered = false;
+	
+	//uint32_t step = 0;
+	//float dt = 0;								// [ls]
+	//bool critical_error_encountered = false;
 
 	float* potE_buffer = nullptr;				// For total energy summation
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
@@ -77,41 +90,27 @@ struct Box {
 	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
 	Float3* debugdataf3 = nullptr;
 
-	float thermostat_scalar = 1.f;
+
+	//float thermostat_scalar = 1.f;
 };
 
-
-
-
-// All members of this struct are double's so they can be parsed easily by std::map, without using variant
-// TODO: Change these to optionals, so we can easily overload only those which values exist
-struct SimulationParams {
-	void overloadParams(std::map<std::string, double>& dict);
-
-	float dt = 100.f;	// [ls]
-	int n_steps = 1000;
-private:
-	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
-		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
-	}
-};
 
 // This stays on host
 class Simulation {
 public:
-	Simulation(SimulationParams& sim_params);
+	Simulation(InputSimParams& sim_params);
 	~Simulation();
 	void deleteBoxMembers();
 	void moveToDevice();
 	void copyBoxVariables();
 	void incStep() {
-		step++;
-		box->step++;
+		simparams_host.step++;
+		simparams_device->step++;
 	}
 	
-	inline uint64_t getStep() const { return step; }
+	inline uint64_t getStep() const { return simparams_host.step; }
 	
-
+	bool ready_to_run = false;
 	bool finished = false;
 
 
@@ -127,15 +126,20 @@ public:
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
 	uint32_t total_particles = 0;				// Precise number, but DO NOT EVER USE IN INDEXING!!
 	
-	uint64_t n_steps = 0;
+	//uint64_t n_steps = 0;
 
-	const float dt = 100.f;					// [ls]
+	//const float dt = 100.f;					// [ls]
 	const int steps_per_render = STEPS_PER_RENDER;
 	//int n_bodies = N_BODIES_START;
 
 	float temperature = -1.f;			// Current temperature [k]
 
 	std::unique_ptr<Box> box;
+
+	SimParams simparams_host;
+	SimParams* simparams_device;
+
+
 	//Box* box;
 	bool box_is_on_device = false;
 
@@ -155,7 +159,7 @@ public:
 	//int blocks_per_solventkernel = ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
 	int blocks_per_solventkernel = 0;
 private:
-	uint64_t step = 0;
+	//uint64_t step = 0;
 
 	
 	

@@ -20,17 +20,17 @@
 //#include <algorithm>
 
 template <bool em_variant>
-__global__ void compoundKernel(Box* box);
-template __global__ void compoundKernel<true>(Box* box);
-template __global__ void compoundKernel<false>(Box* box);
+__global__ void compoundKernel(Box* box, SimParams* simparams);
+template __global__ void compoundKernel<true>(Box* box, SimParams* simparams);
+template __global__ void compoundKernel<false>(Box* box, SimParams* simparams);
 
 template <bool em_variant>
-__global__ void solventForceKernel(Box* box);
-template __global__ void solventForceKernel<true>(Box* box);
-template __global__ void solventForceKernel<false>(Box* box);
+__global__ void solventForceKernel(Box* box, SimParams* simparams);
+template __global__ void solventForceKernel<true>(Box* box, SimParams* simparams);
+template __global__ void solventForceKernel<false>(Box* box, SimParams* simparams);
 
-__global__ void compoundBridgeKernel(Box* box);
-__global__ void solventTransferKernel(Box* box);
+__global__ void compoundBridgeKernel(Box* box, SimParams* simparams);
+__global__ void solventTransferKernel(Box* box, SimParams* simparams);
 
 
 class Engine {

@@ -160,24 +160,24 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 
 	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
-		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box);	// Must come before compoundKernel()		// DANGER
+		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box.get(), simulation->simparams_device);	// Must come before compoundKernel()		// DANGER
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box);
+		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box.get(), simulation->simparams_device);
 	}
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
-		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box);
+		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box.get(), simulation->simparams_device);
 
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
-			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box);
+			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box.get(), simulation->simparams_device);
 		}
 	}
 	cudaDeviceSynchronize();

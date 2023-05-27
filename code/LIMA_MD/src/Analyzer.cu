@@ -18,7 +18,7 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 	}
 }
 
-void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
+void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
 	__shared__ Compound compound;
 
@@ -50,7 +50,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
 	const float n_steps = 2.f;
 
-	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
+	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
 	const float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
@@ -68,7 +68,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, Float3* traj_buffer, float
 
 
 
-void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {
+void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {
 	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK];
 
 
@@ -90,7 +90,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, Float3* traj_buffer, float*
 	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->total_particles_upperbound];
 
 	float mass = SOLVENT_MASS;
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, box->dt*2.f / NANO_TO_LIMA);	// convert [ls] to [ns]
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt*2.f / NANO_TO_LIMA);	// convert [ls] to [ns]
 
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->total_particles_upperbound];
 
@@ -193,7 +193,7 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 		cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box.get(), simulation->simparams_device, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
@@ -234,7 +234,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
 		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->box->n_compounds, 1);
-		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, traj_buffer_device, potE_buffer_device, data_out);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box.get(), simulation->simparams_device, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 

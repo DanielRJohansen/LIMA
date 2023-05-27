@@ -77,7 +77,8 @@ void Environment::verifyBox() {
 	}
 
 
-	if (std::abs(SOLVENT_MASS - engine->getForcefield().particle_parameters[0].mass) > 1e-3f) {
+	//if (std::abs(SOLVENT_MASS - engine->getForcefield().particle_parameters[0].mass) > 1e-3f) {
+	if (std::abs(SOLVENT_MASS - forcefield.getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
 		printf("Error in solvent mass");
 		exit(0);
 	}
@@ -95,15 +96,25 @@ void Environment::verifyBox() {
 	printf("Environment::verifyBox success\n");
 }
 
-void Environment::prepareForRun() {
+bool Environment::prepareForRun() {
+	if (simulation->finished) { 
+		printf("Cannot prepare run, since simulation has already finished");
+		return false; 
+	}
+
 	boxbuilder->finishBox(simulation.get(), forcefield.getNBForcefield());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
+	verifyBox();
+	simulation->ready_to_run = true;
+
 	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
 
-	verifyBox();
+	
 
-	ready_to_run = true;
+	
+
+	return simulation->ready_to_run;
 }
 
 
@@ -124,7 +135,8 @@ void Environment::sayHello() {
 
 
 void Environment::run(bool em_variant) {
-	if (!ready_to_run) { prepareForRun(); }
+	if (!prepareForRun()) { return; }
+
 	printH1("Simulation started", true, false);
 
 	time0 = std::chrono::high_resolution_clock::now();
@@ -147,10 +159,14 @@ void Environment::run(bool em_variant) {
 		}
 
 	}
+
+	simulation->finished = true;
+	simulation->ready_to_run = false;
+
 	engine->terminateSimulation();
 	printH1("Simulation Finished", true, true);
 
-	if (simulation->finished || simulation->box->critical_error_encountered) {
+	if (simulation->finished || simulation->simparams_device->critical_error_encountered) {
 		postRunEvents();
 	}
 }
@@ -171,7 +187,7 @@ void Environment::postRunEvents() {
 		dumpToFile(simulation->logging_data, 10 * simulation->getStep(), out_dir + "logdata.bin");
 	}
 
-	if (simulation->box->critical_error_encountered) {
+	if (simulation->simparams_device->critical_error_encountered) {
 		dumpToFile(simulation->traindata_buffer,
 			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * simulation->getStep(),
 			out_dir + "sim_traindata.bin");
@@ -200,7 +216,7 @@ void Environment::postRunEvents() {
 #endif 
 
 #ifndef __linux__
-	if (!simulation->box->critical_error_encountered && 0) {	// Skipping for now
+	if (!simulation->simparams_device->critical_error_encountered && 0) {	// Skipping for now
 		string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
 			+ out_dir + " "
 			+ std::to_string(simulation->getStep()) + " "
@@ -217,7 +233,7 @@ void Environment::postRunEvents() {
 	// KILL simulation
 	//simulation.release();
 	//engine.release();
-	ready_to_run = false;
+	simulation->ready_to_run = false;
 
 	printH2("Post-run events finished Finished", true, true);
 	printf("\n\n\n");
@@ -229,7 +245,7 @@ void Environment::handleStatus(Simulation* simulation) {
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
 		printf("\r\tStep #%06d", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->n_steps - simulation->box->step) / 60);
+		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->simparams_device->constparams.n_steps - simulation->simparams_host.step) / 60);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
 		//engine->timings = Int3(0, 0, 0);
 		engine->timings.x = 0;
@@ -252,11 +268,11 @@ bool Environment::handleTermination(Simulation* simulation)
 {
 	if (simulation->finished)
 		return true;
-	if (simulation->getStep() >= simulation->n_steps) {
+	if (simulation->getStep() >= simulation->simparams_device->constparams.n_steps) {
 		simulation->finished = true;
 		return true;
 	}		
-	if (simulation->box->critical_error_encountered)
+	if (simulation->simparams_device->critical_error_encountered)
 		return true;
 
 	return false;
@@ -355,7 +371,7 @@ void Environment::loadSimParams(const std::string& path) {
 	sim_params.overloadParams(param_dict);
 }
 
-SimulationParams* Environment::getSimparamRef() {
+InputSimParams* Environment::getSimparamRef() {
 	return &sim_params;
 }
 
@@ -378,7 +394,7 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 
 SolventBlockGrid* Environment::getAllSolventBlocksPrev()
 {
-	assert(!ready_to_run);	// Only valid before simulation is locked
+	assert(!simulation->ready_to_run);	// Only valid before simulation is locked
 	return boxbuilder->solventblocks_prev;
 }
 

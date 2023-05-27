@@ -9,6 +9,7 @@ namespace DEBUGUTILS {
 
 	void DEBUGUTILS::findAllNearestSolventSolvent(SolventBlockGrid* solventblockgrid, size_t n_solvents, std::vector<float>& closestNeighbor)
 	{
+		printf("Finding nearest neighbor-solvent of each solvent..");
 		closestNeighbor.resize(n_solvents);
 		std::fill(closestNeighbor.begin(), closestNeighbor.end(), FLT_MAX);
 
@@ -37,6 +38,7 @@ namespace DEBUGUTILS {
 				solvent_index++;
 			}
 		}
+		printf(" Done!\n");
 	}
 
 

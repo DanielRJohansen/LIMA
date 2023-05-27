@@ -464,7 +464,14 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 	return gpu_ptr;
 }
 
+template<typename T>
+void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+	size_t bytesize = n_elements * sizeof(T);
 
+	cudaMallocManaged(dest, bytesize);
+	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
+	cudaDeviceSynchronize();
+}
 
 
 struct Trajectory {

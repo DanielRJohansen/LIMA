@@ -133,8 +133,17 @@ void Engine::offloadTrainData() {
 
 
 void Engine::bootstrapTrajbufferWithCoords() {
-	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
-	cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	EngineUtils::genericErrorCheck("Error before trajbuffer bootstrapping.");
+
+	CompoundCoords* cdev;
+	cudaMallocManaged(&cdev, sizeof(CompoundCoords) * simulation->n_compounds);
+	cudaDeviceSynchronize();
+
+
+	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds*2];
+	auto error = cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	EngineUtils::genericErrorCheck(error);
+	
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
@@ -160,24 +169,24 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 
 	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
-		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box.get(), simulation->simparams_device);	// Must come before compoundKernel()		// DANGER
+		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box, simulation->simparams_device);	// Must come before compoundKernel()		// DANGER
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box.get(), simulation->simparams_device);
+		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box, simulation->simparams_device);
 	}
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
-		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box.get(), simulation->simparams_device);
+		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box, simulation->simparams_device);
 
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
-			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box.get(), simulation->simparams_device);
+			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box, simulation->simparams_device);
 		}
 	}
 	cudaDeviceSynchronize();

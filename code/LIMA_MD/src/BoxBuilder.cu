@@ -92,7 +92,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	// Move the positions to the appropriate places in the circular queue
 	//CompoundCoords::copyInitialCoordConfiguration(coordarray.data(), coordarray_prev.data(), simulation->box->coordarray_circular_queue);
-	genericMoveToDevice(simulation->box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	simulation->box->coordarray_circular_queue = genericMoveToDevice(simulation->box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
 	//cudaMemcpy(simulation->box->coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
 	// 
 	//SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
@@ -142,12 +142,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 
 
-
-	cudaDeviceSynchronize();
-	if (cudaGetLastError() != cudaSuccess) {
-		fprintf(stderr, "Error during log-data mem. allocation\n");
-		exit(1);
-	}
+	EngineUtils::genericErrorCheck("Error during log-data mem. allocation");	
 
 	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
 	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);

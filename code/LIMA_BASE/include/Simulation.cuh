@@ -134,7 +134,7 @@ public:
 
 	float temperature = -1.f;			// Current temperature [k]
 
-	std::unique_ptr<Box> box;
+	Box* box = nullptr;
 
 	SimParams simparams_host;
 	SimParams* simparams_device;

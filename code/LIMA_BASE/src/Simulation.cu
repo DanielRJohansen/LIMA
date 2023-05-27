@@ -24,7 +24,7 @@ void Box::moveToDevice() {
 }
 
 void Simulation::moveToDevice() {
-	box.reset(genericMoveToDevice(box.release(), 1));
+	box = genericMoveToDevice(box, 1);
 
 	genericCopyToDevice(simparams_host, &simparams_device, 1);
 
@@ -59,11 +59,11 @@ void Simulation::copyBoxVariables() {
 Simulation::Simulation(InputSimParams& ip) :
 	simparams_host{ SimParamsConst{ip.n_steps, ip.dt} }
 {
-	box = std::make_unique<Box>();
+	box = new Box();
 }
 Simulation::~Simulation() {
-	deleteBoxMembers();
-
+	deleteBoxMembers();	// TODO: move to box destructor
+	
 }
 
 void Simulation::deleteBoxMembers() {
@@ -83,6 +83,7 @@ void Simulation::deleteBoxMembers() {
 		cudaFree(box->traj_buffer);
 		cudaFree(box->outdata);
 		cudaFree(box->data_GAN);
+		cudaFree(box);
 	}
 	else {
 		delete[] box->compounds;	// TODO: Finish this
@@ -92,6 +93,7 @@ void Simulation::deleteBoxMembers() {
 		delete[] box->solvent_neighborlists;
 		delete[] box->bonded_particles_lut_manager;
 		delete[] box->compounds;
+		delete box;
 	}
 }
 

@@ -478,6 +478,13 @@ namespace EngineUtils {
 			exit(1);
 		}
 	}
+	static void __host__ genericErrorCheck(const cudaError_t cuda_status) {
+		if (cuda_status != cudaSuccess) {
+			std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+			exit(1);
+		}
+	}
+
 
 	//static float calcSpeedOfParticle(const float mass /*[kg]*/, const float temperature /*[K]*/) { // 
 	//	const float R = 8.3144f;								// Ideal gas constants - J/(Kelvin*mol)

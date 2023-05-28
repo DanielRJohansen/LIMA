@@ -9,26 +9,22 @@ using std::string;
 using std::cout;
 using std::printf;
 
-Environment::Environment() {
+Environment::Environment(const string& wf) 
+	: work_folder(wf)
+{
 	sayHello();
 	display = new Display();
 }
 
-void Environment::CreateSimulation(string gro_path, string topol_path, string work_folder) {
-	simulation = std::make_unique<Simulation>(sim_params);
-	boxbuilder = new BoxBuilder(work_folder);
-
-	verifySimulationParameters();
-
-	this->work_folder = work_folder;
+void Environment::CreateSimulation(string gro_path, string topol_path) {
 
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
+	setupEmptySimulation();
 
-	boxbuilder->buildBox(simulation.get());
-	//boxbuilder->addCompoundCollection(simulation.get(), &mol_6lzm_10);
+
+	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
@@ -36,8 +32,29 @@ void Environment::CreateSimulation(string gro_path, string topol_path, string wo
 #endif
 }
 
-void Environment::CreateSimulation(const Box& boxorigin) {
+void Environment::CreateSimulation(const Simulation& simulation_src) {
+	// If we already have a box, we must have a forcefield too, no?
 
+	setupEmptySimulation();
+	boxbuilder->copyBoxState(simulation.get(), simulation_src.box, simulation_src.simparams_host.step);
+}
+
+void Environment::setupEmptySimulation() {
+	assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
+
+	simulation = std::make_unique<Simulation>(sim_params);
+	boxbuilder = std::make_unique<BoxBuilder>(work_folder);
+
+	verifySimulationParameters();
+
+	//this->work_folder = work_folder;
+
+	//prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
+	//forcefield.loadForcefield(work_folder + "/molecule");
+
+	//CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
+
+	boxbuilder->buildBox(simulation.get());
 }
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
@@ -99,6 +116,7 @@ void Environment::verifyBox() {
 bool Environment::prepareForRun() {
 	if (simulation->finished) { 
 		printf("Cannot prepare run, since simulation has already finished");
+		assert(false);
 		return false; 
 	}
 
@@ -392,11 +410,11 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 //	return std::array<CompoundCoords, MAX_COMPOUNDS>{};
 //}
 
-SolventBlockGrid* Environment::getAllSolventBlocksPrev()
-{
-	assert(!simulation->ready_to_run);	// Only valid before simulation is locked
-	return boxbuilder->solventblocks_prev;
-}
+//SolventBlockGrid* Environment::getAllSolventBlocksPrev()
+//{
+//	assert(!simulation->ready_to_run);	// Only valid before simulation is locked
+//	return boxbuilder->solventblocks_prev;
+//}
 
 std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
 {

@@ -73,7 +73,7 @@ struct Box {
 
 
 
-	ForceField_NB* forcefield_device_box = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
+	ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 
@@ -98,7 +98,12 @@ struct Box {
 // This stays on host
 class Simulation {
 public:
+	// Create a brand new simulation from scratch
 	Simulation(InputSimParams& sim_params);
+
+	// Start a new box from where the current state inputbox at the step specified
+	// by simparams becomes the state of the new simulations's box at step 0
+	Simulation(const Box& inputbox, uint32_t inputbox_current_step, const InputSimParams& ip);
 	~Simulation();
 	void deleteBoxMembers();
 	void moveToDevice();
@@ -158,10 +163,8 @@ public:
 
 	//int blocks_per_solventkernel = ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
 	int blocks_per_solventkernel = 0;
-private:
-	//uint64_t step = 0;
-
-	
-	
 };
 
+namespace SimUtils {
+	static Box copyToHost(const Box* box_dev);
+}

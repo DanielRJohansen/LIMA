@@ -12,15 +12,45 @@ void Box::moveToDevice() {
 	//solvents = genericMoveToDevice(solvents, MAX_SOLVENTS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
 
+	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	solventblockgrid_circular_queue = genericMoveToDevice(solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+
+
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
 	solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
-	forcefield_device_box = genericMoveToDevice(forcefield_device_box, 1);
+	forcefield = genericMoveToDevice(forcefield, 1);
 
 	cudaDeviceSynchronize();
 	printf("Box transferred to device\n");
+}
+
+Box SimUtils::copyToHost(const Box* box_dev) {
+	Box box{};
+	cudaMemcpy(&box, box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
+
+	box.compounds = genericCopyToHost(box.compounds, box.n_compounds);
+
+
+}
+
+Simulation::Simulation(InputSimParams& ip) :
+	simparams_host{ SimParamsConst{ip.n_steps, ip.dt} }
+{
+	box = new Box();
+}
+
+Simulation::Simulation(const Box& inputbox, const uint32_t inputbox_current_step, const InputSimParams& ip) :
+	simparams_host{ SimParamsConst{ ip.n_steps, ip.dt } }
+{
+	//box = new Box(inputbox, inputbox_current_step);
+}
+
+Simulation::~Simulation() {
+	deleteBoxMembers();	// TODO: move to box destructor
+
 }
 
 void Simulation::moveToDevice() {
@@ -54,16 +84,6 @@ void Simulation::copyBoxVariables() {
 	//total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + box->n_solvents;											// BAD AMBIGUOUS AND WRONG CONSTANTS	
 	total_particles_upperbound = box->n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
 	box->total_particles_upperbound = total_particles_upperbound;
-}
-
-Simulation::Simulation(InputSimParams& ip) :
-	simparams_host{ SimParamsConst{ip.n_steps, ip.dt} }
-{
-	box = new Box();
-}
-Simulation::~Simulation() {
-	deleteBoxMembers();	// TODO: move to box destructor
-	
 }
 
 void Simulation::deleteBoxMembers() {

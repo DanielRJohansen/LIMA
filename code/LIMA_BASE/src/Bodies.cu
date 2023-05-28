@@ -1,76 +1,79 @@
 #include "Bodies.cuh"
 
 
-
-// TODO: This function should take in the array instead of the raw ptr, to ensure the correct size is transferred
-// Also verify somehow that the destination has the same size as the source, so we dont leave any undefined bytes on device, which could
-// cause problems between sequential simulations
-void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
-	// Move pos_t
-	cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
-
-	// Move pos_t - 1
-	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_COMPOUNDS;
-	cudaMemcpy(&coordarray_circular_queue[index0_of_prev], coords_prev, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
-
-	cudaDeviceSynchronize();
-	if (cudaGetLastError() != cudaSuccess) {
-		fprintf(stderr, "Error during coord's initial configuration copyToDevice\n");
-		exit(1);
-	}
-}
-
-
-void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
-	// Move pos_t
-	cudaMemcpy(solventcoordarray_circular_queue, coords, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
-
-	// Move pos_t - 1
-	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_SOLVENTS;
-	cudaMemcpy(&solventcoordarray_circular_queue[index0_of_prev], coords_prev, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
-
-	cudaDeviceSynchronize();
-	if (cudaGetLastError() != cudaSuccess) {
-		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
-		exit(1);
-	}
-}
+//
+//// TODO: This function should take in the array instead of the raw ptr, to ensure the correct size is transferred
+//// Also verify somehow that the destination has the same size as the source, so we dont leave any undefined bytes on device, which could
+//// cause problems between sequential simulations
+//void CompoundCoords::copyInitialCoordConfiguration(CompoundCoords* coords, CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) {
+//	// Move pos_t
+//	cudaMemcpy(coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+//
+//	// Move pos_t - 1
+//	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_COMPOUNDS;
+//	cudaMemcpy(&coordarray_circular_queue[index0_of_prev], coords_prev, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
+//
+//	cudaDeviceSynchronize();
+//	if (cudaGetLastError() != cudaSuccess) {
+//		fprintf(stderr, "Error during coord's initial configuration copyToDevice\n");
+//		exit(1);
+//	}
+//}
 
 
+//void SolventCoord::copyInitialCoordConfiguration(SolventCoord* coords, SolventCoord* coords_prev, SolventCoord* solventcoordarray_circular_queue) {
+//	// Move pos_t
+//	cudaMemcpy(solventcoordarray_circular_queue, coords, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+//
+//	// Move pos_t - 1
+//	const int index0_of_prev = (STEPS_PER_LOGTRANSFER - 1) * MAX_SOLVENTS;
+//	cudaMemcpy(&solventcoordarray_circular_queue[index0_of_prev], coords_prev, sizeof(SolventCoord) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+//
+//	cudaDeviceSynchronize();
+//	if (cudaGetLastError() != cudaSuccess) {
+//		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
+//		exit(1);
+//	}
+//}
 
-bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev, SolventBlockGrid* grid_circular_queue) {
-	// Move pos_t
-	cudaMemcpy(grid_circular_queue, &grid, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
-
-	// Move pos_t - 1
-	const int index0_of_prev = (STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
-	cudaMemcpy(&grid_circular_queue[index0_of_prev], &grid_prev, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
-
-	cudaDeviceSynchronize();
-	if (cudaGetLastError() != cudaSuccess) {
-		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
-		exit(1);
-	}
-}
 
 
-void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue_device) {
-	const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
-	cudaMalloc(solventblockgrid_circularqueue_device, n_bytes_solventblockgrids);
+//bool SolventBlockHelpers::copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev, SolventBlockGrid* grid_circular_queue) {
+//	// Move pos_t
+//	cudaMemcpy(grid_circular_queue, &grid, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
+//
+//	// Move pos_t - 1
+//	const int index0_of_prev = (STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
+//	cudaMemcpy(&grid_circular_queue[index0_of_prev], &grid_prev, sizeof(SolventBlockGrid), cudaMemcpyHostToDevice);
+//
+//	cudaDeviceSynchronize();
+//	if (cudaGetLastError() != cudaSuccess) {
+//		fprintf(stderr, "Error during solventcoord's initial configuration copyToDevice\n");
+//		exit(1);
+//	}
+//}
 
-	auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
+// Create the solventblockgrid on host, and fill out origo for all blocks for all steps
+void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue_device) {	// TODO: rename var to what is it now
+	//const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
+	//cudaMalloc(solventblockgrid_circularqueue_device, n_bytes_solventblockgrids);
+
+	*solventblockgrid_circularqueue_device = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
+
+	//auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
 	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
 		for (int z = 0; z < BOXGRID_N_NODES; z++) {
 			for (int y = 0; y < BOXGRID_N_NODES; y++) {
 				for (int x = 0; x < BOXGRID_N_NODES; x++) {
 					NodeIndex origo{ x, y, z };	// Doubles as the 3D index of the block!
-					gridqueue_host[i].getBlockPtr(origo)->origo = origo;
+					//gridqueue_host[i].getBlockPtr(origo)->origo = origo;
+					(*solventblockgrid_circularqueue_device)[i].getBlockPtr(origo)->origo = origo;
 				}
 			}
 		}
 	}
-	cudaMemcpy(*solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
-	delete[] gridqueue_host;
+	//cudaMemcpy(*solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
+	//delete[] gridqueue_host;
 }
 
 __host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array) {
@@ -89,17 +92,6 @@ __host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlo
 	delete[] array_host;
 }
 
-void SolventBlockHelpers::setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev) {
-	for (int z = 0; z < BOXGRID_N_NODES; z++) {
-		for (int y = 0; y < BOXGRID_N_NODES; y++) {
-			for (int x = 0; x < BOXGRID_N_NODES; x++) {
-				NodeIndex origo{ x, y, z };	// Doubles as the 3D index of the block!
-				grid->getBlockPtr(origo)->origo = origo;
-				grid_prev->getBlockPtr(origo)->origo = origo;
-			}
-		}
-	}
-}
 
 
 SingleBond::SingleBond(std::array<int, n_atoms> ids) {

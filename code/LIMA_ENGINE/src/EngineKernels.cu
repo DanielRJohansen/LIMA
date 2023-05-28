@@ -642,7 +642,7 @@ __global__ void solventForceKernel(Box* box, SimParams* simparams) {
 
 
 
-	// Init queue, otherwise it will contain wierd values
+	// Init queue, otherwise it will contain wierd values // TODO: only do this on transferstep?
 	if (threadIdx.x < 6) { 
 		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
 	}

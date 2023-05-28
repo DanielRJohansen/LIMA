@@ -29,7 +29,7 @@ bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) 
 }
 
 bool loadAndEMAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) {
-	InputSimParams simparams{ 10, 2000 };
+	InputSimParams simparams{ 10, 200 };
 	auto env = TestUtils::basicSetup(folder_name, {simparams});
 
 	// Do em

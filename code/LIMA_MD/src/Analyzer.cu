@@ -40,7 +40,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	__syncthreads();
 
 	const uint8_t& atom_type = compound.atom_types[threadIdx.x];
-	const float mass = box->forcefield_device_box->particle_parameters[atom_type].mass;
+	const float mass = box->forcefield->particle_parameters[atom_type].mass;
 
 	const uint32_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int step_offset = step * box->total_particles_upperbound;

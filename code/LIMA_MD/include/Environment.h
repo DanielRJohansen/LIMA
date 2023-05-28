@@ -38,14 +38,14 @@
 class Environment
 {
 public:
-	Environment();
+	Environment(const string& wf);
 
-	void CreateSimulation(string conf_filename, string topol_filename, std::string work_folder);
+	void CreateSimulation(string conf_filename, string topol_filename);
 
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
-	void CreateSimulation(const Box& boxorigin);
+	void CreateSimulation(const Simulation& simulation_src);
 
 	void run(bool em_variant=false);
 	void postRunEvents();
@@ -71,6 +71,7 @@ public:
 	const std::string& getWorkdir() { return work_folder; }
 
 private:
+	void setupEmptySimulation();
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
@@ -83,9 +84,9 @@ private:
 	
 	Forcefield forcefield{VerbosityLevel::V1};
 	Analyzer analyzer;
-	BoxBuilder* boxbuilder = nullptr;
+	std::unique_ptr<BoxBuilder> boxbuilder;
 
-	std::string work_folder = "";
+	const std::string work_folder = "";
 	InputSimParams sim_params{};
 
 	//bool ready_to_run = false;

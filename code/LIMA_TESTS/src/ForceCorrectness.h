@@ -6,11 +6,11 @@
 
 //Test assumes two carbons particles in conf
 bool doPoolBenchmark(float max_dev=0.007) {
-	Environment env{};
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
 	const float particle_mass = 12.011000f / 1000.f;	// kg/mol
+	Environment env{ work_folder };
 
 	env.loadSimParams(work_folder + "sim_params.txt");
 	const float dt = env.getSimparamRef()->dt;
@@ -51,10 +51,10 @@ bool doPoolBenchmark(float max_dev=0.007) {
 
 // Test assumes two carbons particles in conf
 bool doPoolCompSolBenchmark(float max_dev = 0.01) {
-	Environment env{};
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
+	Environment env{ work_folder };
 
 	env.loadSimParams(work_folder + "sim_params.txt");
 	const float dt = env.getSimparamRef()->dt;

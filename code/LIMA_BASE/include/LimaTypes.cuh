@@ -465,6 +465,17 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 }
 
 template<typename T>
+T* genericCopyToHost(const T* data_dev, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+	T* data_host = new T[n_elements];
+
+	size_t bytesize = sizeof(T) * n_elements;
+	cudaMemcpy(data_host, data_dev, bytesize, cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+
+	return data_host;
+}
+
+template<typename T>
 void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	size_t bytesize = n_elements * sizeof(T);
 

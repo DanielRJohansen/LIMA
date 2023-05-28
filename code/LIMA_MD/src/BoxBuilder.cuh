@@ -20,12 +20,14 @@ public:
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
+	void copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step);
 
 
-	SolventCoord* solventcoords = nullptr;
-	SolventCoord* solventcoords_prev = nullptr;
-	SolventBlockGrid* solventblocks = nullptr;
-	SolventBlockGrid* solventblocks_prev = nullptr;
+
+	//SolventCoord* solventcoords = nullptr;
+	//SolventCoord* solventcoords_prev = nullptr;
+	//SolventBlockGrid* solventblocks = nullptr;
+	//SolventBlockGrid* solventblocks_prev = nullptr;
 
 private:
 	//void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
@@ -58,23 +60,11 @@ private:
 
 
 	// ---------------------------------------------------- Variables ---------------------------------------------------- //
-	Box box;	// Local host version
+	Box box;	// Local host version TODO: remove
 	const float box_len = BOX_LEN;
 	const float box_base = 0;
 
 	const LimaLogger m_logger;
-
-
-
-	// TODO: Take these from engineUtils instead!
-	const float M = SOLVENT_MASS;				// kg/mol
-	//double k_B = 8.617333262145 * 10e-5;	// Boltzmann constant
-	const double k_B = 1.380 * 1e-23;
-	const double T = 313;	// Kelvin
-	const double R = 8.3144;					// J/(Kelvin*mol)
-	//double mean_velocity = M / (2 * k_B * T);				// This is bullshit. Only for sol mass
-	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
-
 
 	const float MIN_NONBONDED_DIST = 0.2f;
 

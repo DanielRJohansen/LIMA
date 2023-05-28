@@ -28,6 +28,8 @@ void Forcefield::loadForcefield(string molecule_dir) {
 	topol_angles = parseAngles(forcefield_rows);
 	topol_dihedrals = parseDihedrals(forcefield_rows);
 
+	forcefield_loaded = true;
+
 	if (vl >= CRITICAL_INFO) {
 		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField_NB));
 		printH2("Finished building forcefield");

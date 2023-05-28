@@ -5,44 +5,18 @@
 using namespace LIMA_Print;
 
 void BoxBuilder::buildBox(Simulation* simulation) {
-	//printf("Building box...\n");
 	printH1("Building box", true, false);
+
 	simulation->box->compounds = new Compound[MAX_COMPOUNDS];
-	//simulation->box->solvents = new Solvent[MAX_SOLVENTS];
-
-
-//	cudaMalloc(&simulation->box->solvents_next, sizeof(Solvent) * MAX_SOLVENTS);
-
-	//simulation->box->compound_coord_array = new CompoundCoords[MAX_COMPOUNDS];								// Need to manipulate this on host
-	//simulation->box->compound_coord_array_prev = new CompoundCoords[MAX_COMPOUNDS];							// Need to manipulate this on host
-	//cudaMalloc(&simulation->box->compound_coord_array_next, sizeof(CompoundCoords) * MAX_COMPOUNDS);	// Only need this on device
-
-
-	// This is where the coords will eventually reside (device)
-	//const uint64_t n_bytes_compoundcoords = sizeof(CompoundCoords) * MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
-	//cudaMalloc(&simulation->box->coordarray_circular_queue, n_bytes_compoundcoords);
 	simulation->box->coordarray_circular_queue = new CompoundCoords[MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER];
 
-
-	//const uint64_t n_bytes_solventcoords = sizeof(SolventCoord) * MAX_SOLVENTS * STEPS_PER_LOGTRANSFER;
-	//cudaMalloc(&simulation->box->solventcoordarray_circular_queue, n_bytes_solventcoords);
-
-	//const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
-	//cudaMalloc(&simulation->box->solventblockgrid_circular_queue, n_bytes_solventblockgrids);
 	SolventBlockHelpers::createSolventblockGrid(&simulation->box->solventblockgrid_circular_queue);
 	SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box->transfermodule_array);
 
 
-	// This is very the coords reside while build (host)
-	//coordarray = new CompoundCoords[MAX_COMPOUNDS];
-	//coordarray_prev = new CompoundCoords[MAX_COMPOUNDS];
-
-	solventcoords = new SolventCoord[MAX_SOLVENTS];
-	solventcoords_prev = new SolventCoord[MAX_SOLVENTS];
-
-	solventblocks = new SolventBlockGrid{};
-	solventblocks_prev = new SolventBlockGrid{};
-	SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);
+	//solventblocks = new SolventBlockGrid{};
+	//solventblocks_prev = new SolventBlockGrid{};
+	//SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);	// TODO: remove the function called here, it is no longer needed
 
 	CompoundGrid::createCompoundGrid(&simulation->box->compound_grid);
 	//EngineUtils::genericErrorCheck("")
@@ -85,18 +59,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	printf("Box contains %d compounds, %d bridges and %d solvents\n\n", simulation->n_compounds, simulation->n_bridges, simulation->n_solvents);
 
 
-	simulation->box->forcefield_device_box = new ForceField_NB{ forcefield };// Copy
-
-	//cudaMemcpy(simulation->box->solvents_next, simulation->box->solvents, sizeof(Solvent) * MAX_SOLVENTS, cudaMemcpyHostToDevice);
+	simulation->box->forcefield = new ForceField_NB{ forcefield };// Copy
 
 
-	// Move the positions to the appropriate places in the circular queue
-	//CompoundCoords::copyInitialCoordConfiguration(coordarray.data(), coordarray_prev.data(), simulation->box->coordarray_circular_queue);
-	simulation->box->coordarray_circular_queue = genericMoveToDevice(simulation->box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
-	//cudaMemcpy(simulation->box->coordarray_circular_queue, coords, sizeof(CompoundCoords) * MAX_COMPOUNDS, cudaMemcpyHostToDevice);
-	// 
-	//SolventCoord::copyInitialCoordConfiguration(solventcoords, solventcoords_prev, simulation->box->solventcoordarray_circular_queue);
-	SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
+	//SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
 
 	
 	const auto n_steps = simulation->simparams_host.constparams.n_steps;
@@ -192,6 +158,9 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 
 int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
+	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, 0);
+	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+
 	for (Float3 sol_pos : solvent_positions) {
 		if (simulation->box->n_solvents == MAX_SOLVENTS) {
 			printf("Too many solvents added!\n\n\n\n");
@@ -205,18 +174,21 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 
 			
-			solventcoords[simulation->box->n_solvents] = solventcoord;	// REMOVE soon?
-			solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
+			//solventcoords[simulation->box->n_solvents] = solventcoord;	// REMOVE soon?
+			//solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
 
+			
+			grid_0->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+			grid_minus1->addSolventToGrid(solventcoord, simulation->box->n_solvents);
 
-			solventblocks->addSolventToGrid(solventcoord, simulation->box->n_solvents);
-			solventblocks_prev->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+			//solventblocks->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+			//solventblocks_prev->addSolventToGrid(solventcoord, simulation->box->n_solvents);
 
-			if (solventcoord.origo == NodeIndex{ 1,0,0 } &&
+		/*	if (solventcoord.origo == NodeIndex{ 1,0,0 } &&
 				(solventblocks->getBlockPtr(1)->n_solvents == 26 || solventblocks->getBlockPtr(1)->n_solvents == 37)
 				) {
 				int h = 0;
-			}
+			}*/
 
 			simulation->box->n_solvents++;
 		}
@@ -259,7 +231,22 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	return simulation->box->n_solvents;
 }
 
+void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step)
+{
+}
 
+
+
+
+
+
+
+
+
+
+
+
+// ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
 
 void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* simulation)
@@ -268,6 +255,12 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 	std::vector<LimaPosition> positions_prev;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
+
+
+	const float M = SOLVENT_MASS;				// kg/mol
+	const double T = 313;	// Kelvin
+	const double R = 8.3144;					// J/(Kelvin*mol)
+	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 

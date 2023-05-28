@@ -55,6 +55,8 @@ public:
 		exit(1);
 	}
 
+	bool forcefield_loaded = false;
+
 private:
 	ForceField_NB forcefield;
 

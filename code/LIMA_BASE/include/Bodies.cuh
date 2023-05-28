@@ -235,6 +235,8 @@ public:
 	//static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
 	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
 	NodeType blocks[blocks_total];
+	static const int first_step_prev = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+
 
 	// This function assumes the user has used PBC
 	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
@@ -399,7 +401,7 @@ namespace CoordArrayQueueHelpers {
 	}
 
 
-	__device__ static SolventBlockGrid* getSolventblockGridPtr(SolventBlockGrid* solventblockgrid_circular_queue,
+	__host__ __device__ static SolventBlockGrid* getSolventblockGridPtr(SolventBlockGrid* solventblockgrid_circular_queue,
 		const int step) {
 			const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
 			return &solventblockgrid_circular_queue[index0_of_currentstep_blockarray];

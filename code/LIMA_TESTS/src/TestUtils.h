@@ -23,17 +23,19 @@ namespace TestUtils {
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
 	Environment basicSetup(const std::string& foldername, LAL::optional<InputSimParams> simparams) {
-		Environment env{};
+		
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + foldername + "/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
+
+		Environment env{work_folder};
 
 		env.loadSimParams(work_folder + "sim_params.txt");
 		if (simparams) {
 			*env.getSimparamRef() = simparams.value();
 		}
 
-		env.CreateSimulation(conf, topol, work_folder);
+		env.CreateSimulation(conf, topol);
 
 		return env;
 	}

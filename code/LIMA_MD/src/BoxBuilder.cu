@@ -172,23 +172,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		if (spaceAvailable(*simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
-
-			
-			//solventcoords[simulation->box->n_solvents] = solventcoord;	// REMOVE soon?
-			//solventcoords_prev[simulation->box->n_solvents] = solventcoord;	// TODO: Add a subtraction here for initial velocity.
-
 			
 			grid_0->addSolventToGrid(solventcoord, simulation->box->n_solvents);
 			grid_minus1->addSolventToGrid(solventcoord, simulation->box->n_solvents);
-
-			//solventblocks->addSolventToGrid(solventcoord, simulation->box->n_solvents);
-			//solventblocks_prev->addSolventToGrid(solventcoord, simulation->box->n_solvents);
-
-		/*	if (solventcoord.origo == NodeIndex{ 1,0,0 } &&
-				(solventblocks->getBlockPtr(1)->n_solvents == 26 || solventblocks->getBlockPtr(1)->n_solvents == 37)
-				) {
-				int h = 0;
-			}*/
 
 			simulation->box->n_solvents++;
 		}

@@ -22,22 +22,8 @@ public:
 
 	void copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step);
 
-
-
-	//SolventCoord* solventcoords = nullptr;
-	//SolventCoord* solventcoords_prev = nullptr;
-	//SolventBlockGrid* solventblocks = nullptr;
-	//SolventBlockGrid* solventblocks_prev = nullptr;
-
 private:
-	//void integrateCompound(CompoundCarrier* compound, Simulation* simulation);
 	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
-
-
-	bool spaceAvailable(const Box& box, Float3 com, double radius);
-	void compoundLinker(Simulation* simulation);									// Temp function
-	void solvateLinker(Simulation* simulation);
-	void solvateCompoundCrosslinker(Simulation* simulation);
 	
 
 
@@ -72,14 +58,6 @@ private:
 	// If molecule is offset, each solvent from .gro file must be aswell
 	Float3 most_recent_offset_applied = Float3(0.f);	
 
-
-
-
-	// We cannot use the pointers in the box, as they must be on device from start, 
-	// since the compounds must know the adresses as they are created.
-	//CompoundState* compoundstates_host;		
-	//CompoundNeighborList* compoundneighborlists_host;
-	//----------------------------------------------------------------------//
 	
 	
 

@@ -402,20 +402,6 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 	return &postsim_anal_package;
 }
 
-//std::array<CompoundCoords, MAX_COMPOUNDS>& Environment::getCoordarrayRef(std::string selector)
-//{
-//	//if (selector == "current") return boxbuilder->coordarray;
-//	//if (selector == "prev") return boxbuilder->coordarray_prev;
-//	assert(false);
-//	return std::array<CompoundCoords, MAX_COMPOUNDS>{};
-//}
-
-//SolventBlockGrid* Environment::getAllSolventBlocksPrev()
-//{
-//	assert(!simulation->ready_to_run);	// Only valid before simulation is locked
-//	return boxbuilder->solventblocks_prev;
-//}
-
 std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
 {
 	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, simulation->getStep());

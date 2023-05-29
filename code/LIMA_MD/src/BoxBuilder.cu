@@ -8,7 +8,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	printH1("Building box", true, false);
 
 	simulation->box->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box->coordarray_circular_queue = new CompoundCoords[MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER];
+	simulation->box->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
 
 	SolventBlockHelpers::createSolventblockGrid(&simulation->box->solventblockgrid_circular_queue);
 	SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box->transfermodule_array);
@@ -21,7 +21,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	CompoundGrid::createCompoundGrid(&simulation->box->compound_grid);
 	//EngineUtils::genericErrorCheck("")
 
-	simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
+	//simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
 	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact{};
@@ -217,8 +217,59 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	return simulation->box->n_solvents;
 }
 
+
 void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step)
 {
+	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
+
+	*simulation->box = SimUtils::copyToHost(boxsrc);
+
+	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
+	{
+		// Create temporary storage
+		std::array<CompoundCoords, MAX_COMPOUNDS> coords_t0;
+		std::array<CompoundCoords, MAX_COMPOUNDS> coords_tsub1;
+
+		// Copy only the current and prev step to temporary storage
+		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, boxsrc_current_step, 0);
+		CompoundCoords* src_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, boxsrc_current_step - 1, 0);
+		memcpy(coords_t0.data(), src_t0, coords_t0.size());
+		memcpy(coords_tsub1.data(), src_tsub1, coords_tsub1.size());
+
+		// Clear all of the data
+		for (size_t i = 0; i < box.coordarray_circular_queue_n_elements; i++) {
+			simulation->box->coordarray_circular_queue[i] = CompoundCoords{};
+		}
+
+		// Copy the temporary storage back into the queue
+		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, 0, 0);
+		CompoundCoords* dest_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+		memcpy(dest_t0, coords_t0.data(), coords_t0.size());
+		memcpy(dest_tsub1, coords_tsub1.data(), coords_tsub1.size());
+	}
+
+	// Do the same for solvents
+	{
+		// Create temporary storage
+		auto solvents_t0 = std::make_unique<SolventBlockGrid>();
+		auto solvents_tsub1 = std::make_unique<SolventBlockGrid>();
+
+		// Copy only the current and prev step to temporary storage
+		SolventBlockGrid* src_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, boxsrc_current_step);
+		SolventBlockGrid* src_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, boxsrc_current_step-1);
+		memcpy(solvents_t0.get(), src_t0, sizeof(SolventBlockGrid));
+		memcpy(solvents_tsub1.get(), src_tsub1, sizeof(SolventBlockGrid));
+
+		// Clear all of the data
+		delete[] simulation->box->solventblockgrid_circular_queue;
+		SolventBlockHelpers::createSolventblockGrid(&simulation->box->solventblockgrid_circular_queue);
+
+		// Copy the temporary storage back into the queue
+		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, 0);
+		SolventBlockGrid* dest_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
+		memcpy(dest_t0, solvents_t0.get(), sizeof(SolventBlockGrid));
+		memcpy(dest_tsub1, solvents_tsub1.get(), sizeof(SolventBlockGrid));
+	}
 }
 
 

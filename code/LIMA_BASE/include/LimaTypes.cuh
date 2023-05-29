@@ -454,7 +454,13 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 	size_t bytesize = n_elements * sizeof(T);
 
 	cudaMallocManaged(&gpu_ptr, bytesize);
-	cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);
+	auto cuda_status = cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);
+
+	if (cuda_status != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+		exit(1);
+	}
+
 	cudaDeviceSynchronize();
 	delete[] data_ptr;
 
@@ -464,15 +470,16 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 	return gpu_ptr;
 }
 
+
+// Assumes data is a ptr to device memory. Will copy what was in data, allocate new memory for data and move the copied data into that
 template<typename T>
-T* genericCopyToHost(const T* data_dev, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+void genericCopyToHost(T** data, uint32_t n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	T* data_host = new T[n_elements];
 
 	size_t bytesize = sizeof(T) * n_elements;
-	cudaMemcpy(data_host, data_dev, bytesize, cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
+	cudaMemcpy(data_host, *data, bytesize, cudaMemcpyDeviceToHost);
 
-	return data_host;
+	*data = data_host;
 }
 
 template<typename T>

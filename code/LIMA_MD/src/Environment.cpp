@@ -22,6 +22,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path) {
 	forcefield.loadForcefield(work_folder + "/molecule");
 
 	setupEmptySimulation();
+	boxbuilder->buildBox(simulation.get());
 
 
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
@@ -53,8 +54,6 @@ void Environment::setupEmptySimulation() {
 	//forcefield.loadForcefield(work_folder + "/molecule");
 
 	//CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
-
-	boxbuilder->buildBox(simulation.get());
 }
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
@@ -393,8 +392,12 @@ InputSimParams* Environment::getSimparamRef() {
 	return &sim_params;
 }
 
-Simulation* Environment::getSim() {
-	return simulation.get();
+std::unique_ptr<Simulation> Environment::getSim() {
+	// Should we delete the forcefield here?
+
+	boxbuilder.reset();
+	engine.reset();
+	return std::move(simulation);
 }
 
 Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()

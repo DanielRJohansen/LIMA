@@ -20,6 +20,7 @@ public:
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
+	// This function expects all ptr's of simulation->box to be pre-allocated on host
 	void copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step);
 
 private:

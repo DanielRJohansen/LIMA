@@ -7,7 +7,7 @@ void Box::moveToDevice() {
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
 	printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
 
-	compounds = genericMoveToDevice(compounds, n_compounds);
+	compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
 
 	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
@@ -15,7 +15,7 @@ void Box::moveToDevice() {
 
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
-	solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);
+	//solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);		// TODO: are we still using these??!
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
@@ -29,9 +29,26 @@ Box SimUtils::copyToHost(const Box* box_dev) {
 	Box box{};
 	cudaMemcpy(&box, box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
 
-	box.compounds = genericCopyToHost(box.compounds, box.n_compounds);
+	//const Compound** cs = &box.compounds;
+	genericCopyToHost(&box.compounds, MAX_COMPOUNDS);
+	genericCopyToHost(&box.bridge_bundle, 1);
+
+	genericCopyToHost(&box.coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	genericCopyToHost(&box.solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+
+	genericCopyToHost(&box.compound_neighborlists, MAX_COMPOUNDS);
+	
+	genericCopyToHost(&box.bonded_particles_lut_manager, 1);
+	genericCopyToHost(&box.forcefield, 1);
 
 
+	//genericCopyToHost(box.solvent_neighborlists, MAX_COMPOUNDS);
+	//box.compounds = genericCopyToHost(box.compounds, box.n_compounds);
+	//box.bridge_bundle = genericCopyToHost(box.bridge_bundle, 1);
+
+	//box.coordarray_circular_queue = genericCopyToHost(box.coordarray_circular_queue)
+	printf("Box copied to host\n");
+	return box;
 }
 
 Simulation::Simulation(InputSimParams& ip) :
@@ -40,11 +57,7 @@ Simulation::Simulation(InputSimParams& ip) :
 	box = new Box();
 }
 
-Simulation::Simulation(const Box& inputbox, const uint32_t inputbox_current_step, const InputSimParams& ip) :
-	simparams_host{ SimParamsConst{ ip.n_steps, ip.dt } }
-{
-	//box = new Box(inputbox, inputbox_current_step);
-}
+
 
 Simulation::~Simulation() {
 	deleteBoxMembers();	// TODO: move to box destructor
@@ -87,12 +100,7 @@ void Simulation::copyBoxVariables() {
 void Simulation::deleteBoxMembers() {
 	if (box_is_on_device) {
 		cudaFree(box->compounds);
-
 		cudaFree(box->compound_neighborlists);
-		cudaFree(box->solvent_neighborlists);
-
-		//cudaFree(box->solvents);
-		//cudaFree(box->solvents_next);
 
 		cudaFree(box->bridge_bundle);		
 		cudaFree(box->bonded_particles_lut_manager);
@@ -101,6 +109,7 @@ void Simulation::deleteBoxMembers() {
 		cudaFree(box->traj_buffer);
 		cudaFree(box->outdata);
 		cudaFree(box->data_GAN);
+
 		cudaFree(box);
 	}
 	else {
@@ -108,7 +117,7 @@ void Simulation::deleteBoxMembers() {
 		//delete[] box->solvents;
 		delete[] box->bridge_bundle;
 		delete[] box->compound_neighborlists;
-		delete[] box->solvent_neighborlists;
+		//delete[] box->solvent_neighborlists;
 		delete[] box->bonded_particles_lut_manager;
 		delete[] box->compounds;
 		delete box;

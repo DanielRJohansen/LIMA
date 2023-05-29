@@ -61,13 +61,14 @@ struct Box {
 
 
 	CompoundCoords* coordarray_circular_queue = nullptr;
+	static constexpr size_t coordarray_circular_queue_n_elements = MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
 	SolventBlockGrid* solventblockgrid_circular_queue = nullptr;
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	CompoundGrid* compound_grid = nullptr;
 
 	NeighborList* compound_neighborlists = nullptr;
-	NeighborList* solvent_neighborlists = nullptr;
+	//NeighborList* solvent_neighborlists = nullptr;
 	//------------------------------------//
 
 
@@ -98,12 +99,8 @@ struct Box {
 // This stays on host
 class Simulation {
 public:
-	// Create a brand new simulation from scratch
 	Simulation(InputSimParams& sim_params);
 
-	// Start a new box from where the current state inputbox at the step specified
-	// by simparams becomes the state of the new simulations's box at step 0
-	Simulation(const Box& inputbox, uint32_t inputbox_current_step, const InputSimParams& ip);
 	~Simulation();
 	void deleteBoxMembers();
 	void moveToDevice();
@@ -142,7 +139,7 @@ public:
 	Box* box = nullptr;
 
 	SimParams simparams_host;
-	SimParams* simparams_device;
+	SimParams* simparams_device = nullptr;
 
 
 	//Box* box;
@@ -166,5 +163,5 @@ public:
 };
 
 namespace SimUtils {
-	static Box copyToHost(const Box* box_dev);
-}
+	Box copyToHost(const Box* box_dev);
+};

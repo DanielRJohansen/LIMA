@@ -29,14 +29,17 @@ bool loadAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) 
 }
 
 bool loadAndEMAndRunBasicSimulation(const string& folder_name, float max_dev = 0.05) {
-	InputSimParams simparams{ 10, 200 };
-	auto env = TestUtils::basicSetup(folder_name, {simparams});
+	InputSimParams emparams{ 10, 500 };
+	auto env = TestUtils::basicSetup(folder_name, { emparams });
 
 	// Do em
 	env.run(true);
 
-	int a = 0;
-
+	// Do sim
+	InputSimParams simparams{ 100, 1000 };
+	auto sim = env.getSim();
+	env.CreateSimulation(*sim);
+	*env.getSimparamRef() = simparams;
 	env.run();
 
 	auto analytics = env.getAnalyzedPackage();

@@ -63,7 +63,7 @@ public:
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	InputSimParams* getSimparamRef();
-	Simulation* getSim();
+	std::unique_ptr<Simulation> getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	//std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
 	SolventBlockGrid* getAllSolventBlocksPrev();
@@ -87,7 +87,7 @@ private:
 	std::unique_ptr<BoxBuilder> boxbuilder;
 
 	const std::string work_folder = "";
-	InputSimParams sim_params{};
+	InputSimParams sim_params{};	// TODO: this should not be a member, as it belongs to the individual sim
 
 	//bool ready_to_run = false;
 

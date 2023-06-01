@@ -61,7 +61,6 @@ Simulation::Simulation(const SimParams& ip) :
 
 Simulation::~Simulation() {
 	deleteBoxMembers();	// TODO: move to box destructor
-
 }
 
 void Simulation::moveToDevice() {
@@ -114,12 +113,10 @@ void Simulation::deleteBoxMembers() {
 	}
 	else {
 		delete[] box->compounds;	// TODO: Finish this
-		//delete[] box->solvents;
 		delete[] box->bridge_bundle;
 		delete[] box->compound_neighborlists;
-		//delete[] box->solvent_neighborlists;
+		//////delete[] box->solvent_neighborlists;
 		delete[] box->bonded_particles_lut_manager;
-		delete[] box->compounds;
 		delete box;
 	}
 }

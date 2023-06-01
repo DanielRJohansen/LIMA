@@ -7,11 +7,11 @@
 #include "LIMA_TESTS/src/TestUtils.h"
 #include "LIMA_MD/include/Environment.h"
 
-bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing() {
+bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(Environment::Mode envmode) {
 	//SimulationParams params{ .dt = 5, .n_steps = 1000 };
 	InputSimParams params{ 5, 1000 };
 
-	auto env = TestUtils::basicSetup("SolventBenchmark", { params });
+	auto env = TestUtils::basicSetup("SolventBenchmark", { params }, envmode);
 	env.prepareForRun();	// Lock down simulation
 
 	LimaLogger logger{ LimaLogger::LogMode::compact, "nearestSolSolTest", env.getWorkdir() };

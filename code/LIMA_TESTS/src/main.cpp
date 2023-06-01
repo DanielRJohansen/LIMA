@@ -1,26 +1,20 @@
+
+
 #include "LIMA_TESTS/src/ForceCorrectness.h"
 #include "LIMA_TESTS/src/MDStability.cuh"
 #include "LIMA_TESTS/src/EnergyMinimization.cuh"
 
-
+constexpr auto envmode = Environment::Mode::Full;
 //
 //// Due to the following define, i belive all includes to test-headers must come after
-//#define CATCH_CONFIG_MAIN
-//#include "Catch2/catch.hpp"	// Don't include windows.h after this line
+//
 //
 //#include "LIMA_TESTS/include/MDStability.h"
 //
 //
 //
 //
-//int doThing(int i) {
-//	printf("Hello world");
-//	return i * 2;
-//}
-//
-//TEST_CASE("Internal", "hey") {
-//	REQUIRE(doThing(4) == 8);
-//}
+
 //
 ////bool coordPrecesionBenchmark() {
 ////	Float3 pos1{ 3.5, 4, 4 };
@@ -37,6 +31,7 @@
 ////	return true;
 ////}
 
+using namespace TestMDStability;
 
 int main() {
 
@@ -61,7 +56,7 @@ int main() {
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
 	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	loadAndEMAndRunBasicSimulation("SolventBenchmark", 0.0002);
+	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

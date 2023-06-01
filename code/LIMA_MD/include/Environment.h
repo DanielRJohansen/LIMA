@@ -38,7 +38,9 @@
 class Environment
 {
 public:
-	Environment(const string& wf);
+	enum Mode { Full, ConsoleOnly, Headless };
+
+	Environment(const string& wf, Mode mode);
 
 	void CreateSimulation(string conf_filename, string topol_filename, InputSimParams);
 
@@ -75,14 +77,16 @@ private:
 	
 	void postRunEvents();
 	void handleStatus(Simulation*);
-	void handleDisplay(Simulation*);
+
+	// Returns false if display has been closed by user
+	bool handleDisplay(Simulation*);
 	bool handleTermination(Simulation*);
 	void prepFF(string conf_path, string topol_path);
 
 	void sayHello();
 
 	//Display* display;
-	Display* display = nullptr;
+	std::unique_ptr<Display> display;
 	//Interface* interface = nullptr;
 	
 	Forcefield forcefield{VerbosityLevel::V1};

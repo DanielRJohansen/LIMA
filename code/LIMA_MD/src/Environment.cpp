@@ -9,11 +9,20 @@ using std::string;
 using std::cout;
 using std::printf;
 
-Environment::Environment(const string& wf) 
+Environment::Environment(const string& wf, Mode mode) 
 	: work_folder(wf)
 {
-	sayHello();
-	display = new Display();
+	switch (mode)
+	{
+	case Environment::Full:
+		display = std::make_unique<Display>();
+		// Fallthrough
+	case Environment::ConsoleOnly:
+		sayHello();
+		// Fallthrough
+	case Environment::Headless:
+		break;
+	}
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
@@ -116,6 +125,8 @@ bool Environment::prepareForRun() {
 		return false; 
 	}
 
+	if (simulation->ready_to_run) { return true; }
+
 	boxbuilder->finishBox(simulation.get(), forcefield.getNBForcefield());
 
 	simulation->moveToDevice();	// Only moves the Box to the device
@@ -155,7 +166,9 @@ void Environment::run(bool em_variant) {
 
 	time0 = std::chrono::high_resolution_clock::now();
 
-	while (display->checkWindowStatus()) {
+	while (true) {
+
+		if (handleTermination(simulation.get())) { break; }
 
 		if (em_variant)
 			engine->step<true>();
@@ -163,14 +176,13 @@ void Environment::run(bool em_variant) {
 			engine->step<false>();
 
 		handleStatus(simulation.get());
-		handleDisplay(simulation.get());
+
+		if (!handleDisplay(simulation.get())) { break; }
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
-		if (handleTermination(simulation.get())) {
-			break;
-		}
+
 
 	}
 
@@ -272,10 +284,13 @@ void Environment::handleStatus(Simulation* simulation) {
 
 
 
-void Environment::handleDisplay(Simulation* simulation) {	
+bool Environment::handleDisplay(Simulation* simulation) {	
+	if (!display) { return true; }	// Headless or ConsoleOnly
+
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
 		display->render(simulation);
 	}
+	return display->checkWindowStatus();
 }
 
 bool Environment::handleTermination(Simulation* simulation)

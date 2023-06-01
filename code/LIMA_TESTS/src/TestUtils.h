@@ -30,12 +30,11 @@ namespace TestUtils {
 
 		Environment env{work_folder};
 
-		env.loadSimParams(work_folder + "sim_params.txt");
-		if (simparams) {
-			*env.getSimparamRef() = simparams.value();
-		}
+		auto ip = simparams
+			? simparams.value()
+			: env.loadInputSimParams(work_folder + "sim_params.txt");
 
-		env.CreateSimulation(conf, topol);
+		env.CreateSimulation(conf, topol, ip);
 
 		return env;
 	}

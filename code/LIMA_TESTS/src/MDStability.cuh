@@ -38,8 +38,7 @@ bool loadAndEMAndRunBasicSimulation(const string& folder_name, float max_dev = 0
 	// Do sim
 	InputSimParams simparams{ 100, 1000 };
 	auto sim = env.getSim();
-	env.CreateSimulation(*sim);
-	*env.getSimparamRef() = simparams;
+	env.CreateSimulation(*sim, simparams);
 	env.run();
 
 	auto analytics = env.getAnalyzedPackage();

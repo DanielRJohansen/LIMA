@@ -12,10 +12,10 @@ bool doPoolBenchmark(float max_dev=0.007) {
 	const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 	Environment env{ work_folder };
 
-	env.loadSimParams(work_folder + "sim_params.txt");
-	const float dt = env.getSimparamRef()->dt;
+	//env.loadSimParams(work_folder + "sim_params.txt");
+	//const float dt = env.getSimparamRef()->dt;
 
-	auto* sim_params = env.getSimparamRef();
+	//auto* sim_params = env.getSimparamRef();
 
 	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 	std::vector<float> particle_temps{ 400, 800, 1200 };
@@ -56,10 +56,8 @@ bool doPoolCompSolBenchmark(float max_dev = 0.01) {
 	const std::string topol = work_folder + "molecule/topol.top";
 	Environment env{ work_folder };
 
-	env.loadSimParams(work_folder + "sim_params.txt");
-	const float dt = env.getSimparamRef()->dt;
-
-	auto* sim_params = env.getSimparamRef();
+	auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
+	const float dt = ip.dt;
 
 	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 	std::vector<float> particle_temps{ 400, 800, 1200 };

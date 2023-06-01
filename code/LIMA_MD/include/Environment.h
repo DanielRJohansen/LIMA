@@ -40,29 +40,25 @@ class Environment
 public:
 	Environment(const string& wf);
 
-	void CreateSimulation(string conf_filename, string topol_filename);
+	void CreateSimulation(string conf_filename, string topol_filename, InputSimParams);
 
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
-	void CreateSimulation(const Simulation& simulation_src);
+	void CreateSimulation(const Simulation& simulation_src, InputSimParams);
 
 	void run(bool em_variant=false);
-	void postRunEvents();
-	void handleStatus(Simulation* simulation);
-	void handleDisplay(Simulation* simulation);
-	bool handleTermination(Simulation* simulation);
-	void prepFF(string conf_path, string topol_path);
+
 
 	// Return if cannot run
 	bool prepareForRun();
 
-	void loadSimParams(const std::string& path);
+	InputSimParams loadInputSimParams(const std::string& path) const;
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
-	InputSimParams* getSimparamRef();
+	//const InputSimParams getSimparams();
 	std::unique_ptr<Simulation> getSim();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	//std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
@@ -71,10 +67,17 @@ public:
 	const std::string& getWorkdir() { return work_folder; }
 
 private:
-	void setupEmptySimulation();
+	void resetEnvironment();
+
+	void setupEmptySimulation(const SimParams&);
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
+	void postRunEvents();
+	void handleStatus(Simulation*);
+	void handleDisplay(Simulation*);
+	bool handleTermination(Simulation*);
+	void prepFF(string conf_path, string topol_path);
 
 	void sayHello();
 
@@ -83,11 +86,11 @@ private:
 	//Interface* interface = nullptr;
 	
 	Forcefield forcefield{VerbosityLevel::V1};
-	Analyzer analyzer;
+	Analyzer analyzer{};
 	std::unique_ptr<BoxBuilder> boxbuilder;
 
 	const std::string work_folder = "";
-	InputSimParams sim_params{};	// TODO: this should not be a member, as it belongs to the individual sim
+	//InputSimParams sim_params{};	// TODO: this should not be a member, as it belongs to the individual sim
 
 	//bool ready_to_run = false;
 

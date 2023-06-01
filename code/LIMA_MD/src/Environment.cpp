@@ -16,12 +16,14 @@ Environment::Environment(const string& wf)
 	display = new Display();
 }
 
-void Environment::CreateSimulation(string gro_path, string topol_path) {
+void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
 
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	setupEmptySimulation();
+	SimParams simparams{ ip };
+
+	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get());
 
 
@@ -33,27 +35,22 @@ void Environment::CreateSimulation(string gro_path, string topol_path) {
 #endif
 }
 
-void Environment::CreateSimulation(const Simulation& simulation_src) {
+void Environment::CreateSimulation(const Simulation& simulation_src, const InputSimParams ip) {
 	// If we already have a box, we must have a forcefield too, no?
 
-	setupEmptySimulation();
+	SimParams simparams{ ip };
+	setupEmptySimulation(simparams);
 	boxbuilder->copyBoxState(simulation.get(), simulation_src.box, simulation_src.simparams_host.step);
 }
 
-void Environment::setupEmptySimulation() {
+void Environment::setupEmptySimulation(const SimParams& simparams) {
 	assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
 
-	simulation = std::make_unique<Simulation>(sim_params);
+
+	simulation = std::make_unique<Simulation>(simparams);
 	boxbuilder = std::make_unique<BoxBuilder>(work_folder);
 
 	verifySimulationParameters();
-
-	//this->work_folder = work_folder;
-
-	//prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
-	//forcefield.loadForcefield(work_folder + "/molecule");
-
-	//CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 }
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
@@ -383,14 +380,16 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 
 
 
-void Environment::loadSimParams(const std::string& path) {	
+InputSimParams Environment::loadInputSimParams(const std::string& path) const {
+	InputSimParams simparams{};
 	auto param_dict = Filehandler::parseINIFile(path);
-	sim_params.overloadParams(param_dict);
+	simparams.overloadParams(param_dict);
+	return simparams;
 }
 
-InputSimParams* Environment::getSimparamRef() {
-	return &sim_params;
-}
+//const InputSimParams Environment::getSimparams() const {
+//	return sim_params;
+//}
 
 std::unique_ptr<Simulation> Environment::getSim() {
 	// Should we delete the forcefield here?
@@ -413,4 +412,8 @@ std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
 	cudaMemcpy(grid_host.get(), gridptr_device, sizeof(SolventBlockGrid), cudaMemcpyDeviceToHost);
 
 	return grid_host;
+}
+
+void Environment::resetEnvironment() {
+
 }

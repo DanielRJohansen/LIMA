@@ -51,8 +51,8 @@ Box SimUtils::copyToHost(const Box* box_dev) {
 	return box;
 }
 
-Simulation::Simulation(InputSimParams& ip) :
-	simparams_host{ SimParamsConst{ip.n_steps, ip.dt} }
+Simulation::Simulation(const SimParams& ip) :
+	simparams_host{ ip }
 {
 	box = new Box();
 }
@@ -128,3 +128,11 @@ void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
 	overloadParam(dict, &n_steps, "n_steps");
 }
+
+//SimParams::SimParams(const InputSimParams& ip) : constparams{
+//	.n_steps = ip.n_steps,
+//	.dt = ip.dt}
+//{}
+
+SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt }
+{}

@@ -22,7 +22,7 @@ const int DEBUGDATAF3_NVARS = 4;
 struct InputSimParams {
 	void overloadParams(std::map<std::string, double>& dict);
 
-	float dt = 100.f;	// [ls]
+	float dt = 100.f;			// [ls]
 	uint32_t n_steps = 1000;
 private:
 	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
@@ -36,12 +36,16 @@ struct SimParamsConst {
 };
 
 struct SimParams {
+	SimParams(const InputSimParams& ip);
 	SimParams(const SimParamsConst& spc) : constparams(spc) {}
+
+
 	uint32_t step = 0;
 	bool critical_error_encountered = false;
 	float thermostat_scalar = 1.f;
 
 	const SimParamsConst constparams;
+
 
 };
 
@@ -99,7 +103,7 @@ struct Box {
 // This stays on host
 class Simulation {
 public:
-	Simulation(InputSimParams& sim_params);
+	Simulation(const SimParams& sim_params);
 
 	~Simulation();
 	void deleteBoxMembers();

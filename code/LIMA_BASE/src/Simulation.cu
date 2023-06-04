@@ -65,7 +65,6 @@ Simulation::~Simulation() {
 
 void Simulation::moveToDevice() {
 	box = genericMoveToDevice(box, 1);
-
 	genericCopyToDevice(simparams_host, &simparams_device, 1);
 
 	cudaDeviceSynchronize();
@@ -99,15 +98,15 @@ void Simulation::copyBoxVariables() {
 void Simulation::deleteBoxMembers() {
 	if (box_is_on_device) {
 		cudaFree(box->compounds);
+		cudaFree(box->bridge_bundle);
 		cudaFree(box->compound_neighborlists);
 
-		cudaFree(box->bridge_bundle);		
 		cudaFree(box->bonded_particles_lut_manager);
 
-		cudaFree(box->potE_buffer);
+		/*cudaFree(box->potE_buffer);
 		cudaFree(box->traj_buffer);
 		cudaFree(box->outdata);
-		cudaFree(box->data_GAN);
+		cudaFree(box->data_GAN);*/
 
 		cudaFree(box);
 	}
@@ -125,11 +124,6 @@ void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
 	overloadParam(dict, &n_steps, "n_steps");
 }
-
-//SimParams::SimParams(const InputSimParams& ip) : constparams{
-//	.n_steps = ip.n_steps,
-//	.dt = ip.dt}
-//{}
 
 SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt }
 {}

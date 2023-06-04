@@ -591,7 +591,7 @@ struct CompoundBridgeBundleCompact {
 		for (int i = 0; i < bridges.size(); i++) {
 			compound_bridges[i] = bridges[i];//CompoundBridge{ bridges[i], false };
 		}
-		n_bridges = bridges.size();
+		n_bridges = static_cast<int>(bridges.size());
 	}
 
 
@@ -662,7 +662,7 @@ public:
 	__host__ static void createCompoundGrid(CompoundGrid** box_compoundgridptr) {
 		auto grid_host = new CompoundGrid{};
 
-		cudaMalloc(box_compoundgridptr, sizeof(CompoundGrid));
+		cudaMallocManaged(box_compoundgridptr, sizeof(CompoundGrid));
 		cudaMemcpy(*box_compoundgridptr, grid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
 		delete grid_host;
 	}

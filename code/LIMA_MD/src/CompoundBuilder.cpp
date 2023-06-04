@@ -19,7 +19,7 @@ private:
 	// Members, seen in the order they are filled in
 	std::vector<Residue> residues;
 	std::vector<Float3> solvent_positions;
-	int64_t n_particles_in_residues = 0;
+	int32_t n_particles_in_residues = 0;
 
 	std::vector<std::array<int, 2>> singlebonds;	// gro id's of particles
 	std::vector<std::array<int, 3>> anglebonds;		// gro id's of particles

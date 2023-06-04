@@ -501,7 +501,7 @@ namespace EngineUtils {
 	// Calculate mean speed of particles. [K], [kg/mol]
 	//sqrt((8RT)/(piM))
 	static float tempToVelocity(double temperature /*[K]*/, double mass /*[kg/mol]*/) {
-		return sqrt(3.0 * BOLTZMANNCONSTANT * temperature / (mass/AVOGADROSNUMBER));
+		return sqrtf(static_cast<float>(3.0 * BOLTZMANNCONSTANT * temperature / (mass/AVOGADROSNUMBER)));
 	}
 	// http://hyperphysics.phy-astr.gsu.edu/hbase/Kinetic/kintem.html
 

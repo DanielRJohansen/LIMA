@@ -49,7 +49,7 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
 
 		compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
-		const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
+		// const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
 		//compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
 		//if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
 		//	int a = 0;
@@ -140,7 +140,6 @@ namespace NListUtils {
 	}
 
 	void assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
-		//nlist_data_collection->compound_origos[0].print('C');
 		for (int z = 0; z < BOXGRID_N_NODES; z++) {
 			for (int y = 0; y < BOXGRID_N_NODES; y++) {
 				for (int x = 0; x < BOXGRID_N_NODES; x++) {
@@ -195,9 +194,11 @@ namespace NListUtils {
 		auto t0 = std::chrono::high_resolution_clock::now();
 		mutex.lock();
 
+		EngineUtils::genericErrorCheck("24");
+
 		// Make key positions addressable in arrays: compound_key_positions and solvent_positions
 		nlist_data_collection->preparePositionData(*simulation, step_at_update);
-
+		EngineUtils::genericErrorCheck("24");
 		// First do culling of neighbors that has left CUTOFF
 		NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
 		EngineUtils::genericErrorCheck("2");

@@ -43,23 +43,22 @@ public:
 	template <bool em_variant> void step();
 
 
-	void terminateSimulation();
 
 	Int3 timings = Int3(0, 0, 0);
 
 
 	ForceField_NB getForcefield() { return forcefield_host; }
+	void terminateSimulation();
 
 
 private:
-	Simulation* simulation;
 
 
 	void hostMaster();
 	template <bool em_variant> void deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
-	NListManager* nlist_manager = nullptr;
+	std::unique_ptr<NListManager> nlist_manager;
 	void setDeviceConstantMemory();
 
 
@@ -84,21 +83,22 @@ private:
 
 	ForceField_NB forcefield_host;
 	uint32_t step_at_last_traj_transfer = 0;
+	Simulation* simulation;
 
 	// Simulation variables
 	//cudaStream_t stream[N_STREAMS];
-	dim3 gridblock_size;
-	int threads_per_gridblock;
+	//dim3 gridblock_size;
+	//int threads_per_gridblock;
 
-	bool finished = false;
-	int sim_blocks;
+	//bool finished = false;
+	//int sim_blocks;
 
-	double block_dist;
-	int bpd;
-	double box_base;				// Of box (left, back, down-most), is negative!
-	double block_center_base;	// Including that edge blocks focus area is halfway outside the box
-	cudaError_t cuda_status;
-	bool critical_error = false;	// Not used yet
+	//double block_dist;
+	//int bpd;
+	//double box_base;				// Of box (left, back, down-most), is negative!
+	//double block_center_base;	// Including that edge blocks focus area is halfway outside the box
+	//cudaError_t cuda_status;
+	//bool critical_error = false;	// Not used yet
 };
 
 template void Engine::deviceMaster<false>();

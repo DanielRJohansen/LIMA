@@ -146,7 +146,7 @@ private:
 
 struct CompoundCollection {
 	const std::vector<CompoundFactory> compounds;
-	const int64_t total_compound_particles;
+	const int32_t total_compound_particles;
 
 	BondedParticlesLUTManager* bp_lut_manager;	// Ptr is not accounted for!
 

@@ -15,9 +15,11 @@ namespace LIMA_Print {
 	void printH2(std::string = "", bool ls = false, bool ts = false);
 
 	template<typename T>
-	void printMatlabVec(std::string name, std::vector<T> vec) {
+	void printMatlabVec(std::string name, const std::vector<T>& vec) {
 		std::cout << name << " = [";
-		for (auto& elem : vec) { std::cout << elem << " "; }
+		for (const auto& elem : vec) { 
+			std::cout << elem << " "; 
+		}
 		std::cout << "];\n";
 	}
 }

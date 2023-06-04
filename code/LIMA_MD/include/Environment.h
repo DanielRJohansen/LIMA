@@ -62,8 +62,8 @@ public:
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	//const InputSimParams getSimparams();
 	std::unique_ptr<Simulation> getSim();
+	Simulation* getSimPtr();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
-	//std::array<CompoundCoords, MAX_COMPOUNDS>& getCoordarrayRef(std::string selector = "current" /*"current"|"prev"*/);
 	SolventBlockGrid* getAllSolventBlocksPrev();
 	std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
 	const std::string& getWorkdir() { return work_folder; }

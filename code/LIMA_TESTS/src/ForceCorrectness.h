@@ -5,47 +5,48 @@
 
 
 //Test assumes two carbons particles in conf
-bool doPoolBenchmark(float max_dev=0.007) {
+bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
+	Environment env{ work_folder, envmode };
+
 	const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-	//Environment env{ work_folder };
-
-	//env.loadSimParams(work_folder + "sim_params.txt");
-	//const float dt = env.getSimparamRef()->dt;
-
-	//auto* sim_params = env.getSimparamRef();
-
-	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
-	std::vector<float> particle_temps{ 400, 800, 1200 };
+	std::vector<float> particle_temps{ 400 };
+	//std::vector<float> particle_temps{ 400, 800, 1200 };
 	std::vector<float> std_devs;
 
-	//for (auto temp : particle_temps) {
-	//	const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-	//	int steps_for_full_interaction = 8000000 / static_cast<int>(vel);
-	//	sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-	//	env.CreateSimulation(conf, topol, work_folder);
+	for (auto temp : particle_temps) {
+		const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+		int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
+		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+		InputSimParams ip{};
+		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+		//ip.n_steps = 0;
+		env.CreateSimulation(conf, topol, ip);
+
+		Simulation* sim = env.getSimPtr();
+		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+		coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
+		coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * ip.dt };
+
+		env.run();
+
+		auto analytics = env.getAnalyzedPackage();
+		Analyzer::printEnergy(analytics);
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+	}
+
+	LIMA_Print::printMatlabVec("temperature", particle_temps);
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
 
-	//	auto coordarray_prev_ptr = env.getCoordarrayRef("prev");
-	//	coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * dt };
-	//	coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * dt };
 
+	return true;
 
-	//	env.run();
-
-	//	auto analytics = env.getAnalyzedPackage();
-	//	Analyzer::printEnergy(analytics);
-	//	std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
-	//}
-
-	//LIMA_Print::printMatlabVec("temperature", particle_temps);
-	//LIMA_Print::printMatlabVec("std_devs", std_devs);
-
-	//for (auto& stddev : std_devs) {
-	//	if (stddev > max_dev) { return false; }
-	//}
+	for (auto& stddev : std_devs) {
+		if (stddev > max_dev) { return false; }
+	}
 	return true;
 }
 

@@ -2,12 +2,9 @@
 
 // Create the solventblockgrid on host, and fill out origo for all blocks for all steps
 void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue_device) {	// TODO: rename var to what is it now
-	//const uint64_t n_bytes_solventblockgrids = sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER;
-	//cudaMalloc(solventblockgrid_circularqueue_device, n_bytes_solventblockgrids);
 
 	*solventblockgrid_circularqueue_device = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
 
-	//auto gridqueue_host = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
 	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
 		for (int z = 0; z < BOXGRID_N_NODES; z++) {
 			for (int y = 0; y < BOXGRID_N_NODES; y++) {
@@ -19,8 +16,6 @@ void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblock
 			}
 		}
 	}
-	//cudaMemcpy(*solventblockgrid_circularqueue_device, gridqueue_host, sizeof(SolventBlockGrid) * STEPS_PER_SOLVENTBLOCKTRANSFER, cudaMemcpyHostToDevice);
-	//delete[] gridqueue_host;
 }
 
 __host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array) {

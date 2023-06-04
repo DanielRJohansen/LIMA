@@ -49,9 +49,6 @@ const int BOX_LEN_i = _BOX_LEN_PM * PICO_TO_LIMA;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
-//constexpr float BOX_LEN_SQ = BOX_LEN * BOX_LEN;
-//constexpr float NORMALIZER = 1.f;
-//constexpr float NORMALIZER_SQ = NORMALIZER*NORMALIZER;
 
 constexpr float BOX_LEN_FM = BOX_LEN * LIMA_TO_FEMTO;
 constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
@@ -64,7 +61,6 @@ constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
 
 
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
-//const int SIMULATION_STEPS = 180;
 const bool print_compound_positions = false;		// what is tihs?
 const bool DUMP_TRAJ = false;
 const bool DUMP_POTE = false;

@@ -53,6 +53,46 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCol
 	printf("CompoundCollection added to box\n");
 }
 
+void setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
+	// Permanent Outputs for energy & trajectory analysis
+	int n_points = simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER;
+	printf("n points %d\n", n_points);
+	printf("Malloc %.2f MB on device for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
+	printf("Malloc %.2f MB on host for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * n_steps + sizeof(Float3) * simulation.total_particles_upperbound * n_steps) * 1e-6));
+	cudaMallocManaged(&simulation.box->potE_buffer, sizeof(float) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
+	//simulation.potE_buffer = new float[simulation.total_particles_upperbound * n_steps];
+	simulation.potE_buffer.resize(simulation.total_particles_upperbound * n_steps);
+
+	cudaMallocManaged(&simulation.box->traj_buffer, sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);
+	//simulation.traj_buffer = new Float3[simulation.total_particles_upperbound * n_steps];
+	simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
+
+	//simulation.temperature_buffer = new float[n_steps / STEPS_PER_THERMOSTAT + 1];
+	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
+
+#ifdef USEDEBUGF3
+	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
+	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
+#endif
+}
+
+void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
+	// TRAINING DATA and TEMPRARY OUTPUTS
+	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
+	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * simulation.n_compounds * STEPS_PER_TRAINDATATRANSFER;
+	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
+	printf("Reserving %.4f MB device mem for logging + training data\n", (float)((total_bytes) * 1e-6));
+	cudaMallocManaged(&simulation.box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
+
+	cudaMallocManaged(&simulation.box->data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds * STEPS_PER_TRAINDATATRANSFER);
+
+	uint64_t n_loggingdata_host = 10 * n_steps;
+	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds * (uint64_t)n_steps;
+	printf("Reserving %.4f GB host mem for logging + training data\n", (float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
+	simulation.logging_data = new float[n_loggingdata_host];
+	simulation.traindata_buffer = new Float3[n_traindata_host];
+}
+
 void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {
 	// Load meta information
 	simulation->copyBoxVariables();
@@ -61,50 +101,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 
 	simulation->box->forcefield = new ForceField_NB{ forcefield };// Copy
 
-
-	//SolventBlockHelpers::copyInitialConfiguration(*solventblocks, *solventblocks_prev, simulation->box->solventblockgrid_circular_queue);
-
-	
-	const auto n_steps = simulation->simparams_host.constparams.n_steps;
-
-	// Permanent Outputs for energy & trajectory analysis
-	int n_points = simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER;
-	printf("n points %d\n", n_points);
-	printf("Malloc %.2f MB on device for data buffers\n",(float) ((sizeof(double) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
-	printf("Malloc %.2f MB on host for data buffers\n", (float) ((sizeof(double) * simulation->total_particles_upperbound * n_steps + sizeof(Float3) * simulation->total_particles_upperbound * n_steps) * 1e-6));
-	cudaMallocManaged(&simulation->box->potE_buffer, sizeof(float) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
-	simulation->potE_buffer = new float[simulation->total_particles_upperbound * n_steps];
-
-	cudaMallocManaged(&simulation->box->traj_buffer, sizeof(Float3) * simulation->total_particles_upperbound * STEPS_PER_LOGTRANSFER);
-	simulation->traj_buffer = new Float3[simulation->total_particles_upperbound * simulation->simparams_host.constparams.n_steps];
-
-	simulation->temperature_buffer = new float[n_steps / STEPS_PER_THERMOSTAT + 1];
-
-#ifdef USEDEBUGF3
-	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
-	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
-#endif
-
-
-
-
-
-
-	// TRAINING DATA and TEMPRARY OUTPUTS
-	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
-	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER;
-	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
-	printf("Reserving %.4f MB device mem for logging + training data\n", (float) ((total_bytes) * 1e-6));
-	cudaMallocManaged(&simulation->box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
-
-	cudaMallocManaged(&simulation->box->data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * STEPS_PER_TRAINDATATRANSFER);
-
-	uint64_t n_loggingdata_host = 10 * n_steps;
-	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * (uint64_t) n_steps;
-	printf("Reserving %.4f GB host mem for logging + training data\n",(float) (sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
-	simulation->logging_data = new float[n_loggingdata_host];
-	simulation->traindata_buffer = new Float3[n_traindata_host];
-
+	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
+	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });
+	setupDataBuffers(*simulation, n_steps);
+	setupTrainingdataBuffers(*simulation, n_steps);
 
 
 

@@ -6,17 +6,6 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
 
-	/*
-	* 	__shared__ Compound compound;				// Mostly bond information
-	__shared__ CompoundState compound_state;	// Relative position in [lm]
-	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
-	__shared__ NeighborList neighborlist;		
-	__shared__ BondedParticlesLUT bonded_particles_lut;
-	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
-	__shared__ Coord utility_coord;
-	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
-
-	*/
 	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 	//int Skernel_shared_mem = sizeof(Float3) * MAX_COMPOUND_PARTICLES + sizeof(uint8_t) * MAX_COMPOUND_PARTICLES + sizeof(Solvent) * THREADS_PER_SOLVENTBLOCK;
@@ -27,10 +16,11 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
+	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
-	nlist_manager = new NListManager(simulation);
-	//nlist_manager->bootstrapCompoundgrid(simulation);
+	nlist_manager = std::make_unique<NListManager>(simulation);
+				//nlist_manager->bootstrapCompoundgrid(simulation);
 	bootstrapTrajbufferWithCoords();
 	nlist_manager->handleNLISTS(simulation, true, true, &timings.z);
 
@@ -45,11 +35,11 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 template<bool em_variant> void Engine::step() {
 	EngineUtils::genericErrorCheck("Error before step!");
 
-	deviceMaster<false>();	// Device first, otherwise offloading data always needs the last datapoint!
+	deviceMaster<em_variant>();	// Device first, otherwise offloading data always needs the last datapoint!
+	simulation->incStep();
 	hostMaster();
 
 	EngineUtils::genericErrorCheck("Error after step!");
-
 }
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
@@ -86,11 +76,12 @@ void Engine::terminateSimulation() {
 		offloadTrajectory(steps_since_transfer);
 	}
 }
-
+#include <assert.h>
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
+	assert(steps_to_transfer <= simulation->getStep());
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
@@ -133,14 +124,10 @@ void Engine::offloadTrainData() {
 
 
 void Engine::bootstrapTrajbufferWithCoords() {
-	EngineUtils::genericErrorCheck("Error before trajbuffer bootstrapping.");
-
-	CompoundCoords* cdev;
-	cudaMallocManaged(&cdev, sizeof(CompoundCoords) * simulation->n_compounds);
-	cudaDeviceSynchronize();
+	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 
-	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds*2];
+	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
 	auto error = cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 	EngineUtils::genericErrorCheck(error);
 	
@@ -148,13 +135,14 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-			const int buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
+			const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
+
 			//simulation->traj_buffer[index] = compoundcoords_array[compound_id].getAbsolutePositionLM(particle_id);
 			simulation->traj_buffer[buffer_index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
 		}
 	}
 
-	EngineUtils::genericErrorCheck("Error after trajbuffer bootstrapping.");
+	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	delete[] compoundcoords_array;
 }
@@ -168,6 +156,8 @@ void Engine::deviceMaster() {
 	auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
+
+
 	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
 		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box, simulation->simparams_device);	// Must come before compoundKernel()		// DANGER
 	}
@@ -176,12 +166,13 @@ void Engine::deviceMaster() {
 	if (simulation->n_compounds > 0) {
 		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box, simulation->simparams_device);
 	}
+
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
-
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
 		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box, simulation->simparams_device);
+//		return;
 
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Error after solventForceKernel");
@@ -192,6 +183,7 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error after solventTransferKernel");
 #endif
+	return;
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -201,10 +193,6 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 	auto t2 = std::chrono::high_resolution_clock::now();
-
-
-	simulation->incStep();
-
 
 	int force_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 	int copy_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();

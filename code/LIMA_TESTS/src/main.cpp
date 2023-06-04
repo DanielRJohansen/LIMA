@@ -45,7 +45,7 @@ int main() {
 	//basicBenchmark(env);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(env, "Pool");			// Two 1-particle molecules colliding
+	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 	//doPoolCompSolBenchmark(env, "PoolCompSol");	// One 1-particle molecule colliding with 1 solvent
 	//doSpringBenchmark(env);
 	//doAngleBenchmark(env);	// Doesn't work currently

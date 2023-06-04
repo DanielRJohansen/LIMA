@@ -36,7 +36,6 @@ RenderBall* Rasterizer::render(Simulation* simulation) {
 __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int step);
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step);
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls);
-const int THREADS_PER_LOADSOLVENTSATOMSKERNEL = 100;
 
 RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 
@@ -233,7 +232,7 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, 
 		//printf("vel %f, %d\n", velocity, color_red);
 
         // This part is for various debugging purposes
-        int query_id = 0;
+        //int query_id = 0;
         //if (solvent_id == query_id) {
         //    atoms[solvent_id + offset].atom_type = P;
         //}

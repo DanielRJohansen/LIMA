@@ -151,7 +151,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaFree(potE_buffer_device);
 
 	printH2("Finished analyzing energies", false, true);
-	return AnalyzedPackage(average_energy, simulation->temperature_buffer, simulation->n_temp_values);
+	return AnalyzedPackage(average_energy, simulation->temperature_buffer.data(), simulation->temperature_buffer.size());
 }
 
 void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, uint64_t step_offset) {

@@ -13,7 +13,7 @@ LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::s
 }
 
 LimaLogger::~LimaLogger() {
-    if (enable_logging &&logFile.is_open()) {
+    if (enable_logging && logFile.is_open()) {
         logFile.close();
     }
 }

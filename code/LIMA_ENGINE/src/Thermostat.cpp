@@ -53,8 +53,8 @@ void Engine::handleBoxtemp() {
 	const TemperaturPackage temp_package = getBoxTemperature(simulation, forcefield_host);
 	const float temp = temp_package.temperature;
 
-
-	simulation->temperature_buffer[simulation->n_temp_values++] = temp_package.temperature;
+	simulation->temperature_buffer.push_back(temp_package.temperature);
+	//simulation->temperature_buffer[simulation->n_temp_values++] = temp_package.temperature;
 
 	simulation->temperature = temp;	// For display :)
 

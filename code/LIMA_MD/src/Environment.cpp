@@ -128,12 +128,15 @@ bool Environment::prepareForRun() {
 	if (simulation->ready_to_run) { return true; }
 
 	boxbuilder->finishBox(simulation.get(), forcefield.getNBForcefield());
-
 	simulation->moveToDevice();	// Only moves the Box to the device
+
+
+	
 	verifyBox();
 	simulation->ready_to_run = true;
 
 	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
+	return true;
 
 	
 
@@ -169,7 +172,6 @@ void Environment::run(bool em_variant) {
 	while (true) {
 
 		if (handleTermination(simulation.get())) { break; }
-
 		if (em_variant)
 			engine->step<true>();
 		else
@@ -181,7 +183,6 @@ void Environment::run(bool em_variant) {
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
-
 
 
 	}
@@ -199,10 +200,12 @@ void Environment::run(bool em_variant) {
 
 void Environment::postRunEvents() {
 	
-	const std::string out_dir = work_folder + "/Steps_" + std::to_string(simulation->getStep()) + "/";
+	const std::string out_dir = work_folder + "Steps_" + std::to_string(simulation->getStep()) + "/";
 
-	std::filesystem::current_path(work_folder);
-	std::filesystem::create_directories(out_dir);
+	const std::filesystem::path out_path{ out_dir };
+	std::filesystem::create_directories(out_path);
+	//std::filesystem::current_path(work_folder);
+	//std::filesystem::create_directories(out_dir);
 
 	// Nice to have for matlab stuff	
 	printH2();
@@ -220,7 +223,7 @@ void Environment::postRunEvents() {
 	}
 	
 	if (DUMP_TRAJ) {
-		dumpToFile(simulation->traj_buffer, simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
+		dumpToFile(simulation->traj_buffer.data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
 	}
 
 	if (POSTSIM_ANAL) {
@@ -234,7 +237,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (DUMP_POTE) {
-		dumpToFile(simulation->potE_buffer, simulation->getStep() * simulation->total_particles_upperbound, out_dir + "potE.bin");
+		dumpToFile(simulation->potE_buffer.data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "potE.bin");
 	}
 
 #ifdef USEDEBUGF3
@@ -256,9 +259,6 @@ void Environment::postRunEvents() {
 	}
 #endif
 
-	// KILL simulation
-	//simulation.release();
-	//engine.release();
 	simulation->ready_to_run = false;
 
 	printH2("Post-run events finished Finished", true, true);
@@ -297,7 +297,7 @@ bool Environment::handleTermination(Simulation* simulation)
 {
 	if (simulation->finished)
 		return true;
-	if (simulation->getStep() >= simulation->simparams_device->constparams.n_steps) {
+	if (simulation->getStep() >= simulation->simparams_host.constparams.n_steps) {
 		simulation->finished = true;
 		return true;
 	}		
@@ -310,16 +310,6 @@ bool Environment::handleTermination(Simulation* simulation)
 void Environment::prepFF(string conf_path, string topol_path) {
 	ForcefieldMaker FFM(work_folder);	// Not to confuse with the engine FFM!!!!=!?!
 	FFM.prepSimulationForcefield();
-	//const std::string conf_name = "conf.gro";;
-	//const std::string topol_name = "topol.top";
-	//string program_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_ForcefieldMaker\\Release\\LIMA_ForcefieldMaker.exe "
-	//	+ (string) "prepsim" + " "
-	//	+ conf_name + " "
-	//	+ topol_name + " "
-	//	;
-
-	//cout << program_command << "\n\n";
-	//system(&program_command[0]);
 }
 
 void Environment::renderTrajectory(string trj_path)
@@ -408,10 +398,16 @@ InputSimParams Environment::loadInputSimParams(const std::string& path) const {
 
 std::unique_ptr<Simulation> Environment::getSim() {
 	// Should we delete the forcefield here?
-
 	boxbuilder.reset();
 	engine.reset();
 	return std::move(simulation);
+}
+
+Simulation* Environment::getSimPtr() {
+	if (simulation) { 
+		return simulation.get(); 
+	}
+	return nullptr;
 }
 
 Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()

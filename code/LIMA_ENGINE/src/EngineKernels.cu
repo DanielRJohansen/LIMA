@@ -634,8 +634,8 @@ __global__ void solventForceKernel(Box* box, SimParams* simparams) {
 	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 	__shared__ int utility_int;
 	__shared__ Coord utility_coord;
-	__shared__ int lcg_seed;
-	lcg_seed = 12345;
+	//__shared__ int lcg_seed;
+	//lcg_seed = 12345;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);

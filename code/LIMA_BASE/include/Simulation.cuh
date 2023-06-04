@@ -31,7 +31,7 @@ private:
 };
 
 struct SimParamsConst {
-	uint32_t n_steps;
+	uint64_t n_steps;
 	float dt;									// [ls]
 };
 
@@ -40,7 +40,7 @@ struct SimParams {
 	SimParams(const SimParamsConst& spc) : constparams(spc) {}
 
 
-	uint32_t step = 0;
+	uint64_t step = 0;
 	bool critical_error_encountered = false;
 	float thermostat_scalar = 1.f;
 
@@ -121,10 +121,14 @@ public:
 
 
 
-	float* potE_buffer = nullptr;	// Not really a buffer yet, just one large array that holds full simulation data
-	Float3* traj_buffer = nullptr;	// Positions in [nm]
-	float* temperature_buffer = nullptr;
-	int n_temp_values = 0;
+	std::vector<Float3> traj_buffer;
+	std::vector<float> potE_buffer;
+	std::vector<float> temperature_buffer;
+
+	//float* potE_buffer = nullptr;	// Not really a buffer yet, just one large array that holds full simulation data
+	//Float3* traj_buffer = nullptr;	// Positions in [nm]
+	//float* temperature_buffer = nullptr;
+	//int n_temp_values = 0;
 	Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
 	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 
@@ -132,7 +136,6 @@ public:
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
 	uint32_t total_particles = 0;				// Precise number, but DO NOT EVER USE IN INDEXING!!
 	
-	//uint64_t n_steps = 0;
 
 	//const float dt = 100.f;					// [ls]
 	const int steps_per_render = STEPS_PER_RENDER;

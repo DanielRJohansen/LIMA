@@ -183,7 +183,7 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Error after solventTransferKernel");
 #endif
-	return;
+	//return;
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 

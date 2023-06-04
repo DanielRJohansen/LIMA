@@ -35,7 +35,7 @@ namespace TestUtils {
 
 		env.CreateSimulation(conf, topol, ip);
 
-		return std::move(env);
+		return env;
 	}
 
 	static bool verifyStability(Environment& env, float max_dev) {

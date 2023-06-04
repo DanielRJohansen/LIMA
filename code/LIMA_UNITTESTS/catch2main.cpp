@@ -26,8 +26,9 @@ namespace TestMDStability {
 		InputSimParams ip{ 100.f, 1 };
 		auto env = TestUtils::basicSetup("SolventBenchmark", {ip}, envmode);
 		env.prepareForRun();
-		env.run(false);
+		env.run(true);
+		FAIL();
 		//Environment env{ "aa", envmode };
-		REQUIRE(true);
+		SUCCEED();
 	}
 }

@@ -168,14 +168,14 @@ void Environment::run(bool em_variant) {
 	printH1("Simulation started", true, false);
 
 	time0 = std::chrono::high_resolution_clock::now();
-
 	while (true) {
-
 		if (handleTermination(simulation.get())) { break; }
 		if (em_variant)
 			engine->step<true>();
 		else
 			engine->step<false>();
+
+
 
 		handleStatus(simulation.get());
 
@@ -184,6 +184,7 @@ void Environment::run(bool em_variant) {
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
+		//break;
 
 	}
 
@@ -290,7 +291,9 @@ bool Environment::handleDisplay(Simulation* simulation) {
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
 		display->render(simulation);
 	}
-	return display->checkWindowStatus();
+
+	const bool displayStillExists = display->checkWindowStatus();
+	return displayStillExists;
 }
 
 bool Environment::handleTermination(Simulation* simulation)

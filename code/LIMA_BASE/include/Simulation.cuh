@@ -12,7 +12,6 @@ struct ForceField_NB;
 
 
 constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
-//constexpr double SOLVENT_MASS = 12.0107 * 1e-3;	// kg/mol
 
 const int DEBUGDATAF3_NVARS = 4;
 
@@ -120,15 +119,10 @@ public:
 	bool finished = false;
 
 
-
 	std::vector<Float3> traj_buffer;
 	std::vector<float> potE_buffer;
 	std::vector<float> temperature_buffer;
 
-	//float* potE_buffer = nullptr;	// Not really a buffer yet, just one large array that holds full simulation data
-	//Float3* traj_buffer = nullptr;	// Positions in [nm]
-	//float* temperature_buffer = nullptr;
-	//int n_temp_values = 0;
 	Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
 	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 
@@ -139,7 +133,6 @@ public:
 
 	//const float dt = 100.f;					// [ls]
 	const int steps_per_render = STEPS_PER_RENDER;
-	//int n_bodies = N_BODIES_START;
 
 	float temperature = -1.f;			// Current temperature [k]
 

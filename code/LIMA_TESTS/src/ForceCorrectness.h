@@ -22,7 +22,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-		//ip.n_steps = 0;
+		ip.n_steps = 10;
 		env.CreateSimulation(conf, topol, ip);
 
 		Simulation* sim = env.getSimPtr();

@@ -46,10 +46,10 @@ int main() {
 
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
-	doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
-	//doSpringBenchmark(env);
-	//doAngleBenchmark(env);	// Doesn't work currently
-	
+	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
+	//doSinglebondBenchmark(envmode);
+	//doAnglebondBenchmark(envmode);	// Doesn't work currently
+	doDihedralbondBenchmark(envmode);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");

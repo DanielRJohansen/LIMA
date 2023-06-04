@@ -10,14 +10,23 @@ constexpr auto envmode = Environment::Mode::Headless;
 
 namespace TestForceCorrectness {
 	TEST_CASE("TestForceCorrectness::Pool") {
-		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
-		SUCCEED();
+		REQUIRE(doPoolBenchmark(envmode));			// Two 1-particle molecules colliding
 	}
 
 	TEST_CASE("TestForceCorrectness::PoolCarbonSol") {
 		doPoolCompSolBenchmark(envmode);
-		//doAngleBenchmark(envmode);			// Two 1-particle molecules colliding
-		SUCCEED();
+	}
+
+	TEST_CASE("TestForceCorrectness::SingleBond") {
+		doSinglebondBenchmark(envmode);
+	}
+
+	TEST_CASE("TestForceCorrectness::AngleBond") {
+		doAnglebondBenchmark(envmode);
+	}
+
+	TEST_CASE("TestForceCorrectness::DihedralBond") {
+		doDihedralbondBenchmark(envmode);
 	}
 }
 

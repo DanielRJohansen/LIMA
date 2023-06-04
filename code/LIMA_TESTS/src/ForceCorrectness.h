@@ -50,75 +50,65 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 	return true;
 }
 
+bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+	Environment env{ work_folder, envmode };
+	const auto a = sizeof(SolventBlockGrid);
+	auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
+	const float dt = ip.dt;
+
+	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
+	std::vector<float> particle_temps{ 400, 800, 1200 };
+	std::vector<float> std_devs;
+
+	for (auto temp : particle_temps) {
+		// Give the carbon a velocity
+		{
+			const float particle_mass = 12.011000f / 1000.f;	// kg/mol
+			const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+			const int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
+			InputSimParams ip{};
+			ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+			ip.n_steps = 10;
+			env.CreateSimulation(conf, topol, ip);
 
 
+			Simulation* sim = env.getSimPtr();
+			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+			coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
+		}
+
+		// Give the solvent a velocty
+		{
+			// We need to also give the solvent velocity. But we don't know which block it is in....
+			const float vel = EngineUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
+			auto solventblockgridprev = env.getSolventBlocksPrevRef();
+			for (int i = 0; i < solventblockgridprev->blocks_total; i++) {
+				auto block = solventblockgridprev->getBlockPtr(i);
+				if (block->n_solvents == 1) {
+					block->rel_pos[0] += Coord{ Float3{1, 0, 0} *vel * dt };
+				}
+			}
+		}
 
 
+		env.run();
 
+		auto analytics = env.getAnalyzedPackage();
+		Analyzer::printEnergy(analytics);
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+	}
 
+	LIMA_Print::printMatlabVec("temperature", particle_temps);
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-
-
-
-
-
-//
-//// Test assumes two carbons particles in conf
-//bool doPoolCompSolBenchmark(float max_dev = 0.01) {
-//	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
-//	const std::string conf = work_folder + "molecule/conf.gro";
-//	const std::string topol = work_folder + "molecule/topol.top";
-//	Environment env{ work_folder };
-//
-//	auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
-//	const float dt = ip.dt;
-//
-//	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
-//	std::vector<float> particle_temps{ 400, 800, 1200 };
-//	std::vector<float> std_devs;
-//
-//	//for (auto temp : particle_temps) {
-//	//	// Give the carbon a velocity
-//	//	{
-//	//		const float vel = EngineUtils::tempToVelocity(temp, 12.011000f / 1000.f);	// [m/s] <=> [lm/ls]
-//	//		int steps_for_full_interaction = 8000000 / static_cast<int>(vel);
-//	//		sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-//	//		env.CreateSimulation(conf, topol, work_folder);
-//
-//	//		auto coordarray_prev_ptr = env.getCoordarrayRef("prev");
-//	//		coordarray_prev_ptr[0].rel_positions[0] += Coord{ Float3(-1, 0, 0) * vel * dt };
-//	//	}
-//
-//	//	// Give the solvent a velocty
-//	//	{
-//	//		// We need to also give the solvent velocity. But we don't know which block it is in....
-//	//		const float vel = EngineUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
-//	//		auto solventblockgridprev = env.getAllSolventBlocksPrev();
-//	//		for (int i = 0; i < solventblockgridprev->blocks_total; i++) {
-//	//			auto block = solventblockgridprev->getBlockPtr(i);
-//	//			if (block->n_solvents == 1) {
-//	//				block->rel_pos[0] += Coord{ Float3{1, 0, 0} *vel * dt };
-//	//				int a = 0;
-//	//			}
-//	//		}
-//	//	}
-//
-//
-//	//	env.run();
-//
-//	//	auto analytics = env.getAnalyzedPackage();
-//	//	Analyzer::printEnergy(analytics);
-//	//	std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
-//	//}
-//
-//	//LIMA_Print::printMatlabVec("temperature", particle_temps);
-//	//LIMA_Print::printMatlabVec("std_devs", std_devs);
-//
-//	//for (auto& stddev : std_devs) {
-//	//	if (stddev > max_dev) { return false; }
-//	//}
-//	return true;
-//}
+	for (auto& stddev : std_devs) {
+		if (stddev > max_dev) { return false; }
+	}
+	return true;
+}
 //
 //bool doSpringBenchmark() {
 //	//Environment env{};

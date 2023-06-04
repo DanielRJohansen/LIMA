@@ -61,8 +61,8 @@ public:
 	std::unique_ptr<Simulation> getSim();
 	Simulation* getSimPtr();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
-	SolventBlockGrid* getAllSolventBlocksPrev();
-	std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
+	SolventBlockGrid* getSolventBlocksPrevRef();
+	const std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
 	const std::string& getWorkdir() { return work_folder; }
 
 private:

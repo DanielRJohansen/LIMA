@@ -418,7 +418,14 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 	return &postsim_anal_package;
 }
 
-std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
+SolventBlockGrid* Environment::getSolventBlocksPrevRef()
+{
+	if (simulation->box_is_on_device) { throw "Can't ref solventblocks when box is on device"; }
+	auto grid = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+	return grid;
+}
+
+const std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
 {
 	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, simulation->getStep());
 

@@ -13,6 +13,12 @@ namespace TestForceCorrectness {
 		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		SUCCEED();
 	}
+
+	TEST_CASE("TestForceCorrectness::PoolCarbonSol") {
+		doPoolCompSolBenchmark(envmode);
+		//doAngleBenchmark(envmode);			// Two 1-particle molecules colliding
+		SUCCEED();
+	}
 }
 
 namespace TestMDStability {

@@ -36,7 +36,7 @@ class Environment
 {
 public:
 	enum Mode { Full, ConsoleOnly, Headless };
-
+	Environment(const Environment&) = delete;
 	Environment(const string& wf, Mode mode);
 
 	void CreateSimulation(string conf_filename, string topol_filename, InputSimParams);
@@ -52,7 +52,7 @@ public:
 	// Return if cannot run
 	bool prepareForRun();
 
-	InputSimParams loadInputSimParams(const std::string& path) const;
+	static InputSimParams loadInputSimParams(const std::string& path);
 	void renderTrajectory(string trj_path);
 	void makeVirtualTrajectory(string trj_path, string waterforce_path);
 

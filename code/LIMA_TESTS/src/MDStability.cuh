@@ -16,11 +16,11 @@
 
 
 namespace TestMDStability {
-	static bool loadAndRunBasicSimulation(const string& folder_name, Environment::Mode envmode, float max_dev = 0.05) {
-		auto env = TestUtils::basicSetup(folder_name, {}, envmode);
-		env.run();
+	static bool loadAndRunBasicSimulation(const string& folder_name, Environment::Mode envmode, float max_dev = 0.05, LAL::optional<InputSimParams> ip= {}) {
+		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
+		env->run();
 
-		auto analytics = env.getAnalyzedPackage();
+		auto analytics = env->getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
 		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 
@@ -34,15 +34,15 @@ namespace TestMDStability {
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
-		env.run(true);
+		env->run(true);
 
 		// Do sim
 		InputSimParams simparams{ 100, 1000 };
-		auto sim = env.getSim();
-		env.CreateSimulation(*sim, simparams);
-		env.run();
+		auto sim = env->getSim();
+		env->CreateSimulation(*sim, simparams);
+		env->run();
 
-		auto analytics = env.getAnalyzedPackage();
+		auto analytics = env->getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
 		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 

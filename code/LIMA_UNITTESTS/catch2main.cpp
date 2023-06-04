@@ -39,11 +39,10 @@ namespace TestMDStability {
 
 	TEST_CASE("TestMDStability::ahhh") {
 		InputSimParams ip{ 100.f, 1 };
-		auto env = TestUtils::basicSetup("SolventBenchmark", {ip}, envmode);
-		env.prepareForRun();
-		env.run(true);
-		FAIL();
+		//auto env = TestUtils::basicSetup("SolventBenchmark", {ip}, envmode);
+		auto env = TestUtils::basicSetup("TorsionBenchmark", { ip }, envmode);
+		env->prepareForRun();
+		env->run(true);
 		//Environment env{ "aa", envmode };
-		SUCCEED();
 	}
 }

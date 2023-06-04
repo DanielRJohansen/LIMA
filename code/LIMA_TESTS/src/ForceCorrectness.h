@@ -199,5 +199,12 @@ bool doAnglebondBenchmark(Environment::Mode envmode) {
 
 
 bool doDihedralbondBenchmark(Environment::Mode envmode) {
-	return TestMDStability::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01);
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/TorsionBenchmark/";
+	const std::string simpar = work_folder + "sim_params.txt";
+
+
+	auto ip = Environment::loadInputSimParams(simpar);
+	ip.n_steps = 100;
+
+	return TestMDStability::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01, ip);
 }

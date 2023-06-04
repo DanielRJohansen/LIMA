@@ -184,8 +184,6 @@ void Environment::run(bool em_variant) {
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
-		//break;
-
 	}
 
 	simulation->finished = true;
@@ -388,7 +386,7 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 
 
 
-InputSimParams Environment::loadInputSimParams(const std::string& path) const {
+InputSimParams Environment::loadInputSimParams(const std::string& path) {
 	InputSimParams simparams{};
 	auto param_dict = Filehandler::parseINIFile(path);
 	simparams.overloadParams(param_dict);

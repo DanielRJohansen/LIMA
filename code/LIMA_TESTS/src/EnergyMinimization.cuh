@@ -12,22 +12,22 @@ bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(Environment::M
 	InputSimParams params{ 5, 1000 };
 
 	auto env = TestUtils::basicSetup("SolventBenchmark", { params }, envmode);
-	env.prepareForRun();	// Lock down simulation
+	env->prepareForRun();	// Lock down simulation
 
-	LimaLogger logger{ LimaLogger::LogMode::compact, "nearestSolSolTest", env.getWorkdir() };
+	LimaLogger logger{ LimaLogger::LogMode::compact, "nearestSolSolTest", env->getWorkdir() };
 
 
 
 	std::vector<float> closestSolvent;
-	auto solventgrid_pre_em = env.getCurrentSolventblockGrid();
-	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_pre_em.get(), env.getSim()->box->n_solvents, closestSolvent);
+	auto solventgrid_pre_em = env->getCurrentSolventblockGrid();
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_pre_em.get(), env->getSim()->box->n_solvents, closestSolvent);
 	logger.printToFile("solsoldist_prerun.bin", closestSolvent);
 	const float minradius_before = *std::min_element(closestSolvent.begin(), closestSolvent.end());
 
-	env.run(true);
+	env->run(true);
 
-	auto solventgrid_post_em = env.getCurrentSolventblockGrid();
-	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_post_em.get(), env.getSim()->box->n_solvents, closestSolvent);
+	auto solventgrid_post_em = env->getCurrentSolventblockGrid();
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_post_em.get(), env->getSim()->box->n_solvents, closestSolvent);
 	logger.printToFile("solsoldist_postrun.bin", closestSolvent);
 	const float minradius_after = *std::min_element(closestSolvent.begin(), closestSolvent.end());
 

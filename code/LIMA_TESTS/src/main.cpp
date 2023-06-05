@@ -32,13 +32,14 @@ constexpr auto envmode = Environment::Mode::Full;
 ////}
 
 using namespace TestMDStability;
-
+using namespace TestUtils;
 int main() {
 
 	/*coordPrecesionBenchmark();
 	return 0;*/
 
-
+	//InputSimParams ip{ 10.f, 10 };
+	//loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002, { ip }, true);
 
 	//doPoolBenchmark();
 
@@ -51,12 +52,14 @@ int main() {
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
 	//doDihedralbondBenchmark(envmode);
 
+	doEightResiduesNoSolvent(envmode);
+
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
 	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

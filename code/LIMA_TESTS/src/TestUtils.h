@@ -39,6 +39,26 @@ namespace TestUtils {
 		return std::move(env);
 	}
 
+	static bool loadAndRunBasicSimulation(
+		const string& folder_name,
+		Environment::Mode envmode,
+		float max_dev = 0.05,
+		LAL::optional<InputSimParams> ip = {},
+		bool em_variant = false
+	)
+	{
+		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
+		env->run(em_variant);
+
+		auto analytics = env->getAnalyzedPackage();
+		Analyzer::printEnergy(analytics);
+		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
+
+		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
+
+		return std_dev < max_dev;
+	}
+
 	static bool verifyStability(Environment& env, float max_dev) {
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
@@ -47,6 +67,12 @@ namespace TestUtils {
 		LIMA_Print::printMatlabVec("std_dev", std::vector<float>{std_dev});
 
 		return (std_dev < max_dev);
+	}
+
+	void stressTest(std::function<void()> func, size_t reps) {
+		for (size_t i = 0; i < reps; i++) {
+			func();
+		}
 	}
 }
 

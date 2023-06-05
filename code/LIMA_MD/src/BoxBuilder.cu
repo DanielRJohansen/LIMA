@@ -59,11 +59,11 @@ void setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	printf("n points %d\n", n_points);
 	printf("Malloc %.2f MB on device for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
 	printf("Malloc %.2f MB on host for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * n_steps + sizeof(Float3) * simulation.total_particles_upperbound * n_steps) * 1e-6));
-	cudaMallocManaged(&simulation.box->potE_buffer, sizeof(float) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
+	//cudaMallocManaged(&simulation->potE_buffer, sizeof(float) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
 	//simulation.potE_buffer = new float[simulation.total_particles_upperbound * n_steps];
 	simulation.potE_buffer.resize(simulation.total_particles_upperbound * n_steps);
 
-	cudaMallocManaged(&simulation.box->traj_buffer, sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);
+	//cudaMallocManaged(&simulation.box->traj_buffer, sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);
 	//simulation.traj_buffer = new Float3[simulation.total_particles_upperbound * n_steps];
 	simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
 
@@ -114,7 +114,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
 
 	simulation->box->moveToDevice();
-	//printf("Boxbuild complete!\n\n\n");
+
+	simulation->sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box);
+	simulation->sim_dev = genericMoveToDevice(simulation->sim_dev, 1);
+
 	printH1("Boxbuild complete!", false, true);
 }
 

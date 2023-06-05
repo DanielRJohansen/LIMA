@@ -193,7 +193,7 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 		cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box, simulation->simparams_device, traj_buffer_device, potE_buffer_device, data_out);
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
@@ -234,7 +234,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
 		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->box->n_compounds, 1);
-		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, simulation->simparams_device, traj_buffer_device, potE_buffer_device, data_out);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 

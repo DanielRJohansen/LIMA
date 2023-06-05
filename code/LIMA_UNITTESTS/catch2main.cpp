@@ -14,23 +14,27 @@ namespace TestForceCorrectness {
 	}
 
 	TEST_CASE("TestForceCorrectness::PoolCarbonSol") {
-		doPoolCompSolBenchmark(envmode);
+		REQUIRE(doPoolCompSolBenchmark(envmode));
 	}
 
 	TEST_CASE("TestForceCorrectness::SingleBond") {
-		doSinglebondBenchmark(envmode);
+		REQUIRE(doSinglebondBenchmark(envmode));
 	}
 
 	TEST_CASE("TestForceCorrectness::AngleBond") {
-		doAnglebondBenchmark(envmode);
+		REQUIRE(doAnglebondBenchmark(envmode));
 	}
 
 	TEST_CASE("TestForceCorrectness::DihedralBond") {
-		doDihedralbondBenchmark(envmode);
+		REQUIRE(doDihedralbondBenchmark(envmode));
 	}
 
 	TEST_CASE("TestForceCorrectness::Methionine") {
-		doMethionineBenchmark(envmode);
+		REQUIRE(doMethionineBenchmark(envmode));
+	}
+
+	TEST_CASE("TestForceCorrectness::TenSolvents") {
+		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false));
 	}
 }
 
@@ -46,11 +50,21 @@ namespace TestMDStability {
 	}
 
 	TEST_CASE("TestMDStability::ahhh") {
-		InputSimParams ip{ 100.f, 10 };
-		auto env = TestUtils::basicSetup("TenSolvents", {ip}, envmode);
-		//auto env = TestUtils::basicSetup("TorsionBenchmark", { ip }, envmode);
-		env->prepareForRun();
-		env->run(true);
+		InputSimParams ip{ 10.f, 10 };
+		TestUtils::loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002, {ip}, true);
+
+		//InputSimParams ip{ 100.f, 10 };
+		////auto env = TestUtils::basicSetup("TenSolvents", {ip}, envmode);
+		//auto env = TestUtils::basicSetup("SolventBenchmark", { ip }, envmode);
+		//env->prepareForRun();
+		//env->run(true);
 		//Environment env{ "aa", envmode };
+	}
+}
+
+namespace StressTesting {
+	TEST_CASE("StressTesting::RepeatPool100x") {
+		auto func = []() {doPoolBenchmark(envmode); };
+		TestUtils::stressTest(func, 3);
 	}
 }

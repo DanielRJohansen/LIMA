@@ -40,10 +40,6 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 	LIMA_Print::printMatlabVec("temperature", particle_temps);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-
-
-	return true;
-
 	for (auto& stddev : std_devs) {
 		if (stddev > max_dev) { return false; }
 	}
@@ -110,7 +106,7 @@ bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	return true;
 }
 
-bool doSinglebondBenchmark(Environment::Mode envmode) {
+bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.05) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -146,11 +142,14 @@ bool doSinglebondBenchmark(Environment::Mode envmode) {
 	LIMA_Print::printMatlabVec("bond_len_errors", bond_len_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
+	for (auto& stddev : std_devs) {
+		if (stddev > max_dev) { return false; }
+	}
 	return true;
 }
 
 // Benchmarks anglebonds + singlebonds (for stability)
-bool doAnglebondBenchmark(Environment::Mode envmode) {
+bool doAnglebondBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -194,6 +193,9 @@ bool doAnglebondBenchmark(Environment::Mode envmode) {
 	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
+	for (auto& stddev : std_devs) {
+		if (stddev > max_dev) { return false; }
+	}
 	return true;
 }
 
@@ -204,7 +206,7 @@ bool doDihedralbondBenchmark(Environment::Mode envmode) {
 	auto ip = Environment::loadInputSimParams(simpar);
 	ip.n_steps = 100;
 
-	return TestMDStability::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01, ip);
+	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01, ip);
 }
 
 bool doMethionineBenchmark(Environment::Mode envmode) {
@@ -214,5 +216,6 @@ bool doMethionineBenchmark(Environment::Mode envmode) {
 	auto ip = Environment::loadInputSimParams(simpar);
 	ip.n_steps = 10;
 
-	return TestMDStability::loadAndRunBasicSimulation("Met", envmode, 0.01, ip);
+	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.01, ip);
 }
+

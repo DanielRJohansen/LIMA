@@ -69,7 +69,7 @@ void Engine::handleBoxtemp() {
 	temp_scalar = std::clamp(temp_scalar, 1.f-MAX_THERMOSTAT_SCALER, 1.f + MAX_THERMOSTAT_SCALER);
 	// Apply 1/n scalar for n steps.
 
-	simulation->simparams_device->thermostat_scalar = temp_scalar;
+	simulation->sim_dev->params->thermostat_scalar = temp_scalar;
 }
 
 

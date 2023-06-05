@@ -462,9 +462,13 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 	}
 
 	cudaDeviceSynchronize();
-	delete[] data_ptr;
 
-	data_ptr = gpu_ptr;
+	if (n_elements == 1)
+		delete data_ptr;
+	else
+		delete[] data_ptr;
+
+	//data_ptr = gpu_ptr;
 
 	//printf("Moved %.2f MB to device\n", bytesize*1e-6);
 	return gpu_ptr;

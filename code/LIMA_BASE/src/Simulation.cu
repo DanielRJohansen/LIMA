@@ -51,6 +51,27 @@ Box SimUtils::copyToHost(const Box* box_dev) {
 	return box;
 }
 
+SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host) 
+	//: box(box_host)
+{
+	genericCopyToDevice(params_host, &params, 1);
+	
+	databuffers = new DatabuffersDevice(box_host->total_particles_upperbound);
+	databuffers = genericMoveToDevice(databuffers, 1);
+
+	//box = new Box();
+	//box = genericMoveToDevice(box, 1);
+	// Move box last so we can use it's host variables
+	//box->moveToDevice();
+}
+void SimulationDevice::deleteMembers() {
+	//cudaFree(box);
+	cudaFree(databuffers);
+	cudaFree(params);
+	// Simulation class MUST destroy *this after this destructor has finished
+}
+
+
 Simulation::Simulation(const SimParams& ip) :
 	simparams_host{ ip }
 {
@@ -60,12 +81,17 @@ Simulation::Simulation(const SimParams& ip) :
 
 
 Simulation::~Simulation() {
+	if (sim_dev != nullptr) {
+		sim_dev->deleteMembers();
+		cudaFree(sim_dev);
+	}
+
 	deleteBoxMembers();	// TODO: move to box destructor
 }
 
 void Simulation::moveToDevice() {
 	box = genericMoveToDevice(box, 1);
-	genericCopyToDevice(simparams_host, &simparams_device, 1);
+	//genericCopyToDevice(simparams_host, &simparams_device, 1);
 
 	cudaDeviceSynchronize();
 	if (cudaGetLastError() != cudaSuccess) {
@@ -127,3 +153,17 @@ void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 
 SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt }
 {}
+
+DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound) {
+	// Permanent Outputs for energy & trajectory analysis
+	size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER;
+	printf("Malloc %.2f MB on device for data buffers\n", sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints);
+
+	cudaMallocManaged(&potE_buffer, sizeof(float) * n_datapoints);
+	cudaMallocManaged(&traj_buffer, sizeof(Float3) * n_datapoints);
+}
+
+//DatabuffersDevice::~DatabuffersDevice() {
+//	cudaFree(potE_buffer);
+//	cudaFree(traj_buffer);
+//}

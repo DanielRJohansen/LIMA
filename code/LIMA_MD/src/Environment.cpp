@@ -192,7 +192,7 @@ void Environment::run(bool em_variant) {
 	engine->terminateSimulation();
 	printH1("Simulation Finished", true, true);
 
-	if (simulation->finished || simulation->simparams_device->critical_error_encountered) {
+	if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
 		postRunEvents();
 	}
 }
@@ -215,7 +215,7 @@ void Environment::postRunEvents() {
 		dumpToFile(simulation->logging_data, 10 * simulation->getStep(), out_dir + "logdata.bin");
 	}
 
-	if (simulation->simparams_device->critical_error_encountered) {
+	if (simulation->sim_dev->params->critical_error_encountered) {
 		dumpToFile(simulation->traindata_buffer,
 			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * simulation->getStep(),
 			out_dir + "sim_traindata.bin");
@@ -244,7 +244,7 @@ void Environment::postRunEvents() {
 #endif 
 
 #ifndef __linux__
-	if (!simulation->simparams_device->critical_error_encountered && 0) {	// Skipping for now
+	if (!simulation->sim_dev->params->critical_error_encountered && 0) {	// Skipping for now
 		string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
 			+ out_dir + " "
 			+ std::to_string(simulation->getStep()) + " "
@@ -270,7 +270,7 @@ void Environment::handleStatus(Simulation* simulation) {
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
 		printf("\r\tStep #%06d", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->simparams_device->constparams.n_steps - simulation->simparams_host.step) / 60);
+		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
 		//engine->timings = Int3(0, 0, 0);
 		engine->timings.x = 0;
@@ -302,7 +302,7 @@ bool Environment::handleTermination(Simulation* simulation)
 		simulation->finished = true;
 		return true;
 	}		
-	if (simulation->simparams_device->critical_error_encountered)
+	if (simulation->sim_dev->params->critical_error_encountered)
 		return true;
 
 	return false;

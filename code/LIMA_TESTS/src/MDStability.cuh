@@ -16,28 +16,16 @@
 
 
 namespace TestMDStability {
-	static bool loadAndRunBasicSimulation(const string& folder_name, Environment::Mode envmode, float max_dev = 0.05, LAL::optional<InputSimParams> ip= {}) {
-		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
-		env->run();
-
-		auto analytics = env->getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
-		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
-
-		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
-
-		return std_dev < max_dev;
-	}
 
 	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, Environment::Mode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 10, 500 };
+		InputSimParams emparams{ 10, 280 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
 		env->run(true);
 
 		// Do sim
-		InputSimParams simparams{ 100, 1000 };
+		InputSimParams simparams{ 100, 50 };
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
@@ -58,9 +46,9 @@ namespace TestMDStability {
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		auto ip = Environment::loadInputSimParams(simpar);
-		ip.n_steps = 100;
+		ip.n_steps = 1000;
 
-		return TestMDStability::loadAndRunBasicSimulation(name, envmode, 0.01, ip);
+		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.01, ip);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

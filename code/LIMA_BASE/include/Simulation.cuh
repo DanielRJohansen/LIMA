@@ -86,14 +86,12 @@ struct Box {
 	NeighborList* compound_neighborlists = nullptr;
 
 
-
+	// TODO: this should be removed from box, i dont think it is used in the engine kernels
 	ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
-
-	//float thermostat_scalar = 1.f;
 };
 
 struct SimulationDevice {
@@ -120,7 +118,6 @@ public:
 	void incStep() {
 		assert(sim_dev);
 		simparams_host.step++;
-		//simparams_device->step++;
 		sim_dev->params->step++;
 	}
 	
@@ -134,6 +131,7 @@ public:
 	std::vector<float> potE_buffer;
 	std::vector<float> temperature_buffer;
 
+	// TODO: Make these vectors instead
 	Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
 	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 
@@ -148,16 +146,9 @@ public:
 	float temperature = -1.f;			// Current temperature [k]
 
 	std::unique_ptr<Box> box_host;
-	//Box* box = nullptr;
 
 	SimParams simparams_host;
-	//SimParams* simparams_device = nullptr;
 
-
-	//bool box_is_on_device = false;
-
-	//Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search
-	//std::unique_ptr<Compound> compounds_host;
 	std::vector<Compound> compounds_host;
 
 	// Box variable copies, here for ease of access.
@@ -166,12 +157,6 @@ public:
 	int n_solvents = 0;
 
 	SimulationDevice* sim_dev = nullptr;
-
-	//std::string out_dir = OUT_DIR;
-	
-
-
-	//int blocks_per_solventkernel = ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
 	int blocks_per_solventkernel = 0;
 };
 

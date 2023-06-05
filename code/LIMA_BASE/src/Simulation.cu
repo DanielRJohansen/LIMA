@@ -28,9 +28,16 @@ void Box::moveToDevice() {
 void Box::deleteMembers(const bool is_on_device) {
 	if (is_on_device) {
 		cudaFree(compounds);
-		cudaFree(bridge_bundle);
+		cudaFree(coordarray_circular_queue);
+		cudaFree(solventblockgrid_circular_queue);
+		cudaFree(transfermodule_array);
+
+		cudaFree(compound_grid);		
 		cudaFree(compound_neighborlists);
 
+		cudaFree(forcefield);
+
+		cudaFree(bridge_bundle);
 		cudaFree(bonded_particles_lut_manager);
 
 		/*cudaFree(box->potE_buffer);

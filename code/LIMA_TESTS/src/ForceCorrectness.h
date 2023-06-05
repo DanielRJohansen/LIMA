@@ -25,8 +25,8 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		ip.n_steps = 10;
 		env.CreateSimulation(conf, topol, ip);
 
-		Simulation* sim = env.getSimPtr();
-		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+		Box* box_host = env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 		coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
 		coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * ip.dt };
 
@@ -71,8 +71,8 @@ bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 			env.CreateSimulation(conf, topol, ip);
 
 
-			Simulation* sim = env.getSimPtr();
-			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+			Box* box_host = env.getSimPtr()->box_host.get();
+			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 			coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
 		}
 
@@ -125,9 +125,9 @@ bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.05) {
 	for (auto bond_len_error : bond_len_errors) {
 		env.CreateSimulation(conf, topol, ip);
 
-		Simulation* sim = env.getSimPtr();
-		CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, 0, 0);
-		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
+		Box* box_host = env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
 		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
 		coordarray_prev_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
@@ -166,9 +166,9 @@ bool doAnglebondBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	for (auto angle_error : angle_errors) {
 		env.CreateSimulation(conf, topol, ip);
 
-		Simulation* sim = env.getSimPtr();
-		CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, 0, 0);
-		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(sim->box->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
+		Box* box_host = env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
 		// First rotate particle #3 to the relaxed position + the error angle
 		Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();

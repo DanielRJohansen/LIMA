@@ -424,7 +424,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 #define compound_index blockIdx.x
 template <bool em_variant>
-__global__ void compoundKernel(Box* box, SimulationDevice* sim) {
+__global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ Compound compound;				// Mostly bond information
 	__shared__ CompoundState compound_state;	// Relative position in [lm]
 	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
@@ -434,7 +434,7 @@ __global__ void compoundKernel(Box* box, SimulationDevice* sim) {
 	__shared__ Coord utility_coord;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
-
+	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
 	if (threadIdx.x == 0) {
@@ -628,7 +628,7 @@ __global__ void compoundKernel(Box* box, SimulationDevice* sim) {
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockIdx.x))
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <bool em_variant>
-__global__ void solventForceKernel(Box* box, SimulationDevice* sim) {
+__global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
@@ -642,6 +642,8 @@ __global__ void solventForceKernel(Box* box, SimulationDevice* sim) {
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
+
+	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
 
@@ -803,7 +805,8 @@ __global__ void solventForceKernel(Box* box, SimulationDevice* sim) {
 
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
-__global__ void solventTransferKernel(Box* box, SimulationDevice* sim) {
+__global__ void solventTransferKernel(SimulationDevice* sim) {
+	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
 	SolventBlockTransfermodule* transfermodule = &box->transfermodule_array[blockIdx.x];
@@ -856,13 +859,14 @@ __global__ void solventTransferKernel(Box* box, SimulationDevice* sim) {
 
 
 #define particle_id_bridge threadIdx.x
-__global__ void compoundBridgeKernel(Box* box, SimulationDevice* sim) {
+__global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];							// waaaaay too biggg
 	__shared__ Coord utility_coord;
 
 	SimParams& simparams = *sim->params;
+	Box* box = sim->box;
 
 	if (threadIdx.x == 0) {
 		bridge.loadMeta(&box->bridge_bundle->compound_bridges[blockIdx.x]);

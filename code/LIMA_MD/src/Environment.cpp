@@ -49,7 +49,7 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
-	boxbuilder->copyBoxState(simulation.get(), simulation_src.box, simulation_src.simparams_host.step);
+	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host.step);
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
@@ -393,10 +393,6 @@ InputSimParams Environment::loadInputSimParams(const std::string& path) {
 	return simparams;
 }
 
-//const InputSimParams Environment::getSimparams() const {
-//	return sim_params;
-//}
-
 std::unique_ptr<Simulation> Environment::getSim() {
 	// Should we delete the forcefield here?
 	boxbuilder.reset();
@@ -418,14 +414,14 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 
 SolventBlockGrid* Environment::getSolventBlocksPrevRef()
 {
-	if (simulation->box_is_on_device) { throw "Can't ref solventblocks when box is on device"; }
-	auto grid = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+	if (simulation->sim_dev != nullptr) { throw "Can't ref solventblocks when box is on device"; }
+	auto grid = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
 	return grid;
 }
 
 const std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
 {
-	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, simulation->getStep());
+	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->sim_dev->box->solventblockgrid_circular_queue, simulation->getStep());
 
 	auto grid_host = std::make_unique<SolventBlockGrid>();
 	cudaMemcpy(grid_host.get(), gridptr_device, sizeof(SolventBlockGrid), cudaMemcpyDeviceToHost);

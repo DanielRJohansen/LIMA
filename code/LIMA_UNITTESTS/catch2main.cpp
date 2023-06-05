@@ -65,6 +65,6 @@ namespace TestMDStability {
 namespace StressTesting {
 	TEST_CASE("StressTesting::RepeatPool100x") {
 		auto func = []() {doPoolBenchmark(envmode); };
-		TestUtils::stressTest(func, 3);
+		TestUtils::stressTest(func, 4);
 	}
 }

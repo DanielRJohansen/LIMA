@@ -48,12 +48,12 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	//int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
 
 
-	Box* box = simulation->box;
+	Box* box = simulation->sim_dev->box;
 	if (simulation->n_compounds > 0)
 		loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms, simulation->simparams_host.step);
 	if (simulation->n_solvents > 0) {
 		//loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
-		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->box, atoms, solvent_offset, simulation->simparams_host.step);
+		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->sim_dev->box, atoms, solvent_offset, simulation->simparams_host.step);
 	}
 
 	cudaDeviceSynchronize();

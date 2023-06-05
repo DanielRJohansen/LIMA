@@ -7,24 +7,24 @@ using namespace LIMA_Print;
 void BoxBuilder::buildBox(Simulation* simulation) {
 	printH1("Building box", true, false);
 
-	simulation->box->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
+	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
+	simulation->box_host->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
 
-	SolventBlockHelpers::createSolventblockGrid(&simulation->box->solventblockgrid_circular_queue);
-	SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box->transfermodule_array);
+	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
+	SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box_host->transfermodule_array);
 
 
 	//solventblocks = new SolventBlockGrid{};
 	//solventblocks_prev = new SolventBlockGrid{};
 	//SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);	// TODO: remove the function called here, it is no longer needed
 
-	CompoundGrid::createCompoundGrid(&simulation->box->compound_grid);
+	CompoundGrid::createCompoundGrid(&simulation->box_host->compound_grid);
 	//EngineUtils::genericErrorCheck("")
 
 	//simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
-	simulation->box->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
+	simulation->box_host->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
-	simulation->box->bridge_bundle = new CompoundBridgeBundleCompact{};
+	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 	//simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
 	//simulation->box->dt = simulation->dt;	// Now done during movetodevice
@@ -46,46 +46,24 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCol
 	simulation->total_particles += compound_collection.total_compound_particles;
 
 
-	*simulation->box->bridge_bundle = compound_collection.bridgebundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	*simulation->box_host->bridge_bundle = compound_collection.bridgebundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 
-	simulation->box->bonded_particles_lut_manager = compound_collection.bp_lut_manager;	// TODO: release a unique ptr here!
+	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager;	// TODO: release a unique ptr here!
 
 	printf("CompoundCollection added to box\n");
 }
 
 void setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
-	int n_points = simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER;
-	printf("n points %d\n", n_points);
-	printf("Malloc %.2f MB on device for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER + sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER) * 1e-6));
-	printf("Malloc %.2f MB on host for data buffers\n", (float)((sizeof(double) * simulation.total_particles_upperbound * n_steps + sizeof(Float3) * simulation.total_particles_upperbound * n_steps) * 1e-6));
-	//cudaMallocManaged(&simulation->potE_buffer, sizeof(float) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);	// Can only log molecules of size 3 for now...
-	//simulation.potE_buffer = new float[simulation.total_particles_upperbound * n_steps];
+	size_t n_datapoints = simulation.total_particles_upperbound * n_steps;
+	printf("Malloc %.2f MB on host for data buffers\n", (float)((sizeof(double) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+
 	simulation.potE_buffer.resize(simulation.total_particles_upperbound * n_steps);
-
-	//cudaMallocManaged(&simulation.box->traj_buffer, sizeof(Float3) * simulation.total_particles_upperbound * STEPS_PER_LOGTRANSFER);
-	//simulation.traj_buffer = new Float3[simulation.total_particles_upperbound * n_steps];
 	simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
-
-	//simulation.temperature_buffer = new float[n_steps / STEPS_PER_THERMOSTAT + 1];
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
-
-#ifdef USEDEBUGF3
-	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
-	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
-#endif
 }
 
 void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
-	// TRAINING DATA and TEMPRARY OUTPUTS
-	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
-	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * simulation.n_compounds * STEPS_PER_TRAINDATATRANSFER;
-	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
-	printf("Reserving %.4f MB device mem for logging + training data\n", (float)((total_bytes) * 1e-6));
-	cudaMallocManaged(&simulation.box->outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
-
-	cudaMallocManaged(&simulation.box->data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds * STEPS_PER_TRAINDATATRANSFER);
-
 	uint64_t n_loggingdata_host = 10 * n_steps;
 	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds * (uint64_t)n_steps;
 	printf("Reserving %.4f GB host mem for logging + training data\n", (float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
@@ -98,25 +76,24 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	simulation->copyBoxVariables();
 	printf("Box contains %d compounds, %d bridges and %d solvents\n\n", simulation->n_compounds, simulation->n_bridges, simulation->n_solvents);
 
-
-	simulation->box->forcefield = new ForceField_NB{ forcefield };// Copy
+	// Copy forcefield to sim
+	simulation->box_host->forcefield = new ForceField_NB{ forcefield };// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });
 	setupDataBuffers(*simulation, n_steps);
 	setupTrainingdataBuffers(*simulation, n_steps);
-
-
-
 	EngineUtils::genericErrorCheck("Error during log-data mem. allocation");	
 
 	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
 	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
 
-	simulation->box->moveToDevice();
+	//simulation->box->moveToDevice();
 
-	simulation->sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box);
-	simulation->sim_dev = genericMoveToDevice(simulation->sim_dev, 1);
+	// Move simulation to device
+	//simulation->moveToDevice();
+
+
 
 	printH1("Boxbuild complete!", false, true);
 }
@@ -161,25 +138,25 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 
 int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, 0);
-	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
+	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
 
 	for (Float3 sol_pos : solvent_positions) {
-		if (simulation->box->n_solvents == MAX_SOLVENTS) {
+		if (simulation->box_host->n_solvents == MAX_SOLVENTS) {
 			printf("Too many solvents added!\n\n\n\n");
 			exit(1);
 		}
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(*simulation->box, sol_pos, true) && simulation->box->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 			
-			grid_0->addSolventToGrid(solventcoord, simulation->box->n_solvents);
-			grid_minus1->addSolventToGrid(solventcoord, simulation->box->n_solvents);
+			grid_0->addSolventToGrid(solventcoord, simulation->box_host->n_solvents);
+			grid_minus1->addSolventToGrid(solventcoord, simulation->box_host->n_solvents);
 
-			simulation->box->n_solvents++;
+			simulation->box_host->n_solvents++;
 		}
 	}
 
@@ -215,9 +192,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	//}
 	//m_logger.printToFile("nearestsolventsolvent.bin", closestNeighbor);
 
-	simulation->total_particles += simulation->box->n_solvents;
-	printf("%lu of %lld solvents added to box\n", simulation->box->n_solvents, solvent_positions.size());
-	return simulation->box->n_solvents;
+	simulation->total_particles += simulation->box_host->n_solvents;
+	printf("%lu of %lld solvents added to box\n", simulation->box_host->n_solvents, solvent_positions.size());
+	return simulation->box_host->n_solvents;
 }
 
 
@@ -225,7 +202,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 {
 	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
 
-	*simulation->box = SimUtils::copyToHost(boxsrc);
+	*simulation->box_host = SimUtils::copyToHost(boxsrc);
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
@@ -234,19 +211,19 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 		std::array<CompoundCoords, MAX_COMPOUNDS> coords_tsub1;
 
 		// Copy only the current and prev step to temporary storage
-		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, boxsrc_current_step, 0);
-		CompoundCoords* src_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, boxsrc_current_step - 1, 0);
+		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step, 0);
+		CompoundCoords* src_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step - 1, 0);
 		memcpy(coords_t0.data(), src_t0, coords_t0.size());
 		memcpy(coords_tsub1.data(), src_tsub1, coords_tsub1.size());
 
 		// Clear all of the data
 		for (size_t i = 0; i < box.coordarray_circular_queue_n_elements; i++) {
-			simulation->box->coordarray_circular_queue[i] = CompoundCoords{};
+			simulation->box_host->coordarray_circular_queue[i] = CompoundCoords{};
 		}
 
 		// Copy the temporary storage back into the queue
-		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, 0, 0);
-		CompoundCoords* dest_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
+		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, 0);
+		CompoundCoords* dest_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
 		memcpy(dest_t0, coords_t0.data(), coords_t0.size());
 		memcpy(dest_tsub1, coords_tsub1.data(), coords_tsub1.size());
 	}
@@ -258,18 +235,18 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 		auto solvents_tsub1 = std::make_unique<SolventBlockGrid>();
 
 		// Copy only the current and prev step to temporary storage
-		SolventBlockGrid* src_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, boxsrc_current_step);
-		SolventBlockGrid* src_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, boxsrc_current_step-1);
+		SolventBlockGrid* src_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, boxsrc_current_step);
+		SolventBlockGrid* src_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, boxsrc_current_step-1);
 		memcpy(solvents_t0.get(), src_t0, sizeof(SolventBlockGrid));
 		memcpy(solvents_tsub1.get(), src_tsub1, sizeof(SolventBlockGrid));
 
 		// Clear all of the data
-		delete[] simulation->box->solventblockgrid_circular_queue;
-		SolventBlockHelpers::createSolventblockGrid(&simulation->box->solventblockgrid_circular_queue);
+		delete[] simulation->box_host->solventblockgrid_circular_queue;
+		SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
 
 		// Copy the temporary storage back into the queue
-		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, 0);
-		SolventBlockGrid* dest_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
+		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
+		SolventBlockGrid* dest_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
 		memcpy(dest_t0, solvents_t0.get(), sizeof(SolventBlockGrid));
 		memcpy(dest_tsub1, solvents_tsub1.get(), sizeof(SolventBlockGrid));
 	}
@@ -316,16 +293,16 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}
 
-	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, 0, simulation->box->n_compounds);
+	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, simulation->box_host->n_compounds);
 	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
 
-	CompoundCoords& coords_prev = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box->coordarray_circular_queue, STEPS_PER_LOGTRANSFER-1, simulation->box->n_compounds);
+	CompoundCoords& coords_prev = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, STEPS_PER_LOGTRANSFER-1, simulation->box_host->n_compounds);
 	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
 
 	//coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
 	//coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
-	simulation->box->compounds[simulation->box->n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
+	simulation->box_host->compounds[simulation->box_host->n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 
 

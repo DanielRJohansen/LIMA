@@ -51,39 +51,39 @@ struct SimParams {
 
 struct DatabuffersDevice {
 	DatabuffersDevice(const DatabuffersDevice&) = delete;
-	DatabuffersDevice(size_t total_particles_upperbound);
-	//~DatabuffersDevice();
+	DatabuffersDevice(size_t total_particles_upperbound, int n_compounds);
+	void freeMembers();
 
 
 	float* potE_buffer = nullptr;				// For total energy summation
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
+
+	float* outdata = nullptr;					// Temp, for longging values to whatever
+	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
+	//Float3* debugdataf3 = nullptr;
 };
 
 
 // This goes on Device
 struct Box {
 	Box() {}
-	//~Box();
+	
 	void moveToDevice();				// Loses pointer to RAM location!
+	void deleteMembers(bool is_on_device);
 
-
-	Compound* compounds = nullptr;
 
 	uint32_t n_compounds = 0;
 	uint16_t n_solvents = 0;
 	uint32_t total_particles_upperbound = 0;
-
-
-	CompoundCoords* coordarray_circular_queue = nullptr;
 	static constexpr size_t coordarray_circular_queue_n_elements = MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
+
+	Compound* compounds = nullptr;
+	CompoundCoords* coordarray_circular_queue = nullptr;
 	SolventBlockGrid* solventblockgrid_circular_queue = nullptr;
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	CompoundGrid* compound_grid = nullptr;
-
 	NeighborList* compound_neighborlists = nullptr;
-	//------------------------------------//
-
 
 
 
@@ -91,14 +91,6 @@ struct Box {
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
-	
-
-	//float* potE_buffer = nullptr;				// For total energy summation
-	//Float3* traj_buffer = nullptr;				// Absolute positions [nm]
-
-	float* outdata = nullptr;					// Temp, for longging values to whatever
-	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
-	Float3* debugdataf3 = nullptr;
 
 
 	//float thermostat_scalar = 1.f;
@@ -106,8 +98,11 @@ struct Box {
 
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
-	SimulationDevice(const SimParams& params_host, Box* box);
-	void deleteMembers();
+	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box);
+	
+	// Recursively free members
+	void deleteMembers();  // Use cudaFree on *this immediately after
+
 
 	SimParams* params;
 	Box* box;
@@ -120,7 +115,6 @@ public:
 	Simulation(const SimParams& sim_params);
 
 	~Simulation();
-	void deleteBoxMembers();
 	void moveToDevice();
 	void copyBoxVariables();
 	void incStep() {
@@ -153,16 +147,18 @@ public:
 
 	float temperature = -1.f;			// Current temperature [k]
 
-	Box* box = nullptr;
+	std::unique_ptr<Box> box_host;
+	//Box* box = nullptr;
 
 	SimParams simparams_host;
 	//SimParams* simparams_device = nullptr;
 
 
-	//Box* box;
-	bool box_is_on_device = false;
+	//bool box_is_on_device = false;
 
-	Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search
+	//Compound* compounds_host = nullptr;				// For reading static data, for example during nlist-search
+	//std::unique_ptr<Compound> compounds_host;
+	std::vector<Compound> compounds_host;
 
 	// Box variable copies, here for ease of access.
 	int n_compounds = 0;

@@ -33,7 +33,7 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 	n_compounds = simulation->n_compounds;
 	compoundstates = new CompoundState[n_compounds];
 	compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
-	cudaMemcpy(compound_neighborlists, simulation->box->compound_neighborlists, sizeof(NeighborList) * n_compounds, cudaMemcpyDeviceToHost);
+	cudaMemcpy(compound_neighborlists, simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * n_compounds, cudaMemcpyDeviceToHost);
 
 	compoundgrid = new CompoundGrid{};
 	EngineUtils::genericErrorCheck("Error creating NListDataCollection");
@@ -183,7 +183,7 @@ namespace NListUtils {
 
 
 	void transferCompoundgridToDevice(Simulation* simulation, CompoundGrid* compoundgrid_host) {
-		cudaMemcpy(simulation->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+		cudaMemcpy(simulation->sim_dev->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
 		EngineUtils::genericErrorCheck("Error after transferring CompoundGrid to device");
 	}
 
@@ -283,12 +283,12 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
-	cudaMemcpy(simulation->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
 	EngineUtils::genericErrorCheck("Error after transferring compound neighborlists to device");
 
 	//cudaMemcpy(simulation->box->solvent_neighborlists, nlist_data_collection->solvent_neighborlists, sizeof(NeighborList) * simulation->n_solvents, cudaMemcpyHostToDevice);
 
-	cudaMemcpy(simulation->box->compound_grid, nlist_data_collection->compoundgrid, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->sim_dev->box->compound_grid, nlist_data_collection->compoundgrid, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
 	EngineUtils::genericErrorCheck("Error after transferring CompoundGrid to device");
 
 	updated_neighborlists_ready = 0;

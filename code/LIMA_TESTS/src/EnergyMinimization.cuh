@@ -20,14 +20,14 @@ bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(Environment::M
 
 	std::vector<float> closestSolvent;
 	auto solventgrid_pre_em = env->getCurrentSolventblockGrid();
-	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_pre_em.get(), env->getSim()->box->n_solvents, closestSolvent);
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_pre_em.get(), env->getSim()->n_solvents, closestSolvent);
 	logger.printToFile("solsoldist_prerun.bin", closestSolvent);
 	const float minradius_before = *std::min_element(closestSolvent.begin(), closestSolvent.end());
 
 	env->run(true);
 
 	auto solventgrid_post_em = env->getCurrentSolventblockGrid();
-	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_post_em.get(), env->getSim()->box->n_solvents, closestSolvent);
+	DEBUGUTILS::findAllNearestSolventSolvent(solventgrid_post_em.get(), env->getSim()->n_solvents, closestSolvent);
 	logger.printToFile("solsoldist_postrun.bin", closestSolvent);
 	const float minradius_after = *std::min_element(closestSolvent.begin(), closestSolvent.end());
 

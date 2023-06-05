@@ -92,7 +92,7 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 
 	cudaMemcpy(
 		&simulation->logging_data[step_relative * 10], 
-		simulation->box->outdata, 
+		simulation->sim_dev->databuffers->outdata, 
 		sizeof(float) * 10 * steps_to_transfer, 
 		cudaMemcpyDeviceToHost);
 
@@ -117,7 +117,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 void Engine::offloadTrainData() {
 	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
-	cudaMemcpy(&simulation->traindata_buffer[step_offset], simulation->box->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->traindata_buffer[step_offset], simulation->sim_dev->databuffers->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
 	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
 }
 
@@ -128,7 +128,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 
 
 	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
-	auto error = cudaMemcpy(compoundcoords_array, simulation->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	auto error = cudaMemcpy(compoundcoords_array, simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 	EngineUtils::genericErrorCheck(error);
 	
 
@@ -158,26 +158,26 @@ void Engine::deviceMaster() {
 
 
 
-	if (simulation->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
-		compoundBridgeKernel<<< simulation->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->box, simulation->sim_dev);	// Must come before compoundKernel()		// DANGER
+	if (simulation->sim_dev->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
+		compoundBridgeKernel<<< simulation->sim_dev->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->sim_dev);	// Must come before compoundKernel()		// DANGER
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->n_compounds > 0) {
-		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->box, simulation->sim_dev);
+		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 
 	cudaDeviceSynchronize();	// Prolly not necessary
 	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
-		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->box, simulation->sim_dev);
+		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
-			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->box, simulation->sim_dev);
+			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->sim_dev);
 		}
 	}
 	cudaDeviceSynchronize();

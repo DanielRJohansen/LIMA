@@ -197,14 +197,22 @@ bool doAnglebondBenchmark(Environment::Mode envmode) {
 	return true;
 }
 
-
 bool doDihedralbondBenchmark(Environment::Mode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/TorsionBenchmark/";
 	const std::string simpar = work_folder + "sim_params.txt";
-
 
 	auto ip = Environment::loadInputSimParams(simpar);
 	ip.n_steps = 100;
 
 	return TestMDStability::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01, ip);
+}
+
+bool doMethionineBenchmark(Environment::Mode envmode) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
+	const std::string simpar = work_folder + "sim_params.txt";
+
+	auto ip = Environment::loadInputSimParams(simpar);
+	ip.n_steps = 10;
+
+	return TestMDStability::loadAndRunBasicSimulation("Met", envmode, 0.01, ip);
 }

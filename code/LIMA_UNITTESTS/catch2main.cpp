@@ -28,6 +28,10 @@ namespace TestForceCorrectness {
 	TEST_CASE("TestForceCorrectness::DihedralBond") {
 		doDihedralbondBenchmark(envmode);
 	}
+
+	TEST_CASE("TestForceCorrectness::Methionine") {
+		doMethionineBenchmark(envmode);
+	}
 }
 
 namespace TestMDStability {
@@ -37,10 +41,14 @@ namespace TestMDStability {
 		SUCCEED();
 	}
 
+	TEST_CASE("TestMDStability::EightResiduesNoSolvent", "hey") {
+		REQUIRE(doEightResiduesNoSolvent(envmode, 0.0002));		
+	}
+
 	TEST_CASE("TestMDStability::ahhh") {
-		InputSimParams ip{ 100.f, 1 };
-		//auto env = TestUtils::basicSetup("SolventBenchmark", {ip}, envmode);
-		auto env = TestUtils::basicSetup("TorsionBenchmark", { ip }, envmode);
+		InputSimParams ip{ 100.f, 10 };
+		auto env = TestUtils::basicSetup("TenSolvents", {ip}, envmode);
+		//auto env = TestUtils::basicSetup("TorsionBenchmark", { ip }, envmode);
 		env->prepareForRun();
 		env->run(true);
 		//Environment env{ "aa", envmode };

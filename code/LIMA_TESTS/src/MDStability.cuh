@@ -52,6 +52,17 @@ namespace TestMDStability {
 		return std_dev < max_dev;
 	}
 
+	bool doEightResiduesNoSolvent(Environment::Mode envmode, float max_dev = 0.05) {
+		const std::string name = "T4LysozymeNoSolventSmall";
+		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
+		const std::string simpar = work_folder + "sim_params.txt";
+
+		auto ip = Environment::loadInputSimParams(simpar);
+		ip.n_steps = 100;
+
+		return TestMDStability::loadAndRunBasicSimulation(name, envmode, 0.01, ip);
+	}
+
 	static bool doMoleculeTranslationTest(std::string foldername) {
 		//auto env = TestUtils::basicSetup(foldername, SimulationParams{100, 10000});
 

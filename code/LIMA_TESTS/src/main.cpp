@@ -49,14 +49,14 @@ int main() {
 	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
-	doDihedralbondBenchmark(envmode);
+	//doDihedralbondBenchmark(envmode);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
 	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

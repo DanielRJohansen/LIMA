@@ -212,11 +212,11 @@ void Environment::postRunEvents() {
 	printH2();
 	
 	if (0) {
-		dumpToFile(simulation->logging_data, 10 * simulation->getStep(), out_dir + "logdata.bin");
+		dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");
 	}
 
 	if (simulation->sim_dev->params->critical_error_encountered) {
-		dumpToFile(simulation->traindata_buffer,
+		dumpToFile(simulation->trainingdata.data(),
 			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * simulation->getStep(),
 			out_dir + "sim_traindata.bin");
 	}

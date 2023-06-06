@@ -132,8 +132,11 @@ public:
 	std::vector<float> temperature_buffer;
 
 	// TODO: Make these vectors instead
-	Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
-	float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
+	//Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
+	//float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
+	std::vector<Float3> trainingdata;
+	std::vector<float> loggingdata;
+
 
 	uint32_t total_particles_upperbound = 0;
 	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!

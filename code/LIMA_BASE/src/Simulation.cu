@@ -47,9 +47,16 @@ void Box::deleteMembers(const bool is_on_device) {
 	}
 	else {
 		delete[] compounds;	// TODO: Finish this
-		delete[] bridge_bundle;
+		delete[] coordarray_circular_queue;
+		delete[] solventblockgrid_circular_queue;
+		delete[] transfermodule_array;
+
+		delete compound_grid;
 		delete[] compound_neighborlists;
-		//////delete[] box->solvent_neighborlists;
+
+		delete forcefield;
+
+		delete[] bridge_bundle;
 		delete[] bonded_particles_lut_manager;
 	}
 }

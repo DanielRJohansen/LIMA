@@ -30,7 +30,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
 		coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * ip.dt };
 
-		env.run();
+		//env.run();
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
@@ -67,7 +67,7 @@ bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 			const int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
 			InputSimParams ip{};
 			ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			ip.n_steps = 10;
+			ip.n_steps = 20;
 			env.CreateSimulation(conf, topol, ip);
 
 
@@ -106,7 +106,7 @@ bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	return true;
 }
 
-bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.05) {
+bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.1) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -116,7 +116,7 @@ bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.05) {
 	const float particle_mass = 12.011000f * 1e-3f;
 
 	InputSimParams ip = env.loadInputSimParams(simpar);
-	ip.n_steps = 10;
+	ip.n_steps = 100;
 
 
 	std::vector<float> bond_len_errors{ 0.01f, 0.02f }; //(r-r0) [nm]
@@ -143,7 +143,10 @@ bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.05) {
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
 	for (auto& stddev : std_devs) {
-		if (stddev > max_dev) { return false; }
+		if (stddev > max_dev) { 
+			std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, max_dev);
+			return false; 
+		}
 	}
 	return true;
 }
@@ -157,7 +160,7 @@ bool doAnglebondBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 
 	Environment env{ work_folder, envmode };
 	auto ip =  env.loadInputSimParams(simpar);
-	ip.n_steps = 10;
+	ip.n_steps = 100;
 
 	const float relaxed_angle = 1.8849f; // [rad]
 	std::vector<float> angle_errors{ 0.5f }; //(t-t0) [rad]

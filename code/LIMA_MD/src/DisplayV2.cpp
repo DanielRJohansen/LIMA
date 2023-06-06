@@ -11,6 +11,11 @@ Display::Display() :
     logger.finishSection();
 }
 
+Display::~Display() {
+#ifdef ENABLE_DISPLAY
+    glfwTerminate();
+#endif
+}
 
 void Display::drawFilledCircle(const RenderBall& ball) {
     float light = 0.5;
@@ -35,10 +40,11 @@ void Display::drawFilledCircle(const RenderBall& ball) {
 }
 
 
-void Display::drawBalls(RenderBall* balls, int n_balls) {
-    for (int i = n_balls-1; i >= 0; i--) {
-        RenderBall& ball = balls[i];
-        if (!ball.disable) { drawFilledCircle(ball); }
+void Display::drawBalls(const std::vector<RenderBall>& balls, int n_balls) {
+    for (const auto& ball : balls) {
+        if (!ball.disable) {
+            drawFilledCircle(ball);
+        }
     }
 }
 
@@ -53,7 +59,7 @@ void Display::render(Simulation* simulation) {
 #ifdef ENABLE_DISPLAY
     auto start = std::chrono::high_resolution_clock::now();
 
-    RenderBall* balls = rasterizer.render(simulation);
+    auto balls = rasterizer.render(simulation);
     glClear(GL_COLOR_BUFFER_BIT);
 
     drawBalls(balls, simulation->total_particles_upperbound);
@@ -63,8 +69,6 @@ void Display::render(Simulation* simulation) {
 
     std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, simulation->getStep(), simulation->temperature);
     glfwSetWindowTitle(window, window_text.c_str());
-
-    delete[] balls;
 
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -102,7 +106,7 @@ bool Display::initGLFW() {
         glfwTerminate();
         return 0;
     }
-    glfwSetWindowPos(window, screensize[0] - display_width - 50, 50);
+    glfwSetWindowPos(window, screensize[0] - display_width - 550, 50);
     logger.print("done\n");
 
     /* Make the window's context current */

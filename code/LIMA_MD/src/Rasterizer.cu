@@ -1,26 +1,23 @@
 #include "LIMA_MD/src/Rasterizer.cuh"
 #include "LIMA_ENGINE/include/EngineUtils.cuh"
 
+#include <algorithm>
 
 
 
-
-
-void mergeSortAPI(RenderBall* balls, int n_balls);
-
-
-RenderBall* Rasterizer::render(Simulation* simulation) {
+std::vector<RenderBall> Rasterizer::render(Simulation* simulation) {
 	solvent_offset = simulation->n_compounds * MAX_COMPOUND_PARTICLES;
 	n_threadblocks = (int)ceil((float)simulation->total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
 
 
-	RenderAtom* atoms = getAllAtoms(simulation);
+	RenderAtom* atoms_dev = getAllAtoms(simulation);
 
+    std::vector<RenderBall> balls_host = processAtoms(atoms_dev, simulation);
+    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y < b.pos.y; });
 
-	RenderBall* balls = processAtoms(atoms, simulation);
-	mergeSortAPI(balls, simulation->total_particles_upperbound);
+    cudaFree(atoms_dev);
 
-	return balls;
+	return balls_host;
 }
 
 
@@ -42,11 +39,6 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 
 	RenderAtom* atoms;
 	cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
-	//cudaMalloc(&atoms, sizeof(RenderAtom) * SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK);
-
-
-	//int solvent_blocks = (int)ceil((float)simulation->n_solvents / (float)THREADS_PER_LOADSOLVENTSATOMSKERNEL);
-
 
 	Box* box = simulation->sim_dev->box;
 	if (simulation->n_compounds > 0)
@@ -66,16 +58,15 @@ void Rasterizer::sortAtoms(RenderAtom* atoms, int dim) {
     cudaDeviceSynchronize();
 }
 
-RenderBall* Rasterizer::processAtoms(RenderAtom* atoms, Simulation* simulation) {
+std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, Simulation* simulation) {
     RenderBall* balls_device;
     cudaMalloc(&balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound);
     processAtomsKernel <<< n_threadblocks, RAS_THREADS_PER_BLOCK >>> (atoms, balls_device);
-    cudaDeviceSynchronize();
+    EngineUtils::genericErrorCheck("Error during rendering");
 
-    RenderBall* balls_host = new RenderBall[simulation->total_particles_upperbound];
-    cudaMemcpy(balls_host, balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound, cudaMemcpyDeviceToHost);
+    std::vector<RenderBall> balls_host(simulation->total_particles_upperbound);    
+    cudaMemcpy(balls_host.data(), balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound, cudaMemcpyDeviceToHost);
 
-    cudaFree(atoms);
     cudaFree(balls_device);
 
     return balls_host;
@@ -268,69 +259,4 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     
     const RenderBall ball(atom.pos, atom.radius, atom.color, atom.atom_type);
     balls[index] = ball;
-}
-
-
-RenderBall* merge(const RenderBall* left, int n_left, const RenderBall* right, int n_right) {
-    RenderBall* merged = new RenderBall[n_left + n_right];
-    int l = 0;
-    int r = 0;
-    int index = 0;
-
-    while (l < n_left && r < n_right) {
-        if (left[l].pos.y < right[r].pos.y) {
-            merged[index++] = left[l++];
-        }
-        else {
-            merged[index++] = right[r++];
-        }
-    }
-    while (l < n_left) { merged[index++] = left[l++]; }
-    while (r < n_right) { merged[index++] = right[r++]; }
-
-
-    return merged;
-}
-
-RenderBall* mergeSort(const RenderBall* atoms, const int l, const int r) {	// l and r are indexes of the two extremes
-    int m = (l + r) / 2;
-
-    RenderBall* left;
-    RenderBall* right;
-
-    //printf("step\n");
-    if (r - l > 1) {
-        //printf("l %d r %d\n", l, r);
-        left = mergeSort(atoms, l, m - 1);
-        right = mergeSort(atoms, m, r);
-        RenderBall* merged = merge(left, m - l, right, r - m + 1);
-
-        if (l == m - 1)		// Take care of special case, where only left side can be a single object instead of array!
-            delete left;
-        else
-            delete[] left;
-        delete[] right;
-
-        return merged;
-    }
-    else if (r - l == 1) {
-        return merge(&atoms[l], 1, &atoms[r], 1);
-    }
-    else {
-        return new RenderBall(atoms[l]);
-    }
-}
-
-void mergeSortAPI(RenderBall* balls, int n_balls) {					// Returns a mapping where mapping[0] is the closest id, mapping [1] seconds closest, so on
-
-
-    RenderBall* sorted_balls = mergeSort(balls, 0, n_balls - 1);
-    for (int i = 0; i < n_balls; i++) {
-        balls[i] = sorted_balls[i];
-    }
-
-    int* mapping = new int[n_balls];
-    //for (int i = 0; i < n_atoms; i++) mapping[i] = sorted_atoms[i].id;
-
-    delete[] sorted_balls;
 }

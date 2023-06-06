@@ -22,6 +22,7 @@
 class Display {
 public:
 	Display();
+	~Display();
 	void render(Simulation* simulation);
 	void animate(Trajectory* traj);
 
@@ -34,8 +35,7 @@ private:
 	bool initGLFW();
 
 	void drawFilledCircle(const RenderBall& ball);
-	void drawBalls(RenderBall* balls, int n_balls);
-	uint8_t* enhance(uint8_t* im, int from_size);	// doubles image resolution
+	void drawBalls(const std::vector<RenderBall>& balls, int n_balls);
 
 	int xyToIndex(int x, int y, int size_x) {
 		return (x + y * size_x) * 4;

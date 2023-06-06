@@ -65,10 +65,12 @@ void setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 
 void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	uint64_t n_loggingdata_host = 10 * n_steps;
-	uint64_t n_traindata_host = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds * (uint64_t)n_steps;
+	uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds;
 	printf("Reserving %.4f GB host mem for logging + training data\n", (float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
-	simulation.logging_data = new float[n_loggingdata_host];
-	simulation.traindata_buffer = new Float3[n_traindata_host];
+	//simulation.logging_data = new float[n_loggingdata_host];
+	//simulation.traindata_buffer = new Float3[n_traindata_host];
+	simulation.loggingdata.resize(n_loggingdata_host);
+	simulation.trainingdata.resize(n_traindata_host);
 }
 
 void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {

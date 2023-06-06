@@ -22,18 +22,17 @@ class Rasterizer {
 public:
 	Rasterizer() {};
 	
-	RenderBall* render(Simulation* simulation);
+	std::vector<RenderBall> render(Simulation* simulation);
 
-	//int actual_n_particles;
-	//int n_particles_upperbound;
 	int solvent_offset = 0;
 
 private:
+	/// <summary>	/// Returns a pointer to a list of atoms on the device	/// </summary>
 	RenderAtom* getAllAtoms(Simulation* simulation);
+
 	void sortAtoms(RenderAtom* atoms, int dim);
-	RenderBall* processAtoms(RenderAtom* atoms, Simulation* simulation);
+	std::vector<RenderBall> processAtoms(RenderAtom* atoms, Simulation* simulation);
 
 
 	int n_threadblocks = 0;
-	//int actual_n_particles;
 };

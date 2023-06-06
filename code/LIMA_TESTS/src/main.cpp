@@ -42,8 +42,11 @@ int main() {
 	//loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002, { ip }, true);
 
 	//doPoolBenchmark();
-
+	//doSinglebondBenchmark(envmode);
+	//doAnglebondBenchmark(envmode);
 	//basicBenchmark(env);
+	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
+
 
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
@@ -52,7 +55,10 @@ int main() {
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
 	//doDihedralbondBenchmark(envmode);
 
-	doEightResiduesNoSolvent(envmode);
+	auto func = []() {doPoolBenchmark(envmode); };
+	TestUtils::stressTest(func, 50);
+
+	//doEightResiduesNoSolvent(envmode);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");

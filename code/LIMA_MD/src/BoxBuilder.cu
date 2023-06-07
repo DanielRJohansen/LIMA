@@ -12,25 +12,14 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
-	//SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box_host->transfermodule_array);
 	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlockGrid::blocks_total];
 
-	//solventblocks = new SolventBlockGrid{};
-	//solventblocks_prev = new SolventBlockGrid{};
-	//SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);	// TODO: remove the function called here, it is no longer needed
 
 	simulation->box_host->compound_grid = new CompoundGrid();
-	//CompoundGrid::createCompoundGrid(&simulation->box_host->compound_grid);
-	// 
-	//EngineUtils::genericErrorCheck("")
 
-	//simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
 	simulation->box_host->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
-	//simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
-
-	//simulation->box->dt = simulation->dt;	// Now done during movetodevice
 
 	simulation->box_host->owns_members = true; // I guess this sorta requires all ptr's to be allocated in the same scope otherwise the destructor will fail with this param / or not get all members
 
@@ -72,8 +61,7 @@ void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	uint64_t n_loggingdata_host = 10 * n_steps;
 	uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds;
 	printf("Reserving %.4f GB host mem for logging + training data\n", (float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
-	//simulation.logging_data = new float[n_loggingdata_host];
-	//simulation.traindata_buffer = new Float3[n_traindata_host];
+
 	simulation.loggingdata.resize(n_loggingdata_host);
 	simulation.trainingdata.resize(n_traindata_host);
 }

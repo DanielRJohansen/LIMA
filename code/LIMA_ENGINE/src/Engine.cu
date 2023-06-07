@@ -131,25 +131,21 @@ void Engine::offloadTrainData() {
 void Engine::bootstrapTrajbufferWithCoords() {
 	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
-
-	CompoundCoords* compoundcoords_array = new CompoundCoords[simulation->n_compounds];
-	auto error = cudaMemcpy(compoundcoords_array, simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	std::vector<CompoundCoords> compoundcoords_array(simulation->n_compounds);
+	auto error = cudaMemcpy(compoundcoords_array.data(), simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 	EngineUtils::genericErrorCheck(error);
 	
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-			const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
 
-			//simulation->traj_buffer[index] = compoundcoords_array[compound_id].getAbsolutePositionLM(particle_id);
+			const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
 			simulation->traj_buffer[buffer_index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
 		}
 	}
 
 	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
-
-	delete[] compoundcoords_array;
 }
 
 

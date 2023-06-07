@@ -518,6 +518,8 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 	bp_lut_manager = new BondedParticlesLUTManager{0};
+	//auto bp_lut_manager = std::make_unique<BondedParticlesLUTManager>(0);
+
 
 	// Distribute single bonds
 	for (auto& bond_ids : singlebonds) {	// gro 1-indexed ids

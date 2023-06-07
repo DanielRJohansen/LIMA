@@ -48,7 +48,7 @@ public:
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
-	Float3* analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
+	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
 	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
 
 	void moveAndPadData(Simulation* sim, uint64_t steps_in_kernel, uint64_t step_offset);

@@ -111,9 +111,10 @@ const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
 
 
 
-NBAtomtype* Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
-	NBAtomtype* atomtypes = new NBAtomtype[10000];
-	int ptr = 0;
+std::vector<NBAtomtype> Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
+	//NBAtomtype* atomtypes = new NBAtomtype[10000];
+	nb_atomtypes.reserve(10000);
+	//int ptr = 0;
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : summary_rows) {
@@ -129,16 +130,20 @@ NBAtomtype* Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
 				//cout << e << '\t';
 			//printf("\n");
 			// Row is type, id, weight [g], sigma [nm], epsilon [J/mol]
-			atomtypes[ptr++] = NBAtomtype(stof(row[2]), stof(row[3]), stof(row[4]));
+
+			//atomtypes[ptr++] = NBAtomtype(stof(row[2]), stof(row[3]), stof(row[4]));
+			nb_atomtypes.push_back(NBAtomtype{ stof(row[2]), stof(row[3]), stof(row[4]) });
 		}			
 	}
-	n_nb_atomtypes = ptr;
-	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", ptr); }
-	return atomtypes;
+	//n_nb_atomtypes = ptr;
+	n_nb_atomtypes = nb_atomtypes.size();
+	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", n_nb_atomtypes); }
+	return nb_atomtypes;
 }
 
-int* Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
-	int* atomtype_ids = new int[10000];
+std::vector<int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
+	const int max_ids = 10000;
+	nb_atomtype_ids.resize(max_ids);
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : forcefield_rows) {
@@ -148,13 +153,15 @@ int* Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// r
 		}
 
 		if (current_state == NB_ATOMTYPES) {
-			atomtype_ids[stoi(row[0])] = stoi(row[1]);
+			assert(stoi(row[0]) < max_ids);
+			nb_atomtype_ids[stoi(row[0])] = stoi(row[1]);
 			n_atoms++;
 		}
 			
 	}
 	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", n_atoms); }
-	return atomtype_ids;
+
+	return nb_atomtype_ids;
 }
 
 std::vector<SingleBond> Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {

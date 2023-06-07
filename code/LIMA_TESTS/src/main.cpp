@@ -59,7 +59,7 @@ int main() {
 	//TestUtils::stressTest(func, 500);
 
 	doEightResiduesNoSolvent(envmode);
-	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");

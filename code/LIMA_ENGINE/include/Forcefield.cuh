@@ -61,10 +61,11 @@ private:
 	ForceField_NB forcefield;
 
 
-	int* nb_atomtype_ids = nullptr;
+	//int* nb_atomtype_ids = nullptr;
+	std::vector<int> nb_atomtype_ids;
 	int n_atoms = 0;
 
-	NBAtomtype* nb_atomtypes = nullptr;
+	std::vector<NBAtomtype> nb_atomtypes;
 	int n_nb_atomtypes = 0;
 
 	std::vector<SingleBond> topol_bonds;
@@ -98,9 +99,9 @@ private:
 	
 
 	
-	NBAtomtype* parseAtomTypes(vector<vector<string>> summary_rows);
+	std::vector<NBAtomtype> parseAtomTypes(vector<vector<string>> summary_rows);
 
-	int* parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
+	std::vector<int> parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
 
 	std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
 	std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);

@@ -10,7 +10,6 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 	vector<NB_Atomtype> filtered_list;
 
 	filtered_list.push_back(forcefield[0]);				// Solvent is not present in topology, so we force it to be added here!
-	//string* mappings = new string[10000];
 	for (string type : active_types) {
 		bool found = false;
 		string alias = type;

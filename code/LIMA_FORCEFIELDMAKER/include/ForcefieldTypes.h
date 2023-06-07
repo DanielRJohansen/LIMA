@@ -149,13 +149,10 @@ struct Map {
 
 
 	Map() {
-		mappings = new Mapping[10000];
-	}
-	~Map() {
-		delete[] mappings;
+		mappings.resize(10000);
 	}
 
-	Mapping* mappings;
+	std::vector<Mapping> mappings;
 	int n_mappings = 0; 
 
 	bool mapExists(std::string l) {

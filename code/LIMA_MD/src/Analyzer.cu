@@ -116,8 +116,6 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	const auto n_steps = simulation->getStep();
 	if (simulation->getStep() < 3) { return Analyzer::AnalyzedPackage(); }
 
-	//printf("Analyzer malloc %.4f GB on host\n", sizeof(Float3) * analysable_steps * 1e-9);
-	//Float3* average_energy = new Float3[analysable_steps];
 	std::vector<Float3> average_energy;
 	average_energy.resize(n_steps - 2);	// Ignore first and last step
 
@@ -136,7 +134,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		// Create a array of len 1002, where index 0 and 1001 are padded values
 		moveAndPadData(simulation, steps_in_kernel, step_offset);
 
-		Float3* average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
+		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
 		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);
 
 		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
@@ -144,7 +142,6 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 			if (step == -1 || step >= n_steps-2u) { continue; }	// Dont save first step, as the kinE is slightly wrong
 			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);
 		}
-		delete[] average_solvent_energy;
 	}
 
 	cudaFree(traj_buffer_device);
@@ -174,31 +171,28 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 
-	cudaDeviceSynchronize();
 	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer\n");
 }
 
 // TODO: Fix this fucntion like the compound one
-Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
+std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
 	// Start by creating array of energies of value 0
-	Float3* average_solvent_energy = new Float3[n_steps];
-	for (int i = 0; i < n_steps; i++)
-		average_solvent_energy[i] = Float3(0.f);
+	std::vector<Float3> average_solvent_energy(n_steps);
 
 	// If any solvents are present, fill above array
 	if (simulation->n_solvents > 0) {
 
-		Float3* average_solvent_energy_blocked = new Float3[n_steps * simulation->blocks_per_solventkernel];
+		std::vector<Float3> average_solvent_energy_blocked(n_steps * simulation->blocks_per_solventkernel);
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
 		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
-		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
-		cudaMemcpy(average_solvent_energy_blocked, data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
+		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
+		cudaFree(data_out);
 
 		for (uint64_t step = 0; step < n_steps; step++) {
 			average_solvent_energy[step] = Float3(0.f);
@@ -208,8 +202,6 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 			average_solvent_energy[step] *= (1.f / simulation->n_solvents);
 		}
 
-		cudaFree(data_out);
-		delete[] average_solvent_energy_blocked;
 	}
 
 	return average_solvent_energy;
@@ -219,16 +211,10 @@ Float3* Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps)
 std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
 	uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
 
-	//Float3* average_compound_energy = new Float3[n_steps];
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
-	//total_compound_energy.resize(steps_in_kernel);
-
-	for (int i = 0; i < steps_in_kernel; i++)
-		total_compound_energy[i] = Float3(0.f);
-
 
 	if (simulation->total_compound_particles > 0) {
-		Float3* host_data = new Float3[n_datapoints];
+		std::vector<Float3> host_data(n_datapoints);
 
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
@@ -238,8 +224,8 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		cudaDeviceSynchronize();
 		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
-		cudaMemcpy(host_data, data_out, sizeof(Float3) * n_datapoints, cudaMemcpyDeviceToHost);
-		cudaDeviceSynchronize();
+		cudaMemcpy(host_data.data(), data_out, sizeof(Float3) * n_datapoints, cudaMemcpyDeviceToHost);
+		cudaFree(data_out);
 
 
 		for (uint64_t step = 0; step < steps_in_kernel; step++) {
@@ -249,8 +235,6 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 			//total_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
 		}
 
-		cudaFree(data_out);
-		delete[] host_data;
 	}
 
 	return total_compound_energy;

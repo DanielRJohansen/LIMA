@@ -30,12 +30,10 @@ void inline addNeighborIfEligible(HashTable& currentNeighbors,
 
 
 NListDataCollection::NListDataCollection(Simulation* simulation) {
-	n_compounds = simulation->n_compounds;
-	compoundstates = new CompoundState[n_compounds];
-	compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
-	cudaMemcpy(compound_neighborlists, simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * n_compounds, cudaMemcpyDeviceToHost);
+	compound_neighborlists.resize(MAX_COMPOUNDS);
+	cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
-	compoundgrid = new CompoundGrid{};
+	compoundgrid = std::make_unique<CompoundGrid>();
 	EngineUtils::genericErrorCheck("Error creating NListDataCollection");
 }
 
@@ -45,7 +43,7 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	// For the very first step, engine has cheated and already written the traj from the initial setup.	
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
 
-	for (int compound_id = 0; compound_id < n_compounds; compound_id++) {
+	for (int compound_id = 0; compound_id < simulation.n_compounds; compound_id++) {
 		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
 
 		compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
@@ -61,7 +59,7 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 
 namespace NListUtils {
 	void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist) {
-		for (int id_self = 0; id_self < nlist->n_compounds; id_self++) {
+		for (int id_self = 0; id_self < simulation->n_compounds; id_self++) {
 			NeighborList* nlist_self = &nlist->compound_neighborlists[id_self];
 			float cutoff_add_self = simulation->compounds_host[id_self].radius;
 
@@ -131,9 +129,6 @@ namespace NListUtils {
 
 		const float dist = EngineUtils::calcHyperDistNM(&querycompound_pos, &currentnode_pos);
 
-		//const NodeIndex nodeindex_querycompound = nlist_data_collection.compound_origos[querycompound_id];
-		//const float dist = LIMAPOSITIONSYSTEM::calcHyperDist(nodeindex_querycompound, nodeindex_self);
-
 		const float querycompound_radius = simulation.compounds_host[querycompound_id].radius;	// Is this nm or lm?=?!??!!
 
 		return dist < (CUTOFF_NM + querycompound_radius);
@@ -174,17 +169,10 @@ namespace NListUtils {
 
 
 	void updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist) {
-		*nlist->compoundgrid = CompoundGrid{};	// Reset the grid
+		nlist->compoundgrid = std::make_unique<CompoundGrid>();	// Reset the grid. Maybe there is a way to do this faster?
 
 		distributeCompoundsInGrid(simulation, *nlist);
 		assignNearbyCompoundsToGridnodes(simulation, nlist);
-		//NListUtils::transferCompoundgridToDevice(simulation, compoundgrid_host);
-	}
-
-
-	void transferCompoundgridToDevice(Simulation* simulation, CompoundGrid* compoundgrid_host) {
-		cudaMemcpy(simulation->sim_dev->box->compound_grid, compoundgrid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
-		EngineUtils::genericErrorCheck("Error after transferring CompoundGrid to device");
 	}
 
 
@@ -230,9 +218,9 @@ namespace NListUtils {
 // ------------------------------------------------------------------------------------------- PUBLIC INTERFACE -------------------------------------------------------------------------------------------//
 
 NListManager::NListManager(Simulation* simulation) {
-	nlist_data_collection = new NListDataCollection(simulation);
+	nlist_data_collection = std::make_unique<NListDataCollection>(simulation);
 
-	for (int i = 0; i < nlist_data_collection->n_compounds; i++) {
+	for (int i = 0; i < simulation->n_compounds; i++) {
 		nlist_data_collection->compound_neighborlists[i].associated_id = i;
 	}
 }
@@ -263,11 +251,11 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 	}
 
 	if (async && !force_update) {
-		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection, &updated_neighborlists_ready, timing, std::ref(m_mutex), step);
+		std::thread nlist_worker(NListUtils::updateNeighborLists, simulation, nlist_data_collection.get(), &updated_neighborlists_ready, timing, std::ref(m_mutex), step);
 		nlist_worker.detach();
 	}
 	else {
-		NListUtils::updateNeighborLists(simulation, nlist_data_collection, &updated_neighborlists_ready, timing, m_mutex, step);
+		NListUtils::updateNeighborLists(simulation, nlist_data_collection.get(), &updated_neighborlists_ready, timing, m_mutex, step);
 	}
 	prev_update_step = step;
 
@@ -283,12 +271,12 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
-	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists.data(), sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
 	EngineUtils::genericErrorCheck("Error after transferring compound neighborlists to device");
 
 	//cudaMemcpy(simulation->box->solvent_neighborlists, nlist_data_collection->solvent_neighborlists, sizeof(NeighborList) * simulation->n_solvents, cudaMemcpyHostToDevice);
 
-	cudaMemcpy(simulation->sim_dev->box->compound_grid, nlist_data_collection->compoundgrid, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->sim_dev->box->compound_grid, nlist_data_collection->compoundgrid.get(), sizeof(CompoundGrid), cudaMemcpyHostToDevice);
 	EngineUtils::genericErrorCheck("Error after transferring CompoundGrid to device");
 
 	updated_neighborlists_ready = 0;

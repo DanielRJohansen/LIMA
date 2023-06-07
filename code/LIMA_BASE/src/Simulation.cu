@@ -1,5 +1,8 @@
 #include "Simulation.cuh"
 
+Box::~Box() {
+	if (owns_members) { deleteMembers(); }
+}
 
 void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
@@ -13,26 +16,29 @@ void Box::moveToDevice() {
 	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
 	solventblockgrid_circular_queue = genericMoveToDevice(solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
 
+	transfermodule_array = genericMoveToDevice(transfermodule_array, SolventBlockGrid::blocks_total);
+	compound_grid = genericMoveToDevice(compound_grid, 1);
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
-	//solvent_neighborlists = genericMoveToDevice(solvent_neighborlists, MAX_SOLVENTS);		// TODO: are we still using these??!
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
 	forcefield = genericMoveToDevice(forcefield, 1);
 
 	cudaDeviceSynchronize();
+	is_on_device = true;
 	printf("Box transferred to device\n");
 }
 
-void Box::deleteMembers(const bool is_on_device) {
+void Box::deleteMembers() {
 	if (is_on_device) {
 		cudaFree(compounds);
 		cudaFree(coordarray_circular_queue);
 		cudaFree(solventblockgrid_circular_queue);
-		cudaFree(transfermodule_array);
 
-		cudaFree(compound_grid);		
+		cudaFree(transfermodule_array);
+		cudaFree(compound_grid);
+
 		cudaFree(compound_neighborlists);
 
 		cudaFree(forcefield);
@@ -46,7 +52,7 @@ void Box::deleteMembers(const bool is_on_device) {
 		cudaFree(box->data_GAN);*/
 	}
 	else {
-		delete[] compounds;	// TODO: Finish this
+		delete[] compounds;
 		delete[] coordarray_circular_queue;
 		delete[] solventblockgrid_circular_queue;
 		delete[] transfermodule_array;
@@ -54,35 +60,44 @@ void Box::deleteMembers(const bool is_on_device) {
 		delete compound_grid;
 		delete[] compound_neighborlists;
 
-		delete forcefield;
-
 		delete[] bridge_bundle;
 		delete[] bonded_particles_lut_manager;
+
+		// TMP, forcefield should maybe come with other members?
+		if (forcefield) { delete forcefield; }
+
+	}
+	owns_members = false;	
+	cudaDeviceSynchronize();
+	auto cuda_status = cudaGetLastError();
+	if (cuda_status != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+		exit(1);
 	}
 }
 
-Box SimUtils::copyToHost(const Box* box_dev) {
-	Box box{};
-	cudaMemcpy(&box, box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
+std::unique_ptr<Box> SimUtils::copyToHost(const Box* box_dev) {
+	auto box = std::make_unique<Box>();
 
-	//const Compound** cs = &box.compounds;
-	genericCopyToHost(&box.compounds, MAX_COMPOUNDS);
-	genericCopyToHost(&box.bridge_bundle, 1);
+	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
 
-	genericCopyToHost(&box.coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
-	genericCopyToHost(&box.solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+	genericCopyToHost(&box->compounds, MAX_COMPOUNDS);
+	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	genericCopyToHost(&box->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
 
-	genericCopyToHost(&box.compound_neighborlists, MAX_COMPOUNDS);
+	genericCopyToHost(&box->transfermodule_array, SolventBlockGrid::blocks_total);
+	genericCopyToHost(&box->compound_grid, 1);
+
+	genericCopyToHost(&box->compound_neighborlists, MAX_COMPOUNDS);
 	
-	genericCopyToHost(&box.bonded_particles_lut_manager, 1);
-	genericCopyToHost(&box.forcefield, 1);
+	genericCopyToHost(&box->forcefield, 1);
 
+	genericCopyToHost(&box->bridge_bundle, 1);
+	genericCopyToHost(&box->bonded_particles_lut_manager, 1);
+	
 
-	//genericCopyToHost(box.solvent_neighborlists, MAX_COMPOUNDS);
-	//box.compounds = genericCopyToHost(box.compounds, box.n_compounds);
-	//box.bridge_bundle = genericCopyToHost(box.bridge_bundle, 1);
-
-	//box.coordarray_circular_queue = genericCopyToHost(box.coordarray_circular_queue)
+	box->owns_members = true;
+	box->is_on_device = false;
 	printf("Box copied to host\n");
 	return box;
 }
@@ -96,11 +111,12 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, std::unique_ptr
 	box_host->moveToDevice();
 	cudaMallocManaged(&box, sizeof(Box));
 	cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);
+	box_host->owns_members = false;
 	box_host.reset();
 }
 
 void SimulationDevice::deleteMembers() {
-	box->deleteMembers(true);
+	box->deleteMembers();
 	cudaFree(box);
 
 	databuffers->freeMembers();

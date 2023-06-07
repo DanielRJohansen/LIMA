@@ -10,15 +10,18 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
 
-	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
-	SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box_host->transfermodule_array);
 
+	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
+	//SolventBlockHelpers::createSolventblockTransfermodules(&simulation->box_host->transfermodule_array);
+	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlockGrid::blocks_total];
 
 	//solventblocks = new SolventBlockGrid{};
 	//solventblocks_prev = new SolventBlockGrid{};
 	//SolventBlockHelpers::setupBlockMetaOnHost(solventblocks, solventblocks_prev);	// TODO: remove the function called here, it is no longer needed
 
-	CompoundGrid::createCompoundGrid(&simulation->box_host->compound_grid);
+	simulation->box_host->compound_grid = new CompoundGrid();
+	//CompoundGrid::createCompoundGrid(&simulation->box_host->compound_grid);
+	// 
 	//EngineUtils::genericErrorCheck("")
 
 	//simulation->box->solvent_neighborlists = new NeighborList[MAX_SOLVENTS];	
@@ -28,6 +31,8 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	//simulation->box->bonded_particles_lut_manager = new BondedParticlesLUTManager{};
 
 	//simulation->box->dt = simulation->dt;	// Now done during movetodevice
+
+	simulation->box_host->owns_members = true; // I guess this sorta requires all ptr's to be allocated in the same scope otherwise the destructor will fail with this param / or not get all members
 
 	cudaDeviceSynchronize();
 	if (cudaGetLastError() != cudaSuccess) {
@@ -204,7 +209,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 {
 	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
 
-	*simulation->box_host = SimUtils::copyToHost(boxsrc);
+	simulation->box_host = SimUtils::copyToHost(boxsrc);
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{

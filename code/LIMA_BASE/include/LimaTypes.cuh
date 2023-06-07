@@ -13,7 +13,7 @@
 #include <sstream>
 #include <limits>
 #include "Constants.cuh"
-
+#include <vector>
 
 struct TestType {
 	static int get();
@@ -574,7 +574,7 @@ struct Trajectory {
 class HashTable {
 public:
 	HashTable(uint16_t* keys, int n_keys, int ts) : table_size(ts) {
-		table = new int[table_size]();
+		table.resize(table_size);
 		for (int i = 0; i < table_size; i++) {
 			table[i] = -1;
 		}
@@ -602,9 +602,7 @@ public:
 			return insert(key, offset * 2);
 		}
 	}
-	~HashTable() {
-		delete[] table;
-	}
+
 
 private:
 
@@ -613,7 +611,8 @@ private:
 	}
 
 
-	int* table = nullptr;
+	//int* table = nullptr;
+	std::vector<int> table;
 	int table_size = 0;
 	double k = 0.79026;
 };

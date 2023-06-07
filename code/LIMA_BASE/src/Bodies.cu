@@ -18,21 +18,7 @@ void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblock
 	}
 }
 
-__host__  void SolventBlockHelpers::createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array) {
-	const size_t array_bytesize = sizeof(SolventBlockTransfermodule) * SolventBlockGrid::blocks_total;
 
-	// Allocate the memory on device
-	cudaMalloc(transfermodule_array, array_bytesize);
-
-	// Initialize the memory on host, then transfer to dest on device
-	auto array_host = new SolventBlockTransfermodule[SolventBlockGrid::blocks_total];
-	for (int i = 0; i < SolventBlockGrid::blocks_total; i++) {
-		array_host[i].n_remain = 0;
-	}
-	cudaMemcpy(*transfermodule_array, array_host, array_bytesize, cudaMemcpyHostToDevice);
-
-	delete[] array_host;
-}
 
 
 

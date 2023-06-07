@@ -363,7 +363,7 @@ namespace SolventBlockHelpers {
 
 	void createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue);
 	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);	// Is this used?
-	__host__ void createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array);
+	//__host__ void createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array);
 
 	__device__ __host__ bool static isTransferStep(int step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
@@ -660,14 +660,6 @@ public:
 
 	// Returns ptr to the list of CompoundGridNodes on device. Transmit to from host
 	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }	// DOes this even make sense? Just use getBlockPtr?
-
-	__host__ static void createCompoundGrid(CompoundGrid** box_compoundgridptr) {
-		auto grid_host = new CompoundGrid{};
-
-		cudaMallocManaged(box_compoundgridptr, sizeof(CompoundGrid));
-		cudaMemcpy(*box_compoundgridptr, grid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
-		delete grid_host;
-	}
 
 //private:
 	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist

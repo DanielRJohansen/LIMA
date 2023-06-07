@@ -67,9 +67,9 @@ struct DatabuffersDevice {
 // This goes on Device
 struct Box {
 	Box() {}
-	
+	~Box();
 	void moveToDevice();				// Loses pointer to RAM location!
-	void deleteMembers(bool is_on_device);
+	void deleteMembers();
 
 
 	uint32_t n_compounds = 0;
@@ -77,12 +77,18 @@ struct Box {
 	uint32_t total_particles_upperbound = 0;
 	static constexpr size_t coordarray_circular_queue_n_elements = MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
 
+	// flags used for destructing only!
+	bool is_on_device = false;
+	bool owns_members = false;
+	//bool marked_for_delete = true;
+
 	Compound* compounds = nullptr;
 	CompoundCoords* coordarray_circular_queue = nullptr;
 	SolventBlockGrid* solventblockgrid_circular_queue = nullptr;
-	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
+	SolventBlockTransfermodule* transfermodule_array = nullptr;
 	CompoundGrid* compound_grid = nullptr;
+
 	NeighborList* compound_neighborlists = nullptr;
 
 
@@ -164,5 +170,5 @@ public:
 };
 
 namespace SimUtils {
-	Box copyToHost(const Box* box_dev);
+	std::unique_ptr<Box> copyToHost(const Box* box_dev);
 };

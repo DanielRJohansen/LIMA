@@ -55,17 +55,18 @@ int main() {
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
 	//doDihedralbondBenchmark(envmode);
 
-	auto func = []() {doPoolBenchmark(envmode); };
-	TestUtils::stressTest(func, 50);
+	//auto func = []() {doPoolBenchmark(envmode); };
+	//TestUtils::stressTest(func, 500);
 
-	//doEightResiduesNoSolvent(envmode);
+	doEightResiduesNoSolvent(envmode);
+	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");
 	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
 	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
 	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+	
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
 	

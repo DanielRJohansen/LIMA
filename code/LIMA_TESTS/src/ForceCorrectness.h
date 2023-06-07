@@ -22,7 +22,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-		ip.n_steps = 10;
+		ip.n_steps = 50;
 		env.CreateSimulation(conf, topol, ip);
 
 		Box* box_host = env.getSimPtr()->box_host.get();
@@ -30,7 +30,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		coordarray_prev_ptr[0].rel_positions[0] += Coord{ (Float3(-1, 0, 0) * vel) * ip.dt };
 		coordarray_prev_ptr[1].rel_positions[0] += Coord{ (Float3(1, 0, 0) * vel) * ip.dt };
 
-		//env.run();
+		env.run();
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);

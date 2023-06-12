@@ -26,13 +26,25 @@ private:
 	const std::string molecule_dir;
 	const std::string forcefield_dir;
 
+	const bool m_verbose;
+
+
 	std::string conf_path = "";
 	std::string topol_path = "";
 	std::string ff_bonded_path = "";
 	std::string ff_nonbonded_path = "";
 	
-
 	LimaLogger logger;
+
+
+
+
+
+
+
+
+
+
 
 
 

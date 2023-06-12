@@ -13,7 +13,7 @@ Environment::Environment(const string& wf, EnvMode mode)
 	: work_folder(wf)
 	, m_mode(mode)
 	, forcefield{ mode == EnvMode::Headless ? SILENT : V1}
-	, m_logger{ LimaLogger::compact, m_mode, "environment", work_folder }
+	, m_logger{ LimaLogger::compact, m_mode, "environment", wf }
 {
 	switch (mode)
 	{
@@ -33,7 +33,14 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
-	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
+	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
+		&forcefield, 
+		work_folder, 
+		SILENT, 
+		gro_path, 
+		topol_path,
+		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "moleculebuilder", work_folder),
+		true);
 
 
 	SimParams simparams{ ip };
@@ -90,8 +97,6 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	auto a = static_cast<int>(static_cast<double>(_BOX_LEN_PM) * 1000);
 	// Assert that boxlen is a multiple of nodelen
 	assert((static_cast<int>(static_cast<double>(_BOX_LEN_PM)*1000) % BOXGRID_NODE_LEN_pico) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
-
-	printf("Simulation parameters verified\n");
 }
 
 void Environment::verifyBox() {
@@ -119,8 +124,6 @@ void Environment::verifyBox() {
 			}
 		}
 	}
-
-	printf("Environment::verifyBox success\n");
 }
 
 bool Environment::prepareForRun() {
@@ -173,7 +176,7 @@ void Environment::sayHello() {
 void Environment::run(bool em_variant) {
 	if (!prepareForRun()) { return; }
 
-	m_logger.startSection("Simulation started\n");
+	m_logger.startSection("Simulation started");
 
 	time0 = std::chrono::high_resolution_clock::now();
 	while (true) {
@@ -198,7 +201,7 @@ void Environment::run(bool em_variant) {
 	simulation->ready_to_run = false;
 
 	engine->terminateSimulation();
-	m_logger.finishSection("Simulation Finished\n");
+	m_logger.finishSection("Simulation Finished");
 
 	if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
 		postRunEvents();
@@ -214,10 +217,13 @@ void Environment::postRunEvents() {
 	//std::filesystem::current_path(work_folder);
 	//std::filesystem::create_directories(out_dir);
 
-	// Nice to have for matlab stuff	
-	printH2();
-	LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->n_solvents, "max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->n_compounds);
-	printH2();
+	// Nice to have for matlab stuff
+	if (m_mode != Headless) {
+		printH2();
+		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->n_solvents, "max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->n_compounds);
+		printH2();
+	}
+	
 	
 	if (0) {
 		dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");
@@ -234,6 +240,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (POSTSIM_ANAL) {
+		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_folder));
 		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
 		dumpToFile(
 			postsim_anal_package.energy_data.data(),
@@ -268,8 +275,7 @@ void Environment::postRunEvents() {
 
 	simulation->ready_to_run = false;
 
-	m_logger.print("Post-run events finished Finished\n");
-	printf("\n\n\n");
+	m_logger.finishSection("Post-run events finished Finished");
 }
 
 
@@ -379,15 +385,17 @@ template <typename T>
 void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s) {	
 	char* file_path;
 	file_path = &file_path_s[0];
-	printf("Writing %.03Lf MB to binary file ", (long double) sizeof(T) * n_datapoints * 1e-6);
-	cout << file_path << '\n';
+
+	const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
+	m_logger.print("Writing " + str + "MB to binary file " + file_path);
 
 	FILE* file;
 
 #ifndef __linux__
 	if (!fopen_s(&file, file_path, "wb")) {
 
-		std::printf("Check %d %lld\n", static_cast<int>(sizeof(T)), n_datapoints);
+		assert(sizeof(T));
+		assert(n_datapoints);
 
 		fwrite(data, sizeof(T), n_datapoints, file);
 		fclose(file);

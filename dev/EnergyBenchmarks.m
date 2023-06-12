@@ -5,9 +5,9 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 5000;
+n_steps = 3000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "Met";
+benchmark = "Spring";
 % ------------------------------------ %
 
 workdir = "C:/PROJECTS/Quantom/Simulation/" + benchmark + "/Steps_" + string(n_steps)
@@ -35,7 +35,7 @@ title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")
-%xlim([0 200])
+xlim([0 200])
 hold off
 
 % Calculate and plot derivatives

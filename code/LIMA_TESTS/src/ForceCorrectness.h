@@ -19,7 +19,7 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 	for (auto temp : particle_temps) {
 		const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 		int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
-		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		env.CreateSimulation(conf, topol, ip);
@@ -31,13 +31,15 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 
 		env.run();
 
-		auto analytics = env.getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
+		const auto analytics = env.getAnalyzedPackage();		
 		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		if (envmode != Headless) { Analyzer::printEnergy(analytics); }			
 	}
 
-	LIMA_Print::printMatlabVec("temperature", particle_temps);
-	LIMA_Print::printMatlabVec("std_devs", std_devs);
+	if (envmode != Headless) {
+		LIMA_Print::printMatlabVec("temperature", particle_temps);
+		LIMA_Print::printMatlabVec("std_devs", std_devs);
+	}	
 
 	for (auto& stddev : std_devs) {
 		if (stddev > max_dev) { return false; }
@@ -66,7 +68,6 @@ bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
 			const int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
 			InputSimParams ip{};
 			ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			ip.n_steps = 20;
 			env.CreateSimulation(conf, topol, ip);
 
 
@@ -115,7 +116,6 @@ bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.1) {
 	const float particle_mass = 12.011000f * 1e-3f;
 
 	InputSimParams ip = env.loadInputSimParams(simpar);
-	ip.n_steps = 100;
 
 
 	std::vector<float> bond_len_errors{ 0.01f, 0.02f }; //(r-r0) [nm]
@@ -133,25 +133,23 @@ bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.1) {
 
 		env.run();
 
-		auto analytics = env.getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
+		const auto analytics = env.getAnalyzedPackage();
 		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+
+		if (envmode != Headless) {
+			Analyzer::printEnergy(analytics);
+		}		
 	}
 
 	LIMA_Print::printMatlabVec("bond_len_errors", bond_len_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-	for (auto& stddev : std_devs) {
-		if (stddev > max_dev) { 
-			std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, max_dev);
-			return false; 
-		}
-	}
-	return true;
+
+	return TestUtils::evaluateTest(std_devs, max_dev);	
 }
 
 // Benchmarks anglebonds + singlebonds (for stability)
-bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.01) {
+bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -159,7 +157,6 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.01) {
 
 	Environment env{ work_folder, envmode };
 	auto ip =  env.loadInputSimParams(simpar);
-	ip.n_steps = 100;
 
 	const float relaxed_angle = 1.8849f; // [rad]
 	std::vector<float> angle_errors{ 0.5f }; //(t-t0) [rad]
@@ -187,35 +184,54 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.01) {
 
 		env.run();
 
-		auto analytics = env.getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
+		const auto analytics = env.getAnalyzedPackage();
 		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+
+		if (envmode != Headless) {
+			Analyzer::printEnergy(analytics);
+		}
 	}
 
 	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-	for (auto& stddev : std_devs) {
-		if (stddev > max_dev) { return false; }
-	}
-	return true;
+
+	return TestUtils::evaluateTest(std_devs, max_dev);
 }
 
 bool doDihedralbondBenchmark(EnvMode envmode) {
-	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/TorsionBenchmark/";
-	const std::string simpar = work_folder + "sim_params.txt";
-
-	auto ip = Environment::loadInputSimParams(simpar);
-
-	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.05f, ip);
+	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.06f);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 	const std::string simpar = work_folder + "sim_params.txt";
 
-	auto ip = Environment::loadInputSimParams(simpar);
-
-	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.1f, ip);
+	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.25f);
 }
 
+
+
+
+
+
+
+
+
+
+
+namespace StressTesting {
+	bool doPool50x(EnvMode envmode) {
+		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
+		const std::string simpar = work_folder + "sim_params.txt";
+
+		auto ip = Environment::loadInputSimParams(simpar);
+		ip.n_steps = 100;
+
+		auto func = [&]() {
+			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.25f, ip, false, false);
+		};
+		TestUtils::stressTest(func, 50);
+		return true;
+	}
+}

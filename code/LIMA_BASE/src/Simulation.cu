@@ -8,7 +8,7 @@ void Box::moveToDevice() {
 	int bytes_total = sizeof(Compound) * n_compounds
 		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
-	printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
+	//printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
 
 	compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
@@ -27,7 +27,6 @@ void Box::moveToDevice() {
 
 	cudaDeviceSynchronize();
 	is_on_device = true;
-	printf("Box transferred to device\n");
 }
 
 void Box::deleteMembers() {
@@ -98,7 +97,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 
 	box->owns_members = true;
 	box->is_on_device = false;
-	printf("Box copied to host\n");
+	//printf("Box copied to host\n");
 	return box;
 }
 
@@ -178,11 +177,16 @@ SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt }
 
 DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds) {
 	// Permanent Outputs for energy & trajectory analysis
-	size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER;
-	printf("Malloc %.2f MB on device for data buffers\n", sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints);
+	{
+		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER;
+		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
+		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
+		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
 
-	cudaMallocManaged(&potE_buffer, sizeof(float) * n_datapoints);
-	cudaMallocManaged(&traj_buffer, sizeof(Float3) * n_datapoints);
+		cudaMallocManaged(&potE_buffer, sizeof(float) * n_datapoints);
+		cudaMallocManaged(&traj_buffer, sizeof(Float3) * n_datapoints);
+	}
+	
 
 #ifdef USEDEBUGF3
 	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
@@ -190,14 +194,20 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 #endif
 
 	// TRAINING DATA and TEMPRARY OUTPUTS
-	int n_loggingdata_device = 10 * STEPS_PER_LOGTRANSFER;
-	uint64_t n_traindata_device = static_cast<uint64_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER;
-	long double total_bytes = static_cast<long double>(sizeof(float) * static_cast<long double>(n_loggingdata_device) + sizeof(Float3) * n_traindata_device);
-	printf("Reserving %.4f MB device mem for logging + training data\n", (float)((total_bytes) * 1e-6));
+	{
+		size_t n_outdata = 10 * STEPS_PER_LOGTRANSFER;
+		size_t n_traindata = static_cast<size_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER;
+		assert(n_outdata && "Tried to create outdata buffer with 0 datapoints");
+		assert(n_traindata && "Tried to create traindata buffer with 0 datapoints");
+		
+		size_t bytesize_mb = (sizeof(float) * n_outdata + sizeof(Float3) * n_traindata) / 1'000'000;
+		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
 
-	cudaMallocManaged(&outdata, sizeof(float) * 10 * STEPS_PER_LOGTRANSFER);	// 10 data streams for 10k steps. 1 step at a time.
 
-	cudaMallocManaged(&data_GAN, sizeof(Float3) * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER);
+		cudaMallocManaged(&outdata, sizeof(float) * n_outdata);	// 10 data streams for 10k steps. 1 step at a time.
+		cudaMallocManaged(&data_GAN, sizeof(Float3) * n_traindata);
+	}
+	
 }
 
 void DatabuffersDevice::freeMembers() {

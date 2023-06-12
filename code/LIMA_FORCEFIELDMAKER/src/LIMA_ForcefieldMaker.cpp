@@ -25,7 +25,8 @@ using std::string;
 ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& default_ff_dir, const string& conf_file, const string& topol_file) :
 	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
 	forcefield_dir(default_ff_dir), 
-	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir)
+	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir),
+	m_verbose(envmode != Headless)
 {
 	ff_bonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffbonded.txt");
 	ff_nonbonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffnonbonded.txt");
@@ -52,15 +53,17 @@ vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
 	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, map, logger, false);
 }
 
-vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map) {
-	vector<Atom> atoms = Atom::parseTopolAtoms(topology_rows);
+vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map, bool verbose) {
+	vector<Atom> atoms = Atom::parseTopolAtoms(topology_rows, verbose);
 	Atom::assignAtomtypeIDs(&atoms, ff_nonbonded_active, map);
 	return atoms;
 }
 
-vector<Bondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms) {
-	vector<Bondtype> forcefield = Bondtype::parseFFBondtypes(*ffbonded_rows);
-	vector<Bondtype> topology_bonds = Bondtype::parseTopolBondtypes(*topology_rows);
+vector<Bondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+	vector<Bondtype> forcefield = Bondtype::parseFFBondtypes(*ffbonded_rows, verbose);
+	vector<Bondtype> topology_bonds = Bondtype::parseTopolBondtypes(*topology_rows, verbose);
+	
+
 
 	Bondtype::assignTypesFromAtomIDs(&topology_bonds, *atoms);
 	//Bondtype::assignFFParametersFromBondtypes(&topology_bonds, &ffbondtypes);
@@ -69,9 +72,9 @@ vector<Bondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector
 	return topology_bonds;
 }
 
-vector<Angletype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms) {
-	vector<Angletype> forcefield = Angletype::parseFFAngletypes(*ffbonded_rows);
-	vector<Angletype> topology_angles = Angletype::parseTopolAngletypes(*topology_rows);
+vector<Angletype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+	vector<Angletype> forcefield = Angletype::parseFFAngletypes(*ffbonded_rows, verbose);
+	vector<Angletype> topology_angles = Angletype::parseTopolAngletypes(*topology_rows, verbose);
 
 	Angletype::assignTypesFromAtomIDs(&topology_angles, *atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
@@ -79,9 +82,9 @@ vector<Angletype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vect
 	return topology_angles;
 }
 
-vector<Dihedraltype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms) {
-	vector<Dihedraltype> forcefield = Dihedraltype::parseFFDihedraltypes(ffbonded_rows);
-	vector<Dihedraltype> topology_dihedrals = Dihedraltype::parseTopolDihedraltypes(topology_rows);
+vector<Dihedraltype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms, bool verbose) {
+	vector<Dihedraltype> forcefield = Dihedraltype::parseFFDihedraltypes(ffbonded_rows, verbose);
+	vector<Dihedraltype> topology_dihedrals = Dihedraltype::parseTopolDihedraltypes(topology_rows, verbose);
 
 	Dihedraltype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
@@ -110,15 +113,15 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	vector<vector<string>> topology_rows = Reader::readFile(topol_path, logger);
 
 
-	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map);
+	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
 
 
 
-	vector<Bondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms);
+	vector<Bondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
 
-	vector<Angletype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, &atoms);
+	vector<Angletype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
 
-	vector<Dihedraltype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms);
+	vector<Dihedraltype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
 
 
 

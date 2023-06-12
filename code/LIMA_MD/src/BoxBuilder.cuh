@@ -48,7 +48,6 @@ private:
 
 
 	// ---------------------------------------------------- Variables ---------------------------------------------------- //
-	Box box;	// Local host version TODO: remove
 	const float box_len = BOX_LEN;
 	const float box_base = 0;
 

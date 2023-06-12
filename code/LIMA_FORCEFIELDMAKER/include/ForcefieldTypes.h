@@ -274,7 +274,7 @@ struct Atom {
 		return INACTIVE;
 	}
 
-	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows);
+	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
 
 
 	static bool assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias) {
@@ -333,9 +333,9 @@ struct Bondtype {
 
 	static std::string getBondtype() { return "bond"; }
 
-	static vector<Bondtype> parseFFBondtypes(vector<vector<string>> rows);
+	static vector<Bondtype> parseFFBondtypes(vector<vector<string>> rows, bool verbose);
 
-	static vector<Bondtype> parseTopolBondtypes(vector<vector<string>> rows);
+	static vector<Bondtype> parseTopolBondtypes(vector<vector<string>> rows, bool verbose);
 
 	static void assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom> atoms);
 
@@ -382,9 +382,9 @@ struct Angletype {
 
 	static const std::string getBondtype() { return "angle"; }
 
-	static vector<Angletype> parseFFAngletypes(vector<vector<string>> rows);
+	static vector<Angletype> parseFFAngletypes(vector<vector<string>> rows, bool verbose);
 
-	static vector<Angletype> parseTopolAngletypes(vector<vector<string>> rows);
+	static vector<Angletype> parseTopolAngletypes(vector<vector<string>> rows, bool verbose);
 
 	static void assignTypesFromAtomIDs(vector<Angletype>* topol_angles, vector<Atom> atoms);
 
@@ -441,9 +441,9 @@ struct Dihedraltype {
 
 	static const std::string getBondtype() { return "dihedral"; }
 
-	static vector<Dihedraltype> parseFFDihedraltypes(vector<vector<string>> rows);
+	static vector<Dihedraltype> parseFFDihedraltypes(vector<vector<string>> rows, bool verbose);
 
-	static vector<Dihedraltype> parseTopolDihedraltypes(vector<vector<string>> rows);
+	static vector<Dihedraltype> parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose);
 
 	static void assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals, vector<Atom> atoms);
 

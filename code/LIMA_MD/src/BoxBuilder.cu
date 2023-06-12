@@ -8,7 +8,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	m_logger->startSection("Building box");
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box_host->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
+	simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
 
 
 	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
@@ -211,7 +211,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxs
 		memcpy(coords_tsub1.data(), src_tsub1, bytesize);
 
 		// Clear all of the data
-		for (size_t i = 0; i < box.coordarray_circular_queue_n_elements; i++) {
+		for (size_t i = 0; i < Box::coordarray_circular_queue_n_elements; i++) {
 			simulation->box_host->coordarray_circular_queue[i] = CompoundCoords{};
 		}
 

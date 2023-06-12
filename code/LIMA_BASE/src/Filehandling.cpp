@@ -27,7 +27,6 @@ bool Filehandler::ignoreWord(const vector<string>& ignores, const string& word) 
 
 // Uses ';' and ' ' as delimiters
 vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
-	if (verbose) { cout << "Reading file " << path << endl; }
 	fstream file;
 	file.open(path);
 

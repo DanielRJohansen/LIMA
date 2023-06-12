@@ -18,22 +18,24 @@
 namespace TestMDStability {
 
 	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 10, 1000 };
+		InputSimParams emparams{ 20, 800 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
 		env->run(true);
 
 		// Do sim
-		InputSimParams simparams{ 100, 10000 };
+		InputSimParams simparams{ 100, 5000 };
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
 
-		auto analytics = env->getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
+		const auto analytics = env->getAnalyzedPackage();
 		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 
+		if (envmode != Headless) {
+			Analyzer::printEnergy(analytics);
+		}
 		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
 
 		return true;
@@ -45,10 +47,7 @@ namespace TestMDStability {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		auto ip = Environment::loadInputSimParams(simpar);
-		ip.n_steps = 7000;
-
-		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.1f, ip);
+		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.16f);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

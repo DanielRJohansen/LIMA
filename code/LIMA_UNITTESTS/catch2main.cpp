@@ -34,17 +34,17 @@ namespace TestForceCorrectness {
 	}
 
 	TEST_CASE("TestForceCorrectness::TenSolvents") {
-		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05f, {}, false));
+		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0005f));
 	}
 }
 
 namespace TestMDStability {
 
-	TEST_CASE("TestMDStability::EMRunSolvent", "hey") {
+	TEST_CASE("TestMDStability::EMRunSolvent") {
 		REQUIRE(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002f));
 	}
 
-	TEST_CASE("TestMDStability::EightResiduesNoSolvent", "hey") {
+	TEST_CASE("TestMDStability::EightResiduesNoSolvent") {
 		REQUIRE(doEightResiduesNoSolvent(envmode));		
 	}
 
@@ -61,9 +61,9 @@ namespace TestMDStability {
 	}
 }
 
+
 namespace StressTesting {
-	TEST_CASE("StressTesting::RepeatPool100x") {
-		auto func = []() {doPoolBenchmark(envmode); };
-		TestUtils::stressTest(func, 4);
+	TEST_CASE("StressTesting::RepeatPool50x") {
+		doPool50x(envmode);
 	}
 }

@@ -23,8 +23,7 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::uniqu
 	bootstrapTrajbufferWithCoords();
 	nlist_manager->handleNLISTS(simulation, true, true, &timings.z);
 
-
-	printf("Engine ready\n\n\n");
+	m_logger->finishSection("Engine Ready");
 }
 
 

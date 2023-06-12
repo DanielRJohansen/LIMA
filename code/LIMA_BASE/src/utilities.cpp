@@ -55,11 +55,11 @@ void LimaLogger::print(const std::string& input, const bool log)
 }
 
 void LimaLogger::finishSection(const string& str) {
-    if (logmode == compact) {
-        std::cout << "\n";
-    }
-
     if (envmode != Headless) {
+        if (logmode == compact) {
+            std::cout << "\n";
+        }
+
         printH2(str, false, true);
     }
     

@@ -124,7 +124,8 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	uint64_t max_steps_per_kernel = 1000;
 	uint64_t particles_per_step = simulation->total_particles_upperbound;
 	uint64_t max_values_per_kernel = (max_steps_per_kernel + 2) * particles_per_step;							// Pad steps with 2 for vel calculation
-	printf("Analyzer malloc %.2f MB on device\n", (sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
+	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
+	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
 	cudaMalloc(&traj_buffer_device, sizeof(Float3) * max_values_per_kernel);
 	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
 
@@ -148,7 +149,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaFree(traj_buffer_device);
 	cudaFree(potE_buffer_device);
 
-	printH2("Finished analyzing energies", false, true);
+	m_logger->finishSection("Finished analyzing energies");
 	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
 }
 
@@ -210,7 +211,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 
 
 std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
-	uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
+	const uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
 
@@ -241,36 +242,40 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 	return total_compound_energy;
 }
 
-float getMin(std::vector<float>& vec) {
+float getMin(const std::vector<float>& vec) {
 	return *std::min_element(vec.begin(), vec.end());
 }
 
-float getMax(std::vector<float>& vec) {
+float getMax(const std::vector<float>& vec) {
 	return *std::max_element(vec.begin(), vec.end());
 }
 
-float getMean(vector<float> vec)
+float getMean(const vector<float>& vec)
 {
 	double sum = 0.;
 	for (auto elem : vec) { sum += static_cast<double>(elem); }	
 	return static_cast<float>(sum / static_cast<double>(vec.size()));
 }
 
-float getStdDev(std::vector<float>& vec) {
+float getStdDev(const std::vector<float>& vec) {
 	if (vec.size() == 0) { return 0.f; }
 
-	double mean = getMean(vec);
+	const double mean = getMean(vec);
 
 	double variance = 0;
 	for (auto elem : vec) { variance += (elem - mean) * (elem - mean); }
 
-	double deviation = variance / static_cast<double>(vec.size());
+	const double deviation = variance / static_cast<double>(vec.size());
 	return static_cast<float>(std::abs(std::sqrt(deviation)));
 }
 
-float Analyzer::getVarianceCoefficient(std::vector<float>& vec) {
-	if (vec.empty()) { return 0.f; }
-	return getStdDev(vec) / getMean(vec);
+float Analyzer::getVarianceCoefficient(const std::vector<float>& vec) {
+	if (vec.empty()) { return 0.f; } 
+	const float stddev = getStdDev(vec);
+	const float mean = getMean(vec);
+
+	if (stddev == 0.f && mean == 0.f) { return 0.f; }
+	return  stddev / mean;
 }
 
 void printRow(string title, vector<float>& vec) {
@@ -279,7 +284,6 @@ void printRow(string title, vector<float>& vec) {
 		title, { 
 			getMin(vec), 
 			getMax(vec), 
-			//Analyzer::getVarianceCoefficient(vec),
 			getStdDev(vec),
 			(vec.back() - vec.front()) / vec.front() });
 }

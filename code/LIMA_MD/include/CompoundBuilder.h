@@ -24,7 +24,9 @@ namespace LIMA_MOLECULEBUILD {
 		VerbosityLevel vl,
 		const string& gro_path, 
 		const string& topol_path, 
-		bool ignore_hydrogens=true);
+		std::unique_ptr<LimaLogger> logger,
+		bool ignore_hydrogens = true
+		);
 }
 
 

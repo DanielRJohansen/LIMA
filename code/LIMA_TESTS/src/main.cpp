@@ -33,18 +33,20 @@ constexpr auto envmode = EnvMode::Full;
 
 using namespace TestMDStability;
 using namespace TestUtils;
+using namespace StressTesting;
+
 int main() {
 
-	/*coordPrecesionBenchmark();
-	return 0;*/
-
-	//InputSimParams ip{ 10.f, 10 };
-	//loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002, { ip }, true);
-
-	//doPoolBenchmark();
-	//doSinglebondBenchmark(envmode);
+	//coordPrecesionBenchmark();
+	
+	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
+	
+	doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);
-	doMethionineBenchmark(envmode);
+	//doDihedralbondBenchmark(envmode);
+
+	//doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 
@@ -52,14 +54,10 @@ int main() {
 	//doPoolBenchmark(Full);
 
 	//doProteinBenchmark(env);
-	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
-	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
+
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
-	//doDihedralbondBenchmark(envmode);
-
-	//auto func = []() {doPoolBenchmark(envmode); };
-	//TestUtils::stressTest(func, 500);
+	//doPool50x(EnvMode::Headless);
 
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);

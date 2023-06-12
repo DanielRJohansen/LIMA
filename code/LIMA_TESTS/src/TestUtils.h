@@ -39,10 +39,15 @@ namespace TestUtils {
 		return std::move(env);
 	}
 
-	bool evaluateTest(std::vector<float> stddevs, float maxdev) {
+	// Only set verbose to false if we will evaluate many times (such as stress testing)
+	bool evaluateTest(std::vector<float> stddevs, float maxdev, bool verbose=true) {
 		for (auto& stddev : stddevs) {
-			if (stddev > maxdev) {
-				std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, maxdev);
+			if (isnan(stddev) || stddev > maxdev) {
+
+				
+				if (verbose) {
+					std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, maxdev);
+				}				
 				return false;
 			}
 		}
@@ -54,19 +59,24 @@ namespace TestUtils {
 		EnvMode envmode,
 		float max_dev = 0.05,
 		LAL::optional<InputSimParams> ip = {},
-		bool em_variant = false
+		bool em_variant = false,
+		bool verbose = true			// Only set to false for stresstesting
 	)
 	{
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
 		env->run(em_variant);
 
 		auto analytics = env->getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
+		
 		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 
-		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
+		if (verbose) {
+			Analyzer::printEnergy(analytics);
+			LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
+		}
+		
 
-		return evaluateTest({ std_dev }, max_dev);
+		return evaluateTest({ std_dev }, max_dev, verbose);
 	}
 
 	static bool verifyStability(Environment& env, float max_dev) {

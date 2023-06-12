@@ -9,7 +9,7 @@ using namespace LIMA_Print;
 
 class MoleculeBuilder {
 public:
-	MoleculeBuilder(Forcefield* ff, const std::string& work_dir = "", VerbosityLevel vl = SILENT);
+	MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger>, const std::string& work_dir = "", VerbosityLevel vl = SILENT);
 
 	// Upon creation of the CompoundCollection, the MoleculeBuilder object is no longer valid,
 	// as it move's it's data instead of copying!
@@ -32,7 +32,7 @@ private:
 	//BondedParticlesLUTManager* bp_lut_manager = nullptr;
 	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
 
-	LimaLogger logger;
+	std::unique_ptr<LimaLogger> m_logger;
 	const VerbosityLevel verbosity_level;
 	const Forcefield* forcefield;
 
@@ -111,15 +111,15 @@ std::vector<std::string> readFile(const std::string& file_path) {
 
 
 
-MoleculeBuilder::MoleculeBuilder(Forcefield* ff, const std::string& work_dir, VerbosityLevel vl) :
-	logger(LimaLogger::LogMode::compact, Full, "moleculebuilder", work_dir),
+MoleculeBuilder::MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger> logger, const std::string& work_dir, VerbosityLevel vl) :
+	m_logger(std::move(logger)),
 	verbosity_level(vl), 
 	forcefield(ff) 
 {}
 
 CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens) {
 
-	printH2("Building molecules", true, false);
+	m_logger->startSection("Building Molecules");
 
 	loadResiduesAndSolvents(gro_path);
 
@@ -133,15 +133,13 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 
 	calcCompoundMetaInfo();
 
-	/*CompoundBridgeBundleCompact bridges_compact(
-		std::vector<CompoundBridge>(compound_bridges.begin(), compound_bridges.end())
-	);*/
 
 	auto bridges_compact = std::make_unique<CompoundBridgeBundleCompact>(
 		std::vector<CompoundBridge>(compound_bridges.begin(), compound_bridges.end())
 	);
 
-	// Danger: After this point, the contents of this object is no longer valid.
+	m_logger->finishSection("Finished building molecules");
+
 	return CompoundCollection{ 
 		std::move(compounds), 
 		n_particles_in_residues,
@@ -303,13 +301,13 @@ bool allParticlesExist(std::array<int, n_ids> gro_ids, const std::vector<Particl
 }
 
 void MoleculeBuilder::loadTopology(const std::string& topol_path) {
-	logger.print(std::format("Reading topology from file {}\n", topol_path));
+	m_logger->print(std::format("Reading topology from file {}\n", topol_path));
 
 	int line_cnt = 0;
 	TopologyMode mode = INACTIVE;
 	int dihedral_sections_count = 0;	// bad fix-...
 
-	auto lines = Filehandler::readFile(topol_path, { ';', '#' }, { "[", "]" });
+	auto lines = Filehandler::readFile(topol_path, { ';', '#' }, { "[", "]" }, INT_MAX, verbosity_level >= V1);
 
 	for (const auto& line : lines) {
 
@@ -763,8 +761,10 @@ CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
 	VerbosityLevel vl,
 	const string& gro_path,
 	const string& topol_path,
-	bool ignore_hydrogens) 
+	std::unique_ptr<LimaLogger> logger,
+	bool ignore_hydrogens
+) 
 {
-	MoleculeBuilder mb{ ff, work_dir, vl };
+	MoleculeBuilder mb{ ff, std::move(logger), work_dir, vl};
 	return mb.buildMolecules(gro_path, topol_path, ignore_hydrogens);
 }

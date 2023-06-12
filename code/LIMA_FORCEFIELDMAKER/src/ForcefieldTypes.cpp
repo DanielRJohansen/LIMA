@@ -36,8 +36,7 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 				goto TRY_AGAIN;
 			}
 			else {
-				printf("Failed");
-				exit(404);
+				throw std::exception("No alias found");
 			}
 		}
 
@@ -74,7 +73,7 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 
 
 
-vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows) {
+vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	STATE current_state = INACTIVE;
 
 	vector<Atom> records;
@@ -102,7 +101,11 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows) {
 		if (current_state == FINISHED)
 			break;
 	}
-	printf("%lld atoms found in topology file\n", records.size());
+
+	if (verbose) {
+		printf("%lld atoms found in topology file\n", records.size());
+	}
+	
 	return records;
 }
 
@@ -120,7 +123,7 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows) {
 
 
 
-vector<Bondtype> Bondtype::parseFFBondtypes(vector<vector<string>> rows) {
+vector<Bondtype> Bondtype::parseFFBondtypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 
 	vector<Bondtype> records;
@@ -141,11 +144,15 @@ vector<Bondtype> Bondtype::parseFFBondtypes(vector<vector<string>> rows) {
 			break;
 		}
 	}
-	printf("%lld single bonds read from file\n", records.size());
+
+	if (verbose) {
+		printf("%lld single bonds read from file\n", records.size());
+	}
+	
 	return records;
 }
 
-vector<Bondtype> Bondtype::parseTopolBondtypes(vector<vector<string>> rows) {
+vector<Bondtype> Bondtype::parseTopolBondtypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 	vector<Bondtype> records;
 
@@ -167,7 +174,11 @@ vector<Bondtype> Bondtype::parseTopolBondtypes(vector<vector<string>> rows) {
 			break;
 		}
 	}
-	printf("%lld bonds found in topology file\n", records.size());
+
+	if (verbose) {
+		printf("%lld bonds found in topology file\n", records.size());
+	}
+	
 	return records;
 }
 
@@ -210,7 +221,7 @@ Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondt
 
 
 
-vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows) {
+vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 	vector<Angletype> angletypes;
 
@@ -235,11 +246,15 @@ vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows) {
 		if (current_state == FTHelpers::FF_DIHEDRALTYPES)
 			break;
 	}
-	printf("%lld angletypes in forcefield\n", angletypes.size());
+
+	if (verbose) {
+		printf("%lld angletypes in forcefield\n", angletypes.size());
+	}
+	
 	return angletypes;
 }
 
-vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows) {
+vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 	vector<Angletype> records;
 
@@ -266,7 +281,11 @@ vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows) {
 		if (current_state == FTHelpers::FF_DIHEDRALTYPES)
 			break;
 	}
-	printf("%lld angles found in topology file\n", records.size());
+
+	if (verbose) {
+		printf("%lld angles found in topology file\n", records.size());
+	}
+	
 	return records;
 }
 
@@ -328,7 +347,7 @@ Angletype* Angletype::findBestMatchInForcefield(Angletype* query_type, vector<An
 
 
 
-vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> rows) {
+vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 	vector<Dihedraltype> dihedraltypes;
 
@@ -348,11 +367,14 @@ vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> r
 		}
 
 	}
-	printf("%zd dihedraltypes in forcefield\n", dihedraltypes.size());
+	if (verbose) {
+		printf("%zd dihedraltypes in forcefield\n", dihedraltypes.size());
+	}
+	
 	return dihedraltypes;
 }
 
-vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>> rows) {
+vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
 	vector<Dihedraltype> records;
 
@@ -381,7 +403,11 @@ vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>
 			break;
 		}
 	}
-	printf("%zd dihedrals found in topology file\n", records.size());
+
+	if (verbose) {
+		printf("%zd dihedrals found in topology file\n", records.size());
+	}
+	
 	return records;
 }
 

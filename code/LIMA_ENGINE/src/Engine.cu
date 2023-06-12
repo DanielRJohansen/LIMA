@@ -1,9 +1,11 @@
 #include "LIMA_ENGINE/include/Engine.cuh"
+#include "LIMA_BASE/include/Utilities.h"
+
 #include <algorithm>
 
 Engine::Engine() {}
 Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
-	EngineUtils::genericErrorCheck("Error before engine initialization.\n");
+	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
 
 	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
@@ -16,11 +18,10 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 	this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
-	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
+	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = std::make_unique<NListManager>(simulation);
-				//nlist_manager->bootstrapCompoundgrid(simulation);
 	bootstrapTrajbufferWithCoords();
 	nlist_manager->handleNLISTS(simulation, true, true, &timings.z);
 
@@ -33,13 +34,13 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
 
 
 template<bool em_variant> void Engine::step() {
-	EngineUtils::genericErrorCheck("Error before step!");
+	LIMA_UTILS::genericErrorCheck("Error before step!");
 
 	deviceMaster<em_variant>();	// Device first, otherwise offloading data always needs the last datapoint!
 	simulation->incStep();
 	hostMaster();
 
-	EngineUtils::genericErrorCheck("Error after step!");
+	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
@@ -118,22 +119,20 @@ void Engine::offloadTrainData() {
 	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds;
 	if (values_per_step == 0) {
 		return;	// No data to transfer
-
 	}
 
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
 	cudaMemcpy(&simulation->trainingdata[step_offset], simulation->sim_dev->databuffers->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
-	EngineUtils::genericErrorCheck("Cuda error during traindata offloading\n");
+	LIMA_UTILS::genericErrorCheck("Cuda error during traindata offloading\n");
 }
 
 
-
 void Engine::bootstrapTrajbufferWithCoords() {
-	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
+	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->n_compounds);
 	auto error = cudaMemcpy(compoundcoords_array.data(), simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
-	EngineUtils::genericErrorCheck(error);
+	LIMA_UTILS::genericErrorCheck(error);
 	
 
 	// We need to bootstrap step-0 which is used for traj-buffer
@@ -145,7 +144,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		}
 	}
 
-	EngineUtils::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
+	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
 
@@ -169,30 +168,30 @@ void Engine::deviceMaster() {
 	}
 
 	cudaDeviceSynchronize();	// Prolly not necessary
-	EngineUtils::genericErrorCheck("Error after compoundForceKernel");
+	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 #ifdef ENABLE_SOLVENTS
 	if (simulation->n_solvents > 0) { 
 		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 
 		cudaDeviceSynchronize();
-		EngineUtils::genericErrorCheck("Error after solventForceKernel");
+		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
 			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->sim_dev);
 		}
 	}
 	cudaDeviceSynchronize();
-	EngineUtils::genericErrorCheck("Error after solventTransferKernel");
+	LIMA_UTILS::genericErrorCheck("Error after solventTransferKernel");
 #endif
 	//return;
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 
-	EngineUtils::genericErrorCheck("Error during step\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
+	LIMA_UTILS::genericErrorCheck("Error during step\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 
 
 	cudaDeviceSynchronize();
-	EngineUtils::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
+	LIMA_UTILS::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
 	auto t2 = std::chrono::high_resolution_clock::now();
 
 	int force_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();

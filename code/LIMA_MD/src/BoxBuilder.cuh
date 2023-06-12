@@ -13,7 +13,7 @@ public:
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation);
-	void addCompoundCollection(Simulation* simulation, const CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	void addCompoundCollection(Simulation* simulation, CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	//void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
 	//void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation, const ForceField_NB& forcefield);
@@ -21,7 +21,7 @@ public:
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
-	void copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step);
+	void copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxsrc_current_step);
 
 private:
 	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);

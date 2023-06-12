@@ -144,14 +144,14 @@ __host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
 
 __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {
-	if (n_nearby_compounds == max_elements) {
+	if (n_nearby_compounds == max_nearby_compounds) {
 		throw std::exception("Failed to add compound to CompoundGridNode\n");
 	}
 	nearby_compound_ids[n_nearby_compounds++] = compound_id;
 }
 
 __host__ void CompoundGridNode::addAssociatedCompound(int16_t compound_id) {
-	if (n_associated_compounds == 4) {
+	if (n_associated_compounds == max_associated_compounds) {
 		throw std::exception("Failed to add compound to CompoundGridNode\n");
 	}
 	associated_ids[n_associated_compounds++] = compound_id;

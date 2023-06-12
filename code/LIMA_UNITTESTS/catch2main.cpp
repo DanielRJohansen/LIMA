@@ -6,7 +6,7 @@
 
 #include <Catch2/catch.hpp>	// Don't include windows.h after this line
 
-constexpr auto envmode = Environment::Mode::Headless;
+constexpr auto envmode = EnvMode::Headless;
 
 namespace TestForceCorrectness {
 	TEST_CASE("TestForceCorrectness::Pool") {
@@ -34,24 +34,23 @@ namespace TestForceCorrectness {
 	}
 
 	TEST_CASE("TestForceCorrectness::TenSolvents") {
-		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false));
+		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05f, {}, false));
 	}
 }
 
 namespace TestMDStability {
 
 	TEST_CASE("TestMDStability::EMRunSolvent", "hey") {
-		REQUIRE(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002));
-		SUCCEED();
+		REQUIRE(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002f));
 	}
 
 	TEST_CASE("TestMDStability::EightResiduesNoSolvent", "hey") {
-		REQUIRE(doEightResiduesNoSolvent(envmode, 0.0002));		
+		REQUIRE(doEightResiduesNoSolvent(envmode));		
 	}
 
 	TEST_CASE("TestMDStability::ahhh") {
 		InputSimParams ip{ 10.f, 10 };
-		TestUtils::loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002, {ip}, true);
+		TestUtils::loadAndRunBasicSimulation("SolventBenchmark", envmode, 0.002f, {ip}, true);
 
 		//InputSimParams ip{ 100.f, 10 };
 		////auto env = TestUtils::basicSetup("TenSolvents", {ip}, envmode);

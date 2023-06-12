@@ -4,7 +4,7 @@
 #include "LIMA_TESTS/src/MDStability.cuh"
 #include "LIMA_TESTS/src/EnergyMinimization.cuh"
 
-constexpr auto envmode = Environment::Mode::Full;
+constexpr auto envmode = EnvMode::Full;
 //
 //// Due to the following define, i belive all includes to test-headers must come after
 //
@@ -48,6 +48,8 @@ int main() {
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 
+	doPoolBenchmark(Headless);
+
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
@@ -58,7 +60,7 @@ int main() {
 	//auto func = []() {doPoolBenchmark(envmode); };
 	//TestUtils::stressTest(func, 500);
 
-	doEightResiduesNoSolvent(envmode);
+	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
@@ -69,7 +71,8 @@ int main() {
 	
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
-	
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+
 	//doMoleculeTranslationTest("T4LysozymeNoSolventSmall");
 	//doMoleculeTranslationTest("T4LysozymeNoSolvent");
 

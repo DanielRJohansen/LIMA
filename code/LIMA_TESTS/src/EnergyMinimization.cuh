@@ -7,7 +7,7 @@
 #include "LIMA_TESTS/src/TestUtils.h"
 #include "LIMA_MD/include/Environment.h"
 
-bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(Environment::Mode envmode) {
+bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(EnvMode envmode) {
 	//SimulationParams params{ .dt = 5, .n_steps = 1000 };
 	InputSimParams params{ 5, 1000 };
 

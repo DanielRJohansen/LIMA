@@ -404,11 +404,6 @@ struct BoundingBox {
 	}
 };
 
-// TODO make this
-struct CompactBool {
-
-};
-
 // This struct is agnostic as to which compounds the particles in the table belongs to!!
 template <typename T, int len>
 class FixedSizeMatrix {
@@ -636,3 +631,5 @@ enum VerbosityLevel {
 	V2,
 	V3
 };
+
+enum EnvMode { Full, ConsoleOnly, Headless };

@@ -170,5 +170,5 @@ public:
 };
 
 namespace SimUtils {
-	std::unique_ptr<Box> copyToHost(const Box* box_dev);
+	std::unique_ptr<Box> copyToHost(Box* box_dev);
 };

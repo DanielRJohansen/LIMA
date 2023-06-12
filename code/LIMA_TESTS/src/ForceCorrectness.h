@@ -5,7 +5,7 @@
 
 
 //Test assumes two carbons particles in conf
-bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
+bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -22,7 +22,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-		ip.n_steps = 50;
+		ip.n_steps = 900;
 		env.CreateSimulation(conf, topol, ip);
 
 		Box* box_host = env.getSimPtr()->box_host.get();
@@ -46,7 +46,7 @@ bool doPoolBenchmark(Environment::Mode envmode, float max_dev=0.007) {
 	return true;
 }
 
-bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
+bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -106,7 +106,7 @@ bool doPoolCompSolBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	return true;
 }
 
-bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.1) {
+bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.1) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -152,7 +152,7 @@ bool doSinglebondBenchmark(Environment::Mode envmode, float max_dev = 0.1) {
 }
 
 // Benchmarks anglebonds + singlebonds (for stability)
-bool doAnglebondBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
+bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.01) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -202,23 +202,23 @@ bool doAnglebondBenchmark(Environment::Mode envmode, float max_dev = 0.01) {
 	return true;
 }
 
-bool doDihedralbondBenchmark(Environment::Mode envmode) {
+bool doDihedralbondBenchmark(EnvMode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/TorsionBenchmark/";
 	const std::string simpar = work_folder + "sim_params.txt";
 
 	auto ip = Environment::loadInputSimParams(simpar);
 	ip.n_steps = 100;
 
-	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01, ip);
+	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01f, ip);
 }
 
-bool doMethionineBenchmark(Environment::Mode envmode) {
+bool doMethionineBenchmark(EnvMode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 	const std::string simpar = work_folder + "sim_params.txt";
 
 	auto ip = Environment::loadInputSimParams(simpar);
 	ip.n_steps = 10;
 
-	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.01, ip);
+	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.01f, ip);
 }
 

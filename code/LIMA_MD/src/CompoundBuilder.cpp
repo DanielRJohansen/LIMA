@@ -29,7 +29,8 @@ private:
 	std::vector<CompoundFactory> compounds;
 	std::vector<BridgeFactory> compound_bridges;
 
-	BondedParticlesLUTManager* bp_lut_manager = nullptr;
+	//BondedParticlesLUTManager* bp_lut_manager = nullptr;
+	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
 
 	LimaLogger logger;
 	const VerbosityLevel verbosity_level;
@@ -132,7 +133,11 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 
 	calcCompoundMetaInfo();
 
-	CompoundBridgeBundleCompact bridges_compact(
+	/*CompoundBridgeBundleCompact bridges_compact(
+		std::vector<CompoundBridge>(compound_bridges.begin(), compound_bridges.end())
+	);*/
+
+	auto bridges_compact = std::make_unique<CompoundBridgeBundleCompact>(
 		std::vector<CompoundBridge>(compound_bridges.begin(), compound_bridges.end())
 	);
 
@@ -140,7 +145,7 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 	return CompoundCollection{ 
 		std::move(compounds), 
 		n_particles_in_residues,
-		bp_lut_manager, 
+		std::move(bp_lut_manager), 
 		std::move(bridges_compact),
 		std::move(solvent_positions) };
 }
@@ -415,11 +420,11 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 			
 			// If the new residue is a different molecule, start a new compound
 			if (!is_bonded_with_previous_residue) {
-				compounds.push_back(compounds.size());
+				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
 			}
 			// If we are bonded, but no more room, start new compound and make bridge
 			else if (!compounds.back().hasRoomForRes(residue.atoms.size())) {
-				compounds.push_back(compounds.size());
+				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
 
 				int id_left = compounds.size() - 2;
 				int id_right = compounds.size() - 1;
@@ -517,8 +522,8 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector
 
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
-	bp_lut_manager = new BondedParticlesLUTManager{0};
-	//auto bp_lut_manager = std::make_unique<BondedParticlesLUTManager>(0);
+	//bp_lut_manager = new BondedParticlesLUTManager{0};
+	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>(0);
 
 
 	// Distribute single bonds
@@ -536,7 +541,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 			compound.addSingleBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]] }, bondtype);
 		}
 
-		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+		distributeLJIgnores(bp_lut_manager.get(), particle_info, bond_ids);
 	}
 
 	// Distribute angle bonds
@@ -554,7 +559,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 			compound.addAngleBond({ particle_info[bond_ids[0]],	particle_info[bond_ids[1]],	particle_info[bond_ids[2]] }, bondtype);
 		}
 
-		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+		distributeLJIgnores(bp_lut_manager.get(), particle_info, bond_ids);
 	}
 
 	// Distribute dihedral bonds
@@ -572,7 +577,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 			compound.addDihedralBond({ particle_info[bond_ids[0]], particle_info[bond_ids[1]], particle_info[bond_ids[2]], particle_info[bond_ids[3]] }, bondtype);
 		}
 
-		distributeLJIgnores(bp_lut_manager, particle_info, bond_ids);
+		distributeLJIgnores(bp_lut_manager.get(), particle_info, bond_ids);
 	}
 }
 

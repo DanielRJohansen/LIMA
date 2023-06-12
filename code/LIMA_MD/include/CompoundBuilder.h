@@ -119,7 +119,7 @@ public:
 	}
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
-	int gro_ids[MAX_COMPOUND_PARTICLES];		// For debug
+	int gro_ids[MAX_COMPOUND_PARTICLES]{};		// For debug
 };
 
 
@@ -148,9 +148,9 @@ struct CompoundCollection {
 	const std::vector<CompoundFactory> compounds;
 	const int32_t total_compound_particles;
 
-	BondedParticlesLUTManager* bp_lut_manager;	// Ptr is not accounted for!
+	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
 
-	const CompoundBridgeBundleCompact bridgebundle;
+	std::unique_ptr<CompoundBridgeBundleCompact> bridgebundle;
 
 	const std::vector<Float3> solvent_positions;
 };

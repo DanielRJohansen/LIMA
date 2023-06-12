@@ -1,9 +1,9 @@
 #include "LIMA_ENGINE/include/Engine.cuh"
-
 #include "LIMA_ENGINE/include/ForceComputations.cuh"
+#include "LIMA_BASE/include/Utilities.h"
 
 #pragma warning ( push )
-#pragma warning ( disable: E0020 )
+#pragma warning ( disable:E0020 )
 
 
 
@@ -18,7 +18,7 @@ __constant__ ForceField_NB forcefield_device;
 void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();
-	EngineUtils::genericErrorCheck("Error while moving forcefield to device\n");
+	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
 }
 
 __device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {

@@ -4,16 +4,34 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <iostream>
+
+#include <device_launch_parameters.h>
+#include <cuda_runtime_api.h>
 
 namespace LIMA_UTILS {
 
-	/*template <typename T>
-	assertEqual(T a, T b) */
 	static int roundUp(int numToRound, int multiple)
 	{
 		assert(multiple);
 		return ((numToRound + multiple - 1) / multiple) * multiple;
 	}
+
+    static void genericErrorCheck(const char* text) {
+        cudaDeviceSynchronize();
+        cudaError_t cuda_status = cudaGetLastError();
+        if (cuda_status != cudaSuccess) {
+            std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+            fprintf(stderr, text);
+            exit(1);
+        }
+    }
+    static void genericErrorCheck(const cudaError_t cuda_status) {
+        if (cuda_status != cudaSuccess) {
+            std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+            exit(1);
+        }
+    }
 }
 
 
@@ -26,7 +44,7 @@ public:
         compact
     };   
 
-    LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder="");
+    LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder="", bool headless=false);
     ~LimaLogger();
 
     void print(const std::string& input, bool log=true);
@@ -50,12 +68,13 @@ private:
     const std::string log_dir;
     std::ofstream logFile;
     const bool enable_logging{ false };
+    const bool headless;
 
     void clearLine();
     bool clear_next = false;
 };
 
-
+// Lima Algorithm Library
 namespace LAL {
 
 

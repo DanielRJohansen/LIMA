@@ -19,13 +19,14 @@ public:
 
 	struct AnalyzedPackage {
 		AnalyzedPackage() = default;
-		AnalyzedPackage(std::vector<Float3>& avg_energy, float* t_ptr, int t_cnt) {	// TODO: t_ptr should be a vector
+		AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
 			energy_data = avg_energy;
+			//auto e_cnt = energy_data.size();
+
+			temperature_data = temperature;
+			//memcpy(temperature_data.data(), t_ptr, t_cnt);
+
 			auto e_cnt = energy_data.size();
-
-			temperature_data.resize(t_cnt);
-			memcpy(temperature_data.data(), t_ptr, t_cnt);
-
 			pot_energy.resize(e_cnt);
 			kin_energy.resize(e_cnt);
 			total_energy.resize(e_cnt);
@@ -40,10 +41,8 @@ public:
 		std::vector<float> kin_energy;
 		std::vector<float> total_energy;
 		std::vector<Float3> energy_data; // potE, kinE, totalE
-		int n_energy_values = 0;
 
 		std::vector<float> temperature_data;
-		int n_temperature_values = 0;
 	};
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]

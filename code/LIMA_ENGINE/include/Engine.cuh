@@ -82,7 +82,7 @@ private:
 	int testval = 0;
 
 	ForceField_NB forcefield_host;
-	uint32_t step_at_last_traj_transfer = 0;
+	uint64_t step_at_last_traj_transfer = 0;
 	Simulation* simulation;
 };
 

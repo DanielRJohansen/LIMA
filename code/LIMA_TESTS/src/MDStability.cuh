@@ -17,15 +17,15 @@
 
 namespace TestMDStability {
 
-	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, Environment::Mode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 10, 280 };
+	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
+		InputSimParams emparams{ 10, 1000 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
 		env->run(true);
 
 		// Do sim
-		InputSimParams simparams{ 100, 50 };
+		InputSimParams simparams{ 100, 10000 };
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
@@ -40,15 +40,15 @@ namespace TestMDStability {
 		return std_dev < max_dev;
 	}
 
-	bool doEightResiduesNoSolvent(Environment::Mode envmode, float max_dev = 0.05) {
+	bool doEightResiduesNoSolvent(EnvMode envmode, float max_dev = 0.05) {
 		const std::string name = "T4LysozymeNoSolventSmall";
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		auto ip = Environment::loadInputSimParams(simpar);
-		ip.n_steps = 1000;
+		ip.n_steps = 7000;
 
-		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.01, ip);
+		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.1f, ip);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

@@ -3,7 +3,7 @@
 #include <execution>
 #include <algorithm>
 #include <unordered_set>
-
+#include "LIMA_BASE/include/Utilities.h"
 
 // ------------------------------------------------------------------------------------------- PRIVATE HELPERS -------------------------------------------------------------------------------------------//
 
@@ -34,7 +34,7 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 	cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyDeviceToHost);
 
 	compoundgrid = std::make_unique<CompoundGrid>();
-	EngineUtils::genericErrorCheck("Error creating NListDataCollection");
+	LIMA_UTILS::genericErrorCheck("Error creating NListDataCollection");
 }
 
 void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
@@ -182,20 +182,20 @@ namespace NListUtils {
 		auto t0 = std::chrono::high_resolution_clock::now();
 		mutex.lock();
 
-		EngineUtils::genericErrorCheck("24");
+		LIMA_UTILS::genericErrorCheck("24");
 
 		// Make key positions addressable in arrays: compound_key_positions and solvent_positions
 		nlist_data_collection->preparePositionData(*simulation, step_at_update);
-		EngineUtils::genericErrorCheck("24");
+		LIMA_UTILS::genericErrorCheck("24");
 		// First do culling of neighbors that has left CUTOFF
 		NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
-		EngineUtils::genericErrorCheck("2");
+		LIMA_UTILS::genericErrorCheck("2");
 
 		// Add all compound->compound neighbors
 		matchCompoundNeighbors(simulation, nlist_data_collection);
 
 		updateCompoundGrid(simulation, nlist_data_collection);
-		EngineUtils::genericErrorCheck("4");
+		LIMA_UTILS::genericErrorCheck("4");
 
 
 
@@ -272,12 +272,12 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
 	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists.data(), sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
-	EngineUtils::genericErrorCheck("Error after transferring compound neighborlists to device");
+	LIMA_UTILS::genericErrorCheck("Error after transferring compound neighborlists to device");
 
 	//cudaMemcpy(simulation->box->solvent_neighborlists, nlist_data_collection->solvent_neighborlists, sizeof(NeighborList) * simulation->n_solvents, cudaMemcpyHostToDevice);
 
 	cudaMemcpy(simulation->sim_dev->box->compound_grid, nlist_data_collection->compoundgrid.get(), sizeof(CompoundGrid), cudaMemcpyHostToDevice);
-	EngineUtils::genericErrorCheck("Error after transferring CompoundGrid to device");
+	LIMA_UTILS::genericErrorCheck("Error after transferring CompoundGrid to device");
 
 	updated_neighborlists_ready = 0;
 }

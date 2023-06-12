@@ -76,7 +76,7 @@ void Box::deleteMembers() {
 	}
 }
 
-std::unique_ptr<Box> SimUtils::copyToHost(const Box* box_dev) {
+std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	auto box = std::make_unique<Box>();
 
 	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
@@ -111,7 +111,9 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, std::unique_ptr
 	box_host->moveToDevice();
 	cudaMallocManaged(&box, sizeof(Box));
 	cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);
+
 	box_host->owns_members = false;
+	box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
 	box_host.reset();
 }
 

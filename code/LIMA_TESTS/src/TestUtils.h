@@ -21,7 +21,7 @@ namespace TestUtils {
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
-	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<InputSimParams> simparams, Environment::Mode envmode) {
+	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<InputSimParams> simparams, EnvMode envmode) {
 		
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + foldername + "/";
 		const std::string conf = work_folder + "molecule/conf.gro";
@@ -39,9 +39,19 @@ namespace TestUtils {
 		return std::move(env);
 	}
 
+	bool evaluateTest(std::vector<float> stddevs, float maxdev) {
+		for (auto& stddev : stddevs) {
+			if (stddev > maxdev) {
+				std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, maxdev);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	static bool loadAndRunBasicSimulation(
 		const string& folder_name,
-		Environment::Mode envmode,
+		EnvMode envmode,
 		float max_dev = 0.05,
 		LAL::optional<InputSimParams> ip = {},
 		bool em_variant = false
@@ -56,7 +66,7 @@ namespace TestUtils {
 
 		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
 
-		return std_dev < max_dev;
+		return evaluateTest({ std_dev }, max_dev);
 	}
 
 	static bool verifyStability(Environment& env, float max_dev) {
@@ -74,6 +84,9 @@ namespace TestUtils {
 			func();
 		}
 	}
+
+
+
 }
 
 

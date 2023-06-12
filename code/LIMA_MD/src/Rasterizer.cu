@@ -1,7 +1,10 @@
 #include "LIMA_MD/src/Rasterizer.cuh"
 #include "LIMA_ENGINE/include/EngineUtils.cuh"
+#include "LIMA_BASE/include/Utilities.h"
+
 
 #include <algorithm>
+#include <cuda/std/cmath>
 
 
 
@@ -9,16 +12,19 @@ std::vector<RenderBall> Rasterizer::render(Simulation* simulation) {
 	solvent_offset = simulation->n_compounds * MAX_COMPOUND_PARTICLES;
 	n_threadblocks = (int)ceil((float)simulation->total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
 
-
+    LIMA_UTILS::genericErrorCheck("Error before renderer");
 	RenderAtom* atoms_dev = getAllAtoms(simulation);
 
     std::vector<RenderBall> balls_host = processAtoms(atoms_dev, simulation);
-    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y < b.pos.y; });
-
     cudaFree(atoms_dev);
+
+    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y < b.pos.y; });    
+
+    LIMA_UTILS::genericErrorCheck("Error after renderer");
 
 	return balls_host;
 }
+
 
 
 
@@ -34,35 +40,40 @@ __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int s
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step);
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls);
 
+__global__ void kernelA(Box* box) {
+    // Do nothing
+}
+__global__ void kernelB(Box* box) {
+    // Do nothing
+}
+
 RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
-
-
 	RenderAtom* atoms;
-	cudaMalloc(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
+	cudaMallocManaged(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
 
-	Box* box = simulation->sim_dev->box;
-	if (simulation->n_compounds > 0)
-		loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (box, atoms, simulation->simparams_host.step);
+
+    //kernelA << <10, 10>> > (simulation->sim_dev->box);
+    //cudaDeviceSynchronize();
+    //kernelB << <10, 10>> > (simulation->sim_dev->box);
+
+
+    Box* boxptr = simulation->sim_dev->box; // Use intermediate ptr to avoid prepascal limitation of concurrent managed data access
+    if (simulation->n_compounds > 0) {
+        loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (boxptr, atoms, simulation->simparams_host.step);
+    }
 	if (simulation->n_solvents > 0) {
-		//loadSolventatomsKernel << < solvent_blocks, THREADS_PER_LOADSOLVENTSATOMSKERNEL >> > (simulation->box, atoms, solvent_offset);
-		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (simulation->sim_dev->box, atoms, solvent_offset, simulation->simparams_host.step);
+		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (boxptr, atoms, solvent_offset, simulation->simparams_host.step);
 	}
-
-	cudaDeviceSynchronize();
 
 	return atoms;
 }
 
-void Rasterizer::sortAtoms(RenderAtom* atoms, int dim) {
-
-    cudaDeviceSynchronize();
-}
 
 std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, Simulation* simulation) {
     RenderBall* balls_device;
     cudaMalloc(&balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound);
     processAtomsKernel <<< n_threadblocks, RAS_THREADS_PER_BLOCK >>> (atoms, balls_device);
-    EngineUtils::genericErrorCheck("Error during rendering");
+    LIMA_UTILS::genericErrorCheck("Error during rendering");
 
     std::vector<RenderBall> balls_host(simulation->total_particles_upperbound);    
     cudaMemcpy(balls_host.data(), balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound, cudaMemcpyDeviceToHost);
@@ -168,14 +179,15 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
 
 
 
-__global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int step) {                                                            // TODO: CAN ONLY HANDLE ONE COMPOUND!!!
+__global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int step) {
+
     int local_id = threadIdx.x;
     int compound_id = blockIdx.x;
     int global_id = threadIdx.x + blockIdx.x * blockDim.x;
 
+    Compound* compound = &box->compounds[compound_id];
     
-    if (local_id < box->compounds[compound_id].n_particles) {
-        //atoms[global_id].pos = LIMAPOSITIONSYSTEM::getGlobalPosition(box->compound_coord_array[compound_id]);
+    if (local_id < compound->n_particles) {
         auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, step, compound_id);
 
         RenderAtom atom{};
@@ -186,7 +198,7 @@ __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int s
         //atoms[global_id].pos.print('A');
         atom.mass = SOLVENT_MASS;                                                         // TEMP
         //atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_types[local_id]);
-        atom.atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_color_types[local_id]);
+        atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
 
         atom.color = getColor(atom.atom_type);
 
@@ -196,8 +208,6 @@ __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int s
         atoms[global_id].atom_type = ATOM_TYPE::NONE;
     }
 }
-#include <algorithm> 
-#include <cuda/std/cmath>
 
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step) {
     SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step, blockIdx.x);

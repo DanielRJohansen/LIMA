@@ -9,18 +9,20 @@ using std::string;
 using std::cout;
 using std::printf;
 
-Environment::Environment(const string& wf, Mode mode) 
+Environment::Environment(const string& wf, EnvMode mode)
 	: work_folder(wf)
+	, m_mode(mode)
+	//, logger{
 {
 	switch (mode)
 	{
-	case Environment::Full:
+	case EnvMode::Full:
 		display = std::make_unique<Display>();
 		// Fallthrough
-	case Environment::ConsoleOnly:
+	case EnvMode::ConsoleOnly:
 		sayHello();
 		// Fallthrough
-	case Environment::Headless:
+	case EnvMode::Headless:
 		break;
 	}
 }
@@ -267,6 +269,11 @@ void Environment::postRunEvents() {
 
 
 void Environment::handleStatus(Simulation* simulation) {
+	if (m_mode == Headless) {
+		return;
+	}
+
+
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
 		printf("\r\tStep #%06d", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();

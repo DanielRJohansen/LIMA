@@ -1,5 +1,6 @@
 #include "LIMA_MD/include/Analyzer.cuh"
 #include "LIMA_BASE/include/Printer.h"
+#include "LIMA_BASE/include/Utilities.h"
 
 #include <algorithm>
 
@@ -111,7 +112,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 
 Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
-	EngineUtils::genericErrorCheck("Cuda error before analyzeEnergy\n");
+	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
 	const auto n_steps = simulation->getStep();
 	if (simulation->getStep() < 3) { return Analyzer::AnalyzedPackage(); }
@@ -148,7 +149,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaFree(potE_buffer_device);
 
 	printH2("Finished analyzing energies", false, true);
-	return AnalyzedPackage(average_energy, simulation->temperature_buffer.data(), simulation->temperature_buffer.size());
+	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
 }
 
 void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, uint64_t step_offset) {
@@ -157,13 +158,13 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	// First move the middle bulk to device
 	cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
-	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer2\n");
+	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
 	// Then pad the front. If step 0, we pad with zero. If step n we pad with n-1
 	uint64_t paddingSrcIndex = step_offset == 0 ? 0 : step_offset - 1;
 	cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[0], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
-	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer1\n");
+	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer1\n");
 
 	// Then pad the end. if step
 	const uint64_t end_index = step_offset + steps_in_kernel;
@@ -171,7 +172,7 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 
-	EngineUtils::genericErrorCheck("Cuda error during analyzer transfer\n");
+	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer\n");
 }
 
 // TODO: Fix this fucntion like the compound one
@@ -188,7 +189,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 
 		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
 		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
-		EngineUtils::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
+		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
 		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
@@ -222,7 +223,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->sim_dev->box->n_compounds, 1);
 		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
-		EngineUtils::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
+		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
 		cudaMemcpy(host_data.data(), data_out, sizeof(Float3) * n_datapoints, cudaMemcpyDeviceToHost);
 		cudaFree(data_out);

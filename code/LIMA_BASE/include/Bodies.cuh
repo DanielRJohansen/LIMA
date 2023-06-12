@@ -626,16 +626,17 @@ struct CompoundGridNode {
 	__host__ void addAssociatedCompound(int16_t compound_id);
 
 
-	static const int max_elements = 64;
 
 	// Contains only compounds that are CLOSEST to this specific node
-	int16_t associated_ids[8]{};
+	static const int max_associated_compounds = 4;
+	int16_t associated_ids[max_associated_compounds]{};
 	int16_t n_associated_compounds = 0;
 
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;
-	int16_t nearby_compound_ids[max_elements]{};	// MAX_COMPOUNDS HARD LIMIT
+	static const int max_nearby_compounds = 64;
+	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
 	int16_t n_nearby_compounds = 0;
 };
 

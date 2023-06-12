@@ -35,9 +35,8 @@
 class Environment
 {
 public:
-	enum Mode { Full, ConsoleOnly, Headless };
 	Environment(const Environment&) = delete;
-	Environment(const string& wf, Mode mode);
+	Environment(const string& wf, EnvMode mode);
 
 	void CreateSimulation(string conf_filename, string topol_filename, InputSimParams);
 
@@ -82,6 +81,8 @@ private:
 
 	void sayHello();
 
+	EnvMode m_mode;
+
 	//Display* display;
 	std::unique_ptr<Display> display;
 	//Interface* interface = nullptr;
@@ -89,6 +90,7 @@ private:
 	Forcefield forcefield{VerbosityLevel::V1};
 	Analyzer analyzer{};
 	std::unique_ptr<BoxBuilder> boxbuilder;
+	//LimaLogger logger;
 
 	const std::string work_folder = "";
 	//InputSimParams sim_params{};	// TODO: this should not be a member, as it belongs to the individual sim

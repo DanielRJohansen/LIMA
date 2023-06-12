@@ -30,7 +30,6 @@ private:
 	/// <summary>	/// Returns a pointer to a list of atoms on the device	/// </summary>
 	RenderAtom* getAllAtoms(Simulation* simulation);
 
-	void sortAtoms(RenderAtom* atoms, int dim);
 	std::vector<RenderBall> processAtoms(RenderAtom* atoms, Simulation* simulation);
 
 

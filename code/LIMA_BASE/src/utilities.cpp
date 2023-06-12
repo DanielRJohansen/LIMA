@@ -2,8 +2,11 @@
 #include <filesystem>
 #include <iostream>
 
-LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder)
-    : mode(mode), enable_logging(workfolder !=""), log_dir(workfolder + "/logs/")
+LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder, bool headless)
+    : mode(mode)
+    , enable_logging(workfolder !="")
+    , log_dir(workfolder + "/logs/")
+    , headless{headless}
 {
     if (enable_logging) {
         std::filesystem::create_directories(log_dir);
@@ -28,6 +31,8 @@ void LimaLogger::print(const std::string& input, const bool log) {
         if (log) { logFile << input << std::endl; }
     }
     
+    if (headless) { return; }
+
     // Then print to console
     auto input_copy = input;
     if (mode == compact) {

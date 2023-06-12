@@ -31,7 +31,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 }
 
 
-void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCollection& compound_collection) {
+void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {
 		integrateCompound(compound, simulation);
 	}
@@ -40,9 +40,9 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, const CompoundCol
 	simulation->total_particles += compound_collection.total_compound_particles;
 
 
-	*simulation->box_host->bridge_bundle = compound_collection.bridgebundle;					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	simulation->box_host->bridge_bundle = compound_collection.bridgebundle.release();					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 
-	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager;	// TODO: release a unique ptr here!
+	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager.release();
 
 	printf("CompoundCollection added to box\n");
 }
@@ -78,7 +78,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });
 	setupDataBuffers(*simulation, n_steps);
 	setupTrainingdataBuffers(*simulation, n_steps);
-	EngineUtils::genericErrorCheck("Error during log-data mem. allocation");	
+	LIMA_UTILS::genericErrorCheck("Error during log-data mem. allocation");
 
 	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
 	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
@@ -193,7 +193,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 }
 
 
-void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_t boxsrc_current_step)
+void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxsrc_current_step)
 {
 	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
 
@@ -202,14 +202,15 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
 		// Create temporary storage
-		std::array<CompoundCoords, MAX_COMPOUNDS> coords_t0;
-		std::array<CompoundCoords, MAX_COMPOUNDS> coords_tsub1;
+		std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
+		std::vector<CompoundCoords> coords_tsub1(MAX_COMPOUNDS);
+		const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
 		// Copy only the current and prev step to temporary storage
 		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step, 0);
 		CompoundCoords* src_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step - 1, 0);
-		memcpy(coords_t0.data(), src_t0, coords_t0.size());
-		memcpy(coords_tsub1.data(), src_tsub1, coords_tsub1.size());
+		memcpy(coords_t0.data(), src_t0, bytesize);
+		memcpy(coords_tsub1.data(), src_tsub1, bytesize);
 
 		// Clear all of the data
 		for (size_t i = 0; i < box.coordarray_circular_queue_n_elements; i++) {
@@ -219,8 +220,8 @@ void BoxBuilder::copyBoxState(Simulation* simulation, const Box* boxsrc, uint32_
 		// Copy the temporary storage back into the queue
 		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, 0);
 		CompoundCoords* dest_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
-		memcpy(dest_t0, coords_t0.data(), coords_t0.size());
-		memcpy(dest_tsub1, coords_tsub1.data(), coords_tsub1.size());
+		memcpy(dest_t0, coords_t0.data(), bytesize);
+		memcpy(dest_tsub1, coords_tsub1.data(), bytesize);
 	}
 
 	// Do the same for solvents
@@ -279,10 +280,6 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
 		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
-
-		if (compound.gro_ids[i] == 177 ) {
-			int a = 0;
-		}
 
 		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->simparams_host.constparams.dt);
 		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));

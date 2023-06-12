@@ -56,7 +56,7 @@ public:
 	static float getVarianceCoefficient(std::vector<float>& vec);
 
 private:
-	Engine engine;
+	//Engine engine;
 
 
 

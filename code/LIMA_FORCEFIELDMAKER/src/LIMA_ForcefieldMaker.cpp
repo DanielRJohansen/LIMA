@@ -22,10 +22,10 @@ using std::string;
 //string mol_path = FileHelpers::pathJoin(sim_path, "Molecule");
 //string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
-ForcefieldMaker::ForcefieldMaker(const string& workdir, const string& default_ff_dir, const string& conf_file, const string& topol_file) :
+ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& default_ff_dir, const string& conf_file, const string& topol_file) :
 	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
 	forcefield_dir(default_ff_dir), 
-	logger(LimaLogger::LogMode::compact, "forcefieldmaker", workdir)
+	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir)
 {
 	ff_bonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffbonded.txt");
 	ff_nonbonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffnonbonded.txt");
@@ -132,8 +132,7 @@ void ForcefieldMaker::prepSimulationForcefield() {
 		topology_angles,
 		topology_dihedrals
 	);
-	logger.print("Prepare Forcefield has finished\n");
-	logger.finishSection();
+	logger.finishSection("Prepare Forcefield has finished");
 }
 
 

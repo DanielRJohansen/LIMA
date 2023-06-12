@@ -22,7 +22,6 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 		//sim_params->n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-		ip.n_steps = 900;
 		env.CreateSimulation(conf, topol, ip);
 
 		Box* box_host = env.getSimPtr()->box_host.get();
@@ -207,9 +206,8 @@ bool doDihedralbondBenchmark(EnvMode envmode) {
 	const std::string simpar = work_folder + "sim_params.txt";
 
 	auto ip = Environment::loadInputSimParams(simpar);
-	ip.n_steps = 100;
 
-	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.01f, ip);
+	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.05f, ip);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {
@@ -217,8 +215,7 @@ bool doMethionineBenchmark(EnvMode envmode) {
 	const std::string simpar = work_folder + "sim_params.txt";
 
 	auto ip = Environment::loadInputSimParams(simpar);
-	ip.n_steps = 10;
 
-	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.01f, ip);
+	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.1f, ip);
 }
 

@@ -12,7 +12,8 @@ using std::printf;
 Environment::Environment(const string& wf, EnvMode mode)
 	: work_folder(wf)
 	, m_mode(mode)
-	//, logger{
+	, forcefield{ mode == EnvMode::Headless ? SILENT : V1}
+	, m_logger{ LimaLogger::compact, m_mode, "environment", work_folder }
 {
 	switch (mode)
 	{
@@ -32,13 +33,15 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 	forcefield.loadForcefield(work_folder + "/molecule");
 
+	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
+
+
 	SimParams simparams{ ip };
 
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get());
 
 
-	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(&forcefield, work_folder, SILENT, gro_path, topol_path, true);
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
@@ -59,7 +62,7 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 
 
 	simulation = std::make_unique<Simulation>(simparams);
-	boxbuilder = std::make_unique<BoxBuilder>(work_folder);
+	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "boxbuilder", work_folder));
 
 	verifySimulationParameters();
 }
@@ -137,7 +140,10 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
-	engine = std::make_unique<Engine>(simulation.get(), forcefield.getNBForcefield());
+	engine = std::make_unique<Engine>(
+		simulation.get(), 
+		forcefield.getNBForcefield(), 
+		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_folder));
 	return true;
 
 	
@@ -167,7 +173,7 @@ void Environment::sayHello() {
 void Environment::run(bool em_variant) {
 	if (!prepareForRun()) { return; }
 
-	printH1("Simulation started", true, false);
+	m_logger.startSection("Simulation started\n");
 
 	time0 = std::chrono::high_resolution_clock::now();
 	while (true) {
@@ -192,7 +198,7 @@ void Environment::run(bool em_variant) {
 	simulation->ready_to_run = false;
 
 	engine->terminateSimulation();
-	printH1("Simulation Finished", true, true);
+	m_logger.finishSection("Simulation Finished\n");
 
 	if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
 		postRunEvents();
@@ -262,7 +268,7 @@ void Environment::postRunEvents() {
 
 	simulation->ready_to_run = false;
 
-	printH2("Post-run events finished Finished", true, true);
+	m_logger.print("Post-run events finished Finished\n");
 	printf("\n\n\n");
 }
 
@@ -316,7 +322,7 @@ bool Environment::handleTermination(Simulation* simulation)
 }
 
 void Environment::prepFF(string conf_path, string topol_path) {
-	ForcefieldMaker FFM(work_folder);	// Not to confuse with the engine FFM!!!!=!?!
+	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
 	FFM.prepSimulationForcefield();
 }
 

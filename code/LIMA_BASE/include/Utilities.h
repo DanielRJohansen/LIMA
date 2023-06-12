@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <iostream>
+#include "LimaTypes.cuh"
 
 #include <device_launch_parameters.h>
 #include <cuda_runtime_api.h>
@@ -44,11 +45,13 @@ public:
         compact
     };   
 
-    LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder="", bool headless=false);
+    LimaLogger(const LimaLogger&) = delete;
+    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::string& workfolder="");
     ~LimaLogger();
 
+    void startSection(const std::string& input);
     void print(const std::string& input, bool log=true);
-    void finishSection();
+    void finishSection(const std::string& str);
     
     template <typename T>
     void printToFile(const std::string& filename, const std::vector<T>& data) const {
@@ -63,13 +66,14 @@ public:
 
 
 private:
-    LogMode mode;
+    LogMode logmode;
+    EnvMode envmode;
     //std::string logFilePath;
     const std::string log_dir;
     std::ofstream logFile;
     const bool enable_logging{ false };
-    const bool headless;
 
+    void logToFile(const std::string& str);
     void clearLine();
     bool clear_next = false;
 };

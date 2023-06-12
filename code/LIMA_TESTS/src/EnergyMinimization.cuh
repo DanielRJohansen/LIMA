@@ -14,7 +14,7 @@ bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(EnvMode envmod
 	auto env = TestUtils::basicSetup("SolventBenchmark", { params }, envmode);
 	env->prepareForRun();	// Lock down simulation
 
-	LimaLogger logger{ LimaLogger::LogMode::compact, "nearestSolSolTest", env->getWorkdir() };
+	LimaLogger logger{ LimaLogger::LogMode::compact, Full, "nearestSolSolTest", env->getWorkdir() };
 
 
 

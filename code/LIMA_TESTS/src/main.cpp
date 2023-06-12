@@ -44,11 +44,12 @@ int main() {
 	//doPoolBenchmark();
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);
-	//basicBenchmark(env);
+	doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 
-	doPoolBenchmark(Headless);
+	//doPoolBenchmark(Headless);
+	//doPoolBenchmark(Full);
 
 	//doProteinBenchmark(env);
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding

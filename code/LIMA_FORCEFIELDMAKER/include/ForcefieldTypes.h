@@ -115,8 +115,8 @@ struct FTHelpers {
 		std::unordered_map<string, GenericBondType*> forcefieldMap;
 
 		for (int i = 0; i < topol_bonds->size(); i++) {
-			std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
-				GenericBondType::getBondtype(), i+1, topol_bonds->size());
+			//std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
+			//	GenericBondType::getBondtype(), i+1, topol_bonds->size());
 
 			GenericBondType* bond = &topol_bonds->at(i);
 
@@ -134,7 +134,7 @@ struct FTHelpers {
 				bond->assignForceVariables(*appropriateForcefieldType);
 			}
 		}
-		std::cout << '\n';
+		//std::cout << '\n';
 	}
 };
 

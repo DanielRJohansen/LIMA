@@ -13,7 +13,8 @@
 #include "Neighborlists.cuh"
 #include "EngineUtils.cuh"
 
-#include "LIMA_BASE/include/Printer.h"
+
+#include "LIMA_BASE/include/utilities.h"
 
 #include <memory>
 #include <vector>
@@ -35,8 +36,7 @@ __global__ void solventTransferKernel(SimulationDevice* sim);
 
 class Engine {
 public:
-	Engine();
-	Engine(Simulation* simulation, ForceField_NB forcefield);
+	Engine(Simulation*, ForceField_NB, std::unique_ptr<LimaLogger>);
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
 	// I'm sure that will help the branch predictor alot!
@@ -73,6 +73,7 @@ private:
 
 	void handleBoxtemp();
 
+	std::unique_ptr<LimaLogger> m_logger;
 
 	bool updatenlists_mutexlock = 0;
 

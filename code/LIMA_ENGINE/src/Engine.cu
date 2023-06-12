@@ -3,17 +3,15 @@
 
 #include <algorithm>
 
-Engine::Engine() {}
-Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host) {
+Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
+	: m_logger(std::move(logger))
+{
+
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 	this->simulation = simulation;
 
 	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
-	//int Skernel_shared_mem = sizeof(Float3) * MAX_COMPOUND_PARTICLES + sizeof(uint8_t) * MAX_COMPOUND_PARTICLES + sizeof(Solvent) * THREADS_PER_SOLVENTBLOCK;
-	printf("Compoundkernel shared mem. size: %d B\n", Ckernel_shared_mem);
-	//printf("Solventkernel shared mem. size: %d B\n", Skernel_shared_mem);
-
 
 	this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();

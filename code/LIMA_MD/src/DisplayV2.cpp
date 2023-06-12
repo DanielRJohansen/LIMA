@@ -2,13 +2,12 @@
 
 
 Display::Display() :
-    logger(LimaLogger::LogMode::compact, "forcefieldmaker") 
+    logger(LimaLogger::LogMode::compact, EnvMode::Full, "display") 
 {    
 #ifdef ENABLE_DISPLAY
     int success = initGLFW();
 #endif
-    logger.print("Display initialized\n");
-    logger.finishSection();
+    logger.finishSection("Display initialized");
 }
 
 Display::~Display() {

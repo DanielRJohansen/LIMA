@@ -7,8 +7,8 @@
 class BoxBuilder
 {
 public:
-	BoxBuilder(const string& workdir) :
-		m_logger(LimaLogger::LogMode::compact, "boxbuilder", workdir)
+	BoxBuilder(std::unique_ptr<LimaLogger> logger) :
+		m_logger(std::move(logger))
 	{
 		srand(290128309);
 	};
@@ -26,7 +26,8 @@ public:
 private:
 	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
 	
-
+	void setupDataBuffers(Simulation& simulation, const uint64_t n_steps);
+	void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps);
 
 	// -------------- Functions for compound manipulation BEFORE integration -------------- //
 	//void placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies);
@@ -51,7 +52,7 @@ private:
 	const float box_len = BOX_LEN;
 	const float box_base = 0;
 
-	const LimaLogger m_logger;
+	const std::unique_ptr<LimaLogger> m_logger;
 
 	const float MIN_NONBONDED_DIST = 0.2f;
 

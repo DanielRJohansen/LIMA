@@ -1,12 +1,16 @@
 #include "Utilities.h"
 #include <filesystem>
 #include <iostream>
+#include "Printer.h"
 
-LimaLogger::LimaLogger(const LogMode mode, const std::string& name, const std::string& workfolder, bool headless)
-    : mode(mode)
+using namespace LIMA_Print;
+using std::string;
+
+LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const string& workfolder)
+    : logmode(lm)
+    , envmode{em}
     , enable_logging(workfolder !="")
     , log_dir(workfolder + "/logs/")
-    , headless{headless}
 {
     if (enable_logging) {
         std::filesystem::create_directories(log_dir);
@@ -21,34 +25,56 @@ LimaLogger::~LimaLogger() {
     }
 }
 
-void LimaLogger::print(const std::string& input, const bool log) {
-    // First log to file
-    if (enable_logging) {
-        if (!logFile.is_open()) {
-            std::cerr << "Error: Log file is not open" << std::endl;
-            return;
-        }
-        if (log) { logFile << input << std::endl; }
+void LimaLogger::startSection(const std::string& input)
+{
+    if (envmode != Headless) {
+        printH2(input, true, false);
     }
-    
-    if (headless) { return; }
 
-    // Then print to console
-    auto input_copy = input;
-    if (mode == compact) {
-        if (clear_next) { clearLine(); }
-        if (!input_copy.empty() && input_copy.back() == '\n') {
-            input_copy.back() = ' ';
-            clear_next = true;  // Only clear of this was end of line
-        }
-    }
-    std::cout << input_copy;
+    logToFile(input);
 }
 
-void LimaLogger::finishSection() {
-    if (mode == compact) {
+void LimaLogger::print(const std::string& input, const bool log) 
+{
+    if (envmode != Headless) {
+        string input_copy = input;
+        if (logmode == compact) {
+            if (clear_next) { clearLine(); }
+            if (!input_copy.empty() && input_copy.back() == '\n') {
+                input_copy.back() = ' ';
+                clear_next = true;  // Only clear of this was end of line
+            }
+        }
+        std::cout << input_copy;
+    }
+
+
+    if (log) {
+        logToFile(input);
+    }
+}
+
+void LimaLogger::finishSection(const string& str) {
+    if (logmode == compact) {
         std::cout << "\n";
     }
+
+    if (envmode != Headless) {
+        printH2(str, false, true);
+    }
+    
+    logToFile(str);
+}
+
+void LimaLogger::logToFile(const string& str)
+{
+	if (!enable_logging) { return; }
+	if (!logFile.is_open()) {
+		std::cerr << "Error: Log file is not open" << std::endl;
+		return;
+	}
+
+	logFile << str << std::endl;
 }
 
 void LimaLogger::clearLine() {

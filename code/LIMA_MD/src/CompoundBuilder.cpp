@@ -112,7 +112,7 @@ std::vector<std::string> readFile(const std::string& file_path) {
 
 
 MoleculeBuilder::MoleculeBuilder(Forcefield* ff, const std::string& work_dir, VerbosityLevel vl) :
-	logger(LimaLogger::LogMode::compact, "moleculebuilder", work_dir),
+	logger(LimaLogger::LogMode::compact, Full, "moleculebuilder", work_dir),
 	verbosity_level(vl), 
 	forcefield(ff) 
 {}

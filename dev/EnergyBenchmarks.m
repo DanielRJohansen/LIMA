@@ -5,7 +5,7 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 10000;
+n_steps = 5000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
 benchmark = "Met";
 % ------------------------------------ %
@@ -35,7 +35,7 @@ title(benchmark + " - Average energy")
 legend("Potential energy", "Kinetic energy", "Total energy");
 ylabel("Energy [J/mol]")
 xlabel("time [fs]")
-xlim([0 200])
+%xlim([0 200])
 hold off
 
 % Calculate and plot derivatives
@@ -54,7 +54,7 @@ title(benchmark + " - Energy derivatives")
 legend("d(Potential energy)/dt", "d(Kinetic energy)/dt", "d(Total energy)/dt");
 ylabel("Derivative of energy [J/mol/fs]")
 xlabel("time [fs]")
-xlim([0 200])
+%xlim([0 200])
 hold off
 
 

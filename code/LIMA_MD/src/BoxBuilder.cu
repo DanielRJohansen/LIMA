@@ -5,7 +5,7 @@
 using namespace LIMA_Print;
 
 void BoxBuilder::buildBox(Simulation* simulation) {
-	printH1("Building box", true, false);
+	m_logger->startSection("Building box");
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->coordarray_circular_queue = new CompoundCoords[box.coordarray_circular_queue_n_elements];
@@ -44,32 +44,35 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager.release();
 
-	printf("CompoundCollection added to box\n");
+	m_logger->print("CompoundCollection added to box\n");
 }
 
-void setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
+void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
 	size_t n_datapoints = simulation.total_particles_upperbound * n_steps;
-	printf("Malloc %.2f MB on host for data buffers\n", (float)((sizeof(double) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+	auto datasize_str = std::to_string((float)((sizeof(double) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+	m_logger->print("Malloc " + datasize_str + "MB on host for data buffers\n");
 
 	simulation.potE_buffer.resize(simulation.total_particles_upperbound * n_steps);
 	simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
 }
 
-void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
+void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	uint64_t n_loggingdata_host = 10 * n_steps;
 	uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.n_compounds;
-	printf("Reserving %.4f GB host mem for logging + training data\n", (float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
+	auto datasize_str = std::to_string((float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
+	m_logger->print("Reserving " + datasize_str + "GB host mem for logging and training data\n");
 
 	simulation.loggingdata.resize(n_loggingdata_host);
 	simulation.trainingdata.resize(n_traindata_host);
 }
-
+#include <format>
 void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {
 	// Load meta information
 	simulation->copyBoxVariables();
-	printf("Box contains %d compounds, %d bridges and %d solvents\n\n", simulation->n_compounds, simulation->n_bridges, simulation->n_solvents);
+	m_logger->print("Box contains " + std::to_string(simulation->n_compounds) + " compounds, " 
+		+ std::to_string(simulation->n_bridges) + "bridges and " + std::to_string(simulation->n_solvents) + "solvents");
 
 	// Copy forcefield to sim
 	simulation->box_host->forcefield = new ForceField_NB{ forcefield };// Copy
@@ -80,17 +83,10 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	setupTrainingdataBuffers(*simulation, n_steps);
 	LIMA_UTILS::genericErrorCheck("Error during log-data mem. allocation");
 
-	printf("Total particles upperbound: %d\n", simulation->total_particles_upperbound);
-	printf("Max particles in compound: %d", MAX_COMPOUND_PARTICLES);
+	m_logger->print("Total particles upperbound: " +  std::to_string(simulation->total_particles_upperbound) + "\n");
+	m_logger->print("Max particles in compound: " + std::to_string(MAX_COMPOUND_PARTICLES) + "\n");
 
-	//simulation->box->moveToDevice();
-
-	// Move simulation to device
-	//simulation->moveToDevice();
-
-
-
-	printH1("Boxbuild complete!", false, true);
+	m_logger->finishSection("Boxbuild complete");
 }
 
 
@@ -188,7 +184,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	//m_logger.printToFile("nearestsolventsolvent.bin", closestNeighbor);
 
 	simulation->total_particles += simulation->box_host->n_solvents;
-	printf("%lu of %lld solvents added to box\n", simulation->box_host->n_solvents, solvent_positions.size());
+	auto a = std::to_string(simulation->box_host->n_solvents);
+	auto b = std::to_string(solvent_positions.size());
+	m_logger->print(a + " of " + b + " solvents added to box\n");
 	return simulation->box_host->n_solvents;
 }
 

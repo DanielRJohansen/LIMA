@@ -358,10 +358,9 @@ struct Singlebondtype {
 		kb = a.kb;
 	}
 
-
-	std::array<string, 2> bonded_typenames;
-
-	std::array<int, 2> gro_ids;
+	static const int n_atoms = 2;
+	std::array<string, n_atoms> bonded_typenames;
+	std::array<int, n_atoms> gro_ids;
 
 	float b0{};
 	float kb{};
@@ -376,7 +375,6 @@ struct Singlebondtype {
 	// TODO: This is temporary, remove feature
 	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
-
 	static void assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms);
 
 
@@ -387,17 +385,22 @@ struct Singlebondtype {
 
 
 struct Anglebondtype {
-	Anglebondtype() {}
-	Anglebondtype(string t1, string t2, string t3) : type1(t1), type2(t2), type3(t3) {
-		sort();
-	}
-	Anglebondtype(string t1, string t2, string t3, float t0, float kt) : type1(t1), type2(t2), type3(t3), theta0(t0), ktheta(kt) {
-		sort();
-	}
-	Anglebondtype(int id1, int id2, int id3) : id1(id1), id2(id2), id3(id3) {}
+	static const int n_atoms = 3;
 
-	string type1{}, type2{}, type3{};			// left, middle, right
-	int id1{}, id2{}, id3{};			// bonds from .top only has these values! 
+	Anglebondtype() {}
+	Anglebondtype(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {
+		sort();
+	}
+	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) : bonded_typenames(typenames), theta0(t0), ktheta(kt) {
+		sort();
+	}
+	Anglebondtype(std::array<int, n_atoms> gro_ids) : gro_ids(gro_ids) {}
+
+	std::array<string, n_atoms> bonded_typenames;	// left, middle, right
+	std::array<int, n_atoms> gro_ids;				// bonds from .top only has these values! 
+
+	//string type1{}, type2{}, type3{};			
+	//int id1{}, id2{}, id3{};			
 	float theta0{};
 	float ktheta{};
 
@@ -409,20 +412,16 @@ struct Anglebondtype {
 	void sort() {
 		// The middle type must always be in the middle, so we only sort the outer 2 types
 		// No need to sort if our edges are the same
-		if (type1 != type3) {	
-			if (!FTHelpers::isSorted(&type1, &type3)) {
-				swap(type1, type3);
+		if (bonded_typenames[0] != bonded_typenames[2]) {
+			if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[2])) {
+				swap(bonded_typenames[0], bonded_typenames[2]);
 			}
 		}
 	}
 
-	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2, type3 }; }
+	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
 	static const std::string getBondtype() { return "angle"; }
-
-	static vector<Anglebondtype> parseFFAngletypes(vector<vector<string>> rows, bool verbose);
-
-	static vector<Anglebondtype> parseTopolAngletypes(vector<vector<string>> rows, bool verbose);
 
 	static void assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms);
 

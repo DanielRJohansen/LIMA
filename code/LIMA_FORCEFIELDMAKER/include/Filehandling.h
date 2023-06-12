@@ -210,8 +210,8 @@ public:
 		file << FFOutHelpers::titleH3("{Atom-IDs \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
 		file << FFOutHelpers::parserTitle("angles");
 		for (Anglebondtype angle : angles) {
-			file << to_string(angle.id1) << ';' << to_string(angle.id2) << ';' << to_string(angle.id3) << ';'
-				<< angle.type1 << ';' << angle.type2 << ';' << angle.type3 << ';'
+			file << to_string(angle.gro_ids[0]) << ';' << to_string(angle.gro_ids[1]) << ';' << to_string(angle.gro_ids[2]) << ';'
+				<< angle.bonded_typenames[0] << ';' << angle.bonded_typenames[1] << ';' << angle.bonded_typenames[2] << ';'
 				<< to_string(angle.theta0) << ';' << to_string(angle.ktheta) << endl;
 		}
 		file << FFOutHelpers::endBlock();
@@ -275,7 +275,7 @@ public:
 		file << FFOutHelpers::titleH3("{atom_types \t theta_0 [rad] \t k_theta [J/(mol*rad^2)] \t }");
 		file << FFOutHelpers::parserTitle("ff_angletypes");
 		for (Anglebondtype angle : angletypes) {
-			file << angle.type1 << ';' << angle.type2 << ';' << angle.type3 << ';' << to_string(angle.theta0) << ';' << to_string(angle.ktheta) << endl;
+			file << angle.bonded_typenames[0] << ';' << angle.bonded_typenames[1] << ';' << angle.bonded_typenames[2] << ';' << to_string(angle.theta0) << ';' << to_string(angle.ktheta) << endl;
 		}
 		file << FFOutHelpers::endBlock();
 

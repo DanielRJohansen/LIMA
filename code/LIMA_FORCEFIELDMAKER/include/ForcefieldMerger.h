@@ -112,27 +112,23 @@ private:
 
 			current_state = setState(row[0], current_state);
 
-			switch (current_state) {
-			case ANGLES:
-				if (row.size() < 5)
-					continue;
+			if (current_state != ANGLES) { continue; }
 
-				angletype = Anglebondtype(
-					row[0],
-					row[1],
-					row[2],
-					stof(row[4]) * 2*3.1415f/360.f,					// convert degress to rads
-					stof(row[3]) * 4183.f							// convert kcal/(mol*rad^2) to J/(mol*rad^2)
-				);
-				if (isDuplicate(angletype, ff_angletypes))
-					continue;
 
-				ff_angletypes->push_back(angletype);
-				break;
+			if (row.size() < 5)
+				continue;
 
-			default:
-				break;
-			}
+			std::array<string, 3> bonded_typenames{ row[0], row[1], row[2] };
+			angletype = Anglebondtype(
+				bonded_typenames,
+				stof(row[4]) * 2 * 3.1415f / 360.f,					// convert degress to rads
+				stof(row[3]) * 4183.f							// convert kcal/(mol*rad^2) to J/(mol*rad^2)
+			);
+			if (isDuplicate(angletype, ff_angletypes))
+				continue;
+
+			ff_angletypes->push_back(angletype);
+
 		}
 	}
 	void parseDihedraltypes(vector<vector<string>> rows, vector<Dihedralbondtype>* ff_dihedraltypes) {			// what the fuck is multiplicity?!??!!?!?!?
@@ -212,7 +208,7 @@ private:
 	}
 	bool isDuplicate(Anglebondtype angletype, vector<Anglebondtype>* ff_angletypes) {
 		for (Anglebondtype at : *ff_angletypes) {
-			if (angletype.type1 == at.type1 && angletype.type2 == at.type2 && angletype.type3 == at.type3)
+			if (angletype.bonded_typenames[0] == at.bonded_typenames[0] && angletype.bonded_typenames[1] == at.bonded_typenames[1] && angletype.bonded_typenames[2] == at.bonded_typenames[2])
 				return true;
 		}
 		return false;

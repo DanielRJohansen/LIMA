@@ -174,84 +174,13 @@ Singlebondtype* Singlebondtype::findBestMatchInForcefield(Singlebondtype* query_
 }
 
 
-
-
-
-vector<Anglebondtype> Anglebondtype::parseFFAngletypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Anglebondtype> angletypes;
-
-	for (vector<string> row : rows) {
-
-		if (row.size() == 2) {
-			current_state = FTHelpers::setState(row[1], current_state);
-			continue;
-		}
-
-
-
-		switch (current_state) {
-		case FTHelpers::FF_ANGLETYPES:
-			angletypes.push_back(Anglebondtype(row[0], row[1], row[2], stof(row[3]), stof(row[4])));
-			break;
-		default:
-			break;
-		}
-
-
-		if (current_state == FTHelpers::FF_DIHEDRALTYPES)
-			break;
-	}
-
-	if (verbose) {
-		printf("%lld angletypes in forcefield\n", angletypes.size());
-	}
-	
-	return angletypes;
-}
-
-vector<Anglebondtype> Anglebondtype::parseTopolAngletypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Anglebondtype> records;
-
-	for (vector<string> row : rows) {
-		if (row.size() == 3) {
-			if (row[0][0] == '[') {
-				current_state = FTHelpers::setState(row[1], current_state);
-				continue;
-			}
-		}
-
-
-
-		switch (current_state)
-		{
-		case FTHelpers::FF_ANGLETYPES:
-			records.push_back(Anglebondtype(stoi(row[0]), stoi(row[1]), stoi(row[2])));
-			break;
-		default:
-			break;
-		}
-
-
-		if (current_state == FTHelpers::FF_DIHEDRALTYPES)
-			break;
-	}
-
-	if (verbose) {
-		printf("%lld angles found in topology file\n", records.size());
-	}
-	
-	return records;
-}
-
 void Anglebondtype::assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms) {
 	for (int i = 0; i < topol_angles->size(); i++) {
 		Anglebondtype* angle = &topol_angles->at(i);
 
-		angle->type1 = atoms.at(angle->id1 - size_t{1}).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		angle->type2 = atoms.at(angle->id2 - size_t{1}).atomtype_bond;
-		angle->type3 = atoms.at(angle->id3 - size_t{1}).atomtype_bond;
+		angle->bonded_typenames[0] = atoms.at(angle->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+		angle->bonded_typenames[1] = atoms.at(angle->gro_ids[1] - size_t{ 1 }).atomtype_bond;
+		angle->bonded_typenames[2] = atoms.at(angle->gro_ids[2] - size_t{ 1 }).atomtype_bond;
 		angle->sort();
 		//cout << bond->type1 << '\t' << bond->type2 << endl;;
 	}
@@ -264,7 +193,10 @@ Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_typ
 	float best_likeness = 0;
 	Anglebondtype* best_angle = &((*FF_angletypes)[0]);
 	for (Anglebondtype& angle : *FF_angletypes) {
-		float likeness = FTHelpers::calcLikeness(query_type->type1, angle.type1) * FTHelpers::calcLikeness(query_type->type2, angle.type2) * FTHelpers::calcLikeness(query_type->type3, angle.type3);
+		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], angle.bonded_typenames[0]) 
+			* FTHelpers::calcLikeness(query_type->bonded_typenames[1], angle.bonded_typenames[1]) 
+			* FTHelpers::calcLikeness(query_type->bonded_typenames[2], angle.bonded_typenames[2]);
+
 		if (likeness > best_likeness) {
 			best_likeness = likeness;
 			best_angle = &angle;
@@ -275,10 +207,10 @@ Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_typ
 	if (best_likeness > 0.01f)
 		return best_angle;
 
-	cout << "\n\n\nFailed to match angle types.\n Closest match " << best_angle->type1 << "    " << best_angle->type2 << "    " << best_angle->type3 << endl;
+	cout << "\n\n\nFailed to match angle types.\n Closest match " << best_angle->bonded_typenames[0] << "    " << best_angle->bonded_typenames[1] << "    " << best_angle->bonded_typenames[2] << endl;
 	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d %d\n", query_type->id1, query_type->id2, query_type->id3);
-	cout << query_type->type1 << '\t' << query_type->type2 << '\t' << query_type->type3 << endl;
+	printf("Topol ids: %d %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1], query_type->gro_ids[2]);
+	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << '\t' << query_type->bonded_typenames[2] << endl;
 	exit(0);
 }
 

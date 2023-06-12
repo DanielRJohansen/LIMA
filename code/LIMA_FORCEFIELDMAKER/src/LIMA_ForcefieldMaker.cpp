@@ -82,8 +82,19 @@ vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, 
 }
 
 vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
-	vector<Anglebondtype> forcefield = Anglebondtype::parseFFAngletypes(*ffbonded_rows, verbose);
-	vector<Anglebondtype> topology_angles = Anglebondtype::parseTopolAngletypes(*topology_rows, verbose);
+	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
+		std::array<string, 3> bonded_typenames{ row[0], row[1], row[2]};
+		records.push_back(Anglebondtype(bonded_typenames, stof(row[3]), stof(row[4])));
+		//records.push_back(Anglebondtype(row[0], row[1], row[2], stof(row[3]), stof(row[4])));
+	};
+	vector<Anglebondtype> forcefield = FTHelpers::parseFFBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*ffbonded_rows, forcefieldInsertFunction);
+
+	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
+		std::array<int, 3> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]) };
+		records.push_back(Anglebondtype(gro_ids));
+		//records.push_back(Anglebondtype(stoi(row[0]), stoi(row[1]), stoi(row[2])));
+	};
+	vector<Anglebondtype> topology_angles = FTHelpers::parseTopolBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*topology_rows, topologyInsertFunction);
 
 	Anglebondtype::assignTypesFromAtomIDs(&topology_angles, *atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);

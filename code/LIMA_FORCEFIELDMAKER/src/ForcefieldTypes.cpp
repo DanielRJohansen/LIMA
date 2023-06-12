@@ -71,12 +71,21 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 
 
 
-
+Atom::STATE Atom::setState(string s, STATE current_state) {
+	if (s == "atoms")
+		return ATOMS;
+	if (s == "bonds")
+		return FINISHED;
+	return INACTIVE;
+}
 
 vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	STATE current_state = INACTIVE;
 
 	vector<Atom> records;
+
+	AtomMap atommap;	// I guess maps are not ideal, since we always get increasing gro_ids, meaning it is always worst case..
+
 
 	for (vector<string> row : rows) {
 
@@ -85,17 +94,14 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 			continue;
 		}
 
+		if (current_state == ATOMS) {
+			const int gro_id = stoi(row[0]);
+			const string bonded_type = row[1];
+			const string nbonded_type = row[4];
 
+			records.push_back(Atom(gro_id, bonded_type, nbonded_type));
 
-		switch (current_state)
-		{
-		case INACTIVE:
-			break;
-		case ATOMS:
-			records.push_back(Atom(stoi(row[0]), row[1], row[4]));
-			break;
-		default:
-			break;
+			atommap.insert(std::pair(gro_id, Atom(gro_id, bonded_type, nbonded_type)));
 		}
 
 		if (current_state == FINISHED)
@@ -109,86 +115,36 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	return records;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-vector<Bondtype> Bondtype::parseFFBondtypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-
-	vector<Bondtype> records;
-
-	for (vector<string> row : rows) {
-		if (row.size() == 2) {
-			current_state = FTHelpers::setState(row[1], current_state);
-			continue;
-		}
-
-
-		switch (current_state) {
-		case FTHelpers::FF_BONDTYPES:
-
-			records.push_back(Bondtype(row[0], row[1], stof(row[2]), stof(row[3])));
-			break;
-		default:
-			break;
+bool Atom::assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias) {
+	for (NB_Atomtype force_parameters : forcefield) {
+		if (force_parameters.type == alias) {
+			atom.atomtype_id = force_parameters.atnum_local;
+			return true;
 		}
 	}
 
-	if (verbose) {
-		printf("%lld single bonds read from file\n", records.size());
-	}
-	
-	return records;
+	return false;
 }
 
-vector<Bondtype> Bondtype::parseTopolBondtypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Bondtype> records;
+void Atom::assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map) {
+	for (int i = 0; i < atoms->size(); i++) {
+		Atom* atom = &atoms->at(i);
+		string alias = map->mapRight(atom->atomtype);
 
-	for (vector<string> row : rows) {
-		if (row.size() == 3) {
-			if (row[0][0] == '[') {
-				current_state = FTHelpers::setState(row[1], current_state);
-				continue;
-			}
-		}
-
-
-
-		switch (current_state) {
-		case FTHelpers::FF_BONDTYPES:
-			records.push_back(Bondtype(stoi(row[0]), stoi(row[1])));
-			break;
-		default:
-			break;
-		}
+		bool success = assignAtomtypeID(*atom, *forcefield, alias);
 	}
-
-	if (verbose) {
-		printf("%lld bonds found in topology file\n", records.size());
-	}
-	
-	return records;
 }
 
-void Bondtype::assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom> atoms) {
+
+
+
+void Singlebondtype::assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms) {
 	for (int i = 0; i < topol_bonds->size(); i++) {
-		Bondtype* bond = &topol_bonds->at(i);
+		Singlebondtype* bond = &topol_bonds->at(i);
 
 
-		bond->type1 = atoms.at(bond->id1 - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		bond->type2 = atoms.at(bond->id2 - size_t{ 1 }).atomtype_bond;
+		bond->bonded_typenames[0] = atoms.at(bond->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+		bond->bonded_typenames[1] = atoms.at(bond->gro_ids[1] - size_t{ 1 }).atomtype_bond;
 		bond->sort();
 		//cout << bond->type1 << '\t' << bond->type2 << endl;;
 	}
@@ -196,12 +152,12 @@ void Bondtype::assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom
 
 
 
-Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondtype>* forcefield) {
+Singlebondtype* Singlebondtype::findBestMatchInForcefield(Singlebondtype* query_type, vector<Singlebondtype>* forcefield) {
 	if (forcefield->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 	float best_likeness = 0;
-	Bondtype* best_bond = &((*forcefield)[0]);
-	for (Bondtype& bond : *forcefield) {
-		float likeness = FTHelpers::calcLikeness(query_type->type1, bond.type1) * FTHelpers::calcLikeness(query_type->type2, bond.type2);
+	Singlebondtype* best_bond = &((*forcefield)[0]);
+	for (Singlebondtype& bond : *forcefield) {
+		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], bond.bonded_typenames[0]) * FTHelpers::calcLikeness(query_type->bonded_typenames[1], bond.bonded_typenames[1]);
 		if (likeness > best_likeness) {
 			best_likeness = likeness;
 			best_bond = &bond;
@@ -210,10 +166,10 @@ Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondt
 	if (best_likeness > 0.01f)
 		return best_bond;
 
-	cout << "Failed to match bond types.\n Closest match " << best_bond->type1 << "    " << best_bond->type2;
+	cout << "Failed to match bond types.\n Closest match " << best_bond->bonded_typenames[0] << "    " << best_bond->bonded_typenames[1];
 	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d\n", query_type->id1, query_type->id2);
-	cout << query_type->type1 << '\t' << query_type->type2 << endl;
+	printf("Topol ids: %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1]);
+	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << endl;
 	exit(0);
 }
 
@@ -221,9 +177,9 @@ Bondtype* Bondtype::findBestMatchInForcefield(Bondtype* query_type, vector<Bondt
 
 
 
-vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows, bool verbose) {
+vector<Anglebondtype> Anglebondtype::parseFFAngletypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Angletype> angletypes;
+	vector<Anglebondtype> angletypes;
 
 	for (vector<string> row : rows) {
 
@@ -236,7 +192,7 @@ vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows, bool
 
 		switch (current_state) {
 		case FTHelpers::FF_ANGLETYPES:
-			angletypes.push_back(Angletype(row[0], row[1], row[2], stof(row[3]), stof(row[4])));
+			angletypes.push_back(Anglebondtype(row[0], row[1], row[2], stof(row[3]), stof(row[4])));
 			break;
 		default:
 			break;
@@ -254,9 +210,9 @@ vector<Angletype> Angletype::parseFFAngletypes(vector<vector<string>> rows, bool
 	return angletypes;
 }
 
-vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows, bool verbose) {
+vector<Anglebondtype> Anglebondtype::parseTopolAngletypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Angletype> records;
+	vector<Anglebondtype> records;
 
 	for (vector<string> row : rows) {
 		if (row.size() == 3) {
@@ -271,7 +227,7 @@ vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows, b
 		switch (current_state)
 		{
 		case FTHelpers::FF_ANGLETYPES:
-			records.push_back(Angletype(stoi(row[0]), stoi(row[1]), stoi(row[2])));
+			records.push_back(Anglebondtype(stoi(row[0]), stoi(row[1]), stoi(row[2])));
 			break;
 		default:
 			break;
@@ -289,9 +245,9 @@ vector<Angletype> Angletype::parseTopolAngletypes(vector<vector<string>> rows, b
 	return records;
 }
 
-void Angletype::assignTypesFromAtomIDs(vector<Angletype>* topol_angles, vector<Atom> atoms) {
+void Anglebondtype::assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms) {
 	for (int i = 0; i < topol_angles->size(); i++) {
-		Angletype* angle = &topol_angles->at(i);
+		Anglebondtype* angle = &topol_angles->at(i);
 
 		angle->type1 = atoms.at(angle->id1 - size_t{1}).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
 		angle->type2 = atoms.at(angle->id2 - size_t{1}).atomtype_bond;
@@ -303,11 +259,11 @@ void Angletype::assignTypesFromAtomIDs(vector<Angletype>* topol_angles, vector<A
 
 
 
-Angletype* Angletype::findBestMatchInForcefield(Angletype* query_type, vector<Angletype>* FF_angletypes) {
+Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes) {
 	if (FF_angletypes->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 	float best_likeness = 0;
-	Angletype* best_angle = &((*FF_angletypes)[0]);
-	for (Angletype& angle : *FF_angletypes) {
+	Anglebondtype* best_angle = &((*FF_angletypes)[0]);
+	for (Anglebondtype& angle : *FF_angletypes) {
 		float likeness = FTHelpers::calcLikeness(query_type->type1, angle.type1) * FTHelpers::calcLikeness(query_type->type2, angle.type2) * FTHelpers::calcLikeness(query_type->type3, angle.type3);
 		if (likeness > best_likeness) {
 			best_likeness = likeness;
@@ -347,9 +303,9 @@ Angletype* Angletype::findBestMatchInForcefield(Angletype* query_type, vector<An
 
 
 
-vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> rows, bool verbose) {
+vector<Dihedralbondtype> Dihedralbondtype::parseFFDihedraltypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Dihedraltype> dihedraltypes;
+	vector<Dihedralbondtype> dihedraltypes;
 
 	for (vector<string> row : rows) {
 
@@ -360,7 +316,7 @@ vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> r
 
 		switch (current_state) {
 		case FTHelpers::FF_DIHEDRALTYPES:
-			dihedraltypes.push_back(Dihedraltype(row[0], row[1], row[2], row[3], stof(row[4]), stof(row[5]), stoi(row[6])));
+			dihedraltypes.push_back(Dihedralbondtype(row[0], row[1], row[2], row[3], stof(row[4]), stof(row[5]), stoi(row[6])));
 			break;
 		default:
 			break;
@@ -374,9 +330,9 @@ vector<Dihedraltype> Dihedraltype::parseFFDihedraltypes(vector<vector<string>> r
 	return dihedraltypes;
 }
 
-vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose) {
+vector<Dihedralbondtype> Dihedralbondtype::parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose) {
 	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Dihedraltype> records;
+	vector<Dihedralbondtype> records;
 
 	bool entered_dihedrals_first_time = false;	// The top contains maybe improper dihedrals? ANyways these mess up, as they are simply named as dihedrals
 
@@ -396,7 +352,7 @@ vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>
 		case FTHelpers::FF_DIHEDRALTYPES:
 			if (row.size() != 5)
 				continue;
-			records.push_back(Dihedraltype(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])));
+			records.push_back(Dihedralbondtype(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])));
 			entered_dihedrals_first_time = true;
 			break;
 		default:
@@ -411,9 +367,9 @@ vector<Dihedraltype> Dihedraltype::parseTopolDihedraltypes(vector<vector<string>
 	return records;
 }
 
-void Dihedraltype::assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals, vector<Atom> atoms) {
+void Dihedralbondtype::assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms) {
 	for (int i = 0; i < topol_dihedrals->size(); i++) {
-		Dihedraltype* dihedral = &topol_dihedrals->at(i);
+		Dihedralbondtype* dihedral = &topol_dihedrals->at(i);
 
 		//printf("Accessing atoms %d %d %d %d\n", dihedral->id1, dihedral->id2, dihedral->id3, dihedral->id4);
 		dihedral->type1 = atoms.at(static_cast<size_t>(dihedral->id1) - 1).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
@@ -425,11 +381,11 @@ void Dihedraltype::assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals,
 	}
 }
 
-Dihedraltype* Dihedraltype::findBestMatchInForcefield(Dihedraltype* query_type, vector<Dihedraltype>* forcefield) {
+Dihedralbondtype* Dihedralbondtype::findBestMatchInForcefield(Dihedralbondtype* query_type, vector<Dihedralbondtype>* forcefield) {
 	if (forcefield->size() == 0) { throw std::exception("No elements in forcefield"); }
 	float best_likeness = 0;
-	Dihedraltype* best_match = &((*forcefield)[0]);
-	for (Dihedraltype& dihedral : *forcefield) {
+	Dihedralbondtype* best_match = &((*forcefield)[0]);
+	for (Dihedralbondtype& dihedral : *forcefield) {
 		float likeness = FTHelpers::calcLikeness(query_type->type1, dihedral.type1)
 			* FTHelpers::calcLikeness(query_type->type2, dihedral.type2)
 			* FTHelpers::calcLikeness(query_type->type3, dihedral.type3)

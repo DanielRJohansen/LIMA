@@ -4,11 +4,12 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <array>
 #include <sstream>
 #include <algorithm>
 #include <unordered_map>
 #include <format>
-
+#include <functional>
 #include "LIMA_BASE/include/Utilities.h"
 
 ///////////////////////////////// READ HERE FIRST /////////////////////////////////
@@ -24,6 +25,9 @@ const float water_mass = 15.999000f + 2.f * 1.008000f;
 const float water_sigma = 0.302905564168f + 2.f * 0.040001352445f;
 const float water_epsilon = (0.50208f + 2.f * 0.19246f) *1000.f;		// Convert kJ->J
 
+#include <map>
+
+#include <span>
 
 struct FTHelpers {
 	static bool charIsNumber(char c) {
@@ -110,6 +114,15 @@ struct FTHelpers {
 		return out;
 	}
 
+	static string makeBondTag(std::span<string>atom_ids) {
+		string out = "";
+		for (const auto& atom_id : atom_ids) {
+			out = out + atom_id + "-";
+		}
+		out.pop_back();	// remove the last '-'
+		return out;
+	}
+
 	template <typename GenericBondType>
 	static void assignForceVariablesFromForcefield(vector<GenericBondType>* topol_bonds, vector<GenericBondType>* forcefield) {
 		std::unordered_map<string, GenericBondType*> forcefieldMap;
@@ -135,6 +148,61 @@ struct FTHelpers {
 			}
 		}
 		//std::cout << '\n';
+	}
+
+	template <typename BondType, STATE query_state>
+	static vector<BondType> parseFFBondtypes(
+		const vector<vector<string>>& rows, 
+		std::function<void(const vector<string>& row, vector<BondType>& records)> insertFunction)
+	{
+		STATE current_state = INACTIVE;
+
+		vector<BondType> records;
+
+		for (const vector<string>& row : rows) {
+			if (row.size() == 2) {
+				current_state = setState(row[1], current_state);
+				continue;
+			}
+
+			if (current_state != query_state) { continue; }
+
+			insertFunction(row, records);
+		}
+
+		return records;
+	}
+
+	template <typename BondType, STATE query_state>
+	static vector<BondType> parseTopolBondtypes(
+		const vector<vector<string>>& rows, 
+		std::function<void(const vector<string>& row, vector<BondType>& records)> insertFunction)
+	{
+		STATE current_state = INACTIVE;
+		vector<BondType> records;
+
+		for (const vector<string>& row : rows) {
+			if (row.empty()) { continue; }
+			if (row.size() == 3) {
+				if (row[0][0] == '[') {
+					current_state = setState(row[1], current_state);
+					continue;
+				}
+			}
+
+			if (current_state != query_state) { continue; }
+
+			insertFunction(row, records);
+			//std::array<int, 2> gro_ids{ stoi(row[0]), stoi(row[1]) };
+			//records.push_back(Singlebondtype(gro_ids));
+
+		}
+
+		/*if (verbose) {
+			printf("%lld bonds found in topology file\n", records.size());
+		}*/
+
+		return records;
 	}
 };
 
@@ -253,117 +321,87 @@ struct NB_Atomtype {
 
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom() {}
-	Atom(int id, string type_b, string type_nb) : id(id), atomtype_bond(type_b), atomtype(type_nb) {
-		//convertToZeroindexed();
-	}
-	int id=-1;										// Come from topol.top file
-	string atomtype{};
-	string atomtype_bond{};
+	Atom(int id, string type_b, string type_nb) : gro_id(id), atomtype_bond(type_b), atomtype(type_nb) {}
+	const int gro_id=-1;										// Come from topol.top file
+	const string atomtype{};
+	const string atomtype_bond{};
 	int atomtype_id = -1;				// Asigned later
 	//float charge;
 
 
 
 	enum STATE { INACTIVE, ATOMS, FINISHED };
-	static STATE setState(string s, STATE current_state) {
-		if (s == "atoms")
-			return ATOMS;
-		if (s == "bonds")
-			return FINISHED;
-		return INACTIVE;
-	}
+	static STATE setState(string s, STATE current_state);
 
 	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
 
-
-	static bool assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias) {
-		for (NB_Atomtype force_parameters : forcefield) {
-			if (force_parameters.type == alias) {
-				atom.atomtype_id = force_parameters.atnum_local;
-				return true;
-			}			
-		}
-		//printf("Alias not found!\n");	// TODO: FIX. irght now i dont care tho
-		//exit(1);
-		return false;
-	}
-
-	static void assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map) {
-		for (int i = 0; i < atoms->size(); i++) {
-			Atom* atom = &((*atoms).at(i));
-			string alias = map->mapRight(atom->atomtype);
-
-			bool success = assignAtomtypeID(*atom, *forcefield, alias);
-		}
-	}
+	static bool assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias);
+	static void assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map);
 };
 
+using AtomMap = std::map<int, Atom>;
 
 
-struct Bondtype {
-	Bondtype() {}
-	Bondtype(string t1, string t2) : type1(t1), type2(t2) {
+
+
+
+struct Singlebondtype {
+	Singlebondtype(const std::array<string,2>& typenames, float b0, float kb) : bonded_typenames(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Bondtype(string t1, string t2, float b0, float kb) : type1(t1), type2(t2), b0(b0), kb(kb) {
-		sort();
-	}
-	Bondtype(int id1, int id2) : id1(id1), id2(id2) {
+	Singlebondtype(const std::array<int,2>& ids) : gro_ids(ids) {
 		//convertToZeroIndexed();
 	}
 	
-	void assignForceVariables(const Bondtype& a) {
+	void assignForceVariables(const Singlebondtype& a) {
 		b0 = a.b0;
 		kb = a.kb;
 	}
 
-	string type1{}, type2{};
-	int id1{}, id2{};			// bonds from .top only has these values! 
+
+	std::array<string, 2> bonded_typenames;
+
+	std::array<int, 2> gro_ids;
+
 	float b0{};
 	float kb{};
 
 	void sort() {
-		if (!FTHelpers::isSorted(&type1, &type2)) {
-			swap(type1, type2);
+		if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[1])) {
+			swap(bonded_typenames[0], bonded_typenames[1]);
+			//std::swap(id1, id2);	// TODO: Should this not be like this???
 		}
 	}
 
-	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2}; }
-
-	static std::string getBondtype() { return "bond"; }
-
-	static vector<Bondtype> parseFFBondtypes(vector<vector<string>> rows, bool verbose);
-
-	static vector<Bondtype> parseTopolBondtypes(vector<vector<string>> rows, bool verbose);
-
-	static void assignTypesFromAtomIDs(vector<Bondtype>* topol_bonds, vector<Atom> atoms);
+	// TODO: This is temporary, remove feature
+	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
 
-	static Bondtype* findBestMatchInForcefield(Bondtype* query_type, vector<Bondtype>* FF_bondtypes);
+	static void assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms);
 
-	//static void assignFFParametersFromBondtypes(vector<Bondtype>* topol_bonds, vector<Bondtype>* FF_bondtypes);
+
+	static Singlebondtype* findBestMatchInForcefield(Singlebondtype* query_type, vector<Singlebondtype>* FF_bondtypes);
 };
 
 
 
 
-struct Angletype {
-	Angletype() {}
-	Angletype(string t1, string t2, string t3) : type1(t1), type2(t2), type3(t3) {
+struct Anglebondtype {
+	Anglebondtype() {}
+	Anglebondtype(string t1, string t2, string t3) : type1(t1), type2(t2), type3(t3) {
 		sort();
 	}
-	Angletype(string t1, string t2, string t3, float t0, float kt) : type1(t1), type2(t2), type3(t3), theta0(t0), ktheta(kt) {
+	Anglebondtype(string t1, string t2, string t3, float t0, float kt) : type1(t1), type2(t2), type3(t3), theta0(t0), ktheta(kt) {
 		sort();
 	}
-	Angletype(int id1, int id2, int id3) : id1(id1), id2(id2), id3(id3) {}
+	Anglebondtype(int id1, int id2, int id3) : id1(id1), id2(id2), id3(id3) {}
 
 	string type1{}, type2{}, type3{};			// left, middle, right
 	int id1{}, id2{}, id3{};			// bonds from .top only has these values! 
 	float theta0{};
 	float ktheta{};
 
-	void assignForceVariables(const Angletype& a) {
+	void assignForceVariables(const Anglebondtype& a) {
 		theta0 = a.theta0;
 		ktheta = a.ktheta;
 	}
@@ -382,33 +420,33 @@ struct Angletype {
 
 	static const std::string getBondtype() { return "angle"; }
 
-	static vector<Angletype> parseFFAngletypes(vector<vector<string>> rows, bool verbose);
+	static vector<Anglebondtype> parseFFAngletypes(vector<vector<string>> rows, bool verbose);
 
-	static vector<Angletype> parseTopolAngletypes(vector<vector<string>> rows, bool verbose);
+	static vector<Anglebondtype> parseTopolAngletypes(vector<vector<string>> rows, bool verbose);
 
-	static void assignTypesFromAtomIDs(vector<Angletype>* topol_angles, vector<Atom> atoms);
+	static void assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms);
 
 
 
-	static Angletype* findBestMatchInForcefield(Angletype* query_type, vector<Angletype>* FF_angletypes);
+	static Anglebondtype* findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes);
 	
 	//static void assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield);
 };
 
 
 
-struct Dihedraltype {
-	Dihedraltype() {}
-	Dihedraltype(const string& t1, const string& t2, const string& t3, const string& t4) : type1(t1), type2(t2), type3(t3), type4(t4) {
+struct Dihedralbondtype {
+	Dihedralbondtype() {}
+	Dihedralbondtype(const string& t1, const string& t2, const string& t3, const string& t4) : type1(t1), type2(t2), type3(t3), type4(t4) {
 		sort();
 	}
-	Dihedraltype(const string& t1, const string& t2, const string& t3, const string& t4, float phi0, float kphi, int n) : type1(t1), type2(t2), type3(t3), type4(t4), phi0(phi0), kphi(kphi), n(n) {
+	Dihedralbondtype(const string& t1, const string& t2, const string& t3, const string& t4, float phi0, float kphi, int n) : type1(t1), type2(t2), type3(t3), type4(t4), phi0(phi0), kphi(kphi), n(n) {
 		sort();
 	}
-	Dihedraltype(int id1, int id2, int id3, int id4) : id1(id1), id2(id2), id3(id3), id4(id4) {
+	Dihedralbondtype(int id1, int id2, int id3, int id4) : id1(id1), id2(id2), id3(id3), id4(id4) {
 	}
 
-	void assignForceVariables(const Dihedraltype& a) {
+	void assignForceVariables(const Dihedralbondtype& a) {
 		phi0 = a.phi0;
 		kphi = a.kphi;
 		n = a.n;
@@ -441,11 +479,11 @@ struct Dihedraltype {
 
 	static const std::string getBondtype() { return "dihedral"; }
 
-	static vector<Dihedraltype> parseFFDihedraltypes(vector<vector<string>> rows, bool verbose);
+	static vector<Dihedralbondtype> parseFFDihedraltypes(vector<vector<string>> rows, bool verbose);
 
-	static vector<Dihedraltype> parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose);
+	static vector<Dihedralbondtype> parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose);
 
-	static void assignTypesFromAtomIDs(vector<Dihedraltype>* topol_dihedrals, vector<Atom> atoms);
+	static void assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms);
 
-	static Dihedraltype* findBestMatchInForcefield(Dihedraltype* query_type, vector<Dihedraltype>* forcefield);
+	static Dihedralbondtype* findBestMatchInForcefield(Dihedralbondtype* query_type, vector<Dihedralbondtype>* forcefield);
 };

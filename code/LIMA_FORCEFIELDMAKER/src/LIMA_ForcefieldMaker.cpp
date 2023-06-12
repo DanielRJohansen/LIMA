@@ -59,34 +59,43 @@ vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_A
 	return atoms;
 }
 
-vector<Bondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
-	vector<Bondtype> forcefield = Bondtype::parseFFBondtypes(*ffbonded_rows, verbose);
-	vector<Bondtype> topology_bonds = Bondtype::parseTopolBondtypes(*topology_rows, verbose);
+vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Singlebondtype>& records) {
+		std::array<string, 2> bonded_typenames{ row[0], row[1] };
+		records.push_back(Singlebondtype(bonded_typenames, stof(row[2]), stof(row[3])));
+	};
+	vector<Singlebondtype> forcefield = FTHelpers::parseFFBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(*ffbonded_rows, forcefieldInsertFunction);
+
+	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Singlebondtype>& records) {
+		std::array<int, 2> gro_ids{ stoi(row[0]), stoi(row[1]) };
+		records.push_back(Singlebondtype(gro_ids));
+	};
+	vector<Singlebondtype> topology_bonds = FTHelpers::parseTopolBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(*topology_rows, topologyInsertFunction);
 	
 
 
-	Bondtype::assignTypesFromAtomIDs(&topology_bonds, *atoms);
+	Singlebondtype::assignTypesFromAtomIDs(&topology_bonds, *atoms);
 	//Bondtype::assignFFParametersFromBondtypes(&topology_bonds, &ffbondtypes);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_bonds, &forcefield);
 
 	return topology_bonds;
 }
 
-vector<Angletype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
-	vector<Angletype> forcefield = Angletype::parseFFAngletypes(*ffbonded_rows, verbose);
-	vector<Angletype> topology_angles = Angletype::parseTopolAngletypes(*topology_rows, verbose);
+vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+	vector<Anglebondtype> forcefield = Anglebondtype::parseFFAngletypes(*ffbonded_rows, verbose);
+	vector<Anglebondtype> topology_angles = Anglebondtype::parseTopolAngletypes(*topology_rows, verbose);
 
-	Angletype::assignTypesFromAtomIDs(&topology_angles, *atoms);
+	Anglebondtype::assignTypesFromAtomIDs(&topology_angles, *atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
 
 	return topology_angles;
 }
 
-vector<Dihedraltype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms, bool verbose) {
-	vector<Dihedraltype> forcefield = Dihedraltype::parseFFDihedraltypes(ffbonded_rows, verbose);
-	vector<Dihedraltype> topology_dihedrals = Dihedraltype::parseTopolDihedraltypes(topology_rows, verbose);
+vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms, bool verbose) {
+	vector<Dihedralbondtype> forcefield = Dihedralbondtype::parseFFDihedraltypes(ffbonded_rows, verbose);
+	vector<Dihedralbondtype> topology_dihedrals = Dihedralbondtype::parseTopolDihedraltypes(topology_rows, verbose);
 
-	Dihedraltype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
+	Dihedralbondtype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
 
 	return topology_dihedrals;
@@ -114,14 +123,14 @@ void ForcefieldMaker::prepSimulationForcefield() {
 
 
 	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
+	std::map<int, Atom> atoms_map;
 
 
+	vector<Singlebondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
 
-	vector<Bondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
+	vector<Anglebondtype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
 
-	vector<Angletype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
-
-	vector<Dihedraltype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
+	vector<Dihedralbondtype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
 
 
 

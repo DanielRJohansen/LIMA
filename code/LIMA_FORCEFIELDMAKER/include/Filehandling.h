@@ -173,7 +173,7 @@ public:
 		file.close();
 	}
 
-	static void printForcefield(string path, vector<Atom> atoms, vector<Bondtype> bonds, vector<Angletype> angles, vector<Dihedraltype> dihedrals) {
+	static void printForcefield(string path, vector<Atom> atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
 
 		ofstream file(path, ofstream::out);
 		if (!file.is_open()) {
@@ -185,7 +185,7 @@ public:
 		file << FFOutHelpers::titleH3("Atoms {particle id [simulation specific]\tatomtype_id [simulation specific]}");
 		file << FFOutHelpers::parserTitle("atoms");
 		for (Atom atom : atoms) {
-			file << to_string(atom.id) << ";" << to_string(atom.atomtype_id) << endl;
+			file << to_string(atom.gro_id) << ";" << to_string(atom.atomtype_id) << endl;
 		}
 		file << FFOutHelpers::endBlock();
 
@@ -197,9 +197,9 @@ public:
 		file << FFOutHelpers::titleH2("Bonds");
 		file << FFOutHelpers::titleH3("{ID_p1 \t ID_p2 \t Atomtype \t Atomtype \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
 		file << FFOutHelpers::parserTitle("bonds");
-		for (Bondtype bond : bonds) {
-			file << to_string(bond.id1) << ';' << to_string(bond.id2) << ';'
-				<< bond.type1 << ';' << bond.type2 << ';'
+		for (Singlebondtype bond : bonds) {
+			file << to_string(bond.gro_ids[0]) << ';' << to_string(bond.gro_ids[1]) << ';'
+				<< bond.bonded_typenames[0] << ';' << bond.bonded_typenames[1] << ';'
 				<< to_string(bond.b0) << ';' << to_string(bond.kb) << endl;
 		}
 		file << FFOutHelpers::endBlock();
@@ -209,7 +209,7 @@ public:
 		file << FFOutHelpers::titleH2("Angles");
 		file << FFOutHelpers::titleH3("{Atom-IDs \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
 		file << FFOutHelpers::parserTitle("angles");
-		for (Angletype angle : angles) {
+		for (Anglebondtype angle : angles) {
 			file << to_string(angle.id1) << ';' << to_string(angle.id2) << ';' << to_string(angle.id3) << ';'
 				<< angle.type1 << ';' << angle.type2 << ';' << angle.type3 << ';'
 				<< to_string(angle.theta0) << ';' << to_string(angle.ktheta) << endl;
@@ -221,7 +221,7 @@ public:
 		file << FFOutHelpers::titleH2("Dihedrals");
 		file << FFOutHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
 		file << FFOutHelpers::parserTitle("dihedrals");
-		for (Dihedraltype dihedral : dihedrals) {
+		for (Dihedralbondtype dihedral : dihedrals) {
 			file << to_string(dihedral.id1) << ';' << to_string(dihedral.id2) << ';' << to_string(dihedral.id3) << ';' << to_string(dihedral.id4) << ';'
 				<< dihedral.type1 << ';' << dihedral.type2 << ';' << dihedral.type3 << ';' << dihedral.type4 << ';'
 				<< to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
@@ -250,7 +250,7 @@ public:
 
 	}
 
-	static void printFFBonded(string path, vector<Bondtype> bondtypes, vector<Angletype> angletypes, vector<Dihedraltype> dihedraltypes) {
+	static void printFFBonded(string path, vector<Singlebondtype> bondtypes, vector<Anglebondtype> angletypes, vector<Dihedralbondtype> dihedraltypes) {
 		ofstream file(path, ofstream::out);
 		if (!file.is_open()) {
 			cout << "Failed to open file " << path << endl;
@@ -264,8 +264,8 @@ public:
 		file << FFOutHelpers::titleH2("Bondtype parameters");
 		file << FFOutHelpers::titleH3("{atom_types \t b_0 [nm] \t k_b [J/(mol*nm^2)] \t }");
 		file << FFOutHelpers::parserTitle("ff_bondtypes");
-		for (Bondtype bondtype : bondtypes) {
-			file << bondtype.type1 << ';' << bondtype.type2 << ';' << to_string(bondtype.b0) << ';' << to_string(bondtype.kb) << endl;
+		for (Singlebondtype bondtype : bondtypes) {
+			file << bondtype.bonded_typenames[0] << ';' << bondtype.bonded_typenames[1] << ';' << to_string(bondtype.b0) << ';' << to_string(bondtype.kb) << endl;
 		}
 		file << FFOutHelpers::endBlock();
 
@@ -274,7 +274,7 @@ public:
 		file << FFOutHelpers::titleH2("Angletype parameters");
 		file << FFOutHelpers::titleH3("{atom_types \t theta_0 [rad] \t k_theta [J/(mol*rad^2)] \t }");
 		file << FFOutHelpers::parserTitle("ff_angletypes");
-		for (Angletype angle : angletypes) {
+		for (Anglebondtype angle : angletypes) {
 			file << angle.type1 << ';' << angle.type2 << ';' << angle.type3 << ';' << to_string(angle.theta0) << ';' << to_string(angle.ktheta) << endl;
 		}
 		file << FFOutHelpers::endBlock();
@@ -284,7 +284,7 @@ public:
 		file << FFOutHelpers::titleH2("Dihedraltype parameters");
 		file << FFOutHelpers::titleH3("{atom_types \t phi_0 [rad] \t k_phi [J/(mol)] \t n}");
 		file << FFOutHelpers::parserTitle("ff_dihedraltypes");
-		for (Dihedraltype dihedral : dihedraltypes) {
+		for (Dihedralbondtype dihedral : dihedraltypes) {
 			file << dihedral.type1 << ';' << dihedral.type2 << ';' << dihedral.type3 << ';' << dihedral.type4 << ';' << to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
 		}
 		file << FFOutHelpers::endBlock();

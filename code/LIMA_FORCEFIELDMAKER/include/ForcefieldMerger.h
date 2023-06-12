@@ -25,9 +25,9 @@ public:
 
 
 	vector<NB_Atomtype> ff_nonbonded;
-	vector<Bondtype> ff_bondtypes;
-	vector<Angletype> ff_angletypes;
-	vector<Dihedraltype> ff_dihedraltypes;
+	vector<Singlebondtype> ff_bondtypes;
+	vector<Anglebondtype> ff_angletypes;
+	vector<Dihedralbondtype> ff_dihedraltypes;
 
 private:
 
@@ -71,9 +71,8 @@ private:
 		}
 	}
 
-	void parseBondtypes(vector<vector<string>> rows, vector<Bondtype>* ff_bondtypes) {
+	void parseBondtypes(vector<vector<string>> rows, vector<Singlebondtype>* ff_bondtypes) {
 		STATE current_state = INACTIVE;
-		Bondtype bondtype;
 
 
 		for (vector<string> row : rows) {
@@ -82,31 +81,29 @@ private:
 
 			current_state = setState(row[0], current_state);
 
-			switch (current_state) {
-			case BONDS:
-				if (row.size() < 4)
-					continue;
-	
-				bondtype = Bondtype(
-					row[0], 
-					row[1], 
-					stof(row[3]) * 0.1f,					// convert A to nm
-					stof(row[2]) * 4183.f * 100.f			// convert kcal/(mol*A^2) to J/(mol*nm^2)
-				);
-				if (isDuplicate(bondtype, ff_bondtypes))
-					continue;
+			if (current_state != BONDS) { continue; }
 
-				ff_bondtypes->push_back(bondtype);
-				break;
-
-			default:
-				break;
+			if (row.size() < 4) {
+				continue;
 			}
+				
+			std::array<string, 2> bonded_typenames{ row[0], row[1] };
+			Singlebondtype bondtype = Singlebondtype(
+				bonded_typenames,
+				stof(row[3]) * 0.1f,					// convert A to nm
+				stof(row[2]) * 4183.f * 100.f			// convert kcal/(mol*A^2) to J/(mol*nm^2)
+			);
+
+			if (isDuplicate(bondtype, ff_bondtypes))
+				continue;
+
+			ff_bondtypes->push_back(bondtype);
+
 		}
 	}
-	void parseAngletypes(vector<vector<string>> rows, vector<Angletype>* ff_angletypes) {
+	void parseAngletypes(vector<vector<string>> rows, vector<Anglebondtype>* ff_angletypes) {
 		STATE current_state = INACTIVE;
-		Angletype angletype;
+		Anglebondtype angletype;
 
 
 		for (vector<string> row : rows) {
@@ -120,7 +117,7 @@ private:
 				if (row.size() < 5)
 					continue;
 
-				angletype = Angletype(
+				angletype = Anglebondtype(
 					row[0],
 					row[1],
 					row[2],
@@ -138,9 +135,9 @@ private:
 			}
 		}
 	}
-	void parseDihedraltypes(vector<vector<string>> rows, vector<Dihedraltype>* ff_dihedraltypes) {			// what the fuck is multiplicity?!??!!?!?!?
+	void parseDihedraltypes(vector<vector<string>> rows, vector<Dihedralbondtype>* ff_dihedraltypes) {			// what the fuck is multiplicity?!??!!?!?!?
 		STATE current_state = INACTIVE;
-		Dihedraltype dihedraltype;
+		Dihedralbondtype dihedraltype;
 
 
 		for (vector<string> row : rows) {
@@ -154,7 +151,7 @@ private:
 				if (row.size() < 7)
 					continue;
 
-				dihedraltype = Dihedraltype(
+				dihedraltype = Dihedralbondtype(
 					row[0],
 					row[1],
 					row[2],
@@ -206,22 +203,22 @@ private:
 		}
 		return false;
 	}
-	bool isDuplicate(Bondtype bondtype, vector<Bondtype>* ff_bondtypes) {
-		for (Bondtype bt : *ff_bondtypes) {
-			if (bondtype.type1 == bt.type1 && bondtype.type2 == bt.type2)
+	bool isDuplicate(Singlebondtype bondtype, vector<Singlebondtype>* ff_bondtypes) {
+		for (Singlebondtype bt : *ff_bondtypes) {
+			if (bondtype.bonded_typenames[0] == bt.bonded_typenames[0] && bondtype.bonded_typenames[1] == bt.bonded_typenames[1])
 				return true;
 		}
 		return false;
 	}
-	bool isDuplicate(Angletype angletype, vector<Angletype>* ff_angletypes) {
-		for (Angletype at : *ff_angletypes) {
+	bool isDuplicate(Anglebondtype angletype, vector<Anglebondtype>* ff_angletypes) {
+		for (Anglebondtype at : *ff_angletypes) {
 			if (angletype.type1 == at.type1 && angletype.type2 == at.type2 && angletype.type3 == at.type3)
 				return true;
 		}
 		return false;
 	}
-	bool isDuplicate(Dihedraltype dihedraltype, vector<Dihedraltype>* ff_dihedraltypes) {
-		for (Dihedraltype dt : *ff_dihedraltypes) {
+	bool isDuplicate(Dihedralbondtype dihedraltype, vector<Dihedralbondtype>* ff_dihedraltypes) {
+		for (Dihedralbondtype dt : *ff_dihedraltypes) {
 			if (dihedraltype.type1 == dt.type1 && dihedraltype.type2 == dt.type2 && dihedraltype.type3 == dt.type3 && dihedraltype.type4 == dt.type4)
 				return true;
 		}

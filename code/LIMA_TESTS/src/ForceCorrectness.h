@@ -203,6 +203,10 @@ bool doDihedralbondBenchmark(EnvMode envmode) {
 	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.06f);
 }
 
+bool doImproperDihedralBenchmark(EnvMode envmode) {
+	return TestUtils::loadAndRunBasicSimulation("ImproperDihedral", envmode, 0.05f);
+}
+
 bool doMethionineBenchmark(EnvMode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 	const std::string simpar = work_folder + "sim_params.txt";

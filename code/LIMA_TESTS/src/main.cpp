@@ -36,7 +36,6 @@ using namespace TestUtils;
 using namespace StressTesting;
 
 int main() {
-
 	//coordPrecesionBenchmark();
 	
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
@@ -50,18 +49,18 @@ int main() {
 	//doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
+	//doEightResiduesNoSolvent(envmode);
+	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 	//doPoolBenchmark(Headless);
 	//doPoolBenchmark(Full);
 
-	//doProteinBenchmark(env);
 
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
 	//doPool50x(EnvMode::Headless);
 
-	doEightResiduesNoSolvent(envmode);
-	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
 	//loadAndRunBasicSimulation("Met");
@@ -71,7 +70,7 @@ int main() {
 	
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
-	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
 
 	//doMoleculeTranslationTest("T4LysozymeNoSolventSmall");
 	//doMoleculeTranslationTest("T4LysozymeNoSolvent");

@@ -62,19 +62,18 @@ vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
 		));
 	};
 	vector<NB_Atomtype> ffnonbonded = FTHelpers::parseFFBondtypes<NB_Atomtype, FTHelpers::STATE::FF_NONBONDED>(ffnonbonded_rows, forcefieldInsertFunction);
-	//vector<NB_Atomtype> ffnonbonded = NB_Atomtype::parseNonbonded(ffnonbonded_rows);
 	logger.print(std::format("{} atom types read from file\n", ffnonbonded.size()));
 
 	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, *map, logger, false);
 }
 
-vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map, bool verbose) {
-	vector<Atom> atoms = Atom::parseTopolAtoms(topology_rows, verbose);
-	Atom::assignAtomtypeIDs(atoms, *ff_nonbonded_active, *map);
-	return atoms;
+AtomTable makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map, bool verbose) {
+	AtomTable atomtable = Atom::parseTopolAtoms(topology_rows, verbose);
+	Atom::assignAtomtypeIDs(atomtable, *ff_nonbonded_active, *map);	// TODO: This should be moved into the parse function, there is no need to only partially init the atoms there.
+	return atomtable;
 }
 
-vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, const AtomTable& atomtable, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Singlebondtype>& records) {
 		std::array<string, 2> bonded_typenames{ row[0], row[1] };
 		records.push_back(Singlebondtype(bonded_typenames, stof(row[2]), stof(row[3])));
@@ -89,13 +88,13 @@ vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, 
 	
 
 
-	Singlebondtype::assignTypesFromAtomIDs(topology_bonds, *atoms);
+	Singlebondtype::assignTypesFromAtomIDs(topology_bonds, atomtable);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_bonds, &forcefield);
 
 	return topology_bonds;
 }
 
-vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, vector<Atom>* atoms, bool verbose) {
+vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>*ffbonded_rows, vector<vector<string>>*topology_rows, const AtomTable& atoms, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
 		std::array<string, 3> bonded_typenames{ row[0], row[1], row[2]};
 		records.push_back(Anglebondtype(bonded_typenames, stof(row[3]), stof(row[4])));
@@ -108,29 +107,24 @@ vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, 
 	};
 	vector<Anglebondtype> topology_angles = FTHelpers::parseTopolBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*topology_rows, topologyInsertFunction);
 
-	Anglebondtype::assignTypesFromAtomIDs(topology_angles, *atoms);
+	Anglebondtype::assignTypesFromAtomIDs(topology_angles, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
 
 	return topology_angles;
 }
 
-vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms, bool verbose) {
+vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, const AtomTable& atoms, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Dihedralbondtype>& records) {
 		std::array<string, 4> bonded_typenames{ row[0], row[1], row[2], row[3]};
 		records.push_back(Dihedralbondtype(bonded_typenames, stof(row[4]), stof(row[5]), stoi(row[6])));
-		//records.push_back(Dihedralbondtype(row[0], row[1], row[2], row[3], stof(row[4]), stof(row[5]), stoi(row[6])));
 	};
 	vector<Dihedralbondtype> forcefield = FTHelpers::parseFFBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(ffbonded_rows, forcefieldInsertFunction);
-	//vector<Dihedralbondtype> forcefield = Dihedralbondtype::parseFFDihedraltypes(ffbonded_rows, verbose);
 
 	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Dihedralbondtype>& records) {
 		std::array<int, 4> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])};
-		//records.push_back(Anglebondtype(gro_ids));
-		//records.push_back(Dihedralbondtype(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])));
 		records.push_back(Dihedralbondtype(gro_ids));
 	};
 	vector<Dihedralbondtype> topology_dihedrals = FTHelpers::parseTopolBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(topology_rows, topologyInsertFunction);
-	//vector<Dihedralbondtype> topology_dihedrals = Dihedralbondtype::parseTopolDihedraltypes(topology_rows, verbose);
 
 	Dihedralbondtype::assignTypesFromAtomIDs(topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
@@ -156,11 +150,12 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, logger, { '/' }, true);
 	vector<vector<string>> topology_rows = Reader::readFile(topol_path, logger);
 
-	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
+	//vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
+	AtomTable atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
 
-	vector<Singlebondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
+	vector<Singlebondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, atoms, m_verbose);
 
-	vector<Anglebondtype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
+	vector<Anglebondtype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, atoms, m_verbose);
 
 	vector<Dihedralbondtype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
 

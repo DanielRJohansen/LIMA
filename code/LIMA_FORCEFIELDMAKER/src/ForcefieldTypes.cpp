@@ -74,10 +74,8 @@ Atom::STATE Atom::setState(string s, STATE current_state) {
 	return INACTIVE;
 }
 
-vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
+AtomTable Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	STATE current_state = INACTIVE;
-
-	vector<Atom> records;
 
 	AtomTable atomtable;	// I guess maps are not ideal, since we always get increasing gro_ids, meaning it is always worst case..
 
@@ -94,7 +92,6 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 			const string bonded_type = row[1];
 			const string nbonded_type = row[4];
 
-			records.push_back(Atom(gro_id, bonded_type, nbonded_type));
 
 			atomtable.insert(std::pair(gro_id, Atom(gro_id, bonded_type, nbonded_type)));
 		}
@@ -104,14 +101,16 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	}
 
 	if (verbose) {
-		printf("%lld atoms found in topology file\n", records.size());
+		printf("%lld atoms found in topology file\n", atomtable.size());
 	}
 	
-	return records;
+	return atomtable;
 }
 
-void Atom::assignAtomtypeIDs(vector<Atom>& atoms, const vector<NB_Atomtype>& forcefield, const Map& map) {
-	for (Atom& atom : atoms) {
+void Atom::assignAtomtypeIDs(AtomTable& atomtable, const vector<NB_Atomtype>& forcefield, const Map& map) {
+	for (auto& entry : atomtable) {
+		Atom& atom = entry.second;
+
 		const string alias = map.mapRight(atom.atomtype);
 
 		for (const NB_Atomtype& force_parameters : forcefield) {

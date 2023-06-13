@@ -173,7 +173,8 @@ public:
 		file.close();
 	}
 
-	static void printForcefield(string path, vector<Atom> atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
+	//static void printForcefield(string path, vector<Atom> atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
+	static void printForcefield(string path, const AtomTable& atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
 
 		ofstream file(path, ofstream::out);
 		if (!file.is_open()) {
@@ -184,7 +185,9 @@ public:
 		file << FFOutHelpers::titleH1("Forcefield Non-bonded");
 		file << FFOutHelpers::titleH3("Atoms {particle id [simulation specific]\tatomtype_id [simulation specific]}");
 		file << FFOutHelpers::parserTitle("atoms");
-		for (Atom atom : atoms) {
+		//for (const Atom& atom : atoms) {
+		for (auto& entry : atoms) {
+			const Atom& atom = entry.second;
 			file << to_string(atom.gro_id) << ";" << to_string(atom.atomtype_id) << endl;
 		}
 		file << FFOutHelpers::endBlock();

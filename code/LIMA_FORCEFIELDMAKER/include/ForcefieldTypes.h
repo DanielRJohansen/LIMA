@@ -265,7 +265,6 @@ struct Map {
 
 
 struct NB_Atomtype {
-	//NB_Atomtype() {}
 	NB_Atomtype(std::string t) : type(t){}		// This is for loading form the conf file, for easy comparisons
 	NB_Atomtype(std::string t, float mass) : type(t), mass(mass) {}		// This if for forcefield merging
 	NB_Atomtype(std::string t, float mass, float sigma, float epsilon) : type(t),  mass(mass), sigma(sigma), epsilon(epsilon) {}		// For LIMA_ffnonbonded
@@ -298,7 +297,8 @@ struct NB_Atomtype {
 	static vector<NB_Atomtype> filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
 };
 
-
+struct Atom;
+using AtomTable = std::map<int, Atom>;
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
 	Atom(int id, string type_b, string type_nb) : gro_id(id), atomtype_bond(type_b), atomtype(type_nb) {}
@@ -313,12 +313,11 @@ struct Atom {
 	enum STATE { INACTIVE, ATOMS, FINISHED };
 	static STATE setState(string s, STATE current_state);
 
-	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
+	static AtomTable parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
 
-	static void assignAtomtypeIDs(vector<Atom>& atoms, const vector<NB_Atomtype>& forcefield, const Map& map);
+	static void assignAtomtypeIDs(AtomTable&, const vector<NB_Atomtype>& forcefield, const Map& map);
 };
 
-using AtomTable = std::map<int, Atom>;
 
 
 
@@ -347,10 +346,11 @@ struct BondtypeBase {
 	virtual void sort() = 0;
 
 	template <class DerivedType>
-	static void assignTypesFromAtomIDs(vector<DerivedType>& topol_bonds, const vector<Atom>& atoms) {
+	static void assignTypesFromAtomIDs(vector<DerivedType>& topol_bonds, const AtomTable& atoms) {
 		for (auto& bond : topol_bonds) {
 			for (int i = 0; i < n_atoms; i++) {
-				bond.bonded_typenames[i] = atoms.at(bond.gro_ids[i] - size_t{ 1 }).atomtype_bond; // Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+				if (!atoms.contains(bond.gro_ids[i])) { throw "Atomtable does not contain bondedtype"; }
+				bond.bonded_typenames[i] = atoms.find(bond.gro_ids[i])->second.atomtype_bond;
 			}
 			bond.sort();
 		}

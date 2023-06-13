@@ -265,11 +265,12 @@ struct Map {
 
 
 struct NB_Atomtype {
-	NB_Atomtype() {}
+	//NB_Atomtype() {}
 	NB_Atomtype(std::string t) : type(t){}		// This is for loading form the conf file, for easy comparisons
 	NB_Atomtype(std::string t, float mass) : type(t), mass(mass) {}		// This if for forcefield merging
 	NB_Atomtype(std::string t, float mass, float sigma, float epsilon) : type(t),  mass(mass), sigma(sigma), epsilon(epsilon) {}		// For LIMA_ffnonbonded
 	NB_Atomtype(std::string t, int atnum, float mass, float sigma, float epsilon) : type(t), atnum(atnum), mass(mass), sigma(sigma), epsilon(epsilon) {}		// For random dudes ff_nonbonded
+
 	// Official parameters
 	std::string type = "";
 	int atnum = -1;					// atnum given by input file (CHARMM)
@@ -283,58 +284,16 @@ struct NB_Atomtype {
 	int simulation_specific_id = -1;
 
 
-
-
-
-	//bool operator==(const NB_Atomtype a) { return (type == a.type); }
-	//static bool sameType(NB_Atomtype a, NB_Atomtype b) { return (a.type == b.type); }
-
-
-	// Parser functions
-
-	static std::vector<NB_Atomtype> parseNonbonded(std::vector<std::vector<std::string>> rows) {		// KNOWN ERROR HERE. SOMETIMES SPACES IN FILES ARE TABS, AND IT DOESN'T RECOGNISE A ROW AS A PROPER ENTRY!!
-		FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-
-		std::vector<NB_Atomtype> records;
-
-		records.push_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
-
-		
-		for (vector<string> row : rows) {
-
-			if (row.size() == 2) {
-				//current_state =FTHelpers::setState(row[1], current_state);
-				current_state = FTHelpers::setStateForcefield(row[1], current_state);
-				continue;
-			}
-
-
-			switch (current_state) {
-			case FTHelpers::FF_NONBONDED:
-
-				records.push_back(NB_Atomtype(
-					row[0], 
-					stof(row[1]), 
-					stof(row[2]), 
-					stof(row[3])
-				));
-				break;
-			default:
-				break;
-			}
-		}
-		return records;
-	}
-	static NB_Atomtype findRecord(const vector<NB_Atomtype>& records, const string& type) {
-		for (NB_Atomtype record : records) {
+	static const NB_Atomtype* findRecord(const vector<NB_Atomtype>& records, const string& type) {
+		for (const NB_Atomtype& record : records) {
 			if (record.type == type) {
-				return record;
+				return &record;
 			}
 		}
-		return NB_Atomtype();
+		return nullptr;
 	}
 	static bool typeIsPresent(const vector<NB_Atomtype>& records, string type) {
-		return (findRecord(records, type).type != "");
+		return (findRecord(records, type) != nullptr);
 	}
 	static vector<NB_Atomtype> filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
 };
@@ -434,9 +393,7 @@ struct Singlebondtype : public BondtypeBase<2>{
 	Singlebondtype(const std::array<string,2>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Singlebondtype(const std::array<int,2>& ids) : BondtypeBase(ids) {
-		//convertToZeroIndexed();
-	}
+	Singlebondtype(const std::array<int,2>& ids) : BondtypeBase(ids) {}
 
 	float b0{};
 	float kb{};

@@ -47,7 +47,22 @@ vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
 
 
 	vector<vector<string>> ffnonbonded_rows = Reader::readFile(ff_nonbonded_path, logger, {'/'}, true);
-	vector<NB_Atomtype> ffnonbonded = NB_Atomtype::parseNonbonded(ffnonbonded_rows);
+
+
+	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<NB_Atomtype>& records) {
+		if (records.empty()) {
+			records.push_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
+		}
+
+		records.push_back(NB_Atomtype(
+			row[0],
+			stof(row[1]),
+			stof(row[2]),
+			stof(row[3])
+		));
+	};
+	vector<NB_Atomtype> ffnonbonded = FTHelpers::parseFFBondtypes<NB_Atomtype, FTHelpers::STATE::FF_NONBONDED>(ffnonbonded_rows, forcefieldInsertFunction);
+	//vector<NB_Atomtype> ffnonbonded = NB_Atomtype::parseNonbonded(ffnonbonded_rows);
 	logger.print(std::format("{} atom types read from file\n", ffnonbonded.size()));
 
 	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, *map, logger, false);

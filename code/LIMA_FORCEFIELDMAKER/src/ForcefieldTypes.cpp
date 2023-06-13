@@ -15,7 +15,7 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(const vector<NB_Atomtype>& fo
 
 		while (alias.length() > 0) {
 			if (typeIsPresent(forcefield, alias)) {		// If type from conf exists, in forcefield, we follow happy path
-				NB_Atomtype record = findRecord(forcefield, alias);
+				NB_Atomtype record = *findRecord(forcefield, alias);
 
 				if (!typeIsPresent(filtered_list, alias)) {			// If type is not present in filtered list, add it with a simulation-specific type-id.
 					record.atnum_local = static_cast<int>(filtered_list.size());

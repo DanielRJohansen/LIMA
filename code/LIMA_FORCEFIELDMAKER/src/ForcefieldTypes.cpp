@@ -6,37 +6,32 @@
 using std::cout, std::endl;
 
 
-vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map, LimaLogger& logger, bool print_mappings) {
+vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings) {
 	vector<NB_Atomtype> filtered_list;
 
 	filtered_list.push_back(forcefield[0]);				// Solvent is not present in topology, so we force it to be added here!
-	for (string type : active_types) {
-		bool found = false;
+	for (const string& type : active_types) {
 		string alias = type;
 
+		while (alias.length() > 0) {
+			if (typeIsPresent(forcefield, alias)) {		// If type from conf exists, in forcefield, we follow happy path
+				NB_Atomtype record = findRecord(forcefield, alias);
 
-
-	TRY_AGAIN:
-
-
-		if (typeIsPresent(&forcefield, alias)) {		// If type from conf exists, in forcefield, we follow happy path
-			NB_Atomtype record = findRecord(&forcefield, alias);
-
-			if (!typeIsPresent(&filtered_list, alias)) {			// If type is not present in filtered list, add it with a simulation-specific type-id.
-				record.atnum_local = static_cast<int>(filtered_list.size());
-				filtered_list.push_back(record);
+				if (!typeIsPresent(filtered_list, alias)) {			// If type is not present in filtered list, add it with a simulation-specific type-id.
+					record.atnum_local = static_cast<int>(filtered_list.size());
+					filtered_list.push_back(record);
+				}
+				if (type != alias) {									// If type != alias, add it to map
+					map.addMap(type, alias);
+				}
+				break;
 			}
-			if (type != alias) {									// If type != alias, add it to map
-				map->addMap(type, alias);
-			}
-		}
-		else {												// Type from conf does not exist, so we change the alias and try again
-			if (alias.length() > 1) {
+			else {												// Type from conf does not exist, so we change the alias and try again
 				alias.pop_back();
-				goto TRY_AGAIN;
-			}
-			else {
-				throw std::exception("No alias found");
+				
+				if (alias.length() == 0) {
+					throw std::exception("No alias found");
+				}
 			}
 		}
 
@@ -46,9 +41,9 @@ vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(vector<NB_Atomtype> forcefiel
 		filtered_list.size(), sizeof(float) * 3 * filtered_list.size()));
 
 	if (print_mappings) {
-		logger.print(std::format("Aliases ({}): \t", map->n_mappings));
-		for (int i = 0; i < map->n_mappings; i++) {
-			logger.print(std::format("\t{} -> {}\n", map->mappings[i].left, map->mappings[i].right));
+		logger.print(std::format("Aliases ({}): \t", map.n_mappings));
+		for (int i = 0; i < map.n_mappings; i++) {
+			logger.print(std::format("\t{} -> {}\n", map.mappings[i].left, map.mappings[i].right));
 		}
 		logger.print("\n");
 	}
@@ -84,7 +79,7 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 
 	vector<Atom> records;
 
-	AtomMap atommap;	// I guess maps are not ideal, since we always get increasing gro_ids, meaning it is always worst case..
+	AtomTable atomtable;	// I guess maps are not ideal, since we always get increasing gro_ids, meaning it is always worst case..
 
 
 	for (vector<string> row : rows) {
@@ -101,7 +96,7 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 
 			records.push_back(Atom(gro_id, bonded_type, nbonded_type));
 
-			atommap.insert(std::pair(gro_id, Atom(gro_id, bonded_type, nbonded_type)));
+			atomtable.insert(std::pair(gro_id, Atom(gro_id, bonded_type, nbonded_type)));
 		}
 
 		if (current_state == FINISHED)
@@ -115,40 +110,31 @@ vector<Atom> Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
 	return records;
 }
 
-bool Atom::assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias) {
-	for (NB_Atomtype force_parameters : forcefield) {
-		if (force_parameters.type == alias) {
-			atom.atomtype_id = force_parameters.atnum_local;
-			return true;
+void Atom::assignAtomtypeIDs(vector<Atom>& atoms, const vector<NB_Atomtype>& forcefield, const Map& map) {
+	for (Atom& atom : atoms) {
+		const string alias = map.mapRight(atom.atomtype);
+
+		for (const NB_Atomtype& force_parameters : forcefield) {
+			if (force_parameters.type == alias) {
+				atom.atomtype_id = force_parameters.atnum_local;
+				break;
+			}
 		}
 	}
-
-	return false;
-}
-
-void Atom::assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map) {
-	for (int i = 0; i < atoms->size(); i++) {
-		Atom* atom = &atoms->at(i);
-		string alias = map->mapRight(atom->atomtype);
-
-		bool success = assignAtomtypeID(*atom, *forcefield, alias);
-	}
 }
 
 
-
-
-void Singlebondtype::assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms) {
-	for (int i = 0; i < topol_bonds->size(); i++) {
-		Singlebondtype* bond = &topol_bonds->at(i);
-
-
-		bond->bonded_typenames[0] = atoms.at(bond->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		bond->bonded_typenames[1] = atoms.at(bond->gro_ids[1] - size_t{ 1 }).atomtype_bond;
-		bond->sort();
-		//cout << bond->type1 << '\t' << bond->type2 << endl;;
-	}
-}
+//void Singlebondtype::assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms) {
+//	for (int i = 0; i < topol_bonds->size(); i++) {
+//		Singlebondtype* bond = &topol_bonds->at(i);
+//
+//
+//		bond->bonded_typenames[0] = atoms.at(bond->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+//		bond->bonded_typenames[1] = atoms.at(bond->gro_ids[1] - size_t{ 1 }).atomtype_bond;
+//		bond->sort();
+//		//cout << bond->type1 << '\t' << bond->type2 << endl;;
+//	}
+//}
 
 
 
@@ -172,20 +158,6 @@ Singlebondtype* Singlebondtype::findBestMatchInForcefield(Singlebondtype* query_
 	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << endl;
 	exit(0);
 }
-
-
-void Anglebondtype::assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms) {
-	for (int i = 0; i < topol_angles->size(); i++) {
-		Anglebondtype* angle = &topol_angles->at(i);
-
-		angle->bonded_typenames[0] = atoms.at(angle->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		angle->bonded_typenames[1] = atoms.at(angle->gro_ids[1] - size_t{ 1 }).atomtype_bond;
-		angle->bonded_typenames[2] = atoms.at(angle->gro_ids[2] - size_t{ 1 }).atomtype_bond;
-		angle->sort();
-		//cout << bond->type1 << '\t' << bond->type2 << endl;;
-	}
-}
-
 
 
 Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes) {

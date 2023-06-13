@@ -50,12 +50,12 @@ vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
 	vector<NB_Atomtype> ffnonbonded = NB_Atomtype::parseNonbonded(ffnonbonded_rows);
 	logger.print(std::format("{} atom types read from file\n", ffnonbonded.size()));
 
-	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, map, logger, false);
+	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, *map, logger, false);
 }
 
 vector<Atom> makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map, bool verbose) {
 	vector<Atom> atoms = Atom::parseTopolAtoms(topology_rows, verbose);
-	Atom::assignAtomtypeIDs(&atoms, ff_nonbonded_active, map);
+	Atom::assignAtomtypeIDs(atoms, *ff_nonbonded_active, *map);
 	return atoms;
 }
 
@@ -74,8 +74,7 @@ vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, 
 	
 
 
-	Singlebondtype::assignTypesFromAtomIDs(&topology_bonds, *atoms);
-	//Bondtype::assignFFParametersFromBondtypes(&topology_bonds, &ffbondtypes);
+	Singlebondtype::assignTypesFromAtomIDs(topology_bonds, *atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_bonds, &forcefield);
 
 	return topology_bonds;
@@ -85,18 +84,16 @@ vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, 
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
 		std::array<string, 3> bonded_typenames{ row[0], row[1], row[2]};
 		records.push_back(Anglebondtype(bonded_typenames, stof(row[3]), stof(row[4])));
-		//records.push_back(Anglebondtype(row[0], row[1], row[2], stof(row[3]), stof(row[4])));
 	};
 	vector<Anglebondtype> forcefield = FTHelpers::parseFFBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*ffbonded_rows, forcefieldInsertFunction);
 
 	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
 		std::array<int, 3> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]) };
 		records.push_back(Anglebondtype(gro_ids));
-		//records.push_back(Anglebondtype(stoi(row[0]), stoi(row[1]), stoi(row[2])));
 	};
 	vector<Anglebondtype> topology_angles = FTHelpers::parseTopolBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*topology_rows, topologyInsertFunction);
 
-	Anglebondtype::assignTypesFromAtomIDs(&topology_angles, *atoms);
+	Anglebondtype::assignTypesFromAtomIDs(topology_angles, *atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
 
 	return topology_angles;
@@ -142,14 +139,9 @@ void ForcefieldMaker::prepSimulationForcefield() {
 //	vector<vector<string>> ffbonded_rows = readFile("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\ffbonded.itp");
 	//vector<vector<string>> ffbonded_rows = readFile(sim_path + "/Forcefield/ffbonded.itp");
 	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, logger, { '/' }, true);
-	//	vector<vector<string>> topology_rows = readFile("C:\\PROJECTS\\Quantom\\Molecules\\t4lys_full\\topol.top");
-		//vector<vector<string>> topology_rows = readFile(sim_path + "/Molecule/topol.top");
 	vector<vector<string>> topology_rows = Reader::readFile(topol_path, logger);
 
-
 	vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
-	std::map<int, Atom> atoms_map;
-
 
 	vector<Singlebondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, &atoms, m_verbose);
 

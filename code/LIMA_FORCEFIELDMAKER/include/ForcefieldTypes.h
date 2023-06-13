@@ -157,9 +157,7 @@ struct FTHelpers {
 			GenericBondType* bond = &topol_bonds->at(i);
 
 			// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-			//string tag = FTHelpers::makeBondTag(bond->getAtomtypesAsVector());
 			string tag = FTHelpers::makeBondTag(bond->bonded_typenames);
-			//bonded_typenames
 			auto cachedFF = forcefieldMap.find(tag);
 
 			if (cachedFF != forcefieldMap.end()) {
@@ -246,7 +244,7 @@ struct Map {
 	std::vector<Mapping> mappings;
 	int n_mappings = 0; 
 
-	bool mapExists(std::string l) {
+	bool mapExists(std::string l) const {
 		for (int i = 0; i < n_mappings; i++)
 			if (l == mappings[i].left)
 				return true;
@@ -256,7 +254,7 @@ struct Map {
 		if (!mapExists(l))
 			mappings[n_mappings++] = Mapping(l, r);
 	}
-	std::string mapRight(const std::string& query) {
+	std::string mapRight(const std::string& query) const {
 		for (int i = 0; i < n_mappings; i++) {
 			if (mappings[i].left == query) {
 				return mappings[i].right;
@@ -277,9 +275,9 @@ struct NB_Atomtype {
 	std::string type = "";
 	int atnum = -1;					// atnum given by input file (CHARMM)
 	int atnum_local = 0;			// atnum specific to simulation
-	float mass = -1;		// [g/mol]
-	float sigma = -1;	// [nm]
-	float epsilon = -1;	// J/mol
+	float mass = -1;				// [g/mol]
+	float sigma = -1;				// [nm]
+	float epsilon = -1;				// J/mol
 
 	// LIMA parameters
 	bool is_present_in_simulation = false;
@@ -328,18 +326,18 @@ struct NB_Atomtype {
 		}
 		return records;
 	}
-	static NB_Atomtype findRecord(vector<NB_Atomtype>* records, string type) {
-		for (NB_Atomtype record : *records) {
+	static NB_Atomtype findRecord(const vector<NB_Atomtype>& records, const string& type) {
+		for (NB_Atomtype record : records) {
 			if (record.type == type) {
 				return record;
 			}
 		}
 		return NB_Atomtype();
 	}
-	static bool typeIsPresent(vector<NB_Atomtype>* records, string type) {
+	static bool typeIsPresent(const vector<NB_Atomtype>& records, string type) {
 		return (findRecord(records, type).type != "");
 	}
-	static vector<NB_Atomtype> filterUnusedTypes(vector<NB_Atomtype> forcefield, vector<string> active_types, Map* map, LimaLogger& logger, bool print_mappings);
+	static vector<NB_Atomtype> filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
 };
 
 
@@ -359,21 +357,39 @@ struct Atom {
 
 	static vector<Atom> parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
 
-	static bool assignAtomtypeID(Atom& atom, vector<NB_Atomtype>& forcefield, const string& alias);
-	static void assignAtomtypeIDs(vector<Atom>* atoms, vector<NB_Atomtype>* forcefield, Map* map);
+	static void assignAtomtypeIDs(vector<Atom>& atoms, const vector<NB_Atomtype>& forcefield, const Map& map);
 };
 
-using AtomMap = std::map<int, Atom>;
+using AtomTable = std::map<int, Atom>;
 
 
+template <int n_atoms>	// n atoms in bond
+struct BondtypeBase {
+	BondtypeBase(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {}
+	BondtypeBase(const std::array<int, n_atoms>& ids) : gro_ids(ids) {}
 
 
+	virtual void sort() = 0;
 
-struct Singlebondtype {
-	Singlebondtype(const std::array<string,2>& typenames, float b0, float kb) : bonded_typenames(typenames), b0(b0), kb(kb) {
+	template <class DerivedType>
+	static void assignTypesFromAtomIDs(vector<DerivedType>& topol_bonds, const vector<Atom>& atoms) {
+		for (auto& bond : topol_bonds) {
+			for (int i = 0; i < n_atoms; i++) {
+				bond.bonded_typenames[i] = atoms.at(bond.gro_ids[i] - size_t{ 1 }).atomtype_bond; // Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+			}
+			bond.sort();
+		}
+	}
+
+	std::array<string, n_atoms> bonded_typenames;
+	std::array<int, n_atoms> gro_ids;
+};
+
+struct Singlebondtype : public BondtypeBase<2>{
+	Singlebondtype(const std::array<string,2>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Singlebondtype(const std::array<int,2>& ids) : gro_ids(ids) {
+	Singlebondtype(const std::array<int,2>& ids) : BondtypeBase(ids) {
 		//convertToZeroIndexed();
 	}
 	
@@ -381,10 +397,6 @@ struct Singlebondtype {
 		b0 = a.b0;
 		kb = a.kb;
 	}
-
-	static const int n_atoms = 2;
-	std::array<string, n_atoms> bonded_typenames;
-	std::array<int, n_atoms> gro_ids;
 
 	float b0{};
 	float kb{};
@@ -396,32 +408,19 @@ struct Singlebondtype {
 		}
 	}
 
-	// TODO: This is temporary, remove feature
-	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
-
-	static void assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms);
-
-
 	static Singlebondtype* findBestMatchInForcefield(Singlebondtype* query_type, vector<Singlebondtype>* FF_bondtypes);
 };
 
 
 
 
-struct Anglebondtype {
+struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
-
-	Anglebondtype(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {
+	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) : BondtypeBase(typenames), theta0(t0), ktheta(kt) {
 		sort();
 	}
-	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) : bonded_typenames(typenames), theta0(t0), ktheta(kt) {
-		sort();
-	}
-	Anglebondtype(std::array<int, n_atoms> gro_ids) : gro_ids(gro_ids) {}
+	Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
 
-	std::array<string, n_atoms> bonded_typenames;	// left, middle, right
-	std::array<int, n_atoms> gro_ids;				// bonds from .top only has these values! 
-		
 	float theta0{};
 	float ktheta{};
 
@@ -439,10 +438,6 @@ struct Anglebondtype {
 			}
 		}
 	}
-
-	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
-
-	static void assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms);
 
 	static Anglebondtype* findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes);
 };
@@ -476,8 +471,6 @@ struct Dihedralbondtype {
 	}
 
 	void sort();
-
-	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
 	static void assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms);
 

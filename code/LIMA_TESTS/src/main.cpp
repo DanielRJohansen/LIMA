@@ -48,7 +48,7 @@ int main() {
 	//doImproperDihedralBenchmark(envmode);
 
 	//doMethionineBenchmark(envmode);
-	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
+	TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 
 	//doPoolBenchmark(Headless);
@@ -60,7 +60,7 @@ int main() {
 	//doAnglebondBenchmark(envmode);	// Doesn't work currently
 	//doPool50x(EnvMode::Headless);
 
-	doEightResiduesNoSolvent(envmode);
+	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 	//loadAndRunBasicSimulation(env, "TorsionBenchmark");

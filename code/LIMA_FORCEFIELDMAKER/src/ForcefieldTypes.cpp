@@ -124,66 +124,24 @@ void Atom::assignAtomtypeIDs(vector<Atom>& atoms, const vector<NB_Atomtype>& for
 }
 
 
-//void Singlebondtype::assignTypesFromAtomIDs(vector<Singlebondtype>* topol_bonds, vector<Atom> atoms) {
-//	for (int i = 0; i < topol_bonds->size(); i++) {
-//		Singlebondtype* bond = &topol_bonds->at(i);
-//
-//
-//		bond->bonded_typenames[0] = atoms.at(bond->gro_ids[0] - size_t{ 1 }).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-//		bond->bonded_typenames[1] = atoms.at(bond->gro_ids[1] - size_t{ 1 }).atomtype_bond;
-//		bond->sort();
-//		//cout << bond->type1 << '\t' << bond->type2 << endl;;
-//	}
-//}
 
 
 
-Singlebondtype* Singlebondtype::findBestMatchInForcefield(Singlebondtype* query_type, vector<Singlebondtype>* forcefield) {
-	if (forcefield->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
-	float best_likeness = 0;
-	Singlebondtype* best_bond = &((*forcefield)[0]);
-	for (Singlebondtype& bond : *forcefield) {
-		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], bond.bonded_typenames[0]) * FTHelpers::calcLikeness(query_type->bonded_typenames[1], bond.bonded_typenames[1]);
-		if (likeness > best_likeness) {
-			best_likeness = likeness;
-			best_bond = &bond;
-		}
+void Singlebondtype::sort() {
+	if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[1])) {
+		swap(bonded_typenames[0], bonded_typenames[1]);
+		//std::swap(id1, id2);	// TODO: Should this not be like this???
 	}
-	if (best_likeness > 0.01f)
-		return best_bond;
-
-	cout << "Failed to match bond types.\n Closest match " << best_bond->bonded_typenames[0] << "    " << best_bond->bonded_typenames[1];
-	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1]);
-	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << endl;
-	exit(0);
 }
 
-
-Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes) {
-	if (FF_angletypes->size() == 0) { throw std::exception("No angletypes in forcefield!"); }
-	float best_likeness = 0;
-	Anglebondtype* best_angle = &((*FF_angletypes)[0]);
-	for (Anglebondtype& angle : *FF_angletypes) {
-		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], angle.bonded_typenames[0]) 
-			* FTHelpers::calcLikeness(query_type->bonded_typenames[1], angle.bonded_typenames[1]) 
-			* FTHelpers::calcLikeness(query_type->bonded_typenames[2], angle.bonded_typenames[2]);
-
-		if (likeness > best_likeness) {
-			best_likeness = likeness;
-			best_angle = &angle;
+void Anglebondtype::sort() {
+	// The middle type must always be in the middle, so we only sort the outer 2 types
+	// No need to sort if our edges are the same
+	if (bonded_typenames[0] != bonded_typenames[2]) {
+		if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[2])) {
+			swap(bonded_typenames[0], bonded_typenames[2]);
 		}
-		if (likeness == 1)
-			break;
 	}
-	if (best_likeness > 0.01f)
-		return best_angle;
-
-	cout << "\n\n\nFailed to match angle types.\n Closest match " << best_angle->bonded_typenames[0] << "    " << best_angle->bonded_typenames[1] << "    " << best_angle->bonded_typenames[2] << endl;
-	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1], query_type->gro_ids[2]);
-	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << '\t' << query_type->bonded_typenames[2] << endl;
-	exit(0);
 }
 
 void Dihedralbondtype::sort() {
@@ -197,45 +155,4 @@ void Dihedralbondtype::sort() {
 			flip();
 		}
 	}
-}
-
-void Dihedralbondtype::assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms) {
-	for (int i = 0; i < topol_dihedrals->size(); i++) {
-		Dihedralbondtype* dihedral = &topol_dihedrals->at(i);
-
-		//printf("Accessing atoms %d %d %d %d\n", dihedral->id1, dihedral->id2, dihedral->id3, dihedral->id4);
-		dihedral->bonded_typenames[0] = atoms.at(static_cast<size_t>(dihedral->gro_ids[0]) - 1).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		dihedral->bonded_typenames[1] = atoms.at(static_cast<size_t>(dihedral->gro_ids[1]) - 1).atomtype_bond;
-		dihedral->bonded_typenames[2] = atoms.at(static_cast<size_t>(dihedral->gro_ids[2]) - 1).atomtype_bond;
-		dihedral->bonded_typenames[3] = atoms.at(static_cast<size_t>(dihedral->gro_ids[3]) - 1).atomtype_bond;
-		dihedral->sort();
-		//cout << bond->type1 << '\t' << bond->type2 << endl;;
-	}
-}
-
-Dihedralbondtype* Dihedralbondtype::findBestMatchInForcefield(Dihedralbondtype* query_type, vector<Dihedralbondtype>* forcefield) {
-	if (forcefield->size() == 0) { throw std::exception("No elements in forcefield"); }
-	float best_likeness = 0;
-	Dihedralbondtype* best_match = &((*forcefield)[0]);
-	for (Dihedralbondtype& dihedral : *forcefield) {
-		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], dihedral.bonded_typenames[0])
-			* FTHelpers::calcLikeness(query_type->bonded_typenames[1], dihedral.bonded_typenames[1])
-			* FTHelpers::calcLikeness(query_type->bonded_typenames[2], dihedral.bonded_typenames[2])
-			* FTHelpers::calcLikeness(query_type->bonded_typenames[3], dihedral.bonded_typenames[3]);
-		if (likeness > best_likeness) {
-			best_likeness = likeness;
-			best_match = &dihedral;
-		}
-		if (likeness == 1)
-			break;
-	}
-	if (best_likeness > 0.001f)
-		return best_match;
-
-	cout << "\n\n\nFailed to match angle types.\nClosest match: " << best_match->bonded_typenames[0] << "    " 
-		<< best_match->bonded_typenames[1] << "    " << best_match->bonded_typenames[2] << "    " << best_match->bonded_typenames[3] << endl;
-	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1], query_type->gro_ids[2], query_type->gro_ids[3]);
-	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << '\t' << query_type->bonded_typenames[2] << '\t' << query_type->bonded_typenames[3] << endl;
-	exit(0);
 }

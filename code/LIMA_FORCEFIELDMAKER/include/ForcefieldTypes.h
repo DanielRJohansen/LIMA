@@ -148,7 +148,7 @@ struct FTHelpers {
 
 	template <typename GenericBondType>
 	static void assignForceVariablesFromForcefield(vector<GenericBondType>* topol_bonds, vector<GenericBondType>* forcefield) {
-		std::unordered_map<string, GenericBondType*> forcefieldMap;
+		std::unordered_map<string, const GenericBondType> forcefieldMap;
 
 		for (int i = 0; i < topol_bonds->size(); i++) {
 			//std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
@@ -161,16 +161,15 @@ struct FTHelpers {
 			auto cachedFF = forcefieldMap.find(tag);
 
 			if (cachedFF != forcefieldMap.end()) {
-				GenericBondType* appropriateForcefieldType = cachedFF->second;
-				bond->assignForceVariables(*appropriateForcefieldType);
+				const GenericBondType& appropriateForcefieldType = cachedFF->second;
+				bond->assignForceVariables(appropriateForcefieldType);
 			}
 			else {
-				GenericBondType* appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(bond, forcefield);
+				const GenericBondType appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(*bond, *forcefield);
 				forcefieldMap.insert({ tag, appropriateForcefieldType });
-				bond->assignForceVariables(*appropriateForcefieldType);
+				bond->assignForceVariables(appropriateForcefieldType);
 			}
 		}
-		//std::cout << '\n';
 	}
 
 	template <typename BondType, STATE query_state>
@@ -363,6 +362,23 @@ struct Atom {
 using AtomTable = std::map<int, Atom>;
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
 	BondtypeBase(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {}
@@ -381,6 +397,35 @@ struct BondtypeBase {
 		}
 	}
 
+	template <class DerivedType>
+	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const vector<DerivedType>& forcefield) {
+		if (forcefield.size() == 0) { throw std::exception("No angletypes in forcefield!"); }
+
+		float best_likeness = 0;
+		DerivedType best_bond = forcefield.at(0);
+		for (const DerivedType& bond : forcefield) {
+			float likeness = 1.f;
+			for (int i = 0; i < n_atoms; i++) {
+				likeness *= FTHelpers::calcLikeness(query_type.bonded_typenames[i], bond.bonded_typenames[i]);
+			}
+
+			if (likeness > best_likeness) {
+				best_likeness = likeness;
+				best_bond = bond;
+			}
+		}
+		if (best_likeness > 0.01f)
+			return best_bond;
+
+		std::cout << "Failed to match bond types.\n Closest match ";
+		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
+		printf("Likeness %f\n", best_likeness);
+		//printf("Topol ids: %d %d\n", query_type.gro_ids[0], query_type.gro_ids[1]);
+		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
+		exit(0);
+	}
+
+
 	std::array<string, n_atoms> bonded_typenames;
 	std::array<int, n_atoms> gro_ids;
 };
@@ -392,23 +437,16 @@ struct Singlebondtype : public BondtypeBase<2>{
 	Singlebondtype(const std::array<int,2>& ids) : BondtypeBase(ids) {
 		//convertToZeroIndexed();
 	}
-	
+
+	float b0{};
+	float kb{};
+
 	void assignForceVariables(const Singlebondtype& a) {
 		b0 = a.b0;
 		kb = a.kb;
 	}
 
-	float b0{};
-	float kb{};
-
-	void sort() {
-		if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[1])) {
-			swap(bonded_typenames[0], bonded_typenames[1]);
-			//std::swap(id1, id2);	// TODO: Should this not be like this???
-		}
-	}
-
-	static Singlebondtype* findBestMatchInForcefield(Singlebondtype* query_type, vector<Singlebondtype>* FF_bondtypes);
+	void sort();
 };
 
 
@@ -429,50 +467,35 @@ struct Anglebondtype : public BondtypeBase<3> {
 		ktheta = a.ktheta;
 	}
 
-	void sort() {
-		// The middle type must always be in the middle, so we only sort the outer 2 types
-		// No need to sort if our edges are the same
-		if (bonded_typenames[0] != bonded_typenames[2]) {
-			if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[2])) {
-				swap(bonded_typenames[0], bonded_typenames[2]);
-			}
-		}
-	}
-
-	static Anglebondtype* findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes);
+	void sort();
 };
 
-struct Dihedralbondtype {
-	Dihedralbondtype(const std::array<string, 4>& typenames) : bonded_typenames(typenames) {
+struct Dihedralbondtype : public BondtypeBase<4> {
+	static const int n_atoms = 4;
+	Dihedralbondtype(const std::array<string, n_atoms>& typenames) : BondtypeBase(typenames) {
 		sort();
 	}
-	Dihedralbondtype(const std::array<string, 4>& typenames, float phi0, float kphi, int n) : bonded_typenames(typenames), phi0(phi0), kphi(kphi), n(n) {
+	Dihedralbondtype(const std::array<string, n_atoms>& typenames, float phi0, float kphi, int n) : BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {
 		sort();
 	}
-	Dihedralbondtype(const std::array<int, 4>& ids) : gro_ids(ids) {
+	Dihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
+
+	float phi0{};
+	float kphi{};
+	int n{};
 
 	void assignForceVariables(const Dihedralbondtype& a) {
 		phi0 = a.phi0;
 		kphi = a.kphi;
 		n = a.n;
 	}
-	
-	std::array<string, 4> bonded_typenames;	// left, lm, rm, right
-	std::array<int, 4> gro_ids;			// bonds from .top only has these values! 
-	float phi0{};
-	float kphi{};
-	int n{};
-
 
 	void flip() {
 		std::swap(bonded_typenames[0], bonded_typenames[3]);
 		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-
 	void sort();
 
-	static void assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms);
 
-	static Dihedralbondtype* findBestMatchInForcefield(Dihedralbondtype* query_type, vector<Dihedralbondtype>* forcefield);
 };

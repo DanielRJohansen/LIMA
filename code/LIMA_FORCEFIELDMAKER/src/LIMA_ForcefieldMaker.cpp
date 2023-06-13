@@ -117,7 +117,7 @@ vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_r
 	vector<Dihedralbondtype> topology_dihedrals = FTHelpers::parseTopolBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(topology_rows, topologyInsertFunction);
 	//vector<Dihedralbondtype> topology_dihedrals = Dihedralbondtype::parseTopolDihedraltypes(topology_rows, verbose);
 
-	Dihedralbondtype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
+	Dihedralbondtype::assignTypesFromAtomIDs(topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
 
 	return topology_dihedrals;

@@ -196,7 +196,7 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 	// TRAINING DATA and TEMPRARY OUTPUTS
 	{
 		size_t n_outdata = 10 * STEPS_PER_LOGTRANSFER;
-		size_t n_traindata = static_cast<size_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER;
+		size_t n_traindata = std::max(static_cast<size_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER, size_t{ 1 });	// This is a hack; can't allocate 0 bytes.
 		assert(n_outdata && "Tried to create outdata buffer with 0 datapoints");
 		assert(n_traindata && "Tried to create traindata buffer with 0 datapoints");
 		

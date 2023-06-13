@@ -88,7 +88,7 @@ private:
 			}
 				
 			std::array<string, 2> bonded_typenames{ row[0], row[1] };
-			Singlebondtype bondtype = Singlebondtype(
+			Singlebondtype bondtype(
 				bonded_typenames,
 				stof(row[3]) * 0.1f,					// convert A to nm
 				stof(row[2]) * 4183.f * 100.f			// convert kcal/(mol*A^2) to J/(mol*nm^2)
@@ -103,7 +103,6 @@ private:
 	}
 	void parseAngletypes(vector<vector<string>> rows, vector<Anglebondtype>* ff_angletypes) {
 		STATE current_state = INACTIVE;
-		Anglebondtype angletype;
 
 
 		for (vector<string> row : rows) {
@@ -119,7 +118,7 @@ private:
 				continue;
 
 			std::array<string, 3> bonded_typenames{ row[0], row[1], row[2] };
-			angletype = Anglebondtype(
+			Anglebondtype angletype(
 				bonded_typenames,
 				stof(row[4]) * 2 * 3.1415f / 360.f,					// convert degress to rads
 				stof(row[3]) * 4183.f							// convert kcal/(mol*rad^2) to J/(mol*rad^2)
@@ -133,7 +132,6 @@ private:
 	}
 	void parseDihedraltypes(vector<vector<string>> rows, vector<Dihedralbondtype>* ff_dihedraltypes) {			// what the fuck is multiplicity?!??!!?!?!?
 		STATE current_state = INACTIVE;
-		Dihedralbondtype dihedraltype;
 
 
 		for (vector<string> row : rows) {
@@ -142,29 +140,27 @@ private:
 
 			current_state = setState(row[0], current_state);
 
-			switch (current_state) {
-			case DIHEDRALS:
-				if (row.size() < 7)
-					continue;
-
-				dihedraltype = Dihedralbondtype(
-					row[0],
-					row[1],
-					row[2],
-					row[3],
-					stof(row[6]) * 2 * 3.1415f / 360.f,					// convert degress to rads
-					stof(row[4]) * 4183.f,							// convert kcal/(mol) to J/(mol)			// Shouldn't this be per rad^2?????
-					stoi(row[5])
-				);
-				if (isDuplicate(dihedraltype, ff_dihedraltypes))
-					continue;
-
-				ff_dihedraltypes->push_back(dihedraltype);
-				break;
-
-			default:
-				break;
+			if (current_state != DIHEDRALS) {
+				continue;
 			}
+
+			if (row.size() < 7) {
+				continue;
+			}
+				
+			std::array<string, 4> bonded_typenames{ row[0], row[1], row[2], row[3]};
+			Dihedralbondtype dihedraltype(
+				bonded_typenames,
+				stof(row[6]) * 2 * 3.1415f / 360.f,					// convert degress to rads
+				stof(row[4]) * 4183.f,							// convert kcal/(mol) to J/(mol)			// Shouldn't this be per rad^2?????
+				stoi(row[5])
+			);
+
+			if (isDuplicate(dihedraltype, ff_dihedraltypes))
+				continue;
+
+			ff_dihedraltypes->push_back(dihedraltype);
+
 		}
 	}
 
@@ -215,7 +211,10 @@ private:
 	}
 	bool isDuplicate(Dihedralbondtype dihedraltype, vector<Dihedralbondtype>* ff_dihedraltypes) {
 		for (Dihedralbondtype dt : *ff_dihedraltypes) {
-			if (dihedraltype.type1 == dt.type1 && dihedraltype.type2 == dt.type2 && dihedraltype.type3 == dt.type3 && dihedraltype.type4 == dt.type4)
+			if (dihedraltype.bonded_typenames[0] == dt.bonded_typenames[0] 
+				&& dihedraltype.bonded_typenames[1] == dt.bonded_typenames[1] 
+				&& dihedraltype.bonded_typenames[2] == dt.bonded_typenames[2] 
+				&& dihedraltype.bonded_typenames[3] == dt.bonded_typenames[3])
 				return true;
 		}
 		return false;

@@ -89,21 +89,44 @@ struct FTHelpers {
 	}
 
 
-	enum STATE { INACTIVE, FF_NONBONDED, FF_BONDTYPES, FF_ANGLETYPES, FF_DIHEDRALTYPES, FF_PAIRTYPES };
-	static STATE setState(string s, STATE current_state) {
+	enum STATE { INACTIVE, FF_NONBONDED, FF_BONDTYPES, FF_ANGLETYPES, FF_DIHEDRALTYPES, FF_IMPROPERDIHEDRALTYPES, FF_PAIRTYPES };
+	static STATE setStateForcefield(const string& s, STATE current_state) {
 		if (s == "ff_nonbonded")
 			return FF_NONBONDED;
-		if (s == "ff_bondtypes" || s == "bonds")
+		if (s == "ff_bondtypes")
 			return FF_BONDTYPES;
-		if (s == "ff_angletypes" || s == "angles")
+		if (s == "ff_angletypes")
 			return FF_ANGLETYPES;
-		if (s == "ff_dihedraltypes" || s == "dihedrals")
+		if (s == "ff_dihedraltypes")
 			return FF_DIHEDRALTYPES;
-		if (s == "pairs")
-			return FF_PAIRTYPES;
+		if (s == "ff_improperdihedraltypes")
+			return FF_IMPROPERDIHEDRALTYPES;
 
 		return current_state;
 	}
+
+	class TopologytateMachine {
+	public:
+		STATE setState(const string& s, STATE current_state) {
+			if (s == "bonds")
+				return FF_BONDTYPES;
+			if (s == "angles")
+				return FF_ANGLETYPES;							
+			if (s == "pairs")
+				return FF_PAIRTYPES;
+			if (s == "dihedrals") {
+				if (has_seen_dihedrals)
+					return FF_IMPROPERDIHEDRALTYPES;
+				else {
+					has_seen_dihedrals = true;
+					return FF_DIHEDRALTYPES;
+				}
+			}
+			return current_state;
+		}
+	private:
+		bool has_seen_dihedrals = false;
+	};
 
 	static string makeBondTag(std::vector<string>atom_ids) {
 		string out = "";
@@ -134,7 +157,9 @@ struct FTHelpers {
 			GenericBondType* bond = &topol_bonds->at(i);
 
 			// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-			string tag = FTHelpers::makeBondTag(bond->getAtomtypesAsVector());
+			//string tag = FTHelpers::makeBondTag(bond->getAtomtypesAsVector());
+			string tag = FTHelpers::makeBondTag(bond->bonded_typenames);
+			//bonded_typenames
 			auto cachedFF = forcefieldMap.find(tag);
 
 			if (cachedFF != forcefieldMap.end()) {
@@ -161,7 +186,8 @@ struct FTHelpers {
 
 		for (const vector<string>& row : rows) {
 			if (row.size() == 2) {
-				current_state = setState(row[1], current_state);
+				//current_state = setState(row[1], current_state);
+				current_state = setStateForcefield(row[1], current_state);
 				continue;
 			}
 
@@ -180,12 +206,14 @@ struct FTHelpers {
 	{
 		STATE current_state = INACTIVE;
 		vector<BondType> records;
+		TopologytateMachine sm;
 
 		for (const vector<string>& row : rows) {
 			if (row.empty()) { continue; }
 			if (row.size() == 3) {
 				if (row[0][0] == '[') {
-					current_state = setState(row[1], current_state);
+					//current_state = setState(row[1], current_state);
+					current_state = sm.setState(row[1], current_state);
 					continue;
 				}
 			}
@@ -193,15 +221,10 @@ struct FTHelpers {
 			if (current_state != query_state) { continue; }
 
 			insertFunction(row, records);
-			//std::array<int, 2> gro_ids{ stoi(row[0]), stoi(row[1]) };
-			//records.push_back(Singlebondtype(gro_ids));
-
 		}
-
 		/*if (verbose) {
 			printf("%lld bonds found in topology file\n", records.size());
 		}*/
-
 		return records;
 	}
 };
@@ -283,7 +306,8 @@ struct NB_Atomtype {
 		for (vector<string> row : rows) {
 
 			if (row.size() == 2) {
-				current_state =FTHelpers::setState(row[1], current_state);
+				//current_state =FTHelpers::setState(row[1], current_state);
+				current_state = FTHelpers::setStateForcefield(row[1], current_state);
 				continue;
 			}
 
@@ -387,7 +411,6 @@ struct Singlebondtype {
 struct Anglebondtype {
 	static const int n_atoms = 3;
 
-	Anglebondtype() {}
 	Anglebondtype(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {
 		sort();
 	}
@@ -398,9 +421,7 @@ struct Anglebondtype {
 
 	std::array<string, n_atoms> bonded_typenames;	// left, middle, right
 	std::array<int, n_atoms> gro_ids;				// bonds from .top only has these values! 
-
-	//string type1{}, type2{}, type3{};			
-	//int id1{}, id2{}, id3{};			
+		
 	float theta0{};
 	float ktheta{};
 
@@ -421,28 +442,19 @@ struct Anglebondtype {
 
 	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
-	static const std::string getBondtype() { return "angle"; }
-
 	static void assignTypesFromAtomIDs(vector<Anglebondtype>* topol_angles, vector<Atom> atoms);
 
-
-
 	static Anglebondtype* findBestMatchInForcefield(Anglebondtype* query_type, vector<Anglebondtype>* FF_angletypes);
-	
-	//static void assignFFParametersFromAngletypes(vector<Angletype>* topol_angles, vector<Angletype>* forcefield);
 };
 
-
-
 struct Dihedralbondtype {
-	Dihedralbondtype() {}
-	Dihedralbondtype(const string& t1, const string& t2, const string& t3, const string& t4) : type1(t1), type2(t2), type3(t3), type4(t4) {
+	Dihedralbondtype(const std::array<string, 4>& typenames) : bonded_typenames(typenames) {
 		sort();
 	}
-	Dihedralbondtype(const string& t1, const string& t2, const string& t3, const string& t4, float phi0, float kphi, int n) : type1(t1), type2(t2), type3(t3), type4(t4), phi0(phi0), kphi(kphi), n(n) {
+	Dihedralbondtype(const std::array<string, 4>& typenames, float phi0, float kphi, int n) : bonded_typenames(typenames), phi0(phi0), kphi(kphi), n(n) {
 		sort();
 	}
-	Dihedralbondtype(int id1, int id2, int id3, int id4) : id1(id1), id2(id2), id3(id3), id4(id4) {
+	Dihedralbondtype(const std::array<int, 4>& ids) : gro_ids(ids) {
 	}
 
 	void assignForceVariables(const Dihedralbondtype& a) {
@@ -451,36 +463,21 @@ struct Dihedralbondtype {
 		n = a.n;
 	}
 	
-	string type1, type2, type3, type4;			// left, lm, rm, right
-	int id1{}, id2{}, id3{}, id4{};			// bonds from .top only has these values! 
+	std::array<string, 4> bonded_typenames;	// left, lm, rm, right
+	std::array<int, 4> gro_ids;			// bonds from .top only has these values! 
 	float phi0{};
 	float kphi{};
 	int n{};
 
 
 	void flip() {
-		swap(type1, type4);
-		swap(type2, type3);
+		std::swap(bonded_typenames[0], bonded_typenames[3]);
+		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-	void sort() {		
-		if (type1 != type4) {
-			if (!FTHelpers::isSorted(&type1, &type4)) {
-				flip();
-			}
-		}
-		else {			// In case the outer two is identical, we check the inner two.
-			if (!FTHelpers::isSorted(&type2, &type3)) {
-				flip();
-			}
-		}
-	}
-	const std::vector<string> getAtomtypesAsVector() { return std::vector{ type1, type2, type3, type4 }; }
 
-	static const std::string getBondtype() { return "dihedral"; }
+	void sort();
 
-	static vector<Dihedralbondtype> parseFFDihedraltypes(vector<vector<string>> rows, bool verbose);
-
-	static vector<Dihedralbondtype> parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose);
+	const std::span<string> getAtomtypesAsVector() { return bonded_typenames; }
 
 	static void assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms);
 

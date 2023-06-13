@@ -103,8 +103,22 @@ vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>* ffbonded_rows, 
 }
 
 vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, vector<Atom> atoms, bool verbose) {
-	vector<Dihedralbondtype> forcefield = Dihedralbondtype::parseFFDihedraltypes(ffbonded_rows, verbose);
-	vector<Dihedralbondtype> topology_dihedrals = Dihedralbondtype::parseTopolDihedraltypes(topology_rows, verbose);
+	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Dihedralbondtype>& records) {
+		std::array<string, 4> bonded_typenames{ row[0], row[1], row[2], row[3]};
+		records.push_back(Dihedralbondtype(bonded_typenames, stof(row[4]), stof(row[5]), stoi(row[6])));
+		//records.push_back(Dihedralbondtype(row[0], row[1], row[2], row[3], stof(row[4]), stof(row[5]), stoi(row[6])));
+	};
+	vector<Dihedralbondtype> forcefield = FTHelpers::parseFFBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(ffbonded_rows, forcefieldInsertFunction);
+	//vector<Dihedralbondtype> forcefield = Dihedralbondtype::parseFFDihedraltypes(ffbonded_rows, verbose);
+
+	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Dihedralbondtype>& records) {
+		std::array<int, 4> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])};
+		//records.push_back(Anglebondtype(gro_ids));
+		//records.push_back(Dihedralbondtype(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])));
+		records.push_back(Dihedralbondtype(gro_ids));
+	};
+	vector<Dihedralbondtype> topology_dihedrals = FTHelpers::parseTopolBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(topology_rows, topologyInsertFunction);
+	//vector<Dihedralbondtype> topology_dihedrals = Dihedralbondtype::parseTopolDihedraltypes(topology_rows, verbose);
 
 	Dihedralbondtype::assignTypesFromAtomIDs(&topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);

@@ -214,89 +214,17 @@ Anglebondtype* Anglebondtype::findBestMatchInForcefield(Anglebondtype* query_typ
 	exit(0);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-vector<Dihedralbondtype> Dihedralbondtype::parseFFDihedraltypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Dihedralbondtype> dihedraltypes;
-
-	for (vector<string> row : rows) {
-
-		if (row.size() == 2) {
-			current_state = FTHelpers::setState(row[1], current_state);
-			continue;
-		}
-
-		switch (current_state) {
-		case FTHelpers::FF_DIHEDRALTYPES:
-			dihedraltypes.push_back(Dihedralbondtype(row[0], row[1], row[2], row[3], stof(row[4]), stof(row[5]), stoi(row[6])));
-			break;
-		default:
-			break;
-		}
-
-	}
-	if (verbose) {
-		printf("%zd dihedraltypes in forcefield\n", dihedraltypes.size());
-	}
-	
-	return dihedraltypes;
-}
-
-vector<Dihedralbondtype> Dihedralbondtype::parseTopolDihedraltypes(vector<vector<string>> rows, bool verbose) {
-	FTHelpers::STATE current_state = FTHelpers::INACTIVE;
-	vector<Dihedralbondtype> records;
-
-	bool entered_dihedrals_first_time = false;	// The top contains maybe improper dihedrals? ANyways these mess up, as they are simply named as dihedrals
-
-	for (vector<string> row : rows) {
-		if (row.size() == 3) {
-			if (row[0][0] == '[') {
-				current_state = FTHelpers::setState(row[1], current_state);
-				if (entered_dihedrals_first_time)
-					break;
-				continue;
-			}
-		}
-
-
-
-		switch (current_state) {
-		case FTHelpers::FF_DIHEDRALTYPES:
-			if (row.size() != 5)
-				continue;
-			records.push_back(Dihedralbondtype(stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3])));
-			entered_dihedrals_first_time = true;
-			break;
-		default:
-			break;
+void Dihedralbondtype::sort() {
+	if (bonded_typenames[0] != bonded_typenames[3]) {
+		if (!FTHelpers::isSorted(&bonded_typenames[0], &bonded_typenames[3])) {
+			flip();
 		}
 	}
-
-	if (verbose) {
-		printf("%zd dihedrals found in topology file\n", records.size());
+	else {			// In case the outer two is identical, we check the inner two.
+		if (!FTHelpers::isSorted(&bonded_typenames[1], &bonded_typenames[2])) {
+			flip();
+		}
 	}
-	
-	return records;
 }
 
 void Dihedralbondtype::assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_dihedrals, vector<Atom> atoms) {
@@ -304,10 +232,10 @@ void Dihedralbondtype::assignTypesFromAtomIDs(vector<Dihedralbondtype>* topol_di
 		Dihedralbondtype* dihedral = &topol_dihedrals->at(i);
 
 		//printf("Accessing atoms %d %d %d %d\n", dihedral->id1, dihedral->id2, dihedral->id3, dihedral->id4);
-		dihedral->type1 = atoms.at(static_cast<size_t>(dihedral->id1) - 1).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
-		dihedral->type2 = atoms.at(static_cast<size_t>(dihedral->id2) - 1).atomtype_bond;
-		dihedral->type3 = atoms.at(static_cast<size_t>(dihedral->id3) - 1).atomtype_bond;
-		dihedral->type4 = atoms.at(static_cast<size_t>(dihedral->id4) - 1).atomtype_bond;
+		dihedral->bonded_typenames[0] = atoms.at(static_cast<size_t>(dihedral->gro_ids[0]) - 1).atomtype_bond;	// Minus 1 becuase the bonds type1 is 1-indexed, and atoms vector is 0 indexed
+		dihedral->bonded_typenames[1] = atoms.at(static_cast<size_t>(dihedral->gro_ids[1]) - 1).atomtype_bond;
+		dihedral->bonded_typenames[2] = atoms.at(static_cast<size_t>(dihedral->gro_ids[2]) - 1).atomtype_bond;
+		dihedral->bonded_typenames[3] = atoms.at(static_cast<size_t>(dihedral->gro_ids[3]) - 1).atomtype_bond;
 		dihedral->sort();
 		//cout << bond->type1 << '\t' << bond->type2 << endl;;
 	}
@@ -318,10 +246,10 @@ Dihedralbondtype* Dihedralbondtype::findBestMatchInForcefield(Dihedralbondtype* 
 	float best_likeness = 0;
 	Dihedralbondtype* best_match = &((*forcefield)[0]);
 	for (Dihedralbondtype& dihedral : *forcefield) {
-		float likeness = FTHelpers::calcLikeness(query_type->type1, dihedral.type1)
-			* FTHelpers::calcLikeness(query_type->type2, dihedral.type2)
-			* FTHelpers::calcLikeness(query_type->type3, dihedral.type3)
-			* FTHelpers::calcLikeness(query_type->type4, dihedral.type4);
+		float likeness = FTHelpers::calcLikeness(query_type->bonded_typenames[0], dihedral.bonded_typenames[0])
+			* FTHelpers::calcLikeness(query_type->bonded_typenames[1], dihedral.bonded_typenames[1])
+			* FTHelpers::calcLikeness(query_type->bonded_typenames[2], dihedral.bonded_typenames[2])
+			* FTHelpers::calcLikeness(query_type->bonded_typenames[3], dihedral.bonded_typenames[3]);
 		if (likeness > best_likeness) {
 			best_likeness = likeness;
 			best_match = &dihedral;
@@ -332,9 +260,10 @@ Dihedralbondtype* Dihedralbondtype::findBestMatchInForcefield(Dihedralbondtype* 
 	if (best_likeness > 0.001f)
 		return best_match;
 
-	cout << "\n\n\nFailed to match angle types.\nClosest match: " << best_match->type1 << "    " << best_match->type2 << "    " << best_match->type3 << "    " << best_match->type4 << endl;
+	cout << "\n\n\nFailed to match angle types.\nClosest match: " << best_match->bonded_typenames[0] << "    " 
+		<< best_match->bonded_typenames[1] << "    " << best_match->bonded_typenames[2] << "    " << best_match->bonded_typenames[3] << endl;
 	printf("Likeness %f\n", best_likeness);
-	printf("Topol ids: %d %d %d %d\n", query_type->id1, query_type->id2, query_type->id3, query_type->id4);
-	cout << query_type->type1 << '\t' << query_type->type2 << '\t' << query_type->type3 << '\t' << query_type->type4 << endl;
+	printf("Topol ids: %d %d %d %d\n", query_type->gro_ids[0], query_type->gro_ids[1], query_type->gro_ids[2], query_type->gro_ids[3]);
+	cout << query_type->bonded_typenames[0] << '\t' << query_type->bonded_typenames[1] << '\t' << query_type->bonded_typenames[2] << '\t' << query_type->bonded_typenames[3] << endl;
 	exit(0);
 }

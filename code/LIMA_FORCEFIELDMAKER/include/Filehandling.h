@@ -222,8 +222,8 @@ public:
 		file << FFOutHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
 		file << FFOutHelpers::parserTitle("dihedrals");
 		for (Dihedralbondtype dihedral : dihedrals) {
-			file << to_string(dihedral.id1) << ';' << to_string(dihedral.id2) << ';' << to_string(dihedral.id3) << ';' << to_string(dihedral.id4) << ';'
-				<< dihedral.type1 << ';' << dihedral.type2 << ';' << dihedral.type3 << ';' << dihedral.type4 << ';'
+			file << to_string(dihedral.gro_ids[0]) << ';' << to_string(dihedral.gro_ids[1]) << ';' << to_string(dihedral.gro_ids[2]) << ';' << to_string(dihedral.gro_ids[3]) << ';'
+				<< dihedral.bonded_typenames[0] << ';' << dihedral.bonded_typenames[1] << ';' << dihedral.bonded_typenames[2] << ';' << dihedral.bonded_typenames[3] << ';'
 				<< to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
 		}
 		file << FFOutHelpers::endBlock();
@@ -285,7 +285,7 @@ public:
 		file << FFOutHelpers::titleH3("{atom_types \t phi_0 [rad] \t k_phi [J/(mol)] \t n}");
 		file << FFOutHelpers::parserTitle("ff_dihedraltypes");
 		for (Dihedralbondtype dihedral : dihedraltypes) {
-			file << dihedral.type1 << ';' << dihedral.type2 << ';' << dihedral.type3 << ';' << dihedral.type4 << ';' << to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
+			file << dihedral.bonded_typenames[0] << ';' << dihedral.bonded_typenames[1] << ';' << dihedral.bonded_typenames[2] << ';' << dihedral.bonded_typenames[3] << ';' << to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
 		}
 		file << FFOutHelpers::endBlock();
 

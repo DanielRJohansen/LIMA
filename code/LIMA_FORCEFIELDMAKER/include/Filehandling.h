@@ -29,7 +29,7 @@ void assertPath(string path) {
 
 class FileHelpers {
 public:
-	static string pathJoin(string a, string b) { return a + "/" + b; }
+	static constexpr string pathJoin(string a, string b) { return a + "/" + b; }
 };
 
 class Reader {
@@ -86,11 +86,12 @@ public:
 		return row;
 	}
 
-	static vector<vector<string>> readFile(const string& path, LimaLogger& logger, vector<char> ignores = {';', '#', '!'}, bool internal_file=false) {
+	static vector<vector<string>> readFile(const string& path, bool verbose, vector<char> ignores = {';', '#', '!'}, bool internal_file=false) {
 
 		fstream file;
 		file.open(path);
-		logger.print(std::format("Reading file {}\n", path));
+		if (verbose)
+			cout << std::format("Reading file {}\n", path);
 
 		vector<vector<string>> rows;
 		int row_cnt = 0;
@@ -112,7 +113,8 @@ public:
 			row_cnt++;
 		}
 		//printf("%d rows read. %d rows ignored\n", row_cnt, ignore_cnt);
-		logger.print(std::format("{} rows read. {} rows ignored\n", row_cnt, ignore_cnt));
+		if (verbose)
+			cout << std::format("{} rows read. {} rows ignored\n", row_cnt, ignore_cnt);
 
 
 		return rows;
@@ -253,7 +255,9 @@ public:
 
 	}
 
-	static void printFFBonded(string path, vector<Singlebondtype> bondtypes, vector<Anglebondtype> angletypes, vector<Dihedralbondtype> dihedraltypes) {
+	static void printFFBonded(const string& path, const vector<Singlebondtype>& bondtypes, const vector<Anglebondtype>& angletypes, 
+		const vector<Dihedralbondtype>& dihedraltypes, const vector<Improperdihedralbondtype>& improperdihedraltypes) 
+	{
 		ofstream file(path, ofstream::out);
 		if (!file.is_open()) {
 			cout << "Failed to open file " << path << endl;
@@ -293,6 +297,19 @@ public:
 		file << FFOutHelpers::endBlock();
 
 
+
+		file << FFOutHelpers::titleH2("Improperdihedraltype parameters");
+		file << FFOutHelpers::titleH3("{atom_types \t psi_0 [rad] \t k_psi [J/(mol)]}");
+		file << FFOutHelpers::parserTitle("ff_improperdihedraltypes");
+		for (auto& improper : improperdihedraltypes) {
+			for (auto& name : improper.bonded_typenames) {
+				file << name << ';';
+			}
+			file << improper.psi0 << ';';
+			file << improper.kpsi << ';';
+			file << endl;
+		}
+		file << FFOutHelpers::endBlock();
 
 		file.close();
 	}

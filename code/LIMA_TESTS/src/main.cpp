@@ -44,13 +44,34 @@ int main() {
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);
 	//doDihedralbondBenchmark(envmode);
-	doImproperDihedralBenchmark(envmode);
+	//doImproperDihedralBenchmark(envmode);
 
 	//doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+
+
+	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+
+
+
+
+
+
+
+
+	//ForcefieldMaker::mergeForcefieldFiles();
+	
+	
+
+
+
+
+
+
+
 
 	//doPoolBenchmark(Headless);
 	//doPoolBenchmark(Full);
@@ -70,7 +91,7 @@ int main() {
 	
 	//loadAndRunBasicSimulation("T4Lysozyme");
 	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
-	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	
 
 	//doMoleculeTranslationTest("T4LysozymeNoSolventSmall");
 	//doMoleculeTranslationTest("T4LysozymeNoSolvent");

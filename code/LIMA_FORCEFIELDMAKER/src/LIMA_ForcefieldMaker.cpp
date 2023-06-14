@@ -1,9 +1,9 @@
 #include <vector>
 
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
-#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldMerger.h"
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
+#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"
 
 #include <filesystem>
 #include <assert.h>
@@ -22,14 +22,14 @@ using std::string;
 //string mol_path = FileHelpers::pathJoin(sim_path, "Molecule");
 //string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
-ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& default_ff_dir, const string& conf_file, const string& topol_file) :
+ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& ff_dir, const string& conf_file, const string& topol_file) :
 	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
-	forcefield_dir(default_ff_dir), 
+	forcefield_dir(ff_dir),
 	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir),
 	m_verbose(envmode != Headless)
 {
-	ff_bonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffbonded.txt");
-	ff_nonbonded_path = FileHelpers::pathJoin(default_ff_dir, "LIMA_ffnonbonded.txt");
+	ff_bonded_path = FileHelpers::pathJoin(ff_dir, "LIMA_ffbonded.txt");
+	ff_nonbonded_path = FileHelpers::pathJoin(ff_dir, "LIMA_ffnonbonded.txt");
 	assertPath(ff_bonded_path);
 	assertPath(ff_nonbonded_path);
 
@@ -41,12 +41,12 @@ ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const s
 
 
 vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
-	vector<vector<string>> simconf_rows = Reader::readFile(conf_path, logger);
+	vector<vector<string>> simconf_rows = Reader::readFile(conf_path, m_verbose);
 	vector<string> simconf = FTHelpers::parseConf(simconf_rows);
 	logger.print(std::format("{} atom types in conf\n", simconf.size()));
 
 
-	vector<vector<string>> ffnonbonded_rows = Reader::readFile(ff_nonbonded_path, logger, {'/'}, true);
+	vector<vector<string>> ffnonbonded_rows = Reader::readFile(ff_nonbonded_path, m_verbose, {'/'}, true);
 
 
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<NB_Atomtype>& records) {
@@ -147,8 +147,8 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	// These two vectors contain information about all types, but are parsed individually. This is very slightly slower, but MUCH more readable!
 //	vector<vector<string>> ffbonded_rows = readFile("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\ffbonded.itp");
 	//vector<vector<string>> ffbonded_rows = readFile(sim_path + "/Forcefield/ffbonded.itp");
-	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, logger, { '/' }, true);
-	vector<vector<string>> topology_rows = Reader::readFile(topol_path, logger);
+	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, m_verbose, { '/' }, true);
+	vector<vector<string>> topology_rows = Reader::readFile(topol_path, m_verbose);
 
 	//vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
 	AtomTable atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
@@ -187,29 +187,33 @@ void ForcefieldMaker::prepSimulationForcefield() {
 
 
 
-//void mergeForcefieldFiles() {
-//	vector<string> files;
-//
-//	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
-//
-//	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all35_ethers.prm");
-//	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_carb.prm");
-//#ifdef __linux__
-//	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_lipid.prm"));
-//	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_na.prm"));
-//	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36m_prot.prm"));
-//#else
-//	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_lipid.prm");
-//	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_na.prm");
-//	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_prot.prm");
-//#endif
-//
-//
-//	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_cgenff.prm");	// CHARMM wants this to be read last for some reason??
-//
-//
-//	ForcefieldMerger FM;
-//	FM.mergeForcefields(files);
-//	Printer::printFFNonbonded(FileHelpers::pathJoin(forcefield_path, "LIMA_ffnonbonded.txt"), FM.ff_nonbonded);
-//	Printer::printFFBonded(FileHelpers::pathJoin(forcefield_path, "LIMA_ffbonded.txt"), FM.ff_bondtypes, FM.ff_angletypes, FM.ff_dihedraltypes);
-//}
+void ForcefieldMaker::mergeForcefieldFiles() {
+	vector<string> files;
+
+	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
+
+#ifdef __linux__
+	throw "Add the other files before trying this on linux";
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_lipid.prm"));
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_na.prm"));
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36m_prot.prm"));
+#else
+	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all35_ethers.prm");
+	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_carb.prm");
+
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_lipid.prm");
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_na.prm");
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_prot.prm");
+#endif
+
+
+	//files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_cgenff.prm");	// CHARMM wants this to be read last for some reason??
+
+	const std::string bonded_path = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/LIMA_ffbonded.txt";
+	const std::string nonbonded_path = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/LIMA_ffnonbonded.txt";
+
+	ForcefieldMerger FM;
+	FM.mergeForcefields(files);
+	Printer::printFFNonbonded(nonbonded_path, FM.ff_nonbonded);
+	Printer::printFFBonded(bonded_path, FM.ff_bondtypes, FM.ff_angletypes, FM.ff_dihedraltypes, FM.ff_improperdihedraltypes);
+}

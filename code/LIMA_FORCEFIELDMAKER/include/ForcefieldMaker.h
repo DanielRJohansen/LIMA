@@ -7,18 +7,24 @@
 struct Map;
 struct NB_Atomtype;
 
+
 class ForcefieldMaker {
 public:
 	ForcefieldMaker(
 		const std::string& workdir,
 		EnvMode envmode,
-		const std::string& default_ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/",
+		const std::string& ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charm36/",
 		const std::string& conf_file = "conf.gro",
 		const std::string& topol_file = "topol.top"
 	);
 
 	void prepSimulationForcefield();
-	void mergeForcefiledFiles();	// TODO: implement?
+
+
+	/// <summary>
+	/// Not part of normal operation. Call directly from main when needed
+	/// </summary>
+	static void mergeForcefieldFiles();	
 
 
 
@@ -35,7 +41,6 @@ private:
 	std::string ff_nonbonded_path = "";
 	
 	LimaLogger logger;
-
 
 
 

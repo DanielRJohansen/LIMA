@@ -263,7 +263,8 @@ struct Map {
 	}
 };
 
-
+// Use composition, so we both have the type which is simulation agnostic and the atom which is sim specific, 
+// and has a reference or id of a type. The same should be done for each bond!
 struct NB_Atomtype {
 	NB_Atomtype(std::string t) : type(t){}		// This is for loading form the conf file, for easy comparisons
 	NB_Atomtype(std::string t, float mass) : type(t), mass(mass) {}		// This if for forcefield merging
@@ -390,10 +391,11 @@ struct BondtypeBase {
 };
 
 struct Singlebondtype : public BondtypeBase<2>{
-	Singlebondtype(const std::array<string,2>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
+	static const int n_atoms = 2;
+	Singlebondtype(const std::array<string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Singlebondtype(const std::array<int,2>& ids) : BondtypeBase(ids) {}
+	Singlebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
 
 	float b0{};
 	float kb{};
@@ -453,6 +455,33 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
 	void sort();
+};
 
+struct Improperdihedralbondtype : public BondtypeBase<4> {
+	static const int n_atoms = 4;
+	Improperdihedralbondtype(const std::array<string, n_atoms>& typenames) : BondtypeBase(typenames) {
+		sort();
+	}
+	Improperdihedralbondtype(const std::array<string, n_atoms>& typenames, float psi0, float kpsi) 
+		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi){
+		sort();
+	}
+	Improperdihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
+	}
 
+	float psi0{};
+	float kpsi{};
+
+	void assignForceVariables(const Improperdihedralbondtype& a) {
+		psi0 = a.psi0;
+		kpsi = a.kpsi;
+	}
+
+	void flip() {
+		//std::swap(bonded_typenames[0], bonded_typenames[3]);
+		//std::swap(bonded_typenames[1], bonded_typenames[2]);
+	}
+	void sort() {
+		// Not sure what to do here yet
+	}
 };

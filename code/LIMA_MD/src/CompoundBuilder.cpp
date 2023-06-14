@@ -577,6 +577,8 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 		distributeLJIgnores(bp_lut_manager.get(), particle_info, bond_ids);
 	}
+
+
 }
 
 

@@ -67,24 +67,24 @@ vector<NB_Atomtype> ForcefieldMaker::makeFilteredNonbondedFF(Map* map) {
 	return NB_Atomtype::filterUnusedTypes(ffnonbonded, simconf, *map, logger, false);
 }
 
-AtomTable makeTopologyAtoms(vector<vector<string>> topology_rows, vector<NB_Atomtype>* ff_nonbonded_active, Map* map, bool verbose) {
+AtomTable makeTopologyAtoms(const vector<vector<string>>& topology_rows, const vector<NB_Atomtype>& ff_nonbonded_active, Map* map, bool verbose) {
 	AtomTable atomtable = Atom::parseTopolAtoms(topology_rows, verbose);
-	Atom::assignAtomtypeIDs(atomtable, *ff_nonbonded_active, *map);	// TODO: This should be moved into the parse function, there is no need to only partially init the atoms there.
+	Atom::assignAtomtypeIDs(atomtable, ff_nonbonded_active, *map);	// TODO: This should be moved into the parse function, there is no need to only partially init the atoms there.
 	return atomtable;
 }
 
-vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, vector<vector<string>>* topology_rows, const AtomTable& atomtable, bool verbose) {
+vector<Singlebondtype> makeTopologyBonds(const vector<vector<string>>& ffbonded_rows, const vector<vector<string>>& topology_rows, const AtomTable& atomtable, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Singlebondtype>& records) {
 		std::array<string, 2> bonded_typenames{ row[0], row[1] };
 		records.push_back(Singlebondtype(bonded_typenames, stof(row[2]), stof(row[3])));
 	};
-	vector<Singlebondtype> forcefield = FTHelpers::parseFFBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(*ffbonded_rows, forcefieldInsertFunction);
+	vector<Singlebondtype> forcefield = FTHelpers::parseFFBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(ffbonded_rows, forcefieldInsertFunction);
 
 	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Singlebondtype>& records) {
 		std::array<int, 2> gro_ids{ stoi(row[0]), stoi(row[1]) };
 		records.push_back(Singlebondtype(gro_ids));
 	};
-	vector<Singlebondtype> topology_bonds = FTHelpers::parseTopolBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(*topology_rows, topologyInsertFunction);
+	vector<Singlebondtype> topology_bonds = FTHelpers::parseTopolBondtypes<Singlebondtype, FTHelpers::STATE::FF_BONDTYPES>(topology_rows, topologyInsertFunction);
 	
 
 
@@ -94,18 +94,18 @@ vector<Singlebondtype> makeTopologyBonds(vector<vector<string>>* ffbonded_rows, 
 	return topology_bonds;
 }
 
-vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>*ffbonded_rows, vector<vector<string>>*topology_rows, const AtomTable& atoms, bool verbose) {
+vector<Anglebondtype> makeTopologyAngles(const vector<vector<string>>& ffbonded_rows, const vector<vector<string>>& topology_rows, const AtomTable& atoms, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
 		std::array<string, 3> bonded_typenames{ row[0], row[1], row[2]};
 		records.push_back(Anglebondtype(bonded_typenames, stof(row[3]), stof(row[4])));
 	};
-	vector<Anglebondtype> forcefield = FTHelpers::parseFFBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*ffbonded_rows, forcefieldInsertFunction);
+	vector<Anglebondtype> forcefield = FTHelpers::parseFFBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(ffbonded_rows, forcefieldInsertFunction);
 
 	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Anglebondtype>& records) {
 		std::array<int, 3> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]) };
 		records.push_back(Anglebondtype(gro_ids));
 	};
-	vector<Anglebondtype> topology_angles = FTHelpers::parseTopolBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(*topology_rows, topologyInsertFunction);
+	vector<Anglebondtype> topology_angles = FTHelpers::parseTopolBondtypes<Anglebondtype, FTHelpers::STATE::FF_ANGLETYPES>(topology_rows, topologyInsertFunction);
 
 	Anglebondtype::assignTypesFromAtomIDs(topology_angles, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_angles, &forcefield);
@@ -113,7 +113,7 @@ vector<Anglebondtype> makeTopologyAngles(vector<vector<string>>*ffbonded_rows, v
 	return topology_angles;
 }
 
-vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, const AtomTable& atoms, bool verbose) {
+vector<Dihedralbondtype> makeTopologyDihedrals(const vector<vector<string>>& ffbonded_rows, const vector<vector<string>>& topology_rows, const AtomTable& atoms, bool verbose) {
 	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Dihedralbondtype>& records) {
 		std::array<string, 4> bonded_typenames{ row[0], row[1], row[2], row[3]};
 		records.push_back(Dihedralbondtype(bonded_typenames, stof(row[4]), stof(row[5]), stoi(row[6])));
@@ -127,6 +127,28 @@ vector<Dihedralbondtype> makeTopologyDihedrals(vector<vector<string>> ffbonded_r
 	vector<Dihedralbondtype> topology_dihedrals = FTHelpers::parseTopolBondtypes<Dihedralbondtype, FTHelpers::STATE::FF_DIHEDRALTYPES>(topology_rows, topologyInsertFunction);
 
 	Dihedralbondtype::assignTypesFromAtomIDs(topology_dihedrals, atoms);
+	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
+
+	return topology_dihedrals;
+}
+
+vector<Improperdihedralbondtype> makeTopologyImproperdihedrals(vector<vector<string>> ffbonded_rows, vector<vector<string>> topology_rows, const AtomTable& atoms, bool verbose) {
+	auto forcefieldInsertFunction = [](const std::vector<string>& row, vector<Improperdihedralbondtype>& records) {
+		std::array<string, 4> bonded_typenames{ row[0], row[1], row[2], row[3] };
+		records.push_back(Improperdihedralbondtype(bonded_typenames, stof(row[4]), stof(row[5])));
+	};
+	vector<Improperdihedralbondtype> forcefield = FTHelpers::parseFFBondtypes<Improperdihedralbondtype, FTHelpers::STATE::FF_IMPROPERDIHEDRALTYPES>(ffbonded_rows, forcefieldInsertFunction);
+
+	auto topologyInsertFunction = [](const std::vector<string>& row, vector<Improperdihedralbondtype>& records) {
+		if (row.size() == 4) {
+			int a = 0;
+		}
+		std::array<int, 4> gro_ids{ stoi(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3]) };
+		records.push_back(Improperdihedralbondtype(gro_ids));
+	};
+	vector<Improperdihedralbondtype> topology_dihedrals = FTHelpers::parseTopolBondtypes<Improperdihedralbondtype, FTHelpers::STATE::FF_IMPROPERDIHEDRALTYPES>(topology_rows, topologyInsertFunction);
+
+	Improperdihedralbondtype::assignTypesFromAtomIDs(topology_dihedrals, atoms);
 	FTHelpers::assignForceVariablesFromForcefield(&topology_dihedrals, &forcefield);
 
 	return topology_dihedrals;
@@ -148,18 +170,18 @@ void ForcefieldMaker::prepSimulationForcefield() {
 //	vector<vector<string>> ffbonded_rows = readFile("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\ffbonded.itp");
 	//vector<vector<string>> ffbonded_rows = readFile(sim_path + "/Forcefield/ffbonded.itp");
 	vector<vector<string>> ffbonded_rows = Reader::readFile(ff_bonded_path, m_verbose, { '/' }, true);
-	vector<vector<string>> topology_rows = Reader::readFile(topol_path, m_verbose);
+	vector<vector<string>> topology_rows = Reader::readFile(topol_path, m_verbose);	// DO NOT SKIP empty lines!
 
 	//vector<Atom> atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
-	AtomTable atoms = makeTopologyAtoms(topology_rows, &ff_nonbonded_active, &map, m_verbose);
+	AtomTable atoms = makeTopologyAtoms(topology_rows, ff_nonbonded_active, &map, m_verbose);
 
-	vector<Singlebondtype> topology_bonds = makeTopologyBonds(&ffbonded_rows, &topology_rows, atoms, m_verbose);
+	vector<Singlebondtype> topology_bonds = makeTopologyBonds(ffbonded_rows, topology_rows, atoms, m_verbose);
 
-	vector<Anglebondtype> topology_angles = makeTopologyAngles(&ffbonded_rows, &topology_rows, atoms, m_verbose);
+	vector<Anglebondtype> topology_angles = makeTopologyAngles(ffbonded_rows, topology_rows, atoms, m_verbose);
 
 	vector<Dihedralbondtype> topology_dihedrals = makeTopologyDihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
 
-
+	vector<Improperdihedralbondtype> topology_improperdihedrals = makeTopologyImproperdihedrals(ffbonded_rows, topology_rows, atoms, m_verbose);
 
 	Printer::printForcefieldSummary(FileHelpers::pathJoin(molecule_dir, "LIMA_ffnonbonded_filtered.txt"), ff_nonbonded_active, &map);
 
@@ -169,7 +191,8 @@ void ForcefieldMaker::prepSimulationForcefield() {
 		atoms,
 		topology_bonds,
 		topology_angles,
-		topology_dihedrals
+		topology_dihedrals,
+		topology_improperdihedrals
 	);
 	logger.finishSection("Prepare Forcefield has finished");
 }

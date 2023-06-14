@@ -36,12 +36,21 @@ struct FTHelpers {
 	static bool charIsNumberAbove1(char c) {
 		return ((int)c > 49 && (int)c < 58);
 	}
-	static float calcLikeness(const string& a,const string& b) {
-		float likeness = 0;
-		float point_scale = 1.f / std::max(a.length(), b.length());
+	static float calcLikeness(const string& query_type,const string& forcefield_type) {
 
-		for (int i = 0; i < std::min(a.length(), b.length()); i++) {
-			if (a[i] == b[i])
+		// Edgecase: perfect match
+		if (query_type == forcefield_type) { return 1.f; }
+
+		// Edgecase: wildcard
+		if (forcefield_type == "X") {
+			return 0.9;
+		}
+
+		float likeness = 0;
+		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
+
+		for (int i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
+			if (query_type[i] == forcefield_type[i])
 				likeness += point_scale;
 			else
 				break;
@@ -182,6 +191,9 @@ struct FTHelpers {
 		vector<BondType> records;
 
 		for (const vector<string>& row : rows) {
+			if (row.size() == 0) {
+				current_state = INACTIVE;
+			}
 			if (row.size() == 2) {
 				//current_state = setState(row[1], current_state);
 				current_state = setStateForcefield(row[1], current_state);
@@ -206,7 +218,9 @@ struct FTHelpers {
 		TopologytateMachine sm;
 
 		for (const vector<string>& row : rows) {
-			if (row.empty()) { continue; }
+			if (row.empty()) { 
+				current_state = INACTIVE;
+			}
 			if (row.size() == 3) {
 				if (row[0][0] == '[') {
 					//current_state = setState(row[1], current_state);
@@ -314,7 +328,7 @@ struct Atom {
 	enum STATE { INACTIVE, ATOMS, FINISHED };
 	static STATE setState(string s, STATE current_state);
 
-	static AtomTable parseTopolAtoms(vector<vector<string>>& rows, bool verbose);
+	static AtomTable parseTopolAtoms(const vector<vector<string>>& rows, bool verbose);
 
 	static void assignAtomtypeIDs(AtomTable&, const vector<NB_Atomtype>& forcefield, const Map& map);
 };
@@ -363,15 +377,15 @@ struct BondtypeBase {
 
 		float best_likeness = 0;
 		DerivedType best_bond = forcefield.at(0);
-		for (const DerivedType& bond : forcefield) {
+		for (const DerivedType& ff_bondtype : forcefield) {
 			float likeness = 1.f;
 			for (int i = 0; i < n_atoms; i++) {
-				likeness *= FTHelpers::calcLikeness(query_type.bonded_typenames[i], bond.bonded_typenames[i]);
+				likeness *= FTHelpers::calcLikeness(query_type.bonded_typenames[i], ff_bondtype.bonded_typenames[i]);
 			}
 
 			if (likeness > best_likeness) {
 				best_likeness = likeness;
-				best_bond = bond;
+				best_bond = ff_bondtype;
 			}
 		}
 		if (best_likeness > 0.01f)
@@ -459,6 +473,7 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 
 struct Improperdihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
+	// i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
 	Improperdihedralbondtype(const std::array<string, n_atoms>& typenames) : BondtypeBase(typenames) {
 		sort();
 	}

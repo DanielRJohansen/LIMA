@@ -46,14 +46,14 @@ int main() {
 	//doDihedralbondBenchmark(envmode);
 	//doImproperDihedralBenchmark(envmode);
 
-	//doMethionineBenchmark(envmode);
+	doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
 
 
 

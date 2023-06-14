@@ -73,11 +73,12 @@ private:
 	std::vector<SingleBond> topol_bonds;
 	std::vector<AngleBond> topol_angles;
 	std::vector<DihedralBond> topol_dihedrals;
+	std::vector<ImproperDihedralBond> topol_improperdihedrals;
 
 	VerbosityLevel vl = SILENT;
 
 
-	enum STATE { INACTIVE, FF_NONBONDED, NB_ATOMTYPES, BONDS, ANGLES, DIHEDRALS };
+	enum STATE { INACTIVE, FF_NONBONDED, NB_ATOMTYPES, BONDS, ANGLES, DIHEDRALS, IMPROPERDIHEDRALS };
 	static STATE setState(string s, STATE current_state) {
 		if (s == "ff_nonbonded")
 			return FF_NONBONDED;
@@ -89,6 +90,8 @@ private:
 			return ANGLES;
 		if (s == "dihedrals")
 			return DIHEDRALS;
+		if (s == "improperdihedrals")
+			return IMPROPERDIHEDRALS;
 		return current_state;
 	}
 
@@ -108,7 +111,8 @@ private:
 	std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
 	std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);
 	std::vector<DihedralBond> parseDihedrals(vector<vector<string>> forcefield_rows);
-	
+	std::vector<ImproperDihedralBond> parseImproperDihedrals(const vector<vector<string>>& forcefield_rows);
+
 	void loadAtomypesIntoForcefield();
 
 };

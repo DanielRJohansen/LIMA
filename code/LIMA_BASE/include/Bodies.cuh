@@ -72,6 +72,18 @@ struct DihedralBond {
 	const static int n_atoms = 4;
 };
 
+struct ImproperDihedralBond {
+	ImproperDihedralBond() {}
+	ImproperDihedralBond(std::array<uint32_t, 4> ids); // Used when loading topology only
+	ImproperDihedralBond(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
+
+	//TODO: make const?
+	float psi_0 = 0.f;
+	float k_psi = 0.f;
+
+	uint32_t atom_indexes[4] = { 0,0,0,0 };
+	const static int n_atoms = 4;
+};
 
 
 

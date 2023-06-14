@@ -74,14 +74,16 @@ Atom::STATE Atom::setState(string s, STATE current_state) {
 	return INACTIVE;
 }
 
-AtomTable Atom::parseTopolAtoms(vector<vector<string>>& rows, bool verbose) {
+AtomTable Atom::parseTopolAtoms(const vector<vector<string>>& rows, bool verbose) {
 	STATE current_state = INACTIVE;
 
 	AtomTable atomtable;	// I guess maps are not ideal, since we always get increasing gro_ids, meaning it is always worst case..
 
 
-	for (vector<string> row : rows) {
-
+	for (auto& row : rows) {
+		if (row.size() == 0) {
+			current_state = INACTIVE;
+		}
 		if (row.size() == 3) {
 			current_state = setState(row[1], current_state);
 			continue;

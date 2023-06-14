@@ -59,6 +59,18 @@ DihedralBond::DihedralBond(int id1, int id2, int id3, int id4, float phi_0, floa
 	atom_indexes[3] = id4;
 }
 
+ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, 4> ids) {
+	for (int i = 0; i < 4; i++) { 
+		atom_indexes[i] = ids[i]; 
+	}
+}
+
+ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, 4> ids, float psi_0, float k_psi) : psi_0(psi_0), k_psi(k_psi) {
+	for (int i = 0; i < 4; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
+
 bool NeighborList::addId(uint16_t new_id, NEIGHBOR_TYPE nt) {
 	switch (nt)
 	{

@@ -27,6 +27,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 	topol_bonds = parseBonds(forcefield_rows);
 	topol_angles = parseAngles(forcefield_rows);
 	topol_dihedrals = parseDihedrals(forcefield_rows);
+	topol_improperdihedrals = parseImproperDihedrals(forcefield_rows);
 
 	forcefield_loaded = true;
 
@@ -212,6 +213,29 @@ std::vector<DihedralBond> Forcefield::parseDihedrals(vector<vector<string>> forc
 	}
 	if (vl >= V1) { printf("%d dihedrals loaded\n", dihedralbonds.size()); }
 	return dihedralbonds;
+}
+
+std::vector<ImproperDihedralBond> Forcefield::parseImproperDihedrals(const vector<vector<string>>& forcefield_rows) {
+	std::vector<ImproperDihedralBond> improperdihedrals;
+	improperdihedrals.reserve(min_reserve_size);
+
+	STATE current_state = INACTIVE;
+
+	for (vector<string> row : forcefield_rows) {
+		if (newParseTitle(row)) {
+			current_state = setState(row[1], current_state);
+			continue;
+		}
+
+		if (current_state == IMPROPERDIHEDRALS) {
+			std::array<uint32_t,4> ids{ stoul(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3]) };
+			float psi0 = stof(row[8]);
+			float kpsi = stof(row[9]);
+			improperdihedrals.push_back(ImproperDihedralBond(ids, psi0, kpsi));
+		}
+	}
+	if (vl >= V1) { printf("%d improper dihedrals loaded\n", improperdihedrals.size()); }
+	return improperdihedrals;
 }
 
 void Forcefield::loadAtomypesIntoForcefield() {

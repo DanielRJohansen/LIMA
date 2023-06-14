@@ -35,8 +35,8 @@ public:
 class Reader {
 public:
 	static bool ignoreRow(vector<char> ignores, string line) {
-		if (line.length() == 0)
-			return true;
+		//if (line.length() == 0)
+		//	return true;
 
 		char first_char = ' ';
 		for (char c : line) {
@@ -176,7 +176,7 @@ public:
 	}
 
 	//static void printForcefield(string path, vector<Atom> atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
-	static void printForcefield(string path, const AtomTable& atoms, vector<Singlebondtype> bonds, vector<Anglebondtype> angles, vector<Dihedralbondtype> dihedrals) {
+	static void printForcefield(string path, const AtomTable& atoms, const vector<Singlebondtype>& bonds, const vector<Anglebondtype>& angles, const vector<Dihedralbondtype>& dihedrals, const vector<Improperdihedralbondtype>& impropers) {
 
 		ofstream file(path, ofstream::out);
 		if (!file.is_open()) {
@@ -227,11 +227,35 @@ public:
 		file << FFOutHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
 		file << FFOutHelpers::parserTitle("dihedrals");
 		for (Dihedralbondtype dihedral : dihedrals) {
-			file << to_string(dihedral.gro_ids[0]) << ';' << to_string(dihedral.gro_ids[1]) << ';' << to_string(dihedral.gro_ids[2]) << ';' << to_string(dihedral.gro_ids[3]) << ';'
+			for (auto groid : dihedral.gro_ids) {
+				file << to_string(groid) << ';';
+			}
+			for (auto type : dihedral.bonded_typenames) {
+				file << type << ';';
+			}
+			file << to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
+			/*file << to_string(dihedral.gro_ids[0]) << ';' << to_string(dihedral.gro_ids[1]) << ';' << to_string(dihedral.gro_ids[2]) << ';' << to_string(dihedral.gro_ids[3]) << ';'
 				<< dihedral.bonded_typenames[0] << ';' << dihedral.bonded_typenames[1] << ';' << dihedral.bonded_typenames[2] << ';' << dihedral.bonded_typenames[3] << ';'
-				<< to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;
+				<< to_string(dihedral.phi0) << ';' << to_string(dihedral.kphi) << ';' << to_string(dihedral.n) << endl;*/
 		}
 		file << FFOutHelpers::endBlock();
+
+
+
+		file << FFOutHelpers::titleH2("ImproperDihedrals");
+		file << FFOutHelpers::titleH3("{Atom IDs \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
+		file << FFOutHelpers::parserTitle("improperdihedrals");
+		for (Improperdihedralbondtype improper : impropers) {
+			for (auto groid : improper.gro_ids) {
+				file << to_string(groid) << ';';
+			}
+			for (auto type : improper.bonded_typenames) {
+				file << type << ';';
+			}
+			file << to_string(improper.psi0) << ';' << to_string(improper.kpsi) << endl;
+		}
+		file << FFOutHelpers::endBlock();
+
 
 		file.close();
 	}

@@ -56,6 +56,7 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 				}
 			}
 		}
+		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
 
 		rows.push_back(std::move(row));
 		row_cnt++;

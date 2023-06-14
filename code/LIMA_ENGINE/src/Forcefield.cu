@@ -22,7 +22,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 	loadAtomypesIntoForcefield();
 
 
-	nb_atomtype_ids = parseAtomTypeIDs(forcefield_rows);				// 1 entry per atom in conf
+	groIdToAtomtypeMap = parseAtomTypeIDs(forcefield_rows);	// 1 entry per atom in conf
 
 	topol_bonds = parseBonds(forcefield_rows);
 	topol_angles = parseAngles(forcefield_rows);
@@ -37,12 +37,12 @@ void Forcefield::loadForcefield(string molecule_dir) {
 }
 
 
-int Forcefield::getAtomtypeID(int global_id) const {
-	if (global_id > n_atoms || global_id == 0) {	// 0 is an error, as atoms are 1-indexed
-		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", global_id);
+int Forcefield::getAtomtypeID(int gro_id) const {
+	if (groIdToAtomtypeMap.count(gro_id) == 0 || gro_id == 0) {	// 0 is an error, as atoms are 1-indexed
+		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", gro_id);
 		exit(0);
 	}
-	return nb_atomtype_ids[global_id];
+	return groIdToAtomtypeMap.find(gro_id)->second;
 }
 
 template <int array_length>
@@ -54,11 +54,6 @@ bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> que
 }
 
 const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
-	//for (int i = 0; i < n_topol_bonds; i++) {
-	//	if (topol_bonds[i].atom_indexes[0] == id1 && topol_bonds[i].atom_indexes[1] == id2) {
-	//		return &topol_bonds[i];
-	//	}
-	//}
 	for (auto& singlebond : topol_bonds) {
 		if (isMatch(singlebond.atom_indexes, ids)) {
 			return &singlebond;
@@ -69,11 +64,6 @@ const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
 }
 
 const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
-	//for (int i = 0; i < n_topol_angles; i++) {
-	//	if (topol_angles[i].atom_indexes[0] == id1 && topol_angles[i].atom_indexes[1] == id2 && topol_angles[i].atom_indexes[2] == id3) {
-	//		return &topol_angles[i];
-	//	}
-	//}
 	for (auto& anglebond : topol_angles) {
 		if (isMatch(anglebond.atom_indexes, ids)) {
 			return &anglebond;
@@ -85,11 +75,6 @@ const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
 }
 
 const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
-	/*for (int i = 0; i < n_topol_dihedrals; i++) {
-		if (topol_dihedrals[i].atom_indexes[0] == id1 && topol_dihedrals[i].atom_indexes[1] == id2 && topol_dihedrals[i].atom_indexes[2] == id3 && topol_dihedrals[i].atom_indexes[3] == id4) {
-			return &topol_dihedrals[i];
-		}
-	}*/
 	for (auto& dihedralbond : topol_dihedrals) {
 		if (isMatch(dihedralbond.atom_indexes, ids)) {
 			return &dihedralbond;
@@ -100,21 +85,8 @@ const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
 	exit(0);
 }
 
-
-
-
-
-
-
-
-
-
-
-
 std::vector<NBAtomtype> Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
-	//NBAtomtype* atomtypes = new NBAtomtype[10000];
 	nb_atomtypes.reserve(10000);
-	//int ptr = 0;
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : summary_rows) {
@@ -135,15 +107,14 @@ std::vector<NBAtomtype> Forcefield::parseAtomTypes(vector<vector<string>> summar
 			nb_atomtypes.push_back(NBAtomtype{ stof(row[2]), stof(row[3]), stof(row[4]) });
 		}			
 	}
-	//n_nb_atomtypes = ptr;
 	n_nb_atomtypes = nb_atomtypes.size();
 	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", n_nb_atomtypes); }
 	return nb_atomtypes;
 }
 
-std::vector<int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
-	const int max_ids = 10000;
-	nb_atomtype_ids.resize(max_ids);
+std::map<int, int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
+	std::map<int, int> groidToType;
+
 	STATE current_state = INACTIVE;
 
 	for (vector<string> row : forcefield_rows) {
@@ -153,15 +124,17 @@ std::vector<int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_
 		}
 
 		if (current_state == NB_ATOMTYPES) {
-			assert(stoi(row[0]) < max_ids);
-			nb_atomtype_ids[stoi(row[0])] = stoi(row[1]);
-			n_atoms++;
+			int gro_id = stoi(row[0]);
+			int atomtype_id = stoi(row[1]);
+
+
+			groidToType.insert(std::pair<int, int>(gro_id, atomtype_id));
 		}
 			
 	}
-	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", n_atoms); }
+	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", groidToType.size()); }
 
-	return nb_atomtype_ids;
+	return groidToType;
 }
 
 std::vector<SingleBond> Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
@@ -240,11 +213,6 @@ std::vector<DihedralBond> Forcefield::parseDihedrals(vector<vector<string>> forc
 	if (vl >= V1) { printf("%d dihedrals loaded\n", dihedralbonds.size()); }
 	return dihedralbonds;
 }
-
-
-
-
-
 
 void Forcefield::loadAtomypesIntoForcefield() {
 	static const float mass_min = 0.001f;	// [kg/mol]

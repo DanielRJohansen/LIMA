@@ -5,6 +5,7 @@
 #include "LIMA_BASE/include/Filehandling.h"
 #include <string>
 #include <vector>
+#include <map>
 
 using std::string;
 using std::vector;
@@ -62,8 +63,9 @@ private:
 
 
 	//int* nb_atomtype_ids = nullptr;
-	std::vector<int> nb_atomtype_ids;
-	int n_atoms = 0;
+	//std::vector<int> nb_atomtype_ids;
+	std::map<int, int> groIdToAtomtypeMap;
+	//int n_atoms = 0;
 
 	std::vector<NBAtomtype> nb_atomtypes;
 	int n_nb_atomtypes = 0;
@@ -101,7 +103,7 @@ private:
 	
 	std::vector<NBAtomtype> parseAtomTypes(vector<vector<string>> summary_rows);
 
-	std::vector<int> parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
+	std::map<int, int> parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
 
 	std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
 	std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);

@@ -9,6 +9,9 @@ struct NB_Atomtype;
 
 
 class ForcefieldMaker {
+
+
+
 public:
 	ForcefieldMaker(
 		const std::string& workdir,
@@ -19,7 +22,6 @@ public:
 	);
 
 	void prepSimulationForcefield();
-
 
 	/// <summary>
 	/// Not part of normal operation. Call directly from main when needed

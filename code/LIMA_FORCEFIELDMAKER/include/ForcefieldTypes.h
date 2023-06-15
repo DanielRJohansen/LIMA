@@ -156,14 +156,14 @@ struct FTHelpers {
 	}
 
 	template <typename GenericBondType>
-	static void assignForceVariablesFromForcefield(vector<GenericBondType>* topol_bonds, vector<GenericBondType>* forcefield) {
+	static void assignForceVariablesFromForcefield(vector<GenericBondType>& topol_bonds, const vector<GenericBondType>& forcefield) {
 		std::unordered_map<string, const GenericBondType> forcefieldMap;
 
-		for (int i = 0; i < topol_bonds->size(); i++) {
+		for (int i = 0; i < topol_bonds.size(); i++) {
 			//std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
 			//	GenericBondType::getBondtype(), i+1, topol_bonds->size());
 
-			GenericBondType* bond = &topol_bonds->at(i);
+			GenericBondType* bond = &topol_bonds.at(i);
 
 			// Try to see if we have already searched for a dihedral with an identical order of identical atom types
 			string tag = FTHelpers::makeBondTag(bond->bonded_typenames);
@@ -174,7 +174,7 @@ struct FTHelpers {
 				bond->assignForceVariables(appropriateForcefieldType);
 			}
 			else {
-				const GenericBondType appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(*bond, *forcefield);
+				const GenericBondType appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(*bond, forcefield);
 				forcefieldMap.insert({ tag, appropriateForcefieldType });
 				bond->assignForceVariables(appropriateForcefieldType);
 			}
@@ -284,7 +284,7 @@ struct NB_Atomtype {
 	NB_Atomtype(std::string t, float mass) : type(t), mass(mass) {}		// This if for forcefield merging
 	NB_Atomtype(std::string t, float mass, float sigma, float epsilon) : type(t),  mass(mass), sigma(sigma), epsilon(epsilon) {}		// For LIMA_ffnonbonded
 	NB_Atomtype(std::string t, int atnum, float mass, float sigma, float epsilon) : type(t), atnum(atnum), mass(mass), sigma(sigma), epsilon(epsilon) {}		// For random dudes ff_nonbonded
-
+	NB_Atomtype(int gro_id, const std::string& atomtype) : gro_id(gro_id), type(atomtype) {}
 	// Official parameters
 	std::string type = "";
 	int atnum = -1;					// atnum given by input file (CHARMM)
@@ -292,6 +292,8 @@ struct NB_Atomtype {
 	float mass = -1;				// [g/mol]
 	float sigma = -1;				// [nm]
 	float epsilon = -1;				// J/mol
+
+	int gro_id;
 
 	// LIMA parameters
 	bool is_present_in_simulation = false;
@@ -316,10 +318,10 @@ struct Atom;
 using AtomTable = std::map<int, Atom>;
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int id, string type_b, string type_nb) : gro_id(id), atomtype_bond(type_b), atomtype(type_nb) {}
+	Atom(int id, string atomtype, string atomname) : gro_id(id), atomname(atomname), atomtype(atomtype) {}
 	const int gro_id=-1;										// Come from topol.top file
-	const string atomtype{};
-	const string atomtype_bond{};
+	const string atomtype{};	
+	const string atomname{};	// I dunno what this is for
 	int atomtype_id = -1;				// Asigned later
 	//float charge;
 
@@ -355,8 +357,9 @@ struct Atom {
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
 	BondtypeBase(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {}
-	BondtypeBase(const std::array<int, n_atoms>& ids) : gro_ids(ids) {}
-
+	BondtypeBase(const std::array<int, n_atoms>& ids) : gro_ids(ids) {}	// TODO: remove this
+	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+		: bonded_typenames(typenames), gro_ids(ids) {}
 
 	virtual void sort() = 0;
 
@@ -372,8 +375,10 @@ struct BondtypeBase {
 	}
 
 	template <class DerivedType>
-	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const vector<DerivedType>& forcefield) {
+	static const DerivedType findBestMatchInForcefield(DerivedType query_type, const vector<DerivedType>& forcefield) {
 		if (forcefield.size() == 0) { throw std::exception("No angletypes in forcefield!"); }
+
+		query_type.sort();
 
 		float best_likeness = 0;
 		DerivedType best_bond = forcefield.at(0);
@@ -409,7 +414,10 @@ struct Singlebondtype : public BondtypeBase<2>{
 	Singlebondtype(const std::array<string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Singlebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
+	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+		: BondtypeBase(ids, typenames) {}
+
+	Singlebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}	// TODO: always create with types too!
 
 	float b0{};
 	float kb{};
@@ -427,10 +435,14 @@ struct Singlebondtype : public BondtypeBase<2>{
 
 struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
-	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) : BondtypeBase(typenames), theta0(t0), ktheta(kt) {
+	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) 
+		: BondtypeBase(typenames), theta0(t0), ktheta(kt) 
+	{
 		sort();
 	}
 	Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
+	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames) 
+		: BondtypeBase(ids, typenames) {}
 
 	float theta0{};
 	float ktheta{};
@@ -453,6 +465,8 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 	}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
+	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+		: BondtypeBase(ids, typenames) {}
 
 	float phi0{};
 	float kphi{};
@@ -483,6 +497,8 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 	}
 	Improperdihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
+	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+		: BondtypeBase(ids, typenames) {}
 
 	float psi0{};
 	float kpsi{};

@@ -250,7 +250,7 @@ float getMax(const std::vector<float>& vec) {
 	return *std::max_element(vec.begin(), vec.end());
 }
 
-float getMean(const vector<float>& vec)
+float getMean(const std::vector<float>& vec)
 {
 	double sum = 0.;
 	for (auto elem : vec) { sum += static_cast<double>(elem); }	
@@ -278,7 +278,7 @@ float Analyzer::getVarianceCoefficient(const std::vector<float>& vec) {
 	return  stddev / mean;
 }
 
-void printRow(string title, vector<float>& vec) {
+void printRow(string title, std::vector<float>& vec) {
 	if (vec.empty()) { return; }
 	LIMA_Printer::printTableRow(
 		title, { 

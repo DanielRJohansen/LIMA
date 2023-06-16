@@ -4,7 +4,6 @@
 
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
-//#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"	// TODO: Delete file
 
 
 
@@ -17,7 +16,6 @@ using FileRows = std::vector<std::vector<std::string>>;
 
 struct BondedTypes {
 	// Contains only 1 entry for each type that exists
-	//std::vector<NB_Atomtype> nb_atoms;
 	std::unordered_map<std::string, NB_Atomtype> atomToTypeMap;	// THis is a bad name
 	std::vector<Singlebondtype> singlebonds;
 	std::vector<Anglebondtype> anglebonds;
@@ -30,7 +28,6 @@ struct BondedTypes {
 // TODO: Change all of these so they don't have both the atomtypename and the gro_ids?
 struct Topology {
 	// Contains only 1 entry for each entry in the topology file
-	//std::vector<NB_Atomtype> nb_atoms;
 	AtomTable atomtable;
 	std::vector<Singlebondtype> singlebonds{};
 	std::vector<Anglebondtype> anglebonds{};

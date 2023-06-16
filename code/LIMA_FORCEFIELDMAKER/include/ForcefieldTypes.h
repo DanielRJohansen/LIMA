@@ -77,76 +77,6 @@ namespace FTHelpers {
 		return true;
 	}
 
-	static vector<string> parseConf(vector<vector<string>> rows) {		// KNOWN ERROR HERE. SOMETIMES SPACES IN FILES ARE TABS, AND IT DOESN'T RECOGNISE A ROW AS A PROPER ENTRY!!
-		vector<string> atom_types;
-
-		for (vector<string> row : rows) {
-			if (row.size() != 6) {
-				continue;
-			}
-
-			bool type_already_found = false;
-			for (string atom_type : atom_types) {
-				if (atom_type == row[1]) {
-					type_already_found = true;
-					break;
-				}
-			}
-			if (!type_already_found)
-				atom_types.push_back(row[1]);
-		}		
-
-		return atom_types;
-	}
-
-
-	enum STATE { INACTIVE, FF_NONBONDED, FF_BONDTYPES, FF_ANGLETYPES, FF_DIHEDRALTYPES, FF_IMPROPERDIHEDRALTYPES, FF_PAIRTYPES };
-	static STATE setStateForcefield(const string& s, STATE current_state) {
-		if (s == "ff_nonbonded")
-			return FF_NONBONDED;
-		if (s == "ff_bondtypes")
-			return FF_BONDTYPES;
-		if (s == "ff_angletypes")
-			return FF_ANGLETYPES;
-		if (s == "ff_dihedraltypes")
-			return FF_DIHEDRALTYPES;
-		if (s == "ff_improperdihedraltypes")
-			return FF_IMPROPERDIHEDRALTYPES;
-
-		return current_state;
-	}
-
-	class TopologytateMachine {
-	public:
-		STATE setState(const string& s, STATE current_state) {
-			if (s == "bonds")
-				return FF_BONDTYPES;
-			if (s == "angles")
-				return FF_ANGLETYPES;							
-			if (s == "pairs")
-				return FF_PAIRTYPES;
-			if (s == "dihedrals") {
-				if (has_seen_dihedrals)
-					return FF_IMPROPERDIHEDRALTYPES;
-				else {
-					has_seen_dihedrals = true;
-					return FF_DIHEDRALTYPES;
-				}
-			}
-			return current_state;
-		}
-	private:
-		bool has_seen_dihedrals = false;
-	};
-
-	static string makeBondTag(std::vector<string>atom_ids) {
-		string out = "";
-		for (const auto& atom_id : atom_ids) {
-			out = out + atom_id + "-";
-		}
-		out.pop_back();	// remove the last '-'
-		return out;
-	}
 
 	static string makeBondTag(std::span<string>atom_ids) {
 		string out = "";
@@ -182,102 +112,9 @@ namespace FTHelpers {
 			}
 		}
 	}
-
-	template <typename BondType, STATE query_state>
-	static vector<BondType> parseFFBondtypes(
-		const vector<vector<string>>& rows, 
-		std::function<void(const vector<std::string>& row, vector<BondType>& records)> insertFunction)
-	{
-		STATE current_state = INACTIVE;
-
-		vector<BondType> records;
-
-		for (const vector<std::string>& row : rows) {
-			if (row.size() == 0) {
-				current_state = INACTIVE;
-			}
-			if (row.size() == 2) {
-				//current_state = setState(row[1], current_state);
-				current_state = setStateForcefield(row[1], current_state);
-				continue;
-			}
-
-			if (current_state != query_state) { continue; }
-
-			insertFunction(row, records);
-		}
-
-		return records;
-	}
-
-	template <typename BondType, STATE query_state>
-	static vector<BondType> parseTopolBondtypes(
-		const vector<vector<std::string>>& rows,
-		std::function<void(const vector<std::string>& row, vector<BondType>& records)> insertFunction)
-	{
-		STATE current_state = INACTIVE;
-		vector<BondType> records;
-		TopologytateMachine sm;
-
-		for (const vector<std::string>& row : rows) {
-			if (row.empty()) { 
-				current_state = INACTIVE;
-			}
-			if (row.size() == 3) {
-				if (row[0][0] == '[') {
-					//current_state = setState(row[1], current_state);
-					current_state = sm.setState(row[1], current_state);
-					continue;
-				}
-			}
-
-			if (current_state != query_state) { continue; }
-
-			insertFunction(row, records);
-		}
-		/*if (verbose) {
-			printf("%lld bonds found in topology file\n", records.size());
-		}*/
-		return records;
-	}
 };
 
 
-struct Map {
-	struct Mapping {
-		Mapping () {}
-		Mapping (std::string l, std::string r) : left(l), right(r) {}
-		std::string left{}, right{};
-	};
-
-
-
-	Map() {
-		mappings.resize(10000);
-	}
-
-	std::vector<Mapping> mappings;
-	int n_mappings = 0; 
-
-	bool mapExists(std::string l) const {
-		for (int i = 0; i < n_mappings; i++)
-			if (l == mappings[i].left)
-				return true;
-		return false;
-	}
-	void addMap(std::string l, std::string r) {
-		if (!mapExists(l))
-			mappings[n_mappings++] = Mapping(l, r);
-	}
-	std::string mapRight(const std::string& query) const {
-		for (int i = 0; i < n_mappings; i++) {
-			if (mappings[i].left == query) {
-				return mappings[i].right;
-			}
-		}
-		return query;
-	}
-};
 
 // Use composition, so we both have the type which is simulation agnostic and the atom which is sim specific, 
 // and has a reference or id of a type. The same should be done for each bond!
@@ -313,12 +150,11 @@ struct NB_Atomtype {
 	static bool typeIsPresent(const std::vector<NB_Atomtype>& records, std::string type) {
 		return (findRecord(records, type) != nullptr);
 	}
-	static std::vector<NB_Atomtype> filterUnusedTypes(const std::vector<NB_Atomtype>& forcefield, 
-		const std::vector<std::string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
+	
+	/*static std::vector<NB_Atomtype> filterUnusedTypes(const std::vector<NB_Atomtype>& forcefield, 
+		const std::vector<std::string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);*/
 };
 
-struct Atom;
-using AtomTable = std::map<int, Atom>;
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
 	Atom(int id, std::string atomtype, std::string atomname) : gro_id(id), atomname(atomname), atomtype(atomtype) {}
@@ -327,23 +163,9 @@ struct Atom {
 	const std::string atomname{};	// I dunno what this is for
 	int atomtype_id = -1;				// Asigned later
 	//float charge;
-
-
-
-	enum STATE { INACTIVE, ATOMS, FINISHED };
-	static STATE setState(std::string s, STATE current_state);
-
-	static AtomTable parseTopolAtoms(const std::vector<std::vector<std::string>>& rows, bool verbose);
-
-	static void assignAtomtypeIDs(AtomTable&, const std::vector<NB_Atomtype>& forcefield, const Map& map);
 };
 
-
-
-
-
-
-
+using AtomTable = std::map<int, Atom>;
 
 
 
@@ -420,8 +242,6 @@ struct Singlebondtype : public BondtypeBase<2>{
 	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
-	Singlebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}	// TODO: always create with types too!
-
 	float b0{};
 	float kb{};
 
@@ -443,7 +263,7 @@ struct Anglebondtype : public BondtypeBase<3> {
 	{
 		sort();
 	}
-	Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
+	//Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
 	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
@@ -460,13 +280,8 @@ struct Anglebondtype : public BondtypeBase<3> {
 
 struct Dihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
-	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {
-		sort();
-	}
 	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) : BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {
 		sort();
-	}
-	Dihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
@@ -491,14 +306,10 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 struct Improperdihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
 	// i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
-	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {
-		sort();
-	}
+	
 	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0, float kpsi)
 		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi){
 		sort();
-	}
-	Improperdihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
 	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}

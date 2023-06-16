@@ -21,11 +21,6 @@ public:
 
 	void prepSimulationForcefield();
 
-	/// <summary>
-	/// Not part of normal operation. Call directly from main when needed
-	/// </summary>
-	static void mergeForcefieldFiles();	
-
 
 
 private:
@@ -41,8 +36,4 @@ private:
 	std::string ff_nonbonded_path = "";
 	
 	LimaLogger logger;
-
-
-	//std::vector<NB_Atomtype> makeFilteredNonbondedFF(Map* map);
-
 };

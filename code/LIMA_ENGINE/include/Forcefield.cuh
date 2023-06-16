@@ -7,18 +7,10 @@
 #include <vector>
 #include <map>
 
-using std::string;
-using std::vector;
-
-
-
 
 #define ATOMTYPE_SOL 0
 
-
-
-
-
+using std::string;
 
 
 class Forcefield {
@@ -40,11 +32,7 @@ public:
 	const AngleBond& getAnglebondtype(int bond_index, std::array<int, 3> gro_ids) const;
 	const DihedralBond& getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
 	const ImproperDihedralBond& getImproperdihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
-	//const SingleBond* getBondType(std::array<int, 2> ids) const;
-	//const AngleBond* getAngleType(std::array<int, 3> ids) const;
-	//const DihedralBond* getDihedralType(std::array<int, 4> ids) const;
 	
-
 
 	ForceField_NB getNBForcefield() const {
 		return forcefield;
@@ -76,24 +64,12 @@ private:
 
 	Topology topology;
 
-	//int* nb_atomtype_ids = nullptr;
-	//std::vector<int> nb_atomtype_ids;
-	
-	//int n_atoms = 0;
-
-	//std::vector<NBAtomtype> nb_atomtypes;
-	//int n_nb_atomtypes = 0;
-
-	//std::vector<SingleBond> topol_bonds;
-	//std::vector<AngleBond> topol_angles;
-	//std::vector<DihedralBond> topol_dihedrals;
-	//std::vector<ImproperDihedralBond> topol_improperdihedrals;
 
 	VerbosityLevel vl = SILENT;
 
 
 	enum STATE { INACTIVE, FF_NONBONDED, NB_ATOMTYPES, BONDS, ANGLES, DIHEDRALS, IMPROPERDIHEDRALS };
-	static STATE setState(string s, STATE current_state) {
+	static STATE setState(std::string s, STATE current_state) {
 		if (s == "ff_nonbonded")
 			return FF_NONBONDED;
 		if (s == "atoms")
@@ -109,24 +85,14 @@ private:
 		return current_state;
 	}
 
-	bool newParseTitle(vector<string> row) {
+	bool newParseTitle(std::vector<std::string> row) {
 		return (row[0][0] == '#');
 	}
 
-	//StringMap parseNBAtomtypeMaps(vector<vector<string>> forcefield_rows) {}
-
-	
-
-	
 	std::vector<NBAtomtype> loadAtomTypes(const SimpleParsedFile& nonbonded_parsed);
 	std::map<int, int> loadAtomTypeMap(const SimpleParsedFile& nonbonded_parsed);
 
 	Topology loadTopology(const SimpleParsedFile& bonded_parsed);
-
-	//std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
-	//std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);
-	//std::vector<DihedralBond> parseDihedrals(vector<vector<string>> forcefield_rows);
-	//std::vector<ImproperDihedralBond> parseImproperDihedrals(const vector<vector<string>>& forcefield_rows);
 
 	void loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes);
 

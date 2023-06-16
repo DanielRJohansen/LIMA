@@ -1,24 +1,24 @@
 #include <vector>
 
+#include "LIMA_BASE/include/Filehandling.h"
+
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
 #include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
-#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"	// TODO: Delete file
+//#include "LIMA_FORCEFIELDMAKER/include/Filehandling.h"	// TODO: Delete file
 
-#include "LIMA_BASE/include/Filehandling.h"
 
 
 #include <filesystem>
 #include <assert.h>
 #include <format>
 
-
-using std::string;
+using std::string, std::cout, std::endl, std::to_string;
 using FileRows = std::vector<std::vector<std::string>>;
 
-struct Forcefield {
+struct BondedTypes {
 	// Contains only 1 entry for each type that exists
 	//std::vector<NB_Atomtype> nb_atoms;
-	std::unordered_map<std::string, NB_Atomtype> atomToTypeMap;
+	std::unordered_map<std::string, NB_Atomtype> atomToTypeMap;	// THis is a bad name
 	std::vector<Singlebondtype> singlebonds;
 	std::vector<Anglebondtype> anglebonds;
 	std::vector<Dihedralbondtype> dihedralbonds;
@@ -32,10 +32,10 @@ struct Topology {
 	// Contains only 1 entry for each entry in the topology file
 	//std::vector<NB_Atomtype> nb_atoms;
 	AtomTable atomtable;
-	std::vector<Singlebondtype> singlebonds;
-	std::vector<Anglebondtype> anglebonds;
-	std::vector<Dihedralbondtype> dihedralbonds;
-	std::vector<Improperdihedralbondtype> improperdeihedralbonds;
+	std::vector<Singlebondtype> singlebonds{};
+	std::vector<Anglebondtype> anglebonds{};
+	std::vector<Dihedralbondtype> dihedralbonds{};
+	std::vector<Improperdihedralbondtype> improperdeihedralbonds{};
 };
 
 struct AtomtypeMapping {
@@ -54,23 +54,23 @@ struct AtomtypeMapping {
 //string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
 ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& ff_dir, const string& conf_file, const string& topol_file) :
-	molecule_dir(FileHelpers::pathJoin(workdir, "molecule")),
+	molecule_dir(Filehandler::pathJoin(workdir, "molecule")),
 	forcefield_dir(ff_dir),
 	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir),
 	m_verbose(envmode != Headless)
 {
-	ff_bonded_path = FileHelpers::pathJoin(ff_dir, "ffbonded.itp");
-	ff_nonbonded_path = FileHelpers::pathJoin(ff_dir, "ffnonbonded.itp");
-	assertPath(ff_bonded_path);
-	assertPath(ff_nonbonded_path);
+	ff_bonded_path = Filehandler::pathJoin(ff_dir, "ffbonded.itp");
+	ff_nonbonded_path = Filehandler::pathJoin(ff_dir, "ffnonbonded.itp");
+	Filehandler::assertPath(ff_bonded_path);
+	Filehandler::assertPath(ff_nonbonded_path);
 
-	conf_path = FileHelpers::pathJoin(molecule_dir, conf_file);
-	topol_path = FileHelpers::pathJoin(molecule_dir, topol_file);
-	assertPath(conf_path);
-	assertPath(topol_path);
+	conf_path = Filehandler::pathJoin(molecule_dir, conf_file);
+	topol_path = Filehandler::pathJoin(molecule_dir, topol_file);
+	Filehandler::assertPath(conf_path);
+	Filehandler::assertPath(topol_path);
 }
 
-void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, Forcefield& forcefield) {
+void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 
 		if (row.section == "atomtypes") {
@@ -95,7 +95,7 @@ void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, Forcefiel
 	}
 }
 
-void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, Forcefield& forcefield) {
+void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 
 		if (row.section == "bondtypes") {
@@ -201,7 +201,7 @@ Topology loadTopology(const SimpleParsedFile& parsedfile) {
 }
 
 // Adds entries of forcefield.atomtypes to a filtered list, if there is any reference to said atomtype in the topology
-const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, Forcefield& forcefield) {
+const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedTypes& forcefield) {
 	std::vector<NB_Atomtype> atomtypes_filtered;
 
 	atomtypes_filtered.emplace_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
@@ -214,13 +214,14 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, Forcefi
 
 		if (!atomtype_ff.is_present_in_simulation) {
 			atomtype_ff.is_present_in_simulation = true;
+			atomtype_ff.atnum_local = atomtypes_filtered.size();
 			atomtypes_filtered.push_back(atomtype_ff);
 		}
 	}
 	return atomtypes_filtered;
 }
 
-void fillTBondParametersFromForcefield(const Forcefield& forcefield, Topology& topology) {
+void fillTBondParametersFromForcefield(const BondedTypes& forcefield, Topology& topology) {
 	FTHelpers::assignForceVariablesFromForcefield(topology.singlebonds, forcefield.singlebonds);
 	FTHelpers::assignForceVariablesFromForcefield(topology.anglebonds, forcefield.anglebonds);
 	FTHelpers::assignForceVariablesFromForcefield(topology.dihedralbonds, forcefield.dihedralbonds);
@@ -250,14 +251,123 @@ const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(cons
 	return map;
 }
 
-void printFFNonbonded(const string& path, const std::vector<NB_Atomtype>& filtered_atomtypes) {}
-void printFFBonded(const string& path, const Topology& topology) {}
+
+namespace FFPrintHelpers {
+	static string titleH1(string text) {
+		return "// ----------------################ " + text + " ################---------------- //\n\n";
+	}
+	static string titleH2(string text) {
+		return "// ---------------- " + text + " ---------------- //\n";
+	}
+	static string titleH3(string text) {
+		return "// " + text + " //\n";
+	}
+	static string parserTitle(string text) {
+		return "# " + text + '\n';
+	}
+	static string endBlock() {
+		return "\n\n\n\n";
+	}
+};
+
+
+const char delimiter = ' ';
+
+void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& atomtype_map, const std::vector<NB_Atomtype>& filtered_atomtypes) {
+	std::ofstream file(path, std::ofstream::out);
+	if (!file.is_open()) {
+		cout << "Failed to open file " << path << endl;
+		exit(0);
+	}
+
+	file << FFPrintHelpers::titleH1("Forcefield Non-bonded");
+	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
+	file << FFPrintHelpers::titleH3("{gro_id \t atomtype}");
+	file << FFPrintHelpers::parserTitle("atomtype_map");
+	for (auto& mapping : atomtype_map) {
+		file << to_string(mapping.gro_id) << delimiter << to_string(mapping.atomtype_id) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+	file << FFPrintHelpers::titleH2("Non-bonded parameters");
+	file << FFPrintHelpers::titleH3("{atom_type \t type_id \t mass [g/mol] \t sigma [nm] \t epsilon [J/mol]}");
+	file << FFPrintHelpers::parserTitle("atomtypes");
+	for (auto& atomtype : filtered_atomtypes) {
+		file << atomtype.type << delimiter << to_string(atomtype.atnum_local) << delimiter << to_string(atomtype.mass) << delimiter << to_string(atomtype.sigma) << delimiter << to_string(atomtype.epsilon) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+	file.close();
+}
+
+void printFFBonded(const string& path, const Topology& topology) {
+	std::ofstream file(path, std::ofstream::out);
+	if (!file.is_open()) {
+		printf(("Failed to open file\n"));
+		exit(0);
+	}
+
+	file << FFPrintHelpers::titleH1("Forcefield Bonded");
+	file << FFPrintHelpers::titleH2("Singlebonds");
+	file << FFPrintHelpers::titleH3("{ID_p1 \t ID_p2 \t Atomtype \t Atomtype \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
+	file << FFPrintHelpers::parserTitle("singlebonds");
+	for (auto& bond : topology.singlebonds) {
+		file << to_string(bond.gro_ids[0]) << delimiter << to_string(bond.gro_ids[1]) << delimiter
+			<< bond.bonded_typenames[0] << delimiter << bond.bonded_typenames[1] << delimiter
+			<< to_string(bond.b0) << delimiter << to_string(bond.kb) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+
+
+	file << FFPrintHelpers::titleH2("Anglebonds");
+	file << FFPrintHelpers::titleH3("{Atom-IDs \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
+	file << FFPrintHelpers::parserTitle("anglebonds");
+	for (auto& angle : topology.anglebonds) {
+		file << to_string(angle.gro_ids[0]) << delimiter << to_string(angle.gro_ids[1]) << delimiter << to_string(angle.gro_ids[2]) << delimiter
+			<< angle.bonded_typenames[0] << delimiter << angle.bonded_typenames[1] << delimiter << angle.bonded_typenames[2] << delimiter
+			<< to_string(angle.theta0) << delimiter << to_string(angle.ktheta) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+
+
+	file << FFPrintHelpers::titleH2("Dihedrals");
+	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
+	file << FFPrintHelpers::parserTitle("dihedralbonds");
+	for (auto& dihedral : topology.dihedralbonds) {
+		for (auto& groid : dihedral.gro_ids) {
+			file << to_string(groid) << delimiter;
+		}
+		for (auto& type : dihedral.bonded_typenames) {
+			file << type << delimiter;
+		}
+		file << to_string(dihedral.phi0) << delimiter << to_string(dihedral.kphi) << delimiter << to_string(dihedral.n) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+
+
+	file << FFPrintHelpers::titleH2("ImproperDihedrals");
+	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
+	file << FFPrintHelpers::parserTitle("improperdihedralbonds");
+	for (auto improper : topology.improperdeihedralbonds) {
+		for (auto& groid : improper.gro_ids) {
+			file << to_string(groid) << delimiter;
+		}
+		for (auto& type : improper.bonded_typenames) {
+			file << type << delimiter;
+		}
+		file << to_string(improper.psi0) << delimiter << to_string(improper.kpsi) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
+	file.close();
+}
 
 void ForcefieldMaker::prepSimulationForcefield() {
 	// Check if filtered files already exists, if so return
-
-
-	Forcefield forcefield;
+	BondedTypes forcefield;
 	
 	// Load the forcefields. 
 	const SimpleParsedFile nb_parsedfile = Filehandler::parseItpFile(ff_nonbonded_path);
@@ -277,8 +387,8 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	// Match the topology with the forcefields.
 	fillTBondParametersFromForcefield(forcefield, topology);
 
-	printFFNonbonded(Filehandler::pathJoin(molecule_dir, "LIMA_ffnonbonded_filtered.txt"), atomtypes_filtered);
-	printFFBonded(Filehandler::pathJoin(molecule_dir, "LIMA_ffbonded_filtered.txt"), topology);
+	printFFNonbonded(Filehandler::pathJoin(molecule_dir, "ffnonbonded_filtered.lff"), atomtype_map, atomtypes_filtered);
+	printFFBonded(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"), topology);
 	logger.finishSection("Prepare Forcefield has finished");
 }
 

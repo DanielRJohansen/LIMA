@@ -3,7 +3,7 @@
 
 
 
-using std::cout, std::endl;
+using std::cout, std::endl, std::string, std::vector;
 
 
 vector<NB_Atomtype> NB_Atomtype::filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings) {

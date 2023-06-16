@@ -1,8 +1,8 @@
 #pragma once
 
-#include "LIMA_BASE/include/Bodies.cuh"
-//#include "Simulation.cuh"
 #include "LIMA_BASE/include/Filehandling.h"
+#include "LIMA_BASE/include/Bodies.cuh"
+
 #include <string>
 #include <vector>
 #include <map>
@@ -22,16 +22,28 @@ using std::vector;
 
 
 class Forcefield {
+	struct Topology {
+		std::vector<SingleBond> singlebonds;
+		std::vector<AngleBond> anglebonds;
+		std::vector<DihedralBond> dihedralbonds;
+		std::vector<ImproperDihedralBond> improperdihedralbonds;
+	};
+
 public:
 	Forcefield(VerbosityLevel vl);
 
 
 	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id) const;
-	const SingleBond* getBondType(std::array<int, 2> ids) const;
-	const AngleBond* getAngleType(std::array<int, 3> ids) const;
-	const DihedralBond* getDihedralType(std::array<int, 4> ids) const;
 
+	const SingleBond& getSinglebondtype(int bond_index, std::array<int, 2> gro_ids) const;
+	const AngleBond& getAnglebondtype(int bond_index, std::array<int, 3> gro_ids) const;
+	const DihedralBond& getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
+	const ImproperDihedralBond& getImproperdihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
+	//const SingleBond* getBondType(std::array<int, 2> ids) const;
+	//const AngleBond* getAngleType(std::array<int, 3> ids) const;
+	//const DihedralBond* getDihedralType(std::array<int, 4> ids) const;
+	
 
 
 	ForceField_NB getNBForcefield() const {
@@ -60,20 +72,22 @@ public:
 
 private:
 	ForceField_NB forcefield;
+	std::map<int, int> groIdToAtomtypeMap;
 
+	Topology topology;
 
 	//int* nb_atomtype_ids = nullptr;
 	//std::vector<int> nb_atomtype_ids;
-	std::map<int, int> groIdToAtomtypeMap;
+	
 	//int n_atoms = 0;
 
-	std::vector<NBAtomtype> nb_atomtypes;
-	int n_nb_atomtypes = 0;
+	//std::vector<NBAtomtype> nb_atomtypes;
+	//int n_nb_atomtypes = 0;
 
-	std::vector<SingleBond> topol_bonds;
-	std::vector<AngleBond> topol_angles;
-	std::vector<DihedralBond> topol_dihedrals;
-	std::vector<ImproperDihedralBond> topol_improperdihedrals;
+	//std::vector<SingleBond> topol_bonds;
+	//std::vector<AngleBond> topol_angles;
+	//std::vector<DihedralBond> topol_dihedrals;
+	//std::vector<ImproperDihedralBond> topol_improperdihedrals;
 
 	VerbosityLevel vl = SILENT;
 
@@ -104,16 +118,17 @@ private:
 	
 
 	
-	std::vector<NBAtomtype> parseAtomTypes(vector<vector<string>> summary_rows);
+	std::vector<NBAtomtype> loadAtomTypes(const SimpleParsedFile& nonbonded_parsed);
+	std::map<int, int> loadAtomTypeMap(const SimpleParsedFile& nonbonded_parsed);
 
-	std::map<int, int> parseAtomTypeIDs(vector<vector<string>> forcefield_rows);
+	Topology loadTopology(const SimpleParsedFile& bonded_parsed);
 
-	std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
-	std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);
-	std::vector<DihedralBond> parseDihedrals(vector<vector<string>> forcefield_rows);
-	std::vector<ImproperDihedralBond> parseImproperDihedrals(const vector<vector<string>>& forcefield_rows);
+	//std::vector<SingleBond> parseBonds(vector<vector<string>> forcefield_rows);
+	//std::vector<AngleBond> parseAngles(vector<vector<string>> forcefield_rows);
+	//std::vector<DihedralBond> parseDihedrals(vector<vector<string>> forcefield_rows);
+	//std::vector<ImproperDihedralBond> parseImproperDihedrals(const vector<vector<string>>& forcefield_rows);
 
-	void loadAtomypesIntoForcefield();
+	void loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes);
 
 };
 

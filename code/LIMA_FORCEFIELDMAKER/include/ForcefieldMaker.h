@@ -4,9 +4,7 @@
 #include "LIMA_BASE/include/Utilities.h"
 #include "LIMA_BASE/include/LimaTypes.cuh"
 
-struct Map;
 struct NB_Atomtype;
-
 
 class ForcefieldMaker {
 
@@ -45,18 +43,6 @@ private:
 	LimaLogger logger;
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-	vector<NB_Atomtype> makeFilteredNonbondedFF(Map* map);
+	//std::vector<NB_Atomtype> makeFilteredNonbondedFF(Map* map);
 
 };

@@ -1,10 +1,20 @@
 #include "Filehandling.h"
+//#include "LIMA_BASE/include/Filehandling.h"
+
+#include <assert.h>
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <fstream>
+#include <filesystem>
+
+using std::string, std::vector, std::map, std::stringstream;
 
 
 
-using namespace std;
+using SetSectionFunction = std::function<bool(const std::vector<string>& row, string& section)>;
 
-bool Filehandler::ignoreRow(const vector<char>& ignores, const string& line) {
+bool ignoreRow(const vector<char>& ignores, const string& line) {
 	if (line.length() == 0)
 		return true;
 	for (auto& c : ignores) {
@@ -24,10 +34,16 @@ bool Filehandler::ignoreWord(const vector<string>& ignores, const string& word) 
 	return false;
 }
 
+void Filehandler::assertPath(const std::string& path) {
+	if (!std::filesystem::exists(path)) {
+		std::cerr << "Could not find path: " << path << "\n";
+		abort();
+	}
+}
 
 // Uses ';' and ' ' as delimiters
 vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
-	fstream file;
+	std::fstream file;
 	file.open(path);
 
 
@@ -75,7 +91,7 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 map<string, double> Filehandler::parseINIFile(const string path) {
 	// TODO: add read here
 	//if (verbosity_level >= V1) { cout << "Reading particles from file " << path << "\n"; }
-	fstream file;
+	std::fstream file;
 	file.open(path);
 
 	map<string, double> dict;
@@ -87,7 +103,7 @@ map<string, double> Filehandler::parseINIFile(const string path) {
 		stringstream ss(line);
 		string word;
 		while (getline(ss, word, '=')) {
-			word.erase(std::remove_if(word.begin(), word.end(), std::isspace), word.end());
+			word.erase(std::remove_if(word.begin(), word.end(), isspace), word.end());
 			pair[i++] = word;
 
 			if (i == 2) { dict[pair[0]] = stod(pair[1]); }
@@ -99,20 +115,17 @@ map<string, double> Filehandler::parseINIFile(const string path) {
 	return dict;
 }
 
-SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose)
+
+
+SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectionFunction setSection, vector<char> ignores = {';', '#'}, char delimiter = ' ')
 {
-	fstream file;
+	std::fstream file;
 	file.open(path);
 
 	SimpleParsedFile parsedfile;
 
-	const auto ignores = { ';', '#'};	// comment marker
-	const auto delimiter = ' ';		// separator
-
-
 	string current_section = "none";
 
-	int row_cnt = 0;
 	int ignore_cnt = 0;
 
 	// Forward declaring for optimization reasons
@@ -136,39 +149,74 @@ SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose
 
 		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
 
-		// Check for new section - expecting syntax like this:"[ angletypes ]"
+		bool new_section = setSection(row, current_section);
+		if (new_section) { continue; }
+
+		parsedfile.rows.push_back({ current_section, row });
+	}
+
+	if (verbose) {
+		printf("%d rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
+	}	
+	
+	return parsedfile;
+}
+SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose) {
+	assert(path.substr(path.length() - 4) == ".itp");
+
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
 		if (row.size() == 3 && row[0][0] == '[') {
 
 			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
-
 			if (current_section == "dihedraltypes" && row[1] == "dihedraltypes") {	// Workaround for itp files
 				current_section = "improperdihedraltypes";
 			}
-			else if (current_section == "dihedrals" && row[1] == "dihedrals") {		// Workaround for top files
+			else {
+				current_section = row[1];
+			}
+
+			return true;
+		}
+		return false;
+	};	
+
+	return parseBasicFile(path, verbose, setSectionFn);
+}
+
+SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose)
+{
+	assert(path.substr(path.length() - 4) == ".top");
+
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
+		if (row.size() == 3 && row[0][0] == '[') {
+
+			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
+			if (current_section == "dihedrals" && row[1] == "dihedrals") {	// Workaround for itp files
 				current_section = "improperdihedrals";
 			}
 			else {
 				current_section = row[1];
 			}
-			
-			continue;
+
+			return true;
 		}
+		return false;
+	};
 
-		parsedfile.rows.push_back({ current_section, row });
-
-		row_cnt++;
-
-	}
-
-	if (verbose) {
-		printf("%d rows read. %d rows ignored\n", row_cnt, ignore_cnt);
-	}	
-	
-	return parsedfile;
+	return parseBasicFile(path, verbose, setSectionFn);
 }
 
-SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose)
+SimpleParsedFile Filehandler::parseLffFile(const std::string& path, bool verbose)
 {
-	// TODO: make both of these functions call a generic parsefile with their own ignores, specialcase handling of sections and more
-	return parseItpFile(path, verbose);
+	assert(path.substr(path.length() - 4) == ".lff");
+
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
+		if (row.size() == 2 && row[0][0] == '#') {
+			current_section = row[1];
+			return true;
+		}
+		return false;
+	};
+
+	return parseBasicFile(path, verbose, setSectionFn, {'/'}, ' ');
 }

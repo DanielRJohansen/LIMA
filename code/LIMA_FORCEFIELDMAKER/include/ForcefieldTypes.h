@@ -19,7 +19,7 @@
 
 
 
-using std::vector, std::string;
+
 
 const float water_mass = 15.999000f + 2.f * 1.008000f;
 const float water_sigma = 0.302905564168f + 2.f * 0.040001352445f;
@@ -29,7 +29,9 @@ const float water_epsilon = (0.50208f + 2.f * 0.19246f) *1000.f;		// Convert kJ-
 
 #include <span>
 
-struct FTHelpers {
+namespace FTHelpers {
+	using std::vector, std::string;
+
 	static bool charIsNumber(char c) {
 		return ((int)c > 47 && (int)c < 58);
 	}
@@ -184,13 +186,13 @@ struct FTHelpers {
 	template <typename BondType, STATE query_state>
 	static vector<BondType> parseFFBondtypes(
 		const vector<vector<string>>& rows, 
-		std::function<void(const vector<string>& row, vector<BondType>& records)> insertFunction)
+		std::function<void(const vector<std::string>& row, vector<BondType>& records)> insertFunction)
 	{
 		STATE current_state = INACTIVE;
 
 		vector<BondType> records;
 
-		for (const vector<string>& row : rows) {
+		for (const vector<std::string>& row : rows) {
 			if (row.size() == 0) {
 				current_state = INACTIVE;
 			}
@@ -210,14 +212,14 @@ struct FTHelpers {
 
 	template <typename BondType, STATE query_state>
 	static vector<BondType> parseTopolBondtypes(
-		const vector<vector<string>>& rows, 
-		std::function<void(const vector<string>& row, vector<BondType>& records)> insertFunction)
+		const vector<vector<std::string>>& rows,
+		std::function<void(const vector<std::string>& row, vector<BondType>& records)> insertFunction)
 	{
 		STATE current_state = INACTIVE;
 		vector<BondType> records;
 		TopologytateMachine sm;
 
-		for (const vector<string>& row : rows) {
+		for (const vector<std::string>& row : rows) {
 			if (row.empty()) { 
 				current_state = INACTIVE;
 			}
@@ -244,8 +246,8 @@ struct FTHelpers {
 struct Map {
 	struct Mapping {
 		Mapping () {}
-		Mapping (string l, string r) : left(l), right(r) {}
-		string left{}, right{};
+		Mapping (std::string l, std::string r) : left(l), right(r) {}
+		std::string left{}, right{};
 	};
 
 
@@ -288,19 +290,19 @@ struct NB_Atomtype {
 	// Official parameters
 	std::string type = "";
 	int atnum = -1;					// atnum given by input file (CHARMM)
-	int atnum_local = 0;			// atnum specific to simulation
+	int atnum_local = 0;			// atnum specific to simulation	//TODO: rename to simulation id?
 	float mass = -1;				// [g/mol]
 	float sigma = -1;				// [nm]
 	float epsilon = -1;				// J/mol
 
-	int gro_id;
+	int gro_id = -1;
 
 	// LIMA parameters
 	bool is_present_in_simulation = false;
 	int simulation_specific_id = -1;
 
 
-	static const NB_Atomtype* findRecord(const vector<NB_Atomtype>& records, const string& type) {
+	static const NB_Atomtype* findRecord(const std::vector<NB_Atomtype>& records, const std::string& type) {
 		for (const NB_Atomtype& record : records) {
 			if (record.type == type) {
 				return &record;
@@ -308,31 +310,32 @@ struct NB_Atomtype {
 		}
 		return nullptr;
 	}
-	static bool typeIsPresent(const vector<NB_Atomtype>& records, string type) {
+	static bool typeIsPresent(const std::vector<NB_Atomtype>& records, std::string type) {
 		return (findRecord(records, type) != nullptr);
 	}
-	static vector<NB_Atomtype> filterUnusedTypes(const vector<NB_Atomtype>& forcefield, const vector<string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
+	static std::vector<NB_Atomtype> filterUnusedTypes(const std::vector<NB_Atomtype>& forcefield, 
+		const std::vector<std::string>& active_types, Map& map, LimaLogger& logger, bool print_mappings);
 };
 
 struct Atom;
 using AtomTable = std::map<int, Atom>;
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int id, string atomtype, string atomname) : gro_id(id), atomname(atomname), atomtype(atomtype) {}
+	Atom(int id, std::string atomtype, std::string atomname) : gro_id(id), atomname(atomname), atomtype(atomtype) {}
 	const int gro_id=-1;										// Come from topol.top file
-	const string atomtype{};	
-	const string atomname{};	// I dunno what this is for
+	const std::string atomtype{};	
+	const std::string atomname{};	// I dunno what this is for
 	int atomtype_id = -1;				// Asigned later
 	//float charge;
 
 
 
 	enum STATE { INACTIVE, ATOMS, FINISHED };
-	static STATE setState(string s, STATE current_state);
+	static STATE setState(std::string s, STATE current_state);
 
-	static AtomTable parseTopolAtoms(const vector<vector<string>>& rows, bool verbose);
+	static AtomTable parseTopolAtoms(const std::vector<std::vector<std::string>>& rows, bool verbose);
 
-	static void assignAtomtypeIDs(AtomTable&, const vector<NB_Atomtype>& forcefield, const Map& map);
+	static void assignAtomtypeIDs(AtomTable&, const std::vector<NB_Atomtype>& forcefield, const Map& map);
 };
 
 
@@ -356,15 +359,15 @@ struct Atom {
 
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
-	BondtypeBase(const std::array<string, n_atoms>& typenames) : bonded_typenames(typenames) {}
+	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames) {}
 	BondtypeBase(const std::array<int, n_atoms>& ids) : gro_ids(ids) {}	// TODO: remove this
-	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: bonded_typenames(typenames), gro_ids(ids) {}
 
 	virtual void sort() = 0;
 
 	template <class DerivedType>
-	static void assignTypesFromAtomIDs(vector<DerivedType>& topol_bonds, const AtomTable& atoms) {
+	static void assignTypesFromAtomIDs(std::vector<DerivedType>& topol_bonds, const AtomTable& atoms) {
 		for (auto& bond : topol_bonds) {
 			for (int i = 0; i < n_atoms; i++) {
 				if (!atoms.contains(bond.gro_ids[i])) { throw "Atomtable does not contain bondedtype"; }
@@ -375,7 +378,7 @@ struct BondtypeBase {
 	}
 
 	template <class DerivedType>
-	static const DerivedType findBestMatchInForcefield(DerivedType query_type, const vector<DerivedType>& forcefield) {
+	static const DerivedType findBestMatchInForcefield(DerivedType query_type, const std::vector<DerivedType>& forcefield) {
 		if (forcefield.size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 
 		query_type.sort();
@@ -405,16 +408,16 @@ struct BondtypeBase {
 	}
 
 
-	std::array<string, n_atoms> bonded_typenames;
+	std::array<std::string, n_atoms> bonded_typenames;
 	std::array<int, n_atoms> gro_ids;
 };
 
 struct Singlebondtype : public BondtypeBase<2>{
 	static const int n_atoms = 2;
-	Singlebondtype(const std::array<string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
+	Singlebondtype(const std::array<std::string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
-	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
 	Singlebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}	// TODO: always create with types too!
@@ -435,13 +438,13 @@ struct Singlebondtype : public BondtypeBase<2>{
 
 struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
-	Anglebondtype(const std::array<string, n_atoms>& typenames, float t0, float kt) 
+	Anglebondtype(const std::array<std::string, n_atoms>& typenames, float t0, float kt)
 		: BondtypeBase(typenames), theta0(t0), ktheta(kt) 
 	{
 		sort();
 	}
 	Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
-	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames) 
+	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
 	float theta0{};
@@ -457,15 +460,15 @@ struct Anglebondtype : public BondtypeBase<3> {
 
 struct Dihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
-	Dihedralbondtype(const std::array<string, n_atoms>& typenames) : BondtypeBase(typenames) {
+	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {
 		sort();
 	}
-	Dihedralbondtype(const std::array<string, n_atoms>& typenames, float phi0, float kphi, int n) : BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {
+	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) : BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {
 		sort();
 	}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
-	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
 	float phi0{};
@@ -488,16 +491,16 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 struct Improperdihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
 	// i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
-	Improperdihedralbondtype(const std::array<string, n_atoms>& typenames) : BondtypeBase(typenames) {
+	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {
 		sort();
 	}
-	Improperdihedralbondtype(const std::array<string, n_atoms>& typenames, float psi0, float kpsi) 
+	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0, float kpsi)
 		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi){
 		sort();
 	}
 	Improperdihedralbondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {
 	}
-	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<string, n_atoms>& typenames)
+	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
 	float psi0{};

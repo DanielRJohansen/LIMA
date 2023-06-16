@@ -14,20 +14,25 @@ Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	vector<vector<string>> summary_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffnonbonded_filtered.txt");
-	vector<vector<string>> forcefield_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffbonded_filtered.txt");
+	//vector<vector<string>> summary_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffnonbonded_filtered.lff");
+	//vector<vector<string>> forcefield_rows = Filehandler::readFile(molecule_dir + "/LIMA_ffbonded_filtered.lff");
+	SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffnonbonded_filtered.lff"));
+	SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"));
 
+	// First load the nb forcefield
+	auto atomtypes = loadAtomTypes(nonbonded_parsed);					// 1 entry per type in compressed forcefield
+	loadAtomypesIntoForcefield(atomtypes);
 
-	nb_atomtypes = parseAtomTypes(summary_rows);					// 1 entry per type in compressed forcefield
-	loadAtomypesIntoForcefield();
+	// Find mappings between the atoms in the simulation and the nb forcefield
+	groIdToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
 
+	// Load the topology with their included forcefield parameters
+	topology = loadTopology(bonded_parsed);
 
-	groIdToAtomtypeMap = parseAtomTypeIDs(forcefield_rows);	// 1 entry per atom in conf
-
-	topol_bonds = parseBonds(forcefield_rows);
-	topol_angles = parseAngles(forcefield_rows);
-	topol_dihedrals = parseDihedrals(forcefield_rows);
-	topol_improperdihedrals = parseImproperDihedrals(forcefield_rows);
+	//topol_bonds = parseBonds(forcefield_rows);
+	//topol_angles = parseAngles(forcefield_rows);
+	//topol_dihedrals = parseDihedrals(forcefield_rows);
+	//topol_improperdihedrals = parseImproperDihedrals(forcefield_rows);
 
 	forcefield_loaded = true;
 
@@ -54,83 +59,117 @@ bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> que
 	return true;
 }
 
-const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
-	for (auto& singlebond : topol_bonds) {
-		if (isMatch(singlebond.atom_indexes, ids)) {
-			return &singlebond;
-		}
-	}
-	printf("Bond not found with ids %d %d\n", ids[0], ids[1]);
-	exit(0);
+const SingleBond& Forcefield::getSinglebondtype(int bond_index, std::array<int, 2> gro_ids) const
+{
+	const auto& bond = topology.singlebonds[bond_index];
+	assert(isMatch(bond.atom_indexes, gro_ids));
+	return bond;
 }
-
-const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
-	for (auto& anglebond : topol_angles) {
-		if (isMatch(anglebond.atom_indexes, ids)) {
-			return &anglebond;
-		}
-	}
-
-	printf("Angle not found with ids %d %d %d\n", ids[0], ids[1], ids[2]);
-	exit(0);
+const AngleBond& Forcefield::getAnglebondtype(int bond_index, std::array<int, 3> gro_ids) const
+{
+	const auto& bond = topology.anglebonds[bond_index];
+	assert(isMatch(bond.atom_indexes, gro_ids));
+	return bond;
 }
-
-const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
-	for (auto& dihedralbond : topol_dihedrals) {
-		if (isMatch(dihedralbond.atom_indexes, ids)) {
-			return &dihedralbond;
-		}
-	}
-
-	printf("Dihedral not found with ids %d %d %d %d\n", ids[0], ids[1], ids[2], ids[3]);
-	exit(0);
+const DihedralBond& Forcefield::getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const
+{
+	const auto& bond = topology.dihedralbonds[bond_index];
+	assert(isMatch(bond.atom_indexes, gro_ids));
+	return bond;
 }
+const ImproperDihedralBond& Forcefield::getImproperdihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const
+{
+	const auto& bond = topology.improperdihedralbonds[bond_index];
+	assert(isMatch(bond.atom_indexes, gro_ids));
+	return bond;
+}
+//
+//const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
+//	for (auto& singlebond : topol_bonds) {
+//		if (isMatch(singlebond.atom_indexes, ids)) {
+//			return &singlebond;
+//		}
+//	}
+//	printf("Bond not found with ids %d %d\n", ids[0], ids[1]);
+//	exit(0);
+//}
+//
+//const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
+//	for (auto& anglebond : topol_angles) {
+//		if (isMatch(anglebond.atom_indexes, ids)) {
+//			return &anglebond;
+//		}
+//	}
+//
+//	printf("Angle not found with ids %d %d %d\n", ids[0], ids[1], ids[2]);
+//	exit(0);
+//}
+//
+//const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
+//	for (auto& dihedralbond : topol_dihedrals) {
+//		if (isMatch(dihedralbond.atom_indexes, ids)) {
+//			return &dihedralbond;
+//		}
+//	}
+//
+//	printf("Dihedral not found with ids %d %d %d %d\n", ids[0], ids[1], ids[2], ids[3]);
+//	exit(0);
+//}
 
-std::vector<NBAtomtype> Forcefield::parseAtomTypes(vector<vector<string>> summary_rows) {
-	nb_atomtypes.reserve(10000);
-	STATE current_state = INACTIVE;
+std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsedfile) {
+	std::vector<NBAtomtype> atomtypes;
+	atomtypes.reserve(200);
 
-	for (vector<string> row : summary_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			continue;
-		}
-
-		
-
-		if (current_state == FF_NONBONDED) {
-			//for (string e : row)
-				//cout << e << '\t';
-			//printf("\n");
+	for (auto& row : parsedfile.rows) {
+		if (row.section == "atomtypes") {
 			// Row is type, id, weight [g], sigma [nm], epsilon [J/mol]
-
-			//atomtypes[ptr++] = NBAtomtype(stof(row[2]), stof(row[3]), stof(row[4]));
-			nb_atomtypes.push_back(NBAtomtype{ stof(row[2]), stof(row[3]), stof(row[4]) });
-		}			
+			float mass = stof(row.words[2]);
+			float sigma = stof(row.words[3]);
+			float epsilon = stof(row.words[4]);
+			atomtypes.emplace_back(NBAtomtype(mass, sigma, epsilon));
+		}
 	}
-	n_nb_atomtypes = nb_atomtypes.size();
-	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", n_nb_atomtypes); }
-	return nb_atomtypes;
+
+
+	//for (vector<string> row : summary_rows) {
+	//	if (newParseTitle(row)) {
+	//		current_state = setState(row[1], current_state);
+	//		continue;
+	//	}
+
+	//	
+
+	//	if (current_state == FF_NONBONDED) {
+	//		//for (string e : row)
+	//			//cout << e << '\t';
+	//		//printf("\n");
+
+	//		//atomtypes[ptr++] = NBAtomtype(stof(row[2]), stof(row[3]), stof(row[4]));
+	//		nb_atomtypes.push_back(NBAtomtype{ stof(row[2]), stof(row[3]), stof(row[4]) });
+	//	}			
+	//}
+	//n_nb_atomtypes = nb_atomtypes.size();
+	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", atomtypes.size()); }
+	return atomtypes;
 }
 
-std::map<int, int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefield_rows) {	// returns the nonbonded atomtype
+std::map<int, int> Forcefield::loadAtomTypeMap(const SimpleParsedFile& parsedfile) {	// returns the nonbonded atomtype
 	std::map<int, int> groidToType;
 
-	STATE current_state = INACTIVE;
-
-	for (vector<string> row : forcefield_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			continue;
+	for (auto& row : parsedfile.rows) {
+		if (row.section == "atomtype_map") {
+			const int gro_id = stoi(row.words[0]);
+			const int atomtype_id = stoi(row.words[1]);
+			groidToType.insert({ gro_id, atomtype_id });
 		}
 
-		if (current_state == NB_ATOMTYPES) {
-			int gro_id = stoi(row[0]);
-			int atomtype_id = stoi(row[1]);
+		//if (current_state == NB_ATOMTYPES) {
+		//	int gro_id = stoi(row[0]);
+		//	int atomtype_id = stoi(row[1]);
 
 
-			groidToType.insert(std::pair<int, int>(gro_id, atomtype_id));
-		}
+		//	groidToType.insert(std::pair<int, int>(gro_id, atomtype_id));
+		//}
 			
 	}
 	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", groidToType.size()); }
@@ -138,119 +177,177 @@ std::map<int, int> Forcefield::parseAtomTypeIDs(vector<vector<string>> forcefiel
 	return groidToType;
 }
 
-std::vector<SingleBond> Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
-	std::vector<SingleBond> singlebonds;
-	singlebonds.reserve(min_reserve_size);
-	STATE current_state = INACTIVE;
 
-	for (vector<string> row : forcefield_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			continue;
+Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile)
+{
+	Topology topology;
+
+	for (auto& row : parsedfile.rows) {
+		if (row.section == "singlebonds") {
+			assert(row.words.size() == 6);
+
+			std::array<int, 2> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			for (int i = 0; i < 2; i++) {
+				gro_ids[i] = stoi(row.words[i]);
+			}
+			const float b0 = stof(row.words[4]) * NANO_TO_LIMA;						// convert [nm] to [lm]*/
+			const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol * nm * lm)
+
+			topology.singlebonds.emplace_back(SingleBond{ gro_ids, b0, kb });
 		}
+		else if (row.section == "anglebonds") {
+			assert(row.words.size() == 8);
 
-		if (current_state == BONDS) {
-			singlebonds.push_back(SingleBond(
-				stoi(row[0]), 
-				stoi(row[1]), 
-				stof(row[4]) * NANO_TO_LIMA,						// convert [nm] to [lm]*/
-				stof(row[5]) / (NANO_TO_LIMA * NANO_TO_LIMA)		// convert [J/(mol * nm^2)] to [J/(mol * nm * lm) I dont know why, but one of the "nm" might be the direction unitvector?? i am confused...
-			));		
+			std::array<int, 3> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			for (int i = 0; i < 3; i++) {
+				gro_ids[i] = stoi(row.words[i]);
+			}
+			const float theta0 = stof(row.words[6]);
+			const float ktheta = stof(row.words[7]);
+			topology.anglebonds.emplace_back(AngleBond{ gro_ids, theta0, ktheta });
 		}
-	}
-	if (vl >= V1) { printf("%d bonds loaded\n", singlebonds.size()); }
-	return singlebonds;
-}
+		else if (row.section == "dihedrals") {
+			assert(row.words.size() == 11);
 
-std::vector<AngleBond> Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
-	std::vector<AngleBond> anglebonds;
-	anglebonds.reserve(min_reserve_size);
-
-	STATE current_state = INACTIVE;
-
-	for (vector<string> row : forcefield_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			continue;
+			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			for (int i = 0; i < 4; i++) {
+				gro_ids[i] = stoi(row.words[i]);
+			}
+			const float phi0 = stof(row.words[7]);
+			const float kphi = stof(row.words[8]);
+			const int multiplicity = stoi(row.words[9]);
+			topology.dihedralbonds.emplace_back(DihedralBond{ gro_ids, phi0, kphi, multiplicity });
 		}
+		else if (row.section == "impropers") {
+			assert(row.words.size() == 10);
 
-		if (current_state == ANGLES) {
-			anglebonds.push_back(AngleBond(stoi(row[0]), stoi(row[1]), stoi(row[2]), stof(row[6]) , stof(row[7])));		// Assumes radians here
-		}
-
-	}
-	if (vl >= V1) { printf("%d angles loaded\n", anglebonds.size()); }
-	return anglebonds;
-}
-
-std::vector<DihedralBond> Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows) {
-	std::vector<DihedralBond> dihedralbonds;
-	dihedralbonds.reserve(min_reserve_size);
-
-	STATE current_state = INACTIVE;
-
-	for (vector<string> row : forcefield_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			
-		//	if (has_been_enabled)	// To deal with the wierd dihedrals at the bottom of the topol.top
-			//	break;
-			continue;
-		}
-
-		if (current_state == DIHEDRALS) {
-			dihedralbonds.push_back(DihedralBond(
-				stoi(row[0]), 
-				stoi(row[1]), 
-				stoi(row[2]), 
-				stoi(row[3]), 
-				stof(row[8]),
-				abs(stof(row[9])), // MIGHT HAVE TO DO AN ABS() ON K_PHI, SINCE IT IS NEGATIVE SOMETIMES??? WHAT THE FUCKKKKKKKKKK CHEMISTS?????!?!?!
-				stoi(row[10])
-			));			
-			//has_been_enabled = true;
+			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			for (int i = 0; i < 4; i++) {
+				gro_ids[i] = stoi(row.words[i]);
+			}
+			const float psi0 = stof(row.words[7]);
+			const float kpsi = stof(row.words[8]);
+			topology.improperdihedralbonds.emplace_back(ImproperDihedralBond{ gro_ids, psi0, kpsi });
 		}
 	}
-	if (vl >= V1) { printf("%d dihedrals loaded\n", dihedralbonds.size()); }
-	return dihedralbonds;
+
+	return topology;
 }
 
-std::vector<ImproperDihedralBond> Forcefield::parseImproperDihedrals(const vector<vector<string>>& forcefield_rows) {
-	std::vector<ImproperDihedralBond> improperdihedrals;
-	improperdihedrals.reserve(min_reserve_size);
+//
+//std::vector<SingleBond> Forcefield::parseBonds(vector<vector<string>> forcefield_rows) {
+//	std::vector<SingleBond> singlebonds;
+//	singlebonds.reserve(min_reserve_size);
+//	STATE current_state = INACTIVE;
+//
+//	for (vector<string> row : forcefield_rows) {
+//		if (newParseTitle(row)) {
+//			current_state = setState(row[1], current_state);
+//			continue;
+//		}
+//
+//		if (current_state == BONDS) {
+//			singlebonds.push_back(SingleBond(
+//				stoi(row[0]), 
+//				stoi(row[1]), 
+//				stof(row[4]) * NANO_TO_LIMA,						// convert [nm] to [lm]*/
+//				stof(row[5]) / (NANO_TO_LIMA * NANO_TO_LIMA)		// convert [J/(mol * nm^2)] to [J/(mol * nm * lm) I dont know why, but one of the "nm" might be the direction unitvector?? i am confused...
+//			));		
+//		}
+//	}
+//	if (vl >= V1) { printf("%d bonds loaded\n", singlebonds.size()); }
+//	return singlebonds;
+//}
+//
+//std::vector<AngleBond> Forcefield::parseAngles(vector<vector<string>> forcefield_rows) {
+//	std::vector<AngleBond> anglebonds;
+//	anglebonds.reserve(min_reserve_size);
+//
+//	STATE current_state = INACTIVE;
+//
+//	for (vector<string> row : forcefield_rows) {
+//		if (newParseTitle(row)) {
+//			current_state = setState(row[1], current_state);
+//			continue;
+//		}
+//
+//		if (current_state == ANGLES) {
+//			anglebonds.push_back(AngleBond(stoi(row[0]), stoi(row[1]), stoi(row[2]), stof(row[6]) , stof(row[7])));		// Assumes radians here
+//		}
+//
+//	}
+//	if (vl >= V1) { printf("%d angles loaded\n", anglebonds.size()); }
+//	return anglebonds;
+//}
+//
+//std::vector<DihedralBond> Forcefield::parseDihedrals(vector<vector<string>> forcefield_rows) {
+//	std::vector<DihedralBond> dihedralbonds;
+//	dihedralbonds.reserve(min_reserve_size);
+//
+//	STATE current_state = INACTIVE;
+//
+//	for (vector<string> row : forcefield_rows) {
+//		if (newParseTitle(row)) {
+//			current_state = setState(row[1], current_state);
+//			
+//		//	if (has_been_enabled)	// To deal with the wierd dihedrals at the bottom of the topol.top
+//			//	break;
+//			continue;
+//		}
+//
+//		if (current_state == DIHEDRALS) {
+//			dihedralbonds.push_back(DihedralBond(
+//				stoi(row[0]), 
+//				stoi(row[1]), 
+//				stoi(row[2]), 
+//				stoi(row[3]), 
+//				stof(row[8]),
+//				abs(stof(row[9])), // MIGHT HAVE TO DO AN ABS() ON K_PHI, SINCE IT IS NEGATIVE SOMETIMES??? WHAT THE FUCKKKKKKKKKK CHEMISTS?????!?!?!
+//				stoi(row[10])
+//			));			
+//			//has_been_enabled = true;
+//		}
+//	}
+//	if (vl >= V1) { printf("%d dihedrals loaded\n", dihedralbonds.size()); }
+//	return dihedralbonds;
+//}
+//
+//std::vector<ImproperDihedralBond> Forcefield::parseImproperDihedrals(const vector<vector<string>>& forcefield_rows) {
+//	std::vector<ImproperDihedralBond> improperdihedrals;
+//	improperdihedrals.reserve(min_reserve_size);
+//
+//	STATE current_state = INACTIVE;
+//
+//	for (vector<string> row : forcefield_rows) {
+//		if (newParseTitle(row)) {
+//			current_state = setState(row[1], current_state);
+//			continue;
+//		}
+//
+//		if (current_state == IMPROPERDIHEDRALS) {
+//			std::array<uint32_t,4> ids{ stoul(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3]) };
+//			float psi0 = stof(row[8]);
+//			float kpsi = stof(row[9]);
+//			improperdihedrals.push_back(ImproperDihedralBond(ids, psi0, kpsi));
+//		}
+//	}
+//	if (vl >= V1) { printf("%d improper dihedrals loaded\n", improperdihedrals.size()); }
+//	return improperdihedrals;
+//}
 
-	STATE current_state = INACTIVE;
-
-	for (vector<string> row : forcefield_rows) {
-		if (newParseTitle(row)) {
-			current_state = setState(row[1], current_state);
-			continue;
-		}
-
-		if (current_state == IMPROPERDIHEDRALS) {
-			std::array<uint32_t,4> ids{ stoul(row[0]), stoi(row[1]), stoi(row[2]), stoi(row[3]) };
-			float psi0 = stof(row[8]);
-			float kpsi = stof(row[9]);
-			improperdihedrals.push_back(ImproperDihedralBond(ids, psi0, kpsi));
-		}
-	}
-	if (vl >= V1) { printf("%d improper dihedrals loaded\n", improperdihedrals.size()); }
-	return improperdihedrals;
-}
-
-void Forcefield::loadAtomypesIntoForcefield() {
+void Forcefield::loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes) {
 	static const float mass_min = 0.001f;	// [kg/mol]
 	static const float sigma_min = 0.001f;
 	static const float epsilon_min = 0.001f;
 
-	for (int i = 0; i < n_nb_atomtypes; i++) {
-		forcefield.particle_parameters[i].mass = nb_atomtypes[i].mass * 1e-3f;				// Convert g/mol to kg/mol
-		forcefield.particle_parameters[i].sigma = nb_atomtypes[i].sigma * NANO_TO_LIMA;		// Convert from [nm] to [lm]
-		forcefield.particle_parameters[i].epsilon = nb_atomtypes[i].epsilon;				// Interpreted as kg*lm^2/ls^2 
+	for (int i = 0; i < atomtypes.size(); i++) {
+		forcefield.particle_parameters[i].mass = atomtypes[i].mass * 1e-3f;				// Convert g/mol to kg/mol
+		forcefield.particle_parameters[i].sigma = atomtypes[i].sigma * NANO_TO_LIMA;		// Convert from [nm] to [lm]
+		forcefield.particle_parameters[i].epsilon = atomtypes[i].epsilon;				// Interpreted as kg*lm^2/ls^2 
 
 		bool illegal_parameter = (forcefield.particle_parameters[i].mass < mass_min) || (forcefield.particle_parameters[i].sigma < sigma_min) || (forcefield.particle_parameters[i].epsilon < epsilon_min);
 
-		if ((vl >= V2) || illegal_parameter) { printf("Mass %f Sigma %f Epsilon %f\n", nb_atomtypes[i].mass, nb_atomtypes[i].sigma, nb_atomtypes[i].epsilon); }
+		if ((vl >= V2) || illegal_parameter) { printf("Mass %f Sigma %f Epsilon %f\n", atomtypes[i].mass, atomtypes[i].sigma, atomtypes[i].epsilon); }
 	}
 
 }

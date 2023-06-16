@@ -525,8 +525,11 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 
 	// Distribute single bonds
-	for (auto& bond_ids : singlebonds) {	// gro 1-indexed ids
-		const SingleBond& bondtype = *forcefield->getBondType({ bond_ids[0], bond_ids[1]});
+	//for (auto& bond_ids : singlebonds) {	// gro 1-indexed ids
+	for (int bond_index = 0; bond_index < singlebonds.size(); bond_index++) {
+		auto bond_ids = singlebonds[bond_index];
+		const SingleBond& bondtype = forcefield->getSinglebondtype(bond_index, bond_ids);
+		//const SingleBond& bondtype = *forcefield->getBondType({ bond_ids[0], bond_ids[1]});
 
 		// First add the bond information to either bridge or compound
 		if (spansTwoCompounds(bond_ids)) {
@@ -543,8 +546,12 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 	}
 
 	// Distribute angle bonds
-	for (auto& bond_ids : anglebonds) {    // gro 1-indexed ids
-		const AngleBond& bondtype = *forcefield->getAngleType({ bond_ids[0], bond_ids[1], bond_ids[2] });
+	//for (auto& bond_ids : anglebonds) {    // gro 1-indexed ids
+	for (int bond_index = 0; bond_index < anglebonds.size(); bond_index++) {
+		auto bond_ids = anglebonds[bond_index];
+		const AngleBond& bondtype = forcefield->getAnglebondtype(bond_index, bond_ids);
+
+		//const AngleBond& bondtype = *forcefield->getAngleType({ bond_ids[0], bond_ids[1], bond_ids[2] });
 
 		// First add the bond information to either bridge or compound
 		if (spansTwoCompounds(bond_ids)) {
@@ -561,8 +568,11 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 	}
 
 	// Distribute dihedral bonds
-	for (auto& bond_ids : dihedralbonds) {    // gro 1-indexed ids
-		const DihedralBond& bondtype = *forcefield->getDihedralType({ bond_ids[0], bond_ids[1], bond_ids[2], bond_ids[3] });
+	//for (auto& bond_ids : dihedralbonds) {    // gro 1-indexed ids
+		//const DihedralBond& bondtype = *forcefield->getDihedralType({ bond_ids[0], bond_ids[1], bond_ids[2], bond_ids[3] });
+	for (int bond_index = 0; bond_index < dihedralbonds.size(); bond_index++) {
+		auto bond_ids = dihedralbonds[bond_index];
+		const DihedralBond& bondtype = forcefield->getDihedralbondtype(bond_index, bond_ids);
 
 		// First add the bond information to either bridge or compound
 		if (spansTwoCompounds(bond_ids)) {
@@ -577,8 +587,6 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges() {
 
 		distributeLJIgnores(bp_lut_manager.get(), particle_info, bond_ids);
 	}
-
-
 }
 
 

@@ -34,6 +34,13 @@ SingleBond::SingleBond(int id1, int id2, float b0, float kb) : b0(b0), kb(kb) {
 	atom_indexes[1] = id2;
 }
 
+SingleBond::SingleBond(std::array<int, n_atoms> ids, float b0, float kb) : b0(b0), kb(kb) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
+
+
 AngleBond::AngleBond(std::array<int, n_atoms> ids) {
 	for (int i = 0; i < n_atoms; i++) {
 		atom_indexes[i] = ids[i];
@@ -45,6 +52,14 @@ AngleBond::AngleBond(int id1, int id2, int id3, float theta_0, float k_theta) : 
 	atom_indexes[1] = id2;
 	atom_indexes[2] = id3;
 }
+
+AngleBond::AngleBond(std::array<int, n_atoms> ids, float theta_0, float k_theta) : theta_0(theta_0), k_theta(k_theta) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
+
+
 
 DihedralBond::DihedralBond(std::array<int, n_atoms> ids) {
 	for (int i = 0; i < n_atoms; i++) {
@@ -59,14 +74,20 @@ DihedralBond::DihedralBond(int id1, int id2, int id3, int id4, float phi_0, floa
 	atom_indexes[3] = id4;
 }
 
-ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, 4> ids) {
-	for (int i = 0; i < 4; i++) { 
+DihedralBond::DihedralBond(std::array<uint32_t, 4> ids, float phi_0, float k_phi, int n) : phi_0(phi_0), k_phi(k_phi), n(n) {
+	for (int i = 0; i < n_atoms; i++) {
+		atom_indexes[i] = ids[i];
+	}
+}
+
+ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, n_atoms> ids) {
+	for (int i = 0; i < n_atoms; i++) {
 		atom_indexes[i] = ids[i]; 
 	}
 }
 
-ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, 4> ids, float psi_0, float k_psi) : psi_0(psi_0), k_psi(k_psi) {
-	for (int i = 0; i < 4; i++) {
+ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, n_atoms> ids, float psi_0, float k_psi) : psi_0(psi_0), k_psi(k_psi) {
+	for (int i = 0; i < n_atoms; i++) {
 		atom_indexes[i] = ids[i];
 	}
 }

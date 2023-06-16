@@ -3,10 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <fstream>
-#include <sstream>
 
-#include <climits>
 #include <map>
 
 
@@ -19,15 +16,14 @@ struct SimpleParsedFile {
 	std::vector<Row> rows;
 };
 
-
-
-class Filehandler {
-public:
-	static bool ignoreRow(const std::vector<char>& ignores, const std::string& line);
+// TODO: Why the fuck can i not make this a namespace???!
+struct Filehandler {
 	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
 
 	static std::string pathJoin(std::string a, std::string b) { return a + "/" + b; }
 
+	// Dunno if this works for folders too
+	static void assertPath(const std::string& path);
 
 	static std::map<std::string, double> parseINIFile(const std::string path);
 
@@ -37,7 +33,7 @@ public:
 		int end_at = INT_MAX, bool verbose = false);
 
 	static SimpleParsedFile parseItpFile(const std::string& path, bool verbose=true);
-
 	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose=true);
+	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose = true);
 };
 

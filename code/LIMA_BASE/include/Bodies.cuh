@@ -31,6 +31,7 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 	SingleBond(){}
 	SingleBond(std::array<int, 2> ids); // Used when loading topology only
 	SingleBond(int id1, int id2, float b0, float kb);
+	SingleBond(std::array<int, 2> ids, float b0, float kb);
 
 	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
 		atom_indexes[0] = particleindex_a;
@@ -52,7 +53,8 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 struct AngleBond {
 	AngleBond() {}
 	AngleBond(std::array<int, 3> ids); // Used when loading topology only
-	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);
+	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);	//todo: remove
+	AngleBond(std::array<int, 3> ids, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
 	float k_theta = 0.f;
@@ -61,15 +63,16 @@ struct AngleBond {
 };
 
 struct DihedralBond {
+	const static int n_atoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<int, 4> ids); // Used when loading topology only
 	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n);
+	DihedralBond(std::array<uint32_t, 4> ids, float phi0, float kphi, int n);
 
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
 	uint8_t n = 0;		// n parameter, how many energy equilibriums does the dihedral have
 	uint32_t atom_indexes[4] = {0,0,0,0};
-	const static int n_atoms = 4;
 };
 
 struct ImproperDihedralBond {

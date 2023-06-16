@@ -11,8 +11,8 @@ using string = std::string;
 namespace LIMA_Print {
 	void setScreenSize();
 	void printH(std::string, char c, bool leading_space, bool trailing_space);
-	void printH1(std::string = "", bool ls = false, bool ts = false);
-	void printH2(std::string = "", bool ls = false, bool ts = false);
+	void printH1(std::string = "", bool ls = false, bool ts = true);
+	void printH2(std::string = "", bool ls = false, bool ts = true);
 
 	template<typename T>
 	void printMatlabVec(std::string name, const std::vector<T>& vec) {

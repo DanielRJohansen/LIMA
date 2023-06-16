@@ -136,21 +136,16 @@ void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes&
 }
 
 template <int n>
-std::pair<std::array<int, n>, std::array<string, n>> getGroidsAndTypenames(const std::vector<string>& words, const Topology& topology) {
-	std::array<int, n> gro_ids;// { stoi(row.words[0]), stoi(row.words[1]) };
-	std::array<string, n> atomtypes;
-	
+bool getGroidsAndTypenames(const std::vector<string>& words, const Topology& topology, std::array<int, n>& gro_ids, std::array<string, n>& atomtypes) {	
 	for (int i = 0; i < n; i++) {
 		gro_ids[i] = stoi(words[i]);
 		if (topology.atomtable.find(gro_ids[i]) == topology.atomtable.end()) {
-			// TODO:
-			// I guess this just means that there was no match in the declared atoms of the topology, and thus we can simply skip this bond?
-			throw "Couldn't find appropriate atomtype from gro id";
+			return false;	// All atoms of bond is not available in simulation input files (topology atoms)
 		}
 		atomtypes[i] = topology.atomtable.find(gro_ids[i])->second.atomtype;
 	}
 
-	return std::pair(gro_ids, atomtypes);
+	return true;
 }
 
 Topology loadTopology(const SimpleParsedFile& parsedfile) {
@@ -172,26 +167,39 @@ Topology loadTopology(const SimpleParsedFile& parsedfile) {
 		else if (row.section == "bonds") {
 			assert(row.words.size() >= 3);
 
-			auto groidid_atomtype_pair = getGroidsAndTypenames<2>(row.words, topology);
-			topology.singlebonds.emplace_back(Singlebondtype{ groidid_atomtype_pair.first, groidid_atomtype_pair.second});
+			std::array<int, 2> gro_ids;
+			std::array<string, 2> atomtypes;
+			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
+				topology.singlebonds.emplace_back(Singlebondtype{ gro_ids, atomtypes});
+			}
+			
 		}
 		else if (row.section == "angles") {
 			assert(row.words.size() >= 4);
 
-			auto groidid_atomtype_pair = getGroidsAndTypenames<3>(row.words, topology);
-			topology.anglebonds.emplace_back(Anglebondtype{ groidid_atomtype_pair.first, groidid_atomtype_pair.second });
+			std::array<int, 3> gro_ids;
+			std::array<string, 3> atomtypes;
+			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
+				topology.anglebonds.emplace_back(Anglebondtype{ gro_ids, atomtypes });
+			}
 		}
 		else if (row.section == "dihedrals") {
 			assert(row.words.size() >= 5);
 
-			auto groidid_atomtype_pair = getGroidsAndTypenames<4>(row.words, topology);
-			topology.dihedralbonds.emplace_back(Dihedralbondtype{ groidid_atomtype_pair.first, groidid_atomtype_pair.second });
+			std::array<int, 4> gro_ids;
+			std::array<string, 4> atomtypes;
+			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
+				topology.dihedralbonds.emplace_back(Dihedralbondtype{ gro_ids, atomtypes });
+			}
 		}
 		else if (row.section == "improperdihedrals") {
 			assert(row.words.size() >= 5);
 
-			auto groidid_atomtype_pair = getGroidsAndTypenames<4>(row.words, topology);
-			topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ groidid_atomtype_pair.first, groidid_atomtype_pair.second });
+			std::array<int, 4> gro_ids;
+			std::array<string, 4> atomtypes;
+			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
+				topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ gro_ids, atomtypes });
+			}
 		}
 	}
 	return topology;

@@ -47,7 +47,9 @@ int Forcefield::getAtomtypeID(int gro_id) const {
 template <int array_length>
 bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> query_ids) {
 	for (int i = 0; i < array_length; i++) {
-		if (topolbonds[i] != query_ids[i]) { return false; }
+		if (topolbonds[i] != query_ids[i]) { 
+			return false; 
+		}
 	}
 	return true;
 }
@@ -67,6 +69,7 @@ const AngleBond& Forcefield::getAnglebondtype(int bond_index, std::array<int, 3>
 const DihedralBond& Forcefield::getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const
 {
 	const auto& bond = topology.dihedralbonds[bond_index];
+
 	assert(isMatch(bond.atom_indexes, gro_ids));
 	return bond;
 }
@@ -76,38 +79,6 @@ const ImproperDihedralBond& Forcefield::getImproperdihedralbondtype(int bond_ind
 	assert(isMatch(bond.atom_indexes, gro_ids));
 	return bond;
 }
-//
-//const SingleBond* Forcefield::getBondType(std::array<int, 2> ids) const {
-//	for (auto& singlebond : topol_bonds) {
-//		if (isMatch(singlebond.atom_indexes, ids)) {
-//			return &singlebond;
-//		}
-//	}
-//	printf("Bond not found with ids %d %d\n", ids[0], ids[1]);
-//	exit(0);
-//}
-//
-//const AngleBond* Forcefield::getAngleType(std::array<int, 3> ids) const {
-//	for (auto& anglebond : topol_angles) {
-//		if (isMatch(anglebond.atom_indexes, ids)) {
-//			return &anglebond;
-//		}
-//	}
-//
-//	printf("Angle not found with ids %d %d %d\n", ids[0], ids[1], ids[2]);
-//	exit(0);
-//}
-//
-//const DihedralBond* Forcefield::getDihedralType(std::array<int, 4> ids) const {
-//	for (auto& dihedralbond : topol_dihedrals) {
-//		if (isMatch(dihedralbond.atom_indexes, ids)) {
-//			return &dihedralbond;
-//		}
-//	}
-//
-//	printf("Dihedral not found with ids %d %d %d %d\n", ids[0], ids[1], ids[2], ids[3]);
-//	exit(0);
-//}
 
 std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsedfile) {
 	std::vector<NBAtomtype> atomtypes;
@@ -123,25 +94,6 @@ std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsed
 		}
 	}
 
-
-	//for (vector<string> row : summary_rows) {
-	//	if (newParseTitle(row)) {
-	//		current_state = setState(row[1], current_state);
-	//		continue;
-	//	}
-
-	//	
-
-	//	if (current_state == FF_NONBONDED) {
-	//		//for (string e : row)
-	//			//cout << e << '\t';
-	//		//printf("\n");
-
-	//		//atomtypes[ptr++] = NBAtomtype(stof(row[2]), stof(row[3]), stof(row[4]));
-	//		nb_atomtypes.push_back(NBAtomtype{ stof(row[2]), stof(row[3]), stof(row[4]) });
-	//	}			
-	//}
-	//n_nb_atomtypes = nb_atomtypes.size();
 	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", atomtypes.size()); }
 	return atomtypes;
 }
@@ -154,16 +106,7 @@ std::map<int, int> Forcefield::loadAtomTypeMap(const SimpleParsedFile& parsedfil
 			const int gro_id = stoi(row.words[0]);
 			const int atomtype_id = stoi(row.words[1]);
 			groidToType.insert({ gro_id, atomtype_id });
-		}
-
-		//if (current_state == NB_ATOMTYPES) {
-		//	int gro_id = stoi(row[0]);
-		//	int atomtype_id = stoi(row[1]);
-
-
-		//	groidToType.insert(std::pair<int, int>(gro_id, atomtype_id));
-		//}
-			
+		}	
 	}
 	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", groidToType.size()); }
 
@@ -199,19 +142,19 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 			const float ktheta = stof(row.words[7]);
 			topology.anglebonds.emplace_back(AngleBond{ gro_ids, theta0, ktheta });
 		}
-		else if (row.section == "dihedrals") {
+		else if (row.section == "dihedralbonds") {
 			assert(row.words.size() == 11);
 
 			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
 			for (int i = 0; i < 4; i++) {
 				gro_ids[i] = stoi(row.words[i]);
 			}
-			const float phi0 = stof(row.words[7]);
-			const float kphi = stof(row.words[8]);
-			const int multiplicity = stoi(row.words[9]);
+			const float phi0 = stof(row.words[8]);
+			const float kphi = stof(row.words[9]);
+			const int multiplicity = stoi(row.words[10]);
 			topology.dihedralbonds.emplace_back(DihedralBond{ gro_ids, phi0, kphi, multiplicity });
 		}
-		else if (row.section == "impropers") {
+		else if (row.section == "improperdihedralbonds") {
 			assert(row.words.size() == 10);
 
 			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };

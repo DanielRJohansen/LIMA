@@ -38,7 +38,7 @@ namespace FTHelpers {
 	static bool charIsNumberAbove1(char c) {
 		return ((int)c > 49 && (int)c < 58);
 	}
-	static float calcLikeness(const string& query_type,const string& forcefield_type) {
+	static float _calcLikeness(const string& query_type, const string& forcefield_type) {
 
 		// Edgecase: perfect match
 		if (query_type == forcefield_type) { return 1.f; }
@@ -58,6 +58,24 @@ namespace FTHelpers {
 				break;
 		}
 		return likeness;
+	}
+		
+			
+	template <class DerivedType>
+	static float calcLikeness(DerivedType query_type, const DerivedType &forcefield_type) {
+		float likeness_unflipped = 1.f;
+		for (int i = 0; i < DerivedType::n_atoms; i++) {
+			likeness_unflipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
+		}
+
+		query_type.flip();
+
+		float likeness_flipped = 1.f;
+		for (int i = 0; i < DerivedType::n_atoms; i++) {
+			likeness_flipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
+		}
+
+		return std::max(likeness_flipped, likeness_unflipped);
 	}
 
 	static bool isSorted(string* leftmost, string* rightmost) {
@@ -186,7 +204,8 @@ struct BondtypeBase {
 	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: bonded_typenames(typenames), gro_ids(ids) {}
 
-	virtual void sort() = 0;
+	//virtual void sort() = 0;
+	virtual void flip() = 0;
 
 	template <class DerivedType>
 	static void assignTypesFromAtomIDs(std::vector<DerivedType>& topol_bonds, const AtomTable& atoms) {
@@ -200,18 +219,20 @@ struct BondtypeBase {
 	}
 
 	template <class DerivedType>
-	static const DerivedType findBestMatchInForcefield(DerivedType query_type, const std::vector<DerivedType>& forcefield) {
+	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const std::vector<DerivedType>& forcefield) {
 		if (forcefield.size() == 0) { throw std::exception("No angletypes in forcefield!"); }
 
-		query_type.sort();
+		//query_type.sort();
 
 		float best_likeness = 0;
 		DerivedType best_bond = forcefield.at(0);
 		for (const DerivedType& ff_bondtype : forcefield) {
-			float likeness = 1.f;
+			/*float likeness = 1.f;
 			for (int i = 0; i < n_atoms; i++) {
 				likeness *= FTHelpers::calcLikeness(query_type.bonded_typenames[i], ff_bondtype.bonded_typenames[i]);
-			}
+			}*/
+			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
+
 
 			if (likeness > best_likeness) {
 				best_likeness = likeness;
@@ -222,9 +243,19 @@ struct BondtypeBase {
 			return best_bond;
 
 		std::cout << "Failed to match bond types.\n Closest match ";
+		for (auto& name : best_bond.bonded_typenames) {
+			std::cout << name << " ";
+		}
 		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
-		printf("Likeness %f\n", best_likeness);
-		//printf("Topol ids: %d %d\n", query_type.gro_ids[0], query_type.gro_ids[1]);
+		printf("\nLikeness %f\n", best_likeness);
+		printf("Query typenames: ");
+		for (auto& name : query_type.bonded_typenames) {
+			std::cout << name << " ";
+		}
+		printf("\nQuery gro_ids: ");
+		for (auto& id : query_type.gro_ids) {
+			std::cout << std::to_string(id) << " ";
+		}
 		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
 		exit(0);
 	}
@@ -237,7 +268,6 @@ struct BondtypeBase {
 struct Singlebondtype : public BondtypeBase<2>{
 	static const int n_atoms = 2;
 	Singlebondtype(const std::array<std::string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
-		sort();
 	}
 	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
@@ -249,8 +279,10 @@ struct Singlebondtype : public BondtypeBase<2>{
 		b0 = a.b0;
 		kb = a.kb;
 	}
-
-	void sort();
+	void flip() {
+		swap(bonded_typenames[0], bonded_typenames[1]);
+	}
+	//void sort();
 };
 
 
@@ -260,9 +292,7 @@ struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
 	Anglebondtype(const std::array<std::string, n_atoms>& typenames, float t0, float kt)
 		: BondtypeBase(typenames), theta0(t0), ktheta(kt) 
-	{
-		sort();
-	}
+	{}
 	//Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
 	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
@@ -274,15 +304,16 @@ struct Anglebondtype : public BondtypeBase<3> {
 		theta0 = a.theta0;
 		ktheta = a.ktheta;
 	}
-
-	void sort();
+	void flip() {
+		swap(bonded_typenames[0], bonded_typenames[2]);
+	}
+	//void sort();
 };
 
 struct Dihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
-	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) : BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {
-		sort();
-	}
+	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) 
+		: BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) {}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
@@ -300,7 +331,7 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 		std::swap(bonded_typenames[0], bonded_typenames[3]);
 		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-	void sort();
+	//void sort();
 };
 
 struct Improperdihedralbondtype : public BondtypeBase<4> {
@@ -309,7 +340,6 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 	
 	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0, float kpsi)
 		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi){
-		sort();
 	}
 	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
@@ -326,7 +356,7 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 		//std::swap(bonded_typenames[0], bonded_typenames[3]);
 		//std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-	void sort() {
-		// Not sure what to do here yet
-	}
+	//void sort() {
+	//	// Not sure what to do here yet
+	//}
 };

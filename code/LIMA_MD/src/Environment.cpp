@@ -39,7 +39,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		SILENT, 
 		gro_path, 
 		topol_path,
-		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "moleculebuilder", work_folder),
+		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
 		true);
 
 

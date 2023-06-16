@@ -132,16 +132,19 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 	string line{}, word{};
 	while (getline(file, line)) {
 
-		// Check if line is a comment
-		if (ignoreRow(ignores, line)) {
-			ignore_cnt++;
-			continue;
-		}
+		//// Check if line is a comment
+		//if (ignoreRow(ignores, line)) {
+		//	ignore_cnt++;
+		//	continue;
+		//}
 
 		vector<string> row;
 		stringstream ss(line);
 		while (getline(ss, word, delimiter)) {
 			if (!word.empty()) {
+				if (ignoreRow(ignores, word)) {
+					break;
+				}
 				row.push_back(word);
 			}
 			

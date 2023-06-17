@@ -5,8 +5,9 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <map>
-
+//#include <span>
 
 #define ATOMTYPE_SOL 0
 
@@ -14,6 +15,7 @@ using std::string;
 
 
 class Forcefield {
+public:
 	struct Topology {
 		std::vector<SingleBond> singlebonds;
 		std::vector<AngleBond> anglebonds;
@@ -21,18 +23,16 @@ class Forcefield {
 		std::vector<ImproperDihedralBond> improperdihedralbonds;
 	};
 
-public:
 	Forcefield(VerbosityLevel vl);
 
 
 	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id) const;
 
-	const SingleBond& getSinglebondtype(int bond_index, std::array<int, 2> gro_ids) const;
-	const AngleBond& getAnglebondtype(int bond_index, std::array<int, 3> gro_ids) const;
-	const DihedralBond& getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
-	const ImproperDihedralBond& getImproperdihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const;
-	
+
+	const Topology& getTopology() const { return topology; }
+
+
 
 	ForceField_NB getNBForcefield() const {
 		return forcefield;
@@ -66,28 +66,6 @@ private:
 
 
 	VerbosityLevel vl = SILENT;
-
-
-	enum STATE { INACTIVE, FF_NONBONDED, NB_ATOMTYPES, BONDS, ANGLES, DIHEDRALS, IMPROPERDIHEDRALS };
-	static STATE setState(std::string s, STATE current_state) {
-		if (s == "ff_nonbonded")
-			return FF_NONBONDED;
-		if (s == "atoms")
-			return NB_ATOMTYPES;
-		if (s == "bonds")
-			return BONDS;
-		if (s == "angles")
-			return ANGLES;
-		if (s == "dihedrals")
-			return DIHEDRALS;
-		if (s == "improperdihedrals")
-			return IMPROPERDIHEDRALS;
-		return current_state;
-	}
-
-	bool newParseTitle(std::vector<std::string> row) {
-		return (row[0][0] == '#');
-	}
 
 	std::vector<NBAtomtype> loadAtomTypes(const SimpleParsedFile& nonbonded_parsed);
 	std::map<int, int> loadAtomTypeMap(const SimpleParsedFile& nonbonded_parsed);

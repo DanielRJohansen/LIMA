@@ -329,7 +329,8 @@ bool Environment::handleTermination(Simulation* simulation)
 
 void Environment::prepFF(string conf_path, string topol_path) {
 	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
-	FFM.prepSimulationForcefield();
+	const char ignore_atomtype = 'H';
+	FFM.prepSimulationForcefield(ignore_atomtype);
 }
 
 void Environment::renderTrajectory(string trj_path)

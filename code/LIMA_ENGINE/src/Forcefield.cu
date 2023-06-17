@@ -4,6 +4,7 @@
 #include "LIMA_BASE/include/Printer.h"
 #include "LIMA_ENGINE/include/EngineUtils.cuh"
 
+
 using namespace LIMA_Print;
 
 const int min_reserve_size = 10000;	// This should NOT be permanent...
@@ -44,40 +45,14 @@ int Forcefield::getAtomtypeID(int gro_id) const {
 	return groIdToAtomtypeMap.find(gro_id)->second;
 }
 
-template <int array_length>
-bool isMatch(const uint32_t* topolbonds, const std::array<int, array_length> query_ids) {
-	for (int i = 0; i < array_length; i++) {
-		if (topolbonds[i] != query_ids[i]) { 
-			return false; 
+template <int n>
+bool isMatch(const uint32_t* topolbonds, const std::array<int, n> query_ids) {
+	for (int i = 0; i < query_ids.size(); i++) {
+		if (topolbonds[i] != query_ids[i]) {
+			return false;
 		}
 	}
 	return true;
-}
-
-const SingleBond& Forcefield::getSinglebondtype(int bond_index, std::array<int, 2> gro_ids) const
-{
-	const auto& bond = topology.singlebonds[bond_index];
-	assert(isMatch(bond.atom_indexes, gro_ids));
-	return bond;
-}
-const AngleBond& Forcefield::getAnglebondtype(int bond_index, std::array<int, 3> gro_ids) const
-{
-	const auto& bond = topology.anglebonds[bond_index];
-	assert(isMatch(bond.atom_indexes, gro_ids));
-	return bond;
-}
-const DihedralBond& Forcefield::getDihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const
-{
-	const auto& bond = topology.dihedralbonds[bond_index];
-
-	assert(isMatch(bond.atom_indexes, gro_ids));
-	return bond;
-}
-const ImproperDihedralBond& Forcefield::getImproperdihedralbondtype(int bond_index, std::array<int, 4> gro_ids) const
-{
-	const auto& bond = topology.improperdihedralbonds[bond_index];
-	assert(isMatch(bond.atom_indexes, gro_ids));
-	return bond;
 }
 
 std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsedfile) {

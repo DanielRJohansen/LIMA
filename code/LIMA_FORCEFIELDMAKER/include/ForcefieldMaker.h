@@ -19,7 +19,7 @@ public:
 		const std::string& topol_file = "topol.top"
 	);
 
-	void prepSimulationForcefield();
+	void prepSimulationForcefield(const char ignored_atomtype);
 
 
 

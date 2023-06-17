@@ -112,9 +112,12 @@ public:
 	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id);
 	int id = -1;	// unique lima id
 
-	void addSingleBond(const std::array<ParticleInfo, 2>& particle_info, const SingleBond& bondtype);
-	void addAngleBond(const std::array<ParticleInfo, 3>& particle_info, const AngleBond& bondtype);
-	void addDihedralBond(const std::array<ParticleInfo, 4>& particle_info, const DihedralBond& bondtype);
+	template <typename Bondtype>
+	void addBond(const std::vector <ParticleInfo>&, const Bondtype&);
+
+	template <> void addBond(const std::vector<ParticleInfo>&, const SingleBond&);
+	template <> void addBond(const std::vector<ParticleInfo>&, const AngleBond&);
+	template <> void addBond(const std::vector<ParticleInfo>&, const DihedralBond&);
 
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -133,12 +136,12 @@ public:
 	}
 
 	// Augments the particle_info with local_id_bridge if necessary
-	void addSingleBond(std::array<ParticleInfo*, 2> particle_info, const SingleBond& bondtype);
-	// Augments the particle_info with local_id_bridge if necessary
-	void addAngleBond(std::array<ParticleInfo*, 3> particle_info, const AngleBond& bondtype);
-	// Augments the particle_info with local_id_bridge if necessary
-	void addDihedralBond(std::array<ParticleInfo*, 4> particle_info, const DihedralBond& bondtype);
+	template <typename Bondtype>
+	void addBond(std::vector<ParticleInfo>&, const Bondtype&);
 
+	template <> void addBond(std::vector<ParticleInfo>&, const SingleBond&);
+	template <> void addBond(std::vector<ParticleInfo>&, const AngleBond&);
+	template <> void addBond(std::vector<ParticleInfo>&, const DihedralBond&);
 
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge

@@ -148,7 +148,7 @@ bool getGroidsAndTypenames(const std::vector<string>& words, const Topology& top
 	return true;
 }
 
-Topology loadTopology(const SimpleParsedFile& parsedfile) {
+Topology loadTopology(const SimpleParsedFile& parsedfile, const char ignored_atom) {
 	Topology topology;
 
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
@@ -161,6 +161,10 @@ Topology loadTopology(const SimpleParsedFile& parsedfile) {
 			const string atomname = row.words[4];		// nb type??
 			const float charge = stof(row.words[6]);	// not currently used
 			const float mass = stof(row.words[7]);		// not currently used
+
+			if (atomtype[0] == ignored_atom) {	// Typically for ignoring hydrogen
+				continue;
+			}
 
 			topology.atomtable.insert(std::pair(gro_id, Atom(gro_id, atomtype, atomname)));
 		}
@@ -370,7 +374,7 @@ void printFFBonded(const string& path, const Topology& topology) {
 	file.close();
 }
 
-void ForcefieldMaker::prepSimulationForcefield() {
+void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	// Check if filtered files already exists, if so return
 	BondedTypes forcefield;
 	
@@ -383,7 +387,7 @@ void ForcefieldMaker::prepSimulationForcefield() {
 
 	// Load the topology
 	const SimpleParsedFile topology_parsedfile = Filehandler::parseTopFile(topol_path);
-	Topology topology = loadTopology(topology_parsedfile);
+	Topology topology = loadTopology(topology_parsedfile, ignored_atomtype);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);
@@ -396,10 +400,3 @@ void ForcefieldMaker::prepSimulationForcefield() {
 	printFFBonded(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"), topology);
 	logger.finishSection("Prepare Forcefield has finished");
 }
-
-
-
-
-
-
-

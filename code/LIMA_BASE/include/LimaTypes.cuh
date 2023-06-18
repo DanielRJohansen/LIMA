@@ -64,7 +64,7 @@ struct Float3 {
 	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-
+	__host__ __device__  inline Float3 operator-() const { return Float3(-x, -y, -z); }
 	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
 	__host__ __device__ inline Float3 operator * (const Float3 a) const { return Float3(x * a.x, y * a.y, z * a.z); }
 	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
@@ -125,6 +125,7 @@ struct Float3 {
 
 	//__host__ __device__ float getAngleSigned(Float3 a) { return atan2f(this->cross(a).dot(a), this->dot(a)); }
 
+	//TODO: optimize for const &
 	__host__ __device__ inline static float getAngle(Float3 v1, Float3 v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}

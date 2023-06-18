@@ -63,6 +63,7 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	}
 #endif
 }
+
 __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
 	Float3 normal1 = (*pos_left - *pos_lm).cross((*pos_rm - *pos_lm)).norm();
 	Float3 normal2 = (*pos_lm - *pos_rm).cross((*pos_right - *pos_rm)).norm();
@@ -72,7 +73,11 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	//const float torsion = normal1.getAngleSigned(normal2);
 
 	const bool angle_is_negative = (normal2.dot(*pos_left - *pos_lm)) > 0.f;
-	torsion = angle_is_negative ? torsion * -1.f : torsion;
+	if (angle_is_negative) {
+		torsion = -torsion;
+	}
+
+	//torsion = angle_is_negative ? torsion * -1.f : torsion;
 
 	normal2 *= -1;
 	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
@@ -113,6 +118,74 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 #endif
 }
 
+
+__device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
+	Float3 normal1 = (*j - *i).cross((*k - *i)).norm();	// i is usually the center on
+	Float3 normal2 = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
+
+
+	float angle = Float3::getAngle(normal2, normal1); 
+	if (angle < 0) {
+		printf("angle:: %f", angle);
+	}
+
+	const bool angle_is_negative = (normal1.dot(*l- *i)) > 0.f;
+	if (angle_is_negative) {
+		angle = -angle;
+	}
+
+
+	if (angle > PI || angle < -PI) {
+		printf("Anlg too large!! %f\n\n\n\n", angle);
+	}
+
+
+
+	float error = angle - improper->psi_0;
+	*potE += 0.5f * improper->k_psi * (error*error) * 10.f;
+
+	float torque = improper->k_psi * (angle - improper->psi_0) * 10.f;
+
+	if (1) {
+		//normal1.print('1');
+		normal2.print('2');
+		//i->print('i');
+		//j->print('j');
+		//k->print('k');
+		//l->print('l');
+		float pot = 0.5f * improper->k_psi * (error * error);
+		printf("\tangle %f [rad]    torque: %f    pot %f     phi_0 %f [rad] k_phi %f\n\n",
+			angle, torque, pot, improper->psi_0, improper->k_psi);
+	}
+
+	// Tongue in cheek here. Each particle follows the vector that will minize the potential
+	// at this current step. I am fairly sure this is correct. TODO: Clear with Ali
+//	results[3] = -normal1 * (torque / (*l - *i).len());	// l
+//
+//	results[1] = -normal2 * (torque / (*j - *i).len()); // j
+//	results[2] = -normal2 * (torque / (*k - *i).len()); // j
+//
+//	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+
+
+
+	// This should be wrong..
+	results[3] = normal2 * (torque / (*l - *i).len());	// l
+
+	results[1] = normal1 * (torque / (*j - *i).len()); // j
+	results[2] = -normal1 * (torque / (*k - *i).len()); // j
+	//
+	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.5f) {
+		printf("\nImproperdihedralBond: angle %f [rad] torque: %f psi_0 [rad] %f k_psi %f\n",
+			angle, torque, improper->psi_0, improper->k_psi);
+	}
+#endif
+}
 
 // ------------------------------------------------------------------------------------------- LJ Forces -------------------------------------------------------------------------------------------//
 enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };

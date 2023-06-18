@@ -247,7 +247,44 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* ut
 	return utility_buffer[threadIdx.x];
 }
 
+__device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers, int n_impropers, Float3* positions, Float3* utility_buffer, float* potE) {
 
+	// First clear the buffer which will store the forces.
+	utility_buffer[threadIdx.x] = Float3(0.f);
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
+		ImproperDihedralBond* db = nullptr;
+		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+		if (bond_index < n_impropers) {
+			db = &impropers[bond_index];
+			//printf("Firing %d of %d\n", bond_index, entity);
+			LimaForcecalc::calcImproperdihedralbondForces(
+				&positions[db->atom_indexes[0]],
+				&positions[db->atom_indexes[1]],
+				&positions[db->atom_indexes[2]],
+				&positions[db->atom_indexes[3]],
+				db,
+				forces,
+				potE
+			);
+		}
+
+		for (int i = 0; i < blockDim.x; i++) {
+			if (threadIdx.x == i && db != nullptr) {
+				utility_buffer[db->atom_indexes[0]] += forces[0];
+				utility_buffer[db->atom_indexes[1]] += forces[1];
+				utility_buffer[db->atom_indexes[2]] += forces[2];
+				utility_buffer[db->atom_indexes[3]] += forces[3];
+			}
+			__syncthreads();
+		}
+	}
+
+	return utility_buffer[threadIdx.x];
+}
 
 
 
@@ -481,9 +518,10 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		__syncthreads();
 
-		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -901,7 +939,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 		force += computePairbondForces(&bridge, positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&bridge, positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&bridge, positions, utility_buffer, &potE_sum);
-
+		//TODO: Add impropers here
 		if (force.len() > 3.5 && threadIdx.x == 0 && bridge.compound_id_left == 1) { 
 			printf("\n\n");
 			force.print(); 

@@ -69,7 +69,7 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 
 
 	simulation = std::make_unique<Simulation>(simparams);
-	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "boxbuilder", work_folder));
+	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_folder));
 
 	verifySimulationParameters();
 }

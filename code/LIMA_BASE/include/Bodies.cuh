@@ -31,7 +31,7 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 	SingleBond(){}
 	SingleBond(std::array<int, 2> ids); // Used when loading topology only
 	SingleBond(int id1, int id2, float b0, float kb);
-	SingleBond(std::array<int, 2> ids, float b0, float kb);
+	SingleBond(std::array<uint32_t, 2> ids, float b0, float kb);
 
 	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
 		atom_indexes[0] = particleindex_a;
@@ -54,7 +54,7 @@ struct AngleBond {
 	AngleBond() {}
 	AngleBond(std::array<int, 3> ids); // Used when loading topology only
 	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);	//todo: remove
-	AngleBond(std::array<int, 3> ids, float theta_0, float k_theta);
+	AngleBond(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
 	float k_theta = 0.f;
@@ -162,6 +162,7 @@ struct CompoundCoords {
 const int MAX_SINGLEBONDS_IN_COMPOUND = 64;
 const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
 const int MAX_DIHEDRALBONDS_IN_COMPOUND = 256;
+const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 16;
 struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {
 		n_particles = n_p;
@@ -460,6 +461,7 @@ struct Compound {
 
 	Float3 center_of_mass = Float3(0, 0, 0);
 
+	// These n's can be made uint8
 	uint16_t n_singlebonds = 0;
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
 
@@ -468,6 +470,9 @@ struct Compound {
 
 	uint16_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
+
+	uint8_t n_improperdihedrals = 0;
+	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
 	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
@@ -478,6 +483,7 @@ struct Compound {
 		n_singlebonds = compound->n_singlebonds;
 		n_anglebonds = compound->n_anglebonds;
 		n_dihedrals = compound->n_dihedrals;
+		n_improperdihedrals = compound->n_improperdihedrals;
 	}
 
 	__device__ void loadData(Compound* compound) {
@@ -512,6 +518,9 @@ struct Compound {
 			int index = i * blockDim.x + threadIdx.x;
 			if (index < n_dihedrals)
 				dihedrals[index] = compound->dihedrals[index];
+		}
+		if (threadIdx.x < n_improperdihedrals) {
+			impropers[threadIdx.x] = compound->impropers[threadIdx.x];
 		}
 	}
 };
@@ -565,6 +574,9 @@ struct CompoundBridge {
 	uint8_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
 
+	uint8_t n_improperdihedrals = 0;
+	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE];
+
 	uint16_t compound_id_left{};
 	uint16_t compound_id_right{};
 
@@ -574,6 +586,7 @@ struct CompoundBridge {
 		n_singlebonds = bridge->n_singlebonds;
 		n_anglebonds = bridge->n_anglebonds;
 		n_dihedrals = bridge->n_dihedrals;
+		n_improperdihedrals = bridge->n_improperdihedrals;
 
 		compound_id_left = bridge->compound_id_left;
 		compound_id_right = bridge->compound_id_right;
@@ -598,6 +611,9 @@ struct CompoundBridge {
 			int index = i * blockDim.x + threadIdx.x;
 			if (index < n_dihedrals)
 				dihedrals[index] = bridge->dihedrals[index];
+		}
+		if (threadIdx.x < n_improperdihedrals) {
+			impropers[threadIdx.x] = bridge->impropers[threadIdx.x];
 		}
 	}
 };

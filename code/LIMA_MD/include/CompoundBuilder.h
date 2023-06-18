@@ -92,7 +92,7 @@ struct ParticleInfo {
 	int gro_id = -1;
 
 	std::vector<int> singlebonds_indices;		// lima indices of the bond in moleculebuilder
-	std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
+	//std::vector<int> anglebonds_indices;		// lima indices of the bond in moleculebuilder
 	std::vector<int> dihedralbonds_indices;		// lima indices of the bond in moleculebuilder
 
 	// First available when added to compound
@@ -118,6 +118,7 @@ public:
 	template <> void addBond(const std::vector<ParticleInfo>&, const SingleBond&);
 	template <> void addBond(const std::vector<ParticleInfo>&, const AngleBond&);
 	template <> void addBond(const std::vector<ParticleInfo>&, const DihedralBond&);
+	template <> void addBond(const std::vector<ParticleInfo>&, const ImproperDihedralBond&);
 
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -142,10 +143,11 @@ public:
 	template <> void addBond(std::vector<ParticleInfo>&, const SingleBond&);
 	template <> void addBond(std::vector<ParticleInfo>&, const AngleBond&);
 	template <> void addBond(std::vector<ParticleInfo>&, const DihedralBond&);
+	template <> void addBond(std::vector<ParticleInfo>&, const ImproperDihedralBond&);
 
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
-	int getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
 };
 
 

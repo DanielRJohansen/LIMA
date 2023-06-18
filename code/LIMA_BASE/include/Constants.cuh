@@ -104,6 +104,7 @@ const int MAX_PARTICLES_IN_BRIDGE = 32;
 const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
+const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;
 
 const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shift
 

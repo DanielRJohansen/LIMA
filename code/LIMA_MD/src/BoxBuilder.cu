@@ -72,7 +72,7 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 	// Load meta information
 	simulation->copyBoxVariables();
 	m_logger->print("Box contains " + std::to_string(simulation->n_compounds) + " compounds, " 
-		+ std::to_string(simulation->n_bridges) + "bridges and " + std::to_string(simulation->n_solvents) + "solvents");
+		+ std::to_string(simulation->n_bridges) + " bridges and " + std::to_string(simulation->n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
 	simulation->box_host->forcefield = new ForceField_NB{ forcefield };// Copy

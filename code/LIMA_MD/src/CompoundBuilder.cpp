@@ -129,7 +129,6 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 
 	createCompoundsAndBridges();
 
-
 	distributeBondsToCompoundsAndBridges(topology);
 
 	calcCompoundMetaInfo();
@@ -274,6 +273,13 @@ bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleIn
 }
 
 void MoleculeBuilder::matchBondedResidues(const std::vector<SingleBond>& singlebonds) {
+	for (int singlebond_index = 0; singlebond_index < singlebonds.size(); singlebond_index++) {
+		for (uint32_t gro_id : singlebonds[singlebond_index].atom_indexes) {
+			particle_info[gro_id].singlebonds_indices.push_back(singlebond_index);
+		}
+	}
+
+
 	for (int i = 0; i < static_cast<int>(residues.size()) - 1; i++) {
 		Residue& residue_left = residues[i];
 		Residue& residue_right = residues[i + 1];
@@ -340,6 +346,9 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 				);
 		}
 	}
+
+	m_logger->print(std::format("Created {} compounds\n", compounds.size()));
+	m_logger->print(std::format("Created {} compound bridges\n", compound_bridges.size()));
 }
 
 
@@ -421,7 +430,6 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 
 		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particle_info)) {
 			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
-			//bridge.addBond({ &particle_info[bond_groids[0]], &particle_info[bond_groids[1]] }, bondtype);
 			bridge.addBond(particle_info, bond);
 		}
 		else {
@@ -440,6 +448,12 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Forcefield::Top
 	distributeBondsToCompoundsAndBridges(topology.singlebonds);
 	distributeBondsToCompoundsAndBridges(topology.anglebonds);
 	distributeBondsToCompoundsAndBridges(topology.dihedralbonds);
+	distributeBondsToCompoundsAndBridges(topology.improperdihedralbonds);
+
+	m_logger->print(std::format("Added {} singlebonds to molecule\n", topology.singlebonds.size()));
+	m_logger->print(std::format("Added {} anglebonds to molecule\n", topology.anglebonds.size()));
+	m_logger->print(std::format("Added {} dihedralbonds to molecule\n", topology.dihedralbonds.size()));
+	m_logger->print(std::format("Added {} improper dihedralbonds to molecule\n", topology.improperdihedralbonds.size()));
 }
 
 
@@ -527,14 +541,6 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	n_particles++;
 }
 
-
-
-
-
-
-
-
-
 template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
@@ -569,14 +575,29 @@ template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& parti
 	);
 }
 
+template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add dihedralbond to compound"); }
+	impropers[n_improperdihedrals++] = ImproperDihedralBond(
+		std::array<uint32_t, 4>{
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+		},
+		bondtype.psi_0,
+		bondtype.k_psi
+	);
+}
 
 
 
 template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+		{
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+		},
 		bondtype.b0,
 		bondtype.kb
 	};
@@ -585,9 +606,11 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
+		{
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
+		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	};
@@ -596,20 +619,34 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const DihedralBond& bondtype) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
+		{
 		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
 		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
 		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
 		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+		},		
 		bondtype.phi_0,
 		bondtype.k_phi,
 		bondtype.n
 	};
 }
 
+template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
+	impropers[n_improperdihedrals++] = ImproperDihedralBond{
+		std::array<uint32_t,4>{
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+		},
+		bondtype.psi_0,
+		bondtype.k_psi,
+	};
+}
 
 
-
-int BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
+uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 	if (particle_info.local_id_bridge == -1) {
 		if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
 		particle_info.local_id_bridge = n_particles;

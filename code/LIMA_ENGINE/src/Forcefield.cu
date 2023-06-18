@@ -97,7 +97,7 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 		if (row.section == "singlebonds") {
 			assert(row.words.size() == 6);
 
-			std::array<int, 2> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			std::array<uint32_t, 2> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
 			for (int i = 0; i < 2; i++) {
 				gro_ids[i] = stoi(row.words[i]);
 			}
@@ -109,7 +109,7 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 		else if (row.section == "anglebonds") {
 			assert(row.words.size() == 8);
 
-			std::array<int, 3> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
+			std::array<uint32_t, 3> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
 			for (int i = 0; i < 3; i++) {
 				gro_ids[i] = stoi(row.words[i]);
 			}
@@ -136,8 +136,8 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 			for (int i = 0; i < 4; i++) {
 				gro_ids[i] = stoi(row.words[i]);
 			}
-			const float psi0 = stof(row.words[7]);
-			const float kpsi = stof(row.words[8]);
+			const float psi0 = stof(row.words[8]);
+			const float kpsi = stof(row.words[9]);
 			topology.improperdihedralbonds.emplace_back(ImproperDihedralBond{ gro_ids, psi0, kpsi });
 		}
 	}

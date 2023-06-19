@@ -46,7 +46,12 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	for (int compound_id = 0; compound_id < simulation.n_compounds; compound_id++) {
 		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
 
-		compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
+
+		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, 0, step);
+
+		//compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
+		// 
+		// 
 		// const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
 		//compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
 		//if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {

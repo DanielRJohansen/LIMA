@@ -62,7 +62,7 @@ constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
 
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
 const bool print_compound_positions = false;		// what is tihs?
-const bool DUMP_TRAJ = false;
+const bool DUMP_TRAJ = true;
 const bool DUMP_POTE = false;
 const bool POSTSIM_ANAL = true;
 // -------------------------------------------------------------------------------------------------------------- //

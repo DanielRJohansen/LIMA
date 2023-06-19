@@ -503,6 +503,7 @@ namespace EngineUtils {
 		return step_offset + compound_offset + particle_id_local;
 	}
 
+	// TODO: Marked for deletion
 	__host__ static size_t getAlltimeIndexOfParticle(uint64_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
 		const uint32_t step_offset = static_cast<uint32_t>(step) * total_particles_upperbound;
 		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;

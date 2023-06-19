@@ -2,6 +2,8 @@
 
 #include "LIMA_BASE/include/Printer.h"
 
+#include "LIMA_MD/src/ChemfilesInterface.h"
+
 #include <filesystem>
 
 using namespace LIMA_Print;
@@ -236,7 +238,8 @@ void Environment::postRunEvents() {
 	}
 	
 	if (DUMP_TRAJ) {
-		dumpToFile(simulation->traj_buffer.data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
+		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
+		TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
 	}
 
 	if (POSTSIM_ANAL) {

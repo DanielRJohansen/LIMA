@@ -63,6 +63,38 @@ struct DatabuffersDevice {
 	//Float3* debugdataf3 = nullptr;
 };
 
+template <typename T>
+class ParticleDataBuffer {
+public:
+	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps) 
+		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds)
+	{
+		buffer.resize(n_particles_upperbound * n_steps);
+	}
+
+	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
+
+	T* getBufferAtStep(size_t step) {
+		return &buffer[n_particles_upperbound * step];
+	}
+
+	T& getCompoundparticleDatapoint(int compound_id, int particle_id_compound, size_t step) {
+		const uint32_t step_offset = static_cast<uint32_t>(step) * n_particles_upperbound;
+		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		return buffer[step_offset + compound_offset + particle_id_compound];
+	}
+
+	T& getSolventparticleDatapoint(int solvent_id, size_t step) {
+		const uint32_t step_offset = static_cast<uint32_t>(step) * n_particles_upperbound;
+		const uint32_t firstsolvent_offset = n_compounds * MAX_COMPOUND_PARTICLES;
+		return buffer[step_offset + firstsolvent_offset + solvent_id];
+	}
+
+private:
+	const size_t n_particles_upperbound = 0;
+	const size_t n_compounds = 0;
+	std::vector<T> buffer;
+};
 
 // This goes on Device
 struct Box {
@@ -133,7 +165,8 @@ public:
 	bool finished = false;
 
 
-	std::vector<Float3> traj_buffer;
+	//std::vector<Float3> traj_buffer;
+	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;
 	std::vector<float> potE_buffer;
 	std::vector<float> temperature_buffer;
 

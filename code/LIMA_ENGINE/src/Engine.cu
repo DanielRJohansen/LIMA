@@ -101,7 +101,8 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer);	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
-		&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
+		//&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
+		simulation->traj_buffer->getBufferAtStep(step_relative),
 		simulation->sim_dev->databuffers->traj_buffer,
 		sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer,
 		cudaMemcpyDeviceToHost
@@ -136,8 +137,9 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 
-			const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
-			simulation->traj_buffer[buffer_index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
+			//const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
+			//simulation->traj_buffer[buffer_index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
+			simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, 0);
 		}
 	}
 

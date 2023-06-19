@@ -157,20 +157,23 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	const uint64_t particles_per_step = simulation->total_particles_upperbound;
 
 	// First move the middle bulk to device
-	cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+	//cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer->data()[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
 	// Then pad the front. If step 0, we pad with zero. If step n we pad with n-1
 	uint64_t paddingSrcIndex = step_offset == 0 ? 0 : step_offset - 1;
-	cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
+	//cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[0], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer1\n");
 
 	// Then pad the end. if step
 	const uint64_t end_index = step_offset + steps_in_kernel;
 	paddingSrcIndex = end_index == simulation->getStep() ? end_index - 1 : end_index;
-	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
+	//cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer\n");

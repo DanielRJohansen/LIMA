@@ -54,7 +54,8 @@ void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps
 	m_logger->print("Malloc " + datasize_str + "MB on host for data buffers\n");
 
 	simulation.potE_buffer.resize(simulation.total_particles_upperbound * n_steps);
-	simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
+	//simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
+	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>((size_t)simulation.total_particles_upperbound, simulation.n_compounds, (size_t)n_steps);
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
 }
 

@@ -20,7 +20,6 @@ struct TestType {
 };
 
 
-constexpr float PI = 3.14159f;
 
 enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S };
 

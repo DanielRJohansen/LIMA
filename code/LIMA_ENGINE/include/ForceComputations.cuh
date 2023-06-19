@@ -28,13 +28,13 @@ __device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, SingleBond* bon
 	results[1] = dir * force_scalar * -1.f;						// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMASAFEMODE
-	if (results[0].len() > 0.5f) {
+	if (results[0].len() > 0.1f) {
 		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
 	}
 #endif
 }
 
-__device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3* pos_right, AngleBond* angletype, Float3* results, float* potE) {
+__device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3* pos_right, const AngleBond const* angletype, Float3* results, float* potE) {
 	const Float3 v1 = (*pos_left - *pos_middle).norm();
 	const Float3 v2 = (*pos_right - *pos_middle).norm();
 	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
@@ -44,7 +44,6 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 
 	const float angle = Float3::getAngle(v1, v2);					// [rad]
 	const float error = angle - angletype->theta_0;				// [rad]
-
 	// Simple implementation
 	//*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
 	//float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
@@ -57,9 +56,11 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	results[2] = inward_force_direction2 * (torque / (*pos_right - *pos_middle).len());
 	results[1] = (results[0] + results[2]) * -1.f;
 
+
+
 #ifdef LIMASAFEMODE
 	if (results[0].len() > 0.1f) {
-		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 [rad] %f kt %f\n", angle, error, results[0], angletype->theta_0, angletype->k_theta);
+		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 %f [rad] kt %f\n", angle, error, results[0].len(), angletype->theta_0, angletype->k_theta);
 	}
 #endif
 }
@@ -142,11 +143,11 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 
 
 	float error = angle - improper->psi_0;
-	*potE += 0.5f * improper->k_psi * (error*error) * 10.f;
+	*potE += 0.5f * improper->k_psi * (error*error);
 
-	float torque = improper->k_psi * (angle - improper->psi_0) * 10.f;
+	float torque = improper->k_psi * (angle - improper->psi_0);
 
-	if (1) {
+	if (0) {
 		//normal1.print('1');
 		normal2.print('2');
 		//i->print('i');
@@ -218,7 +219,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 
 #ifdef LIMASAFEMODE
 	if constexpr (!em_variant) {	// During EM dt is lower, so large forces are not a problem
-		if (force > 0.5f) {
+		if (force.len() > 0.5f) {
 			//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
 			////((*pos1 - *pos0) * force_scalar).print('f');
 			//pos0->print('0');

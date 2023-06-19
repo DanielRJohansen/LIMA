@@ -22,6 +22,8 @@ struct BondedTypes {
 	std::vector<Dihedralbondtype> dihedralbonds;
 	std::vector<Improperdihedralbondtype> improperdeihedralbonds;
 
+	// This structure is for storing the mass of an atomtype, before we get to the NBATOMTYPE section
+	std::unordered_map<std::string, float> atomnameToMassMap;
 
 };
 
@@ -66,71 +68,154 @@ ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const s
 	Filehandler::assertPath(conf_path);
 	Filehandler::assertPath(topol_path);
 }
+//
+//void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
+//	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
+//
+//		if (row.section == "atomtypes") {
+//			if (row.words.size() < 5) {
+//				int a = 0;
+//			}
+//			assert(row.words.size() >= 5);
+//
+//			const string& atomtype = row.words[0];
+//			const int atnum = stoi(row.words[1]);
+//			const float mass = stof(row.words[2]);		// Should this come from topol too?
+//			const float charge = stof(row.words[3]);	// Comes from topol
+//			const float sigma = stof(row.words[5]);
+//			const float epsilon = stof(row.words[6]);
+//
+//			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
+//			forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
+//		}
+//		else if (row.section == "pairtypes") {
+//			// TODO: Fill out this logic
+//		}		
+//	}
+//}
+//
+//void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
+//	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
+//
+//		if (row.section == "bondtypes") {
+//			assert(row.words.size() >= 5);
+//
+//			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
+//			const float b0 = stof(row.words[3]);
+//			const float kb = stof(row.words[4]);
+//
+//			forcefield.singlebonds.emplace_back(Singlebondtype(bondedatom_typenames, b0, kb));
+//		}
+//		else if (row.section == "angletypes") {
+//			assert(row.words.size() >= 6);
+//
+//			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
+//			const float theta0 = stof(row.words[4]) / 360.f * 2.f * PI;
+//			const float ktheta = stof(row.words[5]);
+//
+//			forcefield.anglebonds.emplace_back(Anglebondtype(angle_typenames, theta0, ktheta));
+//		}
+//		else if (row.section == "dihedraltypes") {
+//			assert(row.words.size() >= 7);
+//
+//			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+//			const float phi0 = stof(row.words[5]);
+//			const float kphi = stof(row.words[6]);
+//			const float n = stoi(row.words[7]);
+//
+//			forcefield.dihedralbonds.emplace_back(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
+//		}
+//		else if (row.section == "improperdihedraltypes") {
+//			assert(row.words.size() >= 7);
+//
+//			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+//			const float psi0 = stof(row.words[5]);
+//			const float kpsi = stof(row.words[6]);
+//
+//			forcefield.improperdeihedralbonds.emplace_back(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
+//		}
+//	}
+//}
 
-void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
+
+void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 
-		if (row.section == "atomtypes") {
-			if (row.words.size() < 5) {
-				int a = 0;
-			}
-			assert(row.words.size() >= 5);
+		if (row.section == "ATOMS") {
+			assert(row.words.size() >= 4);
 
-			const string& atomtype = row.words[0];
-			const int atnum = stoi(row.words[1]);
-			const float mass = stof(row.words[2]);		// Should this come from topol too?
-			const float charge = stof(row.words[3]);	// Comes from topol
-			const float sigma = stof(row.words[5]);
-			const float epsilon = stof(row.words[6]);
+			const string& atomtype = row.words[2];
+			const float mass = stof(row.words[3]);		// Should this come from topol too?
+			forcefield.atomnameToMassMap.insert(std::pair{ atomtype, mass });
 
 			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
-			forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
+			//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
 		}
 		else if (row.section == "pairtypes") {
 			// TODO: Fill out this logic
-		}		
-	}
-}
+		}
+		else if (row.section == "BONDS") {
+			if(row.words.size() < 4)
+				int a = 0;
 
-void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
-	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
-
-		if (row.section == "bondtypes") {
-			assert(row.words.size() >= 5);
+			assert(row.words.size() >= 4);
 
 			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
-			const float b0 = stof(row.words[3]);
-			const float kb = stof(row.words[4]);
+			const float kb = stof(row.words[2]) * kcalToJoule * 10 * 10;		//kcal/mol/A^2 -> J/mol/nm^2
+			const float b0 = stof(row.words[3]) * 0.1;	// A to nm
 
 			forcefield.singlebonds.emplace_back(Singlebondtype(bondedatom_typenames, b0, kb));
 		}
-		else if (row.section == "angletypes") {
-			assert(row.words.size() >= 6);
+		else if (row.section == "ANGLES") {
+			assert(row.words.size() >= 5);
 
 			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
-			const float theta0 = stof(row.words[4]);
-			const float ktheta = stof(row.words[5]);
+			const float ktheta = stof(row.words[3]) * kcalToJoule;
+			const float theta0 = stof(row.words[4]) * degreeToRad;
 
 			forcefield.anglebonds.emplace_back(Anglebondtype(angle_typenames, theta0, ktheta));
 		}
-		else if (row.section == "dihedraltypes") {
+		else if (row.section == "DIHEDRALS") {
+			if (row.words.size() < 7)
+				int a = 0;
 			assert(row.words.size() >= 7);
 
 			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-			const float phi0 = stof(row.words[5]);
-			const float kphi = stof(row.words[6]);
-			const float n = stoi(row.words[7]);
-
+			const float kphi = stof(row.words[4]) * kcalToJoule;
+			const float n = stoi(row.words[5]);
+			const float phi0 = stof(row.words[6]) * degreeToRad;
+			
 			forcefield.dihedralbonds.emplace_back(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
 		}
-		else if (row.section == "improperdihedraltypes") {
+		else if (row.section == "IMPROPER") {
+			if (row.words.size() < 7)
+				int a = 0;
 			assert(row.words.size() >= 7);
 
 			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-			const float psi0 = stof(row.words[5]);
-			const float kpsi = stof(row.words[6]);
+			const float kpsi = stof(row.words[4]) * kcalToJoule;
+			const float psi0 = stof(row.words[6]) * degreeToRad;
 
 			forcefield.improperdeihedralbonds.emplace_back(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
+		}
+		else if (row.section == "NONBONDED") {
+			if (row.words.size() < 4)
+				int a = 0;
+			assert(row.words.size() >= 4);
+
+			const string& atomtype = row.words[0];
+
+			const float epsilon = abs(stof(row.words[2]) * kcalToJoule);	// For some fucked reason the eps is -inconsistently - negative...
+			const float sigma = stof(row.words[3]) * 2 * 0.1;	 // rmin/2 [A] -> sigma [nm]
+
+			const float mass = forcefield.atomnameToMassMap.find(atomtype)->second;
+
+			forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, -1, mass, sigma, epsilon)));
+
+
+			// Not yet used
+			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma
+			//const float sigma_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma			
 		}
 	}
 }
@@ -374,16 +459,48 @@ void printFFBonded(const string& path, const Topology& topology) {
 	file.close();
 }
 
+std::vector<std::string> getFiles() {
+	std::vector<std::string> files;
+
+	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
+
+#ifdef __linux__
+	throw "Add the other files before trying this on linux";
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_lipid.prm"));
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_na.prm"));
+	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36m_prot.prm"));
+#else	
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all35_ethers.prm");
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_carb.prm");
+
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_lipid.prm");
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_na.prm");
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_prot.prm");
+
+	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_cgenff.prm");
+#endif
+
+	return files;
+}
+
 void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	// Check if filtered files already exists, if so return
 	BondedTypes forcefield;
 	
-	// Load the forcefields. 
-	const SimpleParsedFile nb_parsedfile = Filehandler::parseItpFile(ff_nonbonded_path);
-	loadFFnonbondedIntoForcefield(nb_parsedfile, forcefield);
+	std::vector<std::string> files = getFiles();
 
-	const SimpleParsedFile bonded_parsedfile = Filehandler::parseItpFile(ff_bonded_path);
-	loadFFbondedIntoForcefield(bonded_parsedfile, forcefield);
+	for (auto& file_path : files) {
+		const SimpleParsedFile parsedfile = Filehandler::parsePrmFile(file_path);
+		loadFileIntoForcefield(parsedfile, forcefield);
+	}
+
+
+	//// Load the forcefields. 
+	//const SimpleParsedFile nb_parsedfile = Filehandler::parseItpFile(ff_nonbonded_path);
+	//loadFFnonbondedIntoForcefield(nb_parsedfile, forcefield);
+
+	//const SimpleParsedFile bonded_parsedfile = Filehandler::parseItpFile(ff_bonded_path);
+	//loadFFbondedIntoForcefield(bonded_parsedfile, forcefield);
 
 	// Load the topology
 	const SimpleParsedFile topology_parsedfile = Filehandler::parseTopFile(topol_path);

@@ -44,12 +44,12 @@ int main() {
 	//doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);
 	//doDihedralbondBenchmark(envmode);
-	doImproperDihedralBenchmark(envmode);
+	//doImproperDihedralBenchmark(envmode);
 	
 	//doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
-	//doEightResiduesNoSolvent(envmode);
+	doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 

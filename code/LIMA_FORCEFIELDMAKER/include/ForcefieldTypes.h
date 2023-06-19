@@ -297,7 +297,7 @@ struct Anglebondtype : public BondtypeBase<3> {
 	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: BondtypeBase(ids, typenames) {}
 
-	float theta0{};
+	float theta0{};	// [rad]
 	float ktheta{};
 
 	void assignForceVariables(const Anglebondtype& a) {

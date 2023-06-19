@@ -5,14 +5,18 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <array>
 #include <fstream>
 #include <filesystem>
 
 using std::string, std::vector, std::map, std::stringstream;
 
 
-
-using SetSectionFunction = std::function<bool(const std::vector<string>& row, string& section)>;
+/// <summary>
+/// Returns true for a new section. A new section mean the current line (title) is skipped
+/// The function can also modify the skipCnt ref so the following x lines are skipped
+/// </summary>
+using SetSectionFunction = std::function<bool(const std::vector<string>& row, string& section, int& skipCnt)>;
 
 bool ignoreRow(const vector<char>& ignores, const string& line) {
 	if (line.length() == 0)
@@ -115,7 +119,19 @@ map<string, double> Filehandler::parseINIFile(const string path) {
 	return dict;
 }
 
+void replaceTabs(std::string& str) {
+	// Find the first occurrence of '\t' in the string
+	size_t found = str.find('\t');
 
+	// Continue replacing '\t' with spaces until no more occurrences are found
+	while (found != std::string::npos) {
+		// Replace the '\t' character with a space (' ')
+		str[found] = ' ';
+
+		// Find the next occurrence of '\t', starting from the next position
+		found = str.find('\t', found + 1);
+	}
+}
 
 SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectionFunction setSection, vector<char> ignores = {';', '#'}, char delimiter = ' ')
 {
@@ -128,15 +144,18 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 
 	int ignore_cnt = 0;
 
+	int skipCnt = 0;
+
 	// Forward declaring for optimization reasons
 	string line{}, word{};
 	while (getline(file, line)) {
 
-		//// Check if line is a comment
-		//if (ignoreRow(ignores, line)) {
-		//	ignore_cnt++;
-		//	continue;
-		//}
+		if (skipCnt > 0) {
+			skipCnt--;
+			continue;
+		}
+
+		replaceTabs(line);
 
 		vector<string> row;
 		stringstream ss(line);
@@ -152,7 +171,7 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 
 		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
 
-		bool new_section = setSection(row, current_section);
+		bool new_section = setSection(row, current_section, skipCnt);
 		if (new_section) { continue; }
 
 		parsedfile.rows.push_back({ current_section, row });
@@ -167,7 +186,7 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose) {
 	assert(path.substr(path.length() - 4) == ".itp");
 
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
 		if (row.size() == 3 && row[0][0] == '[') {
 
 			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
@@ -190,7 +209,7 @@ SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose
 {
 	assert(path.substr(path.length() - 4) == ".top");
 
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
 		if (row.size() == 3 && row[0][0] == '[') {
 
 			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
@@ -213,7 +232,7 @@ SimpleParsedFile Filehandler::parseLffFile(const std::string& path, bool verbose
 {
 	assert(path.substr(path.length() - 4) == ".lff");
 
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section) -> bool {
+	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
 		if (row.size() == 2 && row[0][0] == '#') {
 			current_section = row[1];
 			return true;
@@ -222,4 +241,25 @@ SimpleParsedFile Filehandler::parseLffFile(const std::string& path, bool verbose
 	};
 
 	return parseBasicFile(path, verbose, setSectionFn, {'/'}, ' ');
+}
+
+SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose)
+{
+	assert(path.substr(path.length() - 4) == ".prm");
+
+	std::array<std::string, 9> keywords	{ "ATOMS", "BONDS", "ANGLES", "DIHEDRALS", "IMPROPER", "NONBONDED", "NBFIX", "CMAP", "END"};	// I despise the inventor of this fkin "system"
+
+	SetSectionFunction setSectionFn = [&](const std::vector<string>& row, string& current_section, int& skipCnt) -> bool {
+		if (row[0] == "NONBONDED") {
+			skipCnt = 1;	// special case with a line that is not commented - STRAIGHT TO JAIL!
+		}
+
+		if (std::find(keywords.begin(), keywords.end(), row[0]) != keywords.end()) {
+			current_section = row[0];
+			return true;
+		}
+		return false;
+	};
+
+	return parseBasicFile(path, verbose, setSectionFn, { '!' }, ' ');
 }

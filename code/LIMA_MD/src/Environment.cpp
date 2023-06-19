@@ -211,7 +211,8 @@ void Environment::run(bool em_variant) {
 }
 
 void Environment::postRunEvents() {
-	
+	if (simulation->getStep() == 0) { return; }
+
 	const std::string out_dir = work_folder + "Steps_" + std::to_string(simulation->getStep()) + "/";
 
 	const std::filesystem::path out_path{ out_dir };

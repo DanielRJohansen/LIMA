@@ -10,6 +10,8 @@
 
 //#define USEDEBUGF3
 
+constexpr float PI = 3.14159f;
+
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
 const int RAMPUP_STEPS = 0;					// Set to 0 to disable
@@ -26,6 +28,8 @@ constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 const int PICO_TO_LIMA = 100000;
 
+const float kcalToJoule = 4184.f;
+const float degreeToRad = 2.f * PI / 360.f;
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 

@@ -518,10 +518,10 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		__syncthreads();
 
-		//force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, &potE_sum);
+		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
+		//force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //

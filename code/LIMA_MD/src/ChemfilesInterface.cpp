@@ -147,7 +147,7 @@ public:
 
         size_t box_size = sizeof(float) * 3 * 3;
         
-        const size_t natoms = 4;
+        const size_t natoms = positions.size();
         const size_t posdata_size = sizeof(float) * natoms * 3;;
         
 
@@ -195,7 +195,7 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
     TRRFormat trrfile(path);
 
     std::vector<Float3> positions(sim->total_particles);
-    for (int step = 0; step < sim->getStep(); step++) {
+    for (int step = 0; step < sim->getStep(); step += 10) {
 
         int index = 0; 
 

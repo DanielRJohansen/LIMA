@@ -18,7 +18,7 @@
 namespace TestMDStability {
 
 	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 20, 800 };
+		InputSimParams emparams{ 10, 800 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em

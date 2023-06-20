@@ -149,7 +149,7 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 
 	if (0) {
 		//normal1.print('1');
-		normal2.print('2');
+		//normal2.print('2');
 		//i->print('i');
 		//j->print('j');
 		//k->print('k');
@@ -161,22 +161,19 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 
 	// Tongue in cheek here. Each particle follows the vector that will minize the potential
 	// at this current step. I am fairly sure this is correct. TODO: Clear with Ali
-//	results[3] = -normal1 * (torque / (*l - *i).len());	// l
-//
-//	results[1] = -normal2 * (torque / (*j - *i).len()); // j
-//	results[2] = -normal2 * (torque / (*k - *i).len()); // j
-//
-//	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+	//results[3] = normal1 * (torque / (*l - *i).len());	// l
+	//
+	//results[1] = normal2 * (torque / (*j - *i).len()); // j
+	//results[2] = normal2 * (torque / (*k - *i).len()); // k
+	//
+	//results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
 
-
-
-
-	// This should be wrong..
+	// This is the simple way, always right-ish
 	results[3] = normal2 * (torque / (*l - *i).len());	// l
 
 	results[1] = normal1 * (torque / (*j - *i).len()); // j
-	results[2] = -normal1 * (torque / (*k - *i).len()); // j
-	//
+	results[2] = normal1 * (torque / (*k - *i).len()); // j
+	
 	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
 
 

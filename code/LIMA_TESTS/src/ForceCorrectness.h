@@ -204,7 +204,67 @@ bool doDihedralbondBenchmark(EnvMode envmode) {
 }
 
 bool doImproperDihedralBenchmark(EnvMode envmode) {
-	return TestUtils::loadAndRunBasicSimulation("ImproperDihedral", envmode, 0.05f);
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/ImproperDihedral/";
+	const std::string conf = work_folder + "molecule/conf.gro";
+	const std::string topol = work_folder + "molecule/topol.top";
+	const std::string simpar = work_folder + "sim_params.txt";
+
+	Environment env{ work_folder, envmode };
+	auto ip = env.loadInputSimParams(simpar);
+
+	std::vector<float> angle_errors{ 0.4f }; //(t-t0) [rad]
+	std::vector<float> std_devs;
+
+	for (auto angle_error : angle_errors) {
+		env.CreateSimulation(conf, topol, ip);
+
+		Box* box_host = env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+		CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
+
+		auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
+		std::array<Float3, 4> pos;
+		for (int i = 0; i < 4; i++) {
+			pos[i] = coordarray_ptr[0].rel_positions[atom_ids[i]].toFloat3();
+		}
+
+		// move atoms so center (C) is at origo
+		pos[0] -= pos[2];
+		pos[1] -= pos[2];
+		pos[3] -= pos[2];
+		pos[2] -= pos[2];	// Do this one last!
+
+
+		Float3 plane_normal = (pos[1] - pos[0]).cross(pos[2] - pos[0]).norm();
+		Float3 l_vec = (pos[3] - pos[0]).norm();
+
+		Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
+
+		Float3 l_point = pos[3];
+		Float3 l_rotated = l_point.rotateAroundVector(Float3{ 0.f,0.f,angle_error }, rotatevec);
+
+		Float3 l_diff = l_rotated - l_point;
+
+		//Float3 rotatedPoint = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
+		
+		coordarray_ptr[0].rel_positions[3] += Coord{ l_diff};		// Temp disabled, fix soon plz
+		coordarray_prev_ptr[0].rel_positions[3] += Coord{ l_diff};		// Temp disabled, fix soon plz
+
+		env.run();
+
+		const auto analytics = env.getAnalyzedPackage();
+		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+
+		if (envmode != Headless) {
+			Analyzer::printEnergy(analytics);
+		}
+	}
+
+	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
+	LIMA_Print::printMatlabVec("std_devs", std_devs);
+
+
+	return TestUtils::evaluateTest(std_devs, 0.003);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {

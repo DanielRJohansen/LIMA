@@ -194,8 +194,10 @@ public:
 void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
     TRRFormat trrfile(path);
 
+    int inc = sim->getStep() > 1000 ? 10 : 1;
+
     std::vector<Float3> positions(sim->total_particles);
-    for (int step = 0; step < sim->getStep(); step += 10) {
+    for (int step = 0; step < sim->getStep(); step += inc) {
 
         int index = 0; 
 

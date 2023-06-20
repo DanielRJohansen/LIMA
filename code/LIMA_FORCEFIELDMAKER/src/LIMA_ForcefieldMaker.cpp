@@ -161,8 +161,8 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 			assert(row.words.size() >= 4);
 
 			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
-			const float kb = stof(row.words[2]) * kcalToJoule * 10 * 10;		//kcal/mol/A^2 -> J/mol/nm^2
-			const float b0 = stof(row.words[3]) * 0.1;	// A to nm
+			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f;		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
+			const float b0 = stof(row.words[3]) * AngToNm;	// A to nm
 
 			forcefield.singlebonds.emplace_back(Singlebondtype(bondedatom_typenames, b0, kb));
 		}
@@ -170,7 +170,7 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 			assert(row.words.size() >= 5);
 
 			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
-			const float ktheta = stof(row.words[3]) * kcalToJoule;
+			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
 			const float theta0 = stof(row.words[4]) * degreeToRad;
 
 			forcefield.anglebonds.emplace_back(Anglebondtype(angle_typenames, theta0, ktheta));
@@ -193,7 +193,7 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 			assert(row.words.size() >= 7);
 
 			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-			const float kpsi = stof(row.words[4]) * kcalToJoule;
+			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
 			const float psi0 = stof(row.words[6]) * degreeToRad;
 
 			forcefield.improperdeihedralbonds.emplace_back(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
@@ -205,8 +205,9 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 
 			const string& atomtype = row.words[0];
 
-			const float epsilon = abs(stof(row.words[2]) * kcalToJoule);	// For some fucked reason the eps is -inconsistently - negative...
-			const float sigma = stof(row.words[3]) * 2 * 0.1;	 // rmin/2 [A] -> sigma [nm]
+			
+			const float epsilon = abs(stof(row.words[2]) * kcalToJoule);	// For some fucked reason the eps is *inconsistently* negative...
+			const float sigma = stof(row.words[3]) * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [nm]
 
 			const float mass = forcefield.atomnameToMassMap.find(atomtype)->second;
 
@@ -385,6 +386,7 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 	file << FFPrintHelpers::titleH2("Non-bonded parameters");
 	file << FFPrintHelpers::titleH3("{atom_type \t type_id \t mass [g/mol] \t sigma [nm] \t epsilon [J/mol]}");
+	file << FFPrintHelpers::titleH3("Potential(r) = 4 * Epsilon * ((sigma/r)^12 - (sigma/r)^6)");
 	file << FFPrintHelpers::parserTitle("atomtypes");
 	for (auto& atomtype : filtered_atomtypes) {
 		file << atomtype.type << delimiter << to_string(atomtype.atnum_local) << delimiter << to_string(atomtype.mass) << delimiter << to_string(atomtype.sigma) << delimiter << to_string(atomtype.epsilon) << endl;
@@ -404,6 +406,7 @@ void printFFBonded(const string& path, const Topology& topology) {
 	file << FFPrintHelpers::titleH1("Forcefield Bonded");
 	file << FFPrintHelpers::titleH2("Singlebonds");
 	file << FFPrintHelpers::titleH3("{ID_p1 \t ID_p2 \t Atomtype \t Atomtype \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
+	file << FFPrintHelpers::titleH3("Potential(r) = 0.5 * k_b * (r-b_0)^2");
 	file << FFPrintHelpers::parserTitle("singlebonds");
 	for (auto& bond : topology.singlebonds) {
 		file << to_string(bond.gro_ids[0]) << delimiter << to_string(bond.gro_ids[1]) << delimiter
@@ -416,6 +419,7 @@ void printFFBonded(const string& path, const Topology& topology) {
 
 	file << FFPrintHelpers::titleH2("Anglebonds");
 	file << FFPrintHelpers::titleH3("{Atom-IDs \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
+	file << FFPrintHelpers::titleH3("Potential(theta) = 0.5 * k_theta * (theta-theta_0)^2");
 	file << FFPrintHelpers::parserTitle("anglebonds");
 	for (auto& angle : topology.anglebonds) {
 		file << to_string(angle.gro_ids[0]) << delimiter << to_string(angle.gro_ids[1]) << delimiter << to_string(angle.gro_ids[2]) << delimiter
@@ -428,6 +432,7 @@ void printFFBonded(const string& path, const Topology& topology) {
 
 	file << FFPrintHelpers::titleH2("Dihedrals");
 	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
+	file << FFPrintHelpers::titleH3("Potential(phi) = k_phi * (1 + cos(n * phi - phi_0))");
 	file << FFPrintHelpers::parserTitle("dihedralbonds");
 	for (auto& dihedral : topology.dihedralbonds) {
 		for (auto& groid : dihedral.gro_ids) {
@@ -444,6 +449,7 @@ void printFFBonded(const string& path, const Topology& topology) {
 
 	file << FFPrintHelpers::titleH2("ImproperDihedrals");
 	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
+	file << FFPrintHelpers::titleH3("Potential(psi) = 0.5 * k_psi * (psi-psi_0)^2");
 	file << FFPrintHelpers::parserTitle("improperdihedralbonds");
 	for (auto improper : topology.improperdeihedralbonds) {
 		for (auto& groid : improper.gro_ids) {

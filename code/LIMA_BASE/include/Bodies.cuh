@@ -71,7 +71,7 @@ struct DihedralBond {
 
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
-	uint8_t n = 0;		// n parameter, how many energy equilibriums does the dihedral have
+	uint8_t n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 	uint32_t atom_indexes[4] = {0,0,0,0};
 };
 

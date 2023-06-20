@@ -201,16 +201,17 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
 
         int index = 0; 
 
-        for (int compound_id = 0; compound_id < sim->n_compounds; compound_id++) {
+        // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
 
-            // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
+
+        for (int compound_id = 0; compound_id < sim->n_compounds; compound_id++) {
             for (int i = 0; i < sim->sim_dev->box->compounds[compound_id].n_particles; i++) {
                 positions[index++] = sim->traj_buffer->getCompoundparticleDatapoint(compound_id, i, step);
             }
+        }
 
-            for (int solvent_index = 0; solvent_index < sim->n_solvents; solvent_index++) {
-                positions[index++] = sim->traj_buffer->getSolventparticleDatapoint(solvent_index, step);
-            }
+        for (int solvent_index = 0; solvent_index < sim->n_solvents; solvent_index++) {
+            positions[index++] = sim->traj_buffer->getSolventparticleDatapoint(solvent_index, step);
         }
 
         trrfile.write(positions, step);

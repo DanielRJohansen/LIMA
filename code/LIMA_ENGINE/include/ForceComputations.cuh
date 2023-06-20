@@ -44,13 +44,14 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 
 	const float angle = Float3::getAngle(v1, v2);					// [rad]
 	const float error = angle - angletype->theta_0;				// [rad]
+
 	// Simple implementation
-	//*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
-	//float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
+	*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
 
 	// Correct implementation
-	*potE += -angletype->k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
-	const float torque = angletype->k_theta * sinf(error);	// Torque [J/(mol*rad)]
+	//*potE += -angletype->k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
+	//const float torque = angletype->k_theta * sinf(error);	// Torque [J/(mol*rad)]
 
 	results[0] = inward_force_direction1 * (torque / (*pos_left - *pos_middle).len());
 	results[2] = inward_force_direction2 * (torque / (*pos_right - *pos_middle).len());
@@ -83,9 +84,16 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	normal2 *= -1;
 	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
 
-	*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
+	// This is what i figured was correct
+	//*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
+	//float torque = -dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
 
-	float torque = -dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
+	// This is according to chatgpt
+	*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
+	float torque = - dihedral->n * dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
+
+
+
 
 	if (0) {
 		normal1.print('1');
@@ -108,8 +116,8 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	// Not sure about the final two forces, for now we'll jsut split the sum of opposite forces between them.
 	//results[1] = (results[0] + results[3]) * -1.f * 0.5;
 	//results[2] = (results[0] + results[3]) * -1.f * 0.5;
-	results[1] = (results[0]) * -1.f;
-	results[2] = (results[3]) * -1.f;
+	results[1] = -results[0];
+	results[2] = -results[3];
 
 #ifdef LIMASAFEMODE
 	if (results[0].len() > 0.5f) {
@@ -142,10 +150,10 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 
 
 
-	float error = angle - improper->psi_0;
-	*potE += 0.5f * improper->k_psi * (error*error);
+	const float error = angle - improper->psi_0;
 
-	float torque = improper->k_psi * (angle - improper->psi_0);
+	*potE += 0.5f * improper->k_psi * (error*error);
+	const float torque = improper->k_psi * (angle - improper->psi_0);
 
 	if (0) {
 		//normal1.print('1');
@@ -210,26 +218,25 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	s = s * s * s;
 	const float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;
-
+	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
 	const Float3 force = (*pos1 - *pos0) * force_scalar;
 
 #ifdef LIMASAFEMODE
 	if constexpr (!em_variant) {	// During EM dt is lower, so large forces are not a problem
-		if (force.len() > 1f) {
+		auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
+		if (force.len() > 1.f || pot > 1e+8) {
 			//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
 			////((*pos1 - *pos0) * force_scalar).print('f');
 			//pos0->print('0');
 			//pos1->print('1');
-			printf("\nLJ Force %s: dist nm %f force %f sigma %f t1 %d t2 %d\n", calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, type1, type2);
+			printf("\nLJ Force %s: dist nm %f force %f sigma %f t1 %d t2 %d\n", 
+				calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, type1, type2);
 		}
 	}	
 #endif
 
 	return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
 	}
-
-
 }	// End of namespace LimaForcecalc
 
 

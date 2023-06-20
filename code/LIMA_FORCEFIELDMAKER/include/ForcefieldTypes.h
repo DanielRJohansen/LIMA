@@ -140,11 +140,11 @@ struct NB_Atomtype {
 	NB_Atomtype(std::string t) : type(t){}		// This is for loading form the conf file, for easy comparisons
 	NB_Atomtype(std::string t, float mass) : type(t), mass(mass) {}		// This if for forcefield merging
 	NB_Atomtype(std::string t, float mass, float sigma, float epsilon) : type(t),  mass(mass), sigma(sigma), epsilon(epsilon) {}		// For LIMA_ffnonbonded
-	NB_Atomtype(std::string t, int atnum, float mass, float sigma, float epsilon) : type(t), atnum(atnum), mass(mass), sigma(sigma), epsilon(epsilon) {}		// For random dudes ff_nonbonded
+	NB_Atomtype(std::string t, int atnum, float mass, float sigma, float epsilon) : type(t), mass(mass), sigma(sigma), epsilon(epsilon) {}		// For random dudes ff_nonbonded
 	NB_Atomtype(int gro_id, const std::string& atomtype) : gro_id(gro_id), type(atomtype) {}
 	// Official parameters
 	std::string type = "";
-	int atnum = -1;					// atnum given by input file (CHARMM)
+	//int atnum = -1;					// atnum given by input file (CHARMM)
 	int atnum_local = 0;			// atnum specific to simulation	//TODO: rename to simulation id?
 	float mass = -1;				// [g/mol]
 	float sigma = -1;				// [nm]

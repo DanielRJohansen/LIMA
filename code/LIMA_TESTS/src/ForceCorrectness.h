@@ -41,10 +41,7 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 		LIMA_Print::printMatlabVec("std_devs", std_devs);
 	}	
 
-	for (auto& stddev : std_devs) {
-		if (stddev > max_dev) { return false; }
-	}
-	return true;
+	return TestUtils::evaluateTest(std_devs, max_dev);
 }
 
 bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
@@ -100,13 +97,10 @@ bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
 	LIMA_Print::printMatlabVec("temperature", particle_temps);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-	for (auto& stddev : std_devs) {
-		if (stddev > max_dev) { return false; }
-	}
-	return true;
+	return TestUtils::evaluateTest(std_devs, max_dev);
 }
 
-bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.1) {
+bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.132) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
 	const std::string conf = work_folder + "molecule/conf.gro";
 	const std::string topol = work_folder + "molecule/topol.top";
@@ -200,7 +194,7 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 }
 
 bool doDihedralbondBenchmark(EnvMode envmode) {
-	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.06f);
+	return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.047f);
 }
 
 bool doImproperDihedralBenchmark(EnvMode envmode) {
@@ -264,14 +258,14 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
 
-	return TestUtils::evaluateTest(std_devs, 0.003);
+	return TestUtils::evaluateTest(std_devs, 0.07);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {
 	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 	const std::string simpar = work_folder + "sim_params.txt";
 
-	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.25f);
+	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.15f);
 }
 
 

@@ -50,12 +50,12 @@ int main() {
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
 	//doEightResiduesNoSolvent(envmode);
-	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
+	loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 
 	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
 
-	doPool50x(EnvMode::Headless);
+	//doPool50x(EnvMode::Headless);
 
 
 

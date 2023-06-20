@@ -490,7 +490,7 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	std::vector<std::string> files = getFiles();
 
 	for (auto& file_path : files) {
-		const SimpleParsedFile parsedfile = Filehandler::parsePrmFile(file_path);
+		const SimpleParsedFile parsedfile = Filehandler::parsePrmFile(file_path, m_verbose);
 		loadFileIntoForcefield(parsedfile, forcefield);
 	}
 
@@ -503,7 +503,7 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	//loadFFbondedIntoForcefield(bonded_parsedfile, forcefield);
 
 	// Load the topology
-	const SimpleParsedFile topology_parsedfile = Filehandler::parseTopFile(topol_path);
+	const SimpleParsedFile topology_parsedfile = Filehandler::parseTopFile(topol_path, m_verbose);
 	Topology topology = loadTopology(topology_parsedfile, ignored_atomtype);
 
 	// Filter for the atomtypes used in this simulation and map to them

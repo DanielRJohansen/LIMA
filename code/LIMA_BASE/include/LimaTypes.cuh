@@ -624,6 +624,7 @@ struct RenderBall {
 	bool disable = false;
 };
 
+// Order is critical, as many times something like "bool verbose = vl > V1" occurs
 enum VerbosityLevel {
 	SILENT,
 	CRITICAL_INFO, 

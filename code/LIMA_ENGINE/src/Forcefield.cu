@@ -15,8 +15,8 @@ Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffnonbonded_filtered.lff"));
-	SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"));
+	SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffnonbonded_filtered.lff"), vl>= V1);
+	SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"), vl >= V1);
 
 	// First load the nb forcefield
 	auto atomtypes = loadAtomTypes(nonbonded_parsed);					// 1 entry per type in compressed forcefield

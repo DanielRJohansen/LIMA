@@ -33,9 +33,9 @@ struct Filehandler {
 		int end_at = INT_MAX, bool verbose = false);
 
 	static SimpleParsedFile parseItpFile(const std::string& path, bool verbose=true);
-	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose=true);
-	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose = true);
-	static SimpleParsedFile parsePrmFile(const std::string& path, bool verbose = true);
+	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
+	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
+	static SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
 };
 
 

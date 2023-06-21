@@ -9,8 +9,8 @@
 
 
 std::vector<RenderBall> Rasterizer::render(Simulation* simulation) {
-	solvent_offset = simulation->n_compounds * MAX_COMPOUND_PARTICLES;
-	n_threadblocks = (int)ceil((float)simulation->total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
+	solvent_offset = simulation->boxparams_host.n_compounds * MAX_COMPOUND_PARTICLES;
+	n_threadblocks = (int)ceil((float)simulation->boxparams_host.total_particles_upperbound / (float)RAS_THREADS_PER_BLOCK);
 
     LIMA_UTILS::genericErrorCheck("Error before renderer");
 	RenderAtom* atoms_dev = getAllAtoms(simulation);
@@ -49,7 +49,7 @@ __global__ void kernelB(Box* box) {
 
 RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 	RenderAtom* atoms;
-	cudaMallocManaged(&atoms, sizeof(RenderAtom) * simulation->total_particles_upperbound);
+	cudaMallocManaged(&atoms, sizeof(RenderAtom) * simulation->boxparams_host.total_particles_upperbound);
 
 
     //kernelA << <10, 10>> > (simulation->sim_dev->box);
@@ -58,10 +58,10 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 
 
     Box* boxptr = simulation->sim_dev->box; // Use intermediate ptr to avoid prepascal limitation of concurrent managed data access
-    if (simulation->n_compounds > 0) {
-        loadCompoundatomsKernel << <simulation->n_compounds, MAX_COMPOUND_PARTICLES >> > (boxptr, atoms, simulation->simparams_host.step);
+    if (simulation->boxparams_host.n_compounds > 0) {
+        loadCompoundatomsKernel << <simulation->boxparams_host.n_compounds, MAX_COMPOUND_PARTICLES >> > (boxptr, atoms, simulation->simparams_host.step);
     }
-	if (simulation->n_solvents > 0) {
+	if (simulation->boxparams_host.n_solvents > 0) {
 		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (boxptr, atoms, solvent_offset, simulation->simparams_host.step);
 	}
 
@@ -71,12 +71,12 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
 
 std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, Simulation* simulation) {
     RenderBall* balls_device;
-    cudaMalloc(&balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound);
+    cudaMalloc(&balls_device, sizeof(RenderBall) * simulation->boxparams_host.total_particles_upperbound);
     processAtomsKernel <<< n_threadblocks, RAS_THREADS_PER_BLOCK >>> (atoms, balls_device);
     LIMA_UTILS::genericErrorCheck("Error during rendering");
 
-    std::vector<RenderBall> balls_host(simulation->total_particles_upperbound);    
-    cudaMemcpy(balls_host.data(), balls_device, sizeof(RenderBall) * simulation->total_particles_upperbound, cudaMemcpyDeviceToHost);
+    std::vector<RenderBall> balls_host(simulation->boxparams_host.total_particles_upperbound);
+    cudaMemcpy(balls_host.data(), balls_device, sizeof(RenderBall) * simulation->boxparams_host.total_particles_upperbound, cudaMemcpyDeviceToHost);
 
     cudaFree(balls_device);
 

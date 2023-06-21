@@ -6,14 +6,14 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	TemperaturPackage package{};
 
 	const uint64_t step = simulation->getStep() - 1;
-	const uint64_t step_offset_a = step * simulation->total_particles_upperbound;
-	const uint64_t step_offset_b = (step - 1) * simulation->total_particles_upperbound;
-	const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->n_compounds;
+	const uint64_t step_offset_a = step * simulation->boxparams_host.total_particles_upperbound;
+	const uint64_t step_offset_b = (step - 1) * simulation->boxparams_host.total_particles_upperbound;
+	const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds;
 
 	const auto dt = simulation->simparams_host.constparams.dt;
 
 	long double sum_kinE_compound = 0.;	// [J/mol]
-	for (uint64_t c = 0; c < simulation->n_compounds; c++) {
+	for (uint64_t c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 		uint64_t compound_offset = c * MAX_COMPOUND_PARTICLES;
 		for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
 			const Float3 posa = simulation->traj_buffer->getCompoundparticleDatapoint(c, i, step);
@@ -30,7 +30,7 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	//package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / AVOGADROSNUMBER);
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
-	for (int i = 0; i < simulation->n_solvents; i++) {
+	for (int i = 0; i < simulation->boxparams_host.n_solvents; i++) {
 		const Float3 posa = simulation->traj_buffer->getSolventparticleDatapoint(i, step);
 		const Float3 posb = simulation->traj_buffer->getSolventparticleDatapoint(i, step-1);
 		//const Float3 posa = simulation->traj_buffer[i + solvent_offset + step_offset_a];
@@ -40,12 +40,12 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
 		sum_kinE_solvents += static_cast<float>(kinE);
 	}
-	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->n_solvents));
+	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->boxparams_host.n_solvents));
 
 	const long double total_kinE = (sum_kinE_compound + sum_kinE_solvents) / AVOGADROSNUMBER;
 	//const float avg_kinE = static_cast<float>((sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->total_particles));
 	//package.temperature = avg_kinE * 2.f / (3.f * 8.3145f);
-	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->total_particles);
+	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->extraparams.total_particles);
 
 	return package;
 }

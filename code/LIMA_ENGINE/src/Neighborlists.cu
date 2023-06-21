@@ -31,7 +31,7 @@ void inline addNeighborIfEligible(HashTable& currentNeighbors,
 
 NListDataCollection::NListDataCollection(Simulation* simulation) {
 	compound_neighborlists.resize(MAX_COMPOUNDS);
-	cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
 
 	compoundgrid = std::make_unique<CompoundGrid>();
 	LIMA_UTILS::genericErrorCheck("Error creating NListDataCollection");
@@ -43,8 +43,8 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	// For the very first step, engine has cheated and already written the traj from the initial setup.	
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
 
-	for (int compound_id = 0; compound_id < simulation.n_compounds; compound_id++) {
-		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.total_particles_upperbound, compound_id, 0);
+	for (int compound_id = 0; compound_id < simulation.boxparams_host.n_compounds; compound_id++) {
+		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.boxparams_host.total_particles_upperbound, compound_id, 0);
 
 
 		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, 0, step);
@@ -64,7 +64,7 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 
 namespace NListUtils {
 	void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist) {
-		for (int id_self = 0; id_self < simulation->n_compounds; id_self++) {
+		for (int id_self = 0; id_self < simulation->boxparams_host.n_compounds; id_self++) {
 			NeighborList* nlist_self = &nlist->compound_neighborlists[id_self];
 			float cutoff_add_self = simulation->compounds_host[id_self].radius;
 
@@ -90,7 +90,7 @@ namespace NListUtils {
 
 
 	void matchCompoundNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection) {
-		for (uint16_t id_self = 0; id_self < simulation->n_compounds; id_self++) {
+		for (uint16_t id_self = 0; id_self < simulation->boxparams_host.n_compounds; id_self++) {
 
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
@@ -99,7 +99,7 @@ namespace NListUtils {
 			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
 
 			// Go through all compounds in box, with higher ID than self!
-			for (uint16_t id_other = id_self + 1; id_other < simulation->n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
+			for (uint16_t id_other = id_self + 1; id_other < simulation->boxparams_host.n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_other];
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
 				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;	// THIS IS BORKEN SINCE LIMAMETRES
@@ -116,7 +116,7 @@ namespace NListUtils {
 
 
 	void distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection) {
-		for (int compound_index = 0; compound_index < simulation->n_compounds; compound_index++) {
+		for (int compound_index = 0; compound_index < simulation->boxparams_host.n_compounds; compound_index++) {
 			const Float3& compound_position = nlist_data_collection.compound_key_positions[compound_index];
 			const NodeIndex& nearest_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_position);
 
@@ -225,7 +225,7 @@ namespace NListUtils {
 NListManager::NListManager(Simulation* simulation) {
 	nlist_data_collection = std::make_unique<NListDataCollection>(simulation);
 
-	for (int i = 0; i < simulation->n_compounds; i++) {
+	for (int i = 0; i < simulation->boxparams_host.n_compounds; i++) {
 		nlist_data_collection->compound_neighborlists[i].associated_id = i;
 	}
 }
@@ -276,7 +276,7 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 
 
 void NListManager::pushNlistsToDevice(Simulation* simulation) {
-	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists.data(), sizeof(NeighborList) * simulation->n_compounds, cudaMemcpyHostToDevice);
+	cudaMemcpy(simulation->sim_dev->box->compound_neighborlists, nlist_data_collection->compound_neighborlists.data(), sizeof(NeighborList) * simulation->boxparams_host.n_compounds, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Error after transferring compound neighborlists to device");
 
 	//cudaMemcpy(simulation->box->solvent_neighborlists, nlist_data_collection->solvent_neighborlists, sizeof(NeighborList) * simulation->n_solvents, cudaMemcpyHostToDevice);

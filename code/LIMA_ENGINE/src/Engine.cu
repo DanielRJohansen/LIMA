@@ -83,9 +83,9 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
-		&simulation->potE_buffer[step_relative * simulation->total_particles_upperbound], 
+		&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
 		simulation->sim_dev->databuffers->potE_buffer, 
-		sizeof(float) * simulation->total_particles_upperbound * steps_to_transfer, 
+		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
@@ -104,7 +104,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 		//&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
 		simulation->traj_buffer->getBufferAtStep(step_relative),
 		simulation->sim_dev->databuffers->traj_buffer,
-		sizeof(Float3) * simulation->total_particles_upperbound * steps_to_transfer,
+		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
 		cudaMemcpyDeviceToHost
 	);
 
@@ -114,7 +114,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 
 
 void Engine::offloadTrainData() {
-	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds;
+	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds;
 	if (values_per_step == 0) {
 		return;	// No data to transfer
 	}
@@ -128,13 +128,13 @@ void Engine::offloadTrainData() {
 void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
-	std::vector<CompoundCoords> compoundcoords_array(simulation->n_compounds);
-	auto error = cudaMemcpy(compoundcoords_array.data(), simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->n_compounds, cudaMemcpyDeviceToHost);
+	std::vector<CompoundCoords> compoundcoords_array(simulation->boxparams_host.n_compounds);
+	auto error = cudaMemcpy(compoundcoords_array.data(), simulation->sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck(error);
 	
 
 	// We need to bootstrap step-0 which is used for traj-buffer
-	for (int compound_id = 0; compound_id < simulation->n_compounds; compound_id++) {
+	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 
 			//const size_t buffer_index = EngineUtils::getAlltimeIndexOfParticle(0, simulation->total_particles_upperbound, compound_id, particle_id);
@@ -163,14 +163,14 @@ void Engine::deviceMaster() {
 	}
 
 	cudaDeviceSynchronize();
-	if (simulation->n_compounds > 0) {
-		compoundKernel<em_variant><< < simulation->n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
+	if (simulation->boxparams_host.n_compounds > 0) {
+		compoundKernel<em_variant><< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 
 	cudaDeviceSynchronize();	// Prolly not necessary
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 #ifdef ENABLE_SOLVENTS
-	if (simulation->n_solvents > 0) { 
+	if (simulation->boxparams_host.n_solvents > 0) {
 		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 

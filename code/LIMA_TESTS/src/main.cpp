@@ -49,11 +49,13 @@ int main() {
 	//doMethionineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.05, {}, false);
 
-	//doEightResiduesNoSolvent(envmode);
+	doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002);
 
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+
+	//TestUtils::loadAndRunBasicSimulation("T4Lysozyme", envmode);
 
 	//doPool50x(EnvMode::Headless);
 

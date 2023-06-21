@@ -61,7 +61,7 @@ void Display::render(Simulation* simulation) {
     auto balls = rasterizer.render(simulation);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    drawBalls(balls, simulation->total_particles_upperbound);
+    drawBalls(balls, simulation->boxparams_host.total_particles_upperbound);
 
     /* Swap front and back buffers */
     glfwSwapBuffers(window);

@@ -64,6 +64,7 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
 	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host.step);
+	simulation->extraparams = simulation_src.extraparams;
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
@@ -102,7 +103,7 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 }
 
 void Environment::verifyBox() {
-	for (int c = 0; c < simulation->n_compounds; c++) {
+	for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
 		if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
 			printf("Compound %d too large for simulation-box\n", c);
@@ -119,7 +120,7 @@ void Environment::verifyBox() {
 
 
 	if (print_compound_positions) {
-		for (int c = 0; c < simulation->n_compounds; c++) {
+		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 			Compound* comp = &simulation->compounds_host[c];
 			for (int p = 0; p < comp->n_particles; p++) {
 				printf("%d   ", comp->particle_global_ids[p]);
@@ -223,7 +224,8 @@ void Environment::postRunEvents() {
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
 		printH2();
-		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->n_solvents, "max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->n_compounds);
+		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->boxparams_host.n_solvents, 
+			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->boxparams_host.n_compounds, "total p upperbound", simulation->boxparams_host.total_particles_upperbound);
 		printH2();
 	}
 	
@@ -234,7 +236,7 @@ void Environment::postRunEvents() {
 
 	if (simulation->sim_dev->params->critical_error_encountered) {
 		dumpToFile(simulation->trainingdata.data(),
-			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->n_compounds * simulation->getStep(),
+			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds * simulation->getStep(),
 			out_dir + "sim_traindata.bin");
 	}
 	
@@ -255,7 +257,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (DUMP_POTE) {
-		dumpToFile(simulation->potE_buffer.data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "potE.bin");
+		dumpToFile(simulation->potE_buffer.data(), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
 	}
 
 #ifdef USEDEBUGF3
@@ -268,7 +270,7 @@ void Environment::postRunEvents() {
 			+ out_dir + " "
 			+ std::to_string(simulation->getStep()) + " "
 			+ "0" + " "											// do_shuffle
-			+ std::to_string(simulation->n_compounds) + " "
+			+ std::to_string(simulation->boxparams_host.n_compounds) + " "
 			+ std::to_string(MAX_COMPOUND_PARTICLES)
 			;
 
@@ -291,7 +293,7 @@ void Environment::handleStatus(Simulation* simulation) {
 
 
 	if (!(simulation->getStep() % simulation->steps_per_render)) {
-		printf("\r\tStep #%06d", simulation->getStep());
+		printf("\r\tStep #%06llu", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
@@ -392,7 +394,7 @@ void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s)
 	file_path = &file_path_s[0];
 
 	const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
-	m_logger.print("Writing " + str + "MB to binary file " + file_path);
+	m_logger.print("Writing " + str + "MB to binary file " + file_path + "\n");
 
 	FILE* file;
 

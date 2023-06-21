@@ -14,9 +14,10 @@ void addMultipleChars(std::string& str, int n_spaces, char c = ' ') {
 		str += string{ c };
 }
 
-std::string LIMA_Printer::formatValue(int value)  {
-	return std::to_string(value);
-}
+
+//std::string LIMA_Printer::formatValue(int value)  {
+//	return std::to_string(value);
+//}
 
 std::string LIMA_Printer::formatValue(double value) {
 	return formatValue(static_cast<float>(value));

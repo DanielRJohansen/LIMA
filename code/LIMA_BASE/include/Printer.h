@@ -80,7 +80,11 @@ public:
 private:
 	
 	// I have to do this because CUDA is being a bitch..
-	static std::string formatValue(int value);
+	//static std::string formatValue(int value);
+	template <typename T>
+	static std::string formatValue(T value) {
+		return std::to_string(value);
+	}
 	static std::string formatValue(float value);
 	static std::string formatValue(double value);
 

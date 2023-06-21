@@ -42,6 +42,14 @@ struct AtomtypeMapping {
 	const int atomtype_id; // simulation specific
 };
 
+
+const float water_mass = 15.999000f + 2.f * 1.008000f;
+//const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
+const float water_sigma = 0.22;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
+const float water_epsilon = 0.1591 * kcalToJoule;
+
+static const NB_Atomtype Water_atomtype{ "WATER", 0, water_mass, water_sigma, water_epsilon };
+
 //#ifdef __linux__
 //	string sim_path = "../../Simulation";
 //	//string sim_path = "/home/lima/Desktop/LIMA/Simulation";
@@ -299,7 +307,9 @@ Topology loadTopology(const SimpleParsedFile& parsedfile, const char ignored_ato
 const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedTypes& forcefield) {
 	std::vector<NB_Atomtype> atomtypes_filtered;
 
-	atomtypes_filtered.emplace_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
+	atomtypes_filtered.emplace_back(Water_atomtype);
+	//Water_atomtype
+	//atomtypes_filtered.emplace_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
 
 
 	for (const auto& record : topology.atomtable) {

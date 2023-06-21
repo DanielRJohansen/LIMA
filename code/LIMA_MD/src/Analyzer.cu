@@ -30,7 +30,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 
 
 	if (threadIdx.x == 0) {
-		data_out[compound_index + (step - 1) * box->n_compounds] = Float3{};
+		data_out[compound_index + (step - 1) * box->boxparams.n_compounds] = Float3{};
 		compound = box->compounds[compound_index];
 	}
 	__syncthreads();
@@ -44,11 +44,11 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	const float mass = box->forcefield->particle_parameters[atom_type].mass;
 
 	const uint32_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
-	const int step_offset = step * box->total_particles_upperbound;
+	const int step_offset = step * box->boxparams.total_particles_upperbound;
 	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
-	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->total_particles_upperbound];
-	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->total_particles_upperbound];
+	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
+	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
 	const float n_steps = 2.f;
 
 	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
@@ -61,7 +61,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	__syncthreads();
 
 	if (threadIdx.x == 0) {
-		data_out[compound_index + (step - 1) * box->n_compounds] = energy[0];
+		data_out[compound_index + (step - 1) * box->boxparams.n_compounds] = energy[0];
 	}
 }
 
@@ -76,24 +76,24 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 	int solvent_index = threadIdx.x + blockIdx.y * THREADS_PER_SOLVENTBLOCK;
 	int step = blockIdx.x + 1;
-	int compounds_offset = box->n_compounds * MAX_COMPOUND_PARTICLES;
+	int compounds_offset = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 
 
 	energy[threadIdx.x] = Float3(0.f);
 	if (threadIdx.x == 0) {
 		data_out[(step - 1) * gridDim.y + blockIdx.y] = energy[0];
 	}
-	if (solvent_index >= box->n_solvents) { return; }
+	if (solvent_index >= box->boxparams.n_solvents) { return; }
 
 
 	
-	Float3 pos_tsub1 = traj_buffer[compounds_offset + solvent_index + (step - 1) * box->total_particles_upperbound];
-	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->total_particles_upperbound];
+	Float3 pos_tsub1 = traj_buffer[compounds_offset + solvent_index + (step - 1) * box->boxparams.total_particles_upperbound];
+	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->boxparams.total_particles_upperbound];
 
 	float mass = SOLVENT_MASS;
 	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt*2.f / NANO_TO_LIMA);	// convert [ls] to [ns]
 
-	float potE = potE_buffer[compounds_offset + solvent_index + step * box->total_particles_upperbound];
+	float potE = potE_buffer[compounds_offset + solvent_index + step * box->boxparams.total_particles_upperbound];
 
 	if (potE != 0.f) {
 		//printf("step %04d solvate %04d pot %f, compound_offset %d, step_offset  %d\n", step, solvent_index, potE, compounds_offset, step*box->total_particles_upperbound);
@@ -122,7 +122,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
 	uint64_t max_steps_per_kernel = 1000;
-	uint64_t particles_per_step = simulation->total_particles_upperbound;
+	uint64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
 	uint64_t max_values_per_kernel = (max_steps_per_kernel + 2) * particles_per_step;							// Pad steps with 2 for vel calculation
 	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
 	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
@@ -154,7 +154,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 }
 
 void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, uint64_t step_offset) {
-	const uint64_t particles_per_step = simulation->total_particles_upperbound;
+	const uint64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
 
 	// First move the middle bulk to device
 	//cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
@@ -179,32 +179,33 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer\n");
 }
 
-// TODO: Fix this fucntion like the compound one
 std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
+	int blocks_per_solventkernel = (int)ceil((float)simulation->boxparams_host.n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
+
 	// If any solvents are present, fill above array
-	if (simulation->n_solvents > 0) {
+	if (simulation->boxparams_host.n_solvents > 0) {
 
-		std::vector<Float3> average_solvent_energy_blocked(n_steps * simulation->blocks_per_solventkernel);
+		std::vector<Float3> average_solvent_energy_blocked(n_steps * blocks_per_solventkernel);
 		Float3* data_out;
-		cudaMalloc(&data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps);
+		cudaMalloc(&data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps);
 
-		dim3 block_dim(n_steps, simulation->blocks_per_solventkernel, 1);
+		dim3 block_dim(n_steps, blocks_per_solventkernel, 1);
 		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
-		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * simulation->blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
+		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
 		cudaFree(data_out);
 
 		for (uint64_t step = 0; step < n_steps; step++) {
 			average_solvent_energy[step] = Float3(0.f);
-			for (int block = 0; block < simulation->blocks_per_solventkernel; block++) {
-				average_solvent_energy[step] += average_solvent_energy_blocked[block + step * simulation->blocks_per_solventkernel];
+			for (int block = 0; block < blocks_per_solventkernel; block++) {
+				average_solvent_energy[step] += average_solvent_energy_blocked[block + step * blocks_per_solventkernel];
 			}
-			average_solvent_energy[step] *= (1.f / simulation->n_solvents);
+			//average_solvent_energy[step] *= (1.f / simulation->boxparams_host.n_solvents);
 		}
 
 	}
@@ -214,17 +215,17 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 
 
 std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
-	const uint64_t n_datapoints = simulation->n_compounds * steps_in_kernel;
+	const uint64_t n_datapoints = simulation->boxparams_host.n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
 
-	if (simulation->total_compound_particles > 0) {
+	if (simulation->extraparams.total_compound_particles > 0) {
 		std::vector<Float3> host_data(n_datapoints);
 
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
-		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->sim_dev->box->n_compounds, 1);
+		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->sim_dev->box->boxparams.n_compounds, 1);
 		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
@@ -234,8 +235,8 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 
 
 		for (uint64_t step = 0; step < steps_in_kernel; step++) {
-			for (uint64_t i = 0; i < simulation->sim_dev->box->n_compounds; i++) {
-				total_compound_energy[step] += host_data[i + step * simulation->sim_dev->box->n_compounds];
+			for (uint64_t i = 0; i < simulation->sim_dev->box->boxparams.n_compounds; i++) {
+				total_compound_energy[step] += host_data[i + step * simulation->sim_dev->box->boxparams.n_compounds];
 			}
 			//total_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
 		}

@@ -21,9 +21,7 @@
 
 
 
-const float water_mass = 15.999000f + 2.f * 1.008000f;
-const float water_sigma = 0.302905564168f + 2.f * 0.040001352445f;
-const float water_epsilon = (0.50208f + 2.f * 0.19246f) *1000.f;		// Convert kJ->J
+
 
 #include <map>
 

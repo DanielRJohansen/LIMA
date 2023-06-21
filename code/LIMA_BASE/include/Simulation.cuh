@@ -45,8 +45,18 @@ struct SimParams {
 	float thermostat_scalar = 1.f;
 
 	const SimParamsConst constparams;
+};
 
+struct BoxParams {
+	uint32_t n_compounds = 0;
+	uint16_t n_solvents = 0;
+	uint32_t total_particles_upperbound = 0;
+};
 
+// Params in simulation host-side only
+struct SimparamsExtra {
+	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 };
 
 struct DatabuffersDevice {
@@ -103,10 +113,8 @@ struct Box {
 	void moveToDevice();				// Loses pointer to RAM location!
 	void deleteMembers();
 
+	BoxParams boxparams;
 
-	uint32_t n_compounds = 0;
-	uint16_t n_solvents = 0;
-	uint32_t total_particles_upperbound = 0;
 	static constexpr size_t coordarray_circular_queue_n_elements = MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER;
 
 	// flags used for destructing only!
@@ -177,10 +185,7 @@ public:
 	std::vector<float> loggingdata;
 
 
-	uint32_t total_particles_upperbound = 0;
-	uint32_t total_compound_particles = 0;			// Precise number, but DO NOT EVER USE IN INDEXING!!
-	uint32_t total_particles = 0;				// Precise number, but DO NOT EVER USE IN INDEXING!!
-	
+
 
 	//const float dt = 100.f;					// [ls]
 	const int steps_per_render = STEPS_PER_RENDER;
@@ -190,16 +195,18 @@ public:
 	std::unique_ptr<Box> box_host;
 
 	SimParams simparams_host;
+	BoxParams boxparams_host;	// only available after box_device has been created
+	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
 
 	// Box variable copies, here for ease of access.
-	int n_compounds = 0;
+	//int n_compounds = 0;
 	int n_bridges = 0; 
-	int n_solvents = 0;
+	//int n_solvents = 0;
 
 	SimulationDevice* sim_dev = nullptr;
-	int blocks_per_solventkernel = 0;
+	//int blocks_per_solventkernel = 0;
 };
 
 namespace SimUtils {

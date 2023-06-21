@@ -28,9 +28,9 @@ constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 const int PICO_TO_LIMA = 100000;
 
-const float kcalToJoule = 4184.f;
-const float degreeToRad = 2.f * PI / 360.f;
-const float AngToNm = 0.1f;
+constexpr float kcalToJoule = 4184.f;
+constexpr float degreeToRad = 2.f * PI / 360.f;
+constexpr float AngToNm = 0.1f;
 const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
@@ -69,7 +69,7 @@ constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
 const bool print_compound_positions = false;		// what is tihs?
 const bool DUMP_TRAJ = true;
-const bool DUMP_POTE = false;
+const bool DUMP_POTE = true;
 const bool POSTSIM_ANAL = true;
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -124,7 +124,7 @@ const int MAX_ATOM_TYPES = 32;
 
 
 // -------------------------------------------- Kernel Parameters ----------------------------------------------- //
-const int THREADS_PER_SOLVENTBLOCK = 128;
+const int THREADS_PER_SOLVENTBLOCK = 128;	// TODO: delete this
 const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 // -------------------------------------------------------------------------------------------------------------- //
 

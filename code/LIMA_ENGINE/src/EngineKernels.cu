@@ -521,7 +521,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		force += computePairbondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, &potE_sum);
-		//force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, &potE_sum);
+		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, &potE_sum);
 		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -646,7 +646,9 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
-
+	//if (potE_sum > 500) {
+	//	printf("%d %f\n", threadIdx.x + blockIdx.x * blockDim.x, potE_sum);
+	//}
 	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams.step, sim->databuffers);
 
 	if (force.len() > 2e+10) {
@@ -989,7 +991,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 		//box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = 0;
 
 		const int compound_offset = p_ref->compound_id * MAX_COMPOUND_PARTICLES;
-		const int step_offset = (simparams.step % STEPS_PER_LOGTRANSFER) * box->total_particles_upperbound;
+		const int step_offset = (simparams.step % STEPS_PER_LOGTRANSFER) * box->boxparams.total_particles_upperbound;
 
 		sim->databuffers->potE_buffer[p_ref->local_id_compound + compound_offset + step_offset] = potE_sum;
 	}

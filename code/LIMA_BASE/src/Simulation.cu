@@ -5,7 +5,7 @@ Box::~Box() {
 }
 
 void Box::moveToDevice() {
-	int bytes_total = sizeof(Compound) * n_compounds
+	int bytes_total = sizeof(Compound) * boxparams.n_compounds
 		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
 	//printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
@@ -104,7 +104,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 SimulationDevice::SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host) {
 	genericCopyToDevice(params_host, &params, 1);
 	
-	databuffers = new DatabuffersDevice(box_host->total_particles_upperbound, box_host->n_compounds);
+	databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds);
 	databuffers = genericMoveToDevice(databuffers, 1);
 
 	box_host->moveToDevice();
@@ -150,22 +150,22 @@ void Simulation::moveToDevice() {
 }
 
 void Simulation::copyBoxVariables() {
-	n_compounds = box_host->n_compounds;
+	boxparams_host = box_host->boxparams;
+	//n_compounds = box_host->boxparams.n_compounds;
 	n_bridges = box_host->bridge_bundle->n_bridges;
 
 
-	n_solvents = box_host->n_solvents;
-	blocks_per_solventkernel = (int)ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
+	//n_solvents = box_host->boxparams.n_solvents;
+	//blocks_per_solventkernel = (int)ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
 
-	compounds_host.resize(n_compounds);
-	for (int i = 0; i < n_compounds; i++)
+	compounds_host.resize(boxparams_host.n_compounds);
+	for (int i = 0; i < boxparams_host.n_compounds; i++)
 		compounds_host[i] = box_host->compounds[i];
 
 	// Need this variable both on host and device
-	total_particles_upperbound = box_host->n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
-	box_host->total_particles_upperbound = total_particles_upperbound;
+	//total_particles_upperbound = box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
+	//box_host->boxparams.total_particles_upperbound = total_particles_upperbound;
 }
-
 
 void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]

@@ -103,15 +103,15 @@ class TRRFormat {
     ShittyFileFormat file;
 
     void get_cell(std::vector<float>& box) {
-        box[0] = 1.f;
+        box[0] = 1.f * BOX_LEN_NM;
         box[1] = 0.f;
         box[2] = 0.f;
         box[3] = 0.f;
-        box[4] = 1.f;
+        box[4] = 1.f * BOX_LEN_NM;
         box[5] = 0.f;
         box[6] = 0.f;
         box[7] = 0.f;
-        box[8] = 1.f;
+        box[8] = 1.f * BOX_LEN_NM;
     }
 
     void write_frame_header(const FrameHeader& header) {
@@ -194,9 +194,10 @@ public:
 void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
     TRRFormat trrfile(path);
 
-    int inc = sim->getStep() > 1000 ? 10 : 1;
+    const int inc = sim->getStep() > 2000 ? 10 : 1;
+    
 
-    std::vector<Float3> positions(sim->total_particles);
+    std::vector<Float3> positions(sim->extraparams.total_particles);
     for (int step = 0; step < sim->getStep(); step += inc) {
 
         int index = 0; 
@@ -204,13 +205,13 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
         // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
 
 
-        for (int compound_id = 0; compound_id < sim->n_compounds; compound_id++) {
+        for (int compound_id = 0; compound_id < sim->boxparams_host.n_compounds; compound_id++) {
             for (int i = 0; i < sim->sim_dev->box->compounds[compound_id].n_particles; i++) {
                 positions[index++] = sim->traj_buffer->getCompoundparticleDatapoint(compound_id, i, step);
             }
         }
 
-        for (int solvent_index = 0; solvent_index < sim->n_solvents; solvent_index++) {
+        for (int solvent_index = 0; solvent_index < sim->boxparams_host.n_solvents; solvent_index++) {
             positions[index++] = sim->traj_buffer->getSolventparticleDatapoint(solvent_index, step);
         }
 

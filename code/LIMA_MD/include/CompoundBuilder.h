@@ -107,7 +107,11 @@ struct ParticleInfo {
 class CompoundFactory : public Compound {
 public:
 	CompoundFactory() {}
-	CompoundFactory(const int id) : id(id) {}
+	CompoundFactory(const int id) : id(id) {
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+			potE_interim[i] = 0.f;
+		}
+	}
 
 	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id);
 	int id = -1;	// unique lima id

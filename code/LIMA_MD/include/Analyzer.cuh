@@ -47,15 +47,24 @@ public:
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
+	static void printEnergy(AnalyzedPackage* package);
+	static float getVarianceCoefficient(const std::vector<float>& vec);
+
+
+	// Temp dev function
+	static void findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir);
+
+	
+	
+
+
+
+private:
 	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
 	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
 
 	void moveAndPadData(Simulation* sim, uint64_t steps_in_kernel, uint64_t step_offset);
 
-	static void printEnergy(AnalyzedPackage* package);
-	static float getVarianceCoefficient(const std::vector<float>& vec);
-
-private:
 
 	Float3* traj_buffer_device = nullptr;
 	float* potE_buffer_device = nullptr;

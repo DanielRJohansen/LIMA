@@ -159,14 +159,15 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	// First move the middle bulk to device
 	//cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer->data()[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
-	cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+	//cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
 	// Then pad the front. If step 0, we pad with zero. If step n we pad with n-1
 	uint64_t paddingSrcIndex = step_offset == 0 ? 0 : step_offset - 1;
 	//cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&traj_buffer_device[0], &simulation->traj_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
-	cudaMemcpy(&potE_buffer_device[0], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&potE_buffer_device[0], &simulation->potE_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer1\n");
 
 	// Then pad the end. if step
@@ -174,7 +175,7 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	paddingSrcIndex = end_index == simulation->getStep() ? end_index - 1 : end_index;
 	//cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&traj_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->traj_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(Float3) * particles_per_step, cudaMemcpyHostToDevice);
-	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&potE_buffer_device[(steps_in_kernel + 1) * particles_per_step], &simulation->potE_buffer->data()[paddingSrcIndex * particles_per_step], sizeof(float) * particles_per_step, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer\n");
 }
@@ -297,4 +298,62 @@ void Analyzer::printEnergy(AnalyzedPackage* package) {
 	printRow("potE", package->pot_energy);
 	printRow("kinE", package->kin_energy);
 	printRow("totalE", package->total_energy);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir) {
+	std::vector<float> energies;
+	
+	for (auto step = 0; step < sim.getStep()-1; step++) {
+
+		const auto step_prev = step > 0 ? step - 1 : step;
+		const auto step_next = step + 1;
+
+		for (int compound_id = 0; compound_id < sim.boxparams_host.n_compounds; compound_id++) {
+			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+
+				const float potE = sim.potE_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step);
+
+				const Float3 pos_prev = sim.traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step_prev);
+				const Float3 pos_next = sim.traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step_next);
+
+				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
+				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
+				const float kinE = EngineUtils::calcKineticEnergy(&pos_prev, &pos_next, mass, 2.f * sim.simparams_host.constparams.dt / NANO_TO_LIMA);
+				
+				energies.emplace_back(potE);
+				energies.emplace_back(kinE);
+			}
+		}
+
+		for (int solvent_id = 0; solvent_id < sim.boxparams_host.n_solvents; solvent_id++) {
+
+			const float potE = sim.potE_buffer->getSolventparticleDatapoint(solvent_id, step);
+
+			const Float3 pos_prev = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_prev);
+			const Float3 pos_next = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_next);
+
+			const float mass = sim.forcefield.particle_parameters[ATOMTYPE_SOL].mass;
+			const float kinE = EngineUtils::calcKineticEnergy(&pos_prev, &pos_next, mass, 2.f * sim.simparams_host.constparams.dt);
+
+			energies.emplace_back(potE);
+			energies.emplace_back(kinE);
+		}
+	}
+
+	energies[0] = 11.f;
+	energies[1] = 22.f;
+	auto n_values_per_step = 2 * (sim.boxparams_host.n_compounds * MAX_COMPOUND_PARTICLES + sim.boxparams_host.n_solvents);
+	printf("\nValues per step %d\n", n_values_per_step);
+	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 }

@@ -47,7 +47,7 @@ private:
 	GLFWwindow* window = nullptr;
 
 	const int triangleAmount = 10; //# of triangles used to draw circle
-	const float PI = 3.14f;
+	const float PI = 3.1415f;
 	const GLfloat twicePi = 2.0f * PI;
 
 	const int display_height = 1400;

@@ -97,9 +97,7 @@ private:
 
 	//bool ready_to_run = false;
 
-	// These should be in interface maybe?
-	template <typename T>
-	void dumpToFile(T* data, uint64_t n_datapoints, string file_path);
+
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;

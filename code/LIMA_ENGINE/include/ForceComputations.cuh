@@ -12,7 +12,7 @@ namespace LimaForcecalc {
 
 // ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
 
-__device__ void calcPairbondForces(Float3* pos_a, Float3* pos_b, SingleBond* bondtype, Float3* results, float* potE) {
+__device__ void calcSinglebondForces(Float3* pos_a, Float3* pos_b, SingleBond* bondtype, Float3* results, float* potE) {
 	// Calculates bond force on both particles					//
 	// Calculates forces as J/mol*M								//
 	// kb [J/(mol*lm^2)]

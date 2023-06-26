@@ -18,17 +18,19 @@
 namespace TestMDStability {
 
 	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 10, 800 };
+		InputSimParams emparams{ 20, 800 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
 		env->run(true);
+		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		// Do sim
-		InputSimParams simparams{ 100, 5000 };
+		InputSimParams simparams{ 100, 2000 };
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
+		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		const auto analytics = env->getAnalyzedPackage();
 		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);

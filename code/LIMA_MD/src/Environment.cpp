@@ -231,11 +231,11 @@ void Environment::postRunEvents() {
 	
 	
 	if (0) {
-		dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");
+		Filehandler::dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");
 	}
 
 	if (simulation->sim_dev->params->critical_error_encountered) {
-		dumpToFile(simulation->trainingdata.data(),
+		Filehandler::dumpToFile(simulation->trainingdata.data(),
 			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds * simulation->getStep(),
 			out_dir + "sim_traindata.bin");
 	}
@@ -248,7 +248,7 @@ void Environment::postRunEvents() {
 	if (POSTSIM_ANAL) {
 		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_folder));
 		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
-		dumpToFile(
+		Filehandler::dumpToFile(
 			postsim_anal_package.energy_data.data(),
 			postsim_anal_package.energy_data.size(),
 			out_dir + "energy.bin"
@@ -257,7 +257,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (DUMP_POTE) {
-		dumpToFile(simulation->potE_buffer.data(), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
+		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtStep(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
 	}
 
 #ifdef USEDEBUGF3
@@ -386,31 +386,31 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 
 
 
-
-// Todo: move this to the utilities.h file
-template <typename T>
-void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s) {	
-	char* file_path;
-	file_path = &file_path_s[0];
-
-	const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
-	m_logger.print("Writing " + str + "MB to binary file " + file_path + "\n");
-
-	FILE* file;
-
-#ifndef __linux__
-	if (!fopen_s(&file, file_path, "wb")) {
-
-		assert(sizeof(T));
-		assert(n_datapoints);
-
-		fwrite(data, sizeof(T), n_datapoints, file);
-		fclose(file);
-	}
-#else
-	file = fopen(file_path, "wb");
-#endif
-}
+//
+//// Todo: move this to the utilities.h file
+//template <typename T>
+//void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s) {	
+//	char* file_path;
+//	file_path = &file_path_s[0];
+//
+//	const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
+//	m_logger.print("Writing " + str + "MB to binary file " + file_path + "\n");
+//
+//	FILE* file;
+//
+//#ifndef __linux__
+//	if (!fopen_s(&file, file_path, "wb")) {
+//
+//		assert(sizeof(T));
+//		assert(n_datapoints);
+//
+//		fwrite(data, sizeof(T), n_datapoints, file);
+//		fclose(file);
+//	}
+//#else
+//	file = fopen(file_path, "wb");
+//#endif
+//}
 
 
 

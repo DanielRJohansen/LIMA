@@ -83,7 +83,8 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
-		&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
+		simulation->potE_buffer->getBufferAtStep(step_relative),
+		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
 		simulation->sim_dev->databuffers->potE_buffer, 
 		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
 		cudaMemcpyDeviceToHost);

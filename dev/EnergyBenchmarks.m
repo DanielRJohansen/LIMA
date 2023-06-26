@@ -5,9 +5,9 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 3000;
+n_steps = 2000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "AngleBenchmark";
+benchmark = "T4Lysozyme";
 %benchmark = benchmarks(10);
 % ------------------------------------ %
 
@@ -28,7 +28,7 @@ x = 1:length(potE);
 
 
 from = 0;
-to = 600;
+to = inf;
 
 % Plot original data
 subplot(2,1,1)

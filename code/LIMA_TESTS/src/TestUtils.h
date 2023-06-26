@@ -74,7 +74,7 @@ namespace TestUtils {
 			Analyzer::printEnergy(analytics);
 			LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
 		}
-		
+		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		return evaluateTest({ std_dev }, max_dev, verbose);
 	}

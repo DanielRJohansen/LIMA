@@ -446,12 +446,13 @@ namespace CoordArrayQueueHelpers {
 struct Compound {
 	__host__ __device__  Compound() {}
 
-	uint8_t n_particles = 0;					// MAX 255 particles
-	//Float3 prev_positions[MAX_COMPOUND_PARTICLES];;			// Should this really belong to the compound and not the box?
-	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
+	uint8_t n_particles = 0;			
+	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels // TODO: find another mechanism
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)
+	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)	//TODO Move somewhere else
 
+	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this
+	float potE_interim[MAX_COMPOUND_PARTICLES];
 	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
 
 #ifdef LIMAKERNELDEBUGMODE
@@ -493,6 +494,8 @@ struct Compound {
 			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
 			compound->forces[threadIdx.x] = Float3(0.f);
+
+			potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
 			//#ifdef LIMA_DEBUGMODE
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
 			//#endif
@@ -502,8 +505,10 @@ struct Compound {
 			atom_types[threadIdx.x] = 0;
 			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = Float3(0.f);
+			potE_interim[threadIdx.x] = 0.f;
 			particle_global_ids[threadIdx.x] = 0;
 		}
+
 		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
 			int index = i * blockDim.x + threadIdx.x;
 			if (index < n_singlebonds)

@@ -175,7 +175,8 @@ public:
 
 	//std::vector<Float3> traj_buffer;
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;
-	std::vector<float> potE_buffer;
+	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;
+	//std::vector<float> potE_buffer;
 	std::vector<float> temperature_buffer;
 
 	// TODO: Make these vectors instead
@@ -199,6 +200,8 @@ public:
 	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
+	ForceField_NB forcefield;
+
 
 	// Box variable copies, here for ease of access.
 	//int n_compounds = 0;

@@ -153,7 +153,7 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 	auto ip =  env.loadInputSimParams(simpar);
 
 	const float relaxed_angle = 1.8849f; // [rad]
-	std::vector<float> angle_errors{ 0.5f }; //(t-t0) [rad]
+	std::vector<float> angle_errors{ 0.5f, PI/2.f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
 
 	for (auto angle_error : angle_errors) {
@@ -268,7 +268,12 @@ bool doMethionineBenchmark(EnvMode envmode) {
 	return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.15f);
 }
 
+bool doPhenylalanineBenchmark(EnvMode envmode) {
+	const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
+	const std::string simpar = work_folder + "sim_params.txt";
 
+	return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 0.15f);
+}
 
 
 

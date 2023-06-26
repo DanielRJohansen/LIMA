@@ -5,7 +5,7 @@
 #include <string>
 
 #include <map>
-
+#include <cassert>
 
 struct SimpleParsedFile {
 	struct Row {
@@ -36,6 +36,31 @@ struct Filehandler {
 	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
 	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
 	static SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
+
+	// These should be in interface maybe?
+	template <typename T>
+	static void dumpToFile(T* data, uint64_t n_datapoints, std::string file_path_s) {
+		char* file_path;
+		file_path = &file_path_s[0];
+
+		const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
+		//m_logger.print("Writing " + str + "MB to binary file " + file_path + "\n");
+
+		FILE* file;
+
+#ifndef __linux__
+		if (!fopen_s(&file, file_path, "wb")) {
+
+			assert(sizeof(T));
+			assert(n_datapoints);
+
+			fwrite(data, sizeof(T), n_datapoints, file);
+			fclose(file);
+		}
+#else
+		//file = fopen(file_path, "wb");
+#endif
+	}
 };
 
 

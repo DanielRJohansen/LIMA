@@ -558,6 +558,10 @@ namespace EngineUtils {
 		if (solvent_active) {
 			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
 			//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
+			if (solventblock.ids[threadIdx.x] == 0) {
+				//LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]).print('0');
+				//force.print('f');
+			}
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
 

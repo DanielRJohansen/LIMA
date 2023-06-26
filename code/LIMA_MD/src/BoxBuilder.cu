@@ -53,7 +53,8 @@ void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps
 	auto datasize_str = std::to_string((float)((sizeof(double) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 	m_logger->print("Malloc " + datasize_str + "MB on host for data buffers\n");
 
-	simulation.potE_buffer.resize(simulation.boxparams_host.total_particles_upperbound * n_steps);
+//	simulation.potE_buffer.resize(simulation.boxparams_host.total_particles_upperbound * n_steps);
+	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
 	//simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
 	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>((size_t)simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, (size_t)n_steps);
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
@@ -79,7 +80,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 		+ std::to_string(simulation->n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
-	simulation->box_host->forcefield = new ForceField_NB{ forcefield };// Copy
+	simulation->box_host->forcefield = new ForceField_NB{ forcefield };	// Copy
+	simulation->forcefield = ForceField_NB{ forcefield };			// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });

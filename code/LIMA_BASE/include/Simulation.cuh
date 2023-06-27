@@ -8,7 +8,7 @@
 
 
 struct ForceField_NB;
-
+class Forcefield;
 
 
 
@@ -156,7 +156,7 @@ struct SimulationDevice {
 // This stays on host
 class Simulation {
 public:
-	Simulation(const SimParams& sim_params);
+	Simulation(const SimParams& sim_params, const std::string& molecule_path);
 
 	~Simulation();
 	void moveToDevice();
@@ -200,7 +200,8 @@ public:
 	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
-	ForceField_NB forcefield;
+	//ForceField_NB forcefield;
+	std::unique_ptr<Forcefield> forcefield;
 
 
 	// Box variable copies, here for ease of access.

@@ -38,8 +38,8 @@ const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some othe
 constexpr float CUTOFF_NM = 1.1f;
 constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
-constexpr long double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
-constexpr long double AVOGADROSNUMBER = 6.02214076e23;	
+constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
+constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 // -------------------------------------------------------------------------------------------------------------- //
 
 

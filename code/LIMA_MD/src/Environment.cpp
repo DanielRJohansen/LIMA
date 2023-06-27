@@ -14,7 +14,6 @@ using std::printf;
 Environment::Environment(const string& wf, EnvMode mode)
 	: work_folder(wf)
 	, m_mode(mode)
-	, forcefield{ mode == EnvMode::Headless ? SILENT : V1}
 	, m_logger{ LimaLogger::compact, m_mode, "environment", wf }
 {
 	switch (mode)
@@ -33,24 +32,23 @@ Environment::Environment(const string& wf, EnvMode mode)
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
 
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
-	forcefield.loadForcefield(work_folder + "/molecule");
+	//forcefield.loadForcefield(work_folder + "/molecule");
+
+	SimParams simparams{ ip };
+
+	setupEmptySimulation(simparams);
+
+	boxbuilder->buildBox(simulation.get());
+
 
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
-		&forcefield, 
+		simulation->forcefield.get(), 
 		work_folder, 
 		SILENT, 
 		gro_path, 
 		topol_path,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
 		true);
-
-
-	SimParams simparams{ ip };
-
-	setupEmptySimulation(simparams);
-	boxbuilder->buildBox(simulation.get());
-
-
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
@@ -68,10 +66,10 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
-	assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
+	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
 
 
-	simulation = std::make_unique<Simulation>(simparams);
+	simulation = std::make_unique<Simulation>(simparams, work_folder + "/molecule/");
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_folder));
 
 	verifySimulationParameters();
@@ -113,7 +111,7 @@ void Environment::verifyBox() {
 
 
 	//if (std::abs(SOLVENT_MASS - engine->getForcefield().particle_parameters[0].mass) > 1e-3f) {
-	if (std::abs(SOLVENT_MASS - forcefield.getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
+	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
 		printf("Error in solvent mass");
 		exit(0);
 	}
@@ -138,7 +136,7 @@ bool Environment::prepareForRun() {
 
 	if (simulation->ready_to_run) { return true; }
 
-	boxbuilder->finishBox(simulation.get(), forcefield.getNBForcefield());
+	boxbuilder->finishBox(simulation.get());
 	simulation->moveToDevice();	// Only moves the Box to the device
 
 
@@ -148,7 +146,7 @@ bool Environment::prepareForRun() {
 
 	engine = std::make_unique<Engine>(
 		simulation.get(), 
-		forcefield.getNBForcefield(), 
+		simulation->forcefield->getNBForcefield(), 
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_folder));
 	return true;
 

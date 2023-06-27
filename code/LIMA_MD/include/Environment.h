@@ -87,7 +87,7 @@ private:
 	std::unique_ptr<Display> display;
 	//Interface* interface = nullptr;
 	
-	Forcefield forcefield;
+	//Forcefield forcefield;
 	//Analyzer analyzer{};
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;

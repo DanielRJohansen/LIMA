@@ -1,8 +1,8 @@
 #pragma once
 
-#include "LIMA_ENGINE/include/Forcefield.cuh"
-#include "LIMA_BASE/include/Printer.h"
-#include "LIMA_ENGINE/include/EngineUtils.cuh"
+#include "Printer.h"
+#include "Forcefield.cuh"
+//#include "LIMA_ENGINE/include/EngineUtils.cuh"
 
 
 using namespace LIMA_Print;
@@ -151,11 +151,11 @@ void Forcefield::loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomt
 	static const float epsilon_min = 0.001f;
 
 	for (int i = 0; i < atomtypes.size(); i++) {
-		forcefield.particle_parameters[i].mass = atomtypes[i].mass * 1e-3f;				// Convert g/mol to kg/mol
-		forcefield.particle_parameters[i].sigma = atomtypes[i].sigma * NANO_TO_LIMA;		// Convert from [nm] to [lm]
-		forcefield.particle_parameters[i].epsilon = atomtypes[i].epsilon;				// Interpreted as kg*lm^2/ls^2 
+		forcefield_nb.particle_parameters[i].mass = atomtypes[i].mass * 1e-3f;				// Convert g/mol to kg/mol
+		forcefield_nb.particle_parameters[i].sigma = atomtypes[i].sigma * NANO_TO_LIMA;		// Convert from [nm] to [lm]
+		forcefield_nb.particle_parameters[i].epsilon = atomtypes[i].epsilon;				// Interpreted as kg*lm^2/ls^2 
 
-		bool illegal_parameter = (forcefield.particle_parameters[i].mass < mass_min) || (forcefield.particle_parameters[i].sigma < sigma_min) || (forcefield.particle_parameters[i].epsilon < epsilon_min);
+		bool illegal_parameter = (forcefield_nb.particle_parameters[i].mass < mass_min) || (forcefield_nb.particle_parameters[i].sigma < sigma_min) || (forcefield_nb.particle_parameters[i].epsilon < epsilon_min);
 
 		if ((vl >= V2) || illegal_parameter) { printf("Mass %f Sigma %f Epsilon %f\n", atomtypes[i].mass, atomtypes[i].sigma, atomtypes[i].epsilon); }
 	}

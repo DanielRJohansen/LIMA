@@ -1,4 +1,5 @@
 #include "Simulation.cuh"
+#include "Forcefield.cuh"
 
 Box::~Box() {
 	if (owns_members) { deleteMembers(); }
@@ -127,10 +128,12 @@ void SimulationDevice::deleteMembers() {
 }
 
 
-Simulation::Simulation(const SimParams& ip) :
+Simulation::Simulation(const SimParams& ip, const std::string& molecule_path) :
 	simparams_host{ ip }
 {
 	box_host = std::make_unique<Box>();
+	forcefield = std::make_unique<Forcefield>(V1);
+	forcefield->loadForcefield(molecule_path);
 }
 
 

@@ -1,6 +1,8 @@
 #include "LIMA_MD/src/BoxBuilder.cuh"
 #include "LIMA_ENGINE/include/EngineUtils.cuh"
 #include "LIMA_BASE/include/Printer.h"
+#include <random>
+
 
 using namespace LIMA_Print;
 
@@ -70,7 +72,7 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 	simulation.trainingdata.resize(n_traindata_host);
 }
 #include <format>
-void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefield) {
+void BoxBuilder::finishBox(Simulation* simulation) {
 	simulation->box_host->boxparams.total_particles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
 
 
@@ -80,8 +82,8 @@ void BoxBuilder::finishBox(Simulation* simulation, const ForceField_NB& forcefie
 		+ std::to_string(simulation->n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
-	simulation->box_host->forcefield = new ForceField_NB{ forcefield };	// Copy
-	simulation->forcefield = ForceField_NB{ forcefield };			// Copy
+	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield->getNBForcefield()};	// Copy
+	//simulation->forcefield = ForceField_NB{ forcefield };			// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });
@@ -137,6 +139,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 {
 	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
 	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOL].mass;
 
 	for (Float3 sol_pos : solvent_positions) {
 		if (simulation->box_host->boxparams.n_solvents == MAX_SOLVENTS) {
@@ -151,43 +154,22 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 			
 			grid_0->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents);
-			grid_minus1->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents);
+
+			const Float3 direction = get3Random().norm();
+			const float velocity = EngineUtils::tempToVelocity(100, solvent_mass);	// [m/s]
+			const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
+			//const Float3 pos_prev = sol_pos - (direction * velocity * (simulation->simparams_host.constparams.dt / NANO_TO_LIMA));
+			//LimaPosition position_prev = LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev);
+			//const SolventCoord solventcoord_prev = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position_prev);
+
+			SolventCoord solventcoord_prev = solventcoord;
+			solventcoord_prev.rel_position -= Coord{ deltapos_lm };
+
+			grid_minus1->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents);
 
 			simulation->box_host->boxparams.n_solvents++;
 		}
 	}
-
-	// Loop through all solvents and make sure noone are too close to eachother. Also
-	//std::vector<float> closestNeighbor;
-	//DEBUGUTILS::findAllNearestSolventSolvent(solventblocks, simulation->box->n_solvents, closestNeighbor);
-	//int solvent_index = 0;
-	//for (int sbi = 0; sbi < SolventBlockGrid::blocks_total; sbi++) {
-	//	auto sb = solventblocks->getBlockPtr(sbi);
-	//	for (int i = 0; i < sb->n_solvents; i++) {
-	//		auto posi = sb->rel_pos[i];
-
-	//		// Loop through all solvents at equal or greater index
-	//		for (int sbj = sbi; sbj < SolventBlockGrid::blocks_total; sbj++) {
-	//			auto sb2 = solventblocks->getBlockPtr(sbj);
-	//			for (int j = 0; j < sb2->n_solvents; j++) {
-
-	//				if (sbi == sbj && i == j) { continue; }	// same solvent
-
-	//				auto posj = sb2->rel_pos[j];
-
-	//				auto dist = EngineUtils::calcDistance(sb->origo, posi, sb2->origo, posj);
-
-	//				closestNeighbor[solvent_index] = std::min(closestNeighbor[solvent_index], dist);
-	//				if (dist < 0.1) {
-	//					int a = 0;
-	//				}
-	//			}
-	//		}
-
-	//		solvent_index++;
-	//	}
-	//}
-	//m_logger.printToFile("nearestsolventsolvent.bin", closestNeighbor);
 
 	simulation->extraparams.total_particles += simulation->box_host->boxparams.n_solvents;
 	auto a = std::to_string(simulation->box_host->boxparams.n_solvents);
@@ -447,3 +429,31 @@ bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool ver
 //	return true;
 //}
 
+void BoxBuilder::accelerateCompoundParticles(std::vector<CompoundCoords>& compounds_prev, const std::vector<CompoundCoords>& compounds, float dt_prev, float dt_next)
+{
+	if (dt_prev == dt_next) {
+		return;	// Timestep is the same, so no need to change positions
+	}
+
+	const float scalar = dt_next / dt_prev;
+
+
+
+	for (int compound_id = 0; compound_id < compounds.size(); compound_id++) {
+
+		const CompoundCoords& compound = compounds[compound_id];
+		CompoundCoords compound_prev = compounds_prev[compound_id];
+
+		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+			const Float3 pos_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound.origo, compound.rel_positions[particle_id]);
+			Float3 pos_prev_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_prev.origo, compound_prev.rel_positions[particle_id]);			
+			EngineUtils::applyHyperposNM(&pos_abs, &pos_prev_abs);
+
+			const Float3 delta_pos = pos_abs - pos_prev_abs;
+
+			const Float3 correction = delta_pos * scalar - delta_pos;	// Subtract what is already delta, so we can simply add the correction to the current position
+
+			compound_prev.rel_positions[particle_id] += Coord{ correction * NANO_TO_LIMA };
+		}
+	}
+}

@@ -8,7 +8,7 @@
 #include <array>
 
 #include "LIMA_BASE/include/Constants.cuh"
-#include "LIMA_ENGINE/include/Forcefield.cuh"
+#include "LIMA_BASE/include/Forcefield.cuh"
 #include "LIMA_BASE/include/Utilities.h"
 
 

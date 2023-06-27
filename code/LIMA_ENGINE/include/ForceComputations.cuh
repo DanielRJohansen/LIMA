@@ -46,12 +46,12 @@ __device__ void calcAnglebondForces(Float3* pos_left, Float3* pos_middle, Float3
 	const float error = angle - angletype->theta_0;				// [rad]
 
 	// Simple implementation
-	*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
-	float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
+	//*potE += angletype->k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	//float torque = angletype->k_theta * (error);				// Torque [J/(mol*rad)]
 
 	// Correct implementation
-	//*potE += -angletype->k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
-	//const float torque = angletype->k_theta * sinf(error);	// Torque [J/(mol*rad)]
+	*potE += -angletype->k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
+	const float torque = angletype->k_theta * sinf(error);	// Torque [J/(mol*rad)]
 
 	results[0] = inward_force_direction1 * (torque / (*pos_left - *pos_middle).len());
 	results[2] = inward_force_direction2 * (torque / (*pos_right - *pos_middle).len());
@@ -84,13 +84,10 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 	normal2 *= -1;
 	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
 
-	// This is what i figured was correct
-	//*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
-	//float torque = -dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
 
 	// This is according to chatgpt
 	*potE += dihedral->k_phi * (1.f + cosf(dihedral->n * torsion - dihedral->phi_0));
-	float torque = - dihedral->n * dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
+	const float torque = - dihedral->n * dihedral->k_phi * (dihedral->n * sinf(dihedral->n * torsion - dihedral->phi_0));
 
 
 

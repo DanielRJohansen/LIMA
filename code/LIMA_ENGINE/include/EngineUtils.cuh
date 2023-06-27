@@ -5,7 +5,7 @@
 #include "LIMA_BASE/include/Constants.cuh"
 
 #include "LIMA_BASE/include/Simulation.cuh"
-#include "Forcefield.cuh"
+#include "LIMA_BASE/include/Forcefield.cuh"
 #include <cmath>
 
 //#include <cuda.h>

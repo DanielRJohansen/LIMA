@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LIMA_BASE/include/Filehandling.h"
-#include "LIMA_BASE/include/Bodies.cuh"
+#include "Filehandling.h"
+#include "Bodies.cuh"
 
 #include <string>
 #include <vector>
@@ -35,7 +35,7 @@ public:
 
 
 	ForceField_NB getNBForcefield() const {
-		return forcefield;
+		return forcefield_nb;
 	}
 
 
@@ -59,7 +59,7 @@ public:
 	bool forcefield_loaded = false;
 
 private:
-	ForceField_NB forcefield;
+	ForceField_NB forcefield_nb;
 	std::map<int, int> groIdToAtomtypeMap;
 
 	Topology topology;

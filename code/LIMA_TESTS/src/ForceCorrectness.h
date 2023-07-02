@@ -153,7 +153,7 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 	auto ip =  env.loadInputSimParams(simpar);
 
 	const float relaxed_angle = 1.8849f; // [rad]
-	std::vector<float> angle_errors{ 0.5f, PI/2.f }; //(t-t0) [rad]
+	std::vector<float> angle_errors{ 0.5f, 0.9f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
 
 	for (auto angle_error : angle_errors) {

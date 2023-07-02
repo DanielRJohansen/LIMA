@@ -5,9 +5,9 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 3000;
+n_steps = 2000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "AngleBenchmark";
+benchmark = "SolventBenchmark";
 %benchmark = benchmarks(10);
 % ------------------------------------ %
 

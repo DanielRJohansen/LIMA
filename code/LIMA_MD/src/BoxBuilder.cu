@@ -155,8 +155,8 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			
 			grid_0->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents);
 
-			const Float3 direction = get3Random().norm();
-			const float velocity = EngineUtils::tempToVelocity(100, solvent_mass);	// [m/s]
+			const Float3 direction = (get3Random()-Float3(0.5f)).norm();
+			const float velocity = EngineUtils::tempToVelocity(300, solvent_mass);	// [m/s]
 			const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
 			//const Float3 pos_prev = sol_pos - (direction * velocity * (simulation->simparams_host.constparams.dt / NANO_TO_LIMA));
 			//LimaPosition position_prev = LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev);
@@ -179,11 +179,16 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 }
 
 
-void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxsrc_current_step)
+void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
 {
 	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
 
 	simulation->box_host = SimUtils::copyToHost(boxsrc);
+
+
+	const float dt_prev = simparams_src.constparams.dt;
+	const float dt_new = simulation->simparams_host.constparams.dt;
+	const bool particles_needs_acceleration =  dt_prev != dt_new;
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
@@ -201,6 +206,10 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxs
 		// Clear all of the data
 		for (size_t i = 0; i < Box::coordarray_circular_queue_n_elements; i++) {
 			simulation->box_host->coordarray_circular_queue[i] = CompoundCoords{};
+		}
+
+		if (particles_needs_acceleration) {
+			accelerateCompoundParticles(coords_tsub1, coords_t0, dt_prev, dt_new);
 		}
 
 		// Copy the temporary storage back into the queue
@@ -225,6 +234,10 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxs
 		// Clear all of the data
 		delete[] simulation->box_host->solventblockgrid_circular_queue;
 		SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
+
+		if (particles_needs_acceleration) {
+			accelerateSolventParticles(*solvents_tsub1, *solvents_t0, dt_prev, dt_new);
+		}
 
 		// Copy the temporary storage back into the queue
 		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
@@ -431,13 +444,7 @@ bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool ver
 
 void BoxBuilder::accelerateCompoundParticles(std::vector<CompoundCoords>& compounds_prev, const std::vector<CompoundCoords>& compounds, float dt_prev, float dt_next)
 {
-	if (dt_prev == dt_next) {
-		return;	// Timestep is the same, so no need to change positions
-	}
-
 	const float scalar = dt_next / dt_prev;
-
-
 
 	for (int compound_id = 0; compound_id < compounds.size(); compound_id++) {
 
@@ -453,7 +460,30 @@ void BoxBuilder::accelerateCompoundParticles(std::vector<CompoundCoords>& compou
 
 			const Float3 correction = delta_pos * scalar - delta_pos;	// Subtract what is already delta, so we can simply add the correction to the current position
 
-			compound_prev.rel_positions[particle_id] += Coord{ correction * NANO_TO_LIMA };
+			compound_prev.rel_positions[particle_id] -= Coord{ correction * NANO_TO_LIMA };
 		}
 	}
 }
+
+void BoxBuilder::accelerateSolventParticles(SolventBlockGrid& solvents_prev, SolventBlockGrid& solvents, float dt_prev, float dt_next)
+{
+	const float scalar = dt_next / dt_prev;
+
+	for (int blockindex = 0; blockindex < SolventBlockGrid::blocks_total; blockindex++) {
+		const SolventBlock& block = *solvents.getBlockPtr(blockindex);		
+		SolventBlock& block_tsub1 = *solvents_prev.getBlockPtr(blockindex);
+
+		for (int pid = 0; pid < block.n_solvents; pid++) {
+			const Float3 pos_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(block.origo, block.rel_pos[pid]);
+			Float3 pos_prev_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(block_tsub1.origo, block_tsub1.rel_pos[pid]);
+			EngineUtils::applyHyperposNM(&pos_abs, &pos_prev_abs);
+
+			const Float3 delta_pos = pos_abs - pos_prev_abs;
+
+			const Float3 correction = delta_pos * scalar - delta_pos;	// Subtract what is already delta, so we can simply add the correction to the current position
+
+			block_tsub1.rel_pos[pid] -= Coord{ correction * NANO_TO_LIMA };
+		}
+	}
+}
+

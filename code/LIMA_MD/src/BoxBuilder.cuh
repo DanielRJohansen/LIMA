@@ -21,7 +21,7 @@ public:
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
-	void copyBoxState(Simulation* simulation, Box* boxsrc, uint32_t boxsrc_current_step);
+	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
 private:
 	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
@@ -48,6 +48,9 @@ private:
 	/// </summary>
 	void accelerateCompoundParticles(std::vector<CompoundCoords>& compounds_prev, const std::vector<CompoundCoords>& compounds,
 		float dt_prev, float dt_next);
+	void accelerateSolventParticles(SolventBlockGrid& grid_prev, SolventBlockGrid& grid,
+		float dt_prev, float dt_next);
+
 
 	// ------------------------------------------------------------------------------------ //
 

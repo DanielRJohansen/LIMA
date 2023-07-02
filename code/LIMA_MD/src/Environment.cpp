@@ -61,7 +61,7 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
-	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host.step);
+	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);
 	simulation->extraparams = simulation_src.extraparams;
 }
 

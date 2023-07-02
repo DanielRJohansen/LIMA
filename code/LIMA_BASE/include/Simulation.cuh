@@ -40,7 +40,7 @@ struct SimParams {
 	SimParams(const SimParamsConst& spc) : constparams(spc) {}
 
 
-	uint64_t step = 0;
+	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
 	float thermostat_scalar = 1.f;
 
@@ -48,7 +48,7 @@ struct SimParams {
 };
 
 struct BoxParams {
-	uint32_t n_compounds = 0;
+	int n_compounds = 0;
 	uint16_t n_solvents = 0;
 	uint32_t total_particles_upperbound = 0;
 };
@@ -89,14 +89,14 @@ public:
 	}
 
 	T& getCompoundparticleDatapoint(int compound_id, int particle_id_compound, size_t step) {
-		const uint32_t step_offset = static_cast<uint32_t>(step) * n_particles_upperbound;
-		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		const size_t step_offset = step * n_particles_upperbound;
+		const size_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		return buffer[step_offset + compound_offset + particle_id_compound];
 	}
 
 	T& getSolventparticleDatapoint(int solvent_id, size_t step) {
-		const uint32_t step_offset = static_cast<uint32_t>(step) * n_particles_upperbound;
-		const uint32_t firstsolvent_offset = n_compounds * MAX_COMPOUND_PARTICLES;
+		const size_t step_offset = step * n_particles_upperbound;
+		const size_t firstsolvent_offset = n_compounds * MAX_COMPOUND_PARTICLES;
 		return buffer[step_offset + firstsolvent_offset + solvent_id];
 	}
 
@@ -167,7 +167,7 @@ public:
 		sim_dev->params->step++;
 	}
 	
-	inline uint64_t getStep() const { return simparams_host.step; }
+	inline int64_t getStep() const { return simparams_host.step; }
 	
 	bool ready_to_run = false;
 	bool finished = false;

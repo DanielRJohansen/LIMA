@@ -7,7 +7,7 @@ clc
 % Edit these to select the correct data
 n_steps = 2000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "SolventBenchmark";
+benchmark = "T4Lysozyme";
 %benchmark = benchmarks(10);
 % ------------------------------------ %
 

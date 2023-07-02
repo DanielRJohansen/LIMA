@@ -1,7 +1,7 @@
 #pragma once
 
 #include <math.h>
-
+#include <cstdint>
 #define LIMASAFEMODE 1
 
 #define LIMAKERNELDEBUGMODE 1
@@ -51,7 +51,7 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 constexpr int _BOX_LEN_PM = 7200;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
-const int BOX_LEN_i = _BOX_LEN_PM * PICO_TO_LIMA;
+const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
 constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
@@ -136,10 +136,10 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
 const bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
-const int STEPS_PER_THERMOSTAT = 50;			// Must be >= 3 why?
+const int STEPS_PER_THERMOSTAT = 20;			// Must be >= 3 why?
 const int FIRST_TEMPERATURE_PRINT_STEP = RAMPUP_STEPS;
-const int FIRST_THERMOSTAT_APPLICATION_STEP = RAMPUP_STEPS + 200;
-constexpr float MAX_THERMOSTAT_SCALER = 0.1f / static_cast<float>(STEPS_PER_THERMOSTAT);
+const int FIRST_THERMOSTAT_APPLICATION_STEP = RAMPUP_STEPS + 0;
+constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
 // -------------------------------------------------------------------------------------------------------------- //
 
 

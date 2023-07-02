@@ -43,7 +43,7 @@ namespace FTHelpers {
 
 		// Edgecase: wildcard
 		if (forcefield_type == "X") {
-			return 0.9;
+			return 0.9f;
 		}
 
 		float likeness = 0;
@@ -197,8 +197,7 @@ using AtomTable = std::map<int, Atom>;
 
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
-	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames) {}
-	BondtypeBase(const std::array<int, n_atoms>& ids) : gro_ids(ids) {}	// TODO: remove this
+	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames), gro_ids(-1) {}	
 	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: bonded_typenames(typenames), gro_ids(ids) {}
 

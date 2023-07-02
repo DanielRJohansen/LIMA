@@ -85,7 +85,7 @@ namespace LAL {
     template<typename T>
     class optional {
     private:
-        bool hasValue;
+        bool hasValue = false;
         T _value;
 
     public:
@@ -114,7 +114,7 @@ namespace LAL {
             return _value;
         }
 
-        explicit operator bool() const {
+        operator bool() const {
             return hasValue;
         }
     };    

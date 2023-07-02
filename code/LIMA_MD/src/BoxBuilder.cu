@@ -140,6 +140,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
 	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
 	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOL].mass;
+	const float default_solvent_start_temperature = 310;	// [K]
 
 	for (Float3 sol_pos : solvent_positions) {
 		if (simulation->box_host->boxparams.n_solvents == MAX_SOLVENTS) {
@@ -155,12 +156,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			
 			grid_0->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents);
 
-			const Float3 direction = (get3Random()-Float3(0.5f)).norm();
-			const float velocity = EngineUtils::tempToVelocity(300, solvent_mass);	// [m/s]
+			const Float3 direction = get3RandomSigned().norm();
+			const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
 			const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
-			//const Float3 pos_prev = sol_pos - (direction * velocity * (simulation->simparams_host.constparams.dt / NANO_TO_LIMA));
-			//LimaPosition position_prev = LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev);
-			//const SolventCoord solventcoord_prev = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position_prev);
 
 			SolventCoord solventcoord_prev = solventcoord;
 			solventcoord_prev.rel_position -= Coord{ deltapos_lm };

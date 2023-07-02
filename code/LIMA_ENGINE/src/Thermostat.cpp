@@ -13,14 +13,14 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	const auto dt = simulation->simparams_host.constparams.dt;
 
 	long double sum_kinE_compound = 0.;	// [J/mol]
-	for (uint64_t c = 0; c < simulation->boxparams_host.n_compounds; c++) {
-		uint64_t compound_offset = c * MAX_COMPOUND_PARTICLES;
-		for (uint64_t i = 0; i < simulation->compounds_host[c].n_particles; i++) {	// i gotta move this somewhere else....
-			const Float3 posa = simulation->traj_buffer->getCompoundparticleDatapoint(c, i, step);
-			const Float3 posb = simulation->traj_buffer->getCompoundparticleDatapoint(c, i, step - 1);
+	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
+		uint64_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
+			const Float3 posa = simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, pid, step);
+			const Float3 posb = simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, pid, step - 1);
 			//const Float3 posa = simulation->traj_buffer[i + compound_offset + step_offset_a];
 			//const Float3 posb = simulation->traj_buffer[i + compound_offset + step_offset_b];
-			const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[c].atom_types[i]].mass, dt / NANO_TO_LIMA);
+			const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass, dt / NANO_TO_LIMA);
 
 			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
@@ -66,7 +66,7 @@ void Engine::handleBoxtemp() {
 	if (!APPLY_THERMOSTAT || simulation->getStep() < FIRST_THERMOSTAT_APPLICATION_STEP) { return; }
 
 	// So we avoid dividing by 0
-	float temp_safe = temp == 0.f ? 1 : temp;
+	const float temp_safe = temp == 0.f ? 1 : temp;
 	float temp_scalar = target_temp / temp_safe;
 
 	// I just added this to not change any temperatures too rapidly

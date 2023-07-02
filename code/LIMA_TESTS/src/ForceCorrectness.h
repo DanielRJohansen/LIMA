@@ -258,7 +258,7 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
 
-	return TestUtils::evaluateTest(std_devs, 0.07);
+	return TestUtils::evaluateTest(std_devs, 0.07f);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {

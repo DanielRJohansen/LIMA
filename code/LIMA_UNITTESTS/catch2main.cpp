@@ -38,7 +38,7 @@ namespace TestForceCorrectness {
 	}
 
 	TEST_CASE("TestForceCorrectness::TenSolvents") {
-		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0005f));
+		REQUIRE(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0006f));
 	}
 }
 

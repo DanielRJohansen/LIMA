@@ -45,8 +45,8 @@ struct AtomtypeMapping {
 
 const float water_mass = 15.999000f + 2.f * 1.008000f;
 //const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
-const float water_sigma = 0.22;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
-const float water_epsilon = 0.1591 * kcalToJoule;
+const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
+const float water_epsilon = 0.1591f * kcalToJoule;
 
 static const NB_Atomtype Water_atomtype{ "WATER", 0, water_mass, water_sigma, water_epsilon };
 
@@ -190,7 +190,7 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 
 			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
 			const float kphi = stof(row.words[4]) * kcalToJoule;
-			const float n = stoi(row.words[5]);
+			const int n = stoi(row.words[5]);
 			const float phi0 = stof(row.words[6]) * degreeToRad;
 			
 			forcefield.dihedralbonds.emplace_back(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
@@ -319,7 +319,7 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedT
 
 		if (!atomtype_ff.is_present_in_simulation) {
 			atomtype_ff.is_present_in_simulation = true;
-			atomtype_ff.atnum_local = atomtypes_filtered.size();
+			atomtype_ff.atnum_local = static_cast<int>(atomtypes_filtered.size());
 			atomtypes_filtered.push_back(atomtype_ff);
 		}
 	}

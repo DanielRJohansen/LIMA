@@ -85,13 +85,13 @@ namespace LIMAPOSITIONSYSTEM {
 
 	__device__ __host__ static void applyPBC(LimaPosition& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
-		position.x += static_cast<int64_t>(BOX_LEN_i) * (position.x + offset < 0);
-		position.x -= static_cast<int64_t>(BOX_LEN_i) * (position.x + offset >= BOX_LEN_i);
-		position.y += static_cast<int64_t>(BOX_LEN_i) * (position.y + offset < 0);
-		position.y -= static_cast<int64_t>(BOX_LEN_i) * (position.y + offset >= BOX_LEN_i);
-		position.z += static_cast<int64_t>(BOX_LEN_i) * (position.z + offset < 0);
-		position.z -= static_cast<int64_t>(BOX_LEN_i) * (position.z + offset >= BOX_LEN_i);
+		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
+		position.x += BOX_LEN_i * (position.x + offset < 0);
+		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
+		position.y += BOX_LEN_i * (position.y + offset < 0);
+		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
+		position.z += BOX_LEN_i * (position.z + offset < 0);
+		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
 	}
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
@@ -490,9 +490,9 @@ namespace EngineUtils {
 	}
 	// http://hyperphysics.phy-astr.gsu.edu/hbase/Kinetic/kintem.html
 
-	static double kineticEnergyToTemperature(long double kineticEnergy /*[J]*/, int numParticles) {
-		double temperature = kineticEnergy * (2.0 / 3.0) / (BOLTZMANNCONSTANT * numParticles);
-		return (temperature);
+	static float kineticEnergyToTemperature(long double kineticEnergy /*[J]*/, int numParticles) {
+		const double temperature = kineticEnergy * (2.0 / 3.0) / (BOLTZMANNCONSTANT * numParticles);
+		return static_cast<float>(temperature);
 	}
 
 	// For solvents, compound_id = n_compounds and particle_id = solvent_index
@@ -544,7 +544,12 @@ namespace EngineUtils {
 			//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
 		}
 
-		return coord + (coord - coord_tsub1) * thermostat_scalar + Coord{ *force * dt * dt / mass };
+		// All threads will follow the same path, so branch is no problem
+		const Coord delta_pos = thermostat_scalar == 1.f
+			? coord - coord_tsub1
+			: Coord{ (coord - coord_tsub1).toFloat3() * thermostat_scalar};
+
+		return coord + delta_pos + Coord{ *force * dt * dt / mass };
 	}
 
 

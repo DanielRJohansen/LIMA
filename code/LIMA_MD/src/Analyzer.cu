@@ -114,24 +114,24 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
-	const auto n_steps = simulation->getStep();
+	const int64_t n_steps = simulation->getStep();
 	if (simulation->getStep() < 3) { return Analyzer::AnalyzedPackage(); }
 
 	std::vector<Float3> average_energy;
 	average_energy.resize(n_steps - 2);	// Ignore first and last step
 
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
-	uint64_t max_steps_per_kernel = 1000;
-	uint64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
-	uint64_t max_values_per_kernel = (max_steps_per_kernel + 2) * particles_per_step;							// Pad steps with 2 for vel calculation
+	int64_t max_steps_per_kernel = 1000;
+	int64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
+	int64_t max_values_per_kernel = (max_steps_per_kernel + 2) * particles_per_step;							// Pad steps with 2 for vel calculation
 	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
 	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
 	cudaMalloc(&traj_buffer_device, sizeof(Float3) * max_values_per_kernel);
 	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
 
 	for (int i = 0; i < ceil((double)n_steps / (double)max_steps_per_kernel); i++) {
-		uint64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
-		uint64_t steps_in_kernel = std::min(max_steps_per_kernel, n_steps - step_offset);
+		int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
+		int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_steps - step_offset);
 
 		// Create a array of len 1002, where index 0 and 1001 are padded values
 		moveAndPadData(simulation, steps_in_kernel, step_offset);
@@ -139,7 +139,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
 		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);
 
-		for (uint64_t ii = 0; ii < steps_in_kernel; ii++) {
+		for (int64_t ii = 0; ii < steps_in_kernel; ii++) {
 			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
 			if (step == -1 || step >= n_steps-2u) { continue; }	// Dont save first step, as the kinE is slightly wrong
 			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);

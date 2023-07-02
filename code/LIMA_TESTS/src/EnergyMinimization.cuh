@@ -31,7 +31,7 @@ bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(EnvMode envmod
 	logger.printToFile("solsoldist_postrun.bin", closestSolvent);
 	const float minradius_after = *std::min_element(closestSolvent.begin(), closestSolvent.end());
 
-	float mindist = 0.21;
+	const float mindist = 0.21f;
 	const bool success = minradius_after > mindist;
 
 	if (!success) {

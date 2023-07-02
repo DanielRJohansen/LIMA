@@ -396,7 +396,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 
 			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
-			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n"); }
+			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n", blockid_global); }
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
 
 			queue_global->fastInsert(
@@ -1014,9 +1014,6 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
 		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
-
-		const int compound_offset = p_ref->compound_id * MAX_COMPOUND_PARTICLES;
-		const int step_offset = (simparams.step % STEPS_PER_LOGTRANSFER) * box->boxparams.total_particles_upperbound;
 
 		sim->box->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] = potE_sum;
 	}

@@ -28,7 +28,7 @@ __device__ void calcSinglebondForces(Float3* pos_a, Float3* pos_b, SingleBond* b
 	results[1] = dir * force_scalar * -1.f;						// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMASAFEMODE
-	if (results[0].len() > 0.1f) {
+	if (abs(error) > bondtype->b0/2.f) {
 		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
 	}
 #endif

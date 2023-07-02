@@ -30,7 +30,7 @@ namespace TestUtils {
 
 		auto env = std::make_unique<Environment>(work_folder, envmode );
 
-		const auto ip = simparams
+		const InputSimParams ip = simparams
 			? simparams.value()
 			: env->loadInputSimParams(simpar);
 

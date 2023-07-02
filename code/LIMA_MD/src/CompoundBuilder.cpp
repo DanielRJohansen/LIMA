@@ -234,7 +234,7 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 				if (residues.back().name != record.residue_name) { throw std::exception("Something went seriously wrong when handling the .gro file!"); }	
 			}
 			else {	// Create new residue
-				int unique_res_id = residues.size();
+				const int unique_res_id = static_cast<int>(residues.size());
 				residues.push_back(Residue{ record.residue_number, unique_res_id, record.residue_name });
 			}
 
@@ -320,8 +320,8 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 			else if (!compounds.back().hasRoomForRes(residue.atoms.size())) {
 				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
 
-				int id_left = compounds.size() - 2;
-				int id_right = compounds.size() - 1;
+				const int id_left =  static_cast<int>(compounds.size()) - 2;
+				const int id_right = static_cast<int>(compounds.size()) - 1;
 
 				compound_bridges.push_back(BridgeFactory{ { id_left, id_right} });
 

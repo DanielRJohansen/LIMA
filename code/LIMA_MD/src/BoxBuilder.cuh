@@ -80,6 +80,9 @@ private:
 			(float) (rand() % RAND_MAX / (double) RAND_MAX)
 		);
 	}
+	Float3 get3RandomSigned() {	// returns 3 numbers between -0.5->0.5
+		return get3Random() - Float3(0.5f);
+	}
 
 	float random() {
 		return static_cast<float>(rand() % 10000) / 10000.f * 2.f - 1.f;

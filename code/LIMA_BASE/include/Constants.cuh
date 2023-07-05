@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <cstdint>
+#include <limits.h>
 #define LIMASAFEMODE 1
 
 #define LIMAKERNELDEBUGMODE 1
@@ -22,11 +23,14 @@ constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 
 //constexpr float LIMA_SCALE = 1.f;// 1e-6f;			// size of 1 lima unit in nm or ns or whatever
 constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
-constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
+constexpr float(NANO_TO_PICO) = 1e+3f;
+constexpr float FEMTO_TO_LIMA = 200.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
-const int PICO_TO_LIMA = 100000;
+const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
+
+static_assert(NANO_TO_LIMA * 4 < INT_MAX, "LIMA Scale is so small it can create dangerous bugs");
 
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;

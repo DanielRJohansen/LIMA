@@ -40,14 +40,22 @@ namespace TestUtils {
 	}
 
 	// Only set verbose to false if we will evaluate many times (such as stress testing)
-	bool evaluateTest(std::vector<float> stddevs, float maxdev, bool verbose=true) {
+	bool evaluateTest(std::vector<float> stddevs, float maxdev, std::vector<float> energy_gradients, float max_energygradient_abs, bool verbose=true) {
 		for (auto& stddev : stddevs) {
-			if (isnan(stddev) || stddev > maxdev) {
 
-				
+			if (isnan(stddev) || stddev > maxdev) {				
 				if (verbose) {
 					std::cout << std::format("Stddev of {} superceeded the max of {}", stddev, maxdev);
 				}				
+				return false;
+			}
+		}
+
+		for (auto& gradient : energy_gradients) {
+			if (isnan(gradient) || abs(gradient) > max_energygradient_abs) {
+				if (verbose) {
+					std::cout << std::format("Energygradient of {} superceeded the max of {}", gradient, max_energygradient_abs);
+				}
 				return false;
 			}
 		}
@@ -66,28 +74,30 @@ namespace TestUtils {
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
 		env->run(em_variant);
 
-		auto analytics = env->getAnalyzedPackage();
+		const auto analytics = env->getAnalyzedPackage();
 		
-		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
+		float std_dev = analytics->variance_coefficient;
+		
 
 		if (verbose) {
 			Analyzer::printEnergy(analytics);
 			LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
+			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient });
 		}
-		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
+		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
-		return evaluateTest({ std_dev }, max_dev, verbose);
+		return evaluateTest({ std_dev }, max_dev, {analytics->energy_gradient}, 0.002f, verbose);
 	}
 
-	static bool verifyStability(Environment& env, float max_dev) {
-		auto analytics = env.getAnalyzedPackage();
-		Analyzer::printEnergy(analytics);
-		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
+	//static bool verifyStability(Environment& env, float max_dev) {
+	//	auto analytics = env.getAnalyzedPackage();
+	//	Analyzer::printEnergy(analytics);
+	//	float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
 
-		LIMA_Print::printMatlabVec("std_dev", std::vector<float>{std_dev});
+	//	LIMA_Print::printMatlabVec("std_dev", std::vector<float>{std_dev});
 
-		return (std_dev < max_dev);
-	}
+	//	return (std_dev < max_dev);
+	//}
 
 	void stressTest(std::function<void()> func, size_t reps) {
 		for (size_t i = 0; i < reps; i++) {

@@ -19,28 +19,15 @@ public:
 
 	struct AnalyzedPackage {
 		AnalyzedPackage() = default;
-		AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
-			energy_data = avg_energy;
-			//auto e_cnt = energy_data.size();
-
-			temperature_data = temperature;
-			//memcpy(temperature_data.data(), t_ptr, t_cnt);
-
-			auto e_cnt = energy_data.size();
-			pot_energy.resize(e_cnt);
-			kin_energy.resize(e_cnt);
-			total_energy.resize(e_cnt);
-			for (int i = 0; i < e_cnt; i++) {
-				pot_energy[i] = energy_data[i].x;
-				kin_energy[i] = energy_data[i].y;
-				total_energy[i] = energy_data[i].z;
-			}
-		}
+		AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature);
 
 		std::vector<float> pot_energy;
 		std::vector<float> kin_energy;
 		std::vector<float> total_energy;
 		std::vector<Float3> energy_data; // potE, kinE, totalE
+
+		float energy_gradient;
+		float variance_coefficient;
 
 		std::vector<float> temperature_data;
 	};
@@ -48,7 +35,7 @@ public:
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
 	static void printEnergy(AnalyzedPackage* package);
-	static float getVarianceCoefficient(const std::vector<float>& vec);
+	//static float getVarianceCoefficient(const std::vector<float>& total_energy);
 
 
 	// Temp dev function

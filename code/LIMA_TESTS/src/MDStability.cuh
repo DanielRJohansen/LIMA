@@ -33,15 +33,14 @@ namespace TestMDStability {
 		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		const auto analytics = env->getAnalyzedPackage();
-		float std_dev = Analyzer::getVarianceCoefficient(analytics->total_energy);
-
+		
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
 		}
-		LIMA_Print::printMatlabVec("std_devs", std::vector<float>{ std_dev });
+		LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
+		LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
 
-		return true;
-		return std_dev < max_dev;
+		TestUtils::evaluateTest({analytics->variance_coefficient}, max_dev, { analytics->energy_gradient }, 0.002f);
 	}
 
 	bool doEightResiduesNoSolvent(EnvMode envmode) {

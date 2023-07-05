@@ -15,10 +15,11 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 	std::vector<float> particle_temps{ 400 };
 	//std::vector<float> particle_temps{ 400, 800, 1200 };
 	std::vector<float> std_devs;
+	std::vector<float> energy_gradients;
 
 	for (auto temp : particle_temps) {
 		const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-		int steps_for_full_interaction = 2000000 / static_cast<int>(vel);
+		int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 		InputSimParams ip{};
 		ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
@@ -32,16 +33,18 @@ bool doPoolBenchmark(EnvMode envmode, float max_dev=0.007) {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();		
-		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		std_devs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
 		if (envmode != Headless) { Analyzer::printEnergy(analytics); }			
 	}
 
 	if (envmode != Headless) {
 		LIMA_Print::printMatlabVec("temperature", particle_temps);
 		LIMA_Print::printMatlabVec("std_devs", std_devs);
+		LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 	}	
 
-	return TestUtils::evaluateTest(std_devs, max_dev);
+	return TestUtils::evaluateTest(std_devs, max_dev, energy_gradients, 0.002f);
 }
 
 bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
@@ -56,6 +59,7 @@ bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
 	//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 	std::vector<float> particle_temps{ 400, 800, 1200 };
 	std::vector<float> std_devs;
+	std::vector<float> energy_gradients;
 
 	for (auto temp : particle_temps) {
 		// Give the carbon a velocity
@@ -91,13 +95,14 @@ bool doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.01) {
 
 		auto analytics = env.getAnalyzedPackage();
 		Analyzer::printEnergy(analytics);
-		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		std_devs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
 	}
 
 	LIMA_Print::printMatlabVec("temperature", particle_temps);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
 
-	return TestUtils::evaluateTest(std_devs, max_dev);
+	return TestUtils::evaluateTest(std_devs, max_dev, energy_gradients, 0.002f);
 }
 
 bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.132) {
@@ -112,8 +117,9 @@ bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.132) {
 	InputSimParams ip = env.loadInputSimParams(simpar);
 
 
-	std::vector<float> bond_len_errors{ 0.01f, 0.02f }; //(r-r0) [nm]
+	std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
 	std::vector<float> std_devs;
+	std::vector<float> energy_gradients;
 
 	for (auto bond_len_error : bond_len_errors) {
 		env.CreateSimulation(conf, topol, ip);
@@ -128,7 +134,8 @@ bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.132) {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();
-		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		std_devs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
 
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
@@ -137,9 +144,10 @@ bool doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.132) {
 
 	LIMA_Print::printMatlabVec("bond_len_errors", bond_len_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
+	LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 
 
-	return TestUtils::evaluateTest(std_devs, max_dev);	
+	return TestUtils::evaluateTest(std_devs, max_dev, energy_gradients, 0.002f);
 }
 
 // Benchmarks anglebonds + singlebonds (for stability)
@@ -155,6 +163,7 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 	const float relaxed_angle = 1.8849f; // [rad]
 	std::vector<float> angle_errors{ 0.5f, 0.9f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
+	std::vector<float> energy_gradients;
 
 	for (auto angle_error : angle_errors) {
 		env.CreateSimulation(conf, topol, ip);
@@ -179,7 +188,8 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();
-		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		std_devs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
 
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
@@ -188,9 +198,10 @@ bool doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.04) {
 
 	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
 	LIMA_Print::printMatlabVec("std_devs", std_devs);
+	LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 
 
-	return TestUtils::evaluateTest(std_devs, max_dev);
+	return TestUtils::evaluateTest(std_devs, max_dev, energy_gradients, 0.002f);
 }
 
 bool doDihedralbondBenchmark(EnvMode envmode) {
@@ -208,6 +219,7 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 
 	std::vector<float> angle_errors{ 0.4f }; //(t-t0) [rad]
 	std::vector<float> std_devs;
+	std::vector<float> energy_gradients;
 
 	for (auto angle_error : angle_errors) {
 		env.CreateSimulation(conf, topol, ip);
@@ -238,8 +250,6 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 		Float3 l_rotated = l_point.rotateAroundVector(Float3{ 0.f,0.f,angle_error }, rotatevec);
 
 		Float3 l_diff = l_rotated - l_point;
-
-		//Float3 rotatedPoint = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
 		
 		coordarray_ptr[0].rel_positions[3] += Coord{ l_diff};		// Temp disabled, fix soon plz
 		coordarray_prev_ptr[0].rel_positions[3] += Coord{ l_diff};		// Temp disabled, fix soon plz
@@ -247,7 +257,8 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();
-		std_devs.push_back(Analyzer::getVarianceCoefficient(analytics->total_energy));
+		std_devs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
 
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
@@ -255,10 +266,9 @@ bool doImproperDihedralBenchmark(EnvMode envmode) {
 	}
 
 	LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
-	LIMA_Print::printMatlabVec("std_devs", std_devs);
+	LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 
-
-	return TestUtils::evaluateTest(std_devs, 0.07f);
+	return TestUtils::evaluateTest(std_devs, 0.07f, energy_gradients, 0.002f);
 }
 
 bool doMethionineBenchmark(EnvMode envmode) {

@@ -48,8 +48,8 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
 	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
-	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
-	const float n_steps = 2.f;
+	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 0 }) * box->boxparams.total_particles_upperbound];
+	const float n_steps = 1.f;
 
 	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
 	const float totalE = potE + kinE;
@@ -88,10 +88,11 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 	
 	Float3 pos_tsub1 = traj_buffer[compounds_offset + solvent_index + (step - 1) * box->boxparams.total_particles_upperbound];
-	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 1) * box->boxparams.total_particles_upperbound];
+	Float3 pos_tadd1 = traj_buffer[compounds_offset + solvent_index + (step + 0) * box->boxparams.total_particles_upperbound];
+	float n_steps = 1.f;
 
 	float mass = SOLVENT_MASS;
-	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt*2.f / NANO_TO_LIMA);	// convert [ls] to [ns]
+	float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert [ls] to [ns]
 
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->boxparams.total_particles_upperbound];
 
@@ -274,7 +275,7 @@ float getStdDev(const std::vector<float>& vec) {
 	return static_cast<float>(std::abs(std::sqrt(deviation)));
 }
 
-float Analyzer::getVarianceCoefficient(const std::vector<float>& vec) {
+float getVarianceCoefficient(const std::vector<float>& vec) {
 	if (vec.empty()) { return 0.f; } 
 	const float stddev = getStdDev(vec);
 	const float mean = getMean(vec);
@@ -299,6 +300,63 @@ void Analyzer::printEnergy(AnalyzedPackage* package) {
 	printRow("kinE", package->kin_energy);
 	printRow("totalE", package->total_energy);
 }
+
+
+
+
+
+float calculateSlopeLinearRegression(const std::vector<float>& y_values) {
+	size_t n = y_values.size();
+	float sum_x = 0;
+	float sum_y = 0;
+	float sum_xy = 0;
+	float sum_xx = 0;
+
+	for (size_t i = 0; i < n; ++i) {
+		sum_x += i;
+		sum_y += y_values[i];
+		sum_xy += i * y_values[i];
+		sum_xx += i * i;
+	}
+
+	float slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
+	return slope;
+}
+
+Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
+	energy_data = avg_energy;
+	//auto e_cnt = energy_data.size();
+
+	temperature_data = temperature;
+	//memcpy(temperature_data.data(), t_ptr, t_cnt);
+
+	auto e_cnt = energy_data.size();
+	pot_energy.resize(e_cnt);
+	kin_energy.resize(e_cnt);
+	total_energy.resize(e_cnt);
+	for (int i = 0; i < e_cnt; i++) {
+		pot_energy[i] = energy_data[i].x;
+		kin_energy[i] = energy_data[i].y;
+		total_energy[i] = energy_data[i].z;
+	}
+
+	energy_gradient = calculateSlopeLinearRegression(total_energy);
+	variance_coefficient = getVarianceCoefficient(total_energy);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

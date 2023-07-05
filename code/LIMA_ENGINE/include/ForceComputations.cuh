@@ -18,18 +18,22 @@ __device__ void calcSinglebondForces(Float3* pos_a, Float3* pos_b, SingleBond* b
 	// kb [J/(mol*lm^2)]
 	Float3 difference = *pos_a - *pos_b;						//	[lm]
 	const float error = difference.len() - bondtype->b0;				//	[lm]
+	const float error_fm = error / (float) PICO_TO_LIMA;
 
 	*potE += 0.5f * bondtype->kb * (error * error);				// [J/mol]
+	//*potE += 0.5f * bondtype->kb * (error_fm * error);				// [J/mol]
 
 	const float force_scalar = -bondtype->kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
+	//const float force_scalar = (double) -bondtype->kb * error_fm;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
 	Float3 dir = difference.norm();								// dif_unit_vec, but shares variable with dif
 	results[0] = dir * force_scalar;							// [kg * lm / (mol*ls^2)] = [lN]
 	results[1] = dir * force_scalar * -1.f;						// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMASAFEMODE
-	if (abs(error) > bondtype->b0/2.f) {
-		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, force_scalar);
+	if (abs(error) > bondtype->b0/2.f || false) {
+		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, bondtype->kb, force_scalar);
+		printf("errfm %f\n", error_fm);
 	}
 #endif
 }

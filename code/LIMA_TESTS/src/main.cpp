@@ -41,7 +41,7 @@ int main() {
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 	
-	//doSinglebondBenchmark(envmode);
+	doSinglebondBenchmark(envmode);
 	//doAnglebondBenchmark(envmode);
 	//doDihedralbondBenchmark(envmode);
 	//doImproperDihedralBenchmark(envmode);
@@ -53,7 +53,7 @@ int main() {
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002f);
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
 
 	//TestUtils::loadAndRunBasicSimulation("T4Lysozyme", envmode);
 

@@ -101,8 +101,10 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 			for (int i = 0; i < 2; i++) {
 				gro_ids[i] = stoi(row.words[i]);
 			}
-			const float b0 = stof(row.words[4]) * NANO_TO_LIMA;						// convert [nm] to [lm]*/
-			const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol * nm * lm)
+			const float b0 = stof(row.words[4]) * NANO_TO_LIMA;							// convert [nm] to [lm]
+			// Units of kb is [J/mol/nm^2]. One nm is for the error in forcecalc, and one distance in integration
+			//const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
+			const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
 
 			topology.singlebonds.emplace_back(SingleBond{ gro_ids, b0, kb });
 		}

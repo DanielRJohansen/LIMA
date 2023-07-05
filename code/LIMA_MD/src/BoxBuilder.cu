@@ -59,6 +59,9 @@ void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps
 	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
 	//simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
 	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>((size_t)simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, (size_t)n_steps);
+
+	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
+
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
 }
 
@@ -73,7 +76,11 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 }
 #include <format>
 void BoxBuilder::finishBox(Simulation* simulation) {
-	simulation->box_host->boxparams.total_particles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
+	const int compoundparticles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
+	const int solventparticles_upperbound = simulation->box_host->boxparams.n_solvents > 0
+		? SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK
+		: 0;
+	simulation->box_host->boxparams.total_particles_upperbound = compoundparticles_upperbound + solventparticles_upperbound;
 
 
 	// Load meta information

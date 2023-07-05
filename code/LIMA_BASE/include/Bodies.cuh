@@ -451,6 +451,11 @@ struct Compound {
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)	//TODO Move somewhere else
 
+	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
+	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
+	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
+
+
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this
 	float potE_interim[MAX_COMPOUND_PARTICLES];
 	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
@@ -494,6 +499,10 @@ struct Compound {
 			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
 			compound->forces[threadIdx.x] = Float3(0.f);
+
+			forces_prev[threadIdx.x] = compound->forces_prev[threadIdx.x];
+			vels_prev[threadIdx.x] = compound->vels_prev[threadIdx.x];
+
 
 			potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
 			//#ifdef LIMA_DEBUGMODE

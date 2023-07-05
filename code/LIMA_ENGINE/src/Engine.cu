@@ -90,6 +90,12 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
+		simulation->vel_buffer->getBufferAtStep(step_relative),
+		simulation->sim_dev->databuffers->vel_buffer,
+		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
+		cudaMemcpyDeviceToHost);
+
+	cudaMemcpy(
 		&simulation->loggingdata[step_relative * 10], 
 		simulation->sim_dev->databuffers->outdata, 
 		sizeof(float) * 10 * steps_to_transfer, 

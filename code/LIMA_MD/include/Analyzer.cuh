@@ -29,6 +29,8 @@ public:
 		float energy_gradient;
 		float variance_coefficient;
 
+		float mean_energy{};
+
 		std::vector<float> temperature_data;
 	};
 
@@ -55,5 +57,7 @@ private:
 
 	Float3* traj_buffer_device = nullptr;
 	float* potE_buffer_device = nullptr;
+	Float3* vel_buffer_device = nullptr;
+
 	std::unique_ptr<LimaLogger> m_logger;
 };

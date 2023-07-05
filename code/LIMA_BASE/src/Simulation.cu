@@ -188,11 +188,12 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 
 		cudaMallocManaged(&potE_buffer, sizeof(float) * n_datapoints);
 		cudaMallocManaged(&traj_buffer, sizeof(Float3) * n_datapoints);
-
+		cudaMallocManaged(&vel_buffer, sizeof(Coord) * n_datapoints);
 		//cudaMemset(potE_buffer, 0, sizeof(float) * n_datapoints);	// TODO: Do it like this instead
 
 		std::vector<float>potE_zero(n_datapoints, 0);
 		std::vector<Float3>traj_zero(n_datapoints, Float3{});
+		//std::vector<Float3>traj_zero(n_datapoints, Float3{});
 
 		cudaMemcpy(potE_buffer, potE_zero.data(), sizeof(float) * n_datapoints, cudaMemcpyHostToDevice);
 		cudaMemcpy(traj_buffer, traj_zero.data(), sizeof(Float3) * n_datapoints, cudaMemcpyHostToDevice);
@@ -224,6 +225,7 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 void DatabuffersDevice::freeMembers() {
 	cudaFree(potE_buffer);
 	cudaFree(traj_buffer);
+	cudaFree(vel_buffer);
 
 	cudaFree(outdata);
 	cudaFree(data_GAN);

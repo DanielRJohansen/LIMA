@@ -19,7 +19,7 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 	}
 }
 
-void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams, Float3* traj_buffer, float* potE_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
+void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams, Float3* traj_buffer, float* potE_buffer, Float3* vel_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
 	__shared__ Compound compound;
 
@@ -47,11 +47,13 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	const int step_offset = step * box->boxparams.total_particles_upperbound;
 	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
-	const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
-	const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 0 }) * box->boxparams.total_particles_upperbound];
-	const float n_steps = 1.f;
+	const Float3 velocity = vel_buffer[threadIdx.x + compound_offset + step_offset];
+	const float kinE = EngineUtils::calcKineticEnergy(velocity.len(), mass);	// remove direction from vel
+	//const Float3 pos_tsub1 = traj_buffer[threadIdx.x + compound_offset + (step - uint64_t{ 1 }) * box->boxparams.total_particles_upperbound];
+	//const Float3 pos_tadd1 = traj_buffer[threadIdx.x + compound_offset + (step + uint64_t{ 0 }) * box->boxparams.total_particles_upperbound];
+	//const float n_steps = 1.f;
+	//const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
 
-	const float kinE = EngineUtils::calcKineticEnergy(&pos_tadd1, &pos_tsub1, mass, simparams->constparams.dt * n_steps / NANO_TO_LIMA);	// convert dt from [ls] to [ns]
 	const float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
@@ -129,6 +131,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
 	cudaMalloc(&traj_buffer_device, sizeof(Float3) * max_values_per_kernel);
 	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
+	cudaMalloc(&vel_buffer_device, sizeof(Coord) * max_values_per_kernel);
 
 	for (int i = 0; i < ceil((double)n_steps / (double)max_steps_per_kernel); i++) {
 		int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
@@ -161,6 +164,7 @@ void Analyzer::moveAndPadData(Simulation* simulation, uint64_t steps_in_kernel, 
 	//cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&traj_buffer_device[1 * particles_per_step], &simulation->traj_buffer->data()[step_offset * particles_per_step], sizeof(Float3) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+	cudaMemcpy(&vel_buffer_device[1 * particles_per_step], &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(Coord) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	//cudaMemcpy(&potE_buffer_device[1 * particles_per_step], &simulation->potE_buffer[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 	LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
@@ -228,7 +232,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
 		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->sim_dev->box->boxparams.n_compounds, 1);
-		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, data_out);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->sim_dev->box, simulation->sim_dev->params, traj_buffer_device, potE_buffer_device, vel_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
@@ -305,7 +309,7 @@ void Analyzer::printEnergy(AnalyzedPackage* package) {
 
 
 
-float calculateSlopeLinearRegression(const std::vector<float>& y_values) {
+float calculateSlopeLinearRegression(const std::vector<float>& y_values, const float mean) {
 	size_t n = y_values.size();
 	float sum_x = 0;
 	float sum_y = 0;
@@ -319,8 +323,9 @@ float calculateSlopeLinearRegression(const std::vector<float>& y_values) {
 		sum_xx += i * i;
 	}
 
-	float slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
-	return slope;
+	const float slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
+	const float slope_coefficient = slope / mean;
+	return slope_coefficient;
 }
 
 Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
@@ -340,7 +345,9 @@ Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std:
 		total_energy[i] = energy_data[i].z;
 	}
 
-	energy_gradient = calculateSlopeLinearRegression(total_energy);
+	mean_energy = getMean(total_energy);
+
+	energy_gradient = calculateSlopeLinearRegression(total_energy, mean_energy);
 	variance_coefficient = getVarianceCoefficient(total_energy);
 }
 

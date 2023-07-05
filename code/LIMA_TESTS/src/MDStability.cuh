@@ -40,7 +40,7 @@ namespace TestMDStability {
 		LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
 		LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
 
-		TestUtils::evaluateTest({analytics->variance_coefficient}, max_dev, { analytics->energy_gradient }, 0.002f);
+		return TestUtils::evaluateTest({analytics->variance_coefficient}, max_dev, { analytics->energy_gradient }, 0.002f);
 	}
 
 	bool doEightResiduesNoSolvent(EnvMode envmode) {

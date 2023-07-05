@@ -67,6 +67,7 @@ struct DatabuffersDevice {
 
 	float* potE_buffer = nullptr;				// For total energy summation
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
+	Float3* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 
 	float* outdata = nullptr;					// Temp, for longging values to whatever
 	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
@@ -176,6 +177,7 @@ public:
 	//std::vector<Float3> traj_buffer;
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;
 	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;
+	std::unique_ptr<ParticleDataBuffer<Float3>> vel_buffer;	// We dont need direction here, so could simply be a float
 	//std::vector<float> potE_buffer;
 	std::vector<float> temperature_buffer;
 

@@ -624,12 +624,27 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
 		if (threadIdx.x < compound.n_particles) {	
 			const auto mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
-			compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, mass, simparams.constparams.dt, simparams.thermostat_scalar);
 
+			//compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, mass, simparams.constparams.dt, simparams.thermostat_scalar);
 			//LIMAKERNELDEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
 
+			
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
 
+			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
+			// Prepare vel and forces for next step
+			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_now;
+			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+
+			// Save pos locally, but only push to box as this kernel ends
+			compound_coords.rel_positions[threadIdx.x] = pos_now;
+
+			//vel_now.print();
+
+			// Temp, find a cleaner way to do this
+			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+			sim->databuffers->vel_buffer[index] = vel_now;
 
 
 			const auto dif = (compound_coords.rel_positions[threadIdx.x] - prev_rel_pos);

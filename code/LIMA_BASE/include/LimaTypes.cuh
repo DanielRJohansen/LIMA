@@ -93,6 +93,12 @@ struct Float3 {
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
+	__host__ __device__ Float3 norm_d() const {
+		double l = len_d();
+		if (l)
+			return *this * (1. / l);
+		return Float3{};
+	}
 	__host__ __device__ Float3 norm() const {
 		float l = len();
 		if (l)
@@ -106,9 +112,10 @@ struct Float3 {
 	__device__ bool isNan() const {
 		return isnan(x) || isnan(y) || isnan(z);
 	}
-	__host__ Float3 piecewiseRound() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
+	__host__ __device__ Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
+	__host__ __device__ inline double len_d() const { return sqrtf((double)x * x + (double)y * y + (double)z * z); }
 	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
@@ -153,8 +160,11 @@ struct Float3 {
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline=false) const {
 		char nl = prefix_newline ? '\n' : ' ';
-		if (len() < 1000)
+		if (len() < 100)
 			printf("%c %c %.12f %.12f %.12f\n",nl, c, x, y, z);
+		else if (len() < 500'000) {
+			printf("%c %c %.4f %.4f %.4f\n", nl, c, x, y, z);
+		}
 		else
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
@@ -286,6 +296,7 @@ struct Coord {
 	__host__ __device__ void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
 	__host__ __device__ void operator -= (const Coord& a) { x -= a.x; y -= a.y; z -= a.z; };
 	__host__ __device__ Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
+	__host__ __device__ Coord operator * (const float) const = delete;
 	__host__ __device__ bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
 	__host__ __device__ bool operator != (const Coord& a) const { return !(*this == a); }
 	//__device__ Coord operator >> (const uint32_t a) const { return Coord(x >> a, y >> a, z >> a); }

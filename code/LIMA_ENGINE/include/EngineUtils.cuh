@@ -438,6 +438,10 @@ namespace EngineUtils {
 		return (*p1 - temp).len();
 	}
 
+	__device__ __host__ static float calcKineticEnergy(const float velocity, const float mass) {
+		return 0.5f * mass * velocity * velocity;
+	}
+
 	// Positions in [nm] and time in [ns]
 	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
 		auto dist = calcHyperDistNM(pos1, pos2);
@@ -447,9 +451,10 @@ namespace EngineUtils {
 			pos2->print('2');
 		}
 
-		const float vel = dist / elapsed_time;
-		const float kinE = 0.5f * mass * vel * vel;
-		return kinE;
+		const float velocity = dist / elapsed_time;
+		return calcKineticEnergy(velocity, mass);
+		//const float kinE = 0.5f * mass * vel * vel;
+		//return kinE;
 	}
 	// -------------------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -552,6 +557,36 @@ namespace EngineUtils {
 		return coord + delta_pos + Coord{ *force * dt * dt / mass };
 	}
 
+	// returns pos_tadd1
+	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const double mass, const double dt) {
+		
+		/*if (threadIdx.x == 0) {
+			Float3 f = vel * dt + force * (0.5 / mass * dt * dt);
+			Coord c = Coord{ vel * dt + force * (0.5 / mass * dt * dt) };
+			f.print('f');
+			c.print('c');
+			printf("dt: %f\n", dt);
+		}*/
+
+		//const Coord pos_tadd1 = pos + Coord{ vel * dt + force * (0.5 / mass * dt * dt) };						// braking/stable version
+		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round()};				// precise version
+
+		return pos_tadd1;
+	}
+	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const double dt, const double mass) {
+		/*Float3 f = (force + force_tsub1) * dt * 0.5f / mass;
+		Coord c{ (force + force_tsub1) * dt * 0.5f / mass };
+		const Coord vel = vel_tsub1 + Coord{ (force + force_tsub1) * dt * 0.5f / mass };
+
+		if (threadIdx.x == 0) {
+			f.print('f');
+			c.print('c');
+			printf("dt: %f\n", dt);
+		}
+		*/
+		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5 / mass);
+		return vel;
+	}
 
 	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol, uint32_t step, DatabuffersDevice* databuffers) {
 		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);

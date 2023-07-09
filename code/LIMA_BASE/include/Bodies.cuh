@@ -66,12 +66,12 @@ struct DihedralBond {
 	const static int n_atoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<int, 4> ids); // Used when loading topology only
-	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n);
-	DihedralBond(std::array<uint32_t, 4> ids, float phi0, float kphi, int n);
+	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, float n);
+	DihedralBond(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
 
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
-	uint8_t n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+	float n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 	uint32_t atom_indexes[4] = {0,0,0,0};
 };
 

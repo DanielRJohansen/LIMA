@@ -135,7 +135,7 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 	return force;// *24.f * 1e-9;
 }
 
-__device__ Float3 computePairbondForces(SingleBond* singlebonds, int n_singlebonds, Float3* positions, Float3* utility_buffer, float* utilitybuffer_f, float* potE) {	// only works if n threads >= n bonds
+__device__ Float3 computeSinglebondForces(SingleBond* singlebonds, int n_singlebonds, Float3* positions, Float3* utility_buffer, float* utilitybuffer_f, float* potE) {	// only works if n threads >= n bonds
 
 	// First clear the buffer which will store the forces.
 	utility_buffer[threadIdx.x] = Float3(0.f);
@@ -264,6 +264,7 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 
 	// First clear the buffer which will store the forces.
 	utility_buffer[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
 	__syncthreads();
 
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
@@ -296,7 +297,6 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 			__syncthreads();
 		}
 	}
-
 	*potE += potentials_interim[threadIdx.x];
 	return utility_buffer[threadIdx.x];
 }
@@ -543,7 +543,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		__syncthreads();
 
-		force += computePairbondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
+		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
@@ -569,7 +569,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		__syncthreads();
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
-
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
@@ -605,7 +604,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
-
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
@@ -664,8 +662,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
-
-
 
 
 	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 	
@@ -855,7 +851,19 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, simparams.step);
 		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, simparams.constparams.dt, simparams.thermostat_scalar);
 
-		LIMAKERNELDEBUG::solventIntegration(relpos_prev, relpos_next, force, simparams.critical_error_encountered, solventblock.ids[threadIdx.x]);
+
+		//const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
+
+		//const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
+
+		//// Prepare vel and forces for next step
+		//box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_now;
+		//box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+
+		//// Save pos locally, but only push to box as this kernel ends
+		//compound_coords.rel_positions[threadIdx.x] = pos_now;
+
+		//LIMAKERNELDEBUG::solventIntegration(relpos_prev, relpos_next, force, simparams.critical_error_encountered, solventblock.ids[threadIdx.x]);
 	}
 
 
@@ -978,11 +986,10 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
 	{											// So for the very first step, these ´should all be 0, but they are not??										TODO: Look into this at some point!!!! 
-		force += computePairbondForces(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
+		force += computeSinglebondForces(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeAnglebondForces(&bridge, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&bridge, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeImproperdihedralForces(bridge.impropers, bridge.n_improperdihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
-		//TODO: Add impropers here
 		if (force.len() > 3.5 && threadIdx.x == 0 && bridge.compound_id_left == 1) { 
 			printf("\n\n");
 			force.print(); 

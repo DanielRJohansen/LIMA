@@ -5,9 +5,9 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 2000;
+n_steps = 1000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "SolventBenchmark";
+benchmark = "TorsionBenchmark";
 %benchmark = benchmarks(10);
 % ------------------------------------ %
 
@@ -32,13 +32,11 @@ if normalize
 end
 
 
-%totalE = kinE + potE;
-
 x = 1:length(potE);
 
-
 from = 0;
-to = inf;
+%to = inf;
+to = 1000;
 
 % Plot original data
 subplot(2,1,1)

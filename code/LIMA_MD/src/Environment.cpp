@@ -30,9 +30,7 @@ Environment::Environment(const string& wf, EnvMode mode)
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
-
 	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
-	//forcefield.loadForcefield(work_folder + "/molecule");
 
 	SimParams simparams{ ip };
 

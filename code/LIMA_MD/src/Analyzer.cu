@@ -11,7 +11,7 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
 	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
 		if ((threadIdx.x + i) < array_len) {
-			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];// *0.5f;	// easier to just divide by sum of solvents at host
+			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
 		}
 		__syncthreads();
 		arrayptr[threadIdx.x] = temp;

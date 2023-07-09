@@ -569,7 +569,9 @@ namespace EngineUtils {
 		}*/
 
 		//const Coord pos_tadd1 = pos + Coord{ vel * dt + force * (0.5 / mass * dt * dt) };						// braking/stable version
-		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round()};				// precise version
+		//const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round()};				// precise version
+
+		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
 
 		return pos_tadd1;
 	}

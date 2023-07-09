@@ -66,14 +66,14 @@ DihedralBond::DihedralBond(std::array<int, n_atoms> ids) {
 	}
 }
 
-DihedralBond::DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, int n) : phi_0(phi_0), k_phi(k_phi), n(n) {
+DihedralBond::DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, float n) : phi_0(phi_0), k_phi(k_phi), n(n) {
 	atom_indexes[0] = id1;
 	atom_indexes[1] = id2;
 	atom_indexes[2] = id3;
 	atom_indexes[3] = id4;
 }
 
-DihedralBond::DihedralBond(std::array<uint32_t, 4> ids, float phi_0, float k_phi, int n) : phi_0(phi_0), k_phi(k_phi), n(n) {
+DihedralBond::DihedralBond(std::array<uint32_t, 4> ids, float phi_0, float k_phi, float n) : phi_0(phi_0), k_phi(k_phi), n(n) {
 	for (int i = 0; i < n_atoms; i++) {
 		atom_indexes[i] = ids[i];
 	}

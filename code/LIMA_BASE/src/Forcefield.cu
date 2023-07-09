@@ -103,8 +103,8 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 			}
 			const float b0 = stof(row.words[4]) * NANO_TO_LIMA;							// convert [nm] to [lm]
 			// Units of kb is [J/mol/nm^2]. One nm is for the error in forcecalc, and one distance in integration
-			const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
-			//const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
+			//const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
+			const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
 
 			topology.singlebonds.emplace_back(SingleBond{ gro_ids, b0, kb });
 		}
@@ -128,7 +128,7 @@ Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile
 			}
 			const float phi0 = stof(row.words[8]);
 			const float kphi = stof(row.words[9]);
-			const int multiplicity = stoi(row.words[10]);
+			const float multiplicity = stof(row.words[10]);
 			topology.dihedralbonds.emplace_back(DihedralBond{ gro_ids, phi0, kphi, multiplicity });
 		}
 		else if (row.section == "improperdihedralbonds") {

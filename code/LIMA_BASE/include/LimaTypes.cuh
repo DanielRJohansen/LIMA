@@ -115,7 +115,7 @@ struct Float3 {
 	__host__ __device__ Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
-	__host__ __device__ inline double len_d() const { return sqrtf((double)x * x + (double)y * y + (double)z * z); }
+	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
@@ -242,6 +242,10 @@ struct Float3 {
 		return sum * (1.f / arr_size);
 	}
 
+	// Assumes *this is a point, and arguments are two points on a line
+	__host__ __device__ float distToLine(const Float3& p1, const Float3& p2) {
+		return ((p2 - p1).cross(p1 - (*this))).len() / (p2 - p1).len();
+	}
 
 
 	float x = 0, y = 0, z = 0;

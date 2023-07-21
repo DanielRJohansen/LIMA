@@ -7,7 +7,7 @@ clc
 % Edit these to select the correct data
 n_steps = 1000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "TorsionBenchmark";
+benchmark = "Met";
 %benchmark = benchmarks(10);
 % ------------------------------------ %
 
@@ -24,7 +24,8 @@ kinE = energy_data(:,2);
 totalE = energy_data(:,3);
 
 normalize = true;
-eMean = mean(totalE);
+%eMean = mean(totalE);
+eMean = totalE(1);
 if normalize
     potE = potE ./ eMean;
     kinE = kinE ./ eMean;
@@ -35,8 +36,8 @@ end
 x = 1:length(potE);
 
 from = 0;
-%to = inf;
-to = 1000;
+to = inf;
+%to = 1000;
 
 % Plot original data
 subplot(2,1,1)

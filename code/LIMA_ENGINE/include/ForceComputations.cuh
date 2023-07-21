@@ -131,12 +131,11 @@ __device__ void calcDihedralbondForces1(Float3* pos_left, Float3* pos_lm, Float3
 }
 
 // From resource: https://nosarthur.github.io/free%20energy%20perturbation/2017/02/01/dihedral-force.html
-__device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
+__device__ void calcDihedralbondForces5(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
+	return;
 	Float3 grad_l, grad_lm, grad_rm, grad_r;
-
-	float cosphi_1, cosphi_2;
-	float normaldot;
-
+	float torsion;
+	
 	{
 		const Float3 r1 = (*pos_lm - *pos_left);
 		const Float3 r2 = (*pos_rm - *pos_lm);
@@ -145,15 +144,12 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 		const Float3 m_hat = (r1.cross(r2)).norm();
 		const Float3 n_hat = (r2.cross(r3)).norm();
 
-		grad_l = (n_hat.cross(m_hat).cross(n_hat).cross(r2)) / (r1.cross(r2)).len();
-
+		//grad_l = (n_hat.cross(m_hat).cross(n_hat).cross(r2)) / (r1.cross(r2)).len();
+		grad_r = (m_hat.cross(n_hat).cross(m_hat).cross(r2)) / (r1.cross(r2)).len();
 		grad_lm = ((n_hat.cross(m_hat).cross(n_hat).cross(r3)) / (r2.cross(r3).len()))
 			- ((m_hat.cross(n_hat).cross(m_hat).cross(r1 + r2)) / (r1.cross(r2).len()));
 
-		cosphi_1 = n_hat.dot(m_hat);
-
-		normaldot = n_hat.dot(r1);
-		//r1.print('m');
+		torsion = abs(Float3::getAngle(m_hat, n_hat));
 	}
 
 
@@ -167,91 +163,210 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 		const Float3 m_hat = (r1.cross(r2)).norm();
 		const Float3 n_hat = (r2.cross(r3)).norm();
 
-		grad_r = (m_hat.cross(n_hat).cross(m_hat).cross(r2)) / (r1.cross(r2)).len();
+		//grad_r = (n_hat.cross(m_hat).cross(n_hat).cross(r2)) / (r1.cross(r2)).len();
+		grad_l = (m_hat.cross(n_hat).cross(m_hat).cross(r2)) / (r1.cross(r2)).len();
 
-		((n_hat.cross(m_hat).cross(n_hat).cross(r2)) / (r1.cross(r2)).len()).print('a');
-		grad_r.print('b');
+		//((n_hat.cross(m_hat).cross(n_hat).cross(r2)) / (r1.cross(r2)).len()).print('a');
+		//grad_r.print('b');
 		grad_rm = ((n_hat.cross(m_hat).cross(n_hat).cross(r3)) / (r2.cross(r3).len()))
 			- ((m_hat.cross(n_hat).cross(m_hat).cross(r1 + r2)) / (r1.cross(r2).len()));
-
-		cosphi_2 = n_hat.dot(m_hat);
 	}
 
 
-	printf("len ratio = %f mag ratio %f\n", (abs(pos_left->distToLine(*pos_lm, *pos_rm)) / abs(pos_right->distToLine(*pos_lm, *pos_rm))),	grad_r.len() / grad_l.len());
+	//	printf("len ratio = %f mag ratio %f\n", (abs(pos_left->distToLine(*pos_lm, *pos_rm)) / abs(pos_right->distToLine(*pos_lm, *pos_rm))),	grad_r.len() / grad_l.len());
+
+
+	//grad_l.print('1');
+	//grad_lm.print('2');
+	//grad_rm.print('3');
+	//grad_r.print('4');
+	//(grad_l + grad_lm + grad_rm + grad_r).print('S');
 
 	//grad_l = grad_l.norm();
 	//grad_r = grad_r.norm();
 	//grad_lm = grad_lm.norm();
 	//grad_rm = grad_rm.norm();
 
-	float torsion = std::acosf(CPPD::min(cosphi_1, 1.f));
-	//if (normaldot > 0.f) { torsion = -torsion; }
+	float dtl = abs(pos_left->distToLine(*pos_lm, *pos_rm));
+	float dtl2 = abs(pos_right->distToLine(*pos_lm, *pos_rm));
+	printf("grad_l %.12f myscalar %.12f ratio %f\n", grad_l.len(), 1.f / dtl, grad_l.len() / (1.f / dtl));
+	printf("grad_r %.12f myscalar %.12f ratio %f\n", grad_r.len(), 1.f / dtl2, grad_r.len() / (1.f / dtl2));
 
+	*potE = (double)dihedral->k_phi * (1. + cos((double)dihedral->n * torsion - (double)dihedral->phi_0));
+	double torque = -dihedral->n * dihedral->k_phi * (dihedral->n * sin(dihedral->n * torsion - dihedral->phi_0));
 
-	//grad_l.print('l');
-	//printf("Lens %f %f %f %f\n", grad_l.len(), grad_lm.len(), grad_rm.len(), grad_r.len());
-	printf("Torsion %f cosphi %f is_1 %d\n", torsion, cosphi_1, cosphi_1 = 1.f);
-
-
-
-	
-
-	*potE = (double)dihedral->k_phi*1000.f * (1. + cos((double)dihedral->n * torsion - (double)dihedral->phi_0));
-	double torque = -dihedral->n * dihedral->k_phi * 1000.f * (dihedral->n * sin(dihedral->n * torsion - dihedral->phi_0));
+	printf("torsion %f torque %f\n", torsion, torque);
 
 	if ((double)dihedral->k_phi * (1. + cos((double)dihedral->n * torsion - (double)dihedral->phi_0)) < 0.f) {
 		printf("This is really not supposed to happen!\n");
 		torque *= 100000.f;	// Force an error
 	}
 
+
+
+	results[0] = grad_l * (torque);
+	results[1] = grad_lm * (torque);
+	results[2] = grad_rm * (torque);
+	results[3] = grad_r * (torque);
+
 	//results[0] = grad_l * (torque / (*pos_lm - *pos_left).len());
 	//results[3] = grad_r * (torque / (*pos_rm - *pos_right).len());
 	//results[0] = grad_l * (torque / abs(pos_left->distToLine(*pos_lm, *pos_rm)));
 	//results[3] = grad_r * (torque / abs(pos_right->distToLine(*pos_lm, *pos_rm)));
-	results[0] = grad_l * torque;
-	results[3] = grad_r * torque;
+	//results[0] = grad_l * torque;
+	//results[3] = grad_r * torque;
 
+	// Caclculate the scaler needed for the interior gradients to neutralize the exterior gradients
+	//const Float3 ext = -(results[0] + results[3]);	// negative sum of exterior atoms
+	//
+	////const float scalar_lm = (ext.y * grad_rm.x - grad_rm.y * ext.x) / (grad_rm.x * grad_lm.y + grad_lm.x); wrong
+	//const float scalar_lm = (ext.y * grad_rm.x - grad_rm.y * ext.x) / (grad_rm.x - grad_lm.y - grad_rm.y * grad_lm.x);
+	//const float scalar_rm = (ext.x - grad_lm.x * scalar_lm) / grad_rm.x;
+	//
+	//results[1] = grad_lm * scalar_lm;
+	//results[2] = grad_rm * scalar_rm;
 
-	float force_scalar = -(results[0] + results[3]).len();
-	//results[1] = grad_lm * force_scalar;
-	//results[2] = grad_rm * force_scalar;
-	results[1] = grad_lm * torque;
-	results[2] = grad_rm * torque;
 
 
 	Float3 force_spillover = Float3{};
 	for (int i = 0; i < 4; i++) {
 		force_spillover += results[i];
 	}
+	//ext.print('e');
 	force_spillover.print('s');
-	results[0].print('l');
-	for (int i = 0; i < 4; i++) {
-		//results[i] -= force_spillover * 0.25f;
-	}
+	//results[0].print('L');
+	//results[1].print('l');
+	//results[2].print('r');
+	//results[3].print('R');
+	printf("\n");
+	//for (int i = 0; i < 4; i++) {
+	//	//results[i] -= force_spillover * 0.25f;
+	//}
 
 	//force_spillover.print('f');
 	//grad_lm.print('l');
 	//grad_rm.print('r');
 
 	{
-		const Float3 normal1 = (*pos_left - *pos_lm).norm_d().cross((*pos_rm - *pos_lm).norm_d()).norm_d();
-		Float3 normal2 = (*pos_lm - *pos_rm).norm_d().cross((*pos_right - *pos_rm).norm_d()).norm_d();
-		// Both vectors point "left" (looking from lm to rm). 
+		//const Float3 normal1 = (*pos_left - *pos_lm).norm_d().cross((*pos_rm - *pos_lm).norm_d()).norm_d();
+		//Float3 normal2 = (*pos_lm - *pos_rm).norm_d().cross((*pos_right - *pos_rm).norm_d()).norm_d();
+		//// Both vectors point "left" (looking from lm to rm). 
 
 
 
-		double torsion2 = Float3::getAngle(normal2, normal1);
+		//double torsion2 = Float3::getAngle(normal2, normal1);
 
-		const bool angle_is_negative = (normal2.dot(*pos_left - *pos_lm)) > 0.f;
-		if (angle_is_negative) {
-			torsion2 = -torsion2;
-		}
+		//const bool angle_is_negative = (normal2.dot(*pos_left - *pos_lm)) > 0.f;
+		//if (angle_is_negative) {
+		//	torsion2 = -torsion2;
+		//}
 
 		//printf("my %f his %f normalsdot %f graddot %f gradr_dot_m\n", torsion2, acosf(cosphi_1), normaldot, grad_l.dot(grad_r), grad_r.dot(m_hat);
 	}
+}
+
+__device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
+	const Float3 r21 = *pos_left - *pos_lm;
+	const Float3 r32 = *pos_lm - *pos_rm;
+	const Float3 r43 = *pos_rm - *pos_right;
+	//return;
+	Float3 A = r21.cross(r32);
+	const float rA = A.len();
+	Float3 B = r32.cross(r43);
+	const float rB = B.len();
+
+	// If this is very small, the torsion angle is undefined
+	if (rA * rB < 0.0000001f) { return; }
+
+	A = A.norm();
+	B = B.norm();
+
+	float cos_phi = A.dot(B);
+	if (cos_phi > 1.0) cos_phi = 1.0;
+	if (cos_phi < -1.0) cos_phi = -1.0;
+
+	const float torsion = acosf(cos_phi);
+
+
+	
+	// Simple implementation
+	//const float error = torsion - dihedral->phi_0;				// [rad]
+	//*potE += dihedral->k_phi * error * error * 0.5f;		// Energy [J/mol]0
+	//float torque = dihedral->k_phi * (error);				// Torque [J/(mol*rad)]
+
+	*potE = (double)dihedral->k_phi * (1. + cos((double)dihedral->n * torsion - (double)dihedral->phi_0));
+	const double torque = -dihedral->k_phi * (dihedral->n * sin(dihedral->n * torsion - dihedral->phi_0));
+
+	Float3 dcosdA = (A - B * cos_phi) / rA;
+	Float3 dcosdB = (B - A * cos_phi) / rB;
+
+	const Float3 d1 = r32.cross(dcosdA);
+	const Float3 d2 = (r43.cross(dcosdB) - r21.cross(dcosdA));
+	const Float3 d3 = dcosdB.cross(r32);
+
+	float scalar = 1.f / d1.len();
+	//d1*= scalar;
+	//d2 *= scalar;
+	//d3 *= scalar;
+	//Float3 f1 = r32.cross(dcosdA) * torque;
+	//Float3 f2 = (r43.cross(dcosdB) - r21.cross(dcosdA)) * torque;
+
+
+	//printf("cosphi %f torsion %f\n", cos_phi, torsion);
+	//f1.print('1');
+	//f2.print('2');
+	//f3.print('3');
+	
+	// Remove the component along rotational axis.
+	Float3 g1 = d3 - d2;
+	Float3 g2 = d2 - d1;
+
+	g1 = g1 - r32.norm() * r32.dot(g1)/r32.len();
+	g2 = g2 - r32.norm() * r32.dot(g2)/r32.len();
+
+	if (r32.dot(g1) + r32.dot(g2) > 0.0001) {
+		printf("dots %f %f\n", r32.dot(g1), r32.dot(g2));
+	}
+	
+	results[3] = d1 * torque;
+	results[2] = g2 * torque;
+	results[1] = g1 * torque;
+	results[0] = -d3 * torque;
+
 	
 
+	float error = torsion - dihedral->phi_0;
+	if (dihedral->n == 3) {
+		error = CPPD::min(abs(error), abs(torsion - (dihedral->phi_0 + PI * 2.f / 3.f)));
+		error = CPPD::min(abs(error), abs(torsion - (dihedral->phi_0 - PI * 2.f / 3.f)));
+	}
+
+
+	//printf("cosphi %f torsion %f torque %f error %f\n", cos_phi, torsion, torque, error);
+	//printf("ra %f rb %f\n", rA, rB);
+
+	
+	Float3 force_spillover = Float3{};
+	for (int i = 0; i < 4; i++) {
+		force_spillover += results[i];
+	}
+	if (force_spillover.len() > 0.0001) {
+		force_spillover.print('s');
+	}
+	
+
+	float dtl = abs(pos_left->distToLine(*pos_lm, *pos_rm));
+	float dtl2 = abs(pos_right->distToLine(*pos_lm, *pos_rm));
+	//printf("grad_l %.12f myscalar %.12f ratio %f\n", r32.cross(dcosdA).len(), 1.f / dtl, r32.cross(dcosdA).len() / (1.f / dtl));
+	//printf("grad_r %.12f myscalar %.12f ratio %f\n", dcosdB.cross(r32).len(), 1.f / dtl2, dcosdB.cross(r32).len() / (1.f / dtl2));
+
+	float leverarm_correction = 1.f / abs(pos_left->distToLine(*pos_lm, *pos_rm))
+		/ r32.cross(dcosdA).len();	// This is the wrong one, they are still mixed up
+
+	float ratio = r32.cross(dcosdA).len() / (1.f / dtl);
+	for (int i = 0; i < 4; i++) {
+		results[i] *= leverarm_correction;
+	}
 }
 
 __device__ void calcDihedralbondForces2(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
@@ -283,10 +398,10 @@ __device__ void calcDihedralbondForces2(Float3* pos_left, Float3* pos_lm, Float3
 	if (0) {
 		//normal1.print('1');
 		//normal2.print('2');
-		//pos_left->print('L');
-		//pos_lm->print('l');
-		//pos_rm->print('r');
-		//pos_right->print('R');
+		//
+		//
+		//
+		//;
 		//printf("angle neg %d\n", angle_is_negative);
 		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
 		float pot = dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
@@ -316,10 +431,72 @@ __device__ void calcDihedralbondForces2(Float3* pos_left, Float3* pos_lm, Float3
 }
 
 
+__device__ void calcDihedralbondForces6(Float3* pos_left, Float3* pos_lm, Float3* pos_rm, Float3* pos_right, DihedralBond* dihedral, Float3* results, float* potE) {
+	const Float3 normal1 = (*pos_left - *pos_lm).norm_d().cross((*pos_rm - *pos_lm).norm_d()).norm_d();
+	Float3 normal2 = (*pos_lm - *pos_rm).norm_d().cross((*pos_right - *pos_rm).norm_d()).norm_d();
+	// Both vectors point "left" (looking from lm to rm). 
+
+	double torsion = Float3::getAngle(normal2, normal1);
+	//const float torsion = normal1.getAngleSigned(normal2);
+
+	const bool angle_is_negative = (normal2.dot(*pos_left - *pos_lm)) > 0.f;
+	if (angle_is_negative) {
+		torsion = -torsion;
+	}
+
+	//torsion = angle_is_negative ? torsion * -1.f : torsion;
+
+	normal2 *= -1;
+	// Now  normal2 is flipped meaning both vectors point inward when 0 < torsion < 3.14, and outwards otherwise
+
+
+	// This is according to chatgpt
+	*potE = (double)dihedral->k_phi * (1. + cos((double)dihedral->n * torsion - (double)dihedral->phi_0));
+	const double torque = -dihedral->n * dihedral->k_phi * (dihedral->n * sin(dihedral->n * torsion - dihedral->phi_0));
+
+
+
+
+	if (0) {
+		//normal1.print('1');
+		//normal2.print('2');
+		//
+		//
+		//
+		//;
+		//printf("angle neg %d\n", angle_is_negative);
+		//printf("torsion %f      ref %f     error %f     force: %f\n", torsion, dihedral->phi_0, error, force_scalar);
+		float pot = dihedral->k_phi * (1 + cosf(dihedral->n * torsion - dihedral->phi_0));
+		printf("\ntorsion %f [rad]    torque: %f    pot %f     phi_0 %f [rad] k_phi %f\n",
+			torsion, torque, pot, dihedral->phi_0, dihedral->k_phi);
+	}
+
+
+
+	//results[0] = normal1 * (torque / (*pos_left - *pos_lm).len());
+	//results[3] = normal2 * (torque / (*pos_right - *pos_rm).len());
+	results[0] = normal1 * (torque / pos_left->distToLine(*pos_lm, *pos_rm));
+	results[3] = normal2 * (torque / pos_right->distToLine(*pos_lm, *pos_rm));
+
+
+	// Not sure about the final two forces, for now we'll jsut split the sum of opposite forces between them.
+	results[1] = (results[0] + results[3]) * -1.f * 0.5;
+	results[2] = (results[0] + results[3]) * -1.f * 0.5;
+	//results[1] = -results[0];
+	//results[2] = -results[3];
+
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.5f) {
+		printf("\nDihedralBond: torsion %f [rad] torque: %f phi_0 [rad] %f k_phi %f\n",
+			torsion, torque, dihedral->phi_0, dihedral->k_phi);
+	}
+#endif
+}
+
 __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
 	Float3 normal1 = (*j - *i).cross((*k - *i)).norm();	// i is usually the center on
 	Float3 normal2 = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
-
+	return;	// DISABLED untill made stable
 
 	float angle = Float3::getAngle(normal2, normal1); 
 	if (angle < 0) {

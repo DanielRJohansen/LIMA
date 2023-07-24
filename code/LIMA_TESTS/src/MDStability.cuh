@@ -18,7 +18,7 @@
 namespace TestMDStability {
 
 	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
-		InputSimParams emparams{ 20, 4000 };
+		InputSimParams emparams{ 20, 2000 };
 		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
@@ -26,7 +26,10 @@ namespace TestMDStability {
 		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		// Do sim
-		InputSimParams simparams{ 100, 2000 };
+		//InputSimParams simparams{ 100, 2000 };
+		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + folder_name + "/";
+		const std::string simpar_path = work_folder + "sim_params.txt";
+		const InputSimParams  simparams = env->loadInputSimParams(simpar_path);
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();

@@ -673,7 +673,7 @@ struct CompoundGridNode {
 
 
 	// Contains only compounds that are CLOSEST to this specific node
-	static const int max_associated_compounds = 4;
+	static const int max_associated_compounds = 5;
 	int16_t associated_ids[max_associated_compounds]{};
 	int16_t n_associated_compounds = 0;
 

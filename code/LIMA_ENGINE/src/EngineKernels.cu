@@ -544,10 +544,15 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		__syncthreads();
 
 		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
+
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
+		//if (threadIdx.x < compound.n_particles) {
+		//	printf("%d %f\n", threadIdx.x, force.len());
+		//}
 		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
+
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -601,7 +606,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 
 	}
-
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 

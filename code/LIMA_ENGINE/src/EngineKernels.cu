@@ -489,9 +489,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
-	
-	
-
 
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
@@ -512,44 +509,27 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	compound_state.loadData(compound_coords);
 	__syncthreads();
 
-	if (blockIdx.x == 2 && threadIdx.x == 0) {
-		//LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('H');
-	}
-
-
 	float data_ptr[4]{};
-	for (int i = 0; i < 4; i++)
-		data_ptr[i] = 0;
-	data_ptr[2] = 9999;
 
 	if constexpr (em_variant)
 		data_ptr[3] = simparams.step + 1;
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	//float potE_sum = 0;
 	int index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 	float potE_sum = compound.potE_interim[threadIdx.x];
-	//float potE_sum = 0;
 
 
 	Float3 force = compound.forces[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
-//	force = 0;
-	if (force.len() > 3 || force.isNan()) {
-		//printf("\n%d %d %f\n", blockIdx.x, threadIdx.x, force.len());
-	}
+
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));
 		__syncthreads();
 
 		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-		//if (threadIdx.x < compound.n_particles) {
-		//	printf("%d %f\n", threadIdx.x, force.len());
-		//}
 		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeIntracompoundLJForces(&compound, &compound_state, &potE_sum, data_ptr, &bonded_particles_lut);
 
@@ -709,15 +689,11 @@ static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKerne
 template <bool em_variant>
 __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
-	//__shared__ uint8_t utility_buffer_small[MAX_COMPOUND_PARTICLES];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
-	//__shared__ Coord coord_utility_buffer[MAX_SOLVENTS_IN_BLOCK + 6 * SolventBlockTransfermodule::max_queue_size];
 	__shared__ int utility_int;
 	__shared__ Coord utility_coord;
-	//__shared__ int lcg_seed;
-	//lcg_seed = 12345;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
@@ -746,7 +722,6 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
-		//solventblock.origo.print();
 	}
 	__syncthreads();
 	solventblock.loadData(*solventblock_ptr);
@@ -994,45 +969,6 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 		force += computeAnglebondForces(&bridge, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&bridge, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeImproperdihedralForces(bridge.impropers, bridge.n_improperdihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
-		if (force.len() > 3.5 && threadIdx.x == 0 && bridge.compound_id_left == 1) { 
-			printf("\n\n");
-			force.print(); 
-			//printf("singles: %d thread %d\n", bridge.n_singlebonds, threadIdx.x);
-
-			SingleBond bond = bridge.singlebonds[0];
-
-			auto p1 = bridge.particle_refs[bond.atom_indexes[0]];
-			auto p2 = bridge.particle_refs[bond.atom_indexes[1]];
-
-			
-			NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, 0, bridge.compound_id_left)->origo;
-			NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, 0, bridge.compound_id_right)->origo;
-
-			auto o1 = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_left);
-			auto o2 = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_right);
-
-			printf("Bridge left %d right %d\n", bridge.compound_id_left, bridge.compound_id_right);
-
-			o1.print('o');
-			o2.print('O');
-
-			auto r1 = positions[bond.atom_indexes[0]] / NANO_TO_LIMA;
-			auto r2 = positions[bond.atom_indexes[1]] / NANO_TO_LIMA;
-
-			(o1 + r1).print('1');
-			(o2 + r2).print('2');
-
-			utility_coord.print('S');
-
-			printf("Gro ids %d %d c %d %d i %d %d\n",
-				p1.gro_id,
-				p2.gro_id,
-				p1.compound_id,
-				p2.compound_id,
-				p1.local_id_compound,
-				p2.local_id_compound
-			);
-		}
 	}
 	__syncthreads();
 	// --------------------------------------------------------------------------------------------------------------------------------------------------- //

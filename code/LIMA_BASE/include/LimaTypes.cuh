@@ -147,7 +147,11 @@ struct Float3 {
 	}
 
 
-	__host__ __device__ Float3 cross(Float3 a) const { return Float3(y * a.z - z * a.y, z * a.x - x * a.z, x * a.y - y * a.x); }
+	__host__ __device__ Float3 cross(Float3 a) const { 
+		return Float3(
+			y * a.z - z * a.y, 
+			z * a.x - x * a.z, 
+			x * a.y - y * a.x); }
 	__host__ __device__ float dot(Float3 a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ Float3 abs() const {
 		return Float3(

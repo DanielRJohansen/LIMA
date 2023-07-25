@@ -288,11 +288,11 @@ void Environment::handleStatus(Simulation* simulation) {
 	}
 
 
-	if (!(simulation->getStep() % simulation->steps_per_render)) {
+	if (!(simulation->getStep() % STEPS_PER_RENDER)) {
 		printf("\r\tStep #%06llu", simulation->getStep());
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / simulation->steps_per_render * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / simulation->steps_per_render, engine->timings.x / simulation->steps_per_render, engine->timings.y / simulation->steps_per_render, engine->timings.z/simulation->steps_per_render, remaining_minutes);
+		int remaining_minutes = (int)(1.f / 1000 * duration / STEPS_PER_RENDER * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
+		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / STEPS_PER_RENDER, engine->timings.x / STEPS_PER_RENDER, engine->timings.y / STEPS_PER_RENDER, engine->timings.z/ STEPS_PER_RENDER, remaining_minutes);
 		//engine->timings = Int3(0, 0, 0);
 		engine->timings.x = 0;
 		engine->timings.y = 0;
@@ -307,7 +307,7 @@ void Environment::handleStatus(Simulation* simulation) {
 bool Environment::handleDisplay(Simulation* simulation) {	
 	if (!display) { return true; }	// Headless or ConsoleOnly
 
-	if (!(simulation->getStep() % simulation->steps_per_render)) {
+	if (!(simulation->getStep() % STEPS_PER_RENDER)) {
 		display->render(simulation);
 	}
 

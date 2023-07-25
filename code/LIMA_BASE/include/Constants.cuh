@@ -138,11 +138,9 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
 const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-const bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
+constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
 const bool PRINT_TEMP = false;			// Force always print temp
-const int STEPS_PER_THERMOSTAT = 20;			// Must be >= 3 why?
-const int FIRST_TEMPERATURE_PRINT_STEP = RAMPUP_STEPS;
-const int FIRST_THERMOSTAT_APPLICATION_STEP = RAMPUP_STEPS + 0;
+const int STEPS_PER_THERMOSTAT = 1000;			// Must be >= 3 why?
 constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -150,7 +148,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 10;
+const int STEPS_PER_RENDER = 20;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

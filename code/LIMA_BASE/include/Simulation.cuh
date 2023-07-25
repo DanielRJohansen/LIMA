@@ -174,24 +174,17 @@ public:
 	bool finished = false;
 
 
-	//std::vector<Float3> traj_buffer;
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;
 	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;
 	std::unique_ptr<ParticleDataBuffer<Float3>> vel_buffer;	// We dont need direction here, so could simply be a float
-	//std::vector<float> potE_buffer;
+
 	std::vector<float> temperature_buffer;
 
-	// TODO: Make these vectors instead
-	//Float3* traindata_buffer = nullptr;		// LimaPosition and force data for all particles, for NN training
-	//float* logging_data = nullptr;				// Used for debugging/logging any values. 10 floats per step!
 	std::vector<Float3> trainingdata;
 	std::vector<float> loggingdata;
 
 
 
-
-	//const float dt = 100.f;					// [ls]
-	const int steps_per_render = STEPS_PER_RENDER;
 
 	float temperature = -1.f;			// Current temperature [k]
 

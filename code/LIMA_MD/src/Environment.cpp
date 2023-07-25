@@ -67,7 +67,7 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
 
 
-	simulation = std::make_unique<Simulation>(simparams, work_folder + "/molecule/");
+	simulation = std::make_unique<Simulation>(simparams, work_folder + "/molecule/", m_mode);
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_folder));
 
 	verifySimulationParameters();

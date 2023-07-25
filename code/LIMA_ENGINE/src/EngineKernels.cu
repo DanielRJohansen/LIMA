@@ -828,7 +828,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 	if (solvent_active) {
 		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, simparams.step);
-		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, simparams.constparams.dt, simparams.thermostat_scalar);
+		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, simparams.constparams.dt, simparams.thermostat_scalar);	// TODO: Switch this to VVS!
 
 
 		//const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);

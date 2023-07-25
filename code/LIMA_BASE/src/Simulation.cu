@@ -128,11 +128,11 @@ void SimulationDevice::deleteMembers() {
 }
 
 
-Simulation::Simulation(const SimParams& ip, const std::string& molecule_path) :
+Simulation::Simulation(const SimParams& ip, const std::string& molecule_path, EnvMode envmode) :
 	simparams_host{ ip }
 {
 	box_host = std::make_unique<Box>();
-	forcefield = std::make_unique<Forcefield>(V1);
+	forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1);
 	forcefield->loadForcefield(molecule_path);
 }
 

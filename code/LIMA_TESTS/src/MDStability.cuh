@@ -16,14 +16,15 @@
 
 
 namespace TestMDStability {
+	using namespace TestUtils;
 
-	static bool loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_dev = 0.05) {
+	static LimaUnittest loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
 		InputSimParams emparams{ 20, 2000 };
-		auto env = TestUtils::basicSetup(folder_name, { emparams }, envmode);
+		auto env = basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
 		env->run(true);
-		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
+		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		// Do sim
 		//InputSimParams simparams{ 100, 2000 };
@@ -33,25 +34,28 @@ namespace TestMDStability {
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
-		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
+		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		const auto analytics = env->getAnalyzedPackage();
 		
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
-		}
-		LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
-		LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
+			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
+			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
+		}		
 
-		return TestUtils::evaluateTest({analytics->variance_coefficient}, max_dev, { analytics->energy_gradient }, 0.002f);
+		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
+		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+
+		return LimaUnittest{ "loadAndEMAndRunBasicSimulation:" + folder_name, status, result.second, envmode == Full };
 	}
 
-	bool doEightResiduesNoSolvent(EnvMode envmode) {
+	LimaUnittest doEightResiduesNoSolvent(EnvMode envmode) {
 		const std::string name = "T4LysozymeNoSolventSmall";
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation(name, envmode, 0.021f);
+		return loadAndRunBasicSimulation(name, envmode, 0.021f);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

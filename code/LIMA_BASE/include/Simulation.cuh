@@ -157,7 +157,7 @@ struct SimulationDevice {
 // This stays on host
 class Simulation {
 public:
-	Simulation(const SimParams& sim_params, const std::string& molecule_path);
+	Simulation(const SimParams& sim_params, const std::string& molecule_path, EnvMode envmode);
 
 	~Simulation();
 	void moveToDevice();

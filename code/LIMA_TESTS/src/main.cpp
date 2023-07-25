@@ -4,39 +4,19 @@
 #include "LIMA_TESTS/src/MDStability.cuh"
 #include "LIMA_TESTS/src/EnergyMinimization.cuh"
 
-constexpr auto envmode = EnvMode::Full;
-//
-//// Due to the following define, i belive all includes to test-headers must come after
-//
-//
-//#include "LIMA_TESTS/include/MDStability.h"
-//
-//
-//
-//
 
-//
-////bool coordPrecesionBenchmark() {
-////	Float3 pos1{ 3.5, 4, 4 };
-////	Float3 pos2{ 4, 4, 4 };
-////
-////	Coord c1{ pos1 };
-////	Coord c2{ pos2 };
-////
-////	double dist_c = sqrt(c1.distSqAbs(&c2));
-////	double dist_f = (pos1 - pos2).len();
-////
-////	printf("dist_c %.12f dist_f %.12f\n", dist_c, dist_f);
-////
-////	return true;
-////}
 
-using namespace TestMDStability;
+
 using namespace TestUtils;
+using namespace ForceCorrectness;
+using namespace TestMDStability;
 using namespace StressTesting;
 
+void runAllUnitTests();
+
 int main() {
-	//coordPrecesionBenchmark();
+	constexpr auto envmode = EnvMode::Full;
+
 	
 	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
@@ -54,53 +34,45 @@ int main() {
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0002f);
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode);
 
 	//TestUtils::loadAndRunBasicSimulation("T4Lysozyme", envmode);
 
 	//doPool50x(EnvMode::Headless);
 
-
-
-
-
-
-
-
-
-
-
-
-	//ForcefieldMaker::mergeForcefieldFiles();
-	
-	
-
-
-
-	//doPoolBenchmark(Headless);
-	//doPoolBenchmark(Full);
-
-
-	//doSinglebondBenchmark(envmode);
-	//doAnglebondBenchmark(envmode);	// Doesn't work currently
-	
-
-
-
-	//loadAndRunBasicSimulation(env, "TorsionBenchmark");
-	//loadAndRunBasicSimulation("Met");
-	//loadAndRunBasicSimulation("T4LysozymeNoSolventSmall");
-	//loadAndRunBasicSimulation(env, "T4LysozymeNoSolvent");
-	//testNearestSolventSolventAfterEnergyMinimizationIsDecreasing();
-	
-	//loadAndRunBasicSimulation("T4Lysozyme");
-	//loadAndRunBasicSimulation(env, "4ake");// TOO big, almost 20 nm long!
-	
-
-	//doMoleculeTranslationTest("T4LysozymeNoSolventSmall");
-	//doMoleculeTranslationTest("T4LysozymeNoSolvent");
+	runAllUnitTests();
 
 
 	return 0;
 }
 
+// Runs all unit tests with the fastest/crucial ones first
+void runAllUnitTests() {
+	LimaUnittestManager testman;
+	constexpr auto envmode = EnvMode::Headless;
+
+
+	// Singled out forces test
+	testman.addTest(doPoolBenchmark(envmode));			// Two 1-particle molecules colliding
+	testman.addTest(doPoolCompSolBenchmark(envmode));	// One 1-particle molecule colliding with 1 solvent
+	testman.addTest(doSinglebondBenchmark(envmode));
+	testman.addTest(doAnglebondBenchmark(envmode));
+	testman.addTest(doDihedralbondBenchmark(envmode));
+	testman.addTest(TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002));
+	testman.addTest(doImproperDihedralBenchmark(envmode));
+
+	// Smaller compound tests
+	testman.addTest(doMethionineBenchmark(envmode));
+	testman.addTest(doPhenylalanineBenchmark(envmode));
+	testman.addTest(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6));
+	testman.addTest(doEightResiduesNoSolvent(envmode));
+
+	// Larger tests
+	testman.addTest(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 0.0001f));
+	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.019, 2e-5));
+
+	// Meta tests
+	//doPool50x(EnvMode::Headless);
+
+	// Total test status will print as testman is destructed
+}

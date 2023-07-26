@@ -98,8 +98,8 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		if (exclude_own_index && threadIdx.x == i) { continue; }
 
 		force += LimaForcecalc::calcLJForce<em_variant>(&relpos_self, &relpos_others[i], data_ptr, &potE_sum,
-			forcefield_device.particle_parameters[ATOMTYPE_SOL].sigma,
-			forcefield_device.particle_parameters[ATOMTYPE_SOL].epsilon,
+			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
+			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 			exclude_own_index ? LimaForcecalc::CalcLJOrigin::SolSolIntra : LimaForcecalc::CalcLJOrigin::SolSolInter,
 			threadIdx.x, i
 		);
@@ -115,10 +115,10 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 			printf("i %d n %d\n", i, n_particles);
 		}					// DEBUG
 		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, &potE_sum,
-			calcSigma(atomtype_self, ATOMTYPE_SOL), 
-			calcEpsilon(atomtype_self, ATOMTYPE_SOL),
+			calcSigma(atomtype_self, ATOMTYPE_SOLVENT), 
+			calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT),
 			LimaForcecalc::CalcLJOrigin::SolCom,
-			atomtype_self, ATOMTYPE_SOL
+			atomtype_self, ATOMTYPE_SOLVENT
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -127,8 +127,8 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
 		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, potE_sum,
-			calcSigma(ATOMTYPE_SOL, atomtypes_others[i]),
-			calcEpsilon(ATOMTYPE_SOL, atomtypes_others[i]),
+			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
+			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			LimaForcecalc::CalcLJOrigin::ComSol
 		);
 	}
@@ -592,54 +592,24 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
 	{
-		// For the very first step, we need to fetch the prev position from the last index of the circular queue! 
-		// Dont think we need this anymore, if we bootstrap index N-1 with the positions aswell
-		const int actual_stepindex_of_prev = simparams.step == 0 ? STEPS_PER_LOGTRANSFER - 1 : simparams.step - 1;
-		const auto* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, actual_stepindex_of_prev, blockIdx.x);
-
-		if (threadIdx.x == 0) {
-			const NodeIndex prev_hyper_origo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, coordarray_prev_ptr->origo);
-			rel_pos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(prev_hyper_origo, compound_coords.origo);
-		}
-		__syncthreads();
-
-		const Coord prev_rel_pos = coordarray_prev_ptr->rel_positions[threadIdx.x] + rel_pos_shift;
 		if (threadIdx.x < compound.n_particles) {	
 			const auto mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-			//compound_coords.rel_positions[threadIdx.x] = EngineUtils::integratePosition(compound_coords.rel_positions[threadIdx.x], prev_rel_pos, &force, mass, simparams.constparams.dt, simparams.thermostat_scalar);
-			//LIMAKERNELDEBUG::compoundIntegration(prev_rel_pos, compound_coords.rel_positions[threadIdx.x], force, box->critical_error_encountered);
-
-			
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
-
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-			// Prepare vel and forces for next step
-			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_now;
-			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+			compound.vels_prev[threadIdx.x] = vel_now;
+			compound.forces_prev[threadIdx.x] = force;
 
 			// Save pos locally, but only push to box as this kernel ends
 			compound_coords.rel_positions[threadIdx.x] = pos_now;
 
-			//vel_now.print();
-
-			// Temp, find a cleaner way to do this
-			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
-			sim->databuffers->vel_buffer[index] = vel_now;
-
-
-			const auto dif = (compound_coords.rel_positions[threadIdx.x] - prev_rel_pos);
-			const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
-			if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 8.f) {
+			if (vel_now * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 				printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
-				dif.printS('D');
+				(vel_now* simparams.constparams.dt).print('V');
 				force.print('F');
-				LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('o');
-				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('A');
-
-				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(NodeIndex{}, (compound_coords.rel_positions[threadIdx.x] - compound_coords.rel_positions[0])).print('E');
-
+				LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('O');
+				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('P');
 
 				simparams.critical_error_encountered = true;
 			}
@@ -650,12 +620,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 	
 	{
-		__shared__ Coord shift_lm;
+		__shared__ Coord shift_lm;	// Use utility coord for this?
 		if (threadIdx.x == 0) {
 			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords);
 		}
 		__syncthreads();
-
 
 		LIMAPOSITIONSYSTEM::shiftRelPos(compound_coords, shift_lm);
 		__syncthreads();
@@ -665,6 +634,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 	if (potE_sum < -100000000)
 		printf("step %d pote %f\n", simparams.step, potE_sum);
 
@@ -675,15 +645,20 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		simparams.critical_error_encountered = true;
 	}
 
+	// Push positions for next step
 	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
 	coordarray_next_ptr->loadData(compound_coords);
+
+	// Push vel and force for current step, for VelocityVS
+	box->compounds[blockIdx.x].vels_prev[threadIdx.x] = compound.vels_prev[threadIdx.x];
+	box->compounds[blockIdx.x].forces_prev[threadIdx.x] = compound.forces_prev[threadIdx.x];
 }
 #undef compound_index
 
 
 
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
-#define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOL].mass)
+#define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 #define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockIdx.x))
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <bool em_variant>
@@ -825,24 +800,19 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity, simparams.step, sim->databuffers);
 
 	Coord relpos_next{};
-
 	if (solvent_active) {
-		const Coord relpos_prev = LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, simparams.step);
-		relpos_next = EngineUtils::integratePosition(solventblock.rel_pos[threadIdx.x], relpos_prev, &force, solvent_mass, simparams.constparams.dt, simparams.thermostat_scalar);	// TODO: Switch this to VVS!
 
+		const auto mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
+		Solvent& solventdata = box->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
-		//const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
+		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata.vel_prev, solventdata.force_prev, force, simparams.constparams.dt, mass);
+		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-		//const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
+		solventdata.vel_prev = vel_now;
+		solventdata.force_prev = force;
 
-		//// Prepare vel and forces for next step
-		//box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_now;
-		//box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
-
-		//// Save pos locally, but only push to box as this kernel ends
-		//compound_coords.rel_positions[threadIdx.x] = pos_now;
-
-		//LIMAKERNELDEBUG::solventIntegration(relpos_prev, relpos_next, force, simparams.critical_error_encountered, solventblock.ids[threadIdx.x]);
+		// Save pos locally, but only push to box as this kernel ends
+		relpos_next = pos_now;
 	}
 
 

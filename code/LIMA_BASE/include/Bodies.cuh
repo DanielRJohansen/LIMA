@@ -198,8 +198,12 @@ struct SolventCoord {
 };
 
 
-
-
+// struct with data that only the solvent itself needs
+struct Solvent {
+	// Needed for VelocityVS
+	Float3 vel_prev{};
+	Float3 force_prev{};
+};
 
 
 // blocks are notcentered 

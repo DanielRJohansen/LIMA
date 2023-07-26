@@ -14,6 +14,8 @@ void Box::moveToDevice() {
 	compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);
 	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
 
+	solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
+
 	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
 	solventblockgrid_circular_queue = genericMoveToDevice(solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
 
@@ -46,10 +48,9 @@ void Box::deleteMembers() {
 		cudaFree(bridge_bundle);
 		cudaFree(bonded_particles_lut_manager);
 
-		/*cudaFree(box->potE_buffer);
-		cudaFree(box->traj_buffer);
-		cudaFree(box->outdata);
-		cudaFree(box->data_GAN);*/
+		if (boxparams.n_solvents > 0) {
+			cudaFree(solvents);
+		}		
 	}
 	else {
 		delete[] compounds;
@@ -66,6 +67,9 @@ void Box::deleteMembers() {
 		// TMP, forcefield should maybe come with other members?
 		if (forcefield) { delete forcefield; }
 
+		if (boxparams.n_solvents > 0) {
+			delete[] solvents;
+		}
 	}
 	owns_members = false;	
 	cudaDeviceSynchronize();
@@ -79,10 +83,13 @@ void Box::deleteMembers() {
 std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	auto box = std::make_unique<Box>();
 
+	// First copy the box meta info, which we need to some of the dataptr transfers
 	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
 
 	genericCopyToHost(&box->compounds, MAX_COMPOUNDS);
 	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+
+	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
 	genericCopyToHost(&box->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
 
 	genericCopyToHost(&box->transfermodule_array, SolventBlockGrid::blocks_total);
@@ -95,6 +102,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	genericCopyToHost(&box->bridge_bundle, 1);
 	genericCopyToHost(&box->bonded_particles_lut_manager, 1);
 	
+
 
 	box->owns_members = true;
 	box->is_on_device = false;

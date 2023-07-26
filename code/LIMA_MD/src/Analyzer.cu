@@ -408,7 +408,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 			const Float3 pos_prev = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_prev);
 			const Float3 pos_next = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_next);
 
-			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOL].mass;
+			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
 			const float kinE = EngineUtils::calcKineticEnergy(&pos_prev, &pos_next, mass, 2.f * sim.simparams_host.constparams.dt);
 
 			energies.emplace_back(potE);

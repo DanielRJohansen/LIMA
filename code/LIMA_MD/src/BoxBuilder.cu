@@ -35,7 +35,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {
-		integrateCompound(compound, simulation);
+		insertCompoundInBox(compound, simulation);
 	}
 
 	simulation->extraparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
@@ -146,7 +146,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 {
 	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
 	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
-	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOL].mass;
+	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
 
 	for (Float3 sol_pos : solvent_positions) {
@@ -174,7 +174,22 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 			simulation->box_host->boxparams.n_solvents++;
 		}
+		else {
+			// TODO: I should fill this out
+		}
 	}
+
+	// Setup forces and vel's for VVS
+	simulation->box_host->solvents = new Solvent[simulation->box_host->boxparams.n_solvents];
+	for (int i = 0; i < simulation->box_host->boxparams.n_solvents; i++) {
+		simulation->box_host->solvents[i].force_prev = Float3{0};
+
+		// Give a random velocity
+		const Float3 direction = get3RandomSigned().norm();
+		const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
+		simulation->box_host->solvents[i].vel_prev = direction * velocity;
+	}
+
 
 	simulation->extraparams.total_particles += simulation->box_host->boxparams.n_solvents;
 	auto a = std::to_string(simulation->box_host->boxparams.n_solvents);
@@ -183,72 +198,49 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	return simulation->box_host->boxparams.n_solvents;
 }
 
-
+// Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
 void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
 {
 	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
 
 	simulation->box_host = SimUtils::copyToHost(boxsrc);
 
-
-	const float dt_prev = simparams_src.constparams.dt;
-	const float dt_new = simulation->simparams_host.constparams.dt;
-	const bool particles_needs_acceleration =  dt_prev != dt_new;
-
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
 		// Create temporary storage
 		std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
-		std::vector<CompoundCoords> coords_tsub1(MAX_COMPOUNDS);
 		const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
-		// Copy only the current and prev step to temporary storage
+		// Copy only the current step to temporary storage
 		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step, 0);
-		CompoundCoords* src_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step - 1, 0);
 		memcpy(coords_t0.data(), src_t0, bytesize);
-		memcpy(coords_tsub1.data(), src_tsub1, bytesize);
 
 		// Clear all of the data
 		for (size_t i = 0; i < Box::coordarray_circular_queue_n_elements; i++) {
 			simulation->box_host->coordarray_circular_queue[i] = CompoundCoords{};
 		}
 
-		if (particles_needs_acceleration) {
-			accelerateCompoundParticles(coords_tsub1, coords_t0, dt_prev, dt_new);
-		}
-
 		// Copy the temporary storage back into the queue
 		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, 0);
-		CompoundCoords* dest_tsub1 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, STEPS_PER_LOGTRANSFER - 1, 0);
 		memcpy(dest_t0, coords_t0.data(), bytesize);
-		memcpy(dest_tsub1, coords_tsub1.data(), bytesize);
 	}
 
 	// Do the same for solvents
 	{
 		// Create temporary storage
 		auto solvents_t0 = std::make_unique<SolventBlockGrid>();
-		auto solvents_tsub1 = std::make_unique<SolventBlockGrid>();
 
-		// Copy only the current and prev step to temporary storage
+		// Copy only the current step to temporary storage
 		SolventBlockGrid* src_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, boxsrc_current_step);
-		SolventBlockGrid* src_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, boxsrc_current_step-1);
 		memcpy(solvents_t0.get(), src_t0, sizeof(SolventBlockGrid));
-		memcpy(solvents_tsub1.get(), src_tsub1, sizeof(SolventBlockGrid));
 
 		// Clear all of the data
 		delete[] simulation->box_host->solventblockgrid_circular_queue;
 		SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
 
-		if (particles_needs_acceleration) {
-			accelerateSolventParticles(*solvents_tsub1, *solvents_t0, dt_prev, dt_new);
-		}
-
 		// Copy the temporary storage back into the queue
 		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
-		SolventBlockGrid* dest_tsub1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER - 1);
 		memcpy(dest_t0, solvents_t0.get(), sizeof(SolventBlockGrid));
-		memcpy(dest_tsub1, solvents_tsub1.get(), sizeof(SolventBlockGrid));
 	}
 }
 
@@ -266,7 +258,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimPara
 // ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
 
-void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* simulation)
+void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation* simulation)
 {
 	std::vector<LimaPosition> positions;
 	std::vector<LimaPosition> positions_prev;
@@ -275,7 +267,7 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 
 
 	const float M = SOLVENT_MASS;				// kg/mol
-	const double T = 313;	// Kelvin
+	const double T = 313.;	// Kelvin
 	const double R = 8.3144;					// J/(Kelvin*mol)
 	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
@@ -294,9 +286,6 @@ void BoxBuilder::integrateCompound(const CompoundFactory& compound, Simulation* 
 
 	CompoundCoords& coords_prev = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, STEPS_PER_LOGTRANSFER-1, simulation->box_host->boxparams.n_compounds);
 	coords_prev = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
-
-	//coordarray[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions, 0);
-	//coordarray_prev[simulation->box->n_compounds] = LIMAPOSITIONSYSTEM::positionCompound(positions_prev, 0);
 
 	simulation->box_host->compounds[simulation->box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
@@ -446,49 +435,3 @@ bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool ver
 //	}
 //	return true;
 //}
-
-void BoxBuilder::accelerateCompoundParticles(std::vector<CompoundCoords>& compounds_prev, const std::vector<CompoundCoords>& compounds, float dt_prev, float dt_next)
-{
-	const float scalar = dt_next / dt_prev;
-
-	for (int compound_id = 0; compound_id < compounds.size(); compound_id++) {
-
-		const CompoundCoords& compound = compounds[compound_id];
-		CompoundCoords compound_prev = compounds_prev[compound_id];
-
-		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-			const Float3 pos_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound.origo, compound.rel_positions[particle_id]);
-			Float3 pos_prev_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_prev.origo, compound_prev.rel_positions[particle_id]);			
-			EngineUtils::applyHyperposNM(&pos_abs, &pos_prev_abs);
-
-			const Float3 delta_pos = pos_abs - pos_prev_abs;
-
-			const Float3 correction = delta_pos * scalar - delta_pos;	// Subtract what is already delta, so we can simply add the correction to the current position
-
-			compound_prev.rel_positions[particle_id] -= Coord{ correction * NANO_TO_LIMA };
-		}
-	}
-}
-
-void BoxBuilder::accelerateSolventParticles(SolventBlockGrid& solvents_prev, SolventBlockGrid& solvents, float dt_prev, float dt_next)
-{
-	const float scalar = dt_next / dt_prev;
-
-	for (int blockindex = 0; blockindex < SolventBlockGrid::blocks_total; blockindex++) {
-		const SolventBlock& block = *solvents.getBlockPtr(blockindex);		
-		SolventBlock& block_tsub1 = *solvents_prev.getBlockPtr(blockindex);
-
-		for (int pid = 0; pid < block.n_solvents; pid++) {
-			const Float3 pos_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(block.origo, block.rel_pos[pid]);
-			Float3 pos_prev_abs = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(block_tsub1.origo, block_tsub1.rel_pos[pid]);
-			EngineUtils::applyHyperposNM(&pos_abs, &pos_prev_abs);
-
-			const Float3 delta_pos = pos_abs - pos_prev_abs;
-
-			const Float3 correction = delta_pos * scalar - delta_pos;	// Subtract what is already delta, so we can simply add the correction to the current position
-
-			block_tsub1.rel_pos[pid] -= Coord{ correction * NANO_TO_LIMA };
-		}
-	}
-}
-

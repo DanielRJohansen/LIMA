@@ -24,7 +24,7 @@ public:
 	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
 private:
-	void integrateCompound(const CompoundFactory& compound, Simulation* simulation);
+	void insertCompoundInBox(const CompoundFactory& compound, Simulation* simulation);
 	
 	void setupDataBuffers(Simulation& simulation, const uint64_t n_steps);
 	void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps);

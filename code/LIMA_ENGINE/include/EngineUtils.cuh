@@ -539,23 +539,14 @@ namespace EngineUtils {
 	}
 
 	// This function assumes that coord_tsub1 is already hyperpositioned to coord.
-	__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const float dt, const float thermostat_scalar) {
+	//__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const float dt, const float thermostat_scalar) {
+	//	// All threads will follow the same path, so branch is no problem
+	//	const Coord delta_pos = thermostat_scalar == 1.f
+	//		? coord - coord_tsub1
+	//		: Coord{ (coord - coord_tsub1).toFloat3() * thermostat_scalar};
 
-		if (threadIdx.x == 0 && blockIdx.x == 0) {
-			//force->print('f');
-			//printf("dt %f mass %f\n", dt, mass);
-			//(*force*dt*dt / mass).print('F');
-			//uint32_t diff = coord.x - x - dx;
-			//printf("x  %d  dx %d  force %.10f ddx %d    x_ %d   dif %d\n", x, dx, force->x, ddx, dx + ddx, diff);
-		}
-
-		// All threads will follow the same path, so branch is no problem
-		const Coord delta_pos = thermostat_scalar == 1.f
-			? coord - coord_tsub1
-			: Coord{ (coord - coord_tsub1).toFloat3() * thermostat_scalar};
-
-		return coord + delta_pos + Coord{ *force * dt * dt / mass };
-	}
+	//	return coord + delta_pos + Coord{ *force * dt * dt / mass };
+	//}
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const double mass, const double dt) {
@@ -594,6 +585,7 @@ namespace EngineUtils {
 		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
+		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x];
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity, uint32_t step, DatabuffersDevice* databuffers) {

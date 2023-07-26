@@ -9,7 +9,7 @@
 #include <map>
 //#include <span>
 
-#define ATOMTYPE_SOL 0
+constexpr int ATOMTYPE_SOLVENT = 0;
 
 using std::string;
 

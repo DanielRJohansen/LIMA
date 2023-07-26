@@ -464,6 +464,8 @@ private:
 
 template<typename T>
 T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+	if (n_elements == 0) { return nullptr; }
+
 	T* gpu_ptr = nullptr;
 	size_t bytesize = n_elements * sizeof(T);
 

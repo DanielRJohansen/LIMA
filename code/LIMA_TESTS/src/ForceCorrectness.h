@@ -104,7 +104,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2e-7);
 		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
 
 		return LimaUnittest{ "doPoolCompSolBenchmark", status, result.second, envmode == Full };

@@ -796,23 +796,24 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	const Float3 velocity = relpos_self - LIMAPOSITIONSYSTEM::getRelposPrev(box->solventblockgrid_circular_queue, blockIdx.x, simparams.step).toFloat3();
-	EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, velocity, simparams.step, sim->databuffers);
+	
 
 	Coord relpos_next{};
 	if (solvent_active) {
 
 		const auto mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
-		Solvent& solventdata = box->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
+		Solvent& solventdata_ref = box->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
-		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata.vel_prev, solventdata.force_prev, force, simparams.constparams.dt, mass);
+		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.constparams.dt, mass);
 		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-		solventdata.vel_prev = vel_now;
-		solventdata.force_prev = force;
+		solventdata_ref.vel_prev = vel_now;
+		solventdata_ref.force_prev = force;
 
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
+
+		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, simparams.step, sim->databuffers);
 	}
 
 

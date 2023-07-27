@@ -52,10 +52,6 @@ private:
 	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
 	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
 
-	void moveAndPadData(Simulation* sim, uint64_t steps_in_kernel, uint64_t step_offset);
-
-
-	Float3* traj_buffer_device = nullptr;
 	float* potE_buffer_device = nullptr;
 	Float3* vel_buffer_device = nullptr;
 

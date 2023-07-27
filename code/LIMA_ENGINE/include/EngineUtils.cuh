@@ -588,7 +588,7 @@ namespace EngineUtils {
 		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x];
 	}
 
-	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3 velocity, uint32_t step, DatabuffersDevice* databuffers) {
+	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers) {
 		if (solvent_active) {
 			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
 			//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
@@ -598,6 +598,7 @@ namespace EngineUtils {
 			}
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
+			databuffers->vel_buffer[index] = velocity;
 
 
 			if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);

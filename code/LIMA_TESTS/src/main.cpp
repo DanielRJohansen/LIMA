@@ -34,7 +34,7 @@ int main() {
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5);
+	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5);
 
 
 	//doPool50x(EnvMode::Headless);

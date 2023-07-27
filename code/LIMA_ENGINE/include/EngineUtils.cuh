@@ -508,13 +508,6 @@ namespace EngineUtils {
 		return step_offset + compound_offset + particle_id_local;
 	}
 
-	// TODO: Marked for deletion
-	__host__ static size_t getAlltimeIndexOfParticle(uint64_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
-		const uint32_t step_offset = static_cast<uint32_t>(step) * total_particles_upperbound;
-		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return step_offset + compound_offset + particle_id_local;
-	}
-
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
 		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
@@ -537,16 +530,6 @@ namespace EngineUtils {
 		seed = a * seed + c;
 		return seed / 100000000;
 	}
-
-	// This function assumes that coord_tsub1 is already hyperpositioned to coord.
-	//__device__ static Coord integratePosition(const Coord& coord, const Coord& coord_tsub1, const Float3* force, const float mass, const float dt, const float thermostat_scalar) {
-	//	// All threads will follow the same path, so branch is no problem
-	//	const Coord delta_pos = thermostat_scalar == 1.f
-	//		? coord - coord_tsub1
-	//		: Coord{ (coord - coord_tsub1).toFloat3() * thermostat_scalar};
-
-	//	return coord + delta_pos + Coord{ *force * dt * dt / mass };
-	//}
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const double mass, const double dt) {

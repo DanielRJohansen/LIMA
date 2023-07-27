@@ -44,9 +44,6 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
 
 	for (int compound_id = 0; compound_id < simulation.boxparams_host.n_compounds; compound_id++) {
-		const size_t index = EngineUtils::getAlltimeIndexOfParticle(step, simulation.boxparams_host.total_particles_upperbound, compound_id, 0);
-
-
 		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, 0, step);
 
 		//compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?

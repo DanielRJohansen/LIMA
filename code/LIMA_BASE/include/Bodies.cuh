@@ -299,7 +299,6 @@ public:
 template <int size>
 struct SolventTransferqueue {
 	Coord rel_positions[size];
-	Coord rel_positions_prev[size];	// Adjust rel positions to the new block's origo BEFORE putting it here!
 	uint32_t ids[size];
 	int n_elements = 0;
 
@@ -310,24 +309,17 @@ struct SolventTransferqueue {
 			return false;
 		}
 		rel_positions[n_elements] = pos;
-		rel_positions_prev[n_elements] = pos_prev;
 		ids[n_elements] = id;
 		n_elements++;
 		return true;
 	}
 
 	// Insert relative to thread calling.
-	__device__ void fastInsert(const Coord& relpos, const Coord& relpos_prev, const int id) {
-		//rel_positions[threadIdx.x]		= relpos - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
-		//rel_positions_prev[threadIdx.x] = relpos_prev - transfer_dir * static_cast<int32_t>(NANO_TO_LIMA);
+	__device__ void fastInsert(const Coord& relpos, const int id) {		
 		rel_positions[threadIdx.x] = relpos;
-		rel_positions_prev[threadIdx.x] = relpos_prev;
 		ids[threadIdx.x] = id;
 	}
 
-	//__device__ void setUsedSize(int usedsize) {
-	//	n_elements = usedsize;
-	//}
 };
 
 struct SolventBlockTransfermodule {

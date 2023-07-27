@@ -401,11 +401,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 
 			queue_global->fastInsert(
 				queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
-				queue_local.rel_positions_prev[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
 				queue_local.ids[threadIdx.x]);
-
-
-
 
 			// Debugging
 			LIMAKERNELDEBUG::transferOut(queue_global, queue_local, transferdir_queue, queue_index);
@@ -436,7 +432,7 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 
 	if (remain) {
 		// Send current pos at threadindex to prevpos at the new index
-		remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
+		//remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
 		// Send the next pos 
 		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
 		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
@@ -873,10 +869,8 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 
 			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
 			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];
-			solventblock_current->rel_pos[incoming_index] = queue->rel_positions_prev[threadIdx.x];
 		}
 		n_solvents_next += queue->n_elements;
-		//if (blockIdx.x == 47) { printf("Block 47 has %d incoming\n", queue->n_elements); }
 
 		// Signal that all elements of the queues have been moved
 		__syncthreads();

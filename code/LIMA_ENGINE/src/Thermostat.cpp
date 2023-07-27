@@ -5,20 +5,15 @@
 __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {
 	TemperaturPackage package{};
 
-	const uint64_t step = simulation->getStep() - 1;
-	const uint64_t step_offset_a = step * simulation->boxparams_host.total_particles_upperbound;
-	const uint64_t step_offset_b = (step - 1) * simulation->boxparams_host.total_particles_upperbound;
-	const uint64_t solvent_offset = MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds;
-
-	const auto dt = simulation->simparams_host.constparams.dt;
+	const uint64_t step = simulation->getStep() - 1;	// We haven't loaded data for current step onto host yet.
 
 	long double sum_kinE_compound = 0.;	// [J/mol]
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 		uint64_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
-			const Float3 posa = simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, pid, step);
-			const Float3 posb = simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, pid, step - 1);
-			const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass, dt / NANO_TO_LIMA);
+			const float mass = forcefield_host.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
+			const float velocity = simulation->vel_buffer->getCompoundparticleDatapoint(compound_id, pid, step).len();
+			const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
 
 			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
@@ -26,10 +21,10 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 	}
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
-	for (int i = 0; i < simulation->boxparams_host.n_solvents; i++) {
-		const Float3 posa = simulation->traj_buffer->getSolventparticleDatapoint(i, step);
-		const Float3 posb = simulation->traj_buffer->getSolventparticleDatapoint(i, step-1);
-		const float kinE = EngineUtils::calcKineticEnergy(&posa, &posb, forcefield_host.particle_parameters[0].mass, dt / NANO_TO_LIMA);
+	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
+		const float mass = forcefield_host.particle_parameters[ATOMTYPE_SOLVENT].mass;
+		const float velocity = simulation->vel_buffer->getSolventparticleDatapoint(solvent_id, step).len();
+		const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
 
 		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
 		sum_kinE_solvents += static_cast<float>(kinE);

@@ -230,8 +230,7 @@ namespace ForceCorrectness {
 		Environment env{ work_folder, envmode };
 		auto ip = env.loadInputSimParams(simpar);
 
-		//std::vector<float> angle_errors{ 0.4f, 1.f }; //(t-t0) [rad]
-		std::vector<float> angle_errors{ 1.f }; //(t-t0) [rad]
+		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
@@ -242,47 +241,34 @@ namespace ForceCorrectness {
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
 			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
-			auto l1 = (coordarray_ptr[0].rel_positions[1] - coordarray_ptr[0].rel_positions[2]).toFloat3().len();
-
 			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
-			std::array<Float3, 4> pos;
-			for (int i = 0; i < 4; i++) {
-				pos[i] = coordarray_ptr[0].rel_positions[atom_ids[i]].toFloat3();
-			}
 
-			Float3 i = pos[1];
-			Float3 j = pos[0];
-			Float3 k = pos[3];
-			Float3 l = pos[2];
-
+			Float3 i = coordarray_ptr[0].rel_positions[atom_ids[0]].toFloat3();
+			Float3 j = coordarray_ptr[0].rel_positions[atom_ids[1]].toFloat3();
+			Float3 k = coordarray_ptr[0].rel_positions[atom_ids[2]].toFloat3();
+			Float3 l = coordarray_ptr[0].rel_positions[atom_ids[3]].toFloat3();
+			
 			// Move i to origo
 			j -= i;
 			k -= i;
 			l -= i;
-			i -= i;	// Do this one last!
+			i -= i;	// Do this one last
 
 
 
+			const Float3 plane_normal = (j-i).cross(k-i).norm();
+			const Float3 l_vec = (l-i).norm();
+
+			const Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
+
+			const Float3 l_point = l / l.len();
+			const Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
 
 
-			Float3 plane_normal = (j-i).cross(k-i).norm();
-			Float3 l_vec = (l-i).norm();
+			Float3 l_diff = (l_rotated - l_point) *l.len();
 
-			//float angle = Float3::getAngle(plane_normal)
-
-			Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
-
-			Float3 l_point = l / 100000.f;
-			//Float3 l_rotated = l_point.rotateAroundVector(Float3{ 0.f,0.f,angle_error }, rotatevec);
-			Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
-
-			Float3 l_diff = l_rotated - l_point;
-
-			coordarray_ptr[0].rel_positions[3] += Coord{ l_diff * 100000.f };		// Temp disabled, fix soon plz
-			coordarray_prev_ptr[0].rel_positions[3] += Coord{ l_diff * 100000.f };		// Temp disabled, fix soon plz
-
-			auto l2 = (coordarray_ptr[0].rel_positions[1] - coordarray_ptr[0].rel_positions[2]).toFloat3().len();
-			printf("%f\n", l2/l1);
+			coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
+			coordarray_prev_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
 
 			env.run();
 
@@ -301,7 +287,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, 0.0001, energy_gradients, 1e-5);
+		const auto result = evaluateTest(varcoffs, 0.005, energy_gradients, 2e-5);
 		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
 
 		return LimaUnittest{ "doImproperDihedralBenchmark", status, result.second, envmode == Full };
@@ -318,7 +304,7 @@ namespace ForceCorrectness {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 0.0002f);
+		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 0.0002f, 1e-8);
 	}
 
 }

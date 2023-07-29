@@ -31,7 +31,7 @@ __device__ void calcSinglebondForces(Float3* pos_a, Float3* pos_b, SingleBond* b
 	results[1] = -dir * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
 
 #ifdef LIMASAFEMODE
-	if (abs(error) > bondtype->b0/2.f || false) {
+	if (abs(error) > bondtype->b0/2.f || 0) {
 		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, bondtype->kb, force_scalar);
 		//printf("errfm %f\n", error_fm);
 		//printf("pot %f\n", *potE);
@@ -452,7 +452,6 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	// sigma [nm]
 	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
 	// Returns force in J/mol*M		?????????????!?!?//
-	return Float3{ 0 };
 
 	// Directly from book
 	const float dist_sq = (*pos1 - *pos0).lenSquared();

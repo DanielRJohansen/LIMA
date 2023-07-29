@@ -201,7 +201,7 @@ struct Float3 {
 		return v;
 	}
 	__host__ __device__ static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
-		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1 - cos(theta));
+		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
 	}
 
 	__host__ __device__ float at(int index) const{

@@ -230,7 +230,8 @@ namespace ForceCorrectness {
 		Environment env{ work_folder, envmode };
 		auto ip = env.loadInputSimParams(simpar);
 
-		std::vector<float> angle_errors{ 0.4f }; //(t-t0) [rad]
+		//std::vector<float> angle_errors{ 0.4f, 1.f }; //(t-t0) [rad]
+		std::vector<float> angle_errors{ 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
@@ -241,31 +242,47 @@ namespace ForceCorrectness {
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
 			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
+			auto l1 = (coordarray_ptr[0].rel_positions[1] - coordarray_ptr[0].rel_positions[2]).toFloat3().len();
+
 			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
 			std::array<Float3, 4> pos;
 			for (int i = 0; i < 4; i++) {
 				pos[i] = coordarray_ptr[0].rel_positions[atom_ids[i]].toFloat3();
 			}
 
-			// move atoms so center (C) is at origo
-			pos[0] -= pos[2];
-			pos[1] -= pos[2];
-			pos[3] -= pos[2];
-			pos[2] -= pos[2];	// Do this one last!
+			Float3 i = pos[1];
+			Float3 j = pos[0];
+			Float3 k = pos[3];
+			Float3 l = pos[2];
+
+			// Move i to origo
+			j -= i;
+			k -= i;
+			l -= i;
+			i -= i;	// Do this one last!
 
 
-			Float3 plane_normal = (pos[1] - pos[0]).cross(pos[2] - pos[0]).norm();
-			Float3 l_vec = (pos[3] - pos[0]).norm();
+
+
+
+			Float3 plane_normal = (j-i).cross(k-i).norm();
+			Float3 l_vec = (l-i).norm();
+
+			//float angle = Float3::getAngle(plane_normal)
 
 			Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
 
-			Float3 l_point = pos[3];
-			Float3 l_rotated = l_point.rotateAroundVector(Float3{ 0.f,0.f,angle_error }, rotatevec);
+			Float3 l_point = l / 100000.f;
+			//Float3 l_rotated = l_point.rotateAroundVector(Float3{ 0.f,0.f,angle_error }, rotatevec);
+			Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
 
 			Float3 l_diff = l_rotated - l_point;
 
-			coordarray_ptr[0].rel_positions[3] += Coord{ l_diff };		// Temp disabled, fix soon plz
-			coordarray_prev_ptr[0].rel_positions[3] += Coord{ l_diff };		// Temp disabled, fix soon plz
+			coordarray_ptr[0].rel_positions[3] += Coord{ l_diff * 100000.f };		// Temp disabled, fix soon plz
+			coordarray_prev_ptr[0].rel_positions[3] += Coord{ l_diff * 100000.f };		// Temp disabled, fix soon plz
+
+			auto l2 = (coordarray_ptr[0].rel_positions[1] - coordarray_ptr[0].rel_positions[2]).toFloat3().len();
+			printf("%f\n", l2/l1);
 
 			env.run();
 
@@ -280,6 +297,7 @@ namespace ForceCorrectness {
 
 		if (envmode != Headless) {
 			LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
+			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 

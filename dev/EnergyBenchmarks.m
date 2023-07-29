@@ -5,10 +5,10 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 500;
+n_steps = 1000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall"];
-benchmark = "improper";
-%benchmark = benchmarks(10);
+benchmark = "ImproperDihedral";
+%benchmark = benchmarks(5);
 % ------------------------------------ %
 
 workdir = "C:/PROJECTS/Quantom/Simulation/" + benchmark + "/Steps_" + string(n_steps)

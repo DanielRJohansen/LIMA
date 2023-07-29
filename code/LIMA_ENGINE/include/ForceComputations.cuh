@@ -33,8 +33,8 @@ __device__ void calcSinglebondForces(Float3* pos_a, Float3* pos_b, SingleBond* b
 #ifdef LIMASAFEMODE
 	if (abs(error) > bondtype->b0/2.f || false) {
 		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype->b0 / NANO_TO_LIMA, bondtype->kb, force_scalar);
-		printf("errfm %f\n", error_fm);
-		printf("pot %f\n", *potE);
+		//printf("errfm %f\n", error_fm);
+		//printf("pot %f\n", *potE);
 	}
 #endif
 }
@@ -236,21 +236,24 @@ __device__ void calcImproperdihedralbondForces1(Float3* i, Float3* j, Float3* k,
 #endif
 }
 
-__device__ void calcImproperdihedralbondForces2(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
+__device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
 
 	Float3 ij_norm = (*j - *i).norm();
 	Float3 ik_norm = (*k - *i).norm();
 	Float3 il_norm = (*l - *i).norm();
 
+	Float3 lj_norm = (*j - *l).norm();
+	Float3 lk_norm = (*k - *l).norm();
+
 	const Float3 plane_normal = (ij_norm).cross((ik_norm)).norm();	// i is usually the center on
-	const Float3 rotational_axis_direction = plane_normal.cross(il_norm);
-	const Float3 l_dir = (il_norm).cross(rotational_axis_direction);
+	const Float3 plane2_normal = (lj_norm.cross(lk_norm)).norm();
+	//const Float3 l_dir = (il_norm).cross(rotational_axis_direction);
 
 
 	//Float3   = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
 	//return;	// DISABLED untill made stable
 
-	float angle = Float3::getAngle(plane_normal, l_dir);
+	float angle = Float3::getAngle(plane_normal, plane2_normal);
 	if (angle < 0) {
 		printf("angle:: %f", angle);
 	}
@@ -274,7 +277,7 @@ __device__ void calcImproperdihedralbondForces2(Float3* i, Float3* j, Float3* k,
 	*potE += 0.5f * improper->k_psi * (error * error);
 	const float torque = improper->k_psi * (angle - improper->psi_0);
 
-	if (1) {
+	if (0) {
 		//normal1.print('1');
 		//normal2.print('2');
 		//i->print('i');
@@ -299,18 +302,39 @@ __device__ void calcImproperdihedralbondForces2(Float3* i, Float3* j, Float3* k,
 	//printf("dists %f %f\n", j->distToLine(*i, *i + rotational_axis_direction*100000.f) / NANO_TO_LIMA, k->distToLine(*i, *i + rotational_axis_direction * 100000.f) / NANO_TO_LIMA);
 
 	// This is the simple way, always right-ish
-	results[3] = l_dir * (torque / (*l - *i).len());	// l
+	results[3] = plane2_normal * (torque / l->distToLine(*j, *k));
 
-	results[1] = plane_normal * (torque / j->distToLine(*i, *i + rotational_axis_direction * 100000.f)); // j
-	results[2] = plane_normal * (torque / k->distToLine(*i, *i + rotational_axis_direction * 100000.f)); // k
+	results[0] = -plane_normal * (torque / i->distToLine(*j, *k));
 
-	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+	const Float3 residual = -(results[0] + results[3]);
+	const float ratio = (*j - *i).len() / ((*j - *i).len() + (*k - *i).len());
+	//const float ratio = 1.f -(*j - *l).len() / ((*j - *l).len() + (*k - *l).len());
+	results[1] = residual * (1.f-ratio);
+	results[2] = residual * (ratio);
+	//results[1] = -(results[0] + results[3]) * 0.5f;
+	//results[2] = -(results[0] + results[3]) * 0.5f;
 
-	results[0].print('0');
-	results[1].print('1');
-	results[2].print('2');
-	results[3].print('3');
 
+
+
+	//results[1] = plane_normal * (torque / (*j-*i).len()); // j
+	//results[2] = plane_normal * (torque / (*k - *i).len());
+
+	//results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+	//results[0].print('0');
+	//results[1].print('1');
+	//results[2].print('2');
+	//results[3].print('3');
+	//printf("ratio %f\n", ratio);
+
+	Float3 force_spillover = Float3{};
+	for (int i = 0; i < 4; i++) {
+		force_spillover += results[i];
+	}
+	if (force_spillover.len() > 0.00000001) {
+		force_spillover.print('s');
+	}
 
 #ifdef LIMASAFEMODE
 	if (results[0].len() > 0.5f) {
@@ -320,7 +344,7 @@ __device__ void calcImproperdihedralbondForces2(Float3* i, Float3* j, Float3* k,
 #endif
 }
 
-__device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
+__device__ void calcImproperdihedralbondForces3(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
 	Float3 r12 = (*j - *i) / NANO_TO_LIMA;
 	Float3 r23 = (*k - *j) / NANO_TO_LIMA;
 	Float3 r34 = (*l - *k) / NANO_TO_LIMA;
@@ -428,7 +452,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	// sigma [nm]
 	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
 	// Returns force in J/mol*M		?????????????!?!?//
-
+	return Float3{ 0 };
 
 	// Directly from book
 	const float dist_sq = (*pos1 - *pos0).lenSquared();

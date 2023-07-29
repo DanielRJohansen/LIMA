@@ -25,8 +25,8 @@ int main() {
 	//doAnglebondBenchmark(envmode);
 	//doDihedralbondBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.05, {}, false);
-	//doImproperDihedralBenchmark(envmode);
-	TestUtils::loadAndRunBasicSimulation("improper", envmode);
+	doImproperDihedralBenchmark(envmode);
+	//TestUtils::loadAndRunBasicSimulation("improper", envmode);
 
 	//doMethionineBenchmark(envmode);
 	//doPhenylalanineBenchmark(envmode);

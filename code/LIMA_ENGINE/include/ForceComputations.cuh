@@ -150,21 +150,34 @@ __device__ void calcDihedralbondForces(Float3* pos_left, Float3* pos_lm, Float3*
 #endif
 }
 
-__device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
-	Float3 normal1 = (*j - *i).cross((*k - *i)).norm();	// i is usually the center on
-	Float3 normal2 = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
-	return;	// DISABLED untill made stable
+// https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
+// Plane described by i,j,k, and l is out of plane, connected to i
+__device__ void calcImproperdihedralbondForces1(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
 
-	float angle = Float3::getAngle(normal2, normal1); 
+	Float3 ij_norm = (*j - *i).norm();
+	Float3 ik_norm = (*k - *i).norm();
+	Float3 il_norm = (*l - *i).norm();
+
+	const Float3 plane_normal = (ij_norm).cross((ik_norm)).norm();	// i is usually the center on
+	const Float3 rotational_axis_direction = plane_normal.cross(il_norm);
+	const Float3 l_dir = (il_norm).cross(rotational_axis_direction);
+
+
+	//Float3   = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
+	//return;	// DISABLED untill made stable
+
+	float angle = Float3::getAngle(plane_normal, l_dir);
 	if (angle < 0) {
 		printf("angle:: %f", angle);
 	}
 
-	const bool angle_is_negative = (normal1.dot(*l- *i)) > 0.f;
+	const bool angle_is_negative = (plane_normal.dot(il_norm)) > 0.f;
 	if (angle_is_negative) {
 		angle = -angle;
 	}
 
+	//plane_normal.print('P');
+	//rotational_axis_direction.print('R');
 
 	if (angle > PI || angle < -PI) {
 		printf("Anlg too large!! %f\n\n\n\n", angle);
@@ -177,13 +190,14 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 	*potE += 0.5f * improper->k_psi * (error*error);
 	const float torque = improper->k_psi * (angle - improper->psi_0);
 
-	if (0) {
+	if (1) {
 		//normal1.print('1');
 		//normal2.print('2');
 		//i->print('i');
 		//j->print('j');
 		//k->print('k');
 		//l->print('l');
+		//(*i + rotational_axis_direction).print('Q');
 		float pot = 0.5f * improper->k_psi * (error * error);
 		printf("\tangle %f [rad]    torque: %f    pot %f     phi_0 %f [rad] k_phi %f\n\n",
 			angle, torque, pot, improper->psi_0, improper->k_psi);
@@ -198,13 +212,20 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 	//
 	//results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
 
-	// This is the simple way, always right-ish
-	results[3] = normal2 * (torque / (*l - *i).len());	// l
+	//printf("dists %f %f\n", j->distToLine(*i, *i + rotational_axis_direction*100000.f) / NANO_TO_LIMA, k->distToLine(*i, *i + rotational_axis_direction * 100000.f) / NANO_TO_LIMA);
 
-	results[1] = normal1 * (torque / (*j - *i).len()); // j
-	results[2] = normal1 * (torque / (*k - *i).len()); // j
+	// This is the simple way, always right-ish
+	results[3] = l_dir * (torque / (*l - *i).len());	// l
+
+	results[1] = plane_normal * (torque / j->distToLine(*i, *i + rotational_axis_direction*100000.f)); // j
+	results[2] = plane_normal * (torque / k->distToLine(*i, *i + rotational_axis_direction*100000.f)); // k
 	
 	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+	results[0].print('0');
+	results[1].print('1');
+	results[2].print('2');
+	results[3].print('3');
 
 
 #ifdef LIMASAFEMODE
@@ -214,6 +235,181 @@ __device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, 
 	}
 #endif
 }
+
+__device__ void calcImproperdihedralbondForces2(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
+
+	Float3 ij_norm = (*j - *i).norm();
+	Float3 ik_norm = (*k - *i).norm();
+	Float3 il_norm = (*l - *i).norm();
+
+	const Float3 plane_normal = (ij_norm).cross((ik_norm)).norm();	// i is usually the center on
+	const Float3 rotational_axis_direction = plane_normal.cross(il_norm);
+	const Float3 l_dir = (il_norm).cross(rotational_axis_direction);
+
+
+	//Float3   = (*j - *l).cross((*k - *l)).norm();	// l is the outsider
+	//return;	// DISABLED untill made stable
+
+	float angle = Float3::getAngle(plane_normal, l_dir);
+	if (angle < 0) {
+		printf("angle:: %f", angle);
+	}
+
+	const bool angle_is_negative = (plane_normal.dot(il_norm)) > 0.f;
+	if (angle_is_negative) {
+		angle = -angle;
+	}
+
+	//plane_normal.print('P');
+	//rotational_axis_direction.print('R');
+
+	if (angle > PI || angle < -PI) {
+		printf("Anlg too large!! %f\n\n\n\n", angle);
+	}
+
+
+
+	const float error = angle - improper->psi_0;
+
+	*potE += 0.5f * improper->k_psi * (error * error);
+	const float torque = improper->k_psi * (angle - improper->psi_0);
+
+	if (1) {
+		//normal1.print('1');
+		//normal2.print('2');
+		//i->print('i');
+		//j->print('j');
+		//k->print('k');
+		//l->print('l');
+		//(*i + rotational_axis_direction).print('Q');
+		float pot = 0.5f * improper->k_psi * (error * error);
+		printf("\tangle %f [rad]    torque: %f    pot %f     phi_0 %f [rad] k_phi %f\n\n",
+			angle, torque, pot, improper->psi_0, improper->k_psi);
+	}
+
+	// Tongue in cheek here. Each particle follows the vector that will minize the potential
+	// at this current step. I am fairly sure this is correct. TODO: Clear with Ali
+	//results[3] = normal1 * (torque / (*l - *i).len());	// l
+	//
+	//results[1] = normal2 * (torque / (*j - *i).len()); // j
+	//results[2] = normal2 * (torque / (*k - *i).len()); // k
+	//
+	//results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+	//printf("dists %f %f\n", j->distToLine(*i, *i + rotational_axis_direction*100000.f) / NANO_TO_LIMA, k->distToLine(*i, *i + rotational_axis_direction * 100000.f) / NANO_TO_LIMA);
+
+	// This is the simple way, always right-ish
+	results[3] = l_dir * (torque / (*l - *i).len());	// l
+
+	results[1] = plane_normal * (torque / j->distToLine(*i, *i + rotational_axis_direction * 100000.f)); // j
+	results[2] = plane_normal * (torque / k->distToLine(*i, *i + rotational_axis_direction * 100000.f)); // k
+
+	results[0] = -(results[3] + results[1] + results[2]);	// i restores quilibrium of force
+
+	results[0].print('0');
+	results[1].print('1');
+	results[2].print('2');
+	results[3].print('3');
+
+
+#ifdef LIMASAFEMODE
+	if (results[0].len() > 0.5f) {
+		printf("\nImproperdihedralBond: angle %f [rad] torque: %f psi_0 [rad] %f k_psi %f\n",
+			angle, torque, improper->psi_0, improper->k_psi);
+	}
+#endif
+}
+
+__device__ void calcImproperdihedralbondForces(Float3* i, Float3* j, Float3* k, Float3* l, ImproperDihedralBond* improper, Float3* results, float* potE) {
+	Float3 r12 = (*j - *i) / NANO_TO_LIMA;
+	Float3 r23 = (*k - *j) / NANO_TO_LIMA;
+	Float3 r34 = (*l - *k) / NANO_TO_LIMA;
+
+	Float3 A = r12.cross(r23);	// plane normal
+	Float3 B = r23.cross(r34);	// plane2 normal
+	Float3 C = r23.cross(A);	// ???
+
+	float rA = A.len();
+	float rB = B.len();
+	float rC = C.len();
+
+	const float cos_phi = A.dot(B) / (rA * rB);
+	const float sin_phi = C.dot(B) / (rC * rB);
+
+	B = B.norm();
+
+	const float phi = -atan2f(sin_phi, cos_phi);
+
+
+
+	float error = -(phi - improper->psi_0);
+	*potE += 0.5f * improper->k_psi * (error * error);
+	float torque = improper->k_psi * (error) / NANO_TO_LIMA;
+
+	printf("%f %f %f\n", phi, cos_phi, sin_phi);
+	Float3 f1, f2, f3;
+	if (fabs(sin_phi) > 0.1) {
+		A = A.norm();
+		const Float3 dcosdA = (A * cos_phi - B) / rA;
+		const Float3 dcosdB = (B * cos_phi - B) / rB;
+
+		torque /= sin_phi;
+
+
+		f1 = Float3{
+			(r23.y * dcosdA.z - r23.z * dcosdA.y),
+			(r23.z * dcosdA.x - r23.x * dcosdA.z),
+			(r23.x * dcosdA.y - r23.y * dcosdA.x)
+		} *torque;
+
+		//printf("%d", f1 == r23.cross(dcosdA) * torque);
+
+		f3 = Float3{
+			r23.z * dcosdB.y - r23.y * dcosdB.z,
+			r23.x * dcosdB.z - r23.z * dcosdB.x,
+			r23.y * dcosdB.x - r23.x * dcosdB.y
+		} *torque;
+
+		f2 = Float3{
+			r12.z* dcosdA.y - r12.y * dcosdA.z + r34.y * dcosdB.z - r34.z * dcosdB.y,
+			r12.x* dcosdA.z - r12.z * dcosdA.x + r34.z * dcosdB.x - r34.x * dcosdB.z,
+			r12.y* dcosdA.x - r12.x * dcosdA.y + r34.x * dcosdB.y - r34.y * dcosdB.x
+		} *torque;
+	}
+	else {
+		C = C.norm();
+		const Float3 dsindC = (C * sin_phi - B) / rC;
+		const Float3 dsindB = (B * sin_phi - C) / rB;
+
+		torque = -torque / cos_phi;
+
+		f1 = Float3{
+			(r23.y * r23.y + r23.z * r23.z)* dsindC.x - r23.x * r23.y * dsindC.y - r23.x * r23.z * dsindC.z,
+			(r23.z * r23.z + r23.x * r23.x)* dsindC.y - r23.y * r23.z * dsindC.z - r23.y * r23.x * dsindC.x,
+			(r23.x * r23.x + r23.y * r23.y)* dsindC.z - r23.z * r23.x * dsindC.x - r23.z * r23.y * dsindC.y
+		}*torque;
+
+		f3 += dsindB.cross(r23) * torque;
+
+		f2 = Float3{
+			-(r23.y * r12.y + r23.z * r12.z) * dsindC.x + (2.0f * r23.x * r12.y - r12.x * r23.y) * dsindC.y + (2.0f * r23.x * r12.z - r12.x * r23.z) * dsindC.z + dsindB.z * r34.y - dsindB.y * r34.z,
+			-(r23.z * r12.z + r23.x * r12.x) * dsindC.y + (2.0f * r23.y * r12.z - r12.y * r23.z) * dsindC.z + (2.0f * r23.y * r12.x - r12.y * r23.x) * dsindC.x + dsindB.x * r34.z - dsindB.z * r34.x,
+			-(r23.x * r12.x + r23.y * r12.y) * dsindC.z + (2.0f * r23.z * r12.x - r12.z * r23.x) * dsindC.x + (2.0f * r23.z * r12.y - r12.z * r23.y) * dsindC.y + dsindB.y * r34.x - dsindB.x * r34.y
+		} *torque;	
+	}
+
+	results[0] = f1;
+	results[1] = f2 - f1;
+	results[2] = f3 - f2;
+	results[3] = -f3;
+
+	results[0].print('0');
+	results[1].print('1');
+	results[2].print('2');
+	results[3].print('3');
+	printf("\n");
+}
+
 
 // ------------------------------------------------------------------------------------------- LJ Forces -------------------------------------------------------------------------------------------//
 enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };

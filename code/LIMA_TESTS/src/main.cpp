@@ -26,7 +26,8 @@ int main() {
 	//doDihedralbondBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.05, {}, false);
 	//doImproperDihedralBenchmark(envmode);
-	
+	TestUtils::loadAndRunBasicSimulation("improper", envmode);
+
 	//doMethionineBenchmark(envmode);
 	//doPhenylalanineBenchmark(envmode);
 	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
@@ -34,12 +35,12 @@ int main() {
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5);
 
 
 	//doPool50x(EnvMode::Headless);
 
-	runAllUnitTests();
+	//runAllUnitTests();
 
 
 	return 0;

@@ -302,10 +302,6 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 }
 
 
-
-
-
-
 __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);

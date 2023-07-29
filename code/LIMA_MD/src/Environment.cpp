@@ -30,6 +30,9 @@ Environment::Environment(const string& wf, EnvMode mode)
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
+
+	// DO NOT UNCOMMENT THIS! 2 unittests require my custom forcefield, figure out how to keep them before moving on.
+	// Maybe make a hierchy of myffbonded is used if it exists, otherwise a normal ffbonded is made and used!
 	//prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
 
 	SimParams simparams{ ip };

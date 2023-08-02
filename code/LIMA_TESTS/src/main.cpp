@@ -35,12 +35,12 @@ int main() {
 	//doEightResiduesNoSolvent(envmode);
 	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-	loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5);
+	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.029, 2e-5);
 
 
 	//doPool50x(EnvMode::Headless);
 
-	//runAllUnitTests();
+	runAllUnitTests();
 
 
 	return 0;
@@ -70,7 +70,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	testman.addTest(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6f));
-	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5));
+	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.029, 2e-5));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

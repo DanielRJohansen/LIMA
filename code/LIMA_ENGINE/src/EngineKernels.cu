@@ -302,19 +302,19 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 }
 
 
-__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Coord* utility_coord) { 
+__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Float3* utility_coord) { 
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
 		// calc Relative LimaPosition Shift from the origo-shift
-		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self);
+		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 	}
 	__syncthreads();
 
 	// Eventually i could make it so i only copy the active particles in the compound
 	if (threadIdx.x < MAX_COMPOUND_PARTICLES) {
-		const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x] + *utility_coord;
-		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3();
+		const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x];// +*utility_coord;
+		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3() + *utility_coord;
 	}	
 }
 
@@ -477,6 +477,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Coord utility_coord;
+	__shared__ Float3 utility_float3;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
 	Box* box = sim->box;
@@ -533,7 +534,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_coord);
+		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_float3);
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		bonded_particles_lut.load(*compoundpair_lut);
@@ -555,7 +556,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, solventblock_id);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
-		const Coord relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo);
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo).toFloat3();
 
 		// There are many more solvents in a block, than threads in this kernel, so we need to loop in strides of blockdim.x
 		__syncthreads();	// Dont load buffer before all are finished with the previous iteration
@@ -563,11 +564,9 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			const uint32_t solvent_index = offset + threadIdx.x;
 			const int n_elements_this_stride = CPPD::min(nsolvents_neighbor - offset, blockDim.x);
 
+			// Load the positions and add rel shift
 			if (solvent_index < nsolvents_neighbor) {
-				utility_buffer[threadIdx.x] = (solventblock->rel_pos[solvent_index] + relpos_shift).toFloat3();
-				if (blockIdx.x == 3 && utility_buffer[threadIdx.x].len() < 1.f) {
-					utility_buffer[threadIdx.x].print();
-				}
+				utility_buffer[threadIdx.x] = (solventblock->rel_pos[solvent_index]).toFloat3() + relpos_shift;
 			}
 			__syncthreads();
 
@@ -661,6 +660,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	__shared__ int utility_int;
 	__shared__ Coord utility_coord;
+	__shared__ Float3 utility_float3;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
@@ -718,7 +718,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_coord);	// This should take n_comp_part aswell!
+			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_float3);	// This should take n_comp_part aswell!
 
 			// Then load atomtypes of neighboring compound
 			if (threadIdx.x < n_compound_particles) {
@@ -772,17 +772,19 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockindex_neighbor);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+				const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
 
 				// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
 				__syncthreads();
 				if (threadIdx.x < nsolvents_neighbor) {
-					utility_buffer[threadIdx.x] = (solventblock_neighbor->rel_pos[threadIdx.x] + LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir)).toFloat3();	
+					utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].toFloat3() + origoshift_offset;
 				}
 				__syncthreads();
 
 				if (solvent_active) {
 					force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
 				}
+				__syncthreads();
 			}
 		}
 	}

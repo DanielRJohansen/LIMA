@@ -39,21 +39,24 @@ namespace TestUtils {
 		return std::move(env);
 	}
 
+
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
 	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float max_vc, std::vector<float> energy_gradients, float max_energygradient_abs) {
 		for (auto& vc : VCs) {
 			if (isnan(vc) || vc > max_vc) {					
-				return { false, std::format("Variance Coefficient of {} superceeded the max of {}", vc, max_vc) };
+				return { false, std::format("Variance Coefficient of {:.3e} superceeded the max of {:.3e}", vc, max_vc) };
 			}
 		}
 
 		for (auto& gradient : energy_gradients) {
 			if (isnan(gradient) || abs(gradient) > max_energygradient_abs) {
-				return { false, std::format("Energygradient of {} superceeded the max of {}", gradient, max_energygradient_abs) };
+				return { false, std::format("Energygradient of {:.3e} superceeded the max of {:.3e}", gradient, max_energygradient_abs) };
 			}
 		}
-		return { true,"" };
+
+		float highest_vc = *std::max_element(VCs.begin(), VCs.end());
+		return { true, std::format("VC {:.3e} / {:.3e}", highest_vc, max_vc)};
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }
@@ -85,11 +88,11 @@ namespace TestUtils {
 				setConsoleTextColorRed();
 			}
 
-			std::cout << "Test " << name << " status: " << status_str << "\n";
+			std::cout << "Test " << name << " status: " << status_str;
 
-			if (status == FAIL) {
-				std::cout << "\t" << error_description << "\n";
-			}
+			if (error_description.length() > 30) { std::cout << "\n"; }
+			std::cout << "\t" << error_description << "\n";
+
 
 			setConsoleTextColorDefault();
 		}

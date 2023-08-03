@@ -343,15 +343,13 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 
 		for (int compound_id = 0; compound_id < sim.boxparams_host.n_compounds; compound_id++) {
 			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-
+				
 				const float potE = sim.potE_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step);
-
-				const Float3 pos_prev = sim.traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step_prev);
-				const Float3 pos_next = sim.traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step_next);
 
 				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
 				const float mass = sim.forcefield->getNBForcefield().particle_parameters[atom_type].mass;
-				const float kinE = EngineUtils::calcKineticEnergy(&pos_prev, &pos_next, mass, 2.f * sim.simparams_host.constparams.dt / NANO_TO_LIMA);
+				const float vel = sim.vel_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step).len();
+				const float kinE = EngineUtils::calcKineticEnergy(vel, mass);
 				
 				energies.emplace_back(potE);
 				energies.emplace_back(kinE);
@@ -362,11 +360,9 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 
 			const float potE = sim.potE_buffer->getSolventparticleDatapoint(solvent_id, step);
 
-			const Float3 pos_prev = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_prev);
-			const Float3 pos_next = sim.traj_buffer->getSolventparticleDatapoint(solvent_id, step_next);
-
 			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
-			const float kinE = EngineUtils::calcKineticEnergy(&pos_prev, &pos_next, mass, 2.f * sim.simparams_host.constparams.dt);
+			const float vel = sim.vel_buffer->getSolventparticleDatapoint(solvent_id, step).len();
+			const float kinE = EngineUtils::calcKineticEnergy(vel, mass);			
 
 			energies.emplace_back(potE);
 			energies.emplace_back(kinE);
@@ -376,6 +372,6 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 	//energies[0] = 11.f;
 	//energies[1] = 22.f;
 	auto n_values_per_step = 2 * (sim.boxparams_host.n_compounds * MAX_COMPOUND_PARTICLES + sim.boxparams_host.n_solvents);
-	printf("\nValues per step %d\n", n_values_per_step);
+	//printf("\nValues per step %d\n", n_values_per_step);
 	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 }

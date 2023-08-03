@@ -123,13 +123,14 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 	}
 	return force;// *24.f * 1e-9;
 }
-__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr, float* potE_sum, const uint8_t* atomtypes_others) {	// Assumes all positions are 
+__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr, float* potE_sum, const uint8_t* atomtypes_others, const int sol_id) {	// Assumes all positions are 
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
 		force += LimaForcecalc::calcLJForce(&self_pos, &positions[i], data_ptr, potE_sum,
 			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
-			LimaForcecalc::CalcLJOrigin::ComSol
+			LimaForcecalc::CalcLJOrigin::ComSol,
+			sol_id, -1
 		);
 	}
 	return force;// *24.f * 1e-9;
@@ -427,12 +428,11 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 
 
 	if (remain) {
-		// Send current pos at threadindex to prevpos at the new index
-		//remain_transfermodule->remain_relpos_prev[solventindex_new] = solventblock_current_local.rel_pos[threadIdx.x];
-		// Send the next pos 
+		// solventindex_new is only valid for those who remain, the rest *might* have an index of -1
 		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
 		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
 	}
+
 
 	const int nsolventsinblock_next = __syncthreads_count(remain);
 	if (threadIdx.x == 0) {
@@ -447,6 +447,9 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const NodeIndex blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
 	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{};
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
+	if (new_blockid > 216 || new_blockid < 0) {
+		printf("new id %d\n", new_blockid);
+	}
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	
@@ -554,6 +557,10 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
 		const NodeIndex solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
 		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, solventblock_id);
+		if (solventblock_id < 0 || solventblock_id >= 216) {
+			printf("solventblock id %d i %d n %d\n", solventblock_id, i, neighborlist.n_gridnodes);
+			simparams.critical_error_encountered = true;
+		}
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo).toFloat3();
@@ -566,7 +573,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 			// Load the positions and add rel shift
 			if (solvent_index < nsolvents_neighbor) {
-				utility_buffer[threadIdx.x] = (solventblock->rel_pos[solvent_index]).toFloat3() + relpos_shift;
+				utility_buffer[threadIdx.x] = solventblock->rel_pos[solvent_index].toFloat3() + relpos_shift;
 			}
 			__syncthreads();
 
@@ -594,16 +601,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 			// Save pos locally, but only push to box as this kernel ends
 			compound_coords.rel_positions[threadIdx.x] = pos_now;
-
-			if (vel_now * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
-				printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
-				(vel_now* simparams.constparams.dt).print('V');
-				force.print('F');
-				LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('O');
-				LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('P');
-
-				simparams.critical_error_encountered = true;
-			}
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
@@ -626,15 +623,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	if (potE_sum < -100000000)
-		printf("step %d pote %f\n", simparams.step, potE_sum);
-
-	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams.step, sim->databuffers);
-
-	if (force.len() > 2e+10) {
-		printf("\n\nCritical force %.0f           block %d thread %d\n\n\n", force.len(), blockIdx.x, threadIdx.x);
-		simparams.critical_error_encountered = true;
-	}
+	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers);
 
 	// Push positions for next step
 	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
@@ -702,13 +691,14 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
-		CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
+		const CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
 		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
 		__syncthreads();
 
 
 
 		for (int i = 0; i < utility_int; i++) {
+
 			const int16_t neighborcompound_index = compoundgridnode->nearby_compound_ids[i];
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
@@ -725,18 +715,10 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
 			}			
 			__syncthreads();
-
-			if (n_compound_particles > 0 && solvent_active) { 
-				//printf("\nthreadIdx %d n_comp_particles %d self_origo %d %d %d ns %d\n", threadIdx.x, n_compound_particles, block_origo.x, block_origo.y, block_origo.z, solventblock.n_solvents); 
-				//utility_buffer[0].print('r');
-				//coordarray_ptr->origo.print('o');
-			}
-
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
-			// Fuck me this is tricky. If we are too far away, we can complete skip this calculation i guess?
 			if (solvent_active) {
-				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, &potE_sum, utility_buffer_small);
+				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, &potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -824,8 +806,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		if (threadIdx.x == 0) {
 			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
 		}
-	}
-	
+	}	
 }
 #undef solvent_index
 #undef solvent_mass
@@ -845,18 +826,9 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 	SolventBlock* solventblock_current = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockIdx.x);
 	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step + 1, blockIdx.x);
 
-
-	// First overload what will become posrel_prev for the next step. This is needed since compaction has already been applied
-	for (int index = threadIdx.x; index < transfermodule->n_remain; index += blockDim.x) {
-		if (index >= MAX_SOLVENTS_IN_BLOCK) { printf("\nWhat the fuck\n"); }
-		solventblock_current->rel_pos[index] = transfermodule->remain_relpos_prev[index];
-	}
-
 	if (solventblock_next->n_solvents != transfermodule->n_remain) {
 		printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);
 	}
-
-	//if (blockIdx.x == 47) { printf("Block 47 has %d remains\n", transfermodule->n_remain); }
 
 	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
@@ -876,6 +848,11 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 			queue->n_elements = 0;
 		}
 	}
+	if (threadIdx.x == 0 && n_solvents_next >= MAX_SOLVENTS_IN_BLOCK) {
+		printf("Tried to put %d solvents in a single block\n");
+		sim->params->critical_error_encountered = true;
+	}
+
 
 	// Finally update the solventblock_next with how many solvents it now contains
 	if (threadIdx.x == 0) {

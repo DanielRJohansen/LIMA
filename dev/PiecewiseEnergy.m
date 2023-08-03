@@ -15,12 +15,14 @@ maxValue = max(data)
 % Add the minimum value to every odd element
 data(1:2:end) = data(1:2:end) + abs(minValue);
 
-max_step = 400-1;
+%max_step = 100;
 
 % Reshape data into a matrix with n elements per column
 %values_per_step = 192;
 values_per_step = 25594;
 data = reshape(data, values_per_step , []);
+
+max_step = size(data, 2)
 
 % Initialize the step variable
 step = 1;
@@ -57,6 +59,6 @@ function sliderCallback(source, ~, data, maxValue)
     bar(pairs', 'stacked');
     %ylim([0, ceil(maxValue*2 / 1000) * 1000])
     ylim([0, 200000])
-    xlim([0 200])
+    %xlim([0 2000])
     title(sprintf('Step: %d', step));
 end

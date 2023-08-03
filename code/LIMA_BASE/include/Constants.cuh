@@ -30,7 +30,7 @@ constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
 
-static_assert(NANO_TO_LIMA * 4 < INT_MAX, "LIMA Scale is so small it can create dangerous bugs");
+static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
@@ -39,7 +39,7 @@ const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr float CUTOFF_NM = 1.1f;
+constexpr float CUTOFF_NM = 1.6f;
 constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
@@ -104,7 +104,7 @@ const int MAX_COMPOUNDS = 0xFF;
 const int MAX_ATOMS = 1'000'000;
 const int MAX_ATOMS_IN_RESIDUE = 32;		// TODO SET YP AGAIN
 
-const int NEIGHBORLIST_MAX_COMPOUNDS = 64;
+const int NEIGHBORLIST_MAX_COMPOUNDS = 32;
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 
@@ -148,7 +148,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 5;
+const int STEPS_PER_RENDER = 20;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

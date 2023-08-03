@@ -31,10 +31,10 @@ void inline addNeighborIfEligible(HashTable& currentNeighbors,
 
 NListDataCollection::NListDataCollection(Simulation* simulation) {
 	compound_neighborlists.resize(MAX_COMPOUNDS);
-	cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
+	auto cuda_status = cudaMemcpy(compound_neighborlists.data(), simulation->sim_dev->box->compound_neighborlists, sizeof(NeighborList) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
+	LIMA_UTILS::genericErrorCheck(cuda_status);
 
 	compoundgrid = std::make_unique<CompoundGrid>();
-	LIMA_UTILS::genericErrorCheck("Error creating NListDataCollection");
 }
 
 void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
@@ -45,15 +45,6 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 
 	for (int compound_id = 0; compound_id < simulation.boxparams_host.n_compounds; compound_id++) {
 		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, 0, step);
-
-		//compound_key_positions[compound_id] = simulation.traj_buffer[index]; // Temp?
-		// 
-		// 
-		// const LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(simulation.traj_buffer[index]);
-		//compound_origos[compound_id] = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(position);
-		//if (compound_origos[compound_id].x >= BOXGRID_N_NODES || compound_origos[compound_id].y >= BOXGRID_N_NODES || compound_origos[compound_id].z >= BOXGRID_N_NODES) {
-		//	int a = 0;
-		//}
 	}
 }
 
@@ -68,12 +59,12 @@ namespace NListUtils {
 
 			// Cull compound-compound
 			for (int j = 0; j < nlist_self->n_compound_neighbors; j++) {
-				int id_neighbor = nlist_self->neighborcompound_ids[j];
+				const int id_neighbor = nlist_self->neighborcompound_ids[j];
 				NeighborList* nlist_neighbor = &nlist->compound_neighborlists[id_neighbor];
-				float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].radius;
+				const float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].radius;
 
 				if (id_self < id_neighbor) {
-					if (!neighborWithinCutoff(&nlist->compound_key_positions[id_self], &nlist->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_LM)) {
+					if (!neighborWithinCutoff(&nlist->compound_key_positions[id_self], &nlist->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_NM)) {
 						nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 						nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
 						j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
@@ -91,7 +82,7 @@ namespace NListUtils {
 
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
-			HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
+			//HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
 			const float cutoff_add_self = simulation->compounds_host[id_self].radius;
 			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
 
@@ -111,102 +102,78 @@ namespace NListUtils {
 		}
 	}
 
-
-	void distributeCompoundsInGrid(Simulation* simulation, NListDataCollection& nlist_data_collection) {
-		for (int compound_index = 0; compound_index < simulation->boxparams_host.n_compounds; compound_index++) {
-			const Float3& compound_position = nlist_data_collection.compound_key_positions[compound_index];
-			const NodeIndex& nearest_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_position);
-
-			CompoundGridNode& node = *nlist_data_collection.compoundgrid->getBlockPtr(nearest_nodeindex);
-
-			node.addAssociatedCompound(compound_index);
-		}
-	}
-
-
 	bool isNearby(const Simulation& simulation, const NodeIndex& nodeindex_self, const int querycompound_id, NListDataCollection& nlist_data) {
 		const Float3& querycompound_pos = nlist_data.compound_key_positions[querycompound_id];
-
 		const Float3 currentnode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_self);
 
 		const float dist = EngineUtils::calcHyperDistNM(&querycompound_pos, &currentnode_pos);
-
-		const float querycompound_radius = simulation.compounds_host[querycompound_id].radius;	// Is this nm or lm?=?!??!!
+		const float querycompound_radius = simulation.compounds_host[querycompound_id].radius;	// [nm]
 
 		return dist < (CUTOFF_NM + querycompound_radius);
 	}
 
 	void assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
-		for (int z = 0; z < BOXGRID_N_NODES; z++) {
-			for (int y = 0; y < BOXGRID_N_NODES; y++) {
-				for (int x = 0; x < BOXGRID_N_NODES; x++) {
-					const NodeIndex node_origo{ x, y, z };	// Doubles as the 3D index of the block!
-					CompoundGridNode* node_self = nlist_data_collection->compoundgrid->getBlockPtr(node_origo);
-					int nodeself_id = CompoundGrid::get1dIndex(node_origo);
+		for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
+			const Float3& compound_pos = nlist_data_collection->compound_key_positions[compound_id];
+			const NodeIndex& compound_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_pos);
 
+			const float compound_radius = simulation->compounds_host[compound_id].radius;
+			const float max_dist_nm = CUTOFF_NM + compound_radius;
 
-					const int query_range = 2;
-					for (int x = -query_range; x <= query_range; x++) {
-						for (int y = -query_range; y <= query_range; y++) {
-							for (int z = -query_range; z <= query_range; z++) {
-								NodeIndex query_origo = node_origo + NodeIndex{ x,y,z };
-								LIMAPOSITIONSYSTEM::applyPBC(query_origo);
-								const CompoundGridNode* node_query = nlist_data_collection->compoundgrid->getBlockPtr(query_origo);
+			const int query_range = 2;
+			for (int x = -query_range; x <= query_range; x++) {
+				for (int y = -query_range; y <= query_range; y++) {
+					for (int z = -query_range; z <= query_range; z++) {
 
-								for (int i = 0; i < node_query->n_associated_compounds; i++) {
-									const int querycompound_id = node_query->associated_ids[i];
+						NodeIndex query_origo = compound_nodeindex + NodeIndex{ x,y,z };
+						LIMAPOSITIONSYSTEM::applyPBC(query_origo);
 
-									if (isNearby(*simulation, node_origo, querycompound_id, *nlist_data_collection)) {
-										node_self->addNearbyCompound(querycompound_id);	// Add compound so solvents can see it
-										nlist_data_collection->compound_neighborlists[querycompound_id].addGridnode(nodeself_id);	// Add grid so compound can see solvents
-									}
-								}
-							}
-						}
+						CompoundGridNode* querynode = nlist_data_collection->compoundgrid->getBlockPtr(query_origo);
+						const int querynode_id = CompoundGrid::get1dIndex(query_origo);
+
+						const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
+						const float dist = EngineUtils::calcHyperDistNM(&compound_pos, &querynode_pos);
+
+						if (dist < max_dist_nm) {
+							querynode->addNearbyCompound(compound_id);	// Add compound so solvents can see it
+							nlist_data_collection->compound_neighborlists[compound_id].addGridnode(querynode_id);	// Add grid so compound can see solvents
+						}						
 					}
 				}
 			}
 		}
 	}
 
-
-	void updateCompoundGrid(Simulation* simulation, NListDataCollection* nlist) {
-		nlist->compoundgrid = std::make_unique<CompoundGrid>();	// Reset the grid. Maybe there is a way to do this faster?
-
-		distributeCompoundsInGrid(simulation, *nlist);
-		assignNearbyCompoundsToGridnodes(simulation, nlist);
-	}
-
-
 	// Important: do NOT call getStep during this funciton, as it runs async!!!!
 	// This is a thread worker-function, so it can't own the object, thus i pass a ref to the engine object..
 	void updateNeighborLists(Simulation* simulation, NListDataCollection* nlist_data_collection, volatile bool* finished, int* timing, std::mutex& mutex, const uint32_t step_at_update) {
-		auto t0 = std::chrono::high_resolution_clock::now();
-		mutex.lock();
+		try {
+			auto t0 = std::chrono::high_resolution_clock::now();
+			mutex.lock();
 
-		LIMA_UTILS::genericErrorCheck("24");
+			// Make key positions addressable in arrays: compound_key_positions and solvent_positions
+			nlist_data_collection->preparePositionData(*simulation, step_at_update);
 
-		// Make key positions addressable in arrays: compound_key_positions and solvent_positions
-		nlist_data_collection->preparePositionData(*simulation, step_at_update);
-		LIMA_UTILS::genericErrorCheck("24");
-		// First do culling of neighbors that has left CUTOFF
-		NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
-		LIMA_UTILS::genericErrorCheck("2");
+			// First do culling of neighbors that has left CUTOFF
+			NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
 
-		// Add all compound->compound neighbors
-		matchCompoundNeighbors(simulation, nlist_data_collection);
+			// Add all compound->compound neighbors
+			matchCompoundNeighbors(simulation, nlist_data_collection);
 
-		updateCompoundGrid(simulation, nlist_data_collection);
-		LIMA_UTILS::genericErrorCheck("4");
+			// updateCompoundGrid
+			nlist_data_collection->compoundgrid = std::make_unique<CompoundGrid>();	// Reset the grid. Maybe there is a way to do this faster?
+			assignNearbyCompoundsToGridnodes(simulation, nlist_data_collection);
 
+			auto t1 = std::chrono::high_resolution_clock::now();
+			*timing = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
-
-		auto t1 = std::chrono::high_resolution_clock::now();
-		*timing = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-
-		// SIGNALING MAIN THREAD //
-		*finished = 1;		// Thread terminates here!
-		mutex.unlock();	// Unlock
+			// SIGNALING MAIN THREAD //
+			*finished = 1;		// Thread terminates here!
+			mutex.unlock();	// Unlock
+		}
+		catch (const std::exception& ex) {
+			std::cerr << "\nCaught exception: " << ex.what() << std::endl;	// TODO: Remove before final release
+		}
 	}
 }
 

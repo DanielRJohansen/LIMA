@@ -131,7 +131,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Used only for neighborlist. Might be temp. Input-position in nm!
 	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
-		float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
+		constexpr float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
 		NodeIndex nodeindex{
 			static_cast<int32_t>(std::roundf(position.x * factor)),
 			static_cast<int32_t>(std::roundf(position.y * factor)),
@@ -442,20 +442,6 @@ namespace EngineUtils {
 		return 0.5f * mass * velocity * velocity;
 	}
 
-	// Positions in [nm] and time in [ns]
-	__device__ __host__ static float calcKineticEnergy(const Float3* pos1, const Float3* pos2, const float mass, const float elapsed_time) {
-		auto dist = calcHyperDistNM(pos1, pos2);
-		if (dist > 1.f) {
-			printf("DIST: %f\n", dist);
-			pos1->print('1');
-			pos2->print('2');
-		}
-
-		const float velocity = dist / elapsed_time;
-		return calcKineticEnergy(velocity, mass);
-		//const float kinE = 0.5f * mass * vel * vel;
-		//return kinE;
-	}
 	// -------------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
@@ -469,8 +455,8 @@ namespace EngineUtils {
 	// LimaPosition in [nm]
 	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
 		for (int dim = 0; dim < 3; dim++) {
-			*current_position->placeAt(dim) += BOX_LEN * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN * (current_position->at(dim) > BOX_LEN);
+			*current_position->placeAt(dim) += BOX_LEN_NM * (current_position->at(dim) < 0.f);
+			*current_position->placeAt(dim) -= BOX_LEN_NM * (current_position->at(dim) > BOX_LEN_NM);
 		}
 	}
 
@@ -564,11 +550,23 @@ namespace EngineUtils {
 		return vel;
 	}
 
-	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol, uint32_t step, DatabuffersDevice* databuffers) {
-		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers) {
+		if (threadIdx.x >= compound.n_particles) { return; }
+
+		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x];
+
+		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
+			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+			(compound.vels_prev[threadIdx.x] * simparams.constparams.dt).print('V');
+			force.print('F');
+			LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('O');
+			LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('P');
+
+			simparams.critical_error_encountered = true;
+		}
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers) {

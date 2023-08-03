@@ -71,7 +71,7 @@ namespace ForceCorrectness {
 			{
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 				const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-				const int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
+				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 				InputSimParams ip{};
 				ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 				env.CreateSimulation(conf, topol, ip);

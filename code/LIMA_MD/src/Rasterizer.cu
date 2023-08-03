@@ -219,7 +219,7 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, 
 		RenderAtom atom{};
 		//atom.pos = coord.getAbsolutePositionLM();
         atom.pos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock->origo, solventblock->rel_pos[threadIdx.x]);
-        EngineUtils::applyPBCNM(&atom.pos);   // TMP, dunno if i wanna do this.
+        //EngineUtils::applyPBCNM(&atom.pos);   // TMP, dunno if i wanna do this.
 		atom.mass = SOLVENT_MASS;
 		atom.atom_type = SOL;
 
@@ -233,10 +233,12 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, 
 		//printf("vel %f, %d\n", velocity, color_red);
 
         // This part is for various debugging purposes
-        //int query_id = 0;
-        //if (solvent_id == query_id) {
-        //    atoms[solvent_id + offset].atom_type = P;
-        //}
+        int query_id = 797;
+        int solvent_id = solventblock->ids[threadIdx.x];
+        if (solvent_id == query_id) {
+            atom.atom_type = P;
+            atom.color = Int3(0xFC, 0xF7, 0x5E);
+        }
         //const auto& nlist = box->solvent_neighborlists[solvent_id];
         //for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
         //    if (nlist.neighborsolvent_ids[i] == query_id) {
@@ -263,9 +265,12 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
 
-    for (int dim = 0; dim < 3; dim++) {
-        *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f) *1.8f;
-    }
+    atom.pos = atom.pos / BOX_LEN_NM - 0.5f;    // normalize from -0.5->0.5
+    atom.pos *= 1.4f;                           // scale a bit up
+
+    //for (int dim = 0; dim < 3; dim++) {
+    //    *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f);
+    //}
     
     const RenderBall ball(atom.pos, atom.radius, atom.color, atom.atom_type);
     balls[index] = ball;

@@ -81,6 +81,9 @@ public:
 		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds)
 	{
 		buffer.resize(n_particles_upperbound * n_steps);
+		for (size_t i = 0; i < n_particles_upperbound * n_steps; i++) {
+			buffer[i] = T{};
+		}
 	}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE

@@ -108,34 +108,34 @@ public:
 
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;
-		n_solvent_neighbors = nl_ptr->n_solvent_neighbors;
+		//n_solvent_neighbors = nl_ptr->n_solvent_neighbors;
 		n_gridnodes = nl_ptr->n_gridnodes;
 	}
 	__device__ void loadData(NeighborList* nl_ptr) {
+		static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
 		if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
 			neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
-		for (int i = threadIdx.x;  i < n_solvent_neighbors; i += blockDim.x) {// Same as THREADS_PER_COMPOUNDBLOCK
-			neighborsolvent_ids[i] = nl_ptr->neighborsolvent_ids[i];
-			i += blockDim.x;	
-		}
+		//for (int i = threadIdx.x;  i < n_solvent_neighbors; i += blockDim.x) {// Same as THREADS_PER_COMPOUNDBLOCK
+		//	neighborsolvent_ids[i] = nl_ptr->neighborsolvent_ids[i];
+		//	i += blockDim.x;	
+		//}
 
-		if (threadIdx.x < n_gridnodes) {
-			gridnode_ids[threadIdx.x] = nl_ptr->gridnode_ids[threadIdx.x];
-		}
+		for (int i = threadIdx.x; i < n_gridnodes; i++) {
+			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
+		}	
 	}
 
 
 	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
 	uint16_t n_compound_neighbors = 0;
-	uint16_t neighborsolvent_ids[NEIGHBORLIST_MAX_SOLVENTS];
-	uint16_t n_solvent_neighbors = 0;
+	//uint16_t neighborsolvent_ids[NEIGHBORLIST_MAX_SOLVENTS];
+	//uint16_t n_solvent_neighbors = 0;
 
-	static const int max_gridnodes = 48;
+	static const int max_gridnodes = 96;	// Arbitrary value
 	uint16_t gridnode_ids[max_gridnodes];
 	uint8_t n_gridnodes = 0;
 
 	int associated_id = -1;
-
 };
 
 
@@ -331,7 +331,6 @@ struct SolventBlockTransfermodule {
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
 
-	Coord remain_relpos_prev[MAX_SOLVENTS_IN_BLOCK];
 	int n_remain = 0;
 
 	/// <param name="transfer_direction">Relative to the originating block</param>
@@ -665,13 +664,6 @@ struct ForceField_NB {
 struct CompoundGridNode {
 	__host__ void addNearbyCompound(int16_t compound_id);
 	__host__ void addAssociatedCompound(int16_t compound_id);
-
-
-
-	// Contains only compounds that are CLOSEST to this specific node
-	static const int max_associated_compounds = 5;
-	int16_t associated_ids[max_associated_compounds]{};
-	int16_t n_associated_compounds = 0;
 
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list

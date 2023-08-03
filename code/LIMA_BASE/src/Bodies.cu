@@ -110,19 +110,6 @@ bool NeighborList::addId(uint16_t new_id, NEIGHBOR_TYPE nt) {
 		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
 		exit(1);
 		break;
-
-	case NeighborList::SOLVENT:
-		if (n_solvent_neighbors < NEIGHBORLIST_MAX_SOLVENTS) {
-			neighborsolvent_ids[n_solvent_neighbors++] = new_id;
-			//if (associated_id==0 || new_id == 0)
-				//printf("%d added id %d\n", associated_id, new_id);
-			return true;
-		}
-
-		printf("\nFailed to insert solvent neighbor id %d of %d\n", new_id, n_solvent_neighbors);
-		exit(1);
-		break;
-
 	default:
 		break;
 	}
@@ -132,19 +119,6 @@ bool NeighborList::addId(uint16_t new_id, NEIGHBOR_TYPE nt) {
 bool NeighborList::removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
 
 	switch (nt) {
-	case NeighborList::SOLVENT:
-		for (int i = 0; i < n_solvent_neighbors; i++) {
-			if (neighborsolvent_ids[i] == neighbor_id) {
-				neighborsolvent_ids[i] = neighborsolvent_ids[n_solvent_neighbors - 1];
-				n_solvent_neighbors--;
-				return true;
-			}
-		}
-		printf("\n%d Failed to remove neighbor solvent ID: %d of %d total IDs. max+1: %d\n", associated_id, neighbor_id, n_solvent_neighbors, neighborcompound_ids[n_solvent_neighbors]);
-		for (int i = 0; i < n_solvent_neighbors; i++) {
-			//printf("%d\n", neighborsolvent_ids[i]);
-		}
-		break;
 	case NeighborList::COMPOUND:
 		for (int i = 0; i < n_compound_neighbors; i++) {
 			if (neighborcompound_ids[i] == neighbor_id) {
@@ -165,7 +139,8 @@ bool NeighborList::removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
 
 
 __host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
-	if (n_gridnodes == max_gridnodes) { throw ("No room for more nearby gridnodes"); }
+	if (n_gridnodes >= max_gridnodes) { 
+		throw std::exception("No room for more nearby gridnodes"); }
 	gridnode_ids[n_gridnodes++] = gridnode_id;
 }
 
@@ -184,15 +159,8 @@ __host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
 
 __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {
-	if (n_nearby_compounds == max_nearby_compounds) {
+	if (n_nearby_compounds >= max_nearby_compounds) {
 		throw std::exception("Failed to add compound to CompoundGridNode\n");
 	}
 	nearby_compound_ids[n_nearby_compounds++] = compound_id;
-}
-
-__host__ void CompoundGridNode::addAssociatedCompound(int16_t compound_id) {
-	if (n_associated_compounds == max_associated_compounds) {
-		throw std::exception("Failed to add compound to CompoundGridNode\n");
-	}
-	associated_ids[n_associated_compounds++] = compound_id;
 }

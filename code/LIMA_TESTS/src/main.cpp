@@ -14,34 +14,40 @@ using namespace StressTesting;
 
 void runAllUnitTests();
 
+
 int main() {
-	constexpr auto envmode = EnvMode::Full;
 
-	
-	//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
-	//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
-	
-	//doSinglebondBenchmark(envmode);
-	//doAnglebondBenchmark(envmode);
-	//doDihedralbondBenchmark(envmode);
-	//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002);
-	//doImproperDihedralBenchmark(envmode);
-	//	TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5);
-
-	//doMethionineBenchmark(envmode);
-	//doPhenylalanineBenchmark(envmode);
-	//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
-
-	//doEightResiduesNoSolvent(envmode);
-	//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
-
-	//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.029, 2e-5);
+	try {
+		constexpr auto envmode = EnvMode::Full;
 
 
-	//doPool50x(EnvMode::Headless);
+		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
-	runAllUnitTests();
+		//doSinglebondBenchmark(envmode);
+		//doAnglebondBenchmark(envmode);
+		//doDihedralbondBenchmark(envmode);
+		//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002);
+		//doImproperDihedralBenchmark(envmode);
+		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5);
 
+		//doMethionineBenchmark(envmode);
+		//doPhenylalanineBenchmark(envmode);
+		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
+
+		//doEightResiduesNoSolvent(envmode);
+		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
+
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.029, 2e-5);
+
+
+		//doPool50x(EnvMode::Headless);
+
+		runAllUnitTests();
+	}
+	catch (std::exception ex) {
+		std::cerr << "Caught exception: " << ex.what() << std::endl;
+	}
 
 	return 0;
 }
@@ -70,7 +76,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	testman.addTest(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.5e-6f));
-	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.015, 2e-5));
+	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

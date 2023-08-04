@@ -100,7 +100,7 @@ struct Float3 {
 		return Float3{};
 	}
 	__host__ __device__ Float3 norm() const {
-		float l = len();
+		const float l = len();
 		if (l)
 			return *this * (1.f / l);
 		return Float3{};
@@ -131,23 +131,39 @@ struct Float3 {
 
 	//__host__ __device__ float getAngleSigned(Float3 a) { return atan2f(this->cross(a).dot(a), this->dot(a)); }
 
-	//TODO: optimize for const &
-	__host__ __device__ inline static float getAngle(Float3 v1, Float3 v2) {
+	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
 		val = val > 1.f ? 1.f : val;
 		val = val < -1.f ? -1.f : val;
-		if (val > 1.f || val < -1.f) {
-			printf("Val2 %f !!\n", val);
-		}
 		return acos(val);
 	}
+	__device__ static float getAngleOfNormVectors(const Float3& v1, const Float3& v2) {
+		float val = v1.dot(v2);
+		val = val > 1.f ? 1.f : val;
+		val = val < -1.f ? -1.f : val;
+		return acosf(val);
+	}
+
+	//__device__ static float getAngleOfNormVectors(const Float3& v1, const Float3& v2) {
+	///*	const float d = v1.dot(v2);
+	//	const float c = v1.cross(v2).len();
+	//	return atan2(c, d);*/
+
+	//	float cos_theta = v1.dot(v2);
+	//	cos_theta = cos_theta > 1.f ? 1.f : cos_theta;
+	//	cos_theta = cos_theta < -1.f ? -1.f : cos_theta;
+
+	//	const float sin_theta = sqrt(1.f - cos_theta * cos_theta);
+	//	return atan2f(sin_theta, cos_theta);
+	//}
+
 	__host__ __device__ static float getAngle(Float3 a, Float3 middle, Float3 b) {
 		return getAngle(a - middle, b - middle);
 	}
 
 
-	__host__ __device__ Float3 cross(Float3 a) const { 
+	__host__ __device__ Float3 cross(const Float3 a) const { 
 		return Float3(
 			y * a.z - z * a.y, 
 			z * a.x - x * a.z, 
@@ -247,7 +263,7 @@ struct Float3 {
 	}
 
 	// Assumes *this is a point, and arguments are two points on a line
-	__host__ __device__ float distToLine(const Float3& p1, const Float3& p2) {
+	__host__ __device__ float distToLine(const Float3& p1, const Float3& p2) const {
 		return ((p2 - p1).cross(p1 - (*this))).len() / (p2 - p1).len();
 	}
 

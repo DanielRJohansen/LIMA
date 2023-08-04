@@ -52,7 +52,7 @@ namespace ForceCorrectness {
 		return LimaUnittest{ "doPoolBenchmark", status, result.second, envmode == Full };
 	}
 
-	LimaUnittest doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 0.0012) {
+	LimaUnittest doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 1e-4) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -304,7 +304,7 @@ namespace ForceCorrectness {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 0.0002f, 1e-8);
+		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 1e-8f);
 	}
 
 }

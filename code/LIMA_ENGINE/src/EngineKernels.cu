@@ -153,11 +153,11 @@ __device__ Float3 computeSinglebondForces(SingleBond* singlebonds, int n_singleb
 			pb = &singlebonds[bond_index];
 
 			LimaForcecalc::calcSinglebondForces(
-				&positions[pb->atom_indexes[0]],
-				&positions[pb->atom_indexes[1]],
-				pb,
+				positions[pb->atom_indexes[0]],
+				positions[pb->atom_indexes[1]],
+				*pb,
 				forces, 
-				&potential
+				potential
 			);
 		}
 
@@ -194,12 +194,12 @@ __device__ Float3 computeAnglebondForces(T* entity, Float3* positions, Float3* f
 			ab = &entity->anglebonds[bond_index];
 
 			LimaForcecalc::calcAnglebondForces(
-				&positions[ab->atom_indexes[0]],
-				&positions[ab->atom_indexes[1]],
-				&positions[ab->atom_indexes[2]],
-				ab,
+				positions[ab->atom_indexes[0]],
+				positions[ab->atom_indexes[1]],
+				positions[ab->atom_indexes[2]],
+				*ab,
 				forces, 
-				&potential
+				potential
 			);
 		}
 
@@ -236,13 +236,13 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* fo
 		if (bond_index < entity->n_dihedrals) {
 			db = &entity->dihedrals[bond_index];
 			LimaForcecalc::calcDihedralbondForces(
-				&positions[db->atom_indexes[0]],
-				&positions[db->atom_indexes[1]],
-				&positions[db->atom_indexes[2]],
-				&positions[db->atom_indexes[3]],
-				db,
+				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				*db,
 				forces,
-				&potential
+				potential
 			);
 		}
 
@@ -278,13 +278,13 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 			db = &impropers[bond_index];
 			//printf("Firing %d of %d\n", bond_index, entity);
 			LimaForcecalc::calcImproperdihedralbondForces(
-				&positions[db->atom_indexes[0]],
-				&positions[db->atom_indexes[1]],
-				&positions[db->atom_indexes[2]],
-				&positions[db->atom_indexes[3]],
-				db,
+				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				*db,
 				forces,
-				&potential
+				potential
 			);
 		}
 

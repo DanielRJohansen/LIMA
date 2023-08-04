@@ -19,7 +19,7 @@ void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places 
 	}
 }
 
-void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams, float* potE_buffer, Float3* vel_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
+void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
 	__shared__ Compound compound;
 
@@ -47,8 +47,8 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	const int step_offset = step * box->boxparams.total_particles_upperbound;
 	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
 
-	const Float3 velocity = vel_buffer[threadIdx.x + compound_offset + step_offset];
-	const float kinE = EngineUtils::calcKineticEnergy(velocity.len(), mass);	// remove direction from vel
+	const float velocity = vel_buffer[threadIdx.x + compound_offset + step_offset];
+	const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);	// remove direction from vel
 
 	const float totalE = potE + kinE;
 
@@ -67,7 +67,7 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 
 
 
-void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams, float* potE_buffer, Float3* vel_buffer, Float3* data_out) {
+void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {
 	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK];
 
 
@@ -83,8 +83,8 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 	if (solvent_index >= box->boxparams.n_solvents) { return; }
 
 
-	const Float3 velocity = vel_buffer[step_offset + compounds_offset + solvent_index];
-	const float kinE = EngineUtils::calcKineticEnergy(velocity.len(), SOLVENT_MASS);	// remove direction from vel
+	const float velocity = vel_buffer[step_offset + compounds_offset + solvent_index];
+	const float kinE = EngineUtils::calcKineticEnergy(velocity, SOLVENT_MASS);	// remove direction from vel
 	float potE = potE_buffer[compounds_offset + solvent_index + step * box->boxparams.total_particles_upperbound];
 
 	const float totalE = potE + kinE;
@@ -116,14 +116,14 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
 	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
 	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
-	cudaMalloc(&vel_buffer_device, sizeof(Coord) * max_values_per_kernel);
+	cudaMalloc(&vel_buffer_device, sizeof(float) * max_values_per_kernel);
 
 	for (int i = 0; i < ceil((double)n_steps / (double)max_steps_per_kernel); i++) {
 		int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
 		int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_steps - step_offset);
 
 		cudaMemcpy(potE_buffer_device, &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
-		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(Coord) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
 		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
@@ -348,7 +348,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 
 				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
 				const float mass = sim.forcefield->getNBForcefield().particle_parameters[atom_type].mass;
-				const float vel = sim.vel_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step).len();
+				const float vel = sim.vel_buffer->getCompoundparticleDatapoint(compound_id, particle_id, step);
 				const float kinE = EngineUtils::calcKineticEnergy(vel, mass);
 				
 				energies.emplace_back(potE);
@@ -361,7 +361,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 			const float potE = sim.potE_buffer->getSolventparticleDatapoint(solvent_id, step);
 
 			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
-			const float vel = sim.vel_buffer->getSolventparticleDatapoint(solvent_id, step).len();
+			const float vel = sim.vel_buffer->getSolventparticleDatapoint(solvent_id, step);
 			const float kinE = EngineUtils::calcKineticEnergy(vel, mass);			
 
 			energies.emplace_back(potE);

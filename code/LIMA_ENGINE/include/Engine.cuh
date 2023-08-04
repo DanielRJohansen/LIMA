@@ -54,7 +54,7 @@ public:
 private:
 
 
-	void hostMaster();
+	template <bool em_variant> void hostMaster();
 	template <bool em_variant> void deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
@@ -71,7 +71,7 @@ private:
 	void bootstrapTrajbufferWithCoords();
 
 
-	void handleBoxtemp();
+	void handleBoxtemp(bool em_variant);
 
 	std::unique_ptr<LimaLogger> m_logger;
 
@@ -89,6 +89,8 @@ private:
 
 template void Engine::deviceMaster<false>();
 template void Engine::deviceMaster<true>();
+template void Engine::hostMaster<false>();
+template void Engine::hostMaster<true>();
 template void Engine::step<false>();
 template void Engine::step<true>();
 

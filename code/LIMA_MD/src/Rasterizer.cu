@@ -191,13 +191,10 @@ __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int s
         auto coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, step, compound_id);
 
         RenderAtom atom{};
-        //atom.pos = LIMAPOSITIONSYSTEM::getGlobalPosition(*coordarray_ptr);
         atom.pos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(coordarray_ptr->origo, coordarray_ptr->rel_positions[local_id]);
 
 
-        //atoms[global_id].pos.print('A');
         atom.mass = SOLVENT_MASS;                                                         // TEMP
-        //atoms[global_id].atom_type = RAS_getTypeFromIndex(box->compounds[compound_id].atom_types[local_id]);
         atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
 
         atom.color = getColor(atom.atom_type);
@@ -225,30 +222,24 @@ __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, 
 
 		// Debug
 		//float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
-        float velocity = 1.f;
-        float point1nm = NANO_TO_LIMA * 0.1f;
-		float color_scalar = velocity / point1nm * 255.f;
-		uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));
-		atom.color = Int3(color_red, 0, 255 - color_red);
+  //      const float velocity = 1.f;
+  //      const float point1nm = NANO_TO_LIMA * 0.1f;
+		//const float color_scalar = velocity / point1nm * 255.f;
+		//const uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));
+		//atom.color = Int3(color_red, 0, 255 - color_red);
+        atom.color = Int3(0, 0, 255);
 		//printf("vel %f, %d\n", velocity, color_red);
 
         // This part is for various debugging purposes
-        int query_id = 797;
-        int solvent_id = solventblock->ids[threadIdx.x];
-        if (solvent_id == query_id) {
-            atom.atom_type = P;
-            atom.color = Int3(0xFC, 0xF7, 0x5E);
-        }
-        //const auto& nlist = box->solvent_neighborlists[solvent_id];
-        //for (int i = 0; i < nlist.n_solvent_neighbors; i++) {
-        //    if (nlist.neighborsolvent_ids[i] == query_id) {
-        //        atoms[solvent_id + offset].atom_type = O;
-        //    }
+        //int query_id = 797;
+        //int solvent_id = solventblock->ids[threadIdx.x];
+        //if (solvent_id == query_id) {
+        //    atom.atom_type = P;
+        //    atom.color = Int3(0xFC, 0xF7, 0x5E);
         //}
-        int global_id = threadIdx.x + blockIdx.x * blockDim.x;
-        atoms[global_id] = atom;
-        //if (solvent_id != 440)
-        //    atoms[solvent_id + offset].atom_type = NONE;
+
+        const int global_id = threadIdx.x + blockIdx.x * blockDim.x;
+        atoms[global_id] = atom;        
     }
 }
 

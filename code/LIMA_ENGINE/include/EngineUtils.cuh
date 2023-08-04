@@ -556,7 +556,7 @@ namespace EngineUtils {
 		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
-		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x];
+		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
 
 		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
@@ -579,7 +579,7 @@ namespace EngineUtils {
 			}
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
-			databuffers->vel_buffer[index] = velocity;
+			databuffers->vel_buffer[index] = velocity.len();
 
 
 			if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);

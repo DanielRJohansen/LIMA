@@ -596,7 +596,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-			compound.vels_prev[threadIdx.x] = vel_now;
+			compound.vels_prev[threadIdx.x] = vel_now * simparams.thermostat_scalar;
 			compound.forces_prev[threadIdx.x] = force;
 
 			// Save pos locally, but only push to box as this kernel ends
@@ -783,7 +783,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.constparams.dt, mass);
 		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-		solventdata_ref.vel_prev = vel_now;
+		solventdata_ref.vel_prev = vel_now * simparams.thermostat_scalar;
 		solventdata_ref.force_prev = force;
 
 		// Save pos locally, but only push to box as this kernel ends

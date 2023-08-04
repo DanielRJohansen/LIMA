@@ -5,7 +5,7 @@ clear
 clc
 
 % Edit these to select the correct data
-n_steps = 40000;
+n_steps = 5000;
 benchmarks = ["Pool" "PoolCompSol" "Spring" "AngleBenchmark" "TorsionBenchmark" "Met" "T4LysozymeNoSolvent" "SolventBenchmark" "T4Lysozyme" "T4LysozymeNoSolventSmall" "ImproperDihedral"];
 benchmark = "T4Lysozyme";
 %benchmark = benchmarks(5);
@@ -35,7 +35,7 @@ end
 
 x = 1:length(potE);
 from = 0;
-to = 36600;
+to = inf;
 %to = 1045;
 
 % Plot original data

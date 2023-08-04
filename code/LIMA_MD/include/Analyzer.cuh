@@ -53,7 +53,7 @@ private:
 	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
 
 	float* potE_buffer_device = nullptr;
-	Float3* vel_buffer_device = nullptr;
+	float* vel_buffer_device = nullptr;
 
 	std::unique_ptr<LimaLogger> m_logger;
 };

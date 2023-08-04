@@ -138,7 +138,7 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
 const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp	TODO: Switch to using forcefield_host first
+constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
 constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS

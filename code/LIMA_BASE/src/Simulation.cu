@@ -194,9 +194,10 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
 
-		cudaMallocManaged(&potE_buffer, sizeof(float) * n_datapoints);
-		cudaMallocManaged(&traj_buffer, sizeof(Float3) * n_datapoints);
-		cudaMallocManaged(&vel_buffer, sizeof(Coord) * n_datapoints);
+		
+		cudaMallocManaged(&potE_buffer, sizeof(*potE_buffer) * n_datapoints);
+		cudaMallocManaged(&traj_buffer, sizeof(*traj_buffer) * n_datapoints);
+		cudaMallocManaged(&vel_buffer, sizeof(*vel_buffer) * n_datapoints);
 		//cudaMemset(potE_buffer, 0, sizeof(float) * n_datapoints);	// TODO: Do it like this instead
 
 		std::vector<float>potE_zero(n_datapoints, 0);

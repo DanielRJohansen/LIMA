@@ -35,12 +35,12 @@ template<bool em_variant> void Engine::step() {
 
 	deviceMaster<em_variant>();	// Device first, otherwise offloading data always needs the last datapoint!
 	simulation->incStep();
-	hostMaster();
+	hostMaster<em_variant>();
 
 	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
-void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
+template <bool em_variant> void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if ((simulation->getStep() % STEPS_PER_LOGTRANSFER) == 0) {
 		offloadLoggingData();
@@ -48,7 +48,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
-			handleBoxtemp();
+			handleBoxtemp(em_variant);
 		}
 		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.z);
 	}
@@ -92,7 +92,7 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	cudaMemcpy(
 		simulation->vel_buffer->getBufferAtStep(step_relative),
 		simulation->sim_dev->databuffers->vel_buffer,
-		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
+		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(

@@ -45,6 +45,10 @@ void Filehandler::assertPath(const std::string& path) {
 	}
 }
 
+bool Filehandler::fileExists(const std::string& path) {
+	return std::filesystem::exists(path);
+}
+
 // Uses ';' and ' ' as delimiters
 vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
 	std::fstream file;

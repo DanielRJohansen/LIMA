@@ -2,6 +2,7 @@
 
 #include "Printer.h"
 #include "Forcefield.cuh"
+#include <filesystem>
 //#include "LIMA_ENGINE/include/EngineUtils.cuh"
 
 
@@ -15,8 +16,17 @@ Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 void Forcefield::loadForcefield(string molecule_dir) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
-	SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffnonbonded_filtered.lff"), vl>= V1);
-	SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(Filehandler::pathJoin(molecule_dir, "ffbonded_filtered.lff"), vl >= V1);
+
+	std::string nonbonded_path = Filehandler::fileExists(Filehandler::pathJoin(molecule_dir, "custom_ffnonbonded.lff"))
+		? Filehandler::pathJoin(molecule_dir, "custom_ffnonbonded.lff")
+		: Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff");
+
+	string bonded_path = Filehandler::fileExists(Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff"))
+		? Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff")
+		: Filehandler::pathJoin(molecule_dir, "ffbonded.lff");
+
+	const SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(nonbonded_path, vl>= V1);
+	const SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(bonded_path, vl >= V1);
 
 	// First load the nb forcefield
 	auto atomtypes = loadAtomTypes(nonbonded_parsed);					// 1 entry per type in compressed forcefield

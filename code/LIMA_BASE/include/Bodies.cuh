@@ -257,7 +257,8 @@ public:
 	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
 		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
 		|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
-			printf("BAD 3D index\n"); exit(1); }
+			throw std::exception("Bad 3d index for blockptr\n");
+		}
 		return getBlockPtr(BoxGrid::get1dIndex(index3d));
 	}
 

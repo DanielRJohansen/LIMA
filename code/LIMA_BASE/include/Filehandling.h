@@ -25,6 +25,8 @@ struct Filehandler {
 	// Dunno if this works for folders too
 	static void assertPath(const std::string& path);
 
+	static bool fileExists(const std::string& path);
+
 	static std::map<std::string, double> parseINIFile(const std::string path);
 
 	static std::vector<std::vector<std::string>> readFile(const std::string path, 

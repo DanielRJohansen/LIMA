@@ -165,12 +165,6 @@ __device__ void calcImproperdihedralbondForces(const Float3& i, const Float3& j,
 
 
 	float angle = Float3::getAngleOfNormVectors(plane_normal, plane2_normal);
-	//float a2 = Float3::getAngleOfNormVectors2(plane_normal, plane2_normal);
-
-	if (angle < 0 || true) {
-		//printf("angle:: %f a2 %f\n", angle, a2);
-	}
-
 	const bool angle_is_negative = (plane_normal.dot(il_norm)) > 0.f;
 	if (angle_is_negative) {
 		angle = -angle;
@@ -221,7 +215,7 @@ __device__ static const char* calcLJOriginString[] = {
 };
 
 template<bool em_variant=0>
-__device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, float* data_ptr, float* potE, const float sigma, const float epsilon, 
+__device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, float* data_ptr, float& potE, const float sigma, const float epsilon, 
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
@@ -231,13 +225,13 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 	// Returns force in J/mol*M		?????????????!?!?//
 
 	// Directly from book
-	const float dist_sq = (*pos1 - *pos0).lenSquared();
+	const float dist_sq = (pos1 - pos0).lenSquared();
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
 	const float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	*potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
-	const Float3 force = (*pos1 - *pos0) * force_scalar;
+	potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
+	const Float3 force = (pos1 - pos0) * force_scalar;
 
 #ifdef LIMASAFEMODE
 	if constexpr (!em_variant) {	// During EM dt is lower, so large forces are not a problem
@@ -248,7 +242,7 @@ __device__ static Float3 calcLJForce(const Float3* pos0, const Float3* pos1, flo
 			//pos0->print('0');
 			//pos1->print('1');
 			printf("\nLJ Force %s: dist nm %f force %f sigma %f t1 %d t2 %d\n", 
-				calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((*pos1 - *pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, type1, type2);
+				calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, type1, type2);
 		}
 	}	
 #endif

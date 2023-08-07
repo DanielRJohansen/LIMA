@@ -102,8 +102,6 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
 const int MAX_COMPOUNDS = 0xFF;
-const int MAX_ATOMS = 1'000'000;
-const int MAX_ATOMS_IN_RESIDUE = 32;		// TODO SET YP AGAIN
 
 const int NEIGHBORLIST_MAX_COMPOUNDS = 32;
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
@@ -129,7 +127,6 @@ const int MAX_ATOM_TYPES = 32;
 
 
 // -------------------------------------------- Kernel Parameters ----------------------------------------------- //
-const int THREADS_PER_SOLVENTBLOCK = 128;	// TODO: delete this
 const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -149,7 +146,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 1;
+const int STEPS_PER_RENDER = 20;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

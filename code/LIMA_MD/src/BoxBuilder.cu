@@ -51,15 +51,13 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
-	size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps;
-	auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+	const size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps;
+	const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 	m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
 
-//	simulation.potE_buffer.resize(simulation.boxparams_host.total_particles_upperbound * n_steps);
-	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
-	//simulation.traj_buffer.resize(simulation.total_particles_upperbound * n_steps);
-	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>((size_t)simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, (size_t)n_steps);
 
+	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
+	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
 	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
 
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);

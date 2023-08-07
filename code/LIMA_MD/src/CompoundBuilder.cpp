@@ -542,10 +542,13 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 }
 
 template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const SingleBond& bondtype) {
-	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add singlebond to compound"); }
+	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
+		throw std::exception("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
-		particle_info[bondtype.atom_indexes[0]].local_id_compound,
-		particle_info[bondtype.atom_indexes[1]].local_id_compound,
+		{
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+		},
 		bondtype.b0,
 		bondtype.kb
 	);
@@ -554,21 +557,26 @@ template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& parti
 template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
-		particle_info[bondtype.atom_indexes[0]].local_id_compound,
-		particle_info[bondtype.atom_indexes[1]].local_id_compound,
-		particle_info[bondtype.atom_indexes[2]].local_id_compound,
+		{
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
+		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	);
 }
 
 template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const DihedralBond& bondtype) {
-	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add dihedralbond to compound"); }
+	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { 
+		throw std::exception("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
-		particle_info[bondtype.atom_indexes[0]].local_id_compound,
-		particle_info[bondtype.atom_indexes[1]].local_id_compound,
-		particle_info[bondtype.atom_indexes[2]].local_id_compound,
-		particle_info[bondtype.atom_indexes[3]].local_id_compound,
+		{
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
+			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+		},
 		bondtype.phi_0,
 		bondtype.k_phi,
 		bondtype.n
@@ -576,7 +584,7 @@ template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& parti
 }
 
 template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add dihedralbond to compound"); }
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add improperdihedralbond to compound"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
 		std::array<uint32_t, 4>{
 			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),

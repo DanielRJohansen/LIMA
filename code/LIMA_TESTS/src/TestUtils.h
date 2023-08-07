@@ -13,7 +13,7 @@
 
 #include <iostream>
 #include <optional>
-
+#include <functional>
 
 
 namespace TestUtils {
@@ -135,6 +135,14 @@ namespace TestUtils {
 
 			tests.push_back(test);
 		}
+
+		//void addTest(std::function<LimaUnittest()> test) {
+		//	test.print();
+
+		//	if (test.status == LimaUnittest::SUCCESS) { successes++; }
+
+		//	tests.push_back(test);
+		//}
 
 	private:
 		std::vector<LimaUnittest> tests;

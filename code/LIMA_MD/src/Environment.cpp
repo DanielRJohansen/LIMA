@@ -75,10 +75,8 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
-	static_assert(THREADS_PER_SOLVENTBLOCK >= THREADS_PER_COMPOUNDBLOCK, "Illegal kernel parameter");
-	//assert(THREADS_PER_SOLVENTBLOCK >= N_SOLVATE_MOLECULES);
 	static_assert(BOX_LEN > 3.f, "Box too small");
-	//assert(BOX_LEN >= CUTOFF + 0.5f);
+	static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
 	//assert(simulation->n_compounds <= 1);	// Otherwise data_GAN goes haywire
 
 	//assert(simulation->n_steps % STEPS_PER_LOGTRANSFER == 0);
@@ -87,7 +85,6 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 
 	static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
 	//assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
-	static_assert(THREADS_PER_SOLVENTBLOCK >= MAX_COMPOUND_PARTICLES);
 
 	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
 	

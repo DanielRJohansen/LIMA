@@ -22,7 +22,7 @@ struct NBAtomtype {
 	NBAtomtype(){}
 	NBAtomtype(float m, float s, float e) : mass(m), sigma(s), epsilon(e) {}
 	float mass = 0.f;			// kg / mol
-	float sigma = 0.f;		// nm
+	float sigma = 0.f;			// nm
 	float epsilon = 0.f;		// J/mol
 };
 
@@ -30,15 +30,9 @@ struct NBAtomtype {
 struct SingleBond {	// IDS and indexes are used interchangeably here!
 	SingleBond(){}
 	SingleBond(std::array<int, 2> ids); // Used when loading topology only
-	SingleBond(int id1, int id2, float b0, float kb);
 	SingleBond(std::array<uint32_t, 2> ids, float b0, float kb);
 
 	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
-		atom_indexes[0] = particleindex_a;
-		atom_indexes[1] = particleindex_b;
-	}
-	SingleBond(float ref_dist, float kb, uint32_t particleindex_a, uint32_t particleindex_b) :	// TODO this is duplicate, remove!
-		b0(ref_dist), kb(kb) {
 		atom_indexes[0] = particleindex_a;
 		atom_indexes[1] = particleindex_b;
 	}
@@ -47,13 +41,11 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 	float kb = 0.f;
 	uint32_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
-	//bool invertLJ = false;		// When sharing multiple bonded connections
 };
 
 struct AngleBond {
 	AngleBond() {}
 	AngleBond(std::array<int, 3> ids); // Used when loading topology only
-	AngleBond(int id1, int id2, int id3, float theta_0, float k_theta);	//todo: remove
 	AngleBond(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
@@ -66,7 +58,6 @@ struct DihedralBond {
 	const static int n_atoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<int, 4> ids); // Used when loading topology only
-	DihedralBond(int id1, int id2, int id3, int id4, float phi_0, float k_phi, float n);
 	DihedralBond(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
 
 	float phi_0 = 0.f;
@@ -152,7 +143,7 @@ struct CompoundCoords {
 	//__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
-const int MAX_SINGLEBONDS_IN_COMPOUND = 64;
+const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES+4;	// Due to AA such a TRP, thhere might be more bonds than atoms
 const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
 const int MAX_DIHEDRALBONDS_IN_COMPOUND = 256;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 16;
@@ -230,8 +221,6 @@ struct SolventBlock {
 		rel_pos[n_solvents++] = rel_position;
 		return true;
 	}
-	static constexpr float block_len = 1; // [nm]	// TODO: Remove this, there should only be node_len of BoxGrid
-	static_assert((static_cast<int>(BOX_LEN_NM) % static_cast<int>(block_len)) == 0, "Illegal box dimension");
 
 	NodeIndex origo{};
 	uint16_t n_solvents = 0;
@@ -242,6 +231,7 @@ struct SolventBlock {
 
 static constexpr int BOXGRID_NODE_LEN_pico = 1200;
 static constexpr float BOXGRID_NODE_LEN = static_cast<float>(BOXGRID_NODE_LEN_pico * PICO_TO_LIMA);	// [lm]
+static_assert((static_cast<int64_t>(BOX_LEN) % static_cast<int64_t>(BOXGRID_NODE_LEN)) == 0, "Illegal box dimension");
 static constexpr int32_t BOXGRID_NODE_LEN_i = BOXGRID_NODE_LEN_pico * PICO_TO_LIMA;
 static const int BOXGRID_N_NODES = static_cast<int>(BOX_LEN / BOXGRID_NODE_LEN);
 template <typename NodeType>
@@ -317,11 +307,10 @@ struct SolventTransferqueue {
 };
 
 struct SolventBlockTransfermodule {
-	// Only use directly (full plane contact) adjecent blocks
+	// Only use directly (full plane contact) adjacent blocks
 	static const int n_queues = 6;			// or, adjecent_solvent_blocks
 	static const int max_queue_size = 64;	// Maybe this is a bit dangerous
 
-	// I NEED TO FIGURE OUT PREV_POS FOR NON-REMAINING SOLVENTS!!!!
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
 
@@ -339,23 +328,6 @@ struct SolventBlockTransfermodule {
 		tmp_index = tmp_index > 0 ? tmp_index + 2 : tmp_index + 3;
 		return tmp_index;
 	}
-
-	// Maybe too convoluted...
-	// I THINK THIS IS WRONG:, it should be using temp_index no?
-	//static NodeIndex getDirectionFromQueueIndex(const int index) {
-	//	const int tmp_index = index > 2 ? index - 2 : index - 3;
-	//	NodeIndex direction{};
-	//	direction.x += index * (abs(index) == 1);
-	//	direction.y += index/2 * (abs(index) == 2);
-	//	direction.x += index/3 * (abs(index) == 3);
-	//	return direction;
-	//}
-
-
-	//Coord* getQueuePtr(const Coord& transfer_direction) {
-	//	// Fucking magic yo...
-	//	auto index = transfer_direction.dot(Coord{ 1, 2, 3 }) + 2;
-	//}
 };
 
 using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_queue_size>;
@@ -416,17 +388,8 @@ namespace CoordArrayQueueHelpers {
 
 	__device__ static SolventBlock* getSolventBlockPtr(SolventBlockGrid* solventblockgrid_circular_queue,
 		const int step, const int solventblock_id) {
-		//const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
-		//return solventblockgrid_circular_queue[index0_of_currentstep_blockarray].getBlockPtr(solventblock_id);
 		return getSolventblockGridPtr(solventblockgrid_circular_queue, step)->getBlockPtr(solventblock_id);
 	}
-
-	// WTF is this??
-	//__device__ static SolventCoord* getSolventcoordPtr(SolventCoord* solventcoordarray_circular_queue,
-	//	const int step, const int solvent_id) {
-	//	const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_SOLVENTS;
-	//	return &solventcoordarray_circular_queue[index0_of_currentstep_coordarray + solvent_id];
-	//}
 }
 
 
@@ -436,7 +399,7 @@ struct Compound {
 	__host__ __device__  Compound() {}
 
 	uint8_t n_particles = 0;			
-	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels // TODO: find another mechanism
+	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)	//TODO Move somewhere else
 
@@ -447,7 +410,6 @@ struct Compound {
 
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this
 	float potE_interim[MAX_COMPOUND_PARTICLES];
-	//LJ_Ignores lj_ignore_list[MAX_COMPOUND_PARTICLES];
 
 #ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
@@ -483,9 +445,7 @@ struct Compound {
 
 	__device__ void loadData(Compound* compound) {
 		if (threadIdx.x < n_particles) {
-			//prev_positions[threadIdx.x] = compound->prev_positions[threadIdx.x];
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = compound->forces[threadIdx.x];
 			compound->forces[threadIdx.x] = Float3(0.f);
 
@@ -499,9 +459,7 @@ struct Compound {
 			//#endif
 		}
 		else {
-			//prev_positions[threadIdx.x] = Float3(-1.f);
 			atom_types[threadIdx.x] = 0;
-			//lj_ignore_list[threadIdx.x] = compound->lj_ignore_list[threadIdx.x];
 			forces[threadIdx.x] = Float3(0.f);
 			potE_interim[threadIdx.x] = 0.f;
 			particle_global_ids[threadIdx.x] = 0;
@@ -600,7 +558,7 @@ struct CompoundBridge {
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
 		}
 		
-		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {	// TODO: Remove for loop, make static check that nparticles is larger than max bonds!
+		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
 			int index = i * blockDim.x + threadIdx.x;
 			if (index < n_singlebonds)
 				singlebonds[index] = bridge->singlebonds[index];
@@ -625,7 +583,7 @@ struct CompoundBridgeBundleCompact {
 	CompoundBridgeBundleCompact() {}
 	CompoundBridgeBundleCompact(const std::vector<CompoundBridge>& bridges) {
 		for (int i = 0; i < bridges.size(); i++) {
-			compound_bridges[i] = bridges[i];//CompoundBridge{ bridges[i], false };
+			compound_bridges[i] = bridges[i];
 		}
 		n_bridges = static_cast<int>(bridges.size());
 	}
@@ -643,7 +601,7 @@ struct CompoundBridgeBundleCompact {
 struct ForceField_NB {
 	struct ParticleParameters {	//Nonbonded
 		float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;
+		float sigma = -1;		// []
 		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]
 	};
 

@@ -6,6 +6,9 @@
 
 using namespace LIMA_Print;
 
+const int THREADS_PER_SOLVENTBLOCK_ANALYZER = 128;
+
+
 template<typename T>
 void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
 	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
@@ -68,10 +71,10 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 
 
 void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {
-	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK];
+	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK_ANALYZER];
 
 
-	const int solvent_index = threadIdx.x + blockIdx.y * THREADS_PER_SOLVENTBLOCK;
+	const int solvent_index = threadIdx.x + blockIdx.y * THREADS_PER_SOLVENTBLOCK_ANALYZER;
 	const int step = blockIdx.x;
 	const int compounds_offset = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	const int step_offset = step * box->boxparams.total_particles_upperbound;
@@ -91,7 +94,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
 	__syncthreads();
-	distributedSummation(energy, THREADS_PER_SOLVENTBLOCK);
+	distributedSummation(energy, THREADS_PER_SOLVENTBLOCK_ANALYZER);
 	if (threadIdx.x == 0) {
 		data_out[(step) * gridDim.y + blockIdx.y] = energy[0];
 	}
@@ -146,7 +149,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
-	int blocks_per_solventkernel = (int)ceil((float)simulation->boxparams_host.n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
+	int blocks_per_solventkernel = (int)ceil((float)simulation->boxparams_host.n_solvents / (float)THREADS_PER_SOLVENTBLOCK_ANALYZER);
 
 	// If any solvents are present, fill above array
 	if (simulation->boxparams_host.n_solvents > 0) {
@@ -156,7 +159,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 		cudaMalloc(&data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK >> > (simulation->sim_dev->box, simulation->sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->sim_dev->box, simulation->sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
 		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);

@@ -63,20 +63,20 @@ namespace TestUtils {
 	static void setConsoleTextColorGreen() { std::cout << "\033[32m"; }
 	static void setConsoleTextColorDefault() { std::cout << "\033[0m"; }
 
-	struct LimaUnittest {
-		enum TestStatus { SUCCESS, FAIL };
+	struct LimaUnittestResult {
+		enum TestStatus { SUCCESS, FAIL, THROW };
 
-		LimaUnittest(const std::string& name, TestStatus status, const std::string err="", bool auto_print = true) :
-			name(name), 
+		LimaUnittestResult( TestStatus status, const std::string err, const bool print_now) :
 			status(status),
-			error_description(err),
-			auto_print(auto_print) 
-		{}
-		~LimaUnittest() {
-			if (auto_print) { print(); }
+			error_description(err)
+		{
+			if (print_now) {
+				printStatus();
+			}
 		}
 
-		void print() const {
+
+		void printStatus() const {
 			std::string status_str;// = status == SUCCESS ? "Success" : "Failure";
 
 			if (status == SUCCESS) {
@@ -84,11 +84,11 @@ namespace TestUtils {
 				setConsoleTextColorGreen();
 			}
 			else {
-				status_str = "Fail";
+				status_str = "Fail"   ;
 				setConsoleTextColorRed();
 			}
 
-			std::cout << "Test " << name << " status: " << status_str;
+			std::cout << " status: " << status_str;
 
 			if (error_description.length() > 30) { std::cout << "\n"; }
 			std::cout << "\t" << error_description << "\n";
@@ -99,10 +99,35 @@ namespace TestUtils {
 
 		bool success() const { return status == SUCCESS; }
 
-		const std::string name;				
-		const bool auto_print;				// Should the test automatically print it's results
-		const TestStatus status;		
-		const std::string error_description;		
+		TestStatus status;		
+		std::string error_description;		
+	};
+
+	struct LimaUnittest {
+		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test) :
+			name(name),
+			test(test)
+		{}
+
+		void execute() {
+			try {
+				std::cout << "Test " << name << " ";
+				testresult = std::make_unique<LimaUnittestResult>(test());
+
+				int str_len = 6 + name.length();
+				while (str_len++ < 61) { std::cout << " "; }
+
+				testresult->printStatus();
+			}
+			catch (const std::exception& ex) {
+				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
+				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ LimaUnittestResult::THROW, err_desc, true });
+			}
+		}
+
+		const std::function<LimaUnittestResult()> test;
+		std::unique_ptr<LimaUnittestResult> testresult;
+		const std::string name;
 	};
 
 
@@ -120,39 +145,31 @@ namespace TestUtils {
 			std::printf("\n\n#--- Unittesting finished with %d successes of %d tests ---#\n\n", successes, tests.size());
 
 			for (const auto& test : tests) {
-				if (test.status == LimaUnittest::FAIL) {
-					test.print();
+				if (!test->testresult->success()) {
+					test->testresult->printStatus();
 				}
 			}
 
 			setConsoleTextColorDefault();
 		}
 
-		void addTest(const LimaUnittest& test) {
-			test.print();
+		void addTest(std::unique_ptr<LimaUnittest> test) {
+			test->execute();
 
-			if (test.status == LimaUnittest::SUCCESS) { successes++; }
+			if (test->testresult->success()) { successes++; }
 
-			tests.push_back(test);
+			tests.push_back(std::move(test));
 		}
 
-		//void addTest(std::function<LimaUnittest()> test) {
-		//	test.print();
-
-		//	if (test.status == LimaUnittest::SUCCESS) { successes++; }
-
-		//	tests.push_back(test);
-		//}
-
 	private:
-		std::vector<LimaUnittest> tests;
+		std::vector<std::unique_ptr<LimaUnittest>> tests;
 		int successes = 0;
 	};
 
 
 
 
-	static LimaUnittest loadAndRunBasicSimulation(
+	static LimaUnittestResult loadAndRunBasicSimulation(
 		const string& folder_name,
 		EnvMode envmode,
 		float max_vc = 0.001,
@@ -178,9 +195,9 @@ namespace TestUtils {
 
 
 		const auto result = evaluateTest({ varcoff }, max_vc, {analytics->energy_gradient}, max_gradient);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "loadAndRunBasicSimulation:" + folder_name, status, result.second, envmode == Full };
+		return LimaUnittestResult{ status, result.second, envmode == Full };
 	}
 
 	void stressTest(std::function<void()> func, size_t reps) {

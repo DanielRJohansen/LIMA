@@ -8,7 +8,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittest doPoolBenchmark(EnvMode envmode, float max_dev = 0.0001) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float max_dev = 0.0001) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -47,12 +47,12 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "doPoolBenchmark", status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full};
 	}
 
-	LimaUnittest doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 1e-4) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 1e-4) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -105,12 +105,12 @@ namespace ForceCorrectness {
 		}	
 
 		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2e-7);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "doPoolCompSolBenchmark", status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
-	LimaUnittest doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.0031) {
+	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.0031) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -154,13 +154,13 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "doSinglebondBenchmark", status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
-	LimaUnittest doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.0007) {
+	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.0007) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -212,16 +212,16 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "doAnglebondBenchmark", status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
-	LimaUnittest doDihedralbondBenchmark(EnvMode envmode) {
+	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
 		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f);
 	}
 
-	LimaUnittest doImproperDihedralBenchmark(EnvMode envmode) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/ImproperDihedral/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -288,19 +288,19 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, 0.005, energy_gradients, 2e-5);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "doImproperDihedralBenchmark", status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
-	LimaUnittest doMethionineBenchmark(EnvMode envmode) {
+	LimaUnittestResult doMethionineBenchmark(EnvMode envmode) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.00015f);
 	}
 
-	LimaUnittest doPhenylalanineBenchmark(EnvMode envmode) {
+	LimaUnittestResult doPhenylalanineBenchmark(EnvMode envmode) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 

@@ -52,31 +52,37 @@ int main() {
 	return 0;
 }
 
+#define ADD_TEST(testman, description, execution_function) \
+    testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
+
 // Runs all unit tests with the fastest/crucial ones first
 void runAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
-
+	
 	// Singled out forces test
-	testman.addTest(doPoolBenchmark(envmode));			// Two 1-particle molecules colliding
-	testman.addTest(doPoolCompSolBenchmark(envmode));	// One 1-particle molecule colliding with 1 solvent
-	testman.addTest(doSinglebondBenchmark(envmode));
-	testman.addTest(doAnglebondBenchmark(envmode));
-	testman.addTest(doDihedralbondBenchmark(envmode));
-	testman.addTest(TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002));
-	testman.addTest(doImproperDihedralBenchmark(envmode));
-	TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5);
+	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
+	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
+	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
+	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
+	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
+	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4));
+	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
+	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5));
+
 
 	// Smaller compound tests
-	testman.addTest(doMethionineBenchmark(envmode));
-	testman.addTest(doPhenylalanineBenchmark(envmode));
-	testman.addTest(TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 1e-6, 1.2e-6));
-	testman.addTest(doEightResiduesNoSolvent(envmode));
+	ADD_TEST(testman, "doMethionineBenchmark", doMethionineBenchmark(envmode));
+	ADD_TEST(testman, "doPhenylalanineBenchmark", doPhenylalanineBenchmark(envmode));
+	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 1e-6, 1.2e-6));
+	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
+
 
 	// Larger tests
-	testman.addTest(loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.5e-6f));
-	testman.addTest(loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5));
+	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.5e-6f));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5));
+
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

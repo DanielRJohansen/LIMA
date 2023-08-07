@@ -18,7 +18,7 @@
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	static LimaUnittest loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
+	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
 		InputSimParams emparams{ 20, 2000 };
 		auto env = basicSetup(folder_name, { emparams }, envmode);
 
@@ -45,12 +45,12 @@ namespace TestMDStability {
 		}		
 
 		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
-		const auto status = result.first == true ? LimaUnittest::SUCCESS : LimaUnittest::FAIL;
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittest{ "loadAndEMAndRunBasicSimulation:" + folder_name, status, result.second, envmode == Full };
+		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
-	LimaUnittest doEightResiduesNoSolvent(EnvMode envmode) {
+	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
 		const std::string name = "T4LysozymeNoSolventSmall";
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";

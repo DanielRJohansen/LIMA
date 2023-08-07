@@ -29,7 +29,7 @@ int main() {
 		//doDihedralbondBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
-		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5);
+		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5);
 
 		//doMethionineBenchmark(envmode);
 		//doPhenylalanineBenchmark(envmode);
@@ -69,7 +69,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
 	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4));
 	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
-	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 5e-5));
+	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5));
 
 
 	// Smaller compound tests

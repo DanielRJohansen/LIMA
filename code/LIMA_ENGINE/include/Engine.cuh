@@ -33,6 +33,20 @@ template __global__ void solventForceKernel<false>(SimulationDevice* sim);
 __global__ void compoundBridgeKernel(SimulationDevice* sim);
 __global__ void solventTransferKernel(SimulationDevice* sim);
 
+struct EngineTimings {
+	int compound_kernels{};
+	int solvent_kernels{};
+	int cpu_master{};
+	int nlist{};
+
+	void reset() {
+		compound_kernels = 0;
+		solvent_kernels = 0;
+		cpu_master = 0;
+		nlist = 0;
+		// nlisttimer is hand
+	}
+};
 
 class Engine {
 public:
@@ -44,7 +58,8 @@ public:
 
 
 
-	Int3 timings = Int3(0, 0, 0);
+	EngineTimings timings{};
+	//std::array<int, 4> timings{};	// {compounds | solvents | cpu_master | nlist} [ys]
 
 
 	ForceField_NB getForcefield() { return forcefield_host; }

@@ -77,7 +77,7 @@ private:
 	// Returns false if display has been closed by user
 	bool handleDisplay(Simulation*);
 	bool handleTermination(Simulation*);
-	void prepFF(string conf_path, string topol_path);
+	void prepFF();
 
 	void sayHello();
 

@@ -13,21 +13,6 @@ bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float 
 	return dist < cutoff_nm;
 }
 
-void inline addNeighborIfEligible(HashTable& currentNeighbors,
-	NeighborList& nlist_self, NeighborList& nlist_other,
-	const Float3& pos_self, const Float3& pos_other,
-	const int& id_self, const int& id_other,
-	NeighborList::NEIGHBOR_TYPE neighbortype_self, NeighborList::NEIGHBOR_TYPE neighbortype_other,
-	const float cutoff_extension)
-{
-	if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_NM + cutoff_extension)) {
-		if (currentNeighbors.insert(id_other)) {
-			nlist_self.addId(id_other, neighbortype_other);
-			nlist_other.addId(id_self, neighbortype_self);
-		}
-	}
-}
-
 
 NListDataCollection::NListDataCollection(Simulation* simulation) {
 	compound_neighborlists.resize(MAX_COMPOUNDS);
@@ -65,8 +50,8 @@ namespace NListUtils {
 
 				if (id_self < id_neighbor) {
 					if (!neighborWithinCutoff(&nlist->compound_key_positions[id_self], &nlist->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_NM)) {
-						nlist_self->removeId(id_neighbor, NeighborList::NEIGHBOR_TYPE::COMPOUND);
-						nlist_neighbor->removeId(id_self, NeighborList::NEIGHBOR_TYPE::COMPOUND);
+						nlist_self->removeCompound(id_neighbor);
+						nlist_neighbor->removeCompound(id_self);
 						j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
 					}
 				}
@@ -92,12 +77,12 @@ namespace NListUtils {
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
 				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;	// THIS IS BORKEN SINCE LIMAMETRES
 
-				addNeighborIfEligible(hashtable_compoundneighbors, *nlist_self, *nlist_candidate,
-					pos_self, pos_other,
-					id_self, id_other,
-					NeighborList::NEIGHBOR_TYPE::COMPOUND, NeighborList::NEIGHBOR_TYPE::COMPOUND,
-					cutoff_add_self + cutoff_add_candidate
-				);
+				if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_NM + cutoff_add_self + cutoff_add_candidate)) {
+					if (hashtable_compoundneighbors.insert(id_other)) {
+						nlist_self->addCompound(id_other);
+						nlist_candidate->addCompound(id_self);
+					}
+				}
 			}
 		}
 	}

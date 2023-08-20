@@ -50,15 +50,6 @@ const float water_epsilon = 0.1591f * kcalToJoule;
 
 static const NB_Atomtype Water_atomtype{ "WATER", 0, water_mass, water_sigma, water_epsilon };
 
-//#ifdef __linux__
-//	string sim_path = "../../Simulation";
-//	//string sim_path = "/home/lima/Desktop/LIMA/Simulation";
-//#else
-//	string sim_path = "C:\\PROJECTS\\QUANTOM\\Simulation";
-//#endif
-
-//string mol_path = FileHelpers::pathJoin(sim_path, "Molecule");
-//string forcefield_path = FileHelpers::pathJoin(sim_path, "Forcefield");
 
 ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& ff_dir, const string& conf_file, const string& topol_file) :
 	molecule_dir(Filehandler::pathJoin(workdir, "molecule")),
@@ -76,75 +67,6 @@ ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const s
 	Filehandler::assertPath(conf_path);
 	Filehandler::assertPath(topol_path);
 }
-//
-//void loadFFnonbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
-//	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
-//
-//		if (row.section == "atomtypes") {
-//			if (row.words.size() < 5) {
-//				int a = 0;
-//			}
-//			assert(row.words.size() >= 5);
-//
-//			const string& atomtype = row.words[0];
-//			const int atnum = stoi(row.words[1]);
-//			const float mass = stof(row.words[2]);		// Should this come from topol too?
-//			const float charge = stof(row.words[3]);	// Comes from topol
-//			const float sigma = stof(row.words[5]);
-//			const float epsilon = stof(row.words[6]);
-//
-//			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
-//			forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
-//		}
-//		else if (row.section == "pairtypes") {
-//			// TODO: Fill out this logic
-//		}		
-//	}
-//}
-//
-//void loadFFbondedIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
-//	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
-//
-//		if (row.section == "bondtypes") {
-//			assert(row.words.size() >= 5);
-//
-//			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
-//			const float b0 = stof(row.words[3]);
-//			const float kb = stof(row.words[4]);
-//
-//			forcefield.singlebonds.emplace_back(Singlebondtype(bondedatom_typenames, b0, kb));
-//		}
-//		else if (row.section == "angletypes") {
-//			assert(row.words.size() >= 6);
-//
-//			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
-//			const float theta0 = stof(row.words[4]) / 360.f * 2.f * PI;
-//			const float ktheta = stof(row.words[5]);
-//
-//			forcefield.anglebonds.emplace_back(Anglebondtype(angle_typenames, theta0, ktheta));
-//		}
-//		else if (row.section == "dihedraltypes") {
-//			assert(row.words.size() >= 7);
-//
-//			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-//			const float phi0 = stof(row.words[5]);
-//			const float kphi = stof(row.words[6]);
-//			const float n = stoi(row.words[7]);
-//
-//			forcefield.dihedralbonds.emplace_back(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
-//		}
-//		else if (row.section == "improperdihedraltypes") {
-//			assert(row.words.size() >= 7);
-//
-//			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-//			const float psi0 = stof(row.words[5]);
-//			const float kpsi = stof(row.words[6]);
-//
-//			forcefield.improperdeihedralbonds.emplace_back(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
-//		}
-//	}
-//}
-
 
 void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
@@ -314,6 +236,7 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedT
 
 	for (const auto& record : topology.atomtable) {
 		const string& atomtype = record.second.atomtype;
+		//const string& atomtype = record.second.atomname;
 
 		NB_Atomtype& atomtype_ff = forcefield.atomToTypeMap.find(atomtype)->second;
 

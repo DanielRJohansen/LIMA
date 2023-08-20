@@ -30,7 +30,7 @@ Environment::Environment(const string& wf, EnvMode mode)
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
-	prepFF(gro_path, topol_path);									// TODO: Make check in here whether we can skip this!
+	prepFF();									// TODO: Make check in here whether we can skip this!
 
 	SimParams simparams{ ip };
 
@@ -286,14 +286,21 @@ void Environment::handleStatus(Simulation* simulation) {
 
 
 	if (!(simulation->getStep() % STEPS_PER_RENDER)) {
-		printf("\r\tStep #%06llu", simulation->getStep());
+
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		int remaining_minutes = (int)(1.f / 1000 * duration / STEPS_PER_RENDER * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d) \tRemaining: %04d min", duration / STEPS_PER_RENDER, engine->timings.x / STEPS_PER_RENDER, engine->timings.y / STEPS_PER_RENDER, engine->timings.z/ STEPS_PER_RENDER, remaining_minutes);
-		//engine->timings = Int3(0, 0, 0);
-		engine->timings.x = 0;
-		engine->timings.y = 0;
 
+		printf("\r\tStep #%06llu", simulation->getStep());
+		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
+			duration / STEPS_PER_RENDER, 
+			engine->timings.compound_kernels / STEPS_PER_RENDER, 
+			engine->timings.solvent_kernels / STEPS_PER_RENDER, 
+			engine->timings.cpu_master/ STEPS_PER_RENDER, 
+			engine->timings.nlist/ STEPS_PER_RENDER,
+			remaining_minutes);
+
+
+		engine->timings.reset();
 		
 		time0 = std::chrono::high_resolution_clock::now();
 	}
@@ -326,7 +333,7 @@ bool Environment::handleTermination(Simulation* simulation)
 	return false;
 }
 
-void Environment::prepFF(string conf_path, string topol_path) {
+void Environment::prepFF() {
 	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
 	const char ignore_atomtype = 'H';
 	FFM.prepSimulationForcefield(ignore_atomtype);

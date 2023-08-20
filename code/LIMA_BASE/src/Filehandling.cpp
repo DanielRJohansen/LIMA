@@ -268,3 +268,64 @@ SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose
 
 	return parseBasicFile(path, verbose, setSectionFn, { '!' }, ' ');
 }
+
+SimpleParsedFile Filehandler::parseGroFile(const std::string& path, bool verbose)
+{
+	assert(path.substr(path.length() - 4) == ".gro");
+
+	std::fstream file;
+	file.open(path);
+
+	SimpleParsedFile parsedfile;
+
+
+	int64_t skipCnt = 2;	// First 2 lines are title and atom count
+
+	const std::vector<int>entry_lengths{ 5, 5, 5, 5, 8, 8, 8 };
+	const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
+
+	// Forward declaring for optimization reasons
+	string line{}, word{};
+	while (getline(file, line)) {
+
+		if (skipCnt > 0) {
+
+
+			if (skipCnt == 1) {
+				// 2nd line is atom count
+				parsedfile.rows.reserve(std::stoi(line));
+				parsedfile.rows.push_back({ "n_atoms", {line} });
+			}
+			
+			skipCnt--;
+			continue;	// Optim: here by reserving the size at line #2 in the parsedfile.rows
+		}
+
+		std::vector<string> row;
+
+		if (line.length() >= min_chars) {
+			// Normal case
+			//int position = 0;
+			//for (auto entry_len : entry_lengths) {
+			//	std::string entry = line.substr(position, entry_len);
+			//	row.push_back(entry);
+			//	position += entry_len;
+			//}
+			//parsedfile.rows.push_back({ "atoms", row });
+			parsedfile.rows.push_back({ "atoms", { line } });
+
+		}
+		else if (line.size()> 0){
+			// Second last line, with box size
+			vector<string> row;
+			stringstream ss(line);
+			while (std::getline(ss, word, ' ')) {
+				if (!word.empty()) {				
+					row.push_back(word);
+				}
+			}
+			parsedfile.rows.push_back({ "box_size", row });
+		}
+	}
+	return parsedfile;
+}

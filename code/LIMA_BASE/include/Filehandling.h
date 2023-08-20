@@ -38,6 +38,7 @@ struct Filehandler {
 	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
 	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
 	static SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
+	static SimpleParsedFile parseGroFile(const std::string& path, bool verbose);
 
 	// These should be in interface maybe?
 	template <typename T>

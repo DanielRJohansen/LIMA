@@ -78,44 +78,27 @@ ImproperDihedralBond::ImproperDihedralBond(std::array<uint32_t, n_atoms> ids, fl
 
 
 
-
-
-bool NeighborList::addId(uint16_t new_id, NEIGHBOR_TYPE nt) {
-	switch (nt)
-	{
-	case NeighborList::COMPOUND:
-		if (n_compound_neighbors < NEIGHBORLIST_MAX_COMPOUNDS) {
-			neighborcompound_ids[n_compound_neighbors++] = new_id;
-			return true;
-		}
+void NeighborList::addCompound(uint16_t new_id) {
+	if (n_compound_neighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
 		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-		exit(1);
-		break;
-	default:
-		break;
+		throw std::exception("Neighborlist overflow");			
 	}
-	exit(1);
-	return false;
+
+	neighborcompound_ids[n_compound_neighbors++] = new_id;
 }
-bool NeighborList::removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt) {
 
-	switch (nt) {
-	case NeighborList::COMPOUND:
-		for (int i = 0; i < n_compound_neighbors; i++) {
-			if (neighborcompound_ids[i] == neighbor_id) {
-				neighborcompound_ids[i] = neighborcompound_ids[n_compound_neighbors - 1];
-				n_compound_neighbors--;
-				return true;
-			}
+void NeighborList::removeCompound(uint16_t neighbor_id) {
+
+	for (int i = 0; i < n_compound_neighbors; i++) {
+		if (neighborcompound_ids[i] == neighbor_id) {
+			neighborcompound_ids[i] = neighborcompound_ids[n_compound_neighbors - 1];	// Overwrite this positions with compound at the back of the line
+			n_compound_neighbors--;
+			return;
 		}
-		printf("\nFailed to remove neighbor compound %d of %d\n", neighbor_id, n_compound_neighbors);
-		break;
-	default:
-		printf("Faulty neighbortype\n");
-		break;
 	}
 
-	return false;
+	printf("\nFailed to locate neighbor compound id: %d of %d compound_ids in current nlist\n", neighbor_id, n_compound_neighbors);
+	throw std::exception("Nlist failed to remove neighbor");
 }
 
 

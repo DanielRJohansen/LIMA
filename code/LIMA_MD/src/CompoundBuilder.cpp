@@ -192,37 +192,40 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 
 	const bool ignore_hydrogens = true;
 
-	int64_t line_cnt = -1;
+	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
 
-	std::vector<string> lines = readFile(gro_path);
 
-	// First setup the lut. +1 because the extern particle indices are 1-indexed
-	// We need to set this up now, because we will index it with the gro ids, of which there is almost 1 per line in the .gro file
-	particle_info.resize(lines.size() + 1);	// 
-
-	for (const auto& line : lines) {
-		line_cnt++;
-		
-		if (line_cnt == 0) { continue; }	// Title is irrelevant
-		if (line_cnt == 1) {				// 2nd line is particle count
-			const int64_t atoms_total = stoll(line);	// Only a ballpark number!
-
-			// Reserve enough vectorspace to handle all particles being either in residues or solvents
-			residues.reserve(atoms_total / Residue::max_size_soft);	// Misses the mark when some residues are smaller..
-			solvent_positions.reserve(atoms_total);
-			continue;
+	// First check box has correct size
+	if (parsedfile.rows.back().section != "box_size") {
+		throw std::exception("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
+	}
+	for (auto& length_str : parsedfile.rows.back().words) {
+		if (std::stof(length_str) != BOX_LEN_NM) {
+			throw std::exception(".gro file box size does not match the compiler defined box size");
 		}
+	}
 
-		if (line.size() < 44) { continue; }	// Should only happen at the end. TODO: Extract box size here. Make sure it is the same as the constant var!
 
-		const GroRecord record = parseGroLine(line);
+	// Find atom count to resize particle_info
+	if (parsedfile.rows[0].section != "n_atoms") {
+		throw std::exception("Expected first line of parsed gro file to contain atom count");
+	}
+	const int64_t n_atoms = std::stoll(parsedfile.rows[0].words[0]);
+	particle_info.resize(n_atoms);
 
-		if (record.atom_name[0] == 'H' && ignore_hydrogens) { 			
+
+
+	for (const auto& row : parsedfile.rows) {
+		if (row.section != "atoms") { continue; }
+
+		GroRecord record = parseGroLine(row.words[0]);
+
+		if (record.atom_name[0] == 'H' && ignore_hydrogens) {
 			continue; 
 		}
 
 		// Is Solvent
-		if (record.residue_name == "WATER" || record.residue_name == "SOL") {
+		if (record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH") {
 			solvent_positions.push_back(record.position);
 		}
 		else {	// Is in residue
@@ -254,6 +257,91 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 		particle_info[record.atom_number].gro_id = record.atom_number;
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//int64_t line_cnt = -1;
+
+	//std::vector<string> lines = readFile(gro_path);
+
+	//// First setup the lut. +1 because the extern particle indices are 1-indexed
+	//// We need to set this up now, because we will index it with the gro ids, of which there is almost 1 per line in the .gro file
+	//particle_info.resize(lines.size() + 1);	// 
+
+	//for (const auto& line : lines) {
+	//	line_cnt++;
+	//	
+	//	if (line_cnt == 0) { continue; }	// Title is irrelevant
+	//	if (line_cnt == 1) {				// 2nd line is particle count
+	//		const int64_t atoms_total = stoll(line);	// Only a ballpark number!
+
+	//		// Reserve enough vectorspace to handle all particles being either in residues or solvents
+	//		residues.reserve(atoms_total / Residue::max_size_soft);	// Misses the mark when some residues are smaller..
+	//		solvent_positions.reserve(atoms_total);
+	//		continue;
+	//	}
+
+	//	if (line.size() < 44) { continue; }	// Should only happen at the end. TODO: Extract box size here. Make sure it is the same as the constant var!
+
+	//	const GroRecord record = parseGroLine(line);
+
+	//	if (record.atom_name[0] == 'H' && ignore_hydrogens) { 			
+	//		continue; 
+	//	}
+
+	//	// Is Solvent
+	//	if (record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH") {
+	//		solvent_positions.push_back(record.position);
+	//	}
+	//	else {	// Is in residue
+	//		// Belongs to current residue?
+	//		if (!residues.empty() && residues.back().gro_id == record.residue_number) {				
+	//			// Do nothing
+
+	//			// SAFETY CHECK: This is likely because we have molecules consisting of only 1 residue, so we can figure out which belongs to the same molecule!
+	//			if (residues.back().name != record.residue_name) { throw std::exception("Something went seriously wrong when handling the .gro file!"); }	
+	//		}
+	//		else {	// Create new residue
+	//			const int unique_res_id = static_cast<int>(residues.size());
+	//			residues.push_back(Residue{ record.residue_number, unique_res_id, record.residue_name });
+	//		}
+
+
+
+	//		residues.back().atoms.push_back(AtomEntry{ record.atom_number, record.position, record.atom_name });
+	//		n_particles_in_residues++;
+	//	}
+
+	//	// In some cases the atoms aren't numbered.- Then we need to expand the lut
+	//	// IF this happens once, it may happen many times more, so we expand to twice the necessary size.
+	//	if (record.atom_number >= particle_info.size()) {
+	//		particle_info.resize(record.atom_number * 2);
+	//	}
+
+	//	particle_info[record.atom_number].isUsed = true;
+	//	particle_info[record.atom_number].gro_id = record.atom_number;
+	//}
+
 
 bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleInfo>& particle_bonds_lut, const std::vector<SingleBond>& singlebonds) {
 	for (auto& atom_left : left.atoms) {
@@ -314,10 +402,18 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 			
 			// If the new residue is a different molecule, start a new compound
 			if (!is_bonded_with_previous_residue) {
+				if (compounds.size() >= MAX_COMPOUNDS) {
+					throw std::exception(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
+				}
+
 				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
 			}
 			// If we are bonded, but no more room, start new compound and make bridge
 			else if (!compounds.back().hasRoomForRes(residue.atoms.size())) {
+
+				if (compounds.size() >= MAX_COMPOUNDS) {
+					throw std::exception(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
+				}
 				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
 
 				const int id_left =  static_cast<int>(compounds.size()) - 2;
@@ -429,8 +525,16 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 	for (auto& bond : bonds) {
 
 		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particle_info)) {
-			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
-			bridge.addBond(particle_info, bond);
+			try {
+				BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
+				bridge.addBond(particle_info, bond);
+			}
+			catch (std::exception){
+				// TODO: fix this
+				// In this case, a bond is made between two non-adjecent residues, to form a plate or a helix
+				// For now, simply ignore these bonds
+			}
+
 		}
 		else {
 			const int compound_id = particle_info[bond.atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
@@ -511,8 +615,8 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 
 		compound.radius = radius * 1.2f;	// Add 20% leeway
 
-		if (compound.radius > 1.5f) { 
-			throw std::exception("Compound radius spans more than 1.8 nm!"); }
+		if (compound.radius > MAX_COMPOUND_RADIUS) { 
+			throw std::exception(std::format("Compound radius {} spans more than {} nm!", compound.radius, MAX_COMPOUND_RADIUS).c_str()); }
 	}
 }
 

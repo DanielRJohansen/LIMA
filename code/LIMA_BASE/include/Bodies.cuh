@@ -86,11 +86,8 @@ struct ImproperDihedralBond {
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
 class NeighborList {
 public:
-	enum NEIGHBOR_TYPE {COMPOUND, SOLVENT};
-
-
-	__host__ bool addId(uint16_t new_id, NEIGHBOR_TYPE nt);
-	__host__ bool removeId(uint16_t neighbor_id, NEIGHBOR_TYPE nt);
+	__host__ void addCompound(uint16_t new_id);
+	__host__ void removeCompound(uint16_t new_id);
 
 	__host__ void addGridnode(uint16_t gridnode_id);
 	__host__ void removeGridnode(uint16_t gridnode_id);
@@ -102,9 +99,14 @@ public:
 		n_gridnodes = nl_ptr->n_gridnodes;
 	}
 	__device__ void loadData(NeighborList* nl_ptr) {
-		static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
-		if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
-			neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
+		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
+		//if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
+		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
+
+		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
+		for (int i = threadIdx.x; i < n_compound_neighbors; i++) {
+			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
+		}
 
 		for (int i = threadIdx.x; i < n_gridnodes; i++) {
 			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
@@ -428,7 +430,7 @@ struct Compound {
 	uint16_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 
-	uint8_t n_improperdihedrals = 0;
+	int16_t n_improperdihedrals = 0;
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
@@ -454,15 +456,19 @@ struct Compound {
 
 
 			potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
-			//#ifdef LIMA_DEBUGMODE
+
+			#ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
-			//#endif
+			#endif
 		}
 		else {
 			atom_types[threadIdx.x] = 0;
 			forces[threadIdx.x] = Float3(0.f);
 			potE_interim[threadIdx.x] = 0.f;
+
+#ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = 0;
+#endif
 		}
 
 		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
@@ -488,7 +494,7 @@ struct Compound {
 
 
 using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
-using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, 100>;
+using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, MAX_COMPOUNDS>;
 
 
 
@@ -589,7 +595,7 @@ struct CompoundBridgeBundleCompact {
 	}
 
 
-	CompoundBridge compound_bridges[COMPOUNDBRIDGES_IN_BUNDLE];
+	CompoundBridge compound_bridges[MAX_COMPOUNDBRIDGES];
 	int n_bridges = 0;
 };
 

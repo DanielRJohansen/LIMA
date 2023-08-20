@@ -21,7 +21,7 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::uniqu
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = std::make_unique<NListManager>(simulation);
 	bootstrapTrajbufferWithCoords();
-	nlist_manager->handleNLISTS(simulation, true, true, &timings.z);
+	nlist_manager->handleNLISTS(simulation, true, true, &timings.nlist);
 
 	m_logger->finishSection("Engine Ready");
 }
@@ -50,7 +50,7 @@ template <bool em_variant> void Engine::hostMaster() {						// This is and MUST 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp(em_variant);
 		}
-		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.z);
+		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
@@ -61,10 +61,9 @@ template <bool em_variant> void Engine::hostMaster() {						// This is and MUST 
 	//	simulation->box->thermostat_scalar = 1.f;
 	//}
 
-	auto t1 = std::chrono::high_resolution_clock::now();
-
-	int cpu_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-	timings = timings + Int3(0,0,cpu_duration);
+	const auto t1 = std::chrono::high_resolution_clock::now();
+	const int cpu_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+	timings.cpu_master += cpu_duration;
 }
 
 void Engine::terminateSimulation() {
@@ -158,7 +157,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
 template <bool em_variant>
 void Engine::deviceMaster() {
-	auto t0 = std::chrono::high_resolution_clock::now();
+	const auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
 
@@ -172,8 +171,10 @@ void Engine::deviceMaster() {
 		compoundKernel<em_variant><< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 
-	cudaDeviceSynchronize();	// Prolly not necessary
+	//cudaDeviceSynchronize();	// Prolly not necessary
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
+	const auto t1 = std::chrono::high_resolution_clock::now();
+
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
 		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
@@ -188,18 +189,11 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 	LIMA_UTILS::genericErrorCheck("Error after solventTransferKernel");
 #endif
-	//return;
+	const auto t2 = std::chrono::high_resolution_clock::now();
 
-	auto t1 = std::chrono::high_resolution_clock::now();
+	const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+	const int solvents_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
-	LIMA_UTILS::genericErrorCheck("Error during step\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
-
-
-	cudaDeviceSynchronize();
-	LIMA_UTILS::genericErrorCheck("Error during step or state_transfer\n");		// Temp, we want to do host stuff while waiting for async GPU operations...	// SLOW
-	auto t2 = std::chrono::high_resolution_clock::now();
-
-	int force_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-	int copy_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-	timings = timings + Int3(force_duration, copy_duration, 0);
+	timings.compound_kernels += compounds_duration;
+	timings.solvent_kernels += solvents_duration;
 }

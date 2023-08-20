@@ -6,6 +6,7 @@
 #define LIMASAFEMODE 1
 
 #define LIMAKERNELDEBUGMODE 1
+
 //#define LIMA_SAFERUN		// Use this for?
 //#define LIMA_VERBOSE
 
@@ -54,6 +55,7 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr int _BOX_LEN_PM = 7200;
+//constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
@@ -85,9 +87,10 @@ const bool POSTSIM_ANAL = true;
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
+//const int MAX_SOLVENTS = INT32_MAX-1;
 const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
-const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
+//const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
 const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
@@ -100,15 +103,15 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
-const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
-const int MAX_COMPOUNDS = 0xFF;
+const int MAX_COMPOUND_PARTICLES = 32;	// If we go larger, a single compound can stretch over 2 nm!
+const int MAX_COMPOUNDS = 1024;			// Arbitrary i think
 
-const int NEIGHBORLIST_MAX_COMPOUNDS = 32;
+const int NEIGHBORLIST_MAX_COMPOUNDS = 64;
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 
 // Related to compound bridges
-const int COMPOUNDBRIDGES_IN_BUNDLE = 96;
+const int MAX_COMPOUNDBRIDGES = 96;	// Wtf is this param?
 const int MAX_PARTICLES_IN_BRIDGE = 32;
 const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
@@ -119,6 +122,8 @@ const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shif
 
 // Related to forcefield / constant memory
 const int MAX_ATOM_TYPES = 32;
+
+constexpr float MAX_COMPOUND_RADIUS = 2.f;	// was 1.5
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -146,7 +151,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 
 // ------------------------------------------------ Display Parameters ---------------------------------------------- //
 #define ENABLE_DISPLAY		// Disable this for faster simulations. 
-const int STEPS_PER_RENDER = 20;
+const int STEPS_PER_RENDER = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

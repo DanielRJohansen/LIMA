@@ -20,7 +20,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+//		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
 		//doSinglebondBenchmark(envmode);
@@ -43,7 +43,7 @@ int main() {
 
 		//doPool50x(EnvMode::Headless);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::exception ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;

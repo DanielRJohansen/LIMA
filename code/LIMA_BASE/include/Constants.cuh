@@ -87,8 +87,8 @@ const bool POSTSIM_ANAL = true;
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
-//const int MAX_SOLVENTS = INT32_MAX-1;
-const int MAX_SOLVENTS = 0xFFFF;
+const int MAX_SOLVENTS = INT32_MAX-1;
+//const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
 //const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 
@@ -111,7 +111,7 @@ const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 
 // Related to compound bridges
-const int MAX_COMPOUNDBRIDGES = 96;	// Wtf is this param?
+const int MAX_COMPOUNDBRIDGES = MAX_COMPOUNDS;	// Wtf is this param?
 const int MAX_PARTICLES_IN_BRIDGE = 32;
 const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;

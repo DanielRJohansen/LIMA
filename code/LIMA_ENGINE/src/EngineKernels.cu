@@ -16,8 +16,6 @@ __constant__ ForceField_NB forcefield_device;
 
 
 void Engine::setDeviceConstantMemory() {
-	cudaDeviceSynchronize();
-	LIMA_UTILS::genericErrorCheck("Error before moving forcefield to device\n");
 	const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();

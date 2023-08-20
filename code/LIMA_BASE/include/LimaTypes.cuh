@@ -39,8 +39,12 @@ struct Int3 {
 	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
-	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+	__device__ __host__ static int max(const int l, const int r) {
+		return r > l ? r : l;
+	}
 
+	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+	__device__ int maxElement() const { return max(std::abs(x), max(std::abs(y), std::abs(z))); }
 	__host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {

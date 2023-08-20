@@ -72,7 +72,6 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 	simulation.loggingdata.resize(n_loggingdata_host);
 	simulation.trainingdata.resize(n_traindata_host);
 }
-#include <format>
 void BoxBuilder::finishBox(Simulation* simulation) {
 	const int compoundparticles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	const int solventparticles_upperbound = simulation->box_host->boxparams.n_solvents > 0

@@ -153,10 +153,6 @@ struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {
 		n_particles = n_p;
 	}
-	/*__device__ void loadData(CompoundState* state) {
-		if (threadIdx.x < n_particles)
-			positions[threadIdx.x] = state->positions[threadIdx.x];
-	}*/
 	__device__ void loadData(const CompoundCoords& coords) {
 		if (threadIdx.x < n_particles)
 			positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
@@ -176,11 +172,6 @@ struct SolventCoord {
 
 	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
 		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
-
-	//__host__ SolventCoord static createFromPositionNM(const Float3& solvent_pos);
-	//__host__ __device__ Float3 getAbsolutePositionLM() const {
-	//	return ((origo * NANO_TO_LIMA).toFloat3() + rel_position.toFloat3());
-	//}
 };
 
 
@@ -305,7 +296,6 @@ struct SolventTransferqueue {
 		rel_positions[threadIdx.x] = relpos;
 		ids[threadIdx.x] = id;
 	}
-
 };
 
 struct SolventBlockTransfermodule {
@@ -350,14 +340,6 @@ namespace SolventBlockHelpers {
 	__device__ bool static isFirstStepAfterTransfer(int step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
 	}
-
-	// Only use this if if the index3d is inside the box!
-
-
-	//__device__ static Float3 extractAbsolutePositionLM(const SolventBlock& block) {
-	//	return (block.origo * static_cast<int32_t>(NANO_TO_LIMA) + block.rel_pos[threadIdx.x]).toFloat3();
-	//}
-
 }
 
 
@@ -626,7 +608,7 @@ struct CompoundGridNode {
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;
-	static const int max_nearby_compounds = 64;
+	static const int max_nearby_compounds = 96;
 	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
 	int16_t n_nearby_compounds = 0;
 };
@@ -647,15 +629,10 @@ public:
 		}
 	}
 
-	// Returns pointer to the list of origos on device. Receive on host
-	//__host__ Coord* getOrigosPtr() { return compound_origos; }
-
 	// Returns ptr to the list of CompoundGridNodes on device. Transmit to from host
 	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }	// DOes this even make sense? Just use getBlockPtr?
 
 //private:
-	// Each compound in kernel will transmit their origo. Will be transferring from device to host by nlist
-	//Coord compound_origos[MAX_COMPOUNDS];
 };
 
 

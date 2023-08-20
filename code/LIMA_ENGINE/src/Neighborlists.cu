@@ -29,7 +29,8 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
 
 	for (int compound_id = 0; compound_id < simulation.boxparams_host.n_compounds; compound_id++) {
-		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, 0, step);
+		const int key_index = simulation.compounds_host[compound_id].key_particle_index;
+		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, key_index, step);
 	}
 }
 
@@ -67,9 +68,9 @@ namespace NListUtils {
 
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
 			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
-			//HashTable hashtable_solventneighbors(nlist_self->neighborsolvent_ids, nlist_self->n_solvent_neighbors, NEIGHBORLIST_MAX_SOLVENTS * 2);
 			const float cutoff_add_self = simulation->compounds_host[id_self].radius;
 			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
+
 
 			// Go through all compounds in box, with higher ID than self!
 			for (uint16_t id_other = id_self + 1; id_other < simulation->boxparams_host.n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few

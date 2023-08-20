@@ -308,6 +308,13 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
+		if ((querycompound_hyperorigo - origo_self).maxElement() > 10) {
+			printf("Here::\n");
+			origo_self.print('s');
+			querycompound_hyperorigo.print('q');
+		}
+
+
 		// calc Relative LimaPosition Shift from the origo-shift
 		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 	}
@@ -448,9 +455,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const NodeIndex blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
 	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{};
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
-	if (new_blockid > 216 || new_blockid < 0) {
-		printf("new id %d\n", new_blockid);
-	}
+
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	
@@ -555,15 +560,14 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_origo = SolventBlockGrid::get3dIndex(solventblock_id);
+		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, SolventBlockGrid::get3dIndex(solventblock_id));
+
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();
+
 		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, solventblock_id);
-		if (solventblock_id < 0 || solventblock_id >= 216) {
-			printf("solventblock id %d i %d n %d\n", solventblock_id, i, neighborlist.n_gridnodes);
-			simparams.critical_error_encountered = true;
-		}
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
-		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_origo, compound_coords.origo).toFloat3();
+		
 
 		// There are many more solvents in a block, than threads in this kernel, so we need to loop in strides of blockdim.x
 		__syncthreads();	// Dont load buffer before all are finished with the previous iteration
@@ -690,86 +694,97 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
-		// Thread 0 finds n nearby compounds
-		const CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
-		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
-		__syncthreads();
+		//// Thread 0 finds n nearby compounds
+		//const CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
+		//if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
+		//__syncthreads();
 
 
 
-		for (int i = 0; i < utility_int; i++) {
+		//for (int i = 0; i < utility_int; i++) {
 
-			const int16_t neighborcompound_index = compoundgridnode->nearby_compound_ids[i];
-			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
-			const int n_compound_particles = neighborcompound->n_particles;
+		//	const int16_t neighborcompound_index = compoundgridnode->nearby_compound_ids[i];
+		//	const Compound* neighborcompound = &box->compounds[neighborcompound_index];
+		//	const int n_compound_particles = neighborcompound->n_particles;
 
-			
+		//	
 
-			// All threads help loading the molecule
-			// First load particles of neighboring compound
-			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_float3);	// This should take n_comp_part aswell!
+		//	// All threads help loading the molecule
+		//	// First load particles of neighboring compound
+		//	const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
+		//	getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_float3);	// This should take n_comp_part aswell!
 
-			// Then load atomtypes of neighboring compound
-			if (threadIdx.x < n_compound_particles) {
-				utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
-			}			
-			__syncthreads();
-			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 
-			if (solvent_active) {
-				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
-			}
-			__syncthreads();
-		}
+
+
+
+
+
+
+
+
+
+
+			//// Then load atomtypes of neighboring compound
+			//if (threadIdx.x < n_compound_particles) {
+			//	utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
+			//}			
+			//__syncthreads();
+			////  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
+
+			//if (solvent_active) {
+			//	force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
+			//}
+			//__syncthreads();
+		//}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 
 
 	// --------------------------------------------------------------- Intrablock Solvent Interactions ----------------------------------------------------- //
-	{
-		__syncthreads(); // Sync since use of utility
-		if (solvent_active) {
-			utility_buffer[threadIdx.x] = relpos_self;
-		}
-		__syncthreads();
-		if (solvent_active) {
-			force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
-		}
-		__syncthreads(); // Sync since use of utility
-	}	
+	//{
+	//	__syncthreads(); // Sync since use of utility
+	//	if (solvent_active) {
+	//		utility_buffer[threadIdx.x] = relpos_self;
+	//	}
+	//	__syncthreads();
+	//	if (solvent_active) {
+	//		force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
+	//	}
+	//	__syncthreads(); // Sync since use of utility
+	//}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
-	const int query_range = 1;
-	for (int x = -query_range; x <= query_range; x++) {
-		for (int y = -query_range; y <= query_range; y++) {
-			for (int z = -query_range; z <= query_range; z++) {
-				const NodeIndex dir{ x,y,z };
-				if (dir.isZero()) { continue; }
+	//const int query_range = 1;
+	//for (int x = -query_range; x <= query_range; x++) {
+	//	for (int y = -query_range; y <= query_range; y++) {
+	//		for (int z = -query_range; z <= query_range; z++) {
+	//			const NodeIndex dir{ x,y,z };
+	//			if (dir.isZero()) { continue; }
 
-				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
-				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
+	//			const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
+	//			if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
 
-				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockindex_neighbor);
-				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
-				const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
+	//			const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockindex_neighbor);
+	//			const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+	//			const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
 
-				// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
-				__syncthreads();
-				if (threadIdx.x < nsolvents_neighbor) {
-					utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].toFloat3() + origoshift_offset;
-				}
-				__syncthreads();
+	//			// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
+	//			__syncthreads();
+	//			if (threadIdx.x < nsolvents_neighbor) {
+	//				utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].toFloat3() + origoshift_offset;
+	//			}
+	//			__syncthreads();
 
-				if (solvent_active) {
-					force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
-				}
-				__syncthreads();
-			}
-		}
-	}
+	//			if (solvent_active) {
+	//				force += computeSolventToSolventLJForces<em_variant>(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+	//			}
+	//			__syncthreads();
+	//		}
+	//	}
+	//}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	
@@ -789,7 +804,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
 
-		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, simparams.step, sim->databuffers);
+		//EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, simparams.step, sim->databuffers);
 	}
 
 

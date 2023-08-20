@@ -81,6 +81,17 @@ private:
 // Lima Algorithm Library
 namespace LAL {
 
+    // TODO: Make a lowest-level file for these type agnostic algo's so we can use them in limatypes.cuh
+    //template <typename T>
+    //__device__ __host__ static T max(const T l, const T r) {
+    //    return r > l ? r : l;
+    //}
+
+
+
+
+
+
 
     template<typename T>
     class optional {

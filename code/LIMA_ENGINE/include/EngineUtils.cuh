@@ -146,7 +146,16 @@ namespace LIMAPOSITIONSYSTEM {
 	/// If the index has proponents larger than what a coord can represent, then :((( 
 	/// </summary>
 	/// <returns>Coord in [lm]</returns>
-	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; }
+	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { 
+#ifdef LIMASAFEMODE
+		if (abs(node_index.x) > 10 || abs(node_index.y) > 10 || abs(node_index.z) > 10) {
+			//printf("Dangerous nodeindex\n\t");
+			//node_index.print();
+		}
+#endif
+
+		return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; 
+	}
 	
 
 	// Returns absolute position of nodeindex [nm]
@@ -236,6 +245,12 @@ namespace LIMAPOSITIONSYSTEM {
 		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
 	}*/
 	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
+		auto origo_shift = from - to;
+		if (abs(origo_shift.x) > 10 || abs(origo_shift.y) > 10 || abs(origo_shift.z) > 10) {
+			printf("block %d thread %d\n", blockIdx.x, threadIdx.x);
+			from.print('f');
+			to.print('t');
+		}
 		return nodeIndexToCoord(from - to);
 	}
 
@@ -580,9 +595,7 @@ namespace EngineUtils {
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
 			databuffers->vel_buffer[index] = velocity.len();
-
-
-			if (solventblock.ids[threadIdx.x] > 13000) printf("\nhiewr: %u\n", solventblock.ids[threadIdx.x]);
+			
 
 #ifdef USEDEBUGF3
 			const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;

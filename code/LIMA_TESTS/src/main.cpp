@@ -37,13 +37,13 @@ int main() {
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.029, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 
-		loadAndEMAndRunBasicSimulation("Spike", envmode);
+		//loadAndEMAndRunBasicSimulation("Spike", envmode);
 
 		//doPool50x(EnvMode::Headless);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::exception ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;
@@ -81,7 +81,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.5e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 0.023, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5));
 
 
 	// Meta tests

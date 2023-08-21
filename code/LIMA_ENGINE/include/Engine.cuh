@@ -44,7 +44,6 @@ struct EngineTimings {
 		solvent_kernels = 0;
 		cpu_master = 0;
 		nlist = 0;
-		// nlisttimer is hand
 	}
 };
 
@@ -56,10 +55,7 @@ public:
 	// I'm sure that will help the branch predictor alot!
 	template <bool em_variant> void step();
 
-
-
 	EngineTimings timings{};
-	//std::array<int, 4> timings{};	// {compounds | solvents | cpu_master | nlist} [ys]
 
 
 	ForceField_NB getForcefield() { return forcefield_host; }

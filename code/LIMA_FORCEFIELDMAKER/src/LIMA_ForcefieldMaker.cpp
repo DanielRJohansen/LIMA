@@ -230,13 +230,9 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedT
 	std::vector<NB_Atomtype> atomtypes_filtered;
 
 	atomtypes_filtered.emplace_back(Water_atomtype);
-	//Water_atomtype
-	//atomtypes_filtered.emplace_back(NB_Atomtype("WATER", 0, water_mass, water_sigma, water_epsilon));		// Solvent type always first!
-
 
 	for (const auto& record : topology.atomtable) {
 		const string& atomtype = record.second.atomtype;
-		//const string& atomtype = record.second.atomname;
 
 		NB_Atomtype& atomtype_ff = forcefield.atomToTypeMap.find(atomtype)->second;
 

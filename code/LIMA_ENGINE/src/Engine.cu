@@ -177,13 +177,13 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		solventForceKernel<em_variant> << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
+		solventForceKernel<em_variant> << < SolventBlocksCircularQueue::blocks_per_grid, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
-		if (SolventBlockHelpers::isTransferStep(simulation->getStep())) {
-			solventTransferKernel << < SolventBlockGrid::blocks_total, SolventBlockTransfermodule::max_queue_size >> > (simulation->sim_dev);
+		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
+			solventTransferKernel << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (simulation->sim_dev);
 		}
 	}
 	cudaDeviceSynchronize();

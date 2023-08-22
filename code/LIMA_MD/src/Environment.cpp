@@ -439,23 +439,23 @@ Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 {
 	return &postsim_anal_package;
 }
-
-SolventBlockGrid* Environment::getSolventBlocksPrevRef()
-{
-	if (simulation->sim_dev != nullptr) { throw "Can't ref solventblocks when box is on device"; }
-	auto grid = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
-	return grid;
-}
-
-const std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
-{
-	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->sim_dev->box->solventblockgrid_circular_queue, simulation->getStep());
-
-	auto grid_host = std::make_unique<SolventBlockGrid>();
-	cudaMemcpy(grid_host.get(), gridptr_device, sizeof(SolventBlockGrid), cudaMemcpyDeviceToHost);
-
-	return grid_host;
-}
+//
+//SolventBlockGrid* Environment::getSolventBlocksPrevRef()
+//{
+//	if (simulation->sim_dev != nullptr) { throw "Can't ref solventblocks when box is on device"; }
+//	auto grid = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
+//	return grid;
+//}
+//
+//const std::unique_ptr<SolventBlockGrid> Environment::getCurrentSolventblockGrid()
+//{
+//	auto gridptr_device = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->sim_dev->box->solventblockgrid_circular_queue, simulation->getStep());
+//
+//	auto grid_host = std::make_unique<SolventBlockGrid>();
+//	cudaMemcpy(grid_host.get(), gridptr_device, sizeof(SolventBlockGrid), cudaMemcpyDeviceToHost);
+//
+//	return grid_host;
+//}
 
 void Environment::resetEnvironment() {
 

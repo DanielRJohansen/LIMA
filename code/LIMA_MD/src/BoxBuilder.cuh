@@ -42,14 +42,6 @@ private:
 	//bool verifyPairwiseParticleMindist(Compound* a, Compound* b);
 	//What about other solvents then? Not problem now while solvents are placed on a grid, but what about later?
 
-	/// <summary>
-	/// To preservevelocities and temp when switching dt for em/sim, we need to artificially change
-	/// the delta_position of each particle in the box
-	/// </summary>
-	void accelerateCompoundParticles(std::vector<CompoundCoords>& compounds_prev, const std::vector<CompoundCoords>& compounds,
-		float dt_prev, float dt_next);
-	void accelerateSolventParticles(SolventBlockGrid& grid_prev, SolventBlockGrid& grid,
-		float dt_prev, float dt_next);
 
 
 	// ------------------------------------------------------------------------------------ //

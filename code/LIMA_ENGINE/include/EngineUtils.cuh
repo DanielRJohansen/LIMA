@@ -339,10 +339,11 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Get the relpos_prev, if the solvent was in the same solventblock last step
-	__device__ static Coord getRelposPrev(SolventBlockGrid* solventblockgrid_circularqueue, const int solventblock_id, const int current_step) {
+	__device__ static Coord getRelposPrev(SolventBlocksCircularQueue* solventblockgrid_circularqueue, const int solventblock_id, const int current_step) {
 		const int step_prev = current_step == 0 ? STEPS_PER_SOLVENTBLOCKTRANSFER-1 : current_step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
-		auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
-		return blockPtr->rel_pos[threadIdx.x];
+		//auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
+		auto block_ptr = solventblockgrid_circularqueue->getBlockPtr(solventblock_id, step_prev);
+		return block_ptr->rel_pos[threadIdx.x];
 	}
 
 
@@ -512,13 +513,13 @@ namespace EngineUtils {
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
 		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
-		return SolventBlockGrid::get1dIndex(new_nodeindex);
+		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	}
 
 	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
-		NodeIndex new_nodeindex = SolventBlockGrid::get3dIndex(blockId) + transfer_direction;
+		NodeIndex new_nodeindex = SolventBlocksCircularQueue::get3dIndex(blockId) + transfer_direction;
 		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
-		auto index = SolventBlockGrid::get1dIndex(new_nodeindex);
+		auto index = SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 		return &transfermodule_array[index];
 	}
 
@@ -679,7 +680,7 @@ namespace DEBUGUTILS {
 	/// <summary>
 	/// Puts the nearest solvent of each solvent in the out vector.
 	/// </summary>
-	void findAllNearestSolventSolvent(SolventBlockGrid* solventblockgrid, size_t n_solvents, std::vector<float>& out);
+	void findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& out);
 }
 
 

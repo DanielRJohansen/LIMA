@@ -57,7 +57,6 @@ namespace ForceCorrectness {
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		Environment env{ work_folder, envmode };
-		const auto a = sizeof(SolventBlockGrid);
 		auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
 		const float dt = ip.dt;
 

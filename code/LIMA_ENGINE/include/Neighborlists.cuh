@@ -42,7 +42,8 @@ private:
 	std::mutex m_mutex{};
 
 	volatile bool updated_neighborlists_ready = 0;
-	std::unique_ptr<NListDataCollection> nlist_data_collection;
+	std::unique_ptr<NListDataCollection> nlist_data_collection
+		;
 
 	uint64_t prev_update_step = 0;
 };

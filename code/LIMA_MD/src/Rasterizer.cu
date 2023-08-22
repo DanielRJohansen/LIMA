@@ -62,7 +62,7 @@ RenderAtom* Rasterizer::getAllAtoms(Simulation* simulation) {
         loadCompoundatomsKernel << <simulation->boxparams_host.n_compounds, MAX_COMPOUND_PARTICLES >> > (boxptr, atoms, simulation->simparams_host.step);
     }
 	if (simulation->boxparams_host.n_solvents > 0) {
-		loadSolventatomsKernel << < SolventBlockGrid::blocks_total, MAX_SOLVENTS_IN_BLOCK >> > (boxptr, atoms, solvent_offset, simulation->simparams_host.step);
+		loadSolventatomsKernel << < SolventBlocksCircularQueue::blocks_per_grid, MAX_SOLVENTS_IN_BLOCK >> > (boxptr, atoms, solvent_offset, simulation->simparams_host.step);
 	}
 
 	return atoms;
@@ -207,8 +207,8 @@ __global__ void loadCompoundatomsKernel(Box* box, RenderAtom* atoms, const int s
 }
 
 __global__ void loadSolventatomsKernel(Box* box, RenderAtom* atoms, int offset, const int step) {
-    SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step, blockIdx.x);
-    SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step == 0 ? 0 : step-1, blockIdx.x);
+    //SolventBlock* solventblock_prev = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, step == 0 ? 0 : step-1, blockIdx.x);
+    SolventBlock* solventblock = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
     if (threadIdx.x < solventblock->n_solvents) {
         //const SolventCoord coord{solventblock->origo, solventblock->rel_pos[threadIdx.x] };

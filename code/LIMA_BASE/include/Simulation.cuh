@@ -131,7 +131,7 @@ struct Box {
 
 	Solvent* solvents = nullptr;
 	// Positions and solvent_ids
-	SolventBlockGrid* solventblockgrid_circular_queue = nullptr;
+	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 	CompoundGrid* compound_grid = nullptr;

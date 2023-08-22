@@ -183,10 +183,58 @@ struct Solvent {
 };
 
 
+
+
+
+
+
+
+static constexpr int BOXGRID_NODE_LEN_pico = 1200;
+static constexpr float BOXGRID_NODE_LEN = static_cast<float>(BOXGRID_NODE_LEN_pico * PICO_TO_LIMA);	// [lm]
+static_assert((static_cast<int64_t>(BOX_LEN) % static_cast<int64_t>(BOXGRID_NODE_LEN)) == 0, "Illegal box dimension");
+static constexpr int32_t BOXGRID_NODE_LEN_i = BOXGRID_NODE_LEN_pico * PICO_TO_LIMA;
+static const int BOXGRID_N_NODES = static_cast<int>(BOX_LEN / BOXGRID_NODE_LEN);
+template <typename NodeType>
+class BoxGrid {
+public:
+	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
+	NodeType blocks[blocks_total];
+	static const int first_step_prev = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+
+
+	// This function assumes the user has used PBC
+	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
+		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
+		|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
+			throw std::exception("Bad 3d index for blockptr\n");
+		}
+		return getBlockPtr(BoxGrid::get1dIndex(index3d));
+	}
+
+	// This function assumes the user has used PBC
+	__device__ __host__ NodeType* getBlockPtr(const int index1d) {
+		return &blocks[index1d];
+	}
+
+	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
+		static const int bpd = BOXGRID_N_NODES;
+		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
+	}
+	__device__ static NodeIndex get3dIndex(int index1d) {
+		static const int bpd = BOXGRID_N_NODES;
+		auto z = index1d / (bpd * bpd);
+		index1d -= z * bpd * bpd;
+		auto y = index1d / bpd;
+		index1d -= y * bpd;
+		auto x = index1d;
+		return NodeIndex{ x, y, z };
+	}
+};
+
 // blocks are notcentered 
 struct SolventBlock {
 	__device__ __host__ SolventBlock() {};
-	__device__ __host__ void loadMeta(const SolventBlock& block) { 
+	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		origo = block.origo; // Not necessary, is given by the blockIdx.x
 		n_solvents = block.n_solvents;
 		if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
@@ -221,40 +269,133 @@ struct SolventBlock {
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 };
 
+struct CompoundGridNode {
+	__host__ void addNearbyCompound(int16_t compound_id);
+	__host__ void addAssociatedCompound(int16_t compound_id);
 
-static constexpr int BOXGRID_NODE_LEN_pico = 1200;
-static constexpr float BOXGRID_NODE_LEN = static_cast<float>(BOXGRID_NODE_LEN_pico * PICO_TO_LIMA);	// [lm]
-static_assert((static_cast<int64_t>(BOX_LEN) % static_cast<int64_t>(BOXGRID_NODE_LEN)) == 0, "Illegal box dimension");
-static constexpr int32_t BOXGRID_NODE_LEN_i = BOXGRID_NODE_LEN_pico * PICO_TO_LIMA;
-static const int BOXGRID_N_NODES = static_cast<int>(BOX_LEN / BOXGRID_NODE_LEN);
-template <typename NodeType>
-class BoxGrid {
+	// Compounds that are near this specific node
+	// A particle belonging to this node coord, can iterate through this list
+	// to find all appropriate nearby compounds;
+	static const int max_nearby_compounds = 96;
+	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
+	int16_t n_nearby_compounds = 0;
+};
+
+// Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
+class CompoundGrid : public BoxGrid<CompoundGridNode> {};
+
+
+
+
+
+class SolventBlocksCircularQueue {
+	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
+
+
+	// Please dont add other non-static vars to this class without checking movetodevice is not broken
+	// {Step,z,y,x}
+	SolventBlock* blocks = nullptr;
+	bool has_allocated_data = false;
+	bool is_on_device = false;
+
+
 public:
-	//static const int blocks_per_dim = static_cast<int>(BOX_LEN_NM) / SolventBlock::block_len;
-	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
-	NodeType blocks[blocks_total];
-	static const int first_step_prev = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+	static const int blocks_per_grid = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
+	static const int grid_bytesize = sizeof(SolventBlock) * blocks_per_grid;
+	static const int blocks_total = blocks_per_grid * queue_len;
+	static const int gridqueue_bytesize = sizeof(SolventBlock) * blocks_total;
+	static const int first_step_prev = queue_len - 1;
+
+	SolventBlocksCircularQueue() {};	// C
+
+	__host__ static SolventBlocksCircularQueue* createQueue() {
+		auto queue = new SolventBlocksCircularQueue();
+		queue->allocateData();
+		queue->initializeBlocks();
+		return queue;
+	}
+
+	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int step) {
+		// TODO: Implement safety feature checking and failing if PBC is not met!
+		return getBlockPtr(coord.origo, step)->addSolvent(coord.rel_position, solvent_id);
+	}
+
+	__host__ void allocateData() {
+		if (has_allocated_data) {
+			throw std::exception("BoxGridCircularQueue may not allocate data multiple times");
+		}
+		blocks = new SolventBlock[blocks_total]();
+		has_allocated_data = true;
+	}
+
+	__host__ void initializeBlocks() {
+		for (int step = 0; step < queue_len; step++) {
+			for (int i = 0; i < blocks_per_grid; i++) {
+				getBlockPtr(i, step)->origo = get3dIndex(i);
+			}
+		}
+	}
+
+
+	__host__ SolventBlocksCircularQueue* moveToDevice() {
+		SolventBlock* blocks_dev_ptr = nullptr;
+		cudaMallocManaged(&blocks_dev_ptr, gridqueue_bytesize);
+		cudaMemcpy(blocks_dev_ptr, blocks, gridqueue_bytesize, cudaMemcpyHostToDevice);
+		delete[] blocks;
+		blocks = blocks_dev_ptr;
+		is_on_device = true;
+
+
+		SolventBlocksCircularQueue* this_dev_ptr;
+		cudaMallocManaged(&this_dev_ptr, sizeof(SolventBlocksCircularQueue));
+		cudaMemcpy(this_dev_ptr, this, sizeof(SolventBlocksCircularQueue), cudaMemcpyHostToDevice);	
+		// LEAK: I think we leak *this here
+		return this_dev_ptr;
+	}
+
+	// Fuck me this seems overcomplicated
+	__host__ SolventBlocksCircularQueue* copyToHost() {
+		SolventBlocksCircularQueue* this_host = new SolventBlocksCircularQueue();
+		this_host->allocateData();
+		cudaMemcpy(this_host->blocks, blocks, gridqueue_bytesize, cudaMemcpyDeviceToHost);
+		return this_host;
+	}
+
+
+
+
 
 
 	// This function assumes the user has used PBC
-	__host__ NodeType* getBlockPtr(const NodeIndex& index3d) {
+	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int step) {
+#ifdef LIMASAFEMODE
 		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
-		|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
+			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::exception("Bad 3d index for blockptr\n");
 		}
-		return getBlockPtr(BoxGrid::get1dIndex(index3d));
+#endif
+
+		return getBlockPtr(get1dIndex(index3d), step);
+	}
+
+	__device__ __host__ bool static isTransferStep(int step) {
+		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
+	}
+	__device__ bool static isFirstStepAfterTransfer(int step) {
+		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
 	}
 
 	// This function assumes the user has used PBC
-	__device__ __host__ NodeType* getBlockPtr(const int index1d) {
-		return &blocks[index1d];
+	__device__ __host__ SolventBlock* getBlockPtr(const int index1d, const int step) {
+		const size_t step_offset = (step % queue_len) * blocks_per_grid;
+		return &blocks[index1d + step_offset];
 	}
 
 	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
 		static const int bpd = BOXGRID_N_NODES;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
-	__device__ static NodeIndex get3dIndex(int index1d) {
+	__device__ __host__ static NodeIndex get3dIndex(int index1d) {
 		static const int bpd = BOXGRID_N_NODES;
 		auto z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
@@ -262,16 +403,12 @@ public:
 		index1d -= y * bpd;
 		auto x = index1d;
 		return NodeIndex{ x, y, z };
-	}	
-};
-
-class SolventBlockGrid : public BoxGrid<SolventBlock> {
-public:
-	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id) {
-		// TODO: Implement safety feature checking and failing if PBC is not met!
-		return getBlockPtr(coord.origo)->addSolvent(coord.rel_position, solvent_id);
 	}
 };
+
+
+
+
 
 template <int size>
 struct SolventTransferqueue {
@@ -325,26 +462,6 @@ struct SolventBlockTransfermodule {
 using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_queue_size>;
 using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
 
-namespace SolventBlockHelpers {
-	//bool insertSolventcoordInGrid(SolventBlockGrid& grid, const SolventCoord& coord, uint32_t solvent_id);
-	bool copyInitialConfiguration(const SolventBlockGrid& grid, const SolventBlockGrid& grid_prev,
-		SolventBlockGrid* grid_circular_queue);
-
-	void createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue);
-	void setupBlockMetaOnHost(SolventBlockGrid* grid, SolventBlockGrid* grid_prev);	// Is this used?
-	//__host__ void createSolventblockTransfermodules(SolventBlockTransfermodule** transfermodule_array);
-
-	__device__ __host__ bool static isTransferStep(int step) {
-		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
-	}
-	__device__ bool static isFirstStepAfterTransfer(int step) {
-		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
-	}
-}
-
-
-
-
 
 
 
@@ -354,25 +471,10 @@ namespace SolventBlockHelpers {
 
 
 namespace CoordArrayQueueHelpers {
-	/*__host__ static void copyInitialCoordConfiguration(CompoundCoords* coords,
-		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue) */
-
 	__host__ __device__ static CompoundCoords* getCoordarrayRef(CompoundCoords* coordarray_circular_queue,
 		uint32_t step, uint32_t compound_index) {
 		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
 		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
-	}
-
-
-	__host__ __device__ static SolventBlockGrid* getSolventblockGridPtr(SolventBlockGrid* solventblockgrid_circular_queue,
-		const int step) {
-			const int index0_of_currentstep_blockarray = (step % STEPS_PER_SOLVENTBLOCKTRANSFER);
-			return &solventblockgrid_circular_queue[index0_of_currentstep_blockarray];
-	}
-
-	__device__ static SolventBlock* getSolventBlockPtr(SolventBlockGrid* solventblockgrid_circular_queue,
-		const int step, const int solventblock_id) {
-		return getSolventblockGridPtr(solventblockgrid_circular_queue, step)->getBlockPtr(solventblock_id);
 	}
 }
 
@@ -380,7 +482,7 @@ namespace CoordArrayQueueHelpers {
 
 
 struct Compound {
-	__host__ __device__  Compound() {}
+	__host__ __device__ Compound() {}
 
 	uint8_t n_particles = 0;			
 	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
@@ -597,43 +699,6 @@ struct ForceField_NB {
 };
 
 
-
-
-
-
-struct CompoundGridNode {
-	__host__ void addNearbyCompound(int16_t compound_id);
-	__host__ void addAssociatedCompound(int16_t compound_id);
-
-	// Compounds that are near this specific node
-	// A particle belonging to this node coord, can iterate through this list
-	// to find all appropriate nearby compounds;
-	static const int max_nearby_compounds = 96;
-	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
-	int16_t n_nearby_compounds = 0;
-};
-
-// Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
-class CompoundGrid : public BoxGrid<CompoundGridNode> {
-public:
-	CompoundGrid(){}
-
-	void reset() {
-
-	}
-
-	// Function called by compound kernels before nlist update
-	__device__ void signalOrigo(Coord origo) {
-		if (threadIdx.x == 0) {
-			//compound_origos[blockIdx.x] = origo;
-		}
-	}
-
-	// Returns ptr to the list of CompoundGridNodes on device. Transmit to from host
-	__host__ CompoundGridNode* getGridnodesPtr() { return blocks; }	// DOes this even make sense? Just use getBlockPtr?
-
-//private:
-};
 
 
 

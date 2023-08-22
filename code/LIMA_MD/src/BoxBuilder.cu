@@ -12,9 +12,8 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
 
-
-	SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
-	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlockGrid::blocks_total];
+	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
 
 
 	simulation->box_host->compound_grid = new CompoundGrid();
@@ -75,7 +74,7 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 void BoxBuilder::finishBox(Simulation* simulation) {
 	const int compoundparticles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	const int solventparticles_upperbound = simulation->box_host->boxparams.n_solvents > 0
-		? SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK
+		? SolventBlocksCircularQueue::blocks_per_grid * MAX_SOLVENTS_IN_BLOCK
 		: 0;
 	simulation->box_host->boxparams.total_particles_upperbound = compoundparticles_upperbound + solventparticles_upperbound;
 
@@ -141,8 +140,6 @@ int BoxBuilder::solvateBox(Simulation* simulation)
 
 int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	SolventBlockGrid* grid_0 =  CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
-	SolventBlockGrid* grid_minus1 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, SolventBlockGrid::first_step_prev);
 	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
 
@@ -158,7 +155,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 			
-			grid_0->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents);
+			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
 
 			const Float3 direction = get3RandomSigned().norm();
 			const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
@@ -167,7 +164,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			SolventCoord solventcoord_prev = solventcoord;
 			solventcoord_prev.rel_position -= Coord{ deltapos_lm };
 
-			grid_minus1->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents);
+			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents, SolventBlocksCircularQueue::first_step_prev);
 
 			simulation->box_host->boxparams.n_solvents++;
 		}
@@ -225,19 +222,21 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimPara
 	// Do the same for solvents
 	{
 		// Create temporary storage
-		auto solvents_t0 = std::make_unique<SolventBlockGrid>();
+		std::array<SolventBlock, SolventBlocksCircularQueue::blocks_per_grid> solvents_t0{};
 
 		// Copy only the current step to temporary storage
-		SolventBlockGrid* src_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, boxsrc_current_step);
-		memcpy(solvents_t0.get(), src_t0, sizeof(SolventBlockGrid));
+		SolventBlock* src_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);
+		memcpy(solvents_t0.data(), src_t0, SolventBlocksCircularQueue::grid_bytesize);
 
 		// Clear all of the data
-		delete[] simulation->box_host->solventblockgrid_circular_queue;
-		SolventBlockHelpers::createSolventblockGrid(&simulation->box_host->solventblockgrid_circular_queue);
+		delete simulation->box_host->solventblockgrid_circularqueue;
+		simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+
 
 		// Copy the temporary storage back into the queue
-		SolventBlockGrid* dest_t0 = CoordArrayQueueHelpers::getSolventblockGridPtr(simulation->box_host->solventblockgrid_circular_queue, 0);
-		memcpy(dest_t0, solvents_t0.get(), sizeof(SolventBlockGrid));
+		SolventBlock* dest_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, 0);
+		memcpy(dest_t0, solvents_t0.data(), SolventBlocksCircularQueue::grid_bytesize);
+		int a = 0;
 	}
 }
 

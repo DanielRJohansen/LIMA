@@ -17,9 +17,11 @@ void Box::moveToDevice() {
 	solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
 
 	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
-	solventblockgrid_circular_queue = genericMoveToDevice(solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+	//solventblockgrid_circular_queue = genericMoveToDevice(solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+	solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
 
-	transfermodule_array = genericMoveToDevice(transfermodule_array, SolventBlockGrid::blocks_total);
+
+	transfermodule_array = genericMoveToDevice(transfermodule_array, SolventBlocksCircularQueue::blocks_per_grid);
 	compound_grid = genericMoveToDevice(compound_grid, 1);
 
 	compound_neighborlists = genericMoveToDevice(compound_neighborlists, MAX_COMPOUNDS);
@@ -36,7 +38,7 @@ void Box::deleteMembers() {
 	if (is_on_device) {
 		cudaFree(compounds);
 		cudaFree(coordarray_circular_queue);
-		cudaFree(solventblockgrid_circular_queue);
+		cudaFree(solventblockgrid_circularqueue);
 
 		cudaFree(transfermodule_array);
 		cudaFree(compound_grid);
@@ -55,7 +57,7 @@ void Box::deleteMembers() {
 	else {
 		delete[] compounds;
 		delete[] coordarray_circular_queue;
-		delete[] solventblockgrid_circular_queue;
+		delete solventblockgrid_circularqueue;
 		delete[] transfermodule_array;
 
 		delete compound_grid;
@@ -90,9 +92,9 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
 
 	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
-	genericCopyToHost(&box->solventblockgrid_circular_queue, STEPS_PER_SOLVENTBLOCKTRANSFER);
+	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost();
 
-	genericCopyToHost(&box->transfermodule_array, SolventBlockGrid::blocks_total);
+	genericCopyToHost(&box->transfermodule_array, SolventBlocksCircularQueue::blocks_per_grid);
 	genericCopyToHost(&box->compound_grid, 1);
 
 	genericCopyToHost(&box->compound_neighborlists, MAX_COMPOUNDS);
@@ -106,7 +108,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 
 	box->owns_members = true;
 	box->is_on_device = false;
-	//printf("Box copied to host\n");
+	printf("Box copied to host\n");
 	return box;
 }
 

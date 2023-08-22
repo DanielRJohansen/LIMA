@@ -1,25 +1,5 @@
 #include "Bodies.cuh"
 
-// Create the solventblockgrid on host, and fill out origo for all blocks for all steps
-void SolventBlockHelpers::createSolventblockGrid(SolventBlockGrid** solventblockgrid_circularqueue_device) {	// TODO: rename var to what is it now
-
-	*solventblockgrid_circularqueue_device = new SolventBlockGrid[STEPS_PER_SOLVENTBLOCKTRANSFER];
-
-	for (int i = 0; i < STEPS_PER_SOLVENTBLOCKTRANSFER; i++) {
-		for (int z = 0; z < BOXGRID_N_NODES; z++) {
-			for (int y = 0; y < BOXGRID_N_NODES; y++) {
-				for (int x = 0; x < BOXGRID_N_NODES; x++) {
-					NodeIndex origo{ x, y, z };	// Doubles as the 3D index of the block!
-					//gridqueue_host[i].getBlockPtr(origo)->origo = origo;
-					(*solventblockgrid_circularqueue_device)[i].getBlockPtr(origo)->origo = origo;
-				}
-			}
-		}
-	}
-}
-
-
-
 
 
 SingleBond::SingleBond(std::array<int, n_atoms> ids) {

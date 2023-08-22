@@ -401,7 +401,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 
 			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
-			if (blockid_global < 0 || blockid_global >= SolventBlockGrid::blocks_total) { printf("\nGot unexpected Block id index %d\n", blockid_global); }
+			if (blockid_global < 0 || blockid_global >= SolventBlocksCircularQueue::blocks_per_grid) { printf("\nGot unexpected Block id index %d\n", blockid_global); }
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
 
 			queue_global->fastInsert(
@@ -452,7 +452,7 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
-	const NodeIndex blockId3d = SolventBlockGrid::get3dIndex(blockIdx.x);
+	const NodeIndex blockId3d = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
 	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{};
 	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 
@@ -560,11 +560,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, SolventBlockGrid::get3dIndex(solventblock_id));
+		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
 
-		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();	// TODO: Only t0 needs to do this
 
-		const SolventBlock* solventblock = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, solventblock_id);
+		const SolventBlock* solventblock = box->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, simparams.step);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
 		
@@ -643,7 +643,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
-#define solventblock_ptr (CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockIdx.x))
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <bool em_variant>
 __global__ void solventForceKernel(SimulationDevice* sim) {
@@ -656,11 +655,11 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_float3;
 
 	// Doubles as block_index_3d!
-	const NodeIndex block_origo = SolventBlockGrid::get3dIndex(blockIdx.x);
+	const NodeIndex block_origo = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
-
+	SolventBlock* solventblock_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step);
 
 	// Init queue, otherwise it will contain wierd values // TODO: only do this on transferstep?
 	if (threadIdx.x < 6) { 
@@ -765,9 +764,9 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				if (dir.isZero()) { continue; }
 
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
-				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlockGrid::blocks_total) { printf("\nWhat the fuck\n"); }
+				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlocksCircularQueue::blocks_per_grid) { printf("\nWhat the fuck\n"); }
 
-				const SolventBlock* solventblock_neighbor = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockindex_neighbor);
+				const SolventBlock* solventblock_neighbor = box->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, simparams.step);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 				const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
 
@@ -810,9 +809,9 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 
 	// Push new SolventCoord to global mem
-	auto solventblock_next_ptr = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step + 1, blockIdx.x);
+	SolventBlock* solventblock_next_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);
 
-	if (SolventBlockHelpers::isTransferStep(simparams.step)) {
+	if (SolventBlocksCircularQueue::isTransferStep(simparams.step)) {
 		transferOutAndCompressRemainders(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
 	}
 	else {
@@ -838,8 +837,8 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 
 	SolventBlockTransfermodule* transfermodule = &box->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_current = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step, blockIdx.x);
-	SolventBlock* solventblock_next = CoordArrayQueueHelpers::getSolventBlockPtr(box->solventblockgrid_circular_queue, simparams.step + 1, blockIdx.x);
+	SolventBlock* solventblock_current = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step);
+	SolventBlock* solventblock_next = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);
 
 	if (solventblock_next->n_solvents != transfermodule->n_remain) {
 		printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);

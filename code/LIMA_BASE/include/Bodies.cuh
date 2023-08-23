@@ -577,9 +577,6 @@ struct Compound {
 };
 
 
-using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
-using BondedParticlesLUTManager = FixedSizeMatrix<BondedParticlesLUT, MAX_COMPOUNDS>;
-
 
 
 

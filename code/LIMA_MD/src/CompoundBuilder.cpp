@@ -427,6 +427,7 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector
 
 			if (id_self == id_other) { continue; }
 
+			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(particle_info[id_self].compound_index, particle_info[id_other].compound_index);
 			BondedParticlesLUT* lut = bplut_man->get(particle_info[id_self].compound_index, particle_info[id_other].compound_index);
 			lut->set(particle_info[id_self].local_id_compound, particle_info[id_other].local_id_compound, true);
 		}
@@ -463,7 +464,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 }
 
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Forcefield::Topology& topology) {
-	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>(0);
+	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>();
 
 	distributeBondsToCompoundsAndBridges(topology.singlebonds);
 	distributeBondsToCompoundsAndBridges(topology.anglebonds);

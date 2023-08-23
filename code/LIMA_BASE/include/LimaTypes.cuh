@@ -453,8 +453,6 @@ public:
 	}
 	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; }
 
-	//__host__ init()
-
 	__host__ __device__ T* get(int i1, int i2) { return &matrix[i1 + i2 * m_len]; }
 
 	__host__ void set(int i1, int i2, T object) { matrix[i1 + i2 * m_len] = object; }
@@ -474,6 +472,60 @@ private:
 	__device__ T get(int index) { return matrix[index]; }
 };
 
+using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
+
+
+class BondedParticlesLUTManager {
+	static const int max_bonded_compounds = 3;
+	static const int n_elements = MAX_COMPOUNDS * max_bonded_compounds;
+	BondedParticlesLUT luts[n_elements];
+	int connected_compound_id[n_elements];
+
+
+public:
+	BondedParticlesLUTManager() {
+		for (int i = 0; i < n_elements; i++) {
+			connected_compound_id[i] = -1;
+		}
+
+		// Initially connect all luts to itself, because all compounds asummes this exists.
+		// Only relevant for cases with compounds consisting of 1 particle
+		for (int i = 0; i < MAX_COMPOUNDS; i++) {
+			connected_compound_id[i * max_bonded_compounds] = i;
+		}
+	}
+
+	// If the lut between the two compounds exists, returns ptr to it, otherwise returns nullptr
+	__device__ __host__ BondedParticlesLUT* get(int id_self, int id_other){
+		for (int i = 0; i < max_bonded_compounds; i++) {
+			const int index = id_self * max_bonded_compounds + i;
+			if (connected_compound_id[index] == id_other) {
+				return &luts[index];
+			}
+		}
+		return nullptr;
+	}
+
+	__host__ void addNewConnectedCompoundIfNotAlreadyConnected(int id_self, int id_other) {
+		for (int i = 0; i < max_bonded_compounds; i++) {
+			const int index = id_self * max_bonded_compounds + i;
+
+			// If already conencted, do nothing
+			if (connected_compound_id[index] == id_other) {
+				return;
+			}
+
+			// If not connected add
+			if (connected_compound_id[index] == -1) {
+				connected_compound_id[index] = id_other;
+				return;
+			}
+		}
+
+		// Not connected, and no more room
+		throw std::exception("Cannot connect another compound to LUTMan");
+	}
+};
 
 
 

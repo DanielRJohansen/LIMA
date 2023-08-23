@@ -108,7 +108,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 
 	box->owns_members = true;
 	box->is_on_device = false;
-	printf("Box copied to host\n");
+	//printf("Box copied to host\n");
 	return box;
 }
 

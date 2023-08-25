@@ -87,7 +87,7 @@ const bool POSTSIM_ANAL = true;
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
-const int MAX_SOLVENTS = INT32_MAX-1;
+const int MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 //const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
 //const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file

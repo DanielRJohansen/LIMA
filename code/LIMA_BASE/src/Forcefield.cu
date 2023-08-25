@@ -79,6 +79,7 @@ std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsed
 		}
 	}
 
+	assert(atomtypes.size() < MAX_ATOM_TYPES);
 	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", atomtypes.size()); }
 	return atomtypes;
 }

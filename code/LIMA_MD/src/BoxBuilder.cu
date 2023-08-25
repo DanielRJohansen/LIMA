@@ -170,6 +170,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		}
 		else {
 			// TODO: I should fill this out
+			throw std::exception("No room for solvent");
 		}
 	}
 
@@ -222,7 +223,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimPara
 	// Do the same for solvents
 	{
 		// Create temporary storage
-		std::array<SolventBlock, SolventBlocksCircularQueue::blocks_per_grid> solvents_t0{};
+		std::vector<SolventBlock> solvents_t0(SolventBlocksCircularQueue::blocks_per_grid);
 
 		// Copy only the current step to temporary storage
 		SolventBlock* src_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);
@@ -236,7 +237,6 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimPara
 		// Copy the temporary storage back into the queue
 		SolventBlock* dest_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, 0);
 		memcpy(dest_t0, solvents_t0.data(), SolventBlocksCircularQueue::grid_bytesize);
-		int a = 0;
 	}
 }
 

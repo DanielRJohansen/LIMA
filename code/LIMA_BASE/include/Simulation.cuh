@@ -49,8 +49,8 @@ struct SimParams {
 
 struct BoxParams {
 	int n_compounds = 0;
-	uint16_t n_solvents = 0;
-	uint32_t total_particles_upperbound = 0;
+	int64_t n_solvents = 0;
+	int64_t total_particles_upperbound = 0;
 };
 
 // Params in simulation host-side only

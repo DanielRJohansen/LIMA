@@ -56,7 +56,7 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 
 		// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
-		if (*bonded_particles_lut.get(threadIdx.x, neighborparticle_id)) { continue; }
+		if (bonded_particles_lut.get(threadIdx.x, neighborparticle_id)) { continue; }
 
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
@@ -91,7 +91,7 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 	for (int i = 0; i < compound->n_particles; i++) {
 
 		// Skip if particle is self or bonded
-		if (i == threadIdx.x || (*bonded_particles_lut->get(threadIdx.x, i))) { continue; }
+		if (i == threadIdx.x || (bonded_particles_lut->get(threadIdx.x, i))) { continue; }
 
 		force += LimaForcecalc::calcLJForce(compound_state->positions[threadIdx.x], compound_state->positions[i], data_ptr, potE_sum,
 			calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]),
@@ -338,7 +338,8 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	if (threadIdx.x < MAX_COMPOUND_PARTICLES) {
 		const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x];// +*utility_coord;
 		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3() + *utility_coord;
-	}	
+	}
+	__syncthreads();
 }
 
 
@@ -540,8 +541,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
-
-
+		__syncthreads();
 		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeAnglebondForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(&compound, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
@@ -560,7 +560,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_float3);
 
-
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		const bool compounds_are_bonded = compoundpair_lut != nullptr;
 		if (compounds_are_bonded) {
@@ -571,7 +570,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 				force += computeIntercompoundLJForces(compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
 					&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
 			}
-			__syncthreads();
 		}
 		else {
 			if (threadIdx.x < compound.n_particles) {
@@ -579,6 +577,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 					&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id);
 			}
 		}
+		__syncthreads();
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 

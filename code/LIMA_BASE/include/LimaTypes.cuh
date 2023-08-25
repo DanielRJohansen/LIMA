@@ -453,23 +453,23 @@ public:
 	}
 	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; }
 
-	__host__ __device__ T* get(int i1, int i2) { return &matrix[i1 + i2 * m_len]; }
+	__host__ __device__ T get(int i1, int i2) const { return matrix[i1 + i2 * m_len]; }
 
 	__host__ void set(int i1, int i2, T object) { matrix[i1 + i2 * m_len] = object; }
 
-	__device__ void load(FixedSizeMatrix<T, len>& src) {
+	__device__ void load(const FixedSizeMatrix<T, len>& src) {
 		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
 			matrix[i] = src.get(i);
 		}
 	}
 
-private:		
+private:
 	const static int m_len = len;
 	const static int m_size = m_len * m_len;
 	T matrix[m_len * m_len];
 
 	// To be used for loading only
-	__device__ T get(int index) { return matrix[index]; }
+	__device__ T get(int index) const { return matrix[index]; }
 };
 
 using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
@@ -486,6 +486,7 @@ public:
 	BondedParticlesLUTManager() {
 		for (int i = 0; i < n_elements; i++) {
 			connected_compound_id[i] = -1;
+			luts[i] = BondedParticlesLUT(false);
 		}
 
 		// Initially connect all luts to itself, because all compounds asummes this exists.

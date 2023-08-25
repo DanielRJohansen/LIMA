@@ -476,7 +476,7 @@ using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
 
 
 class BondedParticlesLUTManager {
-	static const int max_bonded_compounds = 3;
+	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
 	static const int n_elements = MAX_COMPOUNDS * max_bonded_compounds;
 	BondedParticlesLUT luts[n_elements];
 	int connected_compound_id[n_elements];

@@ -447,6 +447,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 				bridge.addBond(particle_info, bond);
 			}
 			catch (std::exception){
+				int a = 0;
 				// TODO: fix this
 				// In this case, a bond is made between two non-adjecent residues, to form a plate or a helix
 				// For now, simply ignore these bonds

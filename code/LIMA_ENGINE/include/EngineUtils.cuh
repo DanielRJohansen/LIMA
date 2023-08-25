@@ -169,20 +169,10 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__host__ static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
-		//float epsilon = 1.1;
-		//if (position.largestMagnitudeElement() / epsilon > BOXGRID_NODE_LEN / NANO_TO_LIMA) { // Check if position is somewhat correctly placed
-		//	throw "Tried to place a position that was not correcly assigned a node"; 
-		//}
-
 		// Subtract nodeindex from abs position to get relative position
 		LimaPosition hyperpos = absolute_position;
 		LIMAPOSITIONSYSTEM::applyHyperpos(createLimaPosition(nodeindex), hyperpos);
 		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
-		auto absposf = absolute_position.toFloat3();
-		auto abs_hyperposf = hyperpos.toFloat3();
-		auto origof = createLimaPosition(nodeindex).toFloat3();
-		auto relposf = relpos.toFloat3();
-		auto p = createLimaPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * max_node_diff) {
 			throw "Tried to place a position that was not correcly assigned a node";
@@ -212,7 +202,7 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
 	/// <returns></returns>
-	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index=0) {
+	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..

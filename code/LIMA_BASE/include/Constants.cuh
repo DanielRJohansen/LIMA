@@ -103,8 +103,8 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
-const int MAX_COMPOUND_PARTICLES = 32;	// If we go larger, a single compound can stretch over 2 nm!
-const int MAX_COMPOUNDS = 1024;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
+const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
+const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
 const int NEIGHBORLIST_MAX_COMPOUNDS = 256;
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
@@ -123,7 +123,7 @@ const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shif
 // Related to forcefield / constant memory
 const int MAX_ATOM_TYPES = 32;
 
-constexpr float MAX_COMPOUND_RADIUS = 1.5f;	// was 1.5
+constexpr float MAX_COMPOUND_RADIUS = 1.8f;	// was 1.5
 // -------------------------------------------------------------------------------------------------------------- //
 
 

@@ -149,11 +149,8 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
 		force += LimaForcecalc::calcLJForce<em_variant>(self_pos, positions[i], data_ptr, potE_sum,
-		//force += LimaForcecalc::calcLJForce<em_variant>(self_pos, Float3(0,0,0), data_ptr, potE_sum,
 			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
-			//forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
-			//forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 			LimaForcecalc::CalcLJOrigin::ComSol,
 			sol_id, -1
 		);
@@ -542,9 +539,8 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		data_ptr[3] = simparams.step + 1;
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	int index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+	int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 	float potE_sum = compound.potE_interim[threadIdx.x];
-
 
 	Float3 force = compound.forces[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
@@ -566,7 +562,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //	
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
-		
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_float3);
 
@@ -630,7 +625,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	// From this point on, the origonal relpos is no longer acessible 
 	{
 		if (threadIdx.x < compound.n_particles) {	
-			const auto mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+
+			if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0) {
+				printf("here %f %f %f\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass);
+			}
 
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
@@ -749,10 +748,6 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			// Then load atomtypes of neighboring compound
 			if (threadIdx.x < n_compound_particles) {
 				utility_buffer_small[threadIdx.x] = neighborcompound->atom_types[threadIdx.x];
-				if (utility_buffer_small[threadIdx.x] > 28 || utility_buffer_small[threadIdx.x] < 0)
-					printf("%d\n", utility_buffer_small[threadIdx.x]);
-				//utility_buffer[threadIdx.x].print();
-				//relpos_self.print();
 			}
 			__syncthreads();
 

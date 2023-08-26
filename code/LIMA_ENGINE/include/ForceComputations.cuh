@@ -148,6 +148,15 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 		force_spillover.print('s');
 		results[0].print('0');
 	}
+
+	if (isnan(potE) && r12.len() == 0) {
+		printf("Bad torsion: Block %d t %d\n", blockIdx.x, threadIdx.x);
+		//printf("torsion %f torque %f\n", torsion, torque);
+		//r12.print('1');
+		//pos_left.print('L');
+		//pos_lm.print('l');
+		potE = 6969696969.f;
+	}
 #endif
 }
 

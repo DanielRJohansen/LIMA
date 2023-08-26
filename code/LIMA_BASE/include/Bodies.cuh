@@ -84,45 +84,7 @@ struct ImproperDihedralBond {
 
 
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
-class NeighborList {
-public:
-	__host__ void addCompound(uint16_t new_id);
-	__host__ void removeCompound(uint16_t new_id);
 
-	__host__ void addGridnode(uint16_t gridnode_id);
-	__host__ void removeGridnode(uint16_t gridnode_id);
-
-
-
-	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
-		n_compound_neighbors = nl_ptr->n_compound_neighbors;
-		n_gridnodes = nl_ptr->n_gridnodes;
-	}
-	__device__ void loadData(NeighborList* nl_ptr) {
-		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
-		//if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
-		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
-
-		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
-		for (int i = threadIdx.x; i < n_compound_neighbors; i++) {
-			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
-		}
-
-		for (int i = threadIdx.x; i < n_gridnodes; i++) {
-			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
-		}	
-	}
-
-
-	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
-	uint16_t n_compound_neighbors = 0;
-
-	static const int max_gridnodes = 96;	// Arbitrary value
-	uint16_t gridnode_ids[max_gridnodes];
-	uint8_t n_gridnodes = 0;
-
-	int associated_id = -1;
-};
 
 
 
@@ -625,6 +587,7 @@ struct CompoundBridge {
 	uint8_t n_improperdihedrals = 0;
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE];
 
+	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
 	uint16_t compound_id_left{};
 	uint16_t compound_id_right{};
 
@@ -698,7 +661,46 @@ struct ForceField_NB {
 
 
 
+class NeighborList {
+public:
+	__host__ void addCompound(uint16_t new_id);
+	__host__ void removeCompound(uint16_t new_id);
 
+	__host__ void addGridnode(uint16_t gridnode_id);
+	__host__ void removeGridnode(uint16_t gridnode_id);
+
+
+
+	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
+		n_compound_neighbors = nl_ptr->n_compound_neighbors;
+		n_gridnodes = nl_ptr->n_gridnodes;
+	}
+	__device__ void loadData(NeighborList* nl_ptr) {
+		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
+		//if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
+		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
+
+		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
+		for (int i = threadIdx.x; i < n_compound_neighbors; i++) {
+			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
+		}
+
+		for (int i = threadIdx.x; i < n_gridnodes; i++) {
+			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
+		}
+	}
+
+	static_assert(MAX_COMPOUNDS < UINT16_MAX, "Neighborlist cannot handle such large compound ids");
+	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
+	uint16_t n_compound_neighbors = 0;
+
+	static const int max_gridnodes = 96;	// Arbitrary value
+	static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
+	uint16_t gridnode_ids[max_gridnodes];
+	uint8_t n_gridnodes = 0;
+
+	int associated_id = -1;
+};
 
 
 

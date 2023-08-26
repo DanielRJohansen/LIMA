@@ -335,7 +335,7 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 				const int id_left =  static_cast<int>(compounds.size()) - 2;
 				const int id_right = static_cast<int>(compounds.size()) - 1;
 
-				compound_bridges.push_back(BridgeFactory{ { id_left, id_right} });
+				compound_bridges.push_back(BridgeFactory{(int)compound_bridges.size(), { id_left, id_right} });
 
 				bridges_to_previous_compound = true;
 			}
@@ -415,7 +415,7 @@ BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* id
 		}
 	}
 
-	throw std::exception("Failed to find the bridge");
+	throw std::exception(std::format("Failed to find the bridge ({})", n_ids).c_str());
 }
 
 template <int n_ids>
@@ -442,16 +442,20 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 	for (auto& bond : bonds) {
 
 		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particle_info)) {
+			BridgeFactory* bridge;
 			try {
-				BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
-				bridge.addBond(particle_info, bond);
+				bridge = &getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
+				
 			}
-			catch (std::exception){
+			catch (const std::exception& ex){
 				int a = 0;
+				std::cout << ex.what() << "\n";
 				// TODO: fix this
 				// In this case, a bond is made between two non-adjecent residues, to form a plate or a helix
 				// For now, simply ignore these bonds
+				continue;
 			}
+			bridge->addBond(particle_info, bond);
 
 		}
 		else {
@@ -647,6 +651,10 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 }
 
 template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const DihedralBond& bondtype) {
+
+	if (bridge_id == 377) {
+		printf("%d %d %d %d\n", particle_info[bondtype.atom_indexes[0]].gro_id, particle_info[bondtype.atom_indexes[1]].gro_id, particle_info[bondtype.atom_indexes[2]].gro_id, particle_info[bondtype.atom_indexes[3]].gro_id);
+	}
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
@@ -659,6 +667,8 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 		bondtype.k_phi,
 		bondtype.n
 	};
+
+
 }
 
 template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
@@ -677,18 +687,37 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 
 
 uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
-	if (particle_info.local_id_bridge == -1) {
-		if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
-		particle_info.local_id_bridge = n_particles;
-		particle_refs[n_particles++] = ParticleReference{ 
-			particle_info.compound_index, 
-			particle_info.local_id_compound,
-#ifdef LIMAKERNELDEBUGMODE
-			particle_info.gro_id
-#endif
-		};
+
+	// Assign bridge id to particle if it doesnt have one
+	if (particle_info.bridge_id == -1) {
+		particle_info.bridge_id = this->bridge_id;
 	}
-	return particle_info.local_id_bridge;
+	// If it has another id, fail as we dont support that for now
+	else if (particle_info.bridge_id != this->bridge_id) {
+		printf("Particle gro id %d\n", particle_info.gro_id);
+		throw std::exception(std::format("Cannot add particle to this bridge ({}) as it already has another bridge ({})", bridge_id, particle_info.bridge_id).c_str());
+	}
+
+	// Particle already has a local id in the bridge
+	if (particle_info.local_id_bridge != -1) {
+		return particle_info.local_id_bridge;
+	}
+	// Else, make particle reference
+	else {
+		if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
+
+		particle_info.local_id_bridge = n_particles;
+
+		particle_refs[n_particles++] = ParticleReference{
+			particle_info.compound_index,
+			particle_info.local_id_compound,
+	#ifdef LIMAKERNELDEBUGMODE
+			particle_info.gro_id
+	#endif
+		};
+
+		return particle_info.local_id_bridge;
+	}	
 }
 
 

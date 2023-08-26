@@ -100,7 +100,9 @@ struct ParticleInfo {
 	int local_id_compound = -1;	// index in compound
 
 	// First available (if) when added to bridge
+	int bridge_id = -1;
 	int local_id_bridge = -1;	// index in bridge
+	
 };
 
 
@@ -135,7 +137,7 @@ public:
 
 class BridgeFactory : public CompoundBridge {
 public:
-	BridgeFactory(const std::array<int, 2>& compound_ids) {
+	BridgeFactory(int bridge_id, const std::array<int, 2>& compound_ids) :bridge_id(bridge_id){
 		compound_id_left = compound_ids[0];
 		compound_id_right = compound_ids[1];
 	}
@@ -152,6 +154,7 @@ public:
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+	const int bridge_id;
 };
 
 

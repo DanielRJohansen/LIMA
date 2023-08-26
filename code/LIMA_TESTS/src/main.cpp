@@ -49,7 +49,7 @@ int main() {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;
 	}
 	catch (const std::string& ex) {
-		std::cerr << "Caught exception: " << ex.c_str() << std::endl;
+		std::cerr << "Caught string: " << ex.c_str() << std::endl;
 	}
 	catch (...) {
 		std::cerr << "Caught unnamed exception";

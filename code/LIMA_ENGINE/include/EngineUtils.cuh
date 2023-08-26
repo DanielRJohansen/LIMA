@@ -493,10 +493,10 @@ namespace EngineUtils {
 	}
 
 	// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	__device__ static uint32_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
-		const uint32_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
-		const uint32_t step_offset = steps_since_transfer * total_particles_upperbound;
-		const uint32_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+	__device__ static int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+		const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
+		const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
+		const int64_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		return step_offset + compound_offset + particle_id_local;
 	}
 
@@ -559,10 +559,14 @@ namespace EngineUtils {
 	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers) {
 		if (threadIdx.x >= compound.n_particles) { return; }
 
-		const uint32_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
+
+		if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0) {
+			printf("%f %f\n", *potE_sum, compound.vels_prev[threadIdx.x].len());
+		}
 
 		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
@@ -577,7 +581,7 @@ namespace EngineUtils {
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers) {
 		if (solvent_active) {
-			const uint32_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
+			const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
 			//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
 			if (solventblock.ids[threadIdx.x] == 0) {
 				//LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]).print('0');

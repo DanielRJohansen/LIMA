@@ -27,41 +27,48 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 	__shared__ Compound compound;
 
 
-	const uint64_t step = blockIdx.x;
-	const int compound_index = blockIdx.y;
-	energy[threadIdx.x] = Float3(0.f);
+	const int64_t step = blockIdx.x;	// Step relative to current batch
+	const int64_t compound_index = blockIdx.y;
+	const int64_t particle_index = threadIdx.x;
+	energy[particle_index] = Float3(0.f);
 
 
-	if (threadIdx.x == 0) {
+	if (particle_index == 0) {
 		data_out[compound_index + (step) * box->boxparams.n_compounds] = Float3{};
 		compound = box->compounds[compound_index];
 	}
 	__syncthreads();
 
-	if (threadIdx.x >= compound.n_particles) {
+	if (particle_index >= compound.n_particles) {
 		return;
 	}
 	__syncthreads();
 
-	const uint8_t& atom_type = compound.atom_types[threadIdx.x];
+	const uint8_t atom_type = compound.atom_types[particle_index];
 	const float mass = box->forcefield->particle_parameters[atom_type].mass;
 
-	const uint32_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
-	const int step_offset = step * box->boxparams.total_particles_upperbound;
-	const float potE = potE_buffer[threadIdx.x + compound_offset + step_offset];
+	const int64_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
+	const int64_t step_offset = step * box->boxparams.total_particles_upperbound;
+	const float potE = potE_buffer[particle_index + compound_offset + step_offset];
 
-	const float velocity = vel_buffer[threadIdx.x + compound_offset + step_offset];
-	const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);	// remove direction from vel
+	const float speed = vel_buffer[particle_index + compound_offset + step_offset];
+	const float kinE = EngineUtils::calcKineticEnergy(speed, mass);	// remove direction from vel
 
 	const float totalE = potE + kinE;
 
-	energy[threadIdx.x] = Float3(potE, kinE, totalE);
+	//if (isnan(totalE)) {
+	if (compound_index == 37 && step == 0 && particle_index < 10) {
+		printf("com %d p %d step %d pot %f kin %f type %d mass %f type_src %d\n", (int)compound_index, (int)particle_index, (int)step, potE, kinE, (int) atom_type, mass, compound.atom_types[threadIdx.x]);
+		//printf("pot %f kin %f type %d mass %f type_src %d vel %f\n",potE, kinE, (int)atom_type, mass, compound.atom_types[threadIdx.x], speed);
+	}
+
+	energy[particle_index] = Float3(potE, kinE, totalE);
 	__syncthreads();
 
 	distributedSummation(energy, MAX_COMPOUND_PARTICLES);
 	__syncthreads();
 
-	if (threadIdx.x == 0) {
+	if (particle_index == 0) {
 		data_out[compound_index + (step) * box->boxparams.n_compounds] = energy[0];
 	}
 }
@@ -112,7 +119,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	average_energy.resize(n_steps - 2);	// Ignore first and last step
 
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
-	int64_t max_steps_per_kernel = 1000;
+	int64_t max_steps_per_kernel = 100;
 	int64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
 	int64_t max_values_per_kernel = max_steps_per_kernel * particles_per_step;							// Pad steps with 2 for vel calculation
 
@@ -121,9 +128,9 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
 	cudaMalloc(&vel_buffer_device, sizeof(float) * max_values_per_kernel);
 
-	for (int i = 0; i < ceil((double)n_steps / (double)max_steps_per_kernel); i++) {
-		int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
-		int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_steps - step_offset);
+	for (int64_t i = 0; i < ceil((double)n_steps / (double)max_steps_per_kernel); i++) {
+		const int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
+		const int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_steps - step_offset);
 
 		cudaMemcpy(potE_buffer_device, &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);

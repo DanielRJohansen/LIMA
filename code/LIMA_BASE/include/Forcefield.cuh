@@ -13,25 +13,15 @@ constexpr int ATOMTYPE_SOLVENT = 0;
 
 using std::string;
 
-
 class Forcefield {
 public:
-	struct Topology {
-		std::vector<SingleBond> singlebonds;
-		std::vector<AngleBond> anglebonds;
-		std::vector<DihedralBond> dihedralbonds;
-		std::vector<ImproperDihedralBond> improperdihedralbonds;
-	};
+
 
 	Forcefield(VerbosityLevel vl);
 
 
 	void loadForcefield(std::string molecule_dir);
 	int getAtomtypeID(int global_id) const;
-
-
-	const Topology& getTopology() const { return topology; }
-
 
 
 	ForceField_NB getNBForcefield() const {
@@ -62,15 +52,11 @@ private:
 	ForceField_NB forcefield_nb;
 	std::map<int, int> globaldToAtomtypeMap;
 
-	Topology topology;
-
 
 	VerbosityLevel vl = SILENT;
 
 	std::vector<NBAtomtype> loadAtomTypes(const SimpleParsedFile& nonbonded_parsed);
 	std::map<int, int> loadAtomTypeMap(const SimpleParsedFile& nonbonded_parsed);
-
-	Topology loadTopology(const SimpleParsedFile& bonded_parsed);
 
 	void loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes);
 

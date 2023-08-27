@@ -35,9 +35,6 @@ void Forcefield::loadForcefield(string molecule_dir) {
 	// Find mappings between the atoms in the simulation and the nb forcefield
 	globaldToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
 
-	// Load the topology with their included forcefield parameters
-	topology = loadTopology(bonded_parsed);
-
 	forcefield_loaded = true;
 
 	if (vl >= CRITICAL_INFO) {
@@ -92,72 +89,14 @@ std::map<int, int> Forcefield::loadAtomTypeMap(const SimpleParsedFile& parsedfil
 		if (row.section == "atomtype_map") {
 			const int global_id = stoi(row.words[0]);
 			const int gro_id = stoi(row.words[1]);
-			const int atomtype_id = stoi(row.words[2]);
+			const int chain_id = stoi(row.words[2]);
+			const int atomtype_id = stoi(row.words[3]);
 			globalidToType.insert({ global_id, atomtype_id });
 		}	
 	}
 	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", globalidToType.size()); }
 
 	return globalidToType;
-}
-
-
-Forcefield::Topology Forcefield::loadTopology(const SimpleParsedFile& parsedfile)
-{
-	Topology topology;
-
-	for (auto& row : parsedfile.rows) {
-		if (row.section == "singlebonds") {
-			assert(row.words.size() == 6);
-
-			std::array<uint32_t, 2> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 2; i++) {
-				gro_ids[i] = stoi(row.words[i]);
-			}
-			const float b0 = stof(row.words[4]) * NANO_TO_LIMA;							// convert [nm] to [lm]
-			// Units of kb is [J/mol/nm^2]. One nm is for the error in forcecalc, and one distance in integration
-			//const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
-			const float kb = stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
-
-			topology.singlebonds.emplace_back(SingleBond{ gro_ids, b0, kb });
-		}
-		else if (row.section == "anglebonds") {
-			assert(row.words.size() == 8);
-
-			std::array<uint32_t, 3> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 3; i++) {
-				gro_ids[i] = stoi(row.words[i]);
-			}
-			const float theta0 = stof(row.words[6]);
-			const float ktheta = stof(row.words[7]);
-			topology.anglebonds.emplace_back(AngleBond{ gro_ids, theta0, ktheta });
-		}
-		else if (row.section == "dihedralbonds") {
-			assert(row.words.size() == 11);
-
-			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 4; i++) {
-				gro_ids[i] = stoi(row.words[i]);
-			}
-			const float phi0 = stof(row.words[8]);
-			const float kphi = stof(row.words[9]);
-			const float multiplicity = stof(row.words[10]);
-			topology.dihedralbonds.emplace_back(DihedralBond{ gro_ids, phi0, kphi, multiplicity });
-		}
-		else if (row.section == "improperdihedralbonds") {
-			assert(row.words.size() == 10);
-
-			std::array<uint32_t, 4> gro_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 4; i++) {
-				gro_ids[i] = stoi(row.words[i]);
-			}
-			const float psi0 = stof(row.words[8]);
-			const float kpsi = stof(row.words[9]);
-			topology.improperdihedralbonds.emplace_back(ImproperDihedralBond{ gro_ids, psi0, kpsi });
-		}
-	}
-
-	return topology;
 }
 
 void Forcefield::loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes) {

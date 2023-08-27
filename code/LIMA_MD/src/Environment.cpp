@@ -44,7 +44,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		work_folder, 
 		SILENT, 
 		gro_path, 
-		topol_path,
+		work_folder+"/molecule/",
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
 		true);
 	boxbuilder->addCompoundCollection(simulation.get(), collection);

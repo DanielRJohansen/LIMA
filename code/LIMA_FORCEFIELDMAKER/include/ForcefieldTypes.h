@@ -173,10 +173,11 @@ struct NB_Atomtype {
 
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int global_id, int gro_id, const std::string& atomtype, const std::string& atomname) : global_id(global_id), gro_id(gro_id), atomname(atomname), atomtype(atomtype) {}
+	Atom(int global_id, int gro_id, int chain_id, const std::string& atomtype, const std::string& atomname) : global_id(global_id), gro_id(gro_id), chain_id(chain_id), atomname(atomname), atomtype(atomtype) {}
 	Atom(const Atom& atom) = default;
 	int global_id;
 	int gro_id;										// Come from topol.top file
+	int chain_id;
 	std::string atomtype;	
 	std::string atomname;	// I dunno what this is for
 	int atomtype_id;				// Asigned later
@@ -209,7 +210,7 @@ public:
 	void insert(int chain_id, int atom_gro_id, const std::string& atomtype, const std::string& atomname) {
 		const int global_id = atoms.size();
 		map[chain_id][atom_gro_id] = global_id;
-		atoms.push_back(Atom{ global_id , atom_gro_id, atomtype, atomname });
+		atoms.push_back(Atom{ global_id , atom_gro_id, chain_id, atomtype, atomname });
 	}
 	bool exists(int chain_id, int atom_gro_id) const {
 		auto chain_it = map.find(chain_id);

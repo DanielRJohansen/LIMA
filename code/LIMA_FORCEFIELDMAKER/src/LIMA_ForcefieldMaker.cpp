@@ -15,38 +15,55 @@
 using std::string, std::cout, std::endl, std::to_string;
 using FileRows = std::vector<std::vector<std::string>>;
 
-struct BondedTypes {
-	// Contains only 1 entry for each type that exists
-	std::unordered_map<std::string, NB_Atomtype> atomToTypeMap;	// THis is a bad name
-	std::vector<Singlebondtype> singlebonds;
-	std::vector<Anglebondtype> anglebonds;
-	std::vector<Dihedralbondtype> dihedralbonds;
-	std::vector<Improperdihedralbondtype> improperdeihedralbonds;
+namespace ForcefieldMakerTypes {
+	struct BondedTypes {
+		// Contains only 1 entry for each type that exists
+		std::unordered_map<std::string, NB_Atomtype> atomToTypeMap;	// THis is a bad name
+		std::vector<Singlebondtype> singlebonds;
+		std::vector<Anglebondtype> anglebonds;
+		std::vector<Dihedralbondtype> dihedralbonds;
+		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
 
-	// This structure is for storing the mass of an atomtype, before we get to the NBATOMTYPE section
-	std::unordered_map<std::string, float> atomnameToMassMap;
+		// This structure is for storing the mass of an atomtype, before we get to the NBATOMTYPE section
+		std::unordered_map<std::string, float> atomnameToMassMap;
 
-};
+	};
 
-// TODO: Change all of these so they don't have both the atomtypename and the gro_ids?
-struct Topology {
-	// Contains only 1 entry for each entry in the topology file
-	AtomInfoTable atominfotable;
+	// TODO: Change all of these so they don't have both the atomtypename and the gro_ids?
+	struct Topology {
+		// Contains only 1 entry for each entry in the topology file
+		AtomInfoTable atominfotable;
 
-	std::unordered_set<std::string> active_atomtypes;
+		std::unordered_set<std::string> active_atomtypes;
 
-	std::vector<Singlebondtype> singlebonds{};
-	std::vector<Anglebondtype> anglebonds{};
-	std::vector<Dihedralbondtype> dihedralbonds{};
-	std::vector<Improperdihedralbondtype> improperdeihedralbonds{};
-};
+		std::vector<Singlebondtype> singlebonds;
+		std::vector<Anglebondtype> anglebonds;
+		std::vector<Dihedralbondtype> dihedralbonds;
+		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
+	};
 
-struct AtomtypeMapping {
-	AtomtypeMapping(int global, int gro, int atomtype_id) : global_id(global), gro_id(gro), atomtype_id(atomtype_id) {}
-	const int global_id;	// Given by LIMA
-	const int gro_id;		// not unique
-	const int atomtype_id;	// simulation specific
-};
+	struct TopologyTest {
+		// Contains only 1 entry for each entry in the topology file
+		AtomInfoTable atominfotable;
+
+		std::unordered_set<std::string> active_atomtypes;
+
+		std::vector<Singlebondtype> singlebonds;
+		std::vector<Anglebondtype> anglebonds;
+		std::vector<Dihedralbondtype> dihedralbonds;
+		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
+	};
+
+	struct AtomtypeMapping {
+		AtomtypeMapping(int global, int gro, int chain_id, int atomtype_id) : global_id(global), gro_id(gro), chain_id(chain_id), atomtype_id(atomtype_id) {}
+		const int global_id;	// Given by LIMA
+		const int gro_id;		// not unique
+		const int chain_id;
+		const int atomtype_id;	// simulation specific
+	};
+}
+
+using namespace ForcefieldMakerTypes;
 
 
 const float water_mass = 15.999000f + 2.f * 1.008000f;
@@ -291,7 +308,7 @@ const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(cons
 
 	for (const Atom& atom : topology.atominfotable.getAllAtoms()) {
 		const int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
-		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, filted_atomtype_id });
+		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, filted_atomtype_id });
 	}
 	return map;
 }
@@ -326,13 +343,7 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 	}
 
 	file << FFPrintHelpers::titleH1("Forcefield Non-bonded");
-	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t atomtype}");
-	file << FFPrintHelpers::parserTitle("atomtype_map");
-	for (auto& mapping : atomtype_map) {
-		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.atomtype_id) << endl;
-	}
-	file << FFPrintHelpers::endBlock();
+
 
 	file << FFPrintHelpers::titleH2("Non-bonded parameters");
 	file << FFPrintHelpers::titleH3("{atom_type \t type_id \t mass [g/mol] \t sigma [nm] \t epsilon [J/mol]}");
@@ -342,6 +353,16 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 		file << atomtype.type << delimiter << to_string(atomtype.atnum_local) << delimiter << to_string(atomtype.mass) << delimiter << to_string(atomtype.sigma) << delimiter << to_string(atomtype.epsilon) << endl;
 	}
 	file << FFPrintHelpers::endBlock();
+
+
+	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t atomtype}");
+	file << FFPrintHelpers::parserTitle("atomtype_map");
+	for (auto& mapping : atomtype_map) {
+		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.chain_id) << delimiter << to_string(mapping.atomtype_id) << endl;
+	}
+	file << FFPrintHelpers::endBlock();
+
 
 	file.close();
 }
@@ -458,14 +479,6 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 		loadFileIntoForcefield(parsedfile, forcefield);
 	}
 
-
-	//// Load the forcefields. 
-	//const SimpleParsedFile nb_parsedfile = Filehandler::parseItpFile(ff_nonbonded_path);
-	//loadFFnonbondedIntoForcefield(nb_parsedfile, forcefield);
-
-	//const SimpleParsedFile bonded_parsedfile = Filehandler::parseItpFile(ff_bonded_path);
-	//loadFFbondedIntoForcefield(bonded_parsedfile, forcefield);
-
 	// Load the topology
 	Topology topology{};
 	loadTopology(topology, molecule_dir, molecule_dir+"/topol.top", ignored_atomtype, current_chain_id);
@@ -480,4 +493,5 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	printFFNonbonded(Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff"), atomtype_map, atomtypes_filtered);
 	printFFBonded(Filehandler::pathJoin(molecule_dir, "ffbonded.lff"), topology);
 	logger.finishSection("Prepare Forcefield has finished");
+	Topology top;
 }

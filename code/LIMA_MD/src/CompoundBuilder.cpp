@@ -217,8 +217,13 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 			if (assumed_global_id >= particleinfotable.size()) {
 				throw std::exception(std::format("Trying to add more noncompounds from gro file than .lff file expects ({})", particleinfotable.size()).c_str());
 			}
-			if (record.gro_id != particleinfotable[assumed_global_id].gro_id) {
+
+			// Sadly the topol file will give new gro_ids to the atoms of chains above chain_A
+			/*if (record.gro_id != particleinfotable[assumed_global_id].gro_id) {
 				throw std::exception("gro_id of .gro file does not match that of .lff file");
+			}*/
+			if (record.atom_name != particleinfotable[assumed_global_id].atomname) {
+				throw std::exception("atom_name of .gro file does not match that of .lff file");
 			}
 
 			const bool is_new_res = residues.empty() || residues.back().gro_id != record.residue_number;
@@ -228,7 +233,6 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 			
 			residues.back().atoms_globalid.emplace_back(assumed_global_id);
 			nonsolvent_positions.emplace_back(record.position);
-			particleinfotable[assumed_global_id].atomname = record.atom_name;
 		}
 	}
 
@@ -253,8 +257,9 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 			const int gro_id = std::stoi(row.words[1]);
 			const int chain_id = std::stoi(row.words[2]);
 			const int atomtype_id = std::stoi(row.words[3]);
+			auto atomname = row.words[4];
 
-			topology.atoms.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id });
+			topology.atoms.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname });
 		}
 		else if (row.section == "singlebonds") {
 			assert(row.words.size() == 6);
@@ -324,8 +329,9 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 			const int gro_id = std::stoi(row.words[1]);
 			const int chain_id = std::stoi(row.words[2]);
 			const int atomtype_id = std::stoi(row.words[3]);
+			const auto& atomname = row.words[4];
 
-			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id });
+			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname });
 		}
 	}
 	return atominfotable;

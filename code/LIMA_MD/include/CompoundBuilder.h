@@ -62,9 +62,7 @@ struct ParticleInfo {
 	const int gro_id;
 	const int chain_id;
 	const int atomtype_id;
-
-	// Added when reading positions from gro, only for coloring, find a better solution later
-	std::string atomname;
+	const std::string atomname;
 
 	// Added when determining which residues of the chains are connected
 	std::vector<int> singlebonds_indices;	// indices of singlebonds of which this atom is in

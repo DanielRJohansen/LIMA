@@ -55,11 +55,12 @@ namespace ForcefieldMakerTypes {
 	};
 
 	struct AtomtypeMapping {
-		AtomtypeMapping(int global, int gro, int chain_id, int atomtype_id) : global_id(global), gro_id(gro), chain_id(chain_id), atomtype_id(atomtype_id) {}
+		AtomtypeMapping(int global, int gro, int chain_id, int atomtype_id, const std::string& name) : global_id(global), gro_id(gro), chain_id(chain_id), atomtype_id(atomtype_id), atomname(name) {}
 		const int global_id;	// Given by LIMA
 		const int gro_id;		// not unique
 		const int chain_id;
 		const int atomtype_id;	// simulation specific
+		const std::string atomname;
 	};
 }
 
@@ -308,7 +309,7 @@ const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(cons
 
 	for (const Atom& atom : topology.atominfotable.getAllAtoms()) {
 		const int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
-		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, filted_atomtype_id });
+		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, filted_atomtype_id, atom.atomname });
 	}
 	return map;
 }
@@ -356,10 +357,10 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 
 	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t atomtype}");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t atomtype_id \t atomname}");
 	file << FFPrintHelpers::parserTitle("atomtype_map");
 	for (auto& mapping : atomtype_map) {
-		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.chain_id) << delimiter << to_string(mapping.atomtype_id) << endl;
+		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.chain_id) << delimiter << to_string(mapping.atomtype_id) << delimiter << mapping.atomname << endl;
 	}
 	file << FFPrintHelpers::endBlock();
 

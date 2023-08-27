@@ -493,5 +493,4 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	printFFNonbonded(Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff"), atomtype_map, atomtypes_filtered);
 	printFFBonded(Filehandler::pathJoin(molecule_dir, "ffbonded.lff"), topology);
 	logger.finishSection("Prepare Forcefield has finished");
-	Topology top;
 }

@@ -12,14 +12,6 @@
 
 using namespace LIMA_Print;
 
-//
-//ParticleInfo& ParticleInfoLUT::get(int chain_id, int gro_id) {
-//	assert(chain_id < max_chains && gro_id < current_size);
-//	const int global_id = id_map[chain_id][gro_id];
-//	if (global_id == -1) { throw std::exception(std::format("Failed to map chain {} groid{} to global id", chain_id, gro_id).c_str()); }
-//
-//	return particle_info[global_id];
-//}
 
 struct GroRecord {
 	int residue_number{};
@@ -338,27 +330,6 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 	}
 	return atominfotable;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTable& particleinfolut, const std::vector<SingleBond>& singlebonds) {

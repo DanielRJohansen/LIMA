@@ -51,7 +51,6 @@ struct Residue {
 
 
 	std::vector<int> atoms_globalid;	// GID of atoms in residue
-	//std::vector<AtomEntry> atoms;
 	std::vector<int> bondedresidue_ids;	// Lima Ids of residue with which this shares a singlebond
 };
 
@@ -74,6 +73,7 @@ struct ParticleInfo {
 	int compound_index = -1;
 	int local_id_compound = -1;
 
+	// Added when allocated to a bridge
 	int bridge_id = -1;
 	int local_id_bridge = -1;
 };

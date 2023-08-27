@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <assert.h>
 #include <format>
+#include <unordered_set>
 
 using std::string, std::cout, std::endl, std::to_string;
 using FileRows = std::vector<std::vector<std::string>>;
@@ -30,7 +31,10 @@ struct BondedTypes {
 // TODO: Change all of these so they don't have both the atomtypename and the gro_ids?
 struct Topology {
 	// Contains only 1 entry for each entry in the topology file
-	AtomTable atomtable;
+	AtomInfoTable atominfotable;
+
+	std::unordered_set<std::string> active_atomtypes;
+
 	std::vector<Singlebondtype> singlebonds{};
 	std::vector<Anglebondtype> anglebonds{};
 	std::vector<Dihedralbondtype> dihedralbonds{};
@@ -38,8 +42,10 @@ struct Topology {
 };
 
 struct AtomtypeMapping {
-	const int gro_id;
-	const int atomtype_id; // simulation specific
+	AtomtypeMapping(int global, int gro, int atomtype_id) : global_id(global), gro_id(gro), atomtype_id(atomtype_id) {}
+	const int global_id;	// Given by LIMA
+	const int gro_id;		// not unique
+	const int atomtype_id;	// simulation specific
 };
 
 
@@ -152,24 +158,41 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 }
 
 template <int n>
-bool getGroidsAndTypenames(const std::vector<string>& words, const Topology& topology, std::array<int, n>& gro_ids, std::array<string, n>& atomtypes) {	
+bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTable& atominfotable, const int chain_id, std::array<int, n>& global_ids, std::array<string, n>& atomtypes) {
 	for (int i = 0; i < n; i++) {
-		gro_ids[i] = stoi(words[i]);
-		if (topology.atomtable.find(gro_ids[i]) == topology.atomtable.end()) {
-			return false;	// All atoms of bond is not available in simulation input files (topology atoms)
+		const int gro_id = stoi(words[i]);
+
+		if (!atominfotable.exists(chain_id, gro_id)) {
+			return false;
 		}
-		atomtypes[i] = topology.atomtable.find(gro_ids[i])->second.atomtype;
+		const Atom& atom = atominfotable.getConstRef(chain_id, gro_id);
+		global_ids[i] = atom.global_id;
+		atomtypes[i] = atom.atomtype;
 	}
 
 	return true;
 }
 
-Topology loadTopology(const SimpleParsedFile& parsedfile, const char ignored_atom) {
-	Topology topology;
+void loadTopology(Topology& topology, const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom, int& current_chain_id)
+{
+	const SimpleParsedFile parsedfile = Filehandler::parseTopFile(topol_path, false);
+
 
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
+		if (row.section == "molecules") {
+			assert(row.words.size() == 2);
+			const std::string include_top_file = molecule_dir + "/topol_" + row.words[0] + ".itp";
+			current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
+			loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id);
+		}
 
 		if (row.section == "atoms") {
+
+			if (current_chain_id == -1) {
+				current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
+			}
+
+
 			assert(row.words.size() >= 8);
 
 			const int gro_id = stoi(row.words[0]);
@@ -182,48 +205,50 @@ Topology loadTopology(const SimpleParsedFile& parsedfile, const char ignored_ato
 				continue;
 			}
 
-			topology.atomtable.insert(std::pair(gro_id, Atom(gro_id, atomtype, atomname)));
+			topology.atominfotable.insert(current_chain_id, gro_id, atomtype, atomname);
+			topology.active_atomtypes.insert(atomtype);
 		}
 		else if (row.section == "bonds") {
 			assert(row.words.size() >= 3);
 
-			std::array<int, 2> gro_ids;
+			std::array<int, 2> global_ids;
 			std::array<string, 2> atomtypes;
-			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
-				topology.singlebonds.emplace_back(Singlebondtype{ gro_ids, atomtypes});
-			}
-			
+			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+				topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes});
+			}		
 		}
 		else if (row.section == "angles") {
 			assert(row.words.size() >= 4);
 
-			std::array<int, 3> gro_ids;
+			std::array<int, 3> global_ids;
 			std::array<string, 3> atomtypes;
-			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
-				topology.anglebonds.emplace_back(Anglebondtype{ gro_ids, atomtypes });
+			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+				topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
 			}
 		}
 		else if (row.section == "dihedrals") {
 			assert(row.words.size() >= 5);
 
-			std::array<int, 4> gro_ids;
+			std::array<int, 4> global_ids;
 			std::array<string, 4> atomtypes;
-			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
-				topology.dihedralbonds.emplace_back(Dihedralbondtype{ gro_ids, atomtypes });
+			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+				topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
 			}
 		}
 		else if (row.section == "improperdihedrals") {
 			assert(row.words.size() >= 5);
 
-			std::array<int, 4> gro_ids;
+			std::array<int, 4> global_ids;
 			std::array<string, 4> atomtypes;
-			if (getGroidsAndTypenames(row.words, topology, gro_ids, atomtypes)) {
-				topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ gro_ids, atomtypes });
+			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+				topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ global_ids, atomtypes });
 			}
 		}
 	}
-	return topology;
 }
+
+
+
 
 // Adds entries of forcefield.atomtypes to a filtered list, if there is any reference to said atomtype in the topology
 const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedTypes& forcefield) {
@@ -231,8 +256,7 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedT
 
 	atomtypes_filtered.emplace_back(Water_atomtype);
 
-	for (const auto& record : topology.atomtable) {
-		const string& atomtype = record.second.atomtype;
+	for (const string& atomtype: topology.active_atomtypes) {
 
 		NB_Atomtype& atomtype_ff = forcefield.atomToTypeMap.find(atomtype)->second;
 
@@ -265,12 +289,9 @@ int findIndexOfAtomtype(const string& query_atomtype_name, const std::vector<NB_
 const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(const Topology& topology, const std::vector<NB_Atomtype>& atomtypes_filtered) {
 	std::vector<AtomtypeMapping> map;
 
-	for (const auto& e : topology.atomtable) {
-		const Atom& atom = e.second;
-
-		int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
-
-		map.push_back(AtomtypeMapping{ atom.gro_id, filted_atomtype_id });
+	for (const Atom& atom : topology.atominfotable.getAllAtoms()) {
+		const int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
+		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, filted_atomtype_id });
 	}
 	return map;
 }
@@ -306,10 +327,10 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 	file << FFPrintHelpers::titleH1("Forcefield Non-bonded");
 	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{gro_id \t atomtype}");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t atomtype}");
 	file << FFPrintHelpers::parserTitle("atomtype_map");
 	for (auto& mapping : atomtype_map) {
-		file << to_string(mapping.gro_id) << delimiter << to_string(mapping.atomtype_id) << endl;
+		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.atomtype_id) << endl;
 	}
 	file << FFPrintHelpers::endBlock();
 
@@ -334,38 +355,46 @@ void printFFBonded(const string& path, const Topology& topology) {
 
 	file << FFPrintHelpers::titleH1("Forcefield Bonded");
 	file << FFPrintHelpers::titleH2("Singlebonds");
-	file << FFPrintHelpers::titleH3("{ID_p1 \t ID_p2 \t Atomtype \t Atomtype \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
+	file << FFPrintHelpers::titleH3("{IDs (global & unique) \t Atomtypes \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
 	file << FFPrintHelpers::titleH3("Potential(r) = 0.5 * k_b * (r-b_0)^2");
 	file << FFPrintHelpers::parserTitle("singlebonds");
 	for (auto& bond : topology.singlebonds) {
-		file << to_string(bond.gro_ids[0]) << delimiter << to_string(bond.gro_ids[1]) << delimiter
-			<< bond.bonded_typenames[0] << delimiter << bond.bonded_typenames[1] << delimiter
-			<< to_string(bond.b0) << delimiter << to_string(bond.kb) << endl;
+		for (auto& global_id : bond.global_ids) {
+			file << to_string(global_id) << delimiter;
+		}
+		for (auto& type : bond.bonded_typenames) {
+			file << type << delimiter;
+		}
+		file << to_string(bond.b0) << delimiter << to_string(bond.kb) << endl;
 	}
 	file << FFPrintHelpers::endBlock();
 
 
 
 	file << FFPrintHelpers::titleH2("Anglebonds");
-	file << FFPrintHelpers::titleH3("{Atom-IDs \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
+	file << FFPrintHelpers::titleH3("{Atom-IDs (global & unique) \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
 	file << FFPrintHelpers::titleH3("Potential(theta) = 0.5 * k_theta * (theta-theta_0)^2");
 	file << FFPrintHelpers::parserTitle("anglebonds");
-	for (auto& angle : topology.anglebonds) {
-		file << to_string(angle.gro_ids[0]) << delimiter << to_string(angle.gro_ids[1]) << delimiter << to_string(angle.gro_ids[2]) << delimiter
-			<< angle.bonded_typenames[0] << delimiter << angle.bonded_typenames[1] << delimiter << angle.bonded_typenames[2] << delimiter
-			<< to_string(angle.theta0) << delimiter << to_string(angle.ktheta) << endl;
+	for (auto& bond : topology.anglebonds) {
+		for (auto& global_id : bond.global_ids) {
+			file << to_string(global_id) << delimiter;
+		}
+		for (auto& type : bond.bonded_typenames) {
+			file << type << delimiter;
+		}
+		file << to_string(bond.theta0) << delimiter << to_string(bond.ktheta) << endl;
 	}
 	file << FFPrintHelpers::endBlock();
 
 
 
 	file << FFPrintHelpers::titleH2("Dihedrals");
-	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
+	file << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
 	file << FFPrintHelpers::titleH3("Potential(phi) = k_phi * (1 + cos(n * phi - phi_0))");
 	file << FFPrintHelpers::parserTitle("dihedralbonds");
 	for (auto& dihedral : topology.dihedralbonds) {
-		for (auto& groid : dihedral.gro_ids) {
-			file << to_string(groid) << delimiter;
+		for (auto& global_id : dihedral.global_ids) {
+			file << to_string(global_id) << delimiter;
 		}
 		for (auto& type : dihedral.bonded_typenames) {
 			file << type << delimiter;
@@ -377,12 +406,12 @@ void printFFBonded(const string& path, const Topology& topology) {
 
 
 	file << FFPrintHelpers::titleH2("ImproperDihedrals");
-	file << FFPrintHelpers::titleH3("{Atom IDs \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
+	file << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
 	file << FFPrintHelpers::titleH3("Potential(psi) = 0.5 * k_psi * (psi-psi_0)^2");
 	file << FFPrintHelpers::parserTitle("improperdihedralbonds");
 	for (auto improper : topology.improperdeihedralbonds) {
-		for (auto& groid : improper.gro_ids) {
-			file << to_string(groid) << delimiter;
+		for (auto& global_id : improper.global_ids) {
+			file << to_string(global_id) << delimiter;
 		}
 		for (auto& type : improper.bonded_typenames) {
 			file << type << delimiter;
@@ -438,8 +467,8 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	//loadFFbondedIntoForcefield(bonded_parsedfile, forcefield);
 
 	// Load the topology
-	const SimpleParsedFile topology_parsedfile = Filehandler::parseTopFile(topol_path, m_verbose);
-	Topology topology = loadTopology(topology_parsedfile, ignored_atomtype);
+	Topology topology{};
+	loadTopology(topology, molecule_dir, molecule_dir+"/topol.top", ignored_atomtype, current_chain_id);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);

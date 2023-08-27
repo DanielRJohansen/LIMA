@@ -60,7 +60,7 @@ public:
 
 private:
 	ForceField_NB forcefield_nb;
-	std::map<int, int> groIdToAtomtypeMap;
+	std::map<int, int> globaldToAtomtypeMap;
 
 	Topology topology;
 

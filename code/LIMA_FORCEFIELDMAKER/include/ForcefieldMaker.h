@@ -24,11 +24,13 @@ public:
 
 
 private:
+
 	const std::string molecule_dir;
 	const std::string forcefield_dir;
 
 	const bool m_verbose;
 
+	int current_chain_id = -1;
 
 	std::string conf_path = "";
 	std::string topol_path = "";

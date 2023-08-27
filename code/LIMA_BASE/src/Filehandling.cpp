@@ -212,7 +212,7 @@ SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose
 
 SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose)
 {
-	assert(path.substr(path.length() - 4) == ".top");
+	assert(path.substr(path.length() - 4) == ".top" || path.substr(path.length() - 4) == ".itp");
 
 	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
 		if (row.size() == 3 && row[0][0] == '[') {

@@ -12,6 +12,17 @@
 
 using namespace LIMA_Print;
 
+
+ParticleInfo& ParticleInfoLUT::get(int chain_id, int gro_id) {
+	assert(chain_id < max_chains && gro_id < current_size);
+	const int global_id = id_map[chain_id][gro_id];
+	if (global_id == -1) { throw std::exception(std::format("Failed to map chain {} groid{} to global id", chain_id, gro_id).c_str()); }
+
+	return particle_info[global_id];
+}
+
+
+
 class MoleculeBuilder {
 public:
 	MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger>, const std::string& work_dir = "", VerbosityLevel vl = SILENT);
@@ -27,18 +38,18 @@ private:
 	std::vector<Float3> solvent_positions;
 	int32_t n_particles_in_residues = 0;
 
-	std::vector<ParticleInfo> particle_info;		// Uses gro 1-indexed 
+	std::unique_ptr<ParticleInfoLUT> particleinfolut;
 
 	std::vector<CompoundFactory> compounds;
 	std::vector<BridgeFactory> compound_bridges;
 
-	//BondedParticlesLUTManager* bp_lut_manager = nullptr;
 	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
 
 	std::unique_ptr<LimaLogger> m_logger;
 	const VerbosityLevel verbosity_level;
 	const Forcefield* forcefield;
 
+	const std::string work_dir;
 
 	// ------------------------------------ HELPER FUNCTIONS ------------------------------------ //
 
@@ -62,54 +73,9 @@ private:
 
 	// Find index of centermost particle, find "radius" of compound
 	void calcCompoundMetaInfo();
+
+	void insertSolventAtom(const GroRecord& record);
 };
-
-
-
-
-bool isLineCommented(const std::string& input, const std::vector<char>& comment_markers = { ';', '#' }) {
-	// Iterate through each character in the string
-	for (char c : input) {
-		// If the character is not a space, check if it's a comment marker
-		if (!std::isspace(c)) {
-			// Iterate through each comment marker in the vector
-			for (char comment_marker : comment_markers) {
-				if (c == comment_marker) {
-					return true; // The first non-space character is a comment marker
-				}
-			}
-			return false; // The first non-space character is not a comment marker
-		}
-	}
-	return false; // The string is empty or contains only spaces
-}
-
-std::vector<std::string> readFile(const std::string& file_path) {
-	// Check if file exists
-	std::ifstream file(file_path);
-	if (!file.good()) {
-		std::cerr << "Error: File " << file_path << " does not exist." << std::endl;
-		return {};
-	}
-
-	// Read file lines
-	std::vector<std::string> lines;
-	std::string line;
-	while (std::getline(file, line)) {
-		if (isLineCommented(line)) {continue;} // Skip comments
-		lines.push_back(line);
-	}
-
-	// Close file
-	file.close();
-
-	return lines;
-}
-
-
-
-
-
 
 MoleculeBuilder::MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger> logger, const std::string& work_dir, VerbosityLevel vl) :
 	m_logger(std::move(logger)),
@@ -117,7 +83,7 @@ MoleculeBuilder::MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger> log
 	forcefield(ff) 
 {}
 
-CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens) {
+CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) {
 
 	m_logger->startSection("Building Molecules");
 
@@ -170,7 +136,7 @@ GroRecord parseGroLine(const std::string& line) {
 	record.atom_name.erase(std::remove(record.atom_name.begin(), record.atom_name.end(), ' '), record.atom_name.end());
 
 	// Parse atom number (5 positions, integer)
-	std::istringstream(line.substr(15, 5)) >> record.atom_number;
+	std::istringstream(line.substr(15, 5)) >> record.gro_id;
 
 	// Parse position (in nm, x y z in 3 columns, each 8 positions with 3 decimal places)
 	std::istringstream(line.substr(20, 8)) >> record.position.x;
@@ -187,13 +153,12 @@ GroRecord parseGroLine(const std::string& line) {
 	return record;
 }
 
-
 void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 
 	const bool ignore_hydrogens = true;
 
 	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
-
+	
 
 	// First check box has correct size
 	if (parsedfile.rows.back().section != "box_size") {
@@ -210,9 +175,12 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 	if (parsedfile.rows[0].section != "n_atoms") {
 		throw std::exception("Expected first line of parsed gro file to contain atom count");
 	}
-	const int64_t n_atoms = std::stoll(parsedfile.rows[0].words[0]);
-	particle_info.resize(n_atoms);
+	const int n_atoms = std::stoi(parsedfile.rows[0].words[0]);
+	particleinfolut = std::make_unique<ParticleInfoLUT>(n_atoms);
 
+	int current_chain_id = 0;
+	int n_residues_added = 0;
+	int n_atoms_added = 0;
 
 
 	for (const auto& row : parsedfile.rows) {
@@ -224,49 +192,52 @@ void MoleculeBuilder::loadResiduesAndSolvents(const std::string gro_path) {
 			continue; 
 		}
 
-		// Is Solvent
-		if (record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH") {
+		const bool entry_is_solvent = record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH";
+		if (entry_is_solvent) {
 			solvent_positions.push_back(record.position);
 		}
-		else {	// Is in residue
-			// Belongs to current residue?
-			if (!residues.empty() && residues.back().gro_id == record.residue_number) {				
-				// Do nothing
-
-				// SAFETY CHECK: This is likely because we have molecules consisting of only 1 residue, so we can figure out which belongs to the same molecule!
-				if (residues.back().name != record.residue_name) { throw std::exception("Something went seriously wrong when handling the .gro file!"); }	
-			}
-			else {	// Create new residue
-				const int unique_res_id = static_cast<int>(residues.size());
-				residues.push_back(Residue{ record.residue_number, unique_res_id, record.residue_name });
+		else {
+			const bool entry_is_in_new_chain = residues.size() > 0 && record.residue_number < residues.back().gro_id;
+			if (entry_is_in_new_chain) {
+				current_chain_id++;
 			}
 
 
+			const bool entry_is_new_residue = entry_is_in_new_chain || residues.empty() || residues.back().gro_id != record.residue_number;
+			if (entry_is_new_residue) {
+				residues.push_back(Residue{ record.residue_number, n_residues_added, record.residue_name, current_chain_id });
+				n_residues_added++;
+			}
 
-			residues.back().atoms.push_back(AtomEntry{ record.atom_number, record.position, record.atom_name });
+
+			residues.back().atoms.push_back(AtomEntry{n_atoms_added, record.gro_id, record.position, record.atom_name });
 			n_particles_in_residues++;
 		}
+	
 
 		// In some cases the atoms aren't numbered.- Then we need to expand the lut
 		// IF this happens once, it may happen many times more, so we expand to twice the necessary size.
-		if (record.atom_number >= particle_info.size()) {
-			particle_info.resize(record.atom_number * 2);
+		if (n_atoms_added >= particleinfolut->size()) {
+			particleinfolut->increaseCapacity(n_atoms_added);
 		}
 
-		particle_info[record.atom_number].isUsed = true;
-		particle_info[record.atom_number].gro_id = record.atom_number;
+		ParticleInfo& particleinfo = particleinfolut->get(n_atoms_added);
+		particleinfo.isUsed = true;
+		particleinfo.gro_id = record.gro_id;
+		particleinfo.chain_id = current_chain_id;
+		n_atoms_added++;
 	}
 }
 
 
-bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleInfo>& particle_bonds_lut, const std::vector<SingleBond>& singlebonds) {
+bool areBonded(const Residue& left, const Residue& right, const ParticleInfoLUT& particleinfolut, const std::vector<SingleBond>& singlebonds) {
 	for (auto& atom_left : left.atoms) {
-		for (int bond_index : particle_bonds_lut[atom_left.id].singlebonds_indices) {
-			const auto& atom_groids = singlebonds[bond_index].atom_indexes;
+		for (int bond_index : particleinfolut.getConst(atom_left.global_id).singlebonds_indices) {
+			const auto& atom_globalids = singlebonds[bond_index].atom_indexes;
 
 			for (auto& atom_right : right.atoms) {
-				if ((atom_groids[0] == atom_left.id && atom_groids[1] == atom_right.id)
-					|| (atom_groids[1] == atom_left.id && atom_groids[0] == atom_right.id))
+				if ((atom_globalids[0] == atom_left.global_id && atom_globalids[1] == atom_right.global_id) ||
+					(atom_globalids[1] == atom_left.global_id && atom_globalids[0] == atom_right.global_id))
 				{
 					return true;
 				}
@@ -276,10 +247,11 @@ bool areBonded(const Residue& left, const Residue& right, std::vector<ParticleIn
 	return false;
 }
 
+
 void MoleculeBuilder::matchBondedResidues(const std::vector<SingleBond>& singlebonds) {
 	for (int singlebond_index = 0; singlebond_index < singlebonds.size(); singlebond_index++) {
-		for (uint32_t gro_id : singlebonds[singlebond_index].atom_indexes) {
-			particle_info[gro_id].singlebonds_indices.push_back(singlebond_index);
+		for (uint32_t global_id : singlebonds[singlebond_index].atom_indexes) {
+			particleinfolut->get(global_id).singlebonds_indices.push_back(singlebond_index);
 		}
 	}
 
@@ -288,8 +260,7 @@ void MoleculeBuilder::matchBondedResidues(const std::vector<SingleBond>& singleb
 		Residue& residue_left = residues[i];
 		Residue& residue_right = residues[i + 1];
 
-		if (areBonded(residue_left, residue_right, particle_info, singlebonds)) {
-		//if (areBonded(residue_left, residue_right, particle_info, singlebond_references)) {
+		if (areBonded(residue_left, residue_right, *particleinfolut, singlebonds)) {
 			residue_left.bondedresidue_ids.push_back(i + 1);
 			residue_right.bondedresidue_ids.push_back(i);
 		}
@@ -302,12 +273,12 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 	
 	compounds.push_back(CompoundFactory{ 0 });
 
-	int current_residue_id = residues[0].id;
+	int current_residue_id = residues[0].global_id;
 
 	for (int residue_index = 0; residue_index < residues.size(); residue_index++) {
 		const Residue& residue = residues[residue_index];
 
-		const bool new_residue = residue.id != current_residue_id;
+		const bool new_residue = residue.global_id != current_residue_id;
 		bool bridges_to_previous_compound = false;
 
 		// If necessary start new compound
@@ -340,21 +311,24 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 				bridges_to_previous_compound = true;
 			}
 
-			current_residue_id = residue.id;
+			current_residue_id = residue.global_id;
 		}
 
 		// Add all atoms of residue to current compound
 		for (auto& atom : residue.atoms) {
 			// First add the new information to the particle
-			particle_info[atom.id].compound_index = compounds.back().id;
-			particle_info[atom.id].local_id_compound = compounds.back().n_particles;
+			
+			ParticleInfo& particleinfo = particleinfolut->get(atom.global_id);
+
+			particleinfo.compound_index = compounds.back().id;
+			particleinfo.local_id_compound = compounds.back().n_particles;
 
 			// Then add the particle to the compound
 			compounds.back().addParticle(
 				atom.position,
-				forcefield->getAtomtypeID(atom.id),
+				forcefield->getAtomtypeID(atom.global_id),
 				forcefield->atomTypeToIndex(atom.name[0]),
-				particle_info[atom.id].gro_id
+				particleinfo.gro_id
 				);
 		}
 	}
@@ -369,11 +343,11 @@ void MoleculeBuilder::createCompoundsAndBridges() {
 
 
 template <int n_ids>
-bool spansTwoCompounds(const uint32_t* bond_groids, const std::vector<ParticleInfo>& particle_info) {
-	const int compound_left = particle_info[bond_groids[0]].compound_index;
+bool spansTwoCompounds(const uint32_t* bond_globalids, const ParticleInfoLUT& particleinfolut) {
+	const int compoundid_left = particleinfolut.getConst(bond_globalids[0]).compound_index;
 
 	for (int i = 1; i < n_ids; i++) {
-		if (compound_left != particle_info[bond_groids[i]].compound_index) {
+		if (compoundid_left != particleinfolut.getConst(bond_globalids[i]).compound_index) {
 			return true;
 		}
 	}
@@ -383,11 +357,11 @@ bool spansTwoCompounds(const uint32_t* bond_groids, const std::vector<ParticleIn
 
 // Returns two compound id's of a bond in a bridge. The id's are sorted with lowest first
 template <int n_ids>
-std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_ids, const std::vector<ParticleInfo>& particle_info) {
-	std::array<int, 2> out = { particle_info[particle_ids[0]].compound_index, -1 };
+std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_ids, const ParticleInfoLUT& particleinfolut) {
+	std::array<int, 2> out = { particleinfolut.getConst(particle_ids[0]).compound_index, -1 };
 
 	for (int i = 1; i < n_ids; i++) {
-		int compoundid_of_particle = particle_info[particle_ids[i]].compound_index;
+		int compoundid_of_particle = particleinfolut.getConst(particle_ids[i]).compound_index;
 		if (compoundid_of_particle != out[0]) {
 			out[1] = compoundid_of_particle;
 			break;
@@ -406,8 +380,8 @@ std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_ids, const std
 }
 
 template <int n_ids>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* ids, const std::vector<ParticleInfo>& particle_info) {
-	auto compound_ids = getTheTwoDifferentIds<n_ids>(ids, particle_info);
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* ids, const ParticleInfoLUT& particleinfolut) {
+	auto compound_ids = getTheTwoDifferentIds<n_ids>(ids, particleinfolut);
 
 	for (BridgeFactory& bridge : bridges) {
 		if (bridge.compound_id_left == compound_ids[0] && bridge.compound_id_right == compound_ids[1]) {	// I assume they are ordered by size here
@@ -419,17 +393,20 @@ BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* id
 }
 
 template <int n_ids>
-void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<ParticleInfo>& particle_info, const uint32_t* gro_ids) {
+void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const ParticleInfoLUT& pinfo, const uint32_t* global_ids) {
 	for (int i = 0; i < n_ids; i++) {
-		auto id_self = gro_ids[i];
+		auto id_self = global_ids[i];
 		for (int j = 0; j < n_ids; j++) {
-			auto id_other = gro_ids[j];
+			auto id_other = global_ids[j];
 
 			if (id_self == id_other) { continue; }
 
-			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(particle_info[id_self].compound_index, particle_info[id_other].compound_index);
-			BondedParticlesLUT* lut = bplut_man->get(particle_info[id_self].compound_index, particle_info[id_other].compound_index);
-			lut->set(particle_info[id_self].local_id_compound, particle_info[id_other].local_id_compound, true);
+			const auto& pinfo_self = pinfo.getConst(id_self);
+			const auto pinfo_other = pinfo.getConst(id_other);
+
+			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(pinfo_self.compound_index, pinfo_other.compound_index);
+			BondedParticlesLUT* lut = bplut_man->get(pinfo_self.compound_index, pinfo_other.compound_index);
+			lut->set(pinfo_self.local_id_compound, pinfo_other.local_id_compound, true);
 		}
 	}
 }
@@ -441,10 +418,10 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 
 	for (auto& bond : bonds) {
 
-		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particle_info)) {
+		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, *particleinfolut)) {
 			BridgeFactory* bridge;
 			try {
-				bridge = &getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particle_info);
+				bridge = &getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, *particleinfolut);
 				
 			}
 			catch (const std::exception& ex){
@@ -455,16 +432,16 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 				// For now, simply ignore these bonds
 				continue;
 			}
-			bridge->addBond(particle_info, bond);
+			bridge->addBond(*particleinfolut, bond);
 
 		}
 		else {
-			const int compound_id = particle_info[bond.atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
+			const int compound_id = particleinfolut->get(bond.atom_indexes[0]).compound_index;	// Pick compound using first particle in bond
 			CompoundFactory& compound = compounds.at(compound_id);
-			compound.addBond(particle_info, bond);
+			compound.addBond(*particleinfolut, bond);
 		}
 
-		distributeLJIgnores<atoms_in_bond>(bp_lut_manager.get(), particle_info, bond.atom_indexes);
+		distributeLJIgnores<atoms_in_bond>(bp_lut_manager.get(), *particleinfolut, bond.atom_indexes);
 	}
 }
 
@@ -501,7 +478,6 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 	int closest_particle_index = 0;
 	float closest_particle_distance = std::numeric_limits<float>::infinity();
 	for (int i = 0; i < n_elems; i++) {
-		//float particle_distance = (positions[i] - com).len();
 		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
 		if (dist < closest_particle_distance) {
 			closest_particle_distance = dist;
@@ -515,7 +491,6 @@ int indexOfParticleFurthestFromCom(Float3* positions, int n_elems, const Float3&
 	int furthest_particle_index = 0;
 	float furthest_particle_distance = 0.0f;
 	for (int i = 0; i < n_elems; i++) {
-		//float particle_distance = (positions[i] - com).len();
 		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
 		if (dist > furthest_particle_distance) {
 			furthest_particle_distance = dist;
@@ -567,41 +542,41 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	n_particles++;
 }
 
-template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const SingleBond& bondtype) {
+template <> void CompoundFactory::addBond(const ParticleInfoLUT& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
 		throw std::exception("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[0]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[1]).local_id_compound),
 		},
 		bondtype.b0,
 		bondtype.kb
 	);
 }
 
-template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const AngleBond& bondtype) {
+template <> void CompoundFactory::addBond(const ParticleInfoLUT& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[0]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[1]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[2]).local_id_compound),
 		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	);
 }
 
-template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const DihedralBond& bondtype) {
+template <> void CompoundFactory::addBond(const ParticleInfoLUT& particle_info, const DihedralBond& bondtype) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { 
 		throw std::exception("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[0]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[1]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[2]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[3]).local_id_compound),
 		},
 		bondtype.phi_0,
 		bondtype.k_phi,
@@ -609,14 +584,14 @@ template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& parti
 	);
 }
 
-template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
+template <> void CompoundFactory::addBond(const ParticleInfoLUT& particle_info, const ImproperDihedralBond& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add improperdihedralbond to compound"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
 		std::array<uint32_t, 4>{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[0]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[1]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[2]).local_id_compound),
+			static_cast<uint32_t>(particle_info.getConst(bondtype.atom_indexes[3]).local_id_compound),
 		},
 		bondtype.psi_0,
 		bondtype.k_psi
@@ -625,43 +600,43 @@ template <> void CompoundFactory::addBond(const std::vector<ParticleInfo>& parti
 
 
 
-template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const SingleBond& bondtype) {
+template <> void BridgeFactory::addBond(ParticleInfoLUT& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
 		{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[0])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[1])),
 		},
 		bondtype.b0,
 		bondtype.kb
 	};
 }
 
-template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const AngleBond& bondtype) {
+template <> void BridgeFactory::addBond(ParticleInfoLUT& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
 		{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[0])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[1])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[2])),
 		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	};
 }
 
-template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const DihedralBond& bondtype) {
+template <> void BridgeFactory::addBond(ParticleInfoLUT& particle_info, const DihedralBond& bondtype) {
 
 	if (bridge_id == 377) {
-		printf("%d %d %d %d\n", particle_info[bondtype.atom_indexes[0]].gro_id, particle_info[bondtype.atom_indexes[1]].gro_id, particle_info[bondtype.atom_indexes[2]].gro_id, particle_info[bondtype.atom_indexes[3]].gro_id);
+		//printf("%d %d %d %d\n", particle_info[bondtype.atom_indexes[0]].gro_id, particle_info[bondtype.atom_indexes[1]].gro_id, particle_info[bondtype.atom_indexes[2]].gro_id, particle_info[bondtype.atom_indexes[3]].gro_id);
 	}
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+		getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[0])),
+		getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[1])),
+		getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[2])),
+		getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[3])),
 		},		
 		bondtype.phi_0,
 		bondtype.k_phi,
@@ -671,14 +646,14 @@ template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info
 
 }
 
-template <> void BridgeFactory::addBond(std::vector<ParticleInfo>& particle_info, const ImproperDihedralBond& bondtype) {
+template <> void BridgeFactory::addBond(ParticleInfoLUT& particle_info, const ImproperDihedralBond& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
 		std::array<uint32_t,4>{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[0])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[1])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[2])),
+			getBridgelocalIdOfParticle(particle_info.get(bondtype.atom_indexes[3])),
 		},
 		bondtype.psi_0,
 		bondtype.k_psi,

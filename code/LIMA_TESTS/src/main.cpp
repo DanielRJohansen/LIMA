@@ -81,13 +81,13 @@ void runAllUnitTests() {
 	// Smaller compound tests
 	ADD_TEST(testman, "doMethionineBenchmark", doMethionineBenchmark(envmode));
 	ADD_TEST(testman, "doPhenylalanineBenchmark", doPhenylalanineBenchmark(envmode));
-	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 1e-6, 1.2e-6));
+	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 5e-7, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.5e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 8e-5, 2e-5));
 
 
 	// Meta tests

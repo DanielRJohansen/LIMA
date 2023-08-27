@@ -173,20 +173,54 @@ struct NB_Atomtype {
 
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int id, std::string atomtype, std::string atomname) : gro_id(id), atomname(atomname), atomtype(atomtype) {}
-	const int gro_id=-1;										// Come from topol.top file
-	const std::string atomtype{};	
-	const std::string atomname{};	// I dunno what this is for
-	int atomtype_id = -1;				// Asigned later
+	Atom(int global_id, int gro_id, const std::string& atomtype, const std::string& atomname) : global_id(global_id), gro_id(gro_id), atomname(atomname), atomtype(atomtype) {}
+	Atom(const Atom& atom) = default;
+	int global_id;
+	int gro_id;										// Come from topol.top file
+	std::string atomtype;	
+	std::string atomname;	// I dunno what this is for
+	int atomtype_id;				// Asigned later
 	//float charge;
 };
 
-using AtomTable = std::map<int, Atom>;
+class AtomInfoTable {
+	// global_id to atom map
+	std::vector<Atom> atoms;
 
+	// Map chain_id and gro_id to global_id
+	std::map<int, std::map<int, int>> map;
 
+public:
 
+	const std::vector<Atom>& getAllAtoms() const { return atoms; }
 
+	Atom& get(int chain_id, int atom_gro_id) {	// gro id is relative to chain only
+		const int global_id = map.find(chain_id)->second.find(atom_gro_id)->second;
+		return atoms[global_id];
+	}
+	const Atom& getConstRef(int chain_id, int atom_gro_id) const {	// gro id is relative to chain only
+		const int global_id = map.find(chain_id)->second.find(atom_gro_id)->second;
+		return atoms[global_id];
+	}
+	const Atom& getConstRef(int global_id) const {
+		return atoms[global_id];
+	}
 
+	void insert(int chain_id, int atom_gro_id, const std::string& atomtype, const std::string& atomname) {
+		const int global_id = atoms.size();
+		map[chain_id][atom_gro_id] = global_id;
+		atoms.push_back(Atom{ global_id , atom_gro_id, atomtype, atomname });
+	}
+	bool exists(int chain_id, int atom_gro_id) const {
+		auto chain_it = map.find(chain_id);
+		if (chain_it == map.end()) {
+			return false;
+		}
+		return chain_it->second.find(atom_gro_id) != chain_it->second.end();
+	}
+
+	int size() const { return atoms.size(); }
+};
 
 
 
@@ -197,23 +231,12 @@ using AtomTable = std::map<int, Atom>;
 
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
-	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames), gro_ids(-1) {}	
+	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames), global_ids(-1) {}
 	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: bonded_typenames(typenames), gro_ids(ids) {}
+		: bonded_typenames(typenames), global_ids(ids) {}
 
 	//virtual void sort() = 0;
 	virtual void flip() = 0;
-
-	template <class DerivedType>
-	static void assignTypesFromAtomIDs(std::vector<DerivedType>& topol_bonds, const AtomTable& atoms) {
-		for (auto& bond : topol_bonds) {
-			for (int i = 0; i < n_atoms; i++) {
-				if (!atoms.contains(bond.gro_ids[i])) { throw "Atomtable does not contain bondedtype"; }
-				bond.bonded_typenames[i] = atoms.find(bond.gro_ids[i])->second.atomtype_bond;
-			}
-			bond.sort();
-		}
-	}
 
 	template <class DerivedType>
 	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const std::vector<DerivedType>& forcefield) {
@@ -224,10 +247,6 @@ struct BondtypeBase {
 		float best_likeness = 0;
 		DerivedType best_bond = forcefield.at(0);
 		for (const DerivedType& ff_bondtype : forcefield) {
-			/*float likeness = 1.f;
-			for (int i = 0; i < n_atoms; i++) {
-				likeness *= FTHelpers::calcLikeness(query_type.bonded_typenames[i], ff_bondtype.bonded_typenames[i]);
-			}*/
 			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
 
 
@@ -250,7 +269,7 @@ struct BondtypeBase {
 			std::cout << name << " ";
 		}
 		printf("\nQuery gro_ids: ");
-		for (auto& id : query_type.gro_ids) {
+		for (auto& id : query_type.global_ids) {
 			std::cout << std::to_string(id) << " ";
 		}
 		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
@@ -259,7 +278,7 @@ struct BondtypeBase {
 
 
 	std::array<std::string, n_atoms> bonded_typenames;
-	std::array<int, n_atoms> gro_ids;
+	std::array<int, n_atoms> global_ids;
 };
 
 struct Singlebondtype : public BondtypeBase<2>{

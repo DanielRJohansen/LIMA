@@ -33,7 +33,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 	loadAtomypesIntoForcefield(atomtypes);
 
 	// Find mappings between the atoms in the simulation and the nb forcefield
-	groIdToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
+	globaldToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
 
 	// Load the topology with their included forcefield parameters
 	topology = loadTopology(bonded_parsed);
@@ -47,12 +47,12 @@ void Forcefield::loadForcefield(string molecule_dir) {
 }
 
 
-int Forcefield::getAtomtypeID(int gro_id) const {
-	if (groIdToAtomtypeMap.count(gro_id) == 0 || gro_id == 0) {	// 0 is an error, as atoms are 1-indexed
-		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", gro_id);
+int Forcefield::getAtomtypeID(int global_id) const {
+	if (globaldToAtomtypeMap.count(global_id) == 0) {
+		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", global_id);
 		exit(0);
 	}
-	return groIdToAtomtypeMap.find(gro_id)->second;
+	return globaldToAtomtypeMap.find(global_id)->second;
 }
 
 template <int n>
@@ -84,19 +84,21 @@ std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsed
 	return atomtypes;
 }
 
+// Map from global id to atomtype_id
 std::map<int, int> Forcefield::loadAtomTypeMap(const SimpleParsedFile& parsedfile) {	// returns the nonbonded atomtype
-	std::map<int, int> groidToType;
+	std::map<int, int> globalidToType;
 
 	for (auto& row : parsedfile.rows) {
 		if (row.section == "atomtype_map") {
-			const int gro_id = stoi(row.words[0]);
-			const int atomtype_id = stoi(row.words[1]);
-			groidToType.insert({ gro_id, atomtype_id });
+			const int global_id = stoi(row.words[0]);
+			const int gro_id = stoi(row.words[1]);
+			const int atomtype_id = stoi(row.words[2]);
+			globalidToType.insert({ global_id, atomtype_id });
 		}	
 	}
-	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", groidToType.size()); }
+	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", globalidToType.size()); }
 
-	return groidToType;
+	return globalidToType;
 }
 
 

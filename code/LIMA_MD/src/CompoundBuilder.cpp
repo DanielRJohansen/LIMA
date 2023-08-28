@@ -23,13 +23,31 @@ struct GroRecord {
 };
 
 struct Topology {
-	std::vector<ParticleInfo> atoms;
+	//std::vector<ParticleInfo> atoms;
 
 	std::vector<SingleBond> singlebonds;
 	std::vector<AngleBond> anglebonds;
 	std::vector<DihedralBond> dihedralbonds;
 	std::vector<ImproperDihedralBond> improperdihedralbonds;
 };
+
+//// Necessary because residues are not properly ordered in top/gro files
+//class ResiduesLUT {
+//	std::vector<Residue> residues;
+//
+//	int n_residues_activated = 0;
+//public:
+//	ResiduesLUT() {
+//		residues.resize(16);
+//	}
+//
+//	// Returns global_id of the new residue added
+//	int addNewResidue(int gro_id, int chain_id, const std::string& res_name) {
+//		residues
+//	}
+//
+//
+//};
 
 class MoleculeBuilder {
 public:
@@ -252,16 +270,16 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 	Topology topology{};
 
 	for (auto& row : bonded_parsed.rows) {
-		if (row.section == "atomtype_map") {
-			const int global_id = std::stoi(row.words[0]);
-			const int gro_id = std::stoi(row.words[1]);
-			const int chain_id = std::stoi(row.words[2]);
-			const int atomtype_id = std::stoi(row.words[3]);
-			auto atomname = row.words[4];
+		//if (row.section == "atomtype_map") {
+		//	const int global_id = std::stoi(row.words[0]);
+		//	const int atom_groid = std::stoi(row.words[1]);
+		//	const int chain_id = std::stoi(row.words[2]);
+		//	const int atomtype_id = std::stoi(row.words[3]);
+		//	auto atomname = row.words[4];
 
-			topology.atoms.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname });
-		}
-		else if (row.section == "singlebonds") {
+		//	topology.atoms.emplace_back(ParticleInfo{ global_id, atom_groid, chain_id, atomtype_id, atomname });
+		//}
+		if (row.section == "singlebonds") {
 			assert(row.words.size() == 6);
 
 			std::array<uint32_t, 2> global_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
@@ -328,8 +346,9 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 			const int global_id = std::stoi(row.words[0]);
 			const int gro_id = std::stoi(row.words[1]);
 			const int chain_id = std::stoi(row.words[2]);
-			const int atomtype_id = std::stoi(row.words[3]);
-			const auto& atomname = row.words[4];
+			const int residue_groid = std::stoi(row.words[3]);
+			const int atomtype_id = std::stoi(row.words[4]);
+			const auto& atomname = row.words[5];
 
 			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname });
 		}
@@ -533,7 +552,14 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 			BridgeFactory* bridge;
 			try {
 				bridge = &getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particleinfotable);
-				
+
+				if (something) {
+					bridge = mergeBridges();
+				}
+
+				if (bridge->bridge_id == 36 || bridge->bridge_id == 37) {
+					int a = 0;
+				}
 			}
 			catch (const std::exception& ex){
 				std::cout << ex.what() << "\n";
@@ -737,7 +763,8 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 
-	if (bridge_id == 377) {
+	if (bridge_id == 36 || bridge_id == 37) {
+		int a = 0;
 		//printf("%d %d %d %d\n", particle_info[bondtype.atom_indexes[0]].gro_id, particle_info[bondtype.atom_indexes[1]].gro_id, particle_info[bondtype.atom_indexes[2]].gro_id, particle_info[bondtype.atom_indexes[3]].gro_id);
 	}
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }

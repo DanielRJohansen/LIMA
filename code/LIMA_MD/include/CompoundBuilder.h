@@ -124,10 +124,11 @@ public:
 	template <> void addBond(ParticleInfoTable&, const DihedralBond&);
 	template <> void addBond(ParticleInfoTable&, const ImproperDihedralBond&);
 
+	const int bridge_id;
+
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
-	const int bridge_id;
 };
 
 

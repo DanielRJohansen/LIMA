@@ -287,7 +287,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 #ifdef LIMASAFEMODE
 		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
-			printf("Shifting compound further than what is safe!");
+			printf("Shifting compound further than what is safe!\n");
 		}
 #endif
 

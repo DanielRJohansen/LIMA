@@ -7,7 +7,6 @@
 #include <vector>
 #include <array>
 #include <map>
-//#include <span>
 
 constexpr int ATOMTYPE_SOLVENT = 0;
 
@@ -16,18 +15,13 @@ using std::string;
 class Forcefield {
 public:
 
-
 	Forcefield(VerbosityLevel vl);
 
-
 	void loadForcefield(std::string molecule_dir);
-	int getAtomtypeID(int global_id) const;
-
 
 	ForceField_NB getNBForcefield() const {
 		return forcefield_nb;
 	}
-
 
 	int atomTypeToIndex(const char& atom) const {
 		if (atom == 'C')
@@ -50,7 +44,6 @@ public:
 
 private:
 	ForceField_NB forcefield_nb;
-	std::map<int, int> globaldToAtomtypeMap;
 
 
 	VerbosityLevel vl = SILENT;
@@ -59,11 +52,4 @@ private:
 	std::map<int, int> loadAtomTypeMap(const SimpleParsedFile& nonbonded_parsed);
 
 	void loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes);
-
 };
-
-
-
-
-
-

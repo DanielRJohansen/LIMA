@@ -39,7 +39,7 @@ int main() {
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 
-		loadAndEMAndRunBasicSimulation("Spike", envmode);
+		loadAndEMAndRunBasicSimulation("ManyT4", envmode);
 
 		//doPool50x(EnvMode::Headless);
 

@@ -627,8 +627,8 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {	
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-			if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0) {
-				printf("here %f %f %f\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass);
+			if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0 || true) {
+				//printf("here %f %f %f %d\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass, compound.atom_types[threadIdx.x]);
 			}
 
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
@@ -907,7 +907,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ float utility_buffer_f[MAX_PARTICLES_IN_BRIDGE];
-	__shared__ Coord utility_coord;
+	__shared__ Coord utility_coord[MAX_COMPOUNDS_IN_BRIDGE];
 
 	SimParams& simparams = *sim->params;
 	Box* box = sim->box;
@@ -915,10 +915,16 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	if (threadIdx.x == 0) {
 		bridge.loadMeta(&box->bridge_bundle->compound_bridges[blockIdx.x]);
 
-		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord = LIMAPOSITIONSYSTEM::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_id_left, bridge.compound_id_right);
+		
 	}
 	__syncthreads();
+
+	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
+	if (threadIdx.x < MAX_COMPOUNDS_IN_BRIDGE) {
+		// Calculate necessary shift in relative positions for right, so right share the origo with left.
+		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
+	}
+
 
 	bridge.loadData(&box->bridge_bundle->compound_bridges[blockIdx.x]);
 	__syncthreads();
@@ -928,10 +934,8 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 		const CompoundCoords* coordarray = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, p_ref.compound_id);
 		Coord relpos = coordarray->rel_positions[p_ref.local_id_compound];
 
-		// If we are on the right side, we need to shift 
-		if (p_ref.compound_id == bridge.compound_id_right) { 
-			relpos += utility_coord;
-		}
+		relpos += utility_coord[p_ref.compoundid_local_to_bridge];
+
 
 		positions[threadIdx.x] = relpos.toFloat3();
 	}

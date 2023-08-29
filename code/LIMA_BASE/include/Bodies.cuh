@@ -348,7 +348,7 @@ public:
 	}
 
 	// This function assumes the user has used PBC
-	__device__ __host__ SolventBlock* getBlockPtr(const int index1d, const int step) {
+	__device__ __host__ SolventBlock* getBlockPtr(const size_t index1d, const size_t step) {
 		const size_t step_offset = (step % queue_len) * blocks_per_grid;
 		return &blocks[index1d + step_offset];
 	}
@@ -548,12 +548,13 @@ struct Compound {
 
 
 struct ParticleReference {
-	ParticleReference() {}
+	ParticleReference() {}	// TODO: i dont think i need this.
 
 #ifdef LIMAKERNELDEBUGMODE
 	// Used by moleculebuilder only
-	ParticleReference(int compound_id, int local_id_compound, int gro_id) :
-		compound_id(compound_id), local_id_compound(local_id_compound), gro_id(gro_id)
+	ParticleReference(int compound_id, int local_id_compound, int gro_id, uint8_t compoundid_local_to_bridge) :
+		compound_id(compound_id), local_id_compound(local_id_compound), 
+		gro_id(gro_id), compoundid_local_to_bridge(compoundid_local_to_bridge)
 	{}
 	int gro_id = -1;
 #else
@@ -562,8 +563,9 @@ struct ParticleReference {
 		compound_id(compound_id), local_id_compound(local_id_compound) {}
 #endif
 
-	int compound_id = -1;
-	int local_id_compound = -1;
+	int compound_id = -1;	// global
+	int local_id_compound = -1;	// id of particle
+	uint8_t compoundid_local_to_bridge = 255;
 
 	//int global_id = -1; // For debug
 };
@@ -588,8 +590,10 @@ struct CompoundBridge {
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE];
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
-	uint16_t compound_id_left{};
-	uint16_t compound_id_right{};
+	//uint16_t compound_id_left{};
+	//uint16_t compound_id_right{};
+	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE];
+
 
 	// -------------- Device functions ------------- //
 	__device__ void loadMeta(CompoundBridge* bridge) {
@@ -599,8 +603,11 @@ struct CompoundBridge {
 		n_dihedrals = bridge->n_dihedrals;
 		n_improperdihedrals = bridge->n_improperdihedrals;
 
-		compound_id_left = bridge->compound_id_left;
-		compound_id_right = bridge->compound_id_right;
+		for (int i = 0; i < 4; i++)
+			compound_ids[i] = bridge->compound_ids[i];
+		
+		//compound_id_left = bridge->compound_id_left;
+		//compound_id_right = bridge->compound_id_right;
 	}
 	__device__ void loadData(CompoundBridge* bridge) {
 		if (threadIdx.x < n_particles) {

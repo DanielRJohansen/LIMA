@@ -117,13 +117,14 @@ const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;
+const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compounds, for example the loop between beta plates
 
 const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shift
 
 // Related to forcefield / constant memory
 const int MAX_ATOM_TYPES = 32;
 
-constexpr float MAX_COMPOUND_RADIUS = 1.8f;	// was 1.5
+constexpr float MAX_COMPOUND_RADIUS = 1.9f;	// was 1.5
 // -------------------------------------------------------------------------------------------------------------- //
 
 

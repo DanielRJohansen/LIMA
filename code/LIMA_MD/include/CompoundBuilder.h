@@ -12,14 +12,12 @@
 #include "LIMA_BASE/include/Utilities.h"
 
 
-
-
 struct CompoundCollection;
 
 namespace LIMA_MOLECULEBUILD {
 	// This is the only function to be called from outside :)
 	CompoundCollection buildMolecules(
-		Forcefield* ff, 
+		Forcefield* ff,					// Can be removed when we dont need to do the stupid color lookup anymore
 		const std::string& work_dir, 
 		VerbosityLevel vl,
 		const string& gro_path, 
@@ -51,7 +49,7 @@ struct Residue {
 
 
 	std::vector<int> atoms_globalid;	// GID of atoms in residue
-	std::vector<int> bondedresidue_ids;	// Lima Ids of residue with which this shares a singlebond
+	//std::vector<int> bondedresidue_ids;	// GIDs of residue with which this shares a singlebond
 };
 
 struct ParticleInfo {
@@ -110,9 +108,15 @@ public:
 
 class BridgeFactory : public CompoundBridge {
 public:
-	BridgeFactory(int bridge_id, const std::array<int, 2>& compound_ids) :bridge_id(bridge_id){
-		compound_id_left = compound_ids[0];
-		compound_id_right = compound_ids[1];
+	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) :
+		bridge_id(bridge_id), n_compounds(_compound_ids.size())
+	{
+		if (_compound_ids.size() > MAX_COMPOUNDS_IN_BRIDGE) {	// TODO: Move to .cpp and use format here
+			throw std::exception("Cannot add more compounds to a single bridge");
+		}
+		for (int i = 0; i < _compound_ids.size(); i++) {
+			compound_ids[i] = _compound_ids[i];
+		}
 	}
 
 	// Augments the particle_info with local_id_bridge if necessary
@@ -124,8 +128,17 @@ public:
 	template <> void addBond(ParticleInfoTable&, const DihedralBond&);
 	template <> void addBond(ParticleInfoTable&, const ImproperDihedralBond&);
 
-	const int bridge_id;
+	bool containsCompound(int compound_id) const {
+		for (int i = 0; i < n_compounds; i++) {
+			if (compound_ids[i] == compound_id)
+				return true;
+		}
+		return false;
+	}
 
+
+	const int bridge_id;
+	const int n_compounds;
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);

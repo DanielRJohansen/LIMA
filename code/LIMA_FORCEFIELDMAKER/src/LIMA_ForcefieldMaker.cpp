@@ -362,7 +362,7 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 
 	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t atomtype_id \t atomname}");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t residue_id \t atomtype_id \t atomname}");
 	file << FFPrintHelpers::parserTitle("atomtype_map");
 	for (auto& mapping : atomtype_map) {
 		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.chain_id) << delimiter << to_string(mapping.residue_id) << delimiter << to_string(mapping.atomtype_id) << delimiter << mapping.atomname << endl;

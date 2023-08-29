@@ -21,19 +21,15 @@ void Forcefield::loadForcefield(string molecule_dir) {
 		? Filehandler::pathJoin(molecule_dir, "custom_ffnonbonded.lff")
 		: Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff");
 
-	string bonded_path = Filehandler::fileExists(Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff"))
-		? Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff")
-		: Filehandler::pathJoin(molecule_dir, "ffbonded.lff");
 
 	const SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(nonbonded_path, vl>= V1);
-	const SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(bonded_path, vl >= V1);
 
 	// First load the nb forcefield
 	auto atomtypes = loadAtomTypes(nonbonded_parsed);					// 1 entry per type in compressed forcefield
 	loadAtomypesIntoForcefield(atomtypes);
 
 	// Find mappings between the atoms in the simulation and the nb forcefield
-	globaldToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
+	//globaldToAtomtypeMap = loadAtomTypeMap(nonbonded_parsed);	// 1 entry per atom in conf
 
 	forcefield_loaded = true;
 
@@ -41,15 +37,6 @@ void Forcefield::loadForcefield(string molecule_dir) {
 		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField_NB));
 		printH2("Finished building forcefield");
 	}
-}
-
-
-int Forcefield::getAtomtypeID(int global_id) const {
-	if (globaldToAtomtypeMap.count(global_id) == 0) {
-		printf("Attempting to fetch atomtype of non-loaded atom with global_id %d\n", global_id);
-		exit(0);
-	}
-	return globaldToAtomtypeMap.find(global_id)->second;
 }
 
 template <int n>
@@ -79,24 +66,6 @@ std::vector<NBAtomtype> Forcefield::loadAtomTypes(const SimpleParsedFile& parsed
 	assert(atomtypes.size() < MAX_ATOM_TYPES);
 	if (vl >= V1) { printf("%d NB_Atomtypes loaded\n", atomtypes.size()); }
 	return atomtypes;
-}
-
-// Map from global id to atomtype_id
-std::map<int, int> Forcefield::loadAtomTypeMap(const SimpleParsedFile& parsedfile) {	// returns the nonbonded atomtype
-	std::map<int, int> globalidToType;
-
-	for (auto& row : parsedfile.rows) {
-		if (row.section == "atomtype_map") {
-			const int global_id = stoi(row.words[0]);
-			const int gro_id = stoi(row.words[1]);
-			const int chain_id = stoi(row.words[2]);
-			const int atomtype_id = stoi(row.words[3]);
-			globalidToType.insert({ global_id, atomtype_id });
-		}	
-	}
-	if (vl >= V1) { printf("%d NB_Atomtype_IDs loaded\n", globalidToType.size()); }
-
-	return globalidToType;
 }
 
 void Forcefield::loadAtomypesIntoForcefield(const std::vector<NBAtomtype>& atomtypes) {

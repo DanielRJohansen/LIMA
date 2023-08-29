@@ -6,7 +6,7 @@ Box::~Box() {
 }
 
 void Box::moveToDevice() {
-	int bytes_total = sizeof(Compound) * boxparams.n_compounds
+	size_t bytes_total = sizeof(Compound) * boxparams.n_compounds
 		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3
 		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);
 	//printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);

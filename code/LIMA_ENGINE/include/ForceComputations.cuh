@@ -255,8 +255,8 @@ __device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, flo
 		////((*pos1 - *pos0) * force_scalar).print('f');
 		pos0.print('0');
 		pos1.print('1');
-		printf("\nLJ Force %s: dist nm %f force %f sigma %f t1 %d t2 %d\n", 
-			calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, type1, type2);
+		printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n", 
+			calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);
 	}
 #endif
 

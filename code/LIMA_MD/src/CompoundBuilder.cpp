@@ -329,7 +329,7 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 			const int atomtype_id = std::stoi(row.words[4]);
 			const auto& atomname = row.words[5];
 
-			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname });
+			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname, residue_groid });
 		}
 	}
 	return atominfotable;
@@ -609,6 +609,19 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topology) {
 	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>();
 
+	// First check that we dont have any unrealistic bonds, and ward immediately.
+	for (const auto& bond : topology.singlebonds) {
+		int gid1 = bond.atom_indexes[0];
+		int gid2 = bond.atom_indexes[1];
+
+		const Float3 pos1 = nonsolvent_positions[gid1];
+		const Float3 pos2 = nonsolvent_positions[gid2];
+		const float hyper_dist = EngineUtils::calcHyperDistNM(&pos1, &pos2);
+		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
+			throw std::exception(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
+		}
+	}
+
 	distributeBondsToCompoundsAndBridges(topology.singlebonds);
 	distributeBondsToCompoundsAndBridges(topology.anglebonds);
 	distributeBondsToCompoundsAndBridges(topology.dihedralbonds);
@@ -846,7 +859,7 @@ uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) 
 		particle_info.local_id_bridge = n_particles;
 
 		int compoundlocalid_in_bridge = -1;
-		for (int i = 0; i < MAX_COMPOUNDS_IN_BRIDGE; i++) {
+		for (int i = 0; i < this->n_compounds; i++) {
 			if (particle_info.compound_index == compound_ids[i])
 				compoundlocalid_in_bridge = i;
 		}

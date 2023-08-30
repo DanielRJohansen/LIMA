@@ -61,7 +61,7 @@ struct ParticleInfo {
 	const int chain_id;
 	const int atomtype_id;
 	const std::string atomname;
-
+	const int residue_groid;
 	// Added when determining which residues of the chains are connected
 	std::vector<int> singlebonds_indices;	// indices of singlebonds of which this atom is in
 
@@ -108,8 +108,7 @@ public:
 
 class BridgeFactory : public CompoundBridge {
 public:
-	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) :
-		bridge_id(bridge_id), n_compounds(_compound_ids.size())
+	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) : bridge_id(bridge_id)
 	{
 		if (_compound_ids.size() > MAX_COMPOUNDS_IN_BRIDGE) {	// TODO: Move to .cpp and use format here
 			throw std::exception("Cannot add more compounds to a single bridge");
@@ -117,6 +116,7 @@ public:
 		for (int i = 0; i < _compound_ids.size(); i++) {
 			compound_ids[i] = _compound_ids[i];
 		}
+		n_compounds = _compound_ids.size();
 	}
 
 	// Augments the particle_info with local_id_bridge if necessary
@@ -138,7 +138,6 @@ public:
 
 
 	const int bridge_id;
-	const int n_compounds;
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);

@@ -78,6 +78,10 @@ namespace NListUtils {
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
 				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;	// THIS IS BORKEN SINCE LIMAMETRES
 
+				if (id_self == 0 && id_other == 346) {
+					int a = 0;
+				}
+
 				if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_NM + cutoff_add_self + cutoff_add_candidate)) {
 					if (hashtable_compoundneighbors.insert(id_other)) {
 						nlist_self->addCompound(id_other);

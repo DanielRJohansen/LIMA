@@ -56,12 +56,6 @@ void __global__ monitorCompoundEnergyKernel(Box* box, const SimParams* simparams
 
 	const float totalE = potE + kinE;
 
-	//if (isnan(totalE)) {
-	if (compound_index == 37 && step == 0 && particle_index < 10) {
-		printf("com %d p %d step %d pot %f kin %f type %d mass %f type_src %d\n", (int)compound_index, (int)particle_index, (int)step, potE, kinE, (int) atom_type, mass, compound.atom_types[threadIdx.x]);
-		//printf("pot %f kin %f type %d mass %f type_src %d vel %f\n",potE, kinE, (int)atom_type, mass, compound.atom_types[threadIdx.x], speed);
-	}
-
 	energy[particle_index] = Float3(potE, kinE, totalE);
 	__syncthreads();
 

@@ -574,7 +574,7 @@ struct CompoundBridge {
 	CompoundBridge() {}	
 	
 	ParticleReference particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
-	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};
+	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};	// TODO: I am not sure these are loaded iN??
 	uint8_t n_particles = 0;					
 
 	uint8_t n_singlebonds = 0;
@@ -590,8 +590,7 @@ struct CompoundBridge {
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE];
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
-	//uint16_t compound_id_left{};
-	//uint16_t compound_id_right{};
+	uint8_t n_compounds;
 	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE];
 
 
@@ -602,6 +601,7 @@ struct CompoundBridge {
 		n_anglebonds = bridge->n_anglebonds;
 		n_dihedrals = bridge->n_dihedrals;
 		n_improperdihedrals = bridge->n_improperdihedrals;
+		n_compounds = bridge->n_compounds;
 
 		for (int i = 0; i < 4; i++)
 			compound_ids[i] = bridge->compound_ids[i];

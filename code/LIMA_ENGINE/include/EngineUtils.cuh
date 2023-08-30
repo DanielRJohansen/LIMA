@@ -287,7 +287,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 #ifdef LIMASAFEMODE
 		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
-			printf("Shifting compound further than what is safe!\n");
+			printf("Shifting compound further than what is safe! Block %d Thread %d Shift %d\n", blockIdx.x, threadIdx.x, nodeshift_right_to_left.manhattanLen());
 		}
 #endif
 
@@ -564,9 +564,6 @@ namespace EngineUtils {
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
 
-		if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0) {
-			printf("%f %f\n", *potE_sum, compound.vels_prev[threadIdx.x].len());
-		}
 
 		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);

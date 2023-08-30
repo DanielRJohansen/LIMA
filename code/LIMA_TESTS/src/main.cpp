@@ -39,11 +39,11 @@ int main() {
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 
-		loadAndEMAndRunBasicSimulation("ManyT4", envmode);
+		//loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
 
 		//doPool50x(EnvMode::Headless);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::exception ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;

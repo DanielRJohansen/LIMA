@@ -920,7 +920,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__syncthreads();
 
 	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
-	if (threadIdx.x < MAX_COMPOUNDS_IN_BRIDGE) {
+	if (threadIdx.x < bridge.n_compounds) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
 		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
 	}
@@ -931,12 +931,18 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference& p_ref = bridge.particle_refs[particle_id_bridge];
+
+#ifdef LIMASAFEMODE
+		if (p_ref.compoundid_local_to_bridge >= bridge.n_compounds) {
+			printf("What the fuck! %d %d\n", p_ref.compoundid_local_to_bridge, bridge.n_compounds);
+			printf("CIDs %d %d %d %d\n", bridge.compound_ids[0], bridge.compound_ids[1], bridge.compound_ids[2], bridge.compound_ids[3]);
+		}
+#endif
+
 		const CompoundCoords* coordarray = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, p_ref.compound_id);
+
 		Coord relpos = coordarray->rel_positions[p_ref.local_id_compound];
-
 		relpos += utility_coord[p_ref.compoundid_local_to_bridge];
-
-
 		positions[threadIdx.x] = relpos.toFloat3();
 	}
 	__syncthreads();

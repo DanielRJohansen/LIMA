@@ -54,8 +54,8 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-//constexpr int _BOX_LEN_PM = 7200;
-constexpr int _BOX_LEN_PM = 18000;
+constexpr int _BOX_LEN_PM = 7200;
+//constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
@@ -113,13 +113,13 @@ const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 // Related to compound bridges
 const int MAX_COMPOUNDBRIDGES = MAX_COMPOUNDS;	// Wtf is this param?
 const int MAX_PARTICLES_IN_BRIDGE = 32;
-const int MAX_SINGLEBONDS_IN_BRIDGE = 2;
+const int MAX_SINGLEBONDS_IN_BRIDGE = 4;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 32;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;
 const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compounds, for example the loop between beta plates
 
-const int MAX_SAFE_SHIFT = 8;	// Maxmimum manhattan dist that it is safe to shift
+const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
 
 // Related to forcefield / constant memory
 const int MAX_ATOM_TYPES = 32;

@@ -17,13 +17,18 @@
 
 
 namespace TestUtils {
+#ifndef __LINUX__
+	const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
+#else
+	const std::string simulations_dir = 
+#endif
 
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<InputSimParams> simparams, EnvMode envmode) {
 		
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + foldername + "/";
+		const std::string work_folder = simulations_dir + foldername + "/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
@@ -191,7 +196,6 @@ namespace TestUtils {
 			LIMA_Print::printMatlabVec("varcoffs", std::vector<float>{ varcoff });
 			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient });
 		}
-		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 
 		const auto result = evaluateTest({ varcoff }, max_vc, {analytics->energy_gradient}, max_gradient);

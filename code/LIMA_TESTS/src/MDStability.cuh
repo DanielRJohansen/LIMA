@@ -28,7 +28,7 @@ namespace TestMDStability {
 
 		// Do sim
 		//InputSimParams simparams{ 100, 2000 };
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + folder_name + "/";
+		const std::string work_folder = simulations_dir + folder_name + "/";
 		const std::string simpar_path = work_folder + "sim_params.txt";
 		const InputSimParams  simparams = env->loadInputSimParams(simpar_path);
 		auto sim = env->getSim();
@@ -52,7 +52,7 @@ namespace TestMDStability {
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
 		const std::string name = "T4LysozymeNoSolventSmall";
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/" + name + "/";
+		const std::string work_folder = simulations_dir + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		return loadAndRunBasicSimulation(name, envmode, 2e-4, 2e-7);

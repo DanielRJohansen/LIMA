@@ -63,11 +63,12 @@ namespace KernelHelpersWarnings {
 #ifdef LIMASAFEMODE
 		if (blockid < 0 || blockid >= SolventBlocksCircularQueue::blocks_per_grid) {
 			printf("\nGot unexpected Block id index %d\n", blockid);
-#endif
 		}
+#endif		
 	}
 
-	__device__ static void transferOutDebug(STransferQueue* queue_global, const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
+	__device__ static void transferOutDebug(STransferQueue* queue_global, 
+		const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
 #ifdef LIMASAFEMODE
 		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
 			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)

@@ -37,7 +37,7 @@ int main() {
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 
 		//loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
 

@@ -8,7 +8,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float max_dev = 0.0001) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float max_dev = 4e-5f) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";

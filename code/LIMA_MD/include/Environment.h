@@ -84,20 +84,12 @@ private:
 
 	EnvMode m_mode;
 
-	//Display* display;
 	std::unique_ptr<Display> display;
-	//Interface* interface = nullptr;
-	
-	//Forcefield forcefield;
-	//Analyzer analyzer{};
+
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
 
 	const std::string work_folder = "";
-	//InputSimParams sim_params{};	// TODO: this should not be a member, as it belongs to the individual sim
-
-	//bool ready_to_run = false;
-
 
 
 	std::unique_ptr<Engine> engine;

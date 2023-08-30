@@ -123,6 +123,8 @@ public:
 	template <typename Bondtype>
 	void addBond(ParticleInfoTable&, const Bondtype&);
 
+	
+
 	template <> void addBond(ParticleInfoTable&, const SingleBond&);
 	template <> void addBond(ParticleInfoTable&, const AngleBond&);
 	template <> void addBond(ParticleInfoTable&, const DihedralBond&);
@@ -141,6 +143,10 @@ public:
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+
+	// Add particle to bridge and augment its particle info with the references to its position in this bridge
+	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge
+	void addParticle(ParticleInfo&);
 };
 
 

@@ -574,7 +574,7 @@ struct CompoundBridge {
 	CompoundBridge() {}	
 	
 	ParticleReference particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
-	uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};	// TODO: I am not sure these are loaded iN??
+	//uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};	// TODO: I am not sure these are loaded iN??
 	uint8_t n_particles = 0;					
 
 	uint8_t n_singlebonds = 0;
@@ -591,6 +591,7 @@ struct CompoundBridge {
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
 	uint8_t n_compounds;
+
 	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE];
 
 
@@ -611,7 +612,7 @@ struct CompoundBridge {
 	}
 	__device__ void loadData(CompoundBridge* bridge) {
 		if (threadIdx.x < n_particles) {
-			atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
+			//atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
 		}
 		

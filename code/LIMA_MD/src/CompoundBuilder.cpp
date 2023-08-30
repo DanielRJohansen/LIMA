@@ -579,22 +579,8 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 	for (auto& bond : bonds) {
 
 		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particleinfotable)) {
-			BridgeFactory* bridge;
-			try {
-				bridge = &getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particleinfotable);
-				if (bridge->bridge_id == 36 || bridge->bridge_id == 37) {
-					int a = 0;
-				}
-			}
-			catch (const std::exception& ex){
-				std::cout << ex.what() << "\n";
-				// TODO: fix this
-				// In this case, a bond is made between two non-adjecent residues, to form a plate or a helix
-				// For now, simply ignore these bonds
-				continue;
-			}
-			bridge->addBond(particleinfotable, bond);
-
+			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particleinfotable);
+			bridge.addBond(particleinfotable, bond);
 		}
 		else {
 			const int compound_id = particleinfotable[bond.atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
@@ -801,10 +787,6 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 
-	if (bridge_id == 36 || bridge_id == 37) {
-		int a = 0;
-		//printf("%d %d %d %d\n", particle_info[bondtype.atom_indexes[0]].gro_id, particle_info[bondtype.atom_indexes[1]].gro_id, particle_info[bondtype.atom_indexes[2]].gro_id, particle_info[bondtype.atom_indexes[3]].gro_id);
-	}
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
@@ -849,36 +831,37 @@ uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) 
 	}
 
 	// Particle already has a local id in the bridge
-	if (particle_info.local_id_bridge != -1) {
-		return particle_info.local_id_bridge;
+	if (particle_info.local_id_bridge == -1) {
+		addParticle(particle_info);
 	}
-	// Else, make particle reference
-	else {
-		if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
 
-		particle_info.local_id_bridge = n_particles;
+	return particle_info.local_id_bridge;
+}
 
-		int compoundlocalid_in_bridge = -1;
-		for (int i = 0; i < this->n_compounds; i++) {
-			if (particle_info.compound_index == compound_ids[i])
-				compoundlocalid_in_bridge = i;
-		}
-		if (compoundlocalid_in_bridge == -1) {
-			throw std::exception("Could not find compoundlocalid_in_bridge");
-		}
+void BridgeFactory::addParticle(ParticleInfo& particle_info) {
+	if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
 
+	particle_info.local_id_bridge = n_particles;
 
-		particle_refs[n_particles++] = ParticleReference{
-			particle_info.compound_index,
-			particle_info.local_id_compound,
-	#ifdef LIMAKERNELDEBUGMODE
-			particle_info.global_id,
-	#endif
-			static_cast<uint8_t>(compoundlocalid_in_bridge)
-		};
+	int compoundlocalid_in_bridge = -1;
+	for (int i = 0; i < this->n_compounds; i++) {
+		if (particle_info.compound_index == compound_ids[i])
+			compoundlocalid_in_bridge = i;
+	}
+	if (compoundlocalid_in_bridge == -1) {
+		throw std::exception("Could not find compoundlocalid_in_bridge");
+	}
 
-		return particle_info.local_id_bridge;
-	}	
+	particle_refs[n_particles] = ParticleReference{
+		particle_info.compound_index,
+		particle_info.local_id_compound,
+#ifdef LIMAKERNELDEBUGMODE
+		particle_info.global_id,
+#endif
+		static_cast<uint8_t>(compoundlocalid_in_bridge)
+	};
+
+	n_particles++;
 }
 
 

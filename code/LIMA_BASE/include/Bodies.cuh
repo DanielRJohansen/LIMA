@@ -381,7 +381,6 @@ struct SolventTransferqueue {
 	// Do NOT call on queue residing in global memory
 	__device__ bool addElement(const Coord& pos, const Coord& pos_prev, uint32_t id) {
 		if (n_elements >= size) { 
-			printf("\nTried to add too many solvents in outgoing transferqueue\n"); 
 			return false;
 		}
 		rel_positions[n_elements] = pos;

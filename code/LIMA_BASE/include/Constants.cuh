@@ -3,14 +3,16 @@
 #include <math.h>
 #include <cstdint>
 #include <limits.h>
-#define LIMASAFEMODE 1
 
-#define LIMAKERNELDEBUGMODE 1
+#define LIMASAFEMODE 
+//#define LIMAPUSH
+#if defined LIMAPUSH && defined LIMASAFEMODE
+#error These are mutually exclusive
+#endif
 
-//#define LIMA_SAFERUN		// Use this for?
-//#define LIMA_VERBOSE
 
-//#define USEDEBUGF3
+#define LIMAKERNELDEBUGMODE
+
 
 constexpr float PI = 3.14159f;
 

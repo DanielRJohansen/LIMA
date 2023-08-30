@@ -8,6 +8,8 @@
 #include "LIMA_BASE/include/Forcefield.cuh"
 #include <cmath>
 
+#include "LIMA_ENGINE/src/EngineUtilsWarnings.cuh"	
+
 //#include <cuda.h>
 //#include <device_launch_parameters.h>
 //#include <cuda_runtime_api.h>
@@ -235,13 +237,10 @@ namespace LIMAPOSITIONSYSTEM {
 		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
 	}*/
 	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
-		auto origo_shift = from - to;
-		if (abs(origo_shift.x) > 10 || abs(origo_shift.y) > 10 || abs(origo_shift.z) > 10) {
-			printf("block %d thread %d\n", blockIdx.x, threadIdx.x);
-			from.print('f');
-			to.print('t');
-		}
-		return nodeIndexToCoord(from - to);
+		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
+
+		const NodeIndex origo_shift = from - to;
+		return nodeIndexToCoord(origo_shift);
 	}
 
 	// Get hyper index of "other"
@@ -266,10 +265,8 @@ namespace LIMAPOSITIONSYSTEM {
 			coords.rel_positions[keyparticle_index].z / (BOXGRID_NODE_LEN_i/2)
 		};
 
-		//coords.origo += shift_nm;
 		coords.origo += shift_node;
 		return -nodeIndexToCoord(shift_node);
-		//return -shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
 	}
 	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
 		coords.rel_positions[threadIdx.x] += shift_lm;
@@ -281,15 +278,10 @@ namespace LIMAPOSITIONSYSTEM {
 		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
 		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
 
-
 		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
 		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
 
-#ifdef LIMASAFEMODE
-		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
-			printf("Shifting compound further than what is safe! Block %d Thread %d Shift %d\n", blockIdx.x, threadIdx.x, nodeshift_right_to_left.manhattanLen());
-		}
-#endif
+		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
 
 		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
 		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
@@ -297,53 +289,6 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
-
-
-
-
-	// ReCenter origo of solvent, and the relative pos around said origo
-	__device__ static void updateSolventcoord(SolventCoord& coord) {
-		//const int shift_at = static_cast<int32_t>(NANO_TO_LIMA) / 2;
-		//Coord shift_nm = coord.rel_position / static_cast<int32_t>(shift_at);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better! 
-		//const NodeIndex node_shift = coord.rel_position / (BOXGRID_NODE_LEN_i / 2)
-		//const NodeIndex node_shift = LIMAPOSITIONSYSTEM::coordToNodeIndex(coord.rel_position * 2);	// If the coord is more than halfway to the next node, we shift it.
-
-		const NodeIndex node_shift{
-			coord.rel_position.x / (BOXGRID_NODE_LEN_i / 2),	// If the coord is more than halfway to the next node, we shift it.
-			coord.rel_position.y / (BOXGRID_NODE_LEN_i / 2),
-			coord.rel_position.z / (BOXGRID_NODE_LEN_i / 2)
-		};
-
-		SolventCoord tmp = coord;
-		coord.origo += node_shift;
-		//coord.rel_position -= shift_nm * static_cast<int32_t>(NANO_TO_LIMA);
-		coord.rel_position -= LIMAPOSITIONSYSTEM::nodeIndexToCoord(node_shift);
-		
-		if (blockIdx.x + threadIdx.x == 0 && node_shift.x != 0) {
-			tmp.origo.print('o');
-			tmp.rel_position.print('r');
-			node_shift.print('s');
-			coord.origo.print('O');
-			coord.rel_position.print('R');
-		}
-	}
-
-	// Get the relpos_prev, if the solvent was in the same solventblock last step
-	__device__ static Coord getRelposPrev(SolventBlocksCircularQueue* solventblockgrid_circularqueue, const int solventblock_id, const int current_step) {
-		const int step_prev = current_step == 0 ? STEPS_PER_SOLVENTBLOCKTRANSFER-1 : current_step - 1;	// Unnecessary if we use transfermodule's prevpos for first step!!!!!!!!! TODOTODO
-		//auto blockPtr = CoordArrayQueueHelpers::getSolventBlockPtr(solventblockgrid_circularqueue, step_prev, solventblock_id);
-		auto block_ptr = solventblockgrid_circularqueue->getBlockPtr(solventblock_id, step_prev);
-		return block_ptr->rel_pos[threadIdx.x];
-	}
-
-
-
-
-
-
-
-
-	//__device__ static Coord getOnehotDirectionEdgeblock(const Coord relpos, const Coord thresholdInward, const Coord thresholdOutward)
 
 	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
 		const int32_t magnitude_x = std::abs(relpos.x);
@@ -376,17 +321,11 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
-	__device__ static NodeIndex getTransferDirection(const Coord relpos) {
+	__device__ static NodeIndex getTransferDirection(const Coord& relpos) {
 		const int32_t blocklen_half = BOXGRID_NODE_LEN_i / 2;
-		const Coord rel_blockcenter{ blocklen_half };
-		if (relpos.x < INT32_MIN + blocklen_half || relpos.y < INT32_MIN + blocklen_half || relpos.z < INT32_MIN + blocklen_half) {
-			printf("\nWe have underflow!\n");
-			relpos.print('R');
-		}
-		if (relpos.x > INT32_MAX - blocklen_half || relpos.y > INT32_MAX - blocklen_half || relpos.z > INT32_MAX - blocklen_half) {
-			printf("\nWe have overflow!\n");
-			relpos.print('R');
-		}
+
+		EngineUtilsWarnings::verifyValidRelpos(relpos);
+
 		//return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos + rel_blockcenter, blocklen_half);
 		return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos, blocklen_half);
 	}
@@ -524,34 +463,12 @@ namespace EngineUtils {
 	}
 
 	// returns pos_tadd1
-	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const double mass, const double dt) {
-		
-		/*if (threadIdx.x == 0) {
-			Float3 f = vel * dt + force * (0.5 / mass * dt * dt);
-			Coord c = Coord{ vel * dt + force * (0.5 / mass * dt * dt) };
-			f.print('f');
-			c.print('c');
-			printf("dt: %f\n", dt);
-		}*/
-
-		//const Coord pos_tadd1 = pos + Coord{ vel * dt + force * (0.5 / mass * dt * dt) };						// braking/stable version
-		//const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round()};				// precise version
-
+	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
 
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const double dt, const double mass) {
-		/*Float3 f = (force + force_tsub1) * dt * 0.5f / mass;
-		Coord c{ (force + force_tsub1) * dt * 0.5f / mass };
-		const Coord vel = vel_tsub1 + Coord{ (force + force_tsub1) * dt * 0.5f / mass };
-
-		if (threadIdx.x == 0) {
-			f.print('f');
-			c.print('c');
-			printf("dt: %f\n", dt);
-		}
-		*/
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5 / mass);
 		return vel;
 	}
@@ -565,25 +482,13 @@ namespace EngineUtils {
 		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
 
 
-		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
-			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
-			(compound.vels_prev[threadIdx.x] * simparams.constparams.dt).print('V');
-			force.print('F');
-			LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('O');
-			LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('P');
-
-			simparams.critical_error_encountered = true;
-		}
+		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, compound_coords, force);
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers) {
 		if (solvent_active) {
 			const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
-			//box->traj_buffer[index] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock);
-			if (solventblock.ids[threadIdx.x] == 0) {
-				//LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]).print('0');
-				//force.print('f');
-			}
+
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
 			databuffers->vel_buffer[index] = velocity.len();
@@ -611,30 +516,6 @@ namespace EngineUtils {
 
 
 namespace LIMAKERNELDEBUG {
-	__device__ void static transferOut(STransferQueue* queue_global, const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
-		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			) {
-			printf("\n");
-			transferdir_queue.print('t');
-			queue_local.rel_positions[threadIdx.x].print('q');
-			queue_global->rel_positions[threadIdx.x].print('Q');
-		}
-
-		if (threadIdx.x == 0) {
-			if (queue_global->n_elements != 0) {
-				printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
-				transferdir_queue.print('d');
-			}
-
-			queue_global->n_elements = queue_local.n_elements;
-			if (queue_local.n_elements > 15) {
-				printf("\nTransferring %d elements\n", queue_local.n_elements);
-			}
-		}
-	}
-
 
 	__device__ void static compoundIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered) {
 		const auto dif = (relpos_next - relpos_prev);
@@ -679,7 +560,7 @@ namespace DEBUGUTILS {
 // LIMA algorithm Library
 namespace LAL {
 	__device__ constexpr int getBlellochTablesize(int n) {
-		float nf = static_cast<float>(n);
+		const float nf = static_cast<float>(n);
 		return CPPD::ceil(nf * log2f(nf) * 2.f);
 	}
 }

@@ -1,10 +1,10 @@
 #include "LIMA_ENGINE/include/Engine.cuh"
 #include "LIMA_ENGINE/include/ForceComputations.cuh"
 #include "LIMA_BASE/include/Utilities.h"
+#include "LIMA_ENGINE/src/KernelWarnings.cuh"
 
 #pragma warning ( push )
 #pragma warning ( disable:E0020 )
-
 
 
 // ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
@@ -129,11 +129,6 @@ template <bool em_variant>
 __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, Float3* positions, float* data_ptr, float& potE_sum, const uint8_t atomtype_self) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
-		if (blockIdx.x == 3 && positions[i].len() < 1 && threadIdx.x == 0) { 
-			
-			positions[i].print(); 
-			printf("i %d n %d\n", i, n_particles);
-		}					// DEBUG
 		force += LimaForcecalc::calcLJForce<em_variant>(self_pos, positions[i], data_ptr, potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOLVENT), 
 			calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT),
@@ -329,12 +324,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
-		if ((querycompound_hyperorigo - origo_self).maxElement() > 10) {
-			printf("Here::\n");
-			origo_self.print('s');
-			querycompound_hyperorigo.print('q');
-		}
-
+		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
 		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
@@ -370,7 +360,7 @@ __device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements)
 	for (int i = 1; i < n_elements; i++) {
 		if (threadIdx.x == i) {
 			onehot_remainers[i] += onehot_remainers[i - 1];
-			if (onehot_remainers[i] > 230) { printf("Sequential-Prefix-Sum algo is about to crash!"); }
+			KernelHelpersWarnings::verifyOnehotRemaindersIsValid(onehot_remainers, i);
 		}
 		__syncthreads();
 	}
@@ -406,11 +396,10 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
 			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_dir);
 
-			if (queue_index < 0 || queue_index > 5) { printf("\nGot unexpected queue index %d\n", queue_index); transfer_dir.print(); }
-			if (!transferqueues[queue_index].addElement(relpos_next, solventblock_current_local.rel_pos[threadIdx.x], solventblock_current_local.ids[threadIdx.x]))
-			{
-				printf("What the fuck\n");
-			}
+			KernelHelpersWarnings::transferoutVerifyQueueIndex(queue_index, transfer_dir);
+
+			const bool insertionSuccess = transferqueues[queue_index].addElement(relpos_next, solventblock_current_local.rel_pos[threadIdx.x], solventblock_current_local.ids[threadIdx.x]);
+			KernelHelpersWarnings::transferoutVerifyInsertion(insertionSuccess);
 		}
 		__syncthreads();
 	}
@@ -423,16 +412,17 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 
 			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
 			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
-			if (blockid_global < 0 || blockid_global >= SolventBlocksCircularQueue::blocks_per_grid) { printf("\nGot unexpected Block id index %d\n", blockid_global); }
+			KernelHelpersWarnings::assertValidBlockId(blockid_global);
+
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
 
 			queue_global->fastInsert(
 				queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
 				queue_local.ids[threadIdx.x]);
 
-			// Debugging
-			LIMAKERNELDEBUG::transferOut(queue_global, queue_local, transferdir_queue, queue_index);
-			
+			KernelHelpersWarnings::transferOutDebug(queue_global, queue_local, transferdir_queue, queue_index);
+
+			queue_global->n_elements = queue_local.n_elements;
 
 			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
 			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }
@@ -787,7 +777,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				if (dir.isZero()) { continue; }
 
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
-				if (blockindex_neighbor < 0 || blockindex_neighbor >= SolventBlocksCircularQueue::blocks_per_grid) { printf("\nWhat the fuck\n"); }
+				KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
 
 				const SolventBlock* solventblock_neighbor = box->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, simparams.step);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
@@ -863,9 +853,7 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 	SolventBlock* solventblock_current = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step);
 	SolventBlock* solventblock_next = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);
 
-	if (solventblock_next->n_solvents != transfermodule->n_remain) {
-		printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next->n_solvents, transfermodule->n_remain);
-	}
+	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
 
 	// Handling incoming transferring solvents
 	int n_solvents_next = transfermodule->n_remain;
@@ -885,11 +873,8 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 			queue->n_elements = 0;
 		}
 	}
-	if (threadIdx.x == 0 && n_solvents_next >= MAX_SOLVENTS_IN_BLOCK) {
-		printf("Tried to put %d solvents in a single block\n");
-		sim->params->critical_error_encountered = true;
-	}
 
+	SolventTransferWarnings::assertMaxPlacedSolventsIsWithinLimits(n_solvents_next, simparams.critical_error_encountered);
 
 	// Finally update the solventblock_next with how many solvents it now contains
 	if (threadIdx.x == 0) {
@@ -932,12 +917,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference& p_ref = bridge.particle_refs[particle_id_bridge];
 
-#ifdef LIMASAFEMODE
-		if (p_ref.compoundid_local_to_bridge >= bridge.n_compounds) {
-			printf("What the fuck! %d %d\n", p_ref.compoundid_local_to_bridge, bridge.n_compounds);
-			printf("CIDs %d %d %d %d\n", bridge.compound_ids[0], bridge.compound_ids[1], bridge.compound_ids[2], bridge.compound_ids[3]);
-		}
-#endif
+		BridgeWarnings::verifyPRefValid(p_ref, bridge);
 
 		const CompoundCoords* coordarray = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, p_ref.compound_id);
 

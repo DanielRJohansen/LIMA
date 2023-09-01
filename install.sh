@@ -1,12 +1,15 @@
 #!/bin/bash
 
-echo "\nWelcome to the LIMA Dynamics installer\n"
+if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
+
+
+echo "Welcome to the LIMA Dynamics installer"
 
 echo "Installing dependencies"
-pacman -S cmake
-
-pacman -S cuda --noconfirm
-pacman -S cuda-tools --noconfirm
+#pacman -S cmake --noconfirm
+#pacman -S make --noconfirm
+#pacman -S cuda --noconfirm
+#pacman -S cuda-tools --noconfirm
 
 
 
@@ -20,25 +23,26 @@ pacman -S cuda-tools --noconfirm
 
 
 install_dir=$PWD
-program_dir=~/Desktop/LIMA/
-apps_dir="$program_dir"/Applications/
+program_dir=/home/"$SUDO_USER"/Desktop/LIMA
+apps_dir="$program_dir"/Applications
 
 echo "Using $program_dir as install directory"
-rm -rf "$program_dir"/
+#rm -rf "$program_dir"/
+
+
+mkdir -p "$apps_dir"
+mkdir -p "$program_dir/Simulation"
 mkdir -p "$apps_dir"/dependencies
 
 
 
 # Install glfw
-pacman -S glfw-x11 --noconfirm
-cp -r ./dependencies/* "$program_dir"/Dependencies/
+#pacman -S glfw-x11 --noconfirm
+cp -r ./dependencies/* "$apps_dir"/dependencies/
 
 
 
 
-
-mkdir -p "$program_dir/Applications"
-mkdir -p "$program_dir/Simulation"
 
 
 
@@ -47,7 +51,7 @@ mkdir -p "$program_dir/Simulation"
 mkdir "$apps_dir"/src
 mkdir "$apps_dir"/build
 
-cp ./code/* "$apps_dir"/src/
+cp -r ./code/* "$apps_dir"/src/
 mv "$apps_dir"/src/CMakeLists.txt "$apps_dir/"
 
 
@@ -56,7 +60,7 @@ cmake ../
 make
 mv mdrun ../
 
-printf "All LIMA applications have been installed\n"
+printf "All LIMA applications have been installed"
 
 
 

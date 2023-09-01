@@ -49,7 +49,7 @@ namespace FTHelpers {
 		float likeness = 0;
 		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
 
-		for (int i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
+		for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
 			if (query_type[i] == forcefield_type[i])
 				likeness += point_scale;
 			else
@@ -242,7 +242,7 @@ struct BondtypeBase {
 
 	template <class DerivedType>
 	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const std::vector<DerivedType>& forcefield) {
-		if (forcefield.size() == 0) { throw std::exception("No angletypes in forcefield!"); }
+		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
 
 		//query_type.sort();
 

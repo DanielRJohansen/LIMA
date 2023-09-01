@@ -112,7 +112,7 @@ public:
 	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) : bridge_id(bridge_id)
 	{
 		if (_compound_ids.size() > MAX_COMPOUNDS_IN_BRIDGE) {	// TODO: Move to .cpp and use format here
-			throw std::exception("Cannot add more compounds to a single bridge");
+			throw std::runtime_error("Cannot add more compounds to a single bridge");
 		}
 		for (int i = 0; i < _compound_ids.size(); i++) {
 			compound_ids[i] = _compound_ids[i];

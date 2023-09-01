@@ -125,7 +125,7 @@ namespace LAL {
 
         T value() const {
             if (!hasValue) {
-                throw std::exception("No value present in optional.");
+                throw std::runtime_error("No value present in optional.");
             }
             return _value;
         }

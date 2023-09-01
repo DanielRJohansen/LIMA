@@ -162,7 +162,7 @@ namespace NListUtils {
 			*finished = 1;		// Thread terminates here!
 			mutex.unlock();	// Unlock
 		}
-		catch (const std::exception& ex) {
+		catch (const std::runtime_error& ex) {
 			std::cerr << "\nCaught exception: " << ex.what() << std::endl;	// TODO: Remove before final release
 		}
 	}

@@ -186,18 +186,18 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 
 	// First check box has correct size
 	if (parsedfile.rows.back().section != "box_size") {
-		throw std::exception("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
+		throw std::runtime_error("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
 	}
 	for (auto& length_str : parsedfile.rows.back().words) {
 		if (std::stof(length_str) != BOX_LEN_NM) {
-			throw std::exception(".gro file box size does not match the compiler defined box size");
+			throw std::runtime_error(".gro file box size does not match the compiler defined box size");
 		}
 	}
 
 
 	// Find atom count to resize particle_info
 	if (parsedfile.rows[0].section != "n_atoms") {
-		throw std::exception("Expected first line of parsed gro file to contain atom count");
+		throw std::runtime_error("Expected first line of parsed gro file to contain atom count");
 	}
 	const int n_atoms_total = std::stoi(parsedfile.rows[0].words[0]);
 
@@ -213,7 +213,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 		const bool entry_is_solvent = record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH";
 		if (entry_is_solvent) {
 			if (nonsolvent_positions.size() != particleinfotable.size()) {
-				throw std::exception(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})", 
+				throw std::runtime_error(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})", 
 					nonsolvent_positions.size(), particleinfotable.size()).c_str());
 			}
 			solvent_positions.push_back(record.position);
@@ -221,15 +221,15 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 		else {
 			const int assumed_global_id = nonsolvent_positions.size();
 			if (assumed_global_id >= particleinfotable.size()) {
-				throw std::exception(std::format("Trying to add more noncompounds from gro file than .lff file expects ({})", particleinfotable.size()).c_str());
+				throw std::runtime_error(std::format("Trying to add more noncompounds from gro file than .lff file expects ({})", particleinfotable.size()).c_str());
 			}
 
 			// Sadly the topol file will give new gro_ids to the atoms of chains above chain_A
 			/*if (record.gro_id != particleinfotable[assumed_global_id].gro_id) {
-				throw std::exception("gro_id of .gro file does not match that of .lff file");
+				throw std::runtime_error("gro_id of .gro file does not match that of .lff file");
 			}*/
 			if (record.atom_name != particleinfotable[assumed_global_id].atomname) {
-				throw std::exception("atom_name of .gro file does not match that of .lff file");
+				throw std::runtime_error("atom_name of .gro file does not match that of .lff file");
 			}
 
 			const bool is_new_res = residues.empty() || residues.back().gro_id != record.residue_number;
@@ -243,7 +243,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 	}
 
 	if (nonsolvent_positions.size() != particleinfotable.size()) {
-		throw std::exception("Didn't read the expected amount of nonsolvent particles");
+		throw std::runtime_error("Didn't read the expected amount of nonsolvent particles");
 	}
 }
 
@@ -377,7 +377,7 @@ void MoleculeBuilder::createCompounds(const std::vector<SingleBond>& singlebonds
 			// If we are either a new molecule, or same molecule but the current compound has no more room, make new compound
 			if (!is_bonded_with_previous_residue || !compound_has_room_for_residue) {
 				if (compounds.size() >= MAX_COMPOUNDS) {
-					throw std::exception(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
+					throw std::runtime_error(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
 				}
 
 				compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
@@ -455,7 +455,7 @@ void MoleculeBuilder::createBridges(const std::vector<SingleBond>& singlebonds)
 
 		// A compound can not be bonded to itself
 		if (compound_id_self == *std::min_element(bonded_compounds_set.begin(), bonded_compounds_set.end())) {
-			throw std::exception("Something went wrong in the createBridges algorithm");
+			throw std::runtime_error("Something went wrong in the createBridges algorithm");
 		}
 
 
@@ -514,7 +514,7 @@ std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_ids, const Par
 	}
 
 	if (out[1] == -1) { 
-		throw std::exception("Failed to find the second compound of bridge"); 
+		throw std::runtime_error("Failed to find the second compound of bridge"); 
 	}
 
 	if (out[0] > out[1]) {
@@ -549,7 +549,7 @@ BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* id
 		}
 	}
 
-	throw std::exception(std::format("Failed to find the bridge ({})", n_ids).c_str());
+	throw std::runtime_error(std::format("Failed to find the bridge ({})", n_ids).c_str());
 }
 
 template <int n_ids>
@@ -604,7 +604,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 		const Float3 pos2 = nonsolvent_positions[gid2];
 		const float hyper_dist = EngineUtils::calcHyperDistNM(&pos1, &pos2);
 		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
-			throw std::exception(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
 		}
 	}
 
@@ -673,7 +673,7 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 		compound.radius = radius * 1.2f;	// Add 20% leeway
 
 		if (compound.radius > MAX_COMPOUND_RADIUS) { 
-			throw std::exception(std::format("Compound radius {} spans more than {} nm!", compound.radius, MAX_COMPOUND_RADIUS).c_str()); }
+			throw std::runtime_error(std::format("Compound radius {} spans more than {} nm!", compound.radius, MAX_COMPOUND_RADIUS).c_str()); }
 	}
 }
 
@@ -682,7 +682,7 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 
 void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id) {
 	if (n_particles >= MAX_COMPOUND_PARTICLES) {
-		throw std::exception("Failed to add particle to compound");
+		throw std::runtime_error("Failed to add particle to compound");
 	}
 	
 	// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
@@ -704,7 +704,7 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 
 template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
-		throw std::exception("Failed to add singlebond to compound"); }
+		throw std::runtime_error("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
 		{
 			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
@@ -716,7 +716,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 }
 
 template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const AngleBond& bondtype) {
-	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::exception("Failed to add anglebond to compound"); }
+	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
 		{
 			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
@@ -730,7 +730,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 
 template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { 
-		throw std::exception("Failed to add dihedralbond to compound"); }
+		throw std::runtime_error("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
 		{
 			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
@@ -745,7 +745,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 }
 
 template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::exception("Failed to add improperdihedralbond to compound"); }
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add improperdihedralbond to compound"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
 		std::array<uint32_t, 4>{
 			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
@@ -761,7 +761,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const SingleBond& bondtype) {
-	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add singlebond to bridge"); }
+	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
 		{
 			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
@@ -773,7 +773,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 }
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBond& bondtype) {
-	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::exception("Failed to add anglebond to bridge"); }
+	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
 		{
 			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
@@ -787,7 +787,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 
-	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
+	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
 		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
@@ -804,7 +804,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 }
 
 template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::exception("Failed to add dihedralbond to bridge"); }
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
 		std::array<uint32_t,4>{
 			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
@@ -827,7 +827,7 @@ uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) 
 	// If it has another id, fail as we dont support that for now
 	else if (particle_info.bridge_id != this->bridge_id) {
 		printf("Particle global id %d\n", particle_info.global_id);
-		throw std::exception(std::format("Cannot add particle to this bridge ({}) as it already has another bridge ({})", bridge_id, particle_info.bridge_id).c_str());
+		throw std::runtime_error(std::format("Cannot add particle to this bridge ({}) as it already has another bridge ({})", bridge_id, particle_info.bridge_id).c_str());
 	}
 
 	// Particle already has a local id in the bridge
@@ -839,7 +839,7 @@ uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) 
 }
 
 void BridgeFactory::addParticle(ParticleInfo& particle_info) {
-	if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::exception("Failed to add particle to bridge"); }
+	if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::runtime_error("Failed to add particle to bridge"); }
 
 	particle_info.local_id_bridge = n_particles;
 
@@ -849,7 +849,7 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 			compoundlocalid_in_bridge = i;
 	}
 	if (compoundlocalid_in_bridge == -1) {
-		throw std::exception("Could not find compoundlocalid_in_bridge");
+		throw std::runtime_error("Could not find compoundlocalid_in_bridge");
 	}
 
 	particle_refs[n_particles] = ParticleReference{

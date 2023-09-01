@@ -170,7 +170,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		}
 		else {
 			// TODO: I should fill this out
-			throw std::exception("No room for solvent");
+			throw std::runtime_error("No room for solvent");
 		}
 	}
 
@@ -196,7 +196,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
 void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
 {
-	if (boxsrc_current_step < 1) { throw std::exception("It is not yet possible to create a new box from an old un-run box"); }
+	if (boxsrc_current_step < 1) { throw std::runtime_error("It is not yet possible to create a new box from an old un-run box"); }
 
 	simulation->box_host = SimUtils::copyToHost(boxsrc);
 

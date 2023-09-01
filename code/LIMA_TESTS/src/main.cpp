@@ -46,7 +46,7 @@ int main() {
 
 		runAllUnitTests();
 	}
-	catch (std::exception ex) {
+	catch (std::runtime_error ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;
 	}
 	catch (const std::string& ex) {

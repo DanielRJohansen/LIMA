@@ -124,7 +124,7 @@ namespace TestUtils {
 
 				testresult->printStatus();
 			}
-			catch (const std::exception& ex) {
+			catch (const std::runtime_error& ex) {
 				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
 				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ LimaUnittestResult::THROW, err_desc, true });
 			}

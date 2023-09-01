@@ -263,7 +263,7 @@ struct Float3 {
 		for (uint32_t i = 0; i < arr_size; i++) {
 			sum = sum + arr_ptr[i];
 		}
-		return sum * (1.f / arr_size);
+		return sum * (1.f / static_cast<float>(arr_size));
 	}
 
 	// Assumes *this is a point, and arguments are two points on a line

@@ -55,6 +55,8 @@ public:
     
     template <typename T>
     void printToFile(const std::string& filename, const std::vector<T>& data) const {
+
+#ifndef __linux__
         FILE* file;
 
         const std::string filepath = (log_dir + filename);
@@ -62,6 +64,9 @@ public:
             fwrite(data.data(), sizeof(T), data.size(), file);
             fclose(file);
         }
+#else
+    // TODO: Not currently avaible on linux
+#endif
     }
 
 

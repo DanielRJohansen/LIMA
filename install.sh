@@ -27,7 +27,7 @@ program_dir=/home/"$SUDO_USER"/Desktop/LIMA
 apps_dir="$program_dir"/Applications
 
 echo "Using $program_dir as install directory"
-#rm -rf "$program_dir"/
+rm -rf "$program_dir"/
 
 
 mkdir -p "$apps_dir"
@@ -56,6 +56,7 @@ mv "$apps_dir"/src/CMakeLists.txt "$apps_dir/"
 
 
 cd "$apps_dir"/build
+#cmake -DCMAKE_CUDA_FLAGS=”-arch=sm_89” ../
 cmake ../
 make
 mv mdrun ../

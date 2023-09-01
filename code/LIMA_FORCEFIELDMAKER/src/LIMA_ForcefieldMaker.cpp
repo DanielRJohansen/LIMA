@@ -1,9 +1,8 @@
 #include <vector>
 
-#include "LIMA_BASE/include/Filehandling.h"
-
-#include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
-#include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
+#include "Filehandling.h"
+#include "ForcefieldTypes.h"
+#include "ForcefieldMaker.h"
 
 
 

@@ -349,7 +349,7 @@ struct Coord {
 		case 2:
 			return &z;
 		default:
-			throw std::exception("Requested bad dimension");
+			throw std::runtime_error("Requested bad dimension");
 		}
 	}
 
@@ -524,7 +524,7 @@ public:
 		}
 
 		// Not connected, and no more room
-		throw std::exception("Cannot connect another compound to LUTMan");
+		throw std::runtime_error("Cannot connect another compound to LUTMan");
 	}
 };
 

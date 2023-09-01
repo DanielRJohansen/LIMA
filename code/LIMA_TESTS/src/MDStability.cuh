@@ -1,12 +1,11 @@
 #pragma once
 
-#include "LIMA_TESTS/src/TestUtils.h"
-
-#include "LIMA_MD/include/Environment.h"
-#include "LIMA_BASE/include/Printer.h"
-#include "LIMA_BASE/include/Utilities.h"
-#include "LIMA_BASE/include/LimaTypes.cuh"
-#include "LIMA_ENGINE/include/EngineUtils.cuh"
+#include "TestUtils.h"
+#include "Environment.h"
+#include "Printer.h"
+#include "Utilities.h"
+#include "LimaTypes.cuh"
+#include "EngineUtils.cuh"
 
 
 

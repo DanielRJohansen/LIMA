@@ -1,7 +1,7 @@
-#include "LIMA_ENGINE/include/Engine.cuh"
-#include "LIMA_ENGINE/include/ForceComputations.cuh"
-#include "LIMA_BASE/include/Utilities.h"
-#include "LIMA_ENGINE/src/KernelWarnings.cuh"
+#include "Engine.cuh"
+#include "ForceComputations.cuh"
+#include "Utilities.h"
+#include "KernelWarnings.cuh"
 
 #pragma warning ( push )
 #pragma warning ( disable:E0020 )

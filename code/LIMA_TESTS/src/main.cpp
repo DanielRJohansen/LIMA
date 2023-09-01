@@ -1,8 +1,8 @@
 
 
-#include "LIMA_TESTS/src/ForceCorrectness.h"
-#include "LIMA_TESTS/src/MDStability.cuh"
-#include "LIMA_TESTS/src/EnergyMinimization.cuh"
+#include "ForceCorrectness.h"
+#include "MDStability.cuh"
+#include "EnergyMinimization.cuh"
 
 
 

@@ -2,9 +2,9 @@
 
 //#include <cuda_runtime.h>
 
-#include "LIMA_BASE/include/LimaTypes.cuh"
-#include "LIMA_BASE/include/Constants.cuh"
-#include "LIMA_BASE/include/Bodies.cuh"
+#include "LimaTypes.cuh"
+#include "Constants.cuh"
+#include "Bodies.cuh"
 
 
 

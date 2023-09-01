@@ -6,6 +6,8 @@
 
 #include <map>
 #include <cassert>
+#include <cstdint>
+#include <limits>
 
 struct SimpleParsedFile {
 	struct Row {
@@ -32,7 +34,7 @@ struct Filehandler {
 	static std::vector<std::vector<std::string>> readFile(const std::string path, 
 		std::vector<char> comment_markers = { ';', '/' },
 		std::vector<std::string> ignore_words = { " "},
-		int end_at = INT_MAX, bool verbose = false);
+		int end_at = std::numeric_limits<int>::max(), bool verbose = false);
 
 	static SimpleParsedFile parseItpFile(const std::string& path, bool verbose=true);
 	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose);

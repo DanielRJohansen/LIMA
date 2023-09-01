@@ -1,16 +1,19 @@
 #LIMA_TESTS
-cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-#file(GLOB LIMA_TESTS_SOURCES "src/*.cpp")
+find_package(CUDA REQUIRED)
 
 add_executable(limatests
     src/main.cpp
-    src/EnergyMinimization.cuh
-    src/ForceCorrectness.h
-    src/MDStability.cuh
-    src/TestUtils.h
 )
 
-target_include_directories(limatests PRIVATE $ {CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(limatests PRIVATE
+    ${CUDA_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 
 target_link_libraries(limatests LIMA_BASE)
+target_link_libraries(limatests LIMA_MD)
+
+set_target_properties(limatests PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+set_target_properties(limatests PROPERTIES CUDA_ARCHITECTURES "89")

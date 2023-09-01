@@ -1,5 +1,5 @@
-#include "LIMA_ENGINE/include/Engine.cuh"
-#include "LIMA_BASE/include/Utilities.h"
+#include "Engine.cuh"
+#include "Utilities.h"
 
 #include <algorithm>
 

@@ -6,8 +6,8 @@
 
 #include <iostream>
 
-#include "LIMA_BASE/include/Constants.cuh"
-#include "LIMA_BASE/include/Bodies.cuh"
+#include "Constants.cuh"
+#include "Bodies.cuh"
 
 // TODO HARD: make this a namespace
 struct EngineUtilsWarnings {

@@ -1,4 +1,4 @@
-#include "LIMA_FORCEFIELDMAKER/include/ForcefieldTypes.h"
+#include "ForcefieldTypes.h"
 
 
 

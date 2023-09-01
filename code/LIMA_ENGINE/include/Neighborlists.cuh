@@ -1,8 +1,9 @@
 #pragma once
 
-#include "LIMA_BASE/include/LimaTypes.cuh"
-#include "LIMA_BASE/include/Simulation.cuh"
+#include "LimaTypes.cuh"
+#include "Simulation.cuh"
 #include "EngineUtils.cuh"
+
 #include <chrono>
 #include <thread>
 #include <mutex>

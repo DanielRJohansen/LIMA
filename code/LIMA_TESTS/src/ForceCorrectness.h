@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LIMA_TESTS/src/TestUtils.h"
-#include "LIMA_TESTS/src/MDStability.cuh"	//Gives access to the testGenericBox
+#include "TestUtils.h"
+#include "MDStability.cuh"	//Gives access to the testGenericBox
 
 
 namespace ForceCorrectness {

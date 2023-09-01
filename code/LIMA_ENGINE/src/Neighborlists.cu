@@ -1,9 +1,10 @@
-#include "LIMA_ENGINE/include/Neighborlists.cuh"
+
 #include <algorithm>
 //#include <execution>
 #include <algorithm>
 #include <unordered_set>
-#include "LIMA_BASE/include/Utilities.h"
+#include "Neighborlists.cuh"
+#include "Utilities.h"
 
 // ------------------------------------------------------------------------------------------- PRIVATE HELPERS -------------------------------------------------------------------------------------------//
 

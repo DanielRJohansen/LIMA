@@ -1,14 +1,15 @@
 #pragma once
 
 #include<iostream>
-#include "LIMA_BASE/include/LimaTypes.cuh"
-#include "LIMA_BASE/include/Constants.cuh"
-
-#include "LIMA_BASE/include/Simulation.cuh"
-#include "LIMA_BASE/include/Forcefield.cuh"
 #include <cmath>
 
-#include "LIMA_ENGINE/src/EngineUtilsWarnings.cuh"	
+#include "LimaTypes.cuh"
+#include "Constants.cuh"
+#include "Simulation.cuh"
+#include "Forcefield.cuh"
+#include "EngineUtilsWarnings.cuh"
+
+
 
 //#include <cuda.h>
 //#include <device_launch_parameters.h>

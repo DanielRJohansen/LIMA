@@ -5,7 +5,7 @@
 #include "Bodies.cuh"
 #include <map>
 #include <assert.h>
-
+#include <memory>
 
 struct ForceField_NB;
 class Forcefield;

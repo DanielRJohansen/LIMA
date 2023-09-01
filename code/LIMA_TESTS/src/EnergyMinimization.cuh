@@ -4,8 +4,8 @@
 #include <string>
 #include <algorithm>
 
-#include "LIMA_TESTS/src/TestUtils.h"
-#include "LIMA_MD/include/Environment.h"
+#include "TestUtils.h"
+#include "Environment.h"
 
 bool testNearestSolventSolventAfterEnergyMinimizationIsDecreasing(EnvMode envmode) {
 	////SimulationParams params{ .dt = 5, .n_steps = 1000 };

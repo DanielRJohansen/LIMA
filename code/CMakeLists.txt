@@ -26,11 +26,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++20")
 find_package(OpenGL REQUIRED)
 
 
-add_subdirectory(src/LIMA_BASE)
-add_subdirectory(src/LIMA_ENGINE)
-#add_subdirectory(src/LIMA_FORCEFIELDMAKER)
-#add_subdirectory(src/LIMA_MD)
-#add_subdirectory(src/LIMA_TESTS)
+add_subdirectory(LIMA_BASE)
+add_subdirectory(LIMA_ENGINE)
+add_subdirectory(LIMA_FORCEFIELDMAKER)
+add_subdirectory(LIMA_MD)
+add_subdirectory(LIMA_TESTS)
 
 
 #include_directories("${CUDA_INCLUDE_DIRS}")

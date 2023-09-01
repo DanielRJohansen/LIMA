@@ -1,15 +1,16 @@
 #pragma once
 
 
-#include "LIMA_BASE/include/Bodies.cuh"
+
 #include <string.h>
 #include <fstream>
 #include <vector>
 #include <array>
 
-#include "LIMA_BASE/include/Constants.cuh"
-#include "LIMA_BASE/include/Forcefield.cuh"
-#include "LIMA_BASE/include/Utilities.h"
+#include "Bodies.cuh"
+#include "Constants.cuh"
+#include "Forcefield.cuh"
+#include "Utilities.h"
 
 
 struct CompoundCollection;

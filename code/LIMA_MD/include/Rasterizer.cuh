@@ -1,8 +1,9 @@
 #pragma once
 
-#include "LIMA_BASE/include/LimaTypes.cuh"
 #include "cuda_runtime.h"
-#include "LIMA_BASE/include/Simulation.cuh"
+
+#include "LimaTypes.cuh"
+#include "Simulation.cuh"
 //#include "Forcefield.cuh"
 
 const int RAS_THREADS_PER_BLOCK = 64;

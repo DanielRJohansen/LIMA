@@ -1,8 +1,9 @@
 #pragma once
-#include "LIMA_BASE/include/Bodies.cuh"
-#include "LIMA_BASE/include/Simulation.cuh"
+#include "Bodies.cuh"
+#include "Simulation.cuh"
+#include "CompoundBuilder.h"
+
 #include <vector>
-#include "LIMA_MD/include/CompoundBuilder.h"
 
 class BoxBuilder
 {

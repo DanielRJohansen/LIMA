@@ -1,13 +1,13 @@
 #pragma once
 
-#include "LIMA_BASE/include/Bodies.cuh"
-#include "LIMA_MD/include/DisplayV2.h"
-#include "LIMA_MD/include/Interface.h"
-#include "LIMA_ENGINE/include/Engine.cuh"
-#include "LIMA_MD/include/Analyzer.cuh"
-#include "LIMA_MD/include/CompoundBuilder.h"
-#include "LIMA_MD/include/VirtualPathMaker.h"
-#include "LIMA_MD/src/BoxBuilder.cuh"
+#include "Bodies.cuh"
+#include "DisplayV2.h"
+#include "Interface.h"
+#include "Engine.cuh"
+#include "Analyzer.cuh"
+#include "CompoundBuilder.h"
+#include "VirtualPathMaker.h"
+#include "BoxBuilder.cuh"
 
 
 // For logging
@@ -24,8 +24,7 @@
 #endif
 
 
-#include "LIMA_FORCEFIELDMAKER/include/ForcefieldMaker.h"
-
+#include "ForcefieldMaker.h"
 
 
 

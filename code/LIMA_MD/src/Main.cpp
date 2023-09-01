@@ -1,30 +1,13 @@
 #include <iostream>
-#include <math.h>
 
-#include "LIMA_MD/include/Environment.h"
-//#include "LIMA_MD/include/Engine.cuh"
-
-#include <vector>
+#include "Environment.h"
 
 
-
-#include "LIMA_BASE/include/Printer.h"
-struct Test {
-
-	int arr[4];
-	//const static int size = 14;
-	volatile int a = 10;
-	bool redu(int b) {
-		if (b % 2) {
-			printf("Bool %d\n", b % 2);
-			a--;
-			return 1;
-		}
-		return 0;
-	}
-	int get() { return a; }
-};
-
+int main() {
+	Environment env{"", EnvMode::Full};
+	std::printf("Hello world lima 3");
+	return 0;
+}
 //
 //int main() {
 //	std::printf("Program starting...\n");

@@ -1,5 +1,5 @@
 #include "Engine.cuh"
-
+#include <algorithm>
 
 
 __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {

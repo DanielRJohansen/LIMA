@@ -1,7 +1,7 @@
-#include "LIMA_MD/include/Analyzer.cuh"
-#include "LIMA_BASE/include/Printer.h"
-#include "LIMA_BASE/include/Utilities.h"
-#include "LIMA_BASE/include/Forcefield.cuh"
+#include "Analyzer.cuh"
+#include "Printer.h"
+#include "Utilities.h"
+#include "Forcefield.cuh"
 #include <algorithm>
 
 using namespace LIMA_Print;

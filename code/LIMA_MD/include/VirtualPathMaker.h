@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LIMA_BASE/include/LimaTypes.cuh"
+#include "LimaTypes.cuh"
 #include <math.h>
 
 class VirtualPathMaker

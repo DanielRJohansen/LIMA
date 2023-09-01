@@ -1,6 +1,6 @@
-#include "LIMA_MD/src/BoxBuilder.cuh"
-#include "LIMA_ENGINE/include/EngineUtils.cuh"
-#include "LIMA_BASE/include/Printer.h"
+#include "BoxBuilder.cuh"
+#include "EngineUtils.cuh"
+#include "Printer.h"
 #include <random>
 
 

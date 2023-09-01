@@ -1,8 +1,9 @@
 #pragma once
 
 #include <string>
-#include "LIMA_BASE/include/Utilities.h"
-#include "LIMA_BASE/include/LimaTypes.cuh"
+
+#include "Utilities.h"
+#include "LimaTypes.cuh"
 
 struct NB_Atomtype;
 

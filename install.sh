@@ -48,10 +48,10 @@ cp -r ./dependencies/* "$apps_dir"/dependencies/
 
 ######### Now make Quantom
 
-mkdir "$apps_dir"/src
+mkdir "$apps_dir"/
 mkdir "$apps_dir"/build
 
-cp -r ./code/* "$apps_dir"/src/
+cp -r ./code/* "$apps_dir"/
 mv "$apps_dir"/src/CMakeLists.txt "$apps_dir/"
 
 

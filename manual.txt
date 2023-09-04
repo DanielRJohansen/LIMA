@@ -1,0 +1,8 @@
+gmx pdb2gmx -f 6lzm.pdb
+gmx editconf -box 7.2 7.2 7.2 -c
+gmx solvate -cp conf.gro -p topol.top -o solvated.gro
+gmx grompp -f em.mdp -c solvated.gro -r solvated.gro -maxwarn 1
+gmx mdrun -deffnm em -s topol.tpr
+
+gmx grompp -f sim.mdp -c em.gro -r em.gro -maxwarn 1
+gmx mdrun -deffnm sim -s topol.tpr

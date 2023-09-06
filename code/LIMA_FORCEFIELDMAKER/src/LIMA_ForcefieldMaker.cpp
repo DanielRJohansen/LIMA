@@ -453,25 +453,19 @@ std::vector<std::string> getFiles() {
 	std::vector<std::string> files;
 
 	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
-
 #ifdef __linux__
-	const std::string ff_dir = "/home/lima/Desktop/charmm36-jul2022.ff/";
-
-	files.push_back(ff_dir + "")
-
-	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_lipid.prm"));
-	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_na.prm"));
-	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36m_prot.prm"));
-#else	
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all35_ethers.prm");
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_carb.prm");
-
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_lipid.prm");
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36_na.prm");
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_prot.prm");
-
-	files.push_back("C:\\PROJECTS\\Quantom\\charmm36-mar2019.ff\\toppar_c36_jul18\\par_all36m_cgenff.prm");
+	const std::string ff_dir = "/home/lima/Desktop/git_repo/LIMA/resources/Forcefields/charmm36-mar2019.ff";
+#else
+	const std::string ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charmm36-mar2019.ff";
 #endif
+
+	files.push_back(ff_dir + "/par_all35_ethers.prm");
+	files.push_back(ff_dir + "/par_all36_carb.prm");
+	files.push_back(ff_dir + "/par_all36_lipid.prm");
+	files.push_back(ff_dir + "/par_all36_na.prm");
+	files.push_back(ff_dir + "/par_all36m_prot.prm");
+	files.push_back(ff_dir + "/par_all36m_cgenff.prm");
+
 
 	return files;
 }

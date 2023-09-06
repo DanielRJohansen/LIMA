@@ -483,6 +483,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {
+	/*
 	__shared__ Compound compound;				// Mostly bond information
 	__shared__ CompoundState compound_state;	// Relative position in [lm]
 	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
@@ -652,6 +653,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	// Push vel and force for current step, for VelocityVS
 	box->compounds[blockIdx.x].vels_prev[threadIdx.x] = compound.vels_prev[threadIdx.x];
 	box->compounds[blockIdx.x].forces_prev[threadIdx.x] = compound.forces_prev[threadIdx.x];
+	*/
 }
 #undef compound_index
 
@@ -661,6 +663,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 __global__ void solventForceKernel(SimulationDevice* sim) {
+	/*
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
@@ -824,7 +827,8 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		if (threadIdx.x == 0) {
 			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
 		}
-	}	
+	}
+	*/
 }
 #undef solvent_index
 #undef solvent_mass

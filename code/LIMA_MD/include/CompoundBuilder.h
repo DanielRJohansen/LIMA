@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <array>
+#include <memory>
 
 #include "Bodies.cuh"
 #include "Constants.cuh"
@@ -90,13 +91,11 @@ public:
 	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id);
 	int id = -1;	// unique lima id
 
-	template <typename Bondtype>
-	void addBond(const ParticleInfoTable&, const Bondtype&);
 
-	template <> void addBond(const ParticleInfoTable&, const SingleBond&);
-	template <> void addBond(const ParticleInfoTable&, const AngleBond&);
-	template <> void addBond(const ParticleInfoTable&, const DihedralBond&);
-	template <> void addBond(const ParticleInfoTable&, const ImproperDihedralBond&);
+	void addBond(const ParticleInfoTable&, const SingleBond&);
+	void addBond(const ParticleInfoTable&, const AngleBond&);
+	void addBond(const ParticleInfoTable&, const DihedralBond&);
+	void addBond(const ParticleInfoTable&, const ImproperDihedralBond&);
 
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -120,16 +119,11 @@ public:
 		n_compounds = _compound_ids.size();
 	}
 
-	// Augments the particle_info with local_id_bridge if necessary
-	template <typename Bondtype>
-	void addBond(ParticleInfoTable&, const Bondtype&);
 
-	
-
-	template <> void addBond(ParticleInfoTable&, const SingleBond&);
-	template <> void addBond(ParticleInfoTable&, const AngleBond&);
-	template <> void addBond(ParticleInfoTable&, const DihedralBond&);
-	template <> void addBond(ParticleInfoTable&, const ImproperDihedralBond&);
+	void addBond(ParticleInfoTable&, const SingleBond&);
+	void addBond(ParticleInfoTable&, const AngleBond&);
+	void addBond(ParticleInfoTable&, const DihedralBond&);
+	void addBond(ParticleInfoTable&, const ImproperDihedralBond&);
 
 	bool containsCompound(int compound_id) const {
 		for (int i = 0; i < n_compounds; i++) {

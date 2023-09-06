@@ -12,7 +12,7 @@
 #include <glfw3.h>
 #define ENABLE_DISPLAY 
 #else
-#include <GLFW/glfw3.h>
+#include <../../dependencies/GLFW/include/glfw3.h>
 #endif
 
 class Display {

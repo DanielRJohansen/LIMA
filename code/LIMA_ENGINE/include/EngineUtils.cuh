@@ -81,11 +81,6 @@ namespace LIMAPOSITIONSYSTEM {
 
 	__device__ __host__ static void applyPBC(SolventCoord& coord) { applyPBC(coord.origo); }
 
-	__device__ static void applyPBC(CompoundCoords& coords) {
-		if (threadIdx.x != 0) { return; }
-		applyPBC(coords.origo);
-	}
-
 	__device__ __host__ static void applyPBC(LimaPosition& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;

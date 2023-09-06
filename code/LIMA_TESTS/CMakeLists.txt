@@ -14,7 +14,6 @@ target_include_directories(limatests PRIVATE
 
 target_link_libraries(limatests LIMA_BASE)
 target_link_libraries(limatests LIMA_MD)
-target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/../dependencies/GLFW/lib/glfw3.lib)
 
 set_target_properties(limatests PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(limatests PROPERTIES CUDA_ARCHITECTURES "89")

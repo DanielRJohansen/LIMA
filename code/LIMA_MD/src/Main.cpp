@@ -4,7 +4,7 @@
 
 
 int main() {
-	Environment env{"", EnvMode::Full};
+	//Environment env{"", EnvMode::Full};
 	std::printf("Hello world lima 3");
 	return 0;
 }

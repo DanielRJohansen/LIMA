@@ -702,7 +702,7 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	n_particles++;
 }
 
-template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
 		throw std::runtime_error("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
@@ -715,7 +715,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 	);
 }
 
-template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const AngleBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
 		{
@@ -728,7 +728,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 	);
 }
 
-template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { 
 		throw std::runtime_error("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
@@ -744,7 +744,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 	);
 }
 
-template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add improperdihedralbond to compound"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
 		std::array<uint32_t, 4>{
@@ -760,7 +760,7 @@ template <> void CompoundFactory::addBond(const ParticleInfoTable& particle_info
 
 
 
-template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const SingleBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const SingleBond& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
 		{
@@ -772,7 +772,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 	};
 }
 
-template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBond& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
 		{
@@ -785,7 +785,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 	};
 }
 
-template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
 
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
@@ -803,7 +803,7 @@ template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const 
 
 }
 
-template <> void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
 		std::array<uint32_t,4>{

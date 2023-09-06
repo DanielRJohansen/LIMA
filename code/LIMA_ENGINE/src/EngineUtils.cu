@@ -6,7 +6,7 @@
 
 
 namespace DEBUGUTILS {
-
+/*
 	void DEBUGUTILS::findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& closestNeighbor)
 	{
 		printf("Finding nearest neighbor-solvent of each solvent..");
@@ -42,5 +42,5 @@ namespace DEBUGUTILS {
 	}
 
 
-
+*/
 }

@@ -233,7 +233,11 @@ public:
 
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
-	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames), global_ids(-1) {}
+	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames) {
+		for (int i = 0; i < n_atoms; i++) {
+			global_ids[i] = -1;
+		}
+	}
 	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
 		: bonded_typenames(typenames), global_ids(ids) {}
 

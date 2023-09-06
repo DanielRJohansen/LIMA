@@ -232,7 +232,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 
 			std::array<int, 2> global_ids;
 			std::array<string, 2> atomtypes;
-			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			if (getGlobalIDsAndTypenames<2>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 				topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes});
 			}		
 		}
@@ -241,7 +241,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 
 			std::array<int, 3> global_ids;
 			std::array<string, 3> atomtypes;
-			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			if (getGlobalIDsAndTypenames<3>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 				topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
 			}
 		}
@@ -250,7 +250,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 
 			std::array<int, 4> global_ids;
 			std::array<string, 4> atomtypes;
-			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			if (getGlobalIDsAndTypenames<4>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 				topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
 			}
 		}
@@ -259,7 +259,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 
 			std::array<int, 4> global_ids;
 			std::array<string, 4> atomtypes;
-			if (getGlobalIDsAndTypenames(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			if (getGlobalIDsAndTypenames<4>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 				topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ global_ids, atomtypes });
 			}
 		}
@@ -455,7 +455,10 @@ std::vector<std::string> getFiles() {
 	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
 
 #ifdef __linux__
-	throw "Add the other files before trying this on linux";
+	const std::string ff_dir = "/home/lima/Desktop/charmm36-jul2022.ff/";
+
+	files.push_back(ff_dir + "")
+
 	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_lipid.prm"));
 	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36_na.prm"));
 	files.push_back(FileHelpers::pathJoin(forcefield_path, "par_all36m_prot.prm"));

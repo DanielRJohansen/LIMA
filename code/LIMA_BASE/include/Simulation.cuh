@@ -24,6 +24,7 @@ struct InputSimParams {
 
 	float dt = 100.f;			// [ls]
 	uint32_t n_steps = 1000;
+	bool em_variant=false;
 private:
 	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
 		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
@@ -31,8 +32,10 @@ private:
 };
 
 struct SimParamsConst {
+	SimParamsConst(uint64_t ns, float dt, bool ev) : n_steps(ns), dt(dt), em_variant(ev) {}
 	uint64_t n_steps;
 	float dt;									// [ls]
+	bool em_variant;
 };
 
 struct SimParams {

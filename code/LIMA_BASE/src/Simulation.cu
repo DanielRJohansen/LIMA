@@ -185,7 +185,7 @@ void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &n_steps, "n_steps");
 }
 
-SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt }
+SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt, ip.em_variant }
 {}
 
 DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds) {

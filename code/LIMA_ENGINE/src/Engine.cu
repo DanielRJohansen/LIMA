@@ -30,17 +30,17 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::uniqu
 
 
 
-template<bool em_variant> void Engine::step() {
+void Engine::step() {
 	LIMA_UTILS::genericErrorCheck("Error before step!");
 
-	deviceMaster<em_variant>();	// Device first, otherwise offloading data always needs the last datapoint!
+	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
 	simulation->incStep();
-	hostMaster<em_variant>();
+	hostMaster();
 
 	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
-template <bool em_variant> void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
+void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if ((simulation->getStep() % STEPS_PER_LOGTRANSFER) == 0) {
 		offloadLoggingData();
@@ -48,7 +48,7 @@ template <bool em_variant> void Engine::hostMaster() {						// This is and MUST 
 
 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
-			handleBoxtemp(em_variant);
+			handleBoxtemp();
 		}
 		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 	}
@@ -155,7 +155,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-template <bool em_variant>
+
 void Engine::deviceMaster() {
 	const auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
@@ -168,7 +168,7 @@ void Engine::deviceMaster() {
 
 	cudaDeviceSynchronize();
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundKernel<em_variant><< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
+		compoundKernel<< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 
 #ifdef LIMASAFEMODE
@@ -179,7 +179,7 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		solventForceKernel<em_variant> << < SolventBlocksCircularQueue::blocks_per_grid, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
+		solventForceKernel<< < SolventBlocksCircularQueue::blocks_per_grid, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 
 		cudaDeviceSynchronize();

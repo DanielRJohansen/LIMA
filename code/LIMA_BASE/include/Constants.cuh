@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits.h>
 
-//#define LIMASAFEMODE 
+#define LIMASAFEMODE 
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive

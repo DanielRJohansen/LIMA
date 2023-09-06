@@ -223,7 +223,6 @@ __device__ static const char* calcLJOriginString[] = {
 	"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter"
 };
 
-template<bool em_variant>
 __device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, float* data_ptr, float& potE, const float sigma, const float epsilon, 
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
@@ -243,11 +242,7 @@ __device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, flo
 	const Float3 force = (pos1 - pos0) * force_scalar;
 
 #ifdef LIMASAFEMODE
-	float max_force_len = 1.f;
-
-	if constexpr (em_variant) {	// During EM dt is lower, so large forces are not a problem. However some unnatural large ones are still important to flag
-		max_force_len = 100.f;
-	}
+	const float max_force_len = 1.f;
 
 	auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 	if (force.len() > 1.f || pot > 1e+8) {

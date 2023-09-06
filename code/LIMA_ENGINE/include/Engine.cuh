@@ -20,15 +20,8 @@
 #include <vector>
 //#include <algorithm>
 
-template <bool em_variant>
 __global__ void compoundKernel(SimulationDevice* sim);
-template __global__ void compoundKernel<true>(SimulationDevice* sim);
-template __global__ void compoundKernel<false>(SimulationDevice* sim);
-
-template <bool em_variant>
 __global__ void solventForceKernel(SimulationDevice* sim);
-template __global__ void solventForceKernel<true>(SimulationDevice* sim);
-template __global__ void solventForceKernel<false>(SimulationDevice* sim);
 
 __global__ void compoundBridgeKernel(SimulationDevice* sim);
 __global__ void solventTransferKernel(SimulationDevice* sim);
@@ -53,7 +46,7 @@ public:
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
 	// I'm sure that will help the branch predictor alot!
-	template <bool em_variant> void step();
+	void step();
 
 	EngineTimings timings{};
 
@@ -65,8 +58,8 @@ public:
 private:
 
 
-	template <bool em_variant> void hostMaster();
-	template <bool em_variant> void deviceMaster();
+	void hostMaster();
+	void deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	std::unique_ptr<NListManager> nlist_manager;
@@ -82,7 +75,7 @@ private:
 	void bootstrapTrajbufferWithCoords();
 
 
-	void handleBoxtemp(bool em_variant);
+	void handleBoxtemp();
 
 	std::unique_ptr<LimaLogger> m_logger;
 
@@ -97,13 +90,6 @@ private:
 	uint64_t step_at_last_traj_transfer = 0;
 	Simulation* simulation;
 };
-
-template void Engine::deviceMaster<false>();
-template void Engine::deviceMaster<true>();
-template void Engine::hostMaster<false>();
-template void Engine::hostMaster<true>();
-template void Engine::step<false>();
-template void Engine::step<true>();
 
 
 

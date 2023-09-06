@@ -18,7 +18,7 @@ namespace TestMDStability {
 	using namespace TestUtils;
 
 	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
-		InputSimParams emparams{ 20, 2000 };
+		InputSimParams emparams{ 20, 2000, true };
 		auto env = basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em

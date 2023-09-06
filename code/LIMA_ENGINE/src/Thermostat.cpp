@@ -39,7 +39,7 @@ __host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, Forc
 
 
 
-void Engine::handleBoxtemp(bool em_variant) {
+void Engine::handleBoxtemp() {
 	const float target_temp = 310.f;				// [k]
 	const TemperaturPackage temp_package = getBoxTemperature(simulation, forcefield_host);
 	const float temp = temp_package.temperature;
@@ -54,8 +54,9 @@ void Engine::handleBoxtemp(bool em_variant) {
 		const float temp_safe = temp == 0.f ? 1 : temp;
 		float temp_scalar = target_temp / temp_safe;
 
+		
 		// I just added this to not change any temperatures too rapidly. However in EM we can go faster, and should so we reach goal temperature before sim starts
-		const float max_scalar = em_variant ? MAX_THERMOSTAT_SCALER * 10.f : MAX_THERMOSTAT_SCALER;
+		const float max_scalar = simulation->simparams_host.constparams.em_variant ? MAX_THERMOSTAT_SCALER * 10.f : MAX_THERMOSTAT_SCALER;
 		temp_scalar = std::clamp(temp_scalar, 1.f - max_scalar, 1.f + max_scalar);
 		
 		

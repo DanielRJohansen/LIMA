@@ -176,9 +176,9 @@ void Environment::run(bool em_variant) {
 	while (true) {
 		if (handleTermination(simulation.get())) { break; }
 		if (em_variant)
-			engine->step<true>();
+			engine->step();
 		else
-			engine->step<false>();
+			engine->step();
 
 
 

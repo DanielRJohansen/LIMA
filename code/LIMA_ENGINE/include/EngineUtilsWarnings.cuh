@@ -51,12 +51,14 @@ struct EngineUtilsWarnings {
 	}
 
 	__device__ static void verifyOrigoShiftIsValid(const NodeIndex& from, const NodeIndex& to) {
+#ifdef LIMASAFEMODE
 		const NodeIndex origo_shift = from - to;
 		if (abs(origo_shift.x) > 10 || abs(origo_shift.y) > 10 || abs(origo_shift.z) > 10) {
 			printf("block %d thread %d\n", blockIdx.x, threadIdx.x);
 			from.print('f');
 			to.print('t');
 		}
+#endif
 	}
 
 };

@@ -1,5 +1,6 @@
 #include "Engine.cuh"
 #include "Utilities.h"
+#include "EngineUtils.cuh"
 
 #include <algorithm>
 

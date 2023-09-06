@@ -2,7 +2,7 @@
 #include <algorithm>
 
 
-__host__ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {
+static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {
 	TemperaturPackage package{};
 
 	const uint64_t step = simulation->getStep() - 1;	// We haven't loaded data for current step onto host yet.

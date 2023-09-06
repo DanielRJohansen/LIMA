@@ -213,11 +213,7 @@ namespace LIMAPOSITIONSYSTEM {
 		return compoundcoords;
 	}
 
-	// Transforms the relative coords to relative float positions.
-	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const unsigned int n_elements) {
-		if (threadIdx.x < n_elements)
-			positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
-	}
+
 
 	__device__ __host__ static bool canRepresentRelativeDist(const Coord& origo_a, const Coord& origo_b) {
 		const auto diff = origo_a - origo_b;
@@ -264,9 +260,7 @@ namespace LIMAPOSITIONSYSTEM {
 		coords.origo += shift_node;
 		return -nodeIndexToCoord(shift_node);
 	}
-	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
-		coords.rel_positions[threadIdx.x] += shift_lm;
-	}
+
 
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
 	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
@@ -352,6 +346,18 @@ namespace LIMAPOSITIONSYSTEM {
 };
 
 
+// gcc is being a bitch with threadIdx and blockIdx in .cuh files that are also included by .c++ files.
+// This workaround is to have these functions as static class fucntinos instead of namespace, which avoid the issue somehow. fuck its annoying tho
+class LIAMPOSITIONSYSTEM_HACK{
+	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const unsigned int n_elements) {
+		if (threadIdx.x < n_elements)
+			positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
+	}
+
+	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
+		coords.rel_positions[threadIdx.x] += shift_lm;
+	}
+};
 
 
 
@@ -517,7 +523,8 @@ namespace LIMAKERNELDEBUG {
 		const auto dif = (relpos_next - relpos_prev);
 		const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
 		if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 3.f) {
-			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+			//printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+			printf("\nParticle is moving too fast\n");
 			dif.printS('D');
 			force.print('F');
 			relpos_next.printS('R');

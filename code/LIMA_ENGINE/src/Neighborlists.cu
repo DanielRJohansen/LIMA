@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include "Neighborlists.cuh"
+#include "EngineUtils.cuh"
 #include "Utilities.h"
 
 // ------------------------------------------------------------------------------------------- PRIVATE HELPERS -------------------------------------------------------------------------------------------//

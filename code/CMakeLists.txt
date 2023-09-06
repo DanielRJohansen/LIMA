@@ -29,9 +29,9 @@ find_package(OpenGL REQUIRED)
 
 add_subdirectory(LIMA_BASE)
 add_subdirectory(LIMA_ENGINE)
-#add_subdirectory(LIMA_FORCEFIELDMAKER)
-#add_subdirectory(LIMA_MD)
-#add_subdirectory(LIMA_TESTS)
+add_subdirectory(LIMA_FORCEFIELDMAKER)
+add_subdirectory(LIMA_MD)
+add_subdirectory(LIMA_TESTS)
 
 
 #include_directories("${CUDA_INCLUDE_DIRS}")

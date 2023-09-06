@@ -2,8 +2,7 @@
 #include "Engine.cuh"
 
 int main() {
-
-    Engine eng()
+    NListManager nlistman();
 
     std::printf("LIMA_ENGINE self-test success");
 

@@ -30,7 +30,9 @@ target_include_directories(LIMA_MD PRIVATE
 target_link_libraries(LIMA_MD LIMA_BASE)
 target_link_libraries(LIMA_MD LIMA_ENGINE)
 target_link_libraries(LIMA_MD LIMA_FORCEFIELDMAKER)
-target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/dependencies/GLFW/lib/glfw3.lib)
+if (WIN32)
+    target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/dependencies/GLFW/lib/glfw3.lib)
+endif()
 #target_include_directories(LIMA_MD PRIVATE ${OPENGL_INCLUDE_DIR})
 target_link_libraries(LIMA_MD ${OPENGL_LIBRARIES})
 

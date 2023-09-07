@@ -220,21 +220,6 @@ namespace LIMAPOSITIONSYSTEM {
 		return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
 	}
 
-
-
-
-	
-	// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
-	/*__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
-		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
-	}*/
-	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
-		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
-
-		const NodeIndex origo_shift = from - to;
-		return nodeIndexToCoord(origo_shift);
-	}
-
 	// Get hyper index of "other"
 	__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
 		NodeIndex temp = other;
@@ -259,23 +244,6 @@ namespace LIMAPOSITIONSYSTEM {
 
 		coords.origo += shift_node;
 		return -nodeIndexToCoord(shift_node);
-	}
-
-
-	// This function is only used in bridge, and can be made alot smarter with that context. TODO
-	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
-	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
-		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
-		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
-
-		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
-		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
-
-		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
-
-		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
-		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
-		return nodeIndexToCoord(nodeshift_right_to_left * -1);
 	}
 
 
@@ -320,7 +288,7 @@ namespace LIMAPOSITIONSYSTEM {
 		return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos, blocklen_half);
 	}
 
-	/// <summary>
+	/// <summary>NListManager
 	/// Shifts the position 1/2 blocklen so we can find the appropriate origo.
 	/// Applies PBC to the solvent
 	/// </summary>
@@ -362,6 +330,34 @@ public:
 	__device__ static void applyPBC(CompoundCoords& coords) {
 		if (threadIdx.x != 0) { return; }
 		LIMAPOSITIONSYSTEM::applyPBC(coords.origo);
+	}
+
+
+	// This function is only used in bridge, and can be made alot smarter with that context. TODO
+	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
+	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
+		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
+		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
+
+		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex(nodeindex_left, nodeindex_right);
+		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
+
+		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
+
+		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
+		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
+		return LIMAPOSITIONSYSTEM::nodeIndexToCoord(nodeshift_right_to_left * -1);
+	}
+
+		// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
+	/*__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
+		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
+	}*/
+	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
+		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
+
+		const NodeIndex origo_shift = from - to;
+		return LIMAPOSITIONSYSTEM::nodeIndexToCoord(origo_shift);
 	}
 };
 

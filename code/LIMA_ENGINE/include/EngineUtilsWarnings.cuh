@@ -4,13 +4,18 @@
 
 // Each function determines if its priority is under LIMASAFEMODE or LIMAPUSH
 
+#pragma once
+
 #include <iostream>
 
 #include "Constants.cuh"
 #include "Bodies.cuh"
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 
 // TODO HARD: make this a namespace
-struct EngineUtilsWarnings {
+class EngineUtilsWarnings {
+public:
 	__device__ static void verifyNodeIndexShiftIsSafe(const NodeIndex& nodeshift_right_to_left) {
 #ifdef LIMASAFEMODE
 		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
@@ -60,5 +65,4 @@ struct EngineUtilsWarnings {
 		}
 #endif
 	}
-
 };

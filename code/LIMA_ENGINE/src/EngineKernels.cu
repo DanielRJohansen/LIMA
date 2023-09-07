@@ -322,7 +322,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
-		*utility_coord = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
+		*utility_coord = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 	}
 	__syncthreads();
 
@@ -576,7 +576,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
 		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
 
-		const Float3 relpos_shift = LIMAPOSITIONSYSTEM::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();	// TODO: Only t0 needs to do this
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();	// TODO: Only t0 needs to do this
 
 		const SolventBlock* solventblock = box->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, simparams.step);
 		const int nsolvents_neighbor = solventblock->n_solvents;
@@ -900,7 +900,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
 	if (threadIdx.x < bridge.n_compounds) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
+		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
 	}
 
 

@@ -562,8 +562,8 @@ struct ParticleReference {
 		compound_id(compound_id), local_id_compound(local_id_compound) {}
 #endif
 
-	int compound_id = -1;	// global
-	int local_id_compound = -1;	// id of particle
+	int compound_id;	// global
+	int local_id_compound;	// id of particle
 	uint8_t compoundid_local_to_bridge = 255;
 
 	//int global_id = -1; // For debug

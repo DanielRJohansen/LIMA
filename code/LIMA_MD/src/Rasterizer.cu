@@ -1,3 +1,6 @@
+#ifndef __linux__
+
+
 #include "Rasterizer.cuh"
 #include "EngineUtils.cuh"
 #include "Utilities.h"
@@ -266,3 +269,4 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     const RenderBall ball(atom.pos, atom.radius, atom.color, atom.atom_type);
     balls[index] = ball;
 }
+#endif

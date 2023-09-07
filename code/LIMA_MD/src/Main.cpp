@@ -1,11 +1,18 @@
 #include <iostream>
 
 #include "Environment.h"
-
+#include "Engine.cuh"
+#include "ForcefieldMaker.h"
+#include "DisplayV2.h"
 
 int main() {
 	//Environment env{"", EnvMode::Full};
-	std::printf("Hello world lima 3");
+	std::printf("\tMD self test succesful\n");
+
+
+	Display display{};
+
+
 	return 0;
 }
 //

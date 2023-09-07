@@ -1,3 +1,5 @@
+
+
 #include "Analyzer.cuh"
 #include "Printer.h"
 #include "Utilities.h"
@@ -379,3 +381,4 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 	//printf("\nValues per step %d\n", n_values_per_step);
 	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 }
+

@@ -1,19 +1,17 @@
 #include "DisplayV2.h"
 
+/*
+#ifndef __linux__
 
 Display::Display() :
     logger(LimaLogger::LogMode::compact, EnvMode::Full, "display") 
 {    
-#ifdef ENABLE_DISPLAY
     int success = initGLFW();
-#endif
     logger.finishSection("Display initialized");
 }
 
 Display::~Display() {
-#ifdef ENABLE_DISPLAY
     glfwTerminate();
-#endif
 }
 
 void Display::drawFilledCircle(const RenderBall& ball) {
@@ -48,14 +46,7 @@ void Display::drawBalls(const std::vector<RenderBall>& balls, int n_balls) {
 }
 
 
-
-
-
-
-
-
 void Display::render(Simulation* simulation) {
-#ifdef ENABLE_DISPLAY
     auto start = std::chrono::high_resolution_clock::now();
 
     auto balls = rasterizer.render(simulation);
@@ -63,7 +54,7 @@ void Display::render(Simulation* simulation) {
 
     drawBalls(balls, simulation->boxparams_host.total_particles_upperbound);
 
-    /* Swap front and back buffers */
+    // Swap front and back buffers
     glfwSwapBuffers(window);
 
     std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, simulation->getStep(), simulation->temperature);
@@ -72,18 +63,15 @@ void Display::render(Simulation* simulation) {
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
     //printf("\tRender time: %4d ys  ", (int) duration.count());
-#endif
 }
 
 bool Display::checkWindowStatus() {
-#ifdef ENABLE_DISPLAY
     glfwPollEvents();
     if (glfwWindowShouldClose(window)) {
         glfwTerminate();
 
         return false;
     }
-#endif
     return true;
 }
 
@@ -91,13 +79,13 @@ bool Display::initGLFW() {
     
     logger.print("Initializing display...\n");
 
-    /* Initialize the library */
+    // Initialize the library
     if (!glfwInit()) {
         printf("\nGLFW failed to initialize\n");
         exit(0);
     }
 
-    /* Create a windowed mode window and its OpenGL context */
+    // Create a windowed mode window and its OpenGL context
     logger.print("Loading window --->");
     window = glfwCreateWindow(display_width, display_height, window_title.c_str(), NULL, NULL);
     if (!window)
@@ -108,7 +96,10 @@ bool Display::initGLFW() {
     glfwSetWindowPos(window, screensize[0] - display_width - 550, 50);
     logger.print("done\n");
 
-    /* Make the window's context current */
+    // Make the window's context current
     glfwMakeContextCurrent(window);
     return 1;
 }
+
+#endif
+*/

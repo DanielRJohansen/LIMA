@@ -11,10 +11,9 @@
 #ifndef __linux__
 #include <glfw3.h>
 #define ENABLE_DISPLAY 
-#else
-#include <../../dependencies/GLFW/include/glfw3.h>
-#endif
 
+
+/*
 class Display {
 public:
 	Display();
@@ -23,7 +22,7 @@ public:
 	void animate(Trajectory* traj);
 
 	bool checkWindowStatus();		// Returns false if the windows should close
-	void terminate(); 
+	void terminate();
 
 private:
 	LimaLogger logger;
@@ -51,4 +50,22 @@ private:
 
 	const int screensize[2] = {3840, 2160};
 };
+*/
+#else
+#include <glfw3.h>
+
+class Display {
+public:
+		Display(){};
+		void render(Simulation*) {};
+		bool checkWindowStatus() {return true;}
+		void terminate() {}
+
+private:
+	int height=-1;
+};
+
+
+#endif
+
 

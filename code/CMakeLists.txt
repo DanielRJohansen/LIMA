@@ -15,7 +15,7 @@ set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
 #set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -j4")  # Limit to 4 concurrent tasks
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++20")
 
 
 
@@ -30,8 +30,8 @@ find_package(OpenGL REQUIRED)
 add_subdirectory(LIMA_BASE)
 add_subdirectory(LIMA_ENGINE)
 add_subdirectory(LIMA_FORCEFIELDMAKER)
-#add_subdirectory(LIMA_MD)
-#add_subdirectory(LIMA_TESTS)
+add_subdirectory(LIMA_MD)
+add_subdirectory(LIMA_TESTS)
 
 
 #include_directories("${CUDA_INCLUDE_DIRS}")

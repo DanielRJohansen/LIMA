@@ -27,10 +27,11 @@ target_link_libraries(LIMA_ENGINE LIMA_BASE)
 set_target_properties(LIMA_ENGINE PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(LIMA_ENGINE PROPERTIES CUDA_ARCHITECTURES "89")
 
+
+
+
+
+
 # Self-test executable
 add_executable(engine_self_test src/EngineMain.cpp)
-target_include_directories(engine_self_test PRIVATE    ${CUDA_INCLUDE_DIRS})
-set_target_properties(engine_self_test PROPERTIES CUDA_ARCHITECTURES "89")
-set_target_properties(engine_self_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-target_link_libraries(engine_self_test LIMA_BASE)
 target_link_libraries(engine_self_test LIMA_ENGINE)

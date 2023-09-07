@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
+#if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
 
 
 echo "Welcome to the LIMA Dynamics installer"
@@ -23,7 +23,8 @@ echo "Installing dependencies"
 
 
 install_dir=$PWD
-program_dir=/home/"$SUDO_USER"/Desktop/LIMA
+#program_dir=/home/"$SUDO_USER"/Desktop/LIMA
+program_dir=../../LIMA
 apps_dir="$program_dir"/Applications
 
 echo "Using $program_dir as install directory"
@@ -67,8 +68,19 @@ make
 ./engine_self_test
 cd ..
 
+cd LIMA_FORCEFIELDMAKER
+make
+./ffm_self_test
+cd ..
 
-#make
+cd LIMA_MD
+make
+./md_self_test
+cd ..
+
+
+
+make
 
 #mv mdrun ../
 

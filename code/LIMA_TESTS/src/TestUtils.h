@@ -17,10 +17,10 @@
 
 
 namespace TestUtils {
-#ifndef __LINUX__
+#ifndef __linux__
 	const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
 #else
-	const std::string simulations_dir = 
+	const std::string simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
 #endif
 
 	// Creates a simulation from the folder which should contain a molecule with conf and topol

@@ -22,17 +22,19 @@ echo "Installing dependencies"
 
 
 
-install_dir=$PWD
+install_dir="$PWD"
 #program_dir=/home/"$SUDO_USER"/Desktop/LIMA
-program_dir=../../LIMA
+program_dir="$PWD"/../../LIMA
 apps_dir="$program_dir"/Applications
+sims_dir="$program_dir"/Simulations""
+
 
 echo "Using $program_dir as install directory"
 rm -rf "$program_dir"/
 
 
 mkdir -p "$apps_dir"
-mkdir -p "$program_dir/Simulation"
+mkdir -p "$sims_dir"
 #mkdir -p "$apps_dir"/dependencies
 
 
@@ -81,6 +83,13 @@ cd ..
 
 
 make
+mv LIMA_TESTS/limatests ../
+cp -r "$install_dir"/../LIMA_data/* "$sims_dir"/.
+
+
+
+cd $apps_dir
+./limatests
 
 #mv mdrun ../
 

@@ -7,13 +7,13 @@
 
 #include <chrono>
 #include <string>
+#include <glfw3.h>
 
 #ifndef __linux__
-#include <glfw3.h>
 #define ENABLE_DISPLAY 
 
 
-/*
+
 class Display {
 public:
 	Display();
@@ -50,14 +50,13 @@ private:
 
 	const int screensize[2] = {3840, 2160};
 };
-*/
+
 #else
-#include <glfw3.h>
 
 class Display {
 public:
 		Display(){};
-		void render(Simulation*) {};
+		void render(Simulation*) {}
 		bool checkWindowStatus() {return true;}
 		void terminate() {}
 

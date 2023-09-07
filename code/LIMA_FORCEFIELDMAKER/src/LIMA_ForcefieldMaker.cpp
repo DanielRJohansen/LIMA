@@ -75,17 +75,11 @@ const float water_epsilon = 0.1591f * kcalToJoule;
 static const NB_Atomtype Water_atomtype{ "WATER", 0, water_mass, water_sigma, water_epsilon };
 
 
-ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& ff_dir, const string& conf_file, const string& topol_file) :
+ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& conf_file, const string& topol_file) :
 	molecule_dir(Filehandler::pathJoin(workdir, "molecule")),
-	forcefield_dir(ff_dir),
 	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir),
 	m_verbose(envmode != Headless)
 {
-	ff_bonded_path = Filehandler::pathJoin(ff_dir, "ffbonded.itp");
-	ff_nonbonded_path = Filehandler::pathJoin(ff_dir, "ffnonbonded.itp");
-	Filehandler::assertPath(ff_bonded_path);
-	Filehandler::assertPath(ff_nonbonded_path);
-
 	conf_path = Filehandler::pathJoin(molecule_dir, conf_file);
 	topol_path = Filehandler::pathJoin(molecule_dir, topol_file);
 	Filehandler::assertPath(conf_path);

@@ -97,7 +97,7 @@ private:
 	Analyzer::AnalyzedPackage postsim_anal_package;
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;
-	std::string main_dir = "../";
+	std::string main_dir = "/home/lima/Desktop/git_repo/LIMA";
 #else
 	std::chrono::steady_clock::time_point time0;
 	std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";

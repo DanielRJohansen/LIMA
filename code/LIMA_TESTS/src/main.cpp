@@ -16,7 +16,6 @@ void runAllUnitTests();
 
 
 int main() {
-
 	try {
 		constexpr auto envmode = EnvMode::Full;
 

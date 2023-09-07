@@ -15,7 +15,7 @@ set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
 #set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -j4")  # Limit to 4 concurrent tasks
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++20")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w -std=c++20")
 
 
 

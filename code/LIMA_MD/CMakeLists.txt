@@ -19,9 +19,10 @@ target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CUDA_INCLUDE_DIRS}    
     ${CMAKE_SOURCE_DIR}/dependencies/GLFW/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_include_directories(LIMA_MD PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+
 )
 
 
@@ -49,7 +50,7 @@ find_package(CUDA REQUIRED)
 add_executable(md_self_test src/Main.cpp)
 set_target_properties(md_self_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(md_self_test PROPERTIES CUDA_ARCHITECTURES "89")
-target_link_libraries(md_self_test LIMA_BASE)
-target_link_libraries(md_self_test LIMA_ENGINE)
-target_link_libraries(md_self_test LIMA_FORCEFIELDMAKER)
+#target_link_libraries(md_self_test LIMA_BASE)
+#target_link_libraries(md_self_test LIMA_ENGINE)
+#target_link_libraries(md_self_test LIMA_FORCEFIELDMAKER)
 target_link_libraries(md_self_test LIMA_MD)

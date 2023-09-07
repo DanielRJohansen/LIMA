@@ -70,8 +70,8 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 }
 
 void Engine::terminateSimulation() {
-	const int steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
-	if ((steps_since_transfer) > 0) {
+	const auto steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
+	if ((steps_since_transfer) > LOG_EVERY_N_STEPS) {
 		offloadLoggingData(steps_since_transfer);
 		offloadTrajectory(steps_since_transfer);
 	}
@@ -82,25 +82,28 @@ void Engine::terminateSimulation() {
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
-	uint64_t step_relative = (simulation->getStep() - steps_to_transfer) ;	// Tongue in cheek here, i think this is correct...
+
+	const int64_t startstep = simulation->getStep() - steps_to_transfer;
+	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep);
+	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep());
 
 	cudaMemcpy(
-		simulation->potE_buffer->getBufferAtStep(step_relative),
+		simulation->potE_buffer->getBufferAtIndex(startindex),
 		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
 		simulation->sim_dev->databuffers->potE_buffer, 
-		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
+		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
-		simulation->vel_buffer->getBufferAtStep(step_relative),
+		simulation->vel_buffer->getBufferAtIndex(startindex),
 		simulation->sim_dev->databuffers->vel_buffer,
-		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
+		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
-		&simulation->loggingdata[step_relative * 10], 
+	cudaMemcpy(	// THIS IS PROLLY WRONG NOW
+		&simulation->loggingdata[startindex * 10],
 		simulation->sim_dev->databuffers->outdata, 
-		sizeof(float) * 10 * steps_to_transfer, 
+		sizeof(float) * 10 * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaDeviceSynchronize();
@@ -108,13 +111,16 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 
 void Engine::offloadTrajectory(const int steps_to_transfer) {
 #ifndef DONTGENDATA
-	uint64_t step_relative = (simulation->getStep() - steps_to_transfer);	// Tongue in cheek here, i think this is correct...
+
+	const int64_t startstep = simulation->getStep() - steps_to_transfer;
+	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep);
+	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep());
 
 	cudaMemcpy(
 		//&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
-		simulation->traj_buffer->getBufferAtStep(step_relative),
+		simulation->traj_buffer->getBufferAtIndex(startindex),
 		simulation->sim_dev->databuffers->traj_buffer,
-		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * steps_to_transfer,
+		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost
 	);
 
@@ -149,7 +155,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 
 			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
-			simulation->traj_buffer->getCompoundparticleDatapoint(compound_id, particle_id, 0) = particle_abspos;
+			simulation->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, 0) = particle_abspos;
 		}
 	}
 

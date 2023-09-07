@@ -28,10 +28,11 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 	// Data for the current step has not yet been generated so we need to use the previous step.
 	// For the very first step, engine has cheated and already written the traj from the initial setup.	
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
+	const auto entryindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(step);
 
 	for (int compound_id = 0; compound_id < simulation.boxparams_host.n_compounds; compound_id++) {
 		const int key_index = simulation.compounds_host[compound_id].key_particle_index;
-		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapoint(compound_id, key_index, step);
+		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, key_index, entryindex);
 	}
 }
 

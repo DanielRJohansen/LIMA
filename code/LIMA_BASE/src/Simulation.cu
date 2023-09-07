@@ -191,7 +191,7 @@ SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt, 
 DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds) {
 	// Permanent Outputs for energy & trajectory analysis
 	{
-		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER;
+		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER / LOG_EVERY_N_STEPS;
 		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
@@ -200,11 +200,9 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 		cudaMallocManaged(&potE_buffer, sizeof(*potE_buffer) * n_datapoints);
 		cudaMallocManaged(&traj_buffer, sizeof(*traj_buffer) * n_datapoints);
 		cudaMallocManaged(&vel_buffer, sizeof(*vel_buffer) * n_datapoints);
-		//cudaMemset(potE_buffer, 0, sizeof(float) * n_datapoints);	// TODO: Do it like this instead
 
 		std::vector<float>potE_zero(n_datapoints, 0);
 		std::vector<Float3>traj_zero(n_datapoints, Float3{});
-		//std::vector<Float3>traj_zero(n_datapoints, Float3{});
 
 		cudaMemcpy(potE_buffer, potE_zero.data(), sizeof(float) * n_datapoints, cudaMemcpyHostToDevice);
 		cudaMemcpy(traj_buffer, traj_zero.data(), sizeof(Float3) * n_datapoints, cudaMemcpyHostToDevice);

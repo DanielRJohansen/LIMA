@@ -77,7 +77,6 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
 
 	static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
-
 	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
 	
 	//auto a = std::roundf(std::abs(BOX_LEN / SolventBlockGrid::node_len)) * SolventBlockGrid::node_len;// -BOX_LEN_NM;
@@ -216,7 +215,7 @@ void Environment::postRunEvents() {
 	
 	
 	if (0) {
-		Filehandler::dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");
+		//Filehandler::dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");	Wrong due to LOGEVERYNSTEPS
 	}
 
 	if (simulation->sim_dev->params->critical_error_encountered) {
@@ -242,7 +241,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (DUMP_POTE) {
-		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtStep(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
+		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
 	}
 
 #ifdef USEDEBUGF3

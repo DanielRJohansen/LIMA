@@ -36,14 +36,14 @@ int main() {
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 8e-5);
 
 		//loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
 
 		//doPool50x(EnvMode::Headless);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;
@@ -73,9 +73,9 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
 	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
-	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4));
+	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4, 1.4e-7));
 	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
-	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5));
+	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7));
 
 
 	// Smaller compound tests

@@ -81,35 +81,37 @@ template <typename T>
 class ParticleDataBuffer {
 public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps) 
-		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds)
+		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), n_indices(n_steps/LOG_EVERY_N_STEPS)
 	{
-		buffer.resize(n_particles_upperbound * n_steps);
-		for (size_t i = 0; i < n_particles_upperbound * n_steps; i++) {
+		buffer.resize(n_particles_upperbound * n_indices);
+		for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
 			buffer[i] = T{};
 		}
 	}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
 
-	T* getBufferAtStep(size_t step) {
-		return &buffer[n_particles_upperbound * step];
+	// Get entryindex from LIMALOGSYSTEM
+	T* getBufferAtIndex(size_t entryindex) {
+		return &buffer[n_particles_upperbound * entryindex];
 	}
 
-	T& getCompoundparticleDatapoint(int compound_id, int particle_id_compound, size_t step) {
-		const size_t step_offset = step * n_particles_upperbound;
+	T& getCompoundparticleDatapointAtIndex(int compound_id, int particle_id_compound, size_t entryindex) {
+		const size_t index_offset = entryindex * n_particles_upperbound;
 		const size_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return buffer[step_offset + compound_offset + particle_id_compound];
+		return buffer[index_offset + compound_offset + particle_id_compound];
 	}
 
-	T& getSolventparticleDatapoint(int solvent_id, size_t step) {
-		const size_t step_offset = step * n_particles_upperbound;
+	T& getSolventparticleDatapointAtIndex(int solvent_id, size_t entryindex) {
+		const size_t index_offset = entryindex * n_particles_upperbound;
 		const size_t firstsolvent_offset = n_compounds * MAX_COMPOUND_PARTICLES;
-		return buffer[step_offset + firstsolvent_offset + solvent_id];
+		return buffer[index_offset + firstsolvent_offset + solvent_id];
 	}
 
 private:
-	const size_t n_particles_upperbound = 0;
-	const size_t n_compounds = 0;
+	const size_t n_particles_upperbound;
+	const size_t n_compounds;
+	const size_t n_indices;
 	std::vector<T> buffer;
 };
 

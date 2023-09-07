@@ -50,7 +50,7 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
-	const size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps;
+	const size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps / LOG_EVERY_N_STEPS;
 	const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 	m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
 

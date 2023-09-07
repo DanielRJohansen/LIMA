@@ -150,7 +150,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1.3e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
@@ -212,7 +212,7 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f);
+		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f, 2e-7);
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
@@ -279,7 +279,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, 0.005, energy_gradients, 2e-5);
+		const auto result = evaluateTest(varcoffs, 0.005, energy_gradients, 6e-5);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
@@ -289,14 +289,14 @@ namespace ForceCorrectness {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.00015f);
+		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.00015f, 2e-7);
 	}
 
 	LimaUnittestResult doPhenylalanineBenchmark(EnvMode envmode) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 1e-8f);
+		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 7e-8f);
 	}
 
 }

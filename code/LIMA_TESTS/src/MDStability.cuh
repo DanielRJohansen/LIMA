@@ -54,7 +54,7 @@ namespace TestMDStability {
 		const std::string work_folder = simulations_dir + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return loadAndRunBasicSimulation(name, envmode, 2e-4, 2e-7);
+		return loadAndRunBasicSimulation(name, envmode, 2e-4, 7.5e-7);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

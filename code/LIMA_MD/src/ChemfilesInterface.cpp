@@ -1,5 +1,5 @@
 #include "ChemfilesInterface.h"
-
+#include "EngineUtils.cuh"
 #include <string>
 #include <format>
 
@@ -198,7 +198,7 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
     
 
     std::vector<Float3> positions(sim->extraparams.total_particles);
-    for (int step = 0; step < sim->getStep(); step += inc) {
+    for (int entryindex = 0; entryindex < LIMALOGSYSTEM::getDataentryIndex(sim->getStep()); entryindex += inc) {
 
         int index = 0; 
 
@@ -207,14 +207,14 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
 
         for (int compound_id = 0; compound_id < sim->boxparams_host.n_compounds; compound_id++) {
             for (int i = 0; i < sim->sim_dev->box->compounds[compound_id].n_particles; i++) {
-                positions[index++] = sim->traj_buffer->getCompoundparticleDatapoint(compound_id, i, step);
+                positions[index++] = sim->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, i, entryindex);
             }
         }
 
         for (int solvent_index = 0; solvent_index < sim->boxparams_host.n_solvents; solvent_index++) {
-            positions[index++] = sim->traj_buffer->getSolventparticleDatapoint(solvent_index, step);
+            positions[index++] = sim->traj_buffer->getSolventparticleDatapointAtIndex(solvent_index, entryindex);
         }
 
-        trrfile.write(positions, step);
+        trrfile.write(positions, entryindex);
     }
 }

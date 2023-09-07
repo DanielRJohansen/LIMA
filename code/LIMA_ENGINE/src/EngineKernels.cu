@@ -523,7 +523,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 	float potE_sum = compound.potE_interim[threadIdx.x];
 
 	Float3 force = compound.forces[threadIdx.x];

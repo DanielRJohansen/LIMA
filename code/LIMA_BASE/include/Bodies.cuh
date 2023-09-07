@@ -99,7 +99,6 @@ struct CompoundCoords {
 
 	NodeIndex origo{};								// [nm]
 	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};	// [lm]
-	static constexpr int firststep_prev = STEPS_PER_LOGTRANSFER - 1;
 
 
 	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,

@@ -130,10 +130,8 @@ namespace ForceCorrectness {
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
-			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
 			coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
-			coordarray_prev_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
 
 			env.run();
 
@@ -178,19 +176,16 @@ namespace ForceCorrectness {
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
-			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
 			// First rotate particle #3 to the relaxed position + the error angle
 			Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
 			p3_pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
 
 			coordarray_ptr[0].rel_positions[2] = Coord{ p3_pos };		// Temp disabled, fix soon plz
-			coordarray_prev_ptr[0].rel_positions[2] = Coord{ p3_pos };		// Temp disabled, fix soon plz
 
 			// Now center all 3 particles
 			for (auto i = 0; i < 3; i++) {
 				coordarray_ptr->origo += NodeIndex{ 3, 3, 3 };
-				coordarray_prev_ptr->origo += NodeIndex{ 3, 3, 3 };
 			}
 
 			env.run();
@@ -238,7 +233,6 @@ namespace ForceCorrectness {
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
-			CompoundCoords* coordarray_prev_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, CompoundCoords::firststep_prev, 0);
 
 			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
 
@@ -267,7 +261,6 @@ namespace ForceCorrectness {
 			Float3 l_diff = (l_rotated - l_point) *l.len();
 
 			coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
-			coordarray_prev_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
 
 			env.run();
 

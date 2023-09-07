@@ -172,9 +172,9 @@ const bool ALLOW_ASYNC_NLISTUPDATE = true;
 
 
 
-// THERMOSTAT PARAMETERS
+const int LOG_EVERY_N_STEPS = 5;
 const int STEPS_PER_LOGTRANSFER =  10;		// Must be >= 3	why?
-//const int STEPS_PER_TRAJTRANSFER = 100;
+static_assert(STEPS_PER_LOGTRANSFER% LOG_EVERY_N_STEPS == 0, "Log intervals doesn't match");
 
 // Logging constants
 const int N_DATAGAN_VALUES = 3;

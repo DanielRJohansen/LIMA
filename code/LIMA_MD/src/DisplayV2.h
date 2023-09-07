@@ -10,8 +10,6 @@
 #include <glfw3.h>
 
 #ifndef __linux__
-#define ENABLE_DISPLAY 
-
 
 
 class Display {

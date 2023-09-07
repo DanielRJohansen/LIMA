@@ -1,6 +1,6 @@
 #include "DisplayV2.h"
 
-/*
+
 #ifndef __linux__
 
 Display::Display() :
@@ -102,4 +102,4 @@ bool Display::initGLFW() {
 }
 
 #endif
-*/
+

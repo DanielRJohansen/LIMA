@@ -81,7 +81,7 @@ void NeighborList::removeCompound(uint16_t neighbor_id) {
 	throw std::runtime_error("Nlist failed to remove neighbor");
 }
 
-
+#ifdef ENABLE_SOLVENTS
 __host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
 	if (n_gridnodes >= max_gridnodes) { 
 		throw std::runtime_error("No room for more nearby gridnodes"); }
@@ -99,7 +99,7 @@ __host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
 	}
 	throw("Failed to remove gridnode from nlist");
 }
-
+#endif
 
 __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {

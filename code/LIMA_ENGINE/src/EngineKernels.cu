@@ -495,6 +495,8 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_float3;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
+
+
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
@@ -518,7 +520,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__syncthreads();
 
 	float data_ptr[4]{};
-
 
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0

@@ -673,9 +673,6 @@ public:
 	__host__ void addCompound(uint16_t new_id);
 	__host__ void removeCompound(uint16_t new_id);
 
-	__host__ void addGridnode(uint16_t gridnode_id);
-	__host__ void removeGridnode(uint16_t gridnode_id);
-
 
 
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
@@ -692,18 +689,26 @@ public:
 			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
 		}
 
+#ifdef ENABLE_SOLVENTS
 		for (int i = threadIdx.x; i < n_gridnodes; i++) {
 			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
 		}
+#endif
 	}
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
 	uint16_t n_compound_neighbors = 0;
 
+#ifdef ENABLE_SOLVENTS
+	__host__ void addGridnode(uint16_t gridnode_id);
+	__host__ void removeGridnode(uint16_t gridnode_id);
+
 	static const int max_gridnodes = 96;	// Arbitrary value
 	static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
 	uint16_t gridnode_ids[max_gridnodes];
+	
+#endif
 	uint8_t n_gridnodes = 0;
 
 	int associated_id = -1;

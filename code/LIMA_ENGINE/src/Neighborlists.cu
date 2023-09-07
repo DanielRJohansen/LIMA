@@ -25,7 +25,6 @@ NListDataCollection::NListDataCollection(Simulation* simulation) {
 }
 
 void NListDataCollection::preparePositionData(const Simulation& simulation, const uint32_t step_at_update) {
-
 	// Data for the current step has not yet been generated so we need to use the previous step.
 	// For the very first step, engine has cheated and already written the traj from the initial setup.	
 	const auto step = step_at_update == 0 ? 0 : step_at_update - 1;	
@@ -105,6 +104,7 @@ namespace NListUtils {
 	}
 
 	void assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
+#ifdef ENABLE_SOLVENTS
 		for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 			const Float3& compound_pos = nlist_data_collection->compound_key_positions[compound_id];
 			const NodeIndex& compound_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_pos);
@@ -134,6 +134,7 @@ namespace NListUtils {
 				}
 			}
 		}
+#endif
 	}
 
 	// Important: do NOT call getStep during this funciton, as it runs async!!!!

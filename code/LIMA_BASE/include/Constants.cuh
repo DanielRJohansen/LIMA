@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits.h>
 
-//#define LIMASAFEMODE
+#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
@@ -12,7 +12,7 @@
 
 
 #define LIMAKERNELDEBUGMODE
-
+//#define DONTGENDATA
 
 constexpr float PI = 3.14159f;
 
@@ -77,7 +77,7 @@ constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
 
 // -------------------------------------------- Simulation Parameters ------------------------------------------- //
 const bool print_compound_positions = false;		// what is tihs?
-const bool DUMP_TRAJ = true;
+const bool DUMP_TRAJ = false;		// Make sure this is correct with DONTGETDATA flag
 const bool DUMP_POTE = true;
 const bool POSTSIM_ANAL = true;
 // -------------------------------------------------------------------------------------------------------------- //
@@ -88,7 +88,7 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const int MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 //const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;

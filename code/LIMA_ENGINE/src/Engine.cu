@@ -107,6 +107,7 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 }
 
 void Engine::offloadTrajectory(const int steps_to_transfer) {
+#ifndef DONTGENDATA
 	uint64_t step_relative = (simulation->getStep() - steps_to_transfer);	// Tongue in cheek here, i think this is correct...
 
 	cudaMemcpy(
@@ -118,6 +119,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	);
 
 	cudaDeviceSynchronize();
+#endif
 	step_at_last_traj_transfer = simulation->getStep();
 }
 

@@ -56,8 +56,8 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr int _BOX_LEN_PM = 7200;
-//constexpr int _BOX_LEN_PM = 18000;
+//constexpr int _BOX_LEN_PM = 7200;
+constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;

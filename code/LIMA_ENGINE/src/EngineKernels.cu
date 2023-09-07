@@ -635,12 +635,12 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 		__syncthreads();
 
-		LIMAPOSITIONSYSTEM::shiftRelPos(compound_coords, shift_lm);
+		LIMAPOSITIONSYSTEM_HACK::shiftRelPos(compound_coords, shift_lm);
 		__syncthreads();
 
 		
 	}
-	LIMAPOSITIONSYSTEM::applyPBC(compound_coords);
+	LIMAPOSITIONSYSTEM_HACK::applyPBC(compound_coords);
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 

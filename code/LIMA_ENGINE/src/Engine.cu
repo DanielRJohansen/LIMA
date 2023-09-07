@@ -176,9 +176,9 @@ void Engine::deviceMaster() {
 		compoundKernel<< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 
-#ifdef LIMASAFEMODE
+//#ifdef LIMASAFEMODE
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
-#endif
+//#endif
 	const auto t1 = std::chrono::high_resolution_clock::now();
 
 

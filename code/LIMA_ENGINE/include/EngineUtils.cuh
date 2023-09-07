@@ -145,13 +145,6 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <returns>Coord in [lm]</returns>
 	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { 
-#ifdef LIMASAFEMODE
-		if (abs(node_index.x) > 10 || abs(node_index.y) > 10 || abs(node_index.z) > 10) {
-			//printf("Dangerous nodeindex\n\t");
-			//node_index.print();
-		}
-#endif
-
 		return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; 
 	}
 	

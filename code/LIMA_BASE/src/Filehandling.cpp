@@ -252,7 +252,7 @@ SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose
 {
 	assert(path.substr(path.length() - 4) == ".prm");
 
-	std::array<std::string, 9> keywords	{ "ATOMS", "BONDS", "ANGLES", "DIHEDRALS", "IMPROPER", "NONBONDED", "NBFIX", "CMAP", "END"};	// I despise the inventor of this fkin "system"
+	std::vector<std::string> keywords{ "ATOMS", "BONDS", "ANGLES", "DIHEDRALS", "IMPROPER", "NONBONDED", "NBFIX", "CMAP", "END", "HBOND"};	// I despise the inventor of this fkin "system"
 
 	SetSectionFunction setSectionFn = [&](const std::vector<string>& row, string& current_section, int& skipCnt) -> bool {
 		if (row[0] == "NONBONDED") {

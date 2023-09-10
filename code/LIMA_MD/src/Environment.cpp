@@ -326,7 +326,8 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 void Environment::prepFF() {
 	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
-	const char ignore_atomtype = 'H';
+	//const char ignore_atomtype = 'H';
+	const char ignore_atomtype = '.';
 	FFM.prepSimulationForcefield(ignore_atomtype);
 }
 

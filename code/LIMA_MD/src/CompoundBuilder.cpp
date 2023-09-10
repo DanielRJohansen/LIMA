@@ -179,7 +179,7 @@ GroRecord parseGroLine(const std::string& line) {
 
 void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could be const if not for the temporary atomname for rendering
 
-	const bool ignore_hydrogens = true;
+	const bool ignore_hydrogens = false;
 
 	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
 	

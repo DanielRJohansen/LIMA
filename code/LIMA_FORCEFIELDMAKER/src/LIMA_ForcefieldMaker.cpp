@@ -41,18 +41,6 @@ namespace ForcefieldMakerTypes {
 		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
 	};
 
-	struct TopologyTest {
-		// Contains only 1 entry for each entry in the topology file
-		AtomInfoTable atominfotable;
-
-		std::unordered_set<std::string> active_atomtypes;
-
-		std::vector<Singlebondtype> singlebonds;
-		std::vector<Anglebondtype> anglebonds;
-		std::vector<Dihedralbondtype> dihedralbonds;
-		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
-	};
-
 	struct AtomtypeMapping {
 		AtomtypeMapping(int global, int gro, int chain_id, int res_id, int atomtype_id, const std::string& name) : global_id(global), gro_id(gro), chain_id(chain_id), residue_id(res_id), atomtype_id(atomtype_id), atomname(name) {}
 		const int global_id;	// Given by LIMA
@@ -271,6 +259,9 @@ const std::vector<NB_Atomtype> filterAtomtypes(const Topology& topology, BondedT
 
 	for (const string& atomtype: topology.active_atomtypes) {
 
+		if (!forcefield.atomToTypeMap.contains(atomtype)) {
+			throw std::runtime_error(std::format("Failed to find atomtype {}", atomtype).c_str());
+		}
 		NB_Atomtype& atomtype_ff = forcefield.atomToTypeMap.find(atomtype)->second;
 
 		if (!atomtype_ff.is_present_in_simulation) {
@@ -459,7 +450,7 @@ std::vector<std::string> getFiles() {
 	files.push_back(ff_dir + "/par_all36_na.prm");
 	files.push_back(ff_dir + "/par_all36m_prot.prm");
 	files.push_back(ff_dir + "/par_all36m_cgenff.prm");
-
+	files.push_back(ff_dir + "/par_all22_prot.prm");
 
 	return files;
 }

@@ -61,13 +61,13 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
-		force += LimaForcecalc::calcLJForce(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			LimaForcecalc::CalcLJOrigin::ComComInter,
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
-	return force;// *24.f * 1e-9;
+	return force * 24.f;
 }
 
 __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self, float* data_ptr,
@@ -77,13 +77,13 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
-		force += LimaForcecalc::calcLJForce(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			LimaForcecalc::CalcLJOrigin::ComComInter,
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
-	return force;// *24.f * 1e-9;
+	return force * 24.f;
 }
 
 __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, BondedParticlesLUT* bonded_particles_lut) {
@@ -94,14 +94,14 @@ __device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState
 		// Skip if particle is self or bonded
 		if (i == threadIdx.x || (bonded_particles_lut->get(threadIdx.x, i))) { continue; }
 
-		force += LimaForcecalc::calcLJForce(compound_state->positions[threadIdx.x], compound_state->positions[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(compound_state->positions[threadIdx.x], compound_state->positions[i], data_ptr, potE_sum,
 			calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]),
 			calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
 			LimaForcecalc::CalcLJOrigin::ComComIntra,
 			compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]			
-		);// *24.f * 1e-9;
+		);
 	}
-	return force;
+	return force * 24.f;
 }
 
 __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* relpos_others, int n_elements, bool exclude_own_index, float* data_ptr, float& potE_sum) {	// Specific to solvent kernel
@@ -112,40 +112,40 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		// If computing within block, dont compute force against thread's solvent
 		if (exclude_own_index && threadIdx.x == i) { continue; }
 
-		force += LimaForcecalc::calcLJForce(relpos_self, relpos_others[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(relpos_self, relpos_others[i], data_ptr, potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 			exclude_own_index ? LimaForcecalc::CalcLJOrigin::SolSolIntra : LimaForcecalc::CalcLJOrigin::SolSolInter,
 			threadIdx.x, i
 		);
 	}
-	return force;// *24.f * 1e-9;
+	return force * 24.f;
 }
 
 __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, Float3* positions, float* data_ptr, float& potE_sum, const uint8_t atomtype_self) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForce(self_pos, positions[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], data_ptr, potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOLVENT), 
 			calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT),
 			LimaForcecalc::CalcLJOrigin::SolCom,
 			atomtype_self, ATOMTYPE_SOLVENT
 		);
 	}
-	return force;// *24.f * 1e-9;
+	return force * 24.f;
 }
 
 __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr, float& potE_sum, const uint8_t* atomtypes_others, const int sol_id) {	// Assumes all positions are 
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForce(self_pos, positions[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], data_ptr, potE_sum,
 			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			LimaForcecalc::CalcLJOrigin::ComSol,
 			sol_id, -1
 		);
 	}
-	return force;// *24.f * 1e-9;
+	return force * 24.f;
 }
 
 __device__ Float3 computeSinglebondForces(SingleBond* singlebonds, int n_singlebonds, Float3* positions, Float3* utility_buffer, float* utilitybuffer_f, float* potE) {	// only works if n threads >= n bonds

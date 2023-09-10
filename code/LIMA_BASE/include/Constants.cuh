@@ -56,8 +56,8 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-//constexpr int _BOX_LEN_PM = 7200;
-constexpr int _BOX_LEN_PM = 18000;
+constexpr int _BOX_LEN_PM = 7200;
+//constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
@@ -88,7 +88,7 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const int MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 //const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
@@ -105,7 +105,9 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
-const bool HARD_CUTOFF = true;
+const bool HARD_CUTOFF = false;
+const bool CALC_POTE = true;
+
 
 const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
 const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..

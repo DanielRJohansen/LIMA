@@ -37,14 +37,14 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
 
 
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 8e-5);
 
-		loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
+		//loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
 
 		//doPool50x(EnvMode::Headless);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;

@@ -19,7 +19,9 @@ __device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, S
 	const Float3 difference = pos_a - pos_b;						//	[lm]
 	const float error = difference.len() - bondtype.b0;				//	[lm]
 
-	potE = 0.5f * bondtype.kb * (error * error);				// [J/mol]
+	if constexpr (CALC_POTE) {
+		potE = 0.5f * bondtype.kb * (error * error);				// [J/mol]
+	}
 	const float force_scalar = -bondtype.kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
 
 	//const double error_fm = error / PICO_TO_LIMA;
@@ -51,7 +53,9 @@ __device__ void calcAnglebondForces(const Float3& pos_left, const Float3& pos_mi
 	const float error = angle - angletype.theta_0;				// [rad]
 
 	// Simple implementation
-	potE = angletype.k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	if constexpr (CALC_POTE) {
+		potE = angletype.k_theta * error * error * 0.5f;		// Energy [J/mol]0
+	}
 	const float torque = angletype.k_theta * (error);				// Torque [J/(mol*rad)]
 
 	// Correct implementation
@@ -89,8 +93,9 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 	const float sin_phi = C.dot(B) * (rCinv * rBinv);
 	const float torsion = -atan2(sin_phi, cos_phi);
 
-
-	potE = dihedral.k_phi * (1. + cos(dihedral.n * torsion - dihedral.phi_0));
+	if constexpr (CALC_POTE) {
+		potE = dihedral.k_phi * (1. + cos(dihedral.n * torsion - dihedral.phi_0));
+	}
 	const float torque = dihedral.k_phi * (dihedral.n * sin(dihedral.n * torsion - dihedral.phi_0)) / NANO_TO_LIMA;
 
 
@@ -181,7 +186,9 @@ __device__ void calcImproperdihedralbondForces(const Float3& i, const Float3& j,
 
 	const float error = angle - improper.psi_0;
 
-	potE = 0.5f * improper.k_psi * (error * error);
+	if constexpr (CALC_POTE) {
+		potE = 0.5f * improper.k_psi * (error * error);
+	}
 	const float torque = improper.k_psi * (angle - improper.psi_0) * LIMA_TO_NANO;
 
 	// This is the simple way, always right-ish
@@ -223,7 +230,8 @@ __device__ static const char* calcLJOriginString[] = {
 	"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter"
 };
 
-__device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, float* data_ptr, float& potE, const float sigma, const float epsilon, 
+// This function does not add the 24 scalar, the caller fucntion must do so!
+__device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1, float* data_ptr, float& potE, const float sigma, const float epsilon, 
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
@@ -243,11 +251,15 @@ __device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, flo
 
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	const float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+	const float force_scalar = epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-	potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
+
+	
 	const Float3 force = (pos1 - pos0) * force_scalar;
 
+	if constexpr (CALC_POTE) {
+		potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
+	}
 #ifdef LIMASAFEMODE
 	const float max_force_len = 1.f;
 

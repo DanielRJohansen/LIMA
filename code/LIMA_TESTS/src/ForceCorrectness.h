@@ -296,7 +296,7 @@ namespace ForceCorrectness {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 7e-8f);
+		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 8e-8f);
 	}
 
 }

@@ -286,19 +286,19 @@ void Environment::handleStatus(int64_t step, int64_t n_steps) {
 		return;
 	}
 
-
-	if ((step % STEPS_PER_RENDER) == 0) {
+	const int steps_since_render = step - step_at_last_render;
+	if (steps_since_render > STEPS_PER_RENDER) {
 
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / STEPS_PER_RENDER * (n_steps - step) / 60);
+		int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_render * (n_steps - step) / 60);
 
 		printf("\r\tStep #%06llu", step);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
-			duration / STEPS_PER_RENDER, 
-			engine->timings.compound_kernels / STEPS_PER_RENDER, 
-			engine->timings.solvent_kernels / STEPS_PER_RENDER, 
-			engine->timings.cpu_master/ STEPS_PER_RENDER, 
-			engine->timings.nlist/ STEPS_PER_RENDER,
+			duration / steps_since_render,
+			engine->timings.compound_kernels / steps_since_render,
+			engine->timings.solvent_kernels / steps_since_render,
+			engine->timings.cpu_master/ steps_since_render,
+			engine->timings.nlist/ steps_since_render,
 			remaining_minutes);
 
 

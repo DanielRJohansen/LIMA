@@ -72,11 +72,10 @@ private:
 	void verifyBox();							// Checks wheter the box will break
 	
 	void postRunEvents();
-	void handleStatus(Simulation*);
+	void handleStatus(int64_t step, int64_t n_steps);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(Simulation*);
-	bool handleTermination(Simulation*);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams);
 	void prepFF();
 
 	void sayHello();
@@ -84,6 +83,7 @@ private:
 	EnvMode m_mode;
 
 	std::unique_ptr<Display> display;
+	int step_at_last_render = 0;
 
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
@@ -93,6 +93,10 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
+
+	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
+	std::vector<Compound>* compounds;
+	BoxParams boxparams;
 
 	Analyzer::AnalyzedPackage postsim_anal_package;
 #ifdef __linux__

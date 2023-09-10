@@ -96,6 +96,10 @@ public:
 		return &buffer[n_particles_upperbound * entryindex];
 	}
 
+	const T* getBufferAtIndexConst(size_t entryindex) const {
+		return &buffer[n_particles_upperbound * entryindex];
+	}
+
 	T& getCompoundparticleDatapointAtIndex(int compound_id, int particle_id_compound, size_t entryindex) {
 		const size_t index_offset = entryindex * n_particles_upperbound;
 		const size_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;

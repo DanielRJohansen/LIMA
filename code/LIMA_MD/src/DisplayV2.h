@@ -16,7 +16,8 @@ class Display {
 public:
 	Display();
 	~Display();
-	void render(Simulation* simulation);
+	void render(const Float3* positions, const std::vector<Compound>& compounds, 
+		const BoxParams& boxparams, int64_t step, float temperature);
 	void animate(Trajectory* traj);
 
 	bool checkWindowStatus();		// Returns false if the windows should close

@@ -130,8 +130,12 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
+	// TEMP, this is a bad solution
+	compounds = &simulation->compounds_host;
+	boxparams = simulation->boxparams_host;
+
 	engine = std::make_unique<Engine>(
-		simulation.get(), 
+		std::move(simulation),
 		simulation->forcefield->getNBForcefield(), 
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_folder));
 	return true;
@@ -161,13 +165,18 @@ void Environment::sayHello() {
 
 
 void Environment::run(bool em_variant) {
+
+
+
 	if (!prepareForRun()) { return; }
 
 	m_logger.startSection("Simulation started");
 
+
+
 	time0 = std::chrono::high_resolution_clock::now();
 	while (true) {
-		if (handleTermination(simulation.get())) { break; }
+		if (engine->runstatus.simulation_finished) { break; }
 		if (em_variant)
 			engine->step();
 		else
@@ -175,19 +184,24 @@ void Environment::run(bool em_variant) {
 
 
 
-		handleStatus(simulation.get());
+		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
-		if (!handleDisplay(simulation.get())) { break; }
+		if (!handleDisplay(*compounds, boxparams)) { break; }
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
 	}
 
+	// Transfers the remaining traj data and more
+	engine->terminateSimulation();
+
+	simulation = engine->takeBackSim();
+
 	simulation->finished = true;
 	simulation->ready_to_run = false;
 
-	engine->terminateSimulation();
+	
 	m_logger.finishSection("Simulation Finished");
 
 	if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
@@ -270,18 +284,18 @@ void Environment::postRunEvents() {
 
 
 
-void Environment::handleStatus(Simulation* simulation) {
+void Environment::handleStatus(int64_t step, int64_t n_steps) {
 	if (m_mode == Headless) {
 		return;
 	}
 
 
-	if (!(simulation->getStep() % STEPS_PER_RENDER)) {
+	if ((step % STEPS_PER_RENDER) == 0) {
 
 		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / STEPS_PER_RENDER * (simulation->sim_dev->params->constparams.n_steps - simulation->simparams_host.step) / 60);
+		int remaining_minutes = (int)(1.f / 1000 * duration / STEPS_PER_RENDER * (n_steps - step) / 60);
 
-		printf("\r\tStep #%06llu", simulation->getStep());
+		printf("\r\tStep #%06llu", step);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
 			duration / STEPS_PER_RENDER, 
 			engine->timings.compound_kernels / STEPS_PER_RENDER, 
@@ -299,29 +313,18 @@ void Environment::handleStatus(Simulation* simulation) {
 
 
 
-bool Environment::handleDisplay(Simulation* simulation) {	
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams) {	
 	if (!display) { return true; }	// Headless or ConsoleOnly
 
-	if (!(simulation->getStep() % STEPS_PER_RENDER)) {
-		display->render(simulation);
+
+	if (engine->runstatus.current_step - step_at_last_render > STEPS_PER_RENDER) {
+		
+		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature);
+		step_at_last_render = engine->runstatus.current_step;
 	}
 
 	const bool displayStillExists = display->checkWindowStatus();
 	return displayStillExists;
-}
-
-bool Environment::handleTermination(Simulation* simulation)
-{
-	if (simulation->finished)
-		return true;
-	if (simulation->getStep() >= simulation->simparams_host.constparams.n_steps) {
-		simulation->finished = true;
-		return true;
-	}		
-	if (simulation->sim_dev->params->critical_error_encountered)
-		return true;
-
-	return false;
 }
 
 void Environment::prepFF() {

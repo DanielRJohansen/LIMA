@@ -39,16 +39,37 @@ struct EngineTimings {
 	}
 };
 
+struct RunStatus {
+	Float3* most_recent_positions = nullptr;
+	int current_step = 0;
+	float current_temperature = 0.f;
+
+
+
+	bool simulation_finished = false;
+	bool critical_error_occured = false;
+};
+
 class Engine {
 public:
-	Engine(Simulation*, ForceField_NB, std::unique_ptr<LimaLogger>);
+	Engine(std::unique_ptr<Simulation>, ForceField_NB, std::unique_ptr<LimaLogger>);
+	~Engine();
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
 	// I'm sure that will help the branch predictor alot!
 	void step();
 
-	EngineTimings timings{};
+	/// <summary>
+	/// Engine takes ownedship of sim. Noone else is allowed to access
+	/// </summary>
+	void runAsync(std::unique_ptr<Simulation>, RunStatus& runstatus);
 
+
+	std::unique_ptr<Simulation> takeBackSim() { return std::move(simulation); }
+
+
+	EngineTimings timings{};
+	RunStatus runstatus;
 
 	ForceField_NB getForcefield() { return forcefield_host; }
 	void terminateSimulation();
@@ -87,7 +108,7 @@ private:
 
 	ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
-	Simulation* simulation;
+	std::unique_ptr<Simulation> simulation;
 };
 
 

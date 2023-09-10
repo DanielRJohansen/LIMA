@@ -46,18 +46,18 @@ void Display::drawBalls(const std::vector<RenderBall>& balls, int n_balls) {
 }
 
 
-void Display::render(Simulation* simulation) {
+void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto balls = rasterizer.render(simulation);
+    auto balls = rasterizer.render(positions, compounds, boxparams, step);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    drawBalls(balls, simulation->boxparams_host.total_particles_upperbound);
+    drawBalls(balls, boxparams.total_particles_upperbound);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);
 
-    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, simulation->getStep(), simulation->temperature);
+    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, step, temperature);
     glfwSetWindowTitle(window, window_text.c_str());
 
     auto stop = std::chrono::high_resolution_clock::now();

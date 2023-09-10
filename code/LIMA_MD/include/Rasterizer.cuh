@@ -6,7 +6,6 @@
 #include "Simulation.cuh"
 //#include "Forcefield.cuh"
 
-const int RAS_THREADS_PER_BLOCK = 64;
 
 
 struct RenderAtom {
@@ -23,16 +22,16 @@ class Rasterizer {
 public:
 	Rasterizer() {};
 	
-	std::vector<RenderBall> render(Simulation* simulation);
+	std::vector<RenderBall> render(const Float3* positions,
+		const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
 
-	int solvent_offset = 0;
 
 private:
 	/// <summary>	/// Returns a pointer to a list of atoms on the device	/// </summary>
-	RenderAtom* getAllAtoms(Simulation* simulation);
+	RenderAtom* getAllAtoms(const Float3* positions, 
+		const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
 
-	std::vector<RenderBall> processAtoms(RenderAtom* atoms, Simulation* simulation);
+	std::vector<RenderBall> processAtoms(RenderAtom* atoms, int total_particles_upperbound);
 
 
-	int n_threadblocks = 0;
 };

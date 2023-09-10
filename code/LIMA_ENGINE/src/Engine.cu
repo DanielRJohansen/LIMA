@@ -6,12 +6,12 @@
 
 #include <algorithm>
 
-Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
+Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
 	: m_logger(std::move(logger))
 {
 
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
-	this->simulation = simulation;
+	simulation = std::move(sim);
 
 	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
@@ -22,13 +22,16 @@ Engine::Engine(Simulation* simulation, ForceField_NB forcefield_host, std::uniqu
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
-	nlist_manager = std::make_unique<NListManager>(simulation);
+	nlist_manager = std::make_unique<NListManager>(simulation.get());
 	bootstrapTrajbufferWithCoords();
-	nlist_manager->handleNLISTS(simulation, true, true, &timings.nlist);
+	nlist_manager->handleNLISTS(simulation.get(), true, true, &timings.nlist);
 
 	m_logger->finishSection("Engine Ready");
 }
 
+Engine::~Engine() {
+	assert(simulation == nullptr);
+}
 
 
 
@@ -53,12 +56,17 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
-		nlist_manager->handleNLISTS(simulation, ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
+		nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
 	}
 
+	// Handle status
+	runstatus.current_step = simulation->getStep();
+	runstatus.critical_error_occured = simulation->sim_dev->params->critical_error_encountered;	// TODO: Can i get this from simparams_host?
+	// most recent positions are handled automaticall by transfer_traj
+	runstatus.simulation_finished = runstatus.current_step >= simulation->simparams_host.constparams.n_steps || runstatus.critical_error_occured;
 
 	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp
 	//	simulation->box->thermostat_scalar = 1.f;
@@ -127,6 +135,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	cudaDeviceSynchronize();
 #endif
 	step_at_last_traj_transfer = simulation->getStep();
+	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep()-1));
 }
 
 

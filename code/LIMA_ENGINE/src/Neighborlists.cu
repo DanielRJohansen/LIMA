@@ -193,9 +193,9 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 	const auto step = simulation->getStep();
 
 	// Check whether we are getting too far behind
-	if (stepsSinceUpdate(step) > STEPS_PER_NLIST_UPDATE * 3) {
-		printf("We are now 3 nlist updates behind!");
-		exit(1);
+	if (stepsSinceUpdate(step) / STEPS_PER_NLIST_UPDATE > 4) {
+		printf("\nWe are now %d nlist updates behind!\n", stepsSinceUpdate(step) / STEPS_PER_NLIST_UPDATE);
+		//exit(1);
 	}
 
 	// If module is busy, return

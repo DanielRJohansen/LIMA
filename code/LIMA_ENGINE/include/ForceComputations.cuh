@@ -234,6 +234,13 @@ __device__ static Float3 calcLJForce(const Float3& pos0, const Float3& pos1, flo
 
 	// Directly from book
 	const float dist_sq = (pos1 - pos0).lenSquared();
+
+	if constexpr (HARD_CUTOFF) {
+		if (dist_sq > 1.8f * 1.8f) {
+			return Float3{ 0,0,0 };
+		}
+	}
+
 	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
 	const float force_scalar = 24.f * epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	

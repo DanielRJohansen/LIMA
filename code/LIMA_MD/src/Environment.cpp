@@ -165,14 +165,11 @@ void Environment::sayHello() {
 
 
 void Environment::run(bool em_variant) {
-
-
-
 	if (!prepareForRun()) { return; }
 
+	step_at_last_render = 0;
+
 	m_logger.startSection("Simulation started");
-
-
 
 	time0 = std::chrono::high_resolution_clock::now();
 	while (true) {

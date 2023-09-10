@@ -105,6 +105,8 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
+const bool HARD_CUTOFF = true;
+
 const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
 const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 

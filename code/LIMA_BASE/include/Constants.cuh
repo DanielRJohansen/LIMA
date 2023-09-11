@@ -56,8 +56,8 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr int _BOX_LEN_PM = 7200;
-//constexpr int _BOX_LEN_PM = 18000;
+//constexpr int _BOX_LEN_PM = 7200;
+constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
@@ -105,9 +105,9 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
-const bool HARD_CUTOFF = false;
+const bool HARD_CUTOFF = true;
 const bool CALC_POTE = true;
-const bool IGNORE_HYDROGEN = true;
+const bool IGNORE_HYDROGEN = false;
 
 const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
 const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
@@ -162,7 +162,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 500;
+const int STEPS_PER_RENDER = 100;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

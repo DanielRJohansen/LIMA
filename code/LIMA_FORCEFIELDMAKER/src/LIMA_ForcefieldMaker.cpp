@@ -446,11 +446,11 @@ std::vector<std::string> getFiles() {
 	const std::string ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charmm36-mar2019.ff";
 #endif
 
-	files.push_back(ff_dir + "/par_all36m_prot.prm");
 	files.push_back(ff_dir + "/par_all35_ethers.prm");
 	files.push_back(ff_dir + "/par_all36_carb.prm");
 	files.push_back(ff_dir + "/par_all36_lipid.prm");
 	files.push_back(ff_dir + "/par_all36_na.prm");	
+	files.push_back(ff_dir + "/par_all36m_prot.prm");
 	files.push_back(ff_dir + "/par_all36m_cgenff.prm");
 	files.push_back(ff_dir + "/par_all22_prot.prm");
 

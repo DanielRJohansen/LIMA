@@ -108,7 +108,7 @@ namespace FTHelpers {
 
 
 	template <typename GenericBondType>
-	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield) {
+	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, bool first_attempt =true) {
 		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
 
 		//query_type.sort();
@@ -126,6 +126,15 @@ namespace FTHelpers {
 		}
 		if (best_likeness > 0.01f)
 			return best_bond;
+
+
+		// Special case for flipping import dihedrals. only temp // TODO: Find a better solution
+		if (GenericBondType::n_atoms == 4 && first_attempt) {
+			GenericBondType query_flipped = query_type;
+			query_flipped.flip();
+			return findBestMatchInForcefield(query_flipped, forcefield, false);
+		}
+
 
 		std::cout << "Failed to match bond types.\n Closest match ";
 		for (auto& name : best_bond.bonded_typenames) {
@@ -434,17 +443,18 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 		kpsi = a.kpsi;
 	}
 
-	//TODO: Check with Ali that this is okay?!
+	
 	void flip() {
 		std::swap(bonded_typenames[0], bonded_typenames[3]);
 		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
 
+	//TODO: Check with Ali that this is okay?!
 	void sort() override {
 		// If out is wrong, flip
-		if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
-			flip();
-		}
+		//if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
+		//	flip();
+		//}
 		// If outer is identical, but inner is wrong, flip
 	/*	else if (
 			bonded_typenames[0] == bonded_typenames[3] &&

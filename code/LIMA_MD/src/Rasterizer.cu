@@ -61,7 +61,7 @@ RenderAtom* Rasterizer::getAllAtoms(const Float3* positions, const std::vector<C
         loadCompoundatomsKernel << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (atoms, step, positions_dev, compounds_dev);
     }
 	if (boxparams.n_solvents > 0) {
-		loadSolventatomsKernel << < boxparams.n_solvents / 128, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
+		loadSolventatomsKernel << < boxparams.n_solvents / 128+1, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
 	}
 
 
@@ -190,9 +190,9 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
 /// <returns></returns>
 __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds) {
 
-    int local_id = threadIdx.x;
-    int compound_id = blockIdx.x;
-    int global_id = threadIdx.x + blockIdx.x * blockDim.x;
+    const int local_id = threadIdx.x;
+    const int compound_id = blockIdx.x;
+    const int global_id = threadIdx.x + blockIdx.x * blockDim.x;
 
     //Compound* compound = &box->compounds[compound_id];
     const Compound* compound = &compounds[compound_id];

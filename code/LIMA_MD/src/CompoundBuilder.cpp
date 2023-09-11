@@ -211,6 +211,10 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 
 		const bool entry_is_solvent = record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH";
 		if (entry_is_solvent) {
+			if (record.atom_name[0] != 'O') {
+				continue;	// Treat all three solvents atoms as a single point, so no hydrogens here
+			}
+
 			if (nonsolvent_positions.size() != particleinfotable.size()) {
 				throw std::runtime_error(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})", 
 					nonsolvent_positions.size(), particleinfotable.size()).c_str());

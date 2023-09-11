@@ -313,8 +313,7 @@ void Environment::handleStatus(int64_t step, int64_t n_steps) {
 bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams) {	
 	if (!display) { return true; }	// Headless or ConsoleOnly
 
-
-	if (engine->runstatus.current_step - step_at_last_render > STEPS_PER_RENDER) {
+	if (engine->runstatus.current_step - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
 		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature);
 		step_at_last_render = engine->runstatus.current_step;

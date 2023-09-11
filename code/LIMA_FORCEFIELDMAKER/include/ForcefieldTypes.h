@@ -66,7 +66,7 @@ namespace FTHelpers {
 			likeness_unflipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
 		}
 
-		query_type.flip();
+		//query_type.flip();
 
 		float likeness_flipped = 1.f;
 		for (int i = 0; i < DerivedType::n_atoms; i++) {
@@ -103,6 +103,48 @@ namespace FTHelpers {
 		return out;
 	}
 
+
+
+
+
+	template <typename GenericBondType>
+	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield) {
+		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
+
+		//query_type.sort();
+
+		float best_likeness = 0;
+		GenericBondType best_bond = forcefield.at(0);
+		for (const GenericBondType& ff_bondtype : forcefield) {
+			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
+
+
+			if (likeness > best_likeness) {
+				best_likeness = likeness;
+				best_bond = ff_bondtype;
+			}
+		}
+		if (best_likeness > 0.01f)
+			return best_bond;
+
+		std::cout << "Failed to match bond types.\n Closest match ";
+		for (auto& name : best_bond.bonded_typenames) {
+			std::cout << name << " ";
+		}
+		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
+		printf("\nLikeness %f\n", best_likeness);
+		printf("Query typenames: ");
+		for (auto& name : query_type.bonded_typenames) {
+			std::cout << name << " ";
+		}
+		printf("\nQuery gro_ids: ");
+		for (auto& id : query_type.global_ids) {
+			std::cout << std::to_string(id) << " ";
+		}
+		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
+		exit(0);
+	}
+
 	template <typename GenericBondType>
 	static void assignForceVariablesFromForcefield(vector<GenericBondType>& topol_bonds, const vector<GenericBondType>& forcefield) {
 		std::unordered_map<string, const GenericBondType> forcefieldMap;
@@ -122,7 +164,7 @@ namespace FTHelpers {
 				bond->assignForceVariables(appropriateForcefieldType);
 			}
 			else {
-				const GenericBondType appropriateForcefieldType = GenericBondType::findBestMatchInForcefield(*bond, forcefield);
+				const GenericBondType appropriateForcefieldType = findBestMatchInForcefield(*bond, forcefield);
 				forcefieldMap.insert({ tag, appropriateForcefieldType });
 				bond->assignForceVariables(appropriateForcefieldType);
 			}
@@ -226,8 +268,23 @@ public:
 
 
 
+// Returns whether string a is smaller than string b
+bool isStringSmaller(const std::string& a, const std::string& b) 
+{
+	for (int i = 0; i < std::min(a.length(), b.length()); i++) {
+		if (a[i] > b[i])
+			return false;
+		else if (a[i] < b[i]) {
+			return true;
+		}
+	}
 
+	// If they are identical by a is longer
+	if (a.length() > b.length())
+		return false;
 
+	return true;
+}
 
 
 
@@ -239,49 +296,13 @@ struct BondtypeBase {
 		}
 	}
 	BondtypeBase(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: bonded_typenames(typenames), global_ids(ids) {}
-
-	//virtual void sort() = 0;
-	virtual void flip() = 0;
-
-	template <class DerivedType>
-	static const DerivedType findBestMatchInForcefield(const DerivedType& query_type, const std::vector<DerivedType>& forcefield) {
-		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
-
-		//query_type.sort();
-
-		float best_likeness = 0;
-		DerivedType best_bond = forcefield.at(0);
-		for (const DerivedType& ff_bondtype : forcefield) {
-			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
-
-
-			if (likeness > best_likeness) {
-				best_likeness = likeness;
-				best_bond = ff_bondtype;
-			}
-		}
-		if (best_likeness > 0.01f)
-			return best_bond;
-
-		std::cout << "Failed to match bond types.\n Closest match ";
-		for (auto& name : best_bond.bonded_typenames) {
-			std::cout << name << " ";
-		}
-		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
-		printf("\nLikeness %f\n", best_likeness);
-		printf("Query typenames: ");
-		for (auto& name : query_type.bonded_typenames) {
-			std::cout << name << " ";
-		}
-		printf("\nQuery gro_ids: ");
-		for (auto& id : query_type.global_ids) {
-			std::cout << std::to_string(id) << " ";
-		}
-		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
-		exit(0);
+		: bonded_typenames(typenames), global_ids(ids) {
 	}
 
+
+
+	virtual void sort() {};
+	virtual void flip() = 0;
 
 	std::array<std::string, n_atoms> bonded_typenames;
 	std::array<int, n_atoms> global_ids;
@@ -290,9 +311,12 @@ struct BondtypeBase {
 struct Singlebondtype : public BondtypeBase<2>{
 	static const int n_atoms = 2;
 	Singlebondtype(const std::array<std::string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
+		sort();
 	}
 	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: BondtypeBase(ids, typenames) {}
+		: BondtypeBase(ids, typenames) {
+		sort();
+	}
 
 	float b0{};
 	float kb{};
@@ -304,7 +328,12 @@ struct Singlebondtype : public BondtypeBase<2>{
 	void flip() {
 		swap(bonded_typenames[0], bonded_typenames[1]);
 	}
-	//void sort();
+
+	void sort() override {
+		if (isStringSmaller(bonded_typenames[1], bonded_typenames[0])) {
+			flip();
+		}			
+	}
 };
 
 
@@ -314,10 +343,14 @@ struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
 	Anglebondtype(const std::array<std::string, n_atoms>& typenames, float t0, float kt)
 		: BondtypeBase(typenames), theta0(t0), ktheta(kt) 
-	{}
+	{
+		sort();
+	}
 	//Anglebondtype(const std::array<int, n_atoms>& ids) : BondtypeBase(ids) {}
 	Anglebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: BondtypeBase(ids, typenames) {}
+		: BondtypeBase(ids, typenames) {
+		sort();
+	}
 
 	float theta0{};	// [rad]
 	float ktheta{};
@@ -329,7 +362,12 @@ struct Anglebondtype : public BondtypeBase<3> {
 	void flip() {
 		swap(bonded_typenames[0], bonded_typenames[2]);
 	}
-	//void sort();
+
+	void sort() override {
+		if (isStringSmaller(bonded_typenames[2], bonded_typenames[0])) {
+			flip();
+		}
+	}
 };
 
 struct Dihedralbondtype : public BondtypeBase<4> {
@@ -337,9 +375,12 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) 
 		: BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) 
 	{
+		sort();
 	}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: BondtypeBase(ids, typenames) {}
+		: BondtypeBase(ids, typenames) {
+		sort();
+	}
 
 	float phi0{};
 	float kphi{};
@@ -355,7 +396,20 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 		std::swap(bonded_typenames[0], bonded_typenames[3]);
 		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-	//void sort();
+
+	void sort() override {
+		// If out is wrong, flip
+		if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
+			flip();
+		}
+		// If outer is identical, but inner is wrong, flip
+		else if (
+			bonded_typenames[0] == bonded_typenames[3] && 
+			isStringSmaller(bonded_typenames[2], bonded_typenames[1])) 
+		{
+			flip();
+		}
+	}
 };
 
 struct Improperdihedralbondtype : public BondtypeBase<4> {
@@ -363,10 +417,14 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 	// i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
 	
 	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0, float kpsi)
-		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi){
+		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi)
+	{
+		sort();
 	}
 	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: BondtypeBase(ids, typenames) {}
+		: BondtypeBase(ids, typenames) {
+		sort();
+	}
 
 	float psi0{};
 	float kpsi{};
@@ -376,11 +434,23 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 		kpsi = a.kpsi;
 	}
 
+	//TODO: Check with Ali that this is okay?!
 	void flip() {
-		//std::swap(bonded_typenames[0], bonded_typenames[3]);
-		//std::swap(bonded_typenames[1], bonded_typenames[2]);
+		std::swap(bonded_typenames[0], bonded_typenames[3]);
+		std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
-	//void sort() {
-	//	// Not sure what to do here yet
-	//}
+
+	void sort() override {
+		// If out is wrong, flip
+		if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
+			flip();
+		}
+		// If outer is identical, but inner is wrong, flip
+	/*	else if (
+			bonded_typenames[0] == bonded_typenames[3] &&
+			isStringSmaller(bonded_typenames[2], bonded_typenames[1]))
+		{
+			flip();
+		}*/
+	}
 };

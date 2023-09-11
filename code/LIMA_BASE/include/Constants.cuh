@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits.h>
 
-//#define LIMASAFEMODE
+#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
@@ -105,9 +105,9 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
-const bool HARD_CUTOFF = true;
-const bool CALC_POTE = false;
-
+const bool HARD_CUTOFF = false;
+const bool CALC_POTE = true;
+const bool IGNORE_HYDROGEN = true;
 
 const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
 const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
@@ -128,7 +128,7 @@ const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compound
 const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
 
 // Related to forcefield / constant memory
-const int MAX_ATOM_TYPES = 32;
+const int MAX_ATOM_TYPES = 48;
 
 constexpr float MAX_COMPOUND_RADIUS = 1.9f;	// was 1.5
 // -------------------------------------------------------------------------------------------------------------- //

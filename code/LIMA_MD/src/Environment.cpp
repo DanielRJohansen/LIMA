@@ -44,7 +44,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		gro_path, 
 		work_folder+"/molecule/",
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
-		false);
+		IGNORE_HYDROGEN);
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
@@ -326,8 +326,8 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 void Environment::prepFF() {
 	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
-	//const char ignore_atomtype = 'H';
-	const char ignore_atomtype = '.';
+
+	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
 	FFM.prepSimulationForcefield(ignore_atomtype);
 }
 

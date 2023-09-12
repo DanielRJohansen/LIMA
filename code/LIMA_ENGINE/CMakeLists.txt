@@ -27,7 +27,7 @@ target_link_libraries(LIMA_ENGINE LIMA_BASE)
 set_target_properties(LIMA_ENGINE PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(LIMA_ENGINE PROPERTIES CUDA_ARCHITECTURES "89")
 
-
+target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)
 
 
 

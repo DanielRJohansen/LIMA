@@ -39,37 +39,16 @@ void NListDataCollection::preparePositionData(const Simulation& simulation, cons
 
 
 namespace NListUtils {
-	void cullDistantNeighbors(Simulation* simulation, NListDataCollection* nlist) {
-		for (int id_self = 0; id_self < simulation->boxparams_host.n_compounds; id_self++) {
-			NeighborList* nlist_self = &nlist->compound_neighborlists[id_self];
-			float cutoff_add_self = simulation->compounds_host[id_self].radius;
 
-
-			// Cull compound-compound
-			for (int j = 0; j < nlist_self->n_compound_neighbors; j++) {
-				const int id_neighbor = nlist_self->neighborcompound_ids[j];
-				NeighborList* nlist_neighbor = &nlist->compound_neighborlists[id_neighbor];
-				const float cutoff_add_neighbor = simulation->compounds_host[id_neighbor].radius;
-
-				if (id_self < id_neighbor) {
-					if (!neighborWithinCutoff(&nlist->compound_key_positions[id_self], &nlist->compound_key_positions[id_neighbor], cutoff_add_self + cutoff_add_neighbor + CUTOFF_NM)) {
-						nlist_self->removeCompound(id_neighbor);
-						nlist_neighbor->removeCompound(id_self);
-						j--;	// Decrement, as the removeId puts the last element at the current and now vacant spot.
-					}
-				}
-			}
-
-			nlist_self->n_gridnodes = 0;	// These are completely redone each iteration
+	void matchCompoundNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection) 
+	{
+		for (int i = 0; i < simulation->boxparams_host.n_compounds; i++) {
+			nlist_data_collection->compound_neighborlists[i].n_compound_neighbors = 0;
 		}
-	}
 
-
-	void matchCompoundNeighbors(Simulation* simulation, NListDataCollection* nlist_data_collection) {
 		for (uint16_t id_self = 0; id_self < simulation->boxparams_host.n_compounds; id_self++) {
 
 			NeighborList* nlist_self = &nlist_data_collection->compound_neighborlists[id_self];
-			HashTable hashtable_compoundneighbors(nlist_self->neighborcompound_ids, nlist_self->n_compound_neighbors, NEIGHBORLIST_MAX_COMPOUNDS * 2);
 			const float cutoff_add_self = simulation->compounds_host[id_self].radius;
 			const Float3& pos_self = nlist_data_collection->compound_key_positions[id_self];	// abs pos [nm]
 
@@ -78,45 +57,31 @@ namespace NListUtils {
 			for (uint16_t id_other = id_self + 1; id_other < simulation->boxparams_host.n_compounds; id_other++) {	// For finding new nearby compounds, it is faster and simpler to just check all compounds, since there are so few
 				NeighborList* nlist_candidate = &nlist_data_collection->compound_neighborlists[id_other];
 				const Float3& pos_other = nlist_data_collection->compound_key_positions[id_other];
-				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;	// THIS IS BORKEN SINCE LIMAMETRES
-
-				if (id_self == 0 && id_other == 346) {
-					int a = 0;
-				}
-
+				const float cutoff_add_candidate = simulation->compounds_host[id_other].radius;
+				
 				if (neighborWithinCutoff(&pos_self, &pos_other, CUTOFF_NM + cutoff_add_self + cutoff_add_candidate)) {
-					if (hashtable_compoundneighbors.insert(id_other)) {
-						nlist_self->addCompound(id_other);
-						nlist_candidate->addCompound(id_self);
-					}
+					nlist_self->addCompound(id_other);
+					nlist_candidate->addCompound(id_self);					
 				}
 			}
 		}
 	}
 
-	bool isNearby(const Simulation& simulation, const NodeIndex& nodeindex_self, const int querycompound_id, NListDataCollection& nlist_data) {
-		const Float3& querycompound_pos = nlist_data.compound_key_positions[querycompound_id];
-		const Float3 currentnode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindex_self);
-
-		const float dist = EngineUtils::calcHyperDistNM(&querycompound_pos, &currentnode_pos);
-		const float querycompound_radius = simulation.compounds_host[querycompound_id].radius;	// [nm]
-
-		return dist < (CUTOFF_NM + querycompound_radius);
-	}
-
 	void assignNearbyCompoundsToGridnodes(Simulation* simulation, NListDataCollection* nlist_data_collection) {
 #ifdef ENABLE_SOLVENTS
-		for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
+		for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) 
+		{
+			nlist_data_collection->compound_neighborlists[compound_id].n_gridnodes = 0;
+
 			const Float3& compound_pos = nlist_data_collection->compound_key_positions[compound_id];
 			const NodeIndex& compound_nodeindex = LIMAPOSITIONSYSTEM::absolutePositionToNodeIndex(compound_pos);
 
 			const float compound_radius = simulation->compounds_host[compound_id].radius;
 			const float max_dist_nm = CUTOFF_NM + compound_radius;
 
-			const int query_range = 2;
-			for (int x = -query_range; x <= query_range; x++) {
-				for (int y = -query_range; y <= query_range; y++) {
-					for (int z = -query_range; z <= query_range; z++) {
+			for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
+				for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
+					for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
 
 						NodeIndex query_origo = compound_nodeindex + NodeIndex{ x,y,z };
 						LIMAPOSITIONSYSTEM::applyPBC(query_origo);
@@ -149,7 +114,7 @@ namespace NListUtils {
 			nlist_data_collection->preparePositionData(*simulation, step_at_update);
 
 			// First do culling of neighbors that has left CUTOFF
-			NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
+			//NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
 
 			// Add all compound->compound neighbors
 			matchCompoundNeighbors(simulation, nlist_data_collection);

@@ -684,12 +684,12 @@ public:
 		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
 
 		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
-		for (int i = threadIdx.x; i < n_compound_neighbors; i++) {
+		for (int i = threadIdx.x; i < n_compound_neighbors; i+=blockDim.x) {
 			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
 		}
 
 #ifdef ENABLE_SOLVENTS
-		for (int i = threadIdx.x; i < n_gridnodes; i++) {
+		for (int i = threadIdx.x; i < n_gridnodes; i+=blockDim.x) {
 			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
 		}
 #endif

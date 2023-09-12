@@ -159,7 +159,9 @@ void NListManager::handleNLISTS(Simulation* simulation, const bool async, const 
 
 	// Check whether we are getting too far behind
 	if (stepsSinceUpdate(step) / STEPS_PER_NLIST_UPDATE > 4) {
+#ifndef LIMAPUSH
 		printf("\nWe are now %d nlist updates behind!\n", stepsSinceUpdate(step) / STEPS_PER_NLIST_UPDATE);
+#endif
 		//exit(1);
 	}
 

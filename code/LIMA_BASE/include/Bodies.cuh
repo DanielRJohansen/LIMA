@@ -572,7 +572,6 @@ struct CompoundBridge {
 	CompoundBridge() {}	
 	
 	ParticleReference particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
-	//uint8_t atom_types[MAX_PARTICLES_IN_BRIDGE]{};	// TODO: I am not sure these are loaded iN??
 	uint8_t n_particles = 0;					
 
 	uint8_t n_singlebonds = 0;

@@ -21,4 +21,6 @@ target_include_directories(LIMA_BASE PUBLIC
 set_target_properties(LIMA_BASE PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(LIMA_BASE PROPERTIES CUDA_ARCHITECTURES "89")
 
-target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)
+if (UNIX)
+    target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)
+endif()

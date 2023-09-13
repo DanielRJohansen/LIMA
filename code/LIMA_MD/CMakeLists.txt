@@ -40,8 +40,9 @@ target_link_libraries(LIMA_MD ${OPENGL_LIBRARIES})
 set_target_properties(LIMA_MD PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(LIMA_MD PROPERTIES CUDA_ARCHITECTURES "89")
 
-target_compile_options(LIMA_MD PRIVATE -use_fast_math -O3)
-
+if (UNIX)
+    target_compile_options(LIMA_MD PRIVATE -use_fast_math -O3)
+endif()
 
 
 

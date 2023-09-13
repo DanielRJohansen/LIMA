@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <limits.h>
 
-//#define LIMASAFEMODE
-#define LIMAPUSH
+#define LIMASAFEMODE
+//#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
 #endif
@@ -56,8 +56,8 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-//constexpr int _BOX_LEN_PM = 7200;
-constexpr int _BOX_LEN_PM = 18000;
+constexpr int _BOX_LEN_PM = 7200;
+//constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
@@ -88,11 +88,9 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const int MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
-//const int MAX_SOLVENTS = 0xFFFF;
 const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
-//const int N_SOLVATE_MOLECULES = 12000;			// Used when not loading from .conf file
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
 const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
@@ -106,7 +104,7 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
-const bool CALC_POTE = false;
+const bool CALC_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
@@ -164,7 +162,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 500;
+const int STEPS_PER_RENDER = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

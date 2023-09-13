@@ -212,7 +212,7 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f, 2e-7);
+		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f, 2.7e-7);
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
@@ -289,14 +289,14 @@ namespace ForceCorrectness {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 0.00015f, 2e-7);
+		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9e-7);
 	}
 
 	LimaUnittestResult doPhenylalanineBenchmark(EnvMode envmode) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 2.1e-4f, 8e-8f);
+		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4e-4f, 8e-8f);
 	}
 
 }

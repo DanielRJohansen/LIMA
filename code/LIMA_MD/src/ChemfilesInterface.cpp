@@ -168,7 +168,7 @@ public:
             0,        // f_size
 
             natoms,                                            // natoms
-            step,                                      // step
+            static_cast<size_t>(step),                                      // step
             0,                                                 // nre
             0.f,//frame.get("time").value_or(0.0).as_double(),       // time
             0.f//frame.get("trr_lambda").value_or(0.0).as_double(), // lambda

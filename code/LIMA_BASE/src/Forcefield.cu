@@ -1,5 +1,3 @@
-#pragma once
-
 #include "Printer.h"
 #include "Forcefield.cuh"
 #include <filesystem>

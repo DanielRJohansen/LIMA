@@ -45,6 +45,8 @@ struct Filehandler {
 	// These should be in interface maybe?
 	template <typename T>
 	static void dumpToFile(T* data, uint64_t n_datapoints, std::string file_path_s) {
+#ifndef __linux__
+
 		char* file_path;
 		file_path = &file_path_s[0];
 
@@ -53,7 +55,6 @@ struct Filehandler {
 
 		FILE* file;
 
-#ifndef __linux__
 		if (!fopen_s(&file, file_path, "wb")) {
 
 			assert(sizeof(T));

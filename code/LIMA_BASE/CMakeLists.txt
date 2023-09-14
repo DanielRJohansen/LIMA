@@ -1,7 +1,6 @@
 #LIMA_BASE
 find_package(CUDA REQUIRED)
 
-
 add_library(LIMA_BASE STATIC
     src/Printer.cpp
     src/Bodies.cu
@@ -11,6 +10,7 @@ add_library(LIMA_BASE STATIC
     src/Simulation.cu
     src/utilities.cpp
 )
+
 
 
 target_include_directories(LIMA_BASE PRIVATE ${CUDA_INCLUDE_DIRS})

@@ -1,6 +1,7 @@
 # Main cmakelist
 cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 
+
 set(CMAKE_CUDA_ARCHITECTURES "89")
 
 project(lima LANGUAGES CXX CUDA)
@@ -11,8 +12,10 @@ set(CMAKE_CUDA_STANDARD 20)
 
 if (UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 endif()
 find_package(OpenGL REQUIRED)
+
 
 
 add_subdirectory(LIMA_BASE)

@@ -9,6 +9,8 @@
 #pragma warning(push)
 #pragma warning(disable: 20054)
 
+#pragma diag_suppress 20054
+
 // ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
 
 // Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels

@@ -18,10 +18,10 @@ Environment::Environment(const string& wf, EnvMode mode)
 	{
 	case EnvMode::Full:
 		display = std::make_unique<Display>();
-		// Fallthrough
+		[[fallthrough]];
 	case EnvMode::ConsoleOnly:
 		sayHello();
-		// Fallthrough
+		[[fallthrough]];
 	case EnvMode::Headless:
 		break;
 	}

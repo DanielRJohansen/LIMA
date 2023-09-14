@@ -4,9 +4,10 @@
 #include "Utilities.h"
 #include "KernelWarnings.cuh"
 
-#pragma warning ( push )
-#pragma warning ( disable:E0020 )
-
+#pragma warning(push)
+#pragma warning(disable: E0020)
+#pragma warning(push)
+#pragma warning(disable: 20054)
 
 // ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
 
@@ -17,7 +18,7 @@ __constant__ ForceField_NB forcefield_device;
 
 
 void Engine::setDeviceConstantMemory() {
-	const int forcefield_bytes = sizeof(ForceField_NB);
+	//const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();
 	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
@@ -490,6 +491,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ NeighborList neighborlist;		
 	__shared__ BondedParticlesLUT bonded_particles_lut;
 	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
+	utility_buffer[threadIdx.x] = Float3{};
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Coord utility_coord;
 	__shared__ Float3 utility_float3;
@@ -940,4 +942,5 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	}
 }
 
+#pragma warning (pop)
 #pragma warning (pop)

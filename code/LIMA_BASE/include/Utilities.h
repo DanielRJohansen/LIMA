@@ -101,37 +101,39 @@ namespace LAL {
     template<typename T>
     class optional {
     private:
-        bool hasValue = false;
+        bool _hasValue = false;
         T _value;
 
     public:
-        optional() : hasValue(false), _value() {}
+        optional() : _hasValue(false), _value() {}
 
-        optional(const T& value) : hasValue(true), _value(value) {}
+        optional(const T& value) : _hasValue(true), _value(value) {}
 
-        optional(T&& value) : hasValue(true), _value(std::move(value)) {}
+        optional(T&& value) : _hasValue(true), _value(std::move(value)) {}
 
         optional& operator=(const T& value) {
             this->_value = value;
-            hasValue = true;
+            _hasValue = true;
             return *this;
         }
 
         optional& operator=(T&& value) {
             this->_value = std::move(value);
-            hasValue = true;
+            _hasValue = true;
             return *this;
         }
 
         T value() const {
-            if (!hasValue) {
+            if (!_hasValue) {
                 throw std::runtime_error("No value present in optional.");
             }
             return _value;
         }
 
         operator bool() const {
-            return hasValue;
+            return _hasValue;
         }
+
+        bool hasValue() const { return _hasValue; }
     };    
 }

@@ -465,7 +465,7 @@ public:
 private:
 	const static int m_len = len;
 	const static int m_size = m_len * m_len;
-	T matrix[m_len * m_len];
+	T matrix[m_len * m_len]{};
 
 	// To be used for loading only
 	__device__ T get(int index) const { return matrix[index]; }

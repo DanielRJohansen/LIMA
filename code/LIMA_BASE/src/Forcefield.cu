@@ -8,8 +8,6 @@
 
 using namespace LIMA_Print;
 
-const int min_reserve_size = 10000;	// This should NOT be permanent...
-
 Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
 
 

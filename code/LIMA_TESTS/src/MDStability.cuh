@@ -29,7 +29,7 @@ namespace TestMDStability {
 		//InputSimParams simparams{ 100, 2000 };
 		const std::string work_folder = simulations_dir + folder_name + "/";
 		const std::string simpar_path = work_folder + "sim_params.txt";
-		const InputSimParams  simparams = env->loadInputSimParams(simpar_path);
+		const InputSimParams simparams = env->loadInputSimParams(simpar_path);
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();

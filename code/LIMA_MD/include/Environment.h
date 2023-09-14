@@ -95,7 +95,7 @@ private:
 	std::unique_ptr<Simulation> simulation;
 
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
-	std::vector<Compound>* compounds;
+	std::vector<Compound>* compounds = nullptr;
 	BoxParams boxparams;
 
 	Analyzer::AnalyzedPackage postsim_anal_package;

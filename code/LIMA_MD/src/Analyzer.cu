@@ -374,10 +374,6 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 		}
 	}
 
-	//energies[0] = 11.f;
-	//energies[1] = 22.f;
-	auto n_values_per_step = 2 * (sim.boxparams_host.n_compounds * MAX_COMPOUND_PARTICLES + sim.boxparams_host.n_solvents);
-	//printf("\nValues per step %d\n", n_values_per_step);
 	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 }
 

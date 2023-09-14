@@ -89,8 +89,7 @@ const bool POSTSIM_ANAL = true;
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
-const int MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
-const int SOLVENT_TESTLIMIT = MAX_SOLVENTS;
+const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
 const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers

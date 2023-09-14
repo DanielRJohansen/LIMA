@@ -35,7 +35,7 @@ namespace TestUtils {
 
 		auto env = std::make_unique<Environment>(work_folder, envmode );
 
-		const InputSimParams ip = simparams
+		const InputSimParams ip = simparams.hasValue()
 			? simparams.value()
 			: env->loadInputSimParams(simpar);
 
@@ -147,7 +147,7 @@ namespace TestUtils {
 				setConsoleTextColorRed();
 			}
 			
-			std::printf("\n\n#--- Unittesting finished with %d successes of %d tests ---#\n\n", successes, tests.size());
+			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successes, tests.size());
 
 			for (const auto& test : tests) {
 				if (!test->testresult->success()) {

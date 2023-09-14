@@ -11,7 +11,6 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB
 
 	long double sum_kinE_compound = 0.;	// [J/mol]
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
-		uint64_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
 			const float mass = forcefield_host.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);

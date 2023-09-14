@@ -259,8 +259,6 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 		potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
 	}
 #ifdef LIMASAFEMODE
-	const float max_force_len = 1.f;
-
 	auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 	if (force.len() > 1.f || pot > 1e+8) {
 		//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);

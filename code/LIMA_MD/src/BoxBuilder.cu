@@ -154,7 +154,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < SOLVENT_TESTLIMIT) {						// Should i check? Is this what energy-min is for?
+		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
 			

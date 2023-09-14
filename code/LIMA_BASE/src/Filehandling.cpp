@@ -183,7 +183,7 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 
 	if (verbose) {
 		std::cout << path;
-		printf("\n\t%d rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
+		printf("\n\t%zu rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
 	}	
 	
 	return parsedfile;

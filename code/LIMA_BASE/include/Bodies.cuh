@@ -98,7 +98,7 @@ struct CompoundCoords {
 	}
 
 	NodeIndex origo{};								// [nm]
-	Coord rel_positions[MAX_COMPOUND_PARTICLES]{};	// [lm]
+	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
 
 
 	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,

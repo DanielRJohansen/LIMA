@@ -26,8 +26,8 @@ public:
 		std::vector<float> total_energy;
 		std::vector<Float3> energy_data; // potE, kinE, totalE
 
-		float energy_gradient;
-		float variance_coefficient;
+		float energy_gradient = 0.f;
+		float variance_coefficient = 0.f;
 
 		float mean_energy{};
 

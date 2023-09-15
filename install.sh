@@ -61,14 +61,10 @@ fi
 
 
 
-
-
-
-
 # Prepare the source code
 mkdir -p "$apps_dir"
 mkdir "$apps_dir"/build
-cp -r ./code/* "$apps_dir"/
+cp -r "$install_dir"/code/* "$apps_dir"
 
 
 
@@ -76,41 +72,26 @@ cp -r ./code/* "$apps_dir"/
 cd "$apps_dir"/build
 cmake "$apps_dir"/LIMA_APP/
 make install
-
-# Add the following line to add lima to the PATH
-#echo 'export PATH="$program_dir/bin:$PATH"' >> ~/.bashrc
-#source ~/.bashrc  # Reload the Bash configuration
-
-echo "Current PATH: $PATH"
-echo 'export PATH="/opt/LIMA/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-echo "Updated PATH: $PATH"
-
-
-
-echo "All LIMA applications have been installed"
+echo -e "All LIMA applications have been installed\n\n\n"
 
 
 
 
-lima
-exit 0
+
+
 
 # Run Self Test
-
-if [ "$1" != "-notest" ]; then
-    printf "Running self test"
+#if [ "$1" != "-notest" ]; then
+    echo "Running self test"
 
     sims_dir="$program_dir"/Simulations
     mkdir -p "$sims_dir"
 
-    git clone https://github.com/DanielRJohansen/LIMA_data
+    git clone --quiet https://github.com/DanielRJohansen/LIMA_data
 
     #cp -r --exclude '.*' ./LIMA_data/* $sims_dir/ #exclude .gitignore
     rsync -q -av --exclude '.*' ./LIMA_data/ "$sims_dir/"  # Exclude hidden files/directories
 
-    cd "$sims_dir"
-    lima
-fi
-
-#read -p "Press y to start demo simulation    " confirm && [[ $confirm == [yY] ]] || exit 1
+    cd "$sims_dir"/T4Lysozyme
+    lima mdrun
+#fi

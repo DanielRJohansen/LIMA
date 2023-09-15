@@ -13,6 +13,6 @@ int mdrun(int argc, char** argv) {
 	SelfRecompile::autoRecompile();
 #endif
 
-
+	std::printf("mdrun finished\n");
 	return 0;
 }

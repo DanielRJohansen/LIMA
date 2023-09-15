@@ -9,6 +9,10 @@
 #include <stdlib.h>
 
 namespace SelfRecompile {
+
+    const std::string apps_dir = "/opt/LIMA/Applications/";
+
+
     struct UserConstantInfo {
         std::string type;
         std::string value;
@@ -64,11 +68,11 @@ namespace SelfRecompile {
         getcwd(cwd, sizeof(cwd));
         std::string currentDirectory(cwd);
 
-        std::map<std::string, UserConstantInfo> constants = readDefaultConstants("/home/opt/LIMA/Applications/LIMA_BASE/src/DefaultUserConstants.h");
+        std::map<std::string, UserConstantInfo> constants = readDefaultConstants(apps_dir + "LIMA_BASE/src/DefaultUserConstants.h");
 
         readAndOverrideConstants(currentDirectory + "/simparams.txt", constants);
 
-        writeConstantsToFile("/home/opt/LIMA/Applications/LIMA_BASE/src/UserConstants.h", constants);
+        writeConstantsToFile(apps_dir + "LIMA_BASE/src/UserConstants.h", constants);
     }
 
     int autoRecompile() 
@@ -76,6 +80,8 @@ namespace SelfRecompile {
         overrideUserParams();
 
         // Call compile script
-        system("./home/opt/LIMA/Applications/recompile.sh");
+        std::printf("Optimization LIMA engine for your simulation parameters\n");
+        system((apps_dir + "recompile.sh").c_str());
+        return 0;
     }
 }

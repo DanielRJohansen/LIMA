@@ -1,6 +1,9 @@
 # Main cmakelist
 cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 
+if(UNIX)
+    set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
+endif()
 
 set(CMAKE_CUDA_ARCHITECTURES "89")
 

@@ -15,7 +15,7 @@ namespace SelfRecompile {
     };
 
 
-    std::map<std::string, ConstantInfo> readDefaultConstants(const std::string& filename) {
+    std::map<std::string, UserConstantInfo> readDefaultConstants(const std::string& filename) {
         std::ifstream infile(filename);
         std::string line;
         std::map<std::string, UserConstantInfo> defaultConstants;
@@ -36,7 +36,7 @@ namespace SelfRecompile {
         return defaultConstants;
     }
 
-    void readAndOverrideConstants(const std::string& filename, std::map<std::string, ConstantInfo>& constants) {
+    void readAndOverrideConstants(const std::string& filename, std::map<std::string, UserConstantInfo>& constants) {
         std::ifstream infile(filename);
         std::string line;
 
@@ -51,7 +51,7 @@ namespace SelfRecompile {
         }
     }
 
-    void writeConstantsToFile(const std::string& filename, const std::map<std::string, ConstantInfo>& constants) {
+    void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
         std::ofstream outfile(filename);
 
         for (const auto& pair : constants) {
@@ -64,7 +64,7 @@ namespace SelfRecompile {
         getcwd(cwd, sizeof(cwd));
         std::string currentDirectory(cwd);
 
-        std::map<std::string, ConstantInfo> constants = readDefaultConstants("/home/opt/LIMA/Applications/LIMA_BASE/src/DefaultUserConstants.h");
+        std::map<std::string, UserConstantInfo> constants = readDefaultConstants("/home/opt/LIMA/Applications/LIMA_BASE/src/DefaultUserConstants.h");
 
         readAndOverrideConstants(currentDirectory + "/simparams.txt", constants);
 

@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 # We dont need CUDA, but we need the CMAKE error as soon as possible
 project(lima LANGUAGES CXX CUDA)
 
+# Set the installation directory to /opt/LIMA
+set(CMAKE_INSTALL_PREFIX /opt/LIMA)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
@@ -21,3 +24,6 @@ add_executable(lima
 target_include_directories(lima PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Specify the installation target
+install(TARGETS lima DESTINATION bin)

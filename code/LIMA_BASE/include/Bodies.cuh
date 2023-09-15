@@ -1,7 +1,7 @@
 #pragma once
 #include <iostream>
 
-#include "Constants.cuh"
+#include "Constants.h"
 #include "LimaTypes.cuh"
 #include <vector>
 #include <array>

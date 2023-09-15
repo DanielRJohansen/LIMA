@@ -1,9 +1,7 @@
-# Main cmakelist
+#LIMA_APPS
 cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 
-
-set(CMAKE_CUDA_ARCHITECTURES "89")
-
+# We dont need CUDA, but we need the CMAKE error as soon as possible
 project(lima LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -14,14 +12,12 @@ if (UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 endif()
-find_package(OpenGL REQUIRED)
 
 
+add_executable(lima
+    lima.cpp
+)
 
-add_subdirectory(LIMA_BASE)
-add_subdirectory(LIMA_ENGINE)
-add_subdirectory(LIMA_FORCEFIELDMAKER)
-add_subdirectory(LIMA_MD)
-add_subdirectory(LIMA_TESTS)
-
-
+target_include_directories(lima PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)

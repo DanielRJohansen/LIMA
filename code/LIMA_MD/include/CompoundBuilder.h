@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "Bodies.cuh"
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Forcefield.cuh"
 #include "Utilities.h"
 

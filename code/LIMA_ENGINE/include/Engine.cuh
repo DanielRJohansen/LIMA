@@ -4,7 +4,7 @@
 #include <chrono>
 #include <thread>
 
-#include "Constants.cuh"
+#include "Constants.h"
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
 #include "Forcefield.cuh"

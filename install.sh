@@ -5,43 +5,60 @@
 
 echo "Welcome to the LIMA Dynamics installer"
 
-echo "Installing dependencies"
-#pacman -S cmake --noconfirm
-#pacman -S make --noconfirm
-#pacman -S cuda --noconfirm
-#pacman -S cuda-tools --noconfirm
-
-
-
-
-
-
-
-
-
-
-
-
-install_dir="$PWD"
-#program_dir=/home/"$SUDO_USER"/Desktop/LIMA
-program_dir="$PWD"/../../LIMA
+install_dir="$PWD"  # dir where repository with install files are
+program_dir="opt/LIMA"
 apps_dir="$program_dir"/Applications
-sims_dir="$program_dir"/Simulations""
+sims_dir="$program_dir"/Simulations
 
 
 echo "Using $program_dir as install directory"
 rm -rf "$program_dir"/
 
 
-mkdir -p "$apps_dir"
-mkdir -p "$sims_dir"
-#mkdir -p "$apps_dir"/dependencies
+
+
+echo "Installing dependencies"
+mkdir -p "$apps_dir"/dependencies
+cp -r ./dependencies/* "$apps_dir"/dependencies/
 
 
 
-# Install glfw
-#pacman -S glfw-x11 --noconfirm
-#cp -r ./dependencies/* "$apps_dir"/dependencies/
+# Check if we should install external dependencies
+    # Check if the user provided exactly one argument
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <-none|-all>"
+    exit 1
+fi
+if [ "$1" = "-all" ]; then
+    echo "Welcome to the LIMA Dynamics installer"
+    echo "Installing dependencies"
+    pacman -S cmake --noconfirm
+    pacman -S make --noconfirm
+    pacman -S cuda --noconfirm
+    pacman -S cuda-tools --noconfirm
+    #pacman -S glfw-x11 --noconfirm
+elif [ "$1" = "-none" ]; then
+    echo "No dependencies will be installed."
+else
+    echo "Usage: $0 <-none|-all>"
+    exit 1
+fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -51,7 +68,9 @@ mkdir -p "$sims_dir"
 
 ######### Now make Quantom
 
-mkdir "$apps_dir"/
+mkdir -p "$apps_dir"
+mkdir -p "$sims_dir"
+
 mkdir "$apps_dir"/build
 
 cp -r ./code/* "$apps_dir"/
@@ -62,7 +81,7 @@ cd "$apps_dir"/build
 #cmake -DCMAKE_CUDA_FLAGS=”-arch=sm_89” ../
 #export CC=/opt/cuda/bin/gcc
 #export CXX=/opt/cuda/bin/g++
-cmake ../
+cmake ../ 
 
 printf "Make the self-test files \n"
 cd LIMA_ENGINE
@@ -82,14 +101,14 @@ cd ..
 
 
 
-make
-mv LIMA_TESTS/limatests ../
-cp -r "$install_dir"/../LIMA_data/* "$sims_dir"/.
+#make
+#mv LIMA_TESTS/limatests ../
+#cp -r "$install_dir"/../LIMA_data/* "$sims_dir"/.
 
 
 
 cd $apps_dir
-./limatests
+#./limatests
 
 #mv mdrun ../
 

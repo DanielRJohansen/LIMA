@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <limits.h>
 
+#include "UserConstants.h"
+
 #define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
@@ -43,7 +45,6 @@ const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr float CUTOFF_NM = 1.6f;
 constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
@@ -56,7 +57,6 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr int _BOX_LEN_PM = 7200;
 //constexpr int _BOX_LEN_PM = 18000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 
@@ -147,7 +147,6 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
 const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
 const bool PRINT_TEMP = false;			// Force always print temp
 const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
 constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS

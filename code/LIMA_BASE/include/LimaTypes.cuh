@@ -11,7 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <limits>
-#include "Constants.cuh"
+#include "Constants.h"
 #include <vector>
 
 struct TestType {

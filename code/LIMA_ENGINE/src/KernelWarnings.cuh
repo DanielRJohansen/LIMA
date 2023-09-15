@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Bodies.cuh"
 
 

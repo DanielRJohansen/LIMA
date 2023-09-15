@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "LimaTypes.cuh"
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
 #include "EngineUtilsWarnings.cuh"

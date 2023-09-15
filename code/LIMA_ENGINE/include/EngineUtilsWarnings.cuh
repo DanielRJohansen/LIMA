@@ -8,7 +8,7 @@
 
 #include <iostream>
 
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Bodies.cuh"
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>

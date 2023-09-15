@@ -3,7 +3,7 @@
 //#include <cuda_runtime.h>
 
 #include "LimaTypes.cuh"
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Bodies.cuh"
 
 

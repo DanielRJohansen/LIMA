@@ -1,7 +1,7 @@
 #pragma once
 
 //#include "QuantomTypes.cuh"
-#include "Constants.cuh"
+#include "Constants.h"
 #include "Bodies.cuh"
 #include <map>
 #include <assert.h>

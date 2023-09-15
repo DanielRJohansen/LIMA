@@ -26,5 +26,6 @@ add_subdirectory(LIMA_ENGINE)
 add_subdirectory(LIMA_FORCEFIELDMAKER)
 add_subdirectory(LIMA_MD)
 add_subdirectory(LIMA_TESTS)
+add_subdirectory(LIMA_SERVER)
 
 

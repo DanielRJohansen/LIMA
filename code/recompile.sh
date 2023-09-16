@@ -16,7 +16,7 @@ cd ~/LIMA/source/build
 rm -rf ./*
 
 log_file=./build.log
-cmake ../ -Wno-dev > "$log_file" 2>&1
+cmake ../ -Wno-dev #> "$log_file" 2>&1
 
-make install > "$log_file" 2>&1
+make install #> "$log_file" 2>&1
 mv LIMA_TESTS/limatests ../

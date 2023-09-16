@@ -36,7 +36,6 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 
 	boxbuilder->buildBox(simulation.get());
 
-
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
 		simulation->forcefield.get(), 
 		work_folder, 

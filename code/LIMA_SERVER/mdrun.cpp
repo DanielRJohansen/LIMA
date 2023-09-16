@@ -1,4 +1,6 @@
 #include <iostream>
+#include <format>
+#include <filesystem>
 
 #include "Environment.h"
 
@@ -21,9 +23,7 @@ bool cmdOptionExists(char** begin, char** end, const std::string& option)
 struct MdrunSetup {
 
 	MdrunSetup() {
-		char cwd[1024];
-		getcwd(cwd, sizeof(cwd));
-		work_dir = std::string(cwd);
+		work_dir = std::filesystem::current_path();
 	}
 
 
@@ -81,6 +81,8 @@ int main(int argc, char** argv)
 {
 	try {
 		MdrunSetup setup = parseProgramArguments(argc, argv);
+
+		printf(std::format("LIMA is preparing simulation in dir {}", setup.work_dir));
 
 		auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 

@@ -19,7 +19,8 @@ if (UNIX)
 endif()
 find_package(OpenGL REQUIRED)
 
-
+# Set the installation prefix
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../applications")
 
 add_subdirectory(LIMA_BASE)
 add_subdirectory(LIMA_ENGINE)

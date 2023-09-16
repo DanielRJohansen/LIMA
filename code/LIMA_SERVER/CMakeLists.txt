@@ -18,3 +18,7 @@ set_target_properties(mdrun PROPERTIES CUDA_ARCHITECTURES "89")
 if (UNIX)
     target_compile_options(limatests PRIVATE -use_fast_math -O3)
 endif()
+
+
+#set_target_properties(mdrun PROPERTIES INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
+install(TARGETS mdrun DESTINATION .)

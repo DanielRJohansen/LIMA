@@ -72,7 +72,7 @@ cp -r "$install_dir"/code/* "$apps_dir"
 cd "$apps_dir"/build
 cmake "$apps_dir"/LIMA_APP/
 make install
-echo -e "All LIMA applications have been installed\n\n\n"
+echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 
 
 
@@ -81,17 +81,7 @@ echo -e "All LIMA applications have been installed\n\n\n"
 
 
 # Run Self Test
-#if [ "$1" != "-notest" ]; then
-    echo "Running self test"
-
-    sims_dir="$program_dir"/Simulations
-    mkdir -p "$sims_dir"
-
-    git clone --quiet https://github.com/DanielRJohansen/LIMA_data
-
-    #cp -r --exclude '.*' ./LIMA_data/* $sims_dir/ #exclude .gitignore
-    rsync -q -av --exclude '.*' ./LIMA_data/ "$sims_dir/"  # Exclude hidden files/directories
-
-    cd "$sims_dir"/T4Lysozyme
-    lima mdrun
-#fi
+cd "$install_dir"
+if [ "$1" != "-notest" ]; then
+    su -c "./selftest.sh" $SUDO_USER
+fi

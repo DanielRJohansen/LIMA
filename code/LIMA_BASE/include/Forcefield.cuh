@@ -37,7 +37,7 @@ public:
 		if (atom == 'S')
 			return 6;
 		printf("Unable to find atom %c\n", atom);
-		exit(1);
+		throw std::runtime_error("Forcefield failed");
 	}
 
 	bool forcefield_loaded = false;

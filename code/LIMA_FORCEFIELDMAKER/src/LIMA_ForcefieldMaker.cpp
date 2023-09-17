@@ -330,8 +330,7 @@ const char delimiter = ' ';
 void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& atomtype_map, const std::vector<NB_Atomtype>& filtered_atomtypes) {
 	std::ofstream file(path, std::ofstream::out);
 	if (!file.is_open()) {
-		cout << "Failed to open file " << path << endl;
-		exit(0);
+		throw std::runtime_error(std::format("Failed to open file {}", path).c_str());
 	}
 
 	file << FFPrintHelpers::titleH1("Forcefield Non-bonded");
@@ -362,8 +361,7 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 void printFFBonded(const string& path, const Topology& topology) {
 	std::ofstream file(path, std::ofstream::out);
 	if (!file.is_open()) {
-		printf(("Failed to open file\n"));
-		exit(0);
+		throw std::runtime_error("Failed to open file\n");
 	}
 
 	file << FFPrintHelpers::titleH1("Forcefield Bonded");

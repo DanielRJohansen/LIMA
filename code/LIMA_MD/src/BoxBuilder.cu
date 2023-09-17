@@ -26,8 +26,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 	cudaDeviceSynchronize();
 	if (cudaGetLastError() != cudaSuccess) {
-		fprintf(stderr, "Error during buildBox()\n");
-		exit(1);
+		throw std::runtime_error("Error during buildBox()");		
 	}
 }
 
@@ -148,8 +147,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 	for (Float3 sol_pos : solvent_positions) {
 		if (simulation->box_host->boxparams.n_solvents == MAX_SOLVENTS) {
-			printf("Too many solvents added!\n\n\n\n");
-			exit(1);
+			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.

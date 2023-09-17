@@ -546,7 +546,7 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 
 	if (cuda_status != cudaSuccess) {
 		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-		exit(1);
+		throw std::exception("Move to device failed");
 	}
 
 	cudaDeviceSynchronize();
@@ -640,9 +640,8 @@ struct Trajectory {
 		auto ss = std::ostringstream{};
 		std::ifstream input_file(path);
 		if (!input_file.is_open()) {
-			std::cerr << "Could not open the file - '"
-				<< path << "'" << std::endl;
-			exit(EXIT_FAILURE);
+			std::cout << "Could not open the file - '" << path << "'" << std::endl;
+			throw std::runtime_error("Bad filepath");
 		}
 		ss << input_file.rdbuf();
 		return ss.str();
@@ -655,54 +654,6 @@ struct Trajectory {
 
 	int n_particles = 0;
 	int n_steps = 0;
-};
-
-
-
-class HashTable {
-public:
-	HashTable(uint16_t* keys, int n_keys, int ts) : table_size(ts) {
-		table.resize(table_size);
-		for (int i = 0; i < table_size; i++) {
-			table[i] = -1;
-		}
-
-		for (int i = 0; i < n_keys; i++)
-			insert(keys[i]);
-	}
-
-	bool insert(uint16_t key, int offset = 1) {			// Returns true for sucessful insertion
-		if (offset > 100000) {
-			printf("Hashtable insertion failed\n");
-			exit(1);
-		}
-
-
-		uint32_t hash = (getHash(key) + offset) % table_size;
-		if (table[hash] == key) {		// Key already exists in table
-			return false;
-		}
-		else if (table[hash] == -1) {	// Key doesn't exist in table
-			table[hash] = key;
-			return true;
-		}
-		else {							// Hash already taken, recurse
-			return insert(key, offset * 2);
-		}
-	}
-
-
-private:
-
-	uint32_t getHash(uint16_t key) {
-		return (uint32_t)floor(table_size * (fmod((double)key * k, 1.)));
-	}
-
-
-	//int* table = nullptr;
-	std::vector<int> table;
-	int table_size = 0;
-	double k = 0.79026;
 };
 
 

@@ -24,13 +24,13 @@ namespace LIMA_UTILS {
         if (cuda_status != cudaSuccess) {
             std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
             fprintf(stderr, text);
-            exit(1);
+            throw std::runtime_error("genericErrorCheck failed");
         }
     }
     static void genericErrorCheck(const cudaError_t cuda_status) {
         if (cuda_status != cudaSuccess) {
             std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-            exit(1);
+            throw std::runtime_error("genericErrorCheck failed");
         }
     }
 }

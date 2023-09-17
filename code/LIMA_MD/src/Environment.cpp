@@ -89,16 +89,12 @@ void Environment::verifyBox() {
 	for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
 		if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
-			printf("Compound %d too large for simulation-box\n", c);
-			exit(1);
+			throw std::exception(std::format("Compound {} too large for simulation-box", c).c_str());
 		}
 	}
 
-
-	//if (std::abs(SOLVENT_MASS - engine->getForcefield().particle_parameters[0].mass) > 1e-3f) {
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
-		printf("Error in solvent mass");
-		exit(0);
+		throw std::exception("Error: Solvent mass is unreasonably large");
 	}
 
 

@@ -151,7 +151,7 @@ namespace FTHelpers {
 			std::cout << std::to_string(id) << " ";
 		}
 		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
-		exit(0);
+		throw std::runtime_error("findBestMatchInForcefield failed");
 	}
 
 	template <typename GenericBondType>

@@ -81,8 +81,7 @@ bool Display::initGLFW() {
 
     // Initialize the library
     if (!glfwInit()) {
-        printf("\nGLFW failed to initialize\n");
-        exit(0);
+        throw std::exception("\nGLFW failed to initialize");
     }
 
     // Create a windowed mode window and its OpenGL context

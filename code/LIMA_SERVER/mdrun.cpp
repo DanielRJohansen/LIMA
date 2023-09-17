@@ -23,7 +23,7 @@ bool cmdOptionExists(char** begin, char** end, const std::string& option)
 struct MdrunSetup {
 
 	MdrunSetup() {
-		work_dir = std::filesystem::current_path();
+		work_dir = std::filesystem::current_path().string();
 	}
 
 

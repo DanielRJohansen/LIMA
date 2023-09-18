@@ -7,11 +7,14 @@
 #include <string>
 #include <unistd.h>
 #include <stdlib.h>
+#include <filesystem>
+#include <format>
+
+namespace fs = std::filesystem;
 
 namespace SelfRecompile {
 
-    const std::string apps_dir = "/opt/LIMA/Applications/";
-
+    const std::string source_dir = "/opt/LIMA/source/";
 
     struct UserConstantInfo {
         std::string type;
@@ -48,6 +51,8 @@ namespace SelfRecompile {
             std::istringstream iss(line);
             std::string key, value;
             if (std::getline(iss, key, '=') && std::getline(iss, value)) {
+                //std::cout << std::format("Key {} value {}\n", key, value);
+
                 if (constants.find(key) != constants.end()) {
                     constants[key].value = value;
                 }
@@ -68,19 +73,29 @@ namespace SelfRecompile {
         getcwd(cwd, sizeof(cwd));
         std::string currentDirectory(cwd);
 
-        std::map<std::string, UserConstantInfo> constants = readDefaultConstants(apps_dir + "LIMA_BASE/src/DefaultUserConstants.h");
+        std::map<std::string, UserConstantInfo> constants = readDefaultConstants(source_dir + "LIMA_BASE/include/DefaultUserConstants.h");
 
-        readAndOverrideConstants(currentDirectory + "/simparams.txt", constants);
+        const std::string params_path = currentDirectory + "/sim_params.txt";
+        if (!fs::exists(params_path)) {
+            throw std::runtime_error(std::format("Expected file {}, but it was not found", params_path).c_str());
+        }
+        readAndOverrideConstants(params_path, constants);
 
-        writeConstantsToFile(apps_dir + "LIMA_BASE/src/UserConstants.h", constants);
+        writeConstantsToFile("./UserConstants.h", constants);
     }
 
     int autoRecompile() 
     {
+        const int err = system((source_dir + "copyToUserProgram.sh").c_str());
+        if (err) return err;
+
+
         overrideUserParams();
 
         // Call compile script
         std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
-        return system((apps_dir + "recompile.sh").c_str());
+
+        // This call goes to the wrong dir, but the script will cd to the right folder before it compiles
+        return system((source_dir + "recompile.sh").c_str());
     }
 }

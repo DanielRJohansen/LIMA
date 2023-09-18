@@ -8,7 +8,7 @@ echo "Welcome to the LIMA Dynamics installer"
 
 install_dir="$PWD"  # dir where repository with install files are
 program_dir="/opt/LIMA"
-apps_dir="$program_dir"/Applications
+source_dir="$program_dir"/source
 
 
 echo "Using $program_dir as install directory"
@@ -18,8 +18,8 @@ rm -rf "$program_dir"/
 
 
 echo "Installing dependencies"
-mkdir -p "$apps_dir"/dependencies
-cp -r ./dependencies/* "$apps_dir"/dependencies/
+mkdir -p "$source_dir"/dependencies
+cp -r ./dependencies/* "$source_dir"/dependencies/
 
 
 
@@ -47,19 +47,16 @@ fi
 
 
 # Prepare the source code
-mkdir -p "$apps_dir"
-mkdir "$apps_dir"/build
-cp -r "$install_dir"/code/* "$apps_dir"
+mkdir "$source_dir"/build
+cp -r "$install_dir"/code/* "$source_dir"
 
 
 
 # Build the public "lima" executable
-cd "$apps_dir"/build
-cmake "$apps_dir"/LIMA_APP/
+cd "$source_dir"/build
+cmake "$source_dir"/LIMA_APP/
 make install
 echo -e "\n\tAll LIMA applications have been installed\n\n\n"
-
-
 
 
 

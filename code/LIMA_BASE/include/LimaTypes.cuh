@@ -546,7 +546,7 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 
 	if (cuda_status != cudaSuccess) {
 		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-		throw std::exception("Move to device failed");
+		throw std::runtime_error("Move to device failed");
 	}
 
 	cudaDeviceSynchronize();

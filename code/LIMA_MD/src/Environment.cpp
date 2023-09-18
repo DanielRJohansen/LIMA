@@ -3,6 +3,7 @@
 #include "ChemfilesInterface.h"
 
 #include <filesystem>
+#include <stdexcept>
 
 using namespace LIMA_Print;
 using std::string;
@@ -29,11 +30,8 @@ Environment::Environment(const string& wf, EnvMode mode)
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
 	prepFF();									// TODO: Make check in here whether we can skip this!
-
 	SimParams simparams{ ip };
-
 	setupEmptySimulation(simparams);
-
 	boxbuilder->buildBox(simulation.get());
 
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
@@ -44,6 +42,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		work_folder+"/molecule/",
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
 		IGNORE_HYDROGEN);
+
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
 #ifdef ENABLE_SOLVENTS
@@ -89,12 +88,12 @@ void Environment::verifyBox() {
 	for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
 		if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
-			throw std::exception(std::format("Compound {} too large for simulation-box", c).c_str());
+			throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
 		}
 	}
 
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
-		throw std::exception("Error: Solvent mass is unreasonably large");
+		throw std::runtime_error("Error: Solvent mass is unreasonably large");
 	}
 
 

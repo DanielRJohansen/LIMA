@@ -24,15 +24,18 @@ struct MdrunSetup {
 
 	MdrunSetup() {
 		work_dir = std::filesystem::current_path().string();
+		structure = work_dir + "/molecule/conf.gro";
+		topol = work_dir + "/molecule/topol.top";
+		simpar = work_dir + "/sim_params.txt";
 	}
 
 
 	EnvMode envmode = Full;
 
-	std::string work_dir = "";
-	std::string structure = work_dir + "/molecule/conf.gro";
-	std::string topol = work_dir + "/molecule/topol.top";
-	std::string simpar = work_dir + "/sim_params.txt";
+	std::string work_dir;
+	std::string structure;
+	std::string topol;
+	std::string simpar;
 };
 
 
@@ -83,24 +86,19 @@ int main(int argc, char** argv)
 		MdrunSetup setup = parseProgramArguments(argc, argv);
 		std::cout << "LIMA is preparing simulation in dir " << setup.work_dir << "\n";
 		auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
-		std::printf("check 0\n");
 		const InputSimParams ip = env->loadInputSimParams(setup.simpar);
-		std::printf("check 1\n");
+		std::cout << setup.structure << "\t" << setup.topol << "\n";
 		env->CreateSimulation(setup.structure, setup.topol, ip);
-		std::printf("check2\n");
 		env->run();
-		std::printf("Finished??");
 	}
 	catch (const std::runtime_error& ex) {
-		std::printf("Error1\n");
 		std::cerr << "LIMA encountered an exception:\n\t " << ex.what();
 		return 1;
 	}
 	catch (...) {
-		std::printf("Error2\n");
 		std::cerr << "LIMA caught an unknown exception";
 		return 1;
 	}
-	std::printf("Got here??");
+
 	return 0;
 }

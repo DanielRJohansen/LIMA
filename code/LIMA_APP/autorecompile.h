@@ -80,8 +80,7 @@ namespace SelfRecompile {
         overrideUserParams();
 
         // Call compile script
-        std::printf("Optimization LIMA engine for your simulation parameters\n");
-        system((apps_dir + "recompile.sh").c_str());
-        return 0;
+        std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
+        return system((apps_dir + "recompile.sh").c_str());
     }
 }

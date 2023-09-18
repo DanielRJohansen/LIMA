@@ -10,7 +10,8 @@ int mdrun(int argc, char** argv)
 {
 #ifdef __linux__
 	// Recompile system to fit simparams
-	SelfRecompile::autoRecompile();
+	const int compile_failed = SelfRecompile::autoRecompile();
+    if (compile_failed) return 1;
 #endif
 
 

@@ -46,21 +46,6 @@ fi
 
 
 
-
-
-
-
-
-
-
-
-#if(UNIX)
-    #set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
-#fi()
-
-
-
-
 # Prepare the source code
 mkdir -p "$apps_dir"
 mkdir "$apps_dir"/build

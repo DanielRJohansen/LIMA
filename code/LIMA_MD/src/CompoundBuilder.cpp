@@ -102,7 +102,6 @@ MoleculeBuilder::MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger> log
 CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) {
 
 	m_logger->startSection("Building Molecules");
-
 	particleinfotable = loadAtomInfo(molecule_dir);
 	loadAtomPositions(gro_path);
 
@@ -114,7 +113,6 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 			particleinfotable[global_id].singlebonds_indices.emplace_back(singlebond_index);
 		}
 	}
-
 
 	createCompounds(topology.singlebonds);
 	createBridges(topology.singlebonds);
@@ -179,14 +177,13 @@ GroRecord parseGroLine(const std::string& line) {
 
 void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could be const if not for the temporary atomname for rendering
 
-
 	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
-	
 
 	// First check box has correct size
 	if (parsedfile.rows.back().section != "box_size") {
 		throw std::runtime_error("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
 	}
+
 	for (auto& length_str : parsedfile.rows.back().words) {
 		if (std::stof(length_str) != BOX_LEN_NM) {
 			throw std::runtime_error(".gro file box size does not match the compiler defined box size");

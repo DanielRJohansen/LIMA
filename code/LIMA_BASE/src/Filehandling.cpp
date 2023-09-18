@@ -8,6 +8,7 @@
 #include <array>
 #include <fstream>
 #include <filesystem>
+#include <format>
 
 using std::string, std::vector, std::map, std::stringstream;
 
@@ -275,6 +276,10 @@ SimpleParsedFile Filehandler::parseGroFile(const std::string& path, bool verbose
 
 	std::fstream file;
 	file.open(path);
+	 if (!file.is_open() || file.fail()) {
+        throw std::runtime_error(std::format("Failed to open file {}", path).c_str());
+    }
+
 
 	SimpleParsedFile parsedfile;
 

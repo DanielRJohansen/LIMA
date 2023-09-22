@@ -109,7 +109,7 @@ struct CompoundCoords {
 const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES+4;	// Due to AA such a TRP, thhere might be more bonds than atoms
 const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
 const int MAX_DIHEDRALBONDS_IN_COMPOUND = 256;
-const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 16;
+const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {
 		n_particles = n_p;
@@ -236,8 +236,8 @@ struct CompoundGridNode {
 
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
-	// to find all appropriate nearby compounds;
-	static const int max_nearby_compounds = 96;
+	// to find all appropriate nearby compounds;	// This is insanely high
+	static const int max_nearby_compounds = 128;
 	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
 	int16_t n_nearby_compounds = 0;
 };

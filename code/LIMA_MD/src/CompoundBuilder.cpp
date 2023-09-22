@@ -22,6 +22,13 @@ struct GroRecord {
 	Float3 velocity{};
 };
 
+// we need this struct because only the topology has a distinct ordering of which atoms (purely position based) belong to which residue
+// This is so fucked up insane, but its the standard so :(
+struct TopologyAtom {
+	const std::string type;			// As it is read in the top/itp file
+	const int global_residue_id;	// Given by limi
+};
+
 struct Topology {
 	std::vector<SingleBond> singlebonds;
 	std::vector<AngleBond> anglebonds;
@@ -196,6 +203,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 		throw std::runtime_error("Expected first line of parsed gro file to contain atom count");
 	}
 	const int n_atoms_total = std::stoi(parsedfile.rows[0].words[0]);
+	int current_res_id = -1;	// unique
 
 	for (const auto& row : parsedfile.rows) {
 		if (row.section != "atoms") { continue; }
@@ -232,13 +240,20 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 				throw std::runtime_error("atom_name of .gro file does not match that of .lff file");
 			}
 
-			const bool is_new_res = residues.empty() || residues.back().gro_id != record.residue_number;
+			//const bool is_new_res = residues.empty() || residues.back().gro_id != record.residue_number || residues.back().name != record.residue_name;
+			const bool is_new_res = particleinfotable[assumed_global_id].unique_res_id != current_res_id
+				|| record.residue_number != residues.back().gro_id;
 			if (is_new_res) {
 				residues.push_back(Residue{ record.residue_number, static_cast<int>(residues.size()), record.residue_name, particleinfotable[assumed_global_id].chain_id });
+				current_res_id = particleinfotable[assumed_global_id].unique_res_id;
 			}
 			
 			residues.back().atoms_globalid.emplace_back(assumed_global_id);
 			nonsolvent_positions.emplace_back(record.position);
+
+			if (residues.back().atoms_globalid.size() > MAX_COMPOUND_PARTICLES) {
+				throw std::runtime_error(std::format("Cannot handle residue with {} particles\n", residues.back().atoms_globalid.size()).c_str());
+			}
 		}
 	}
 
@@ -256,6 +271,8 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 	const SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(bonded_path, false);
 
 	Topology topology{};
+
+
 
 	for (auto& row : bonded_parsed.rows) {
 		if (row.section == "singlebonds") {
@@ -328,8 +345,8 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 			const int residue_groid = std::stoi(row.words[3]);
 			const int atomtype_id = std::stoi(row.words[4]);
 			const auto& atomname = row.words[5];
-
-			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname, residue_groid });
+			const int unique_res_id = std::stoi(row.words[6]);
+			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname, residue_groid, unique_res_id });
 		}
 	}
 	return atominfotable;
@@ -660,7 +677,7 @@ int indexOfParticleFurthestFromCom(Float3* positions, int n_elems, const Float3&
 	return furthest_particle_index;
 }
 void MoleculeBuilder::calcCompoundMetaInfo() {
-	for (auto& compound : compounds) {
+	for (CompoundFactory& compound : compounds) {
 		const Float3 com = calcCOM(compound.positions, compound.n_particles);	
 		compound.key_particle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
 

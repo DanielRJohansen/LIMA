@@ -239,7 +239,62 @@ SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose
 		return false;
 	};
 
-	return parseBasicFile(path, verbose, setSectionFn);
+	std::ifstream file;
+	file.open(path);
+	if (!file.is_open() || file.fail()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path).c_str());
+	}
+
+	SimpleParsedFile parsedfile;
+
+	string current_section = "none";
+
+	int ignore_cnt = 0;
+
+	int skipCnt = 0;
+
+	// Forward declaring for optimization reasons
+	string line{}, word{};
+	while (getline(file, line)) {
+
+		if (skipCnt > 0) {
+			skipCnt--;
+			continue;
+		}
+
+		replaceTabs(line);
+
+		vector<char> ignores = { ';', '#' };
+		char delimiter = ' ';
+
+		vector<string> row;
+		stringstream ss(line);
+		while (getline(ss, word, delimiter)) {
+			if (!word.empty()) {
+				
+				if (ignoreRow(ignores, word)) {
+					if (word[0] == ';' && current_section == "atoms") {}	// Do nothing, we need these comments to distinct between residues.. i hate these people :(							
+					else break;	// Normal case, just skip the comments
+				}
+				row.push_back(word);
+			}
+
+		}
+
+		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
+
+		const bool new_section = setSectionFn(row, current_section, skipCnt);
+		if (new_section) { continue; }
+
+		parsedfile.rows.push_back({ current_section, row });
+	}
+
+	if (verbose) {
+		std::cout << path;
+		printf("\n\t%zu rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
+	}
+
+	return parsedfile;
 }
 
 SimpleParsedFile Filehandler::parseLffFile(const std::string& path, bool verbose)

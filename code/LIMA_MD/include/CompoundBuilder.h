@@ -64,6 +64,7 @@ struct ParticleInfo {
 	const int atomtype_id;
 	const std::string atomname;
 	const int residue_groid;
+	const int unique_res_id;
 	// Added when determining which residues of the chains are connected
 	std::vector<int> singlebonds_indices;	// indices of singlebonds of which this atom is in
 

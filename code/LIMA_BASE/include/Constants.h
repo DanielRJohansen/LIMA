@@ -103,15 +103,15 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
-const bool CALC_POTE = false;
+const bool CALC_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
+// If we go larger, a single compound can stretch over 2 nm!
+constexpr int MAX_COMPOUND_PARTICLES = IGNORE_HYDROGEN ? 48 : 64;
+const int MAX_COMPOUNDS = 4096;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
-const int MAX_COMPOUND_PARTICLES = 48;	// If we go larger, a single compound can stretch over 2 nm!
-const int MAX_COMPOUNDS = 2048;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
-
-const int NEIGHBORLIST_MAX_COMPOUNDS = 256;
+const int NEIGHBORLIST_MAX_COMPOUNDS = 256+64;	// TODO: We need to work on getting this number down!
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 
@@ -160,7 +160,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 300;
+const int STEPS_PER_RENDER = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

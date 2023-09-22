@@ -42,13 +42,15 @@ namespace ForcefieldMakerTypes {
 	};
 
 	struct AtomtypeMapping {
-		AtomtypeMapping(int global, int gro, int chain_id, int res_id, int atomtype_id, const std::string& name) : global_id(global), gro_id(gro), chain_id(chain_id), residue_id(res_id), atomtype_id(atomtype_id), atomname(name) {}
+		AtomtypeMapping(int global, int gro, int chain_id, int res_id, int atomtype_id, const std::string& name, int unique_residue_id) 
+			: global_id(global), gro_id(gro), chain_id(chain_id), residue_id(res_id), atomtype_id(atomtype_id), atomname(name), unique_residue_id(unique_residue_id) {}
 		const int global_id;	// Given by LIMA
 		const int gro_id;		// not unique
 		const int chain_id;		// Unique
 		const int residue_id;	// Unique within chain (i fucking hope..)
 		const int atomtype_id;	// simulation specific
 		const std::string atomname;
+		const int unique_residue_id;
 	};
 }
 
@@ -175,10 +177,12 @@ bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTa
 	return true;
 }
 
-void loadTopology(Topology& topology, const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom, int& current_chain_id)
+// call this funciton initially with current_unique_residue_cnt=-1
+void loadTopology(Topology& topology, const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom, int& current_chain_id, int& current_unique_residue_cnt)
 {
 	const SimpleParsedFile parsedfile = Filehandler::parseTopFile(topol_path, false);
 
+	
 
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 		if (row.section == "molecules") {
@@ -190,13 +194,23 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 
 			const std::string include_top_file = molecule_dir + "/topol_" + row.words[0] + ".itp";
 			current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
-			loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id);
+			loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id, current_unique_residue_cnt);
 		}
 
 		if (row.section == "atoms") {
 
 			if (current_chain_id == -1) {
 				current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
+			}
+
+			// In topology files we use lines like below to distinct different residues. 
+			// This means we also need to catch and ignores regular comments here, since ; is used as comments in itp files..
+			//; residue  -8 THR rtp THR  q +1.0
+			if (row.words[0] == ";") {
+				if (row.words[1] == "residue") {
+					current_unique_residue_cnt++;
+				}
+				continue;
 			}
 
 
@@ -213,7 +227,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 				continue;
 			}
 
-			topology.atominfotable.insert(current_chain_id, gro_id, atomtype, atomname, residue_id);
+			topology.atominfotable.insert(current_chain_id, gro_id, atomtype, atomname, residue_id, current_unique_residue_cnt);
 			topology.active_atomtypes.insert(atomtype);
 		}
 		else if (row.section == "bonds") {
@@ -305,7 +319,7 @@ const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(cons
 
 	for (const Atom& atom : topology.atominfotable.getAllAtoms()) {
 		const int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
-		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, atom.res_id, filted_atomtype_id, atom.atomname });
+		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, atom.res_id, filted_atomtype_id, atom.atomname, atom.unique_res_id });
 	}
 	return map;
 }
@@ -352,10 +366,17 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 
 	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t residue_id \t atomtype_id \t atomname}");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t residue_id \t atomtype_id \t atomname \t unique_residue_id}");
 	file << FFPrintHelpers::parserTitle("atomtype_map");
 	for (auto& mapping : atomtype_map) {
-		file << to_string(mapping.global_id) << delimiter << to_string(mapping.gro_id) << delimiter << to_string(mapping.chain_id) << delimiter << to_string(mapping.residue_id) << delimiter << to_string(mapping.atomtype_id) << delimiter << mapping.atomname << endl;
+		file << to_string(mapping.global_id) << delimiter 
+			<< to_string(mapping.gro_id) << delimiter 
+			<< to_string(mapping.chain_id) << delimiter 
+			<< to_string(mapping.residue_id) << delimiter 
+			<< to_string(mapping.atomtype_id) << delimiter 
+			<< mapping.atomname << delimiter
+			<< mapping.unique_residue_id
+			<< endl;
 	}
 	file << FFPrintHelpers::endBlock();
 
@@ -474,7 +495,8 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 
 	// Load the topology
 	Topology topology{};
-	loadTopology(topology, molecule_dir, molecule_dir+"/topol.top", ignored_atomtype, current_chain_id);
+	int unique_residue_cnt = -1;
+	loadTopology(topology, molecule_dir, molecule_dir+"/topol.top", ignored_atomtype, current_chain_id, unique_residue_cnt);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);

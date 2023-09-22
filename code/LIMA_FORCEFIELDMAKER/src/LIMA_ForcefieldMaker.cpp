@@ -183,6 +183,11 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 		if (row.section == "molecules") {
 			assert(row.words.size() == 2);
+
+			// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
+			if(row.words[0] == "SOL")
+				continue;
+
 			const std::string include_top_file = molecule_dir + "/topol_" + row.words[0] + ".itp";
 			current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
 			loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id);
@@ -439,7 +444,7 @@ std::vector<std::string> getFiles() {
 
 	// Some files are commented out because it is NOT clear whether they are using rmin or rmin/2
 #ifdef __linux__
-	const std::string ff_dir = "/home/lima/Desktop/git_repo/LIMA/resources/Forcefields/charmm36-mar2019.ff";
+	const std::string ff_dir = "/opt/LIMA/resources/Forcefields/charmm36-mar2019.ff";
 #else
 	const std::string ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charmm36-mar2019.ff";
 #endif
@@ -449,7 +454,7 @@ std::vector<std::string> getFiles() {
 	files.push_back(ff_dir + "/par_all36_lipid.prm");
 	files.push_back(ff_dir + "/par_all36_na.prm");	
 	files.push_back(ff_dir + "/par_all36m_prot.prm");
-	files.push_back(ff_dir + "/par_all36m_cgenff.prm");
+	//files.push_back(ff_dir + "/par_all36_cgenff.prm");
 	files.push_back(ff_dir + "/par_all22_prot.prm");
 
 

@@ -6,7 +6,7 @@
 
 #include "UserConstants.h"
 
-#define LIMASAFEMODE
+//#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
@@ -103,7 +103,7 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
-const bool CALC_POTE = true;
+const bool CALC_POTE = false;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
@@ -160,7 +160,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 50;
+const int STEPS_PER_RENDER = 300;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

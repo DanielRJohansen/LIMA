@@ -206,7 +206,7 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 			// In topology files we use lines like below to distinct different residues. 
 			// This means we also need to catch and ignores regular comments here, since ; is used as comments in itp files..
 			//; residue  -8 THR rtp THR  q +1.0
-			if (row.words[0] == ";") {
+			if (row.words[0][0] == ';') {
 				if (row.words[1] == "residue") {
 					current_unique_residue_cnt++;
 				}

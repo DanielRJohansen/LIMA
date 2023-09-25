@@ -96,9 +96,9 @@ namespace LIMAPOSITIONSYSTEM {
 
 	__host__ static LimaPosition createLimaPosition(const NodeIndex& nodeindex) {
 		return LimaPosition{
-			nodeindex.x * BOXGRID_NODE_LEN_i,
-			nodeindex.y * BOXGRID_NODE_LEN_i,
-			nodeindex.z * BOXGRID_NODE_LEN_i
+			static_cast<int64_t>(nodeindex.x) * BOXGRID_NODE_LEN_i,
+			static_cast<int64_t>(nodeindex.y) * BOXGRID_NODE_LEN_i,
+			static_cast<int64_t>(nodeindex.z) * BOXGRID_NODE_LEN_i
 		};
 	}
 	__host__ static LimaPosition createLimaPosition(const Float3& pos_nm) {
@@ -165,7 +165,7 @@ namespace LIMAPOSITIONSYSTEM {
 		LIMAPOSITIONSYSTEM::applyHyperpos(createLimaPosition(nodeindex), hyperpos);
 		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
 
-		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * max_node_diff) {
+		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * static_cast<int64_t>(max_node_diff)) {
 			throw "Tried to place a position that was not correcly assigned a node";
 		}
 
@@ -452,7 +452,7 @@ namespace EngineUtils {
 		const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
 		//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
 		const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer) * total_particles_upperbound;
-		const int64_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		return step_offset + compound_offset + particle_id_local;
 	}
 

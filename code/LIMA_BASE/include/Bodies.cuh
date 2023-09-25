@@ -329,7 +329,7 @@ public:
 
 	// This function assumes the user has used PBC
 	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int step) {
-#if defined LIMASAFEMODE || true
+#if defined LIMASAFEMODE
 		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::runtime_error("Bad 3d index for blockptr\n");

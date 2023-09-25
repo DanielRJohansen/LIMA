@@ -102,7 +102,7 @@ public:
 
 	T& getCompoundparticleDatapointAtIndex(int compound_id, int particle_id_compound, size_t entryindex) {
 		const size_t index_offset = entryindex * n_particles_upperbound;
-		const size_t compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+		const size_t compound_offset = static_cast<size_t>(compound_id) * MAX_COMPOUND_PARTICLES;
 		return buffer[index_offset + compound_offset + particle_id_compound];
 	}
 

@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+
+
 Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
 	: m_logger(std::move(logger))
 {
@@ -13,7 +15,8 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 	simulation = std::move(sim);
 
-	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + sizeof(Float3) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
+	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + 
+		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 
 	this->forcefield_host = forcefield_host;

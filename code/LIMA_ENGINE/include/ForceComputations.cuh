@@ -12,7 +12,7 @@ namespace LimaForcecalc {
 
 // ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
 
-__device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, SingleBond& bondtype, Float3* results, float& potE) {
+__device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE) {
 	// Calculates bond force on both particles					//
 	// Calculates forces as J/mol*M								//
 	// kb [J/(mol*lm^2)]
@@ -32,7 +32,7 @@ __device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, S
 	results[0] = dir * force_scalar;							// [kg * lm / (mol*ls^2)] = [lN]
 	results[1] = -dir * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
 
-#if defined LIMASAFEMODE || true
+#if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
 		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype.b0 / NANO_TO_LIMA, bondtype.kb, force_scalar);
 		//printf("errfm %f\n", error_fm);
@@ -68,7 +68,7 @@ __device__ void calcAnglebondForces(const Float3& pos_left, const Float3& pos_mi
 
 
 
-#if defined LIMASAFEMODE || true
+#if defined LIMASAFEMODE
 	if (results[0].len() > 0.1f) {
 		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 %f [rad] kt %f\n", angle, error, results[0].len(), angletype.theta_0, angletype.k_theta);
 	}
@@ -144,7 +144,7 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 	results[2] = f3-f2;
 	results[3] = -f3;
 
-#if defined LIMASAFEMODE || true
+#if defined LIMASAFEMODE
 	Float3 force_spillover = Float3{};
 	for (int i = 0; i < 4; i++) {
 		force_spillover += results[i];
@@ -167,7 +167,7 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 
 // https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
 // Plane described by i,j,k, and l is out of plane, connected to i
-__device__ void calcImproperdihedralbondForces(const Float3 i, const Float3 j, const Float3 k, const Float3 l, const ImproperDihedralBond improper, Float3* results, float& potE) {
+__device__ void calcImproperdihedralbondForces(const Float3& i, const Float3& j, const Float3& k, const Float3& l, const ImproperDihedralBond& improper, Float3* results, float& potE) {
 	const Float3 ij_norm = (j - i).norm();
 	const Float3 ik_norm = (k - i).norm();
 	const Float3 il_norm = (l - i).norm();
@@ -199,27 +199,6 @@ __device__ void calcImproperdihedralbondForces(const Float3 i, const Float3 j, c
 	const float ratio = (j - i).len() / ((j - i).len() + (k - i).len());
 	results[1] = residual * (1.f-ratio);
 	results[2] = residual * (ratio);
-
-
-
-
-
-
-	Float3 force_spillover = Float3{};
-	for (int i = 0; i < 4; i++) {
-		force_spillover += results[i];
-	}
-	if (force_spillover.len() * 10000.f > results[0].len()) {
-		//force_spillover.print('s');
-	}
-
-
-
-
-
-
-
-
 
 
 #if defined LIMASAFEMODE

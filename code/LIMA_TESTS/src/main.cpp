@@ -29,7 +29,7 @@ int main() {
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
 
-		//doMethionineBenchmark(envmode);
+		doMethionineBenchmark(envmode);
 		//doPhenylalanineBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
@@ -45,7 +45,7 @@ int main() {
 
 		//doPool50x(EnvMode::Headless);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;

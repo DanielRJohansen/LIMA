@@ -31,7 +31,7 @@
 
 namespace KernelHelpersWarnings {
 	__device__ void assertHyperorigoIsValid(const NodeIndex& querycompound_hyperorigo, const NodeIndex& origo_self) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if ((querycompound_hyperorigo - origo_self).maxElement() > 10) {
 			printf("Here::\n");
 			origo_self.print('s');
@@ -41,26 +41,26 @@ namespace KernelHelpersWarnings {
 	}
 
 	__device__ void verifyOnehotRemaindersIsValid(uint8_t* onehot_remainers, int i) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (onehot_remainers[i] > 230) { printf("Sequential-Prefix-Sum algo is about to crash!"); }
 #endif
 	}
 
 	__device__ void transferoutVerifyQueueIndex(int queue_index, const NodeIndex& transfer_dir) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (queue_index < 0 || queue_index > 5) { printf("\nGot unexpected queue index %d\n", queue_index); transfer_dir.print(); }
 #endif
 	}
 
 	__device__ void transferoutVerifyInsertion(bool success) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (!success)
 			printf("\nTried to add too many solvents in outgoing transferqueue\n");
 #endif
 	}
 
 	__device__ void assertValidBlockId(const int blockid) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (blockid < 0 || blockid >= SolventBlocksCircularQueue::blocks_per_grid) {
 			printf("\nGot unexpected Block id index %d\n", blockid);
 		}
@@ -69,7 +69,7 @@ namespace KernelHelpersWarnings {
 
 	__device__ static void transferOutDebug(STransferQueue* queue_global, 
 		const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
 			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
 			|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
@@ -106,7 +106,7 @@ namespace SolventWarnings {
 
 namespace SolventTransferWarnings {
 	__device__ void assertSolventsEqualNRemain(const SolventBlock& solventblock_next, const SolventBlockTransfermodule& transfermodule) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (solventblock_next.n_solvents != transfermodule.n_remain) {
 			printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next.n_solvents, transfermodule.n_remain);
 		}
@@ -114,7 +114,7 @@ namespace SolventTransferWarnings {
 	};
 	
 	__device__ void assertMaxPlacedSolventsIsWithinLimits(int n_solvents_next, bool& critical_error_encountered) {
-#ifndef LIMAPUSH
+#if defined LIMASAFEMODE || true
 		if (threadIdx.x == 0 && n_solvents_next >= MAX_SOLVENTS_IN_BLOCK) {
 			printf("Tried to put %d solvents in a single block\n", n_solvents_next);
 			critical_error_encountered = true;
@@ -125,7 +125,7 @@ namespace SolventTransferWarnings {
 
 namespace BridgeWarnings {
 	__device__ void verifyPRefValid(const ParticleReference& p_ref, const CompoundBridge& bridge) {
-#ifdef LIMASAFEMODE
+#if defined LIMASAFEMODE || true
 		if (p_ref.compoundid_local_to_bridge >= bridge.n_compounds) {
 			printf("What the fuck! %d %d\n", p_ref.compoundid_local_to_bridge, bridge.n_compounds);
 			printf("CIDs %d %d %d %d\n", bridge.compound_ids[0], bridge.compound_ids[1], bridge.compound_ids[2], bridge.compound_ids[3]);

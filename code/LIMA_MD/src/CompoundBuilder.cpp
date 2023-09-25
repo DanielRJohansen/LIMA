@@ -821,7 +821,7 @@ void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond
 }
 
 void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
+	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add improperdihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
 		std::array<uint32_t,4>{
 			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),

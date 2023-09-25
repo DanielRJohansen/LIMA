@@ -66,17 +66,17 @@ struct Float3 {
 	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-	__host__ __device__ Float3 operator-() const { return Float3(-x, -y, -z); }
-	__host__ __device__ Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
-	__host__ __device__ Float3 operator * (const Float3 a) const { return Float3(x * a.x, y * a.y, z * a.z); }
-	__host__ __device__ Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
-	__host__ __device__ Float3 operator / (const Float3 a) const { return Float3(x / a.x, y / a.y, z / a.z); }
-	__host__ __device__ Float3 operator + (const Float3 a) const { return Float3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ Float3 operator - (const Float3 a) const { return Float3(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ bool operator == (const Float3 a) const { return (a.x == x && a.y == y && a.z == z); }
-	__host__ __device__ void operator += (const Float3 a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ void operator -= (const Float3 a) { x -= a.x; y -= a.y; z -= a.z; }
-	__host__ __device__ void operator *= (const float a) { x *= a; y *= a; z *= a; }
+	__host__ __device__ inline Float3 operator-() const { return Float3(-x, -y, -z); }
+	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
+	__host__ __device__ inline Float3 operator * (const Float3 a) const { return Float3(x * a.x, y * a.y, z * a.z); }
+	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
+	__host__ __device__ inline Float3 operator / (const Float3 a) const { return Float3(x / a.x, y / a.y, z / a.z); }
+	__host__ __device__ inline Float3 operator + (const Float3 a) const { return Float3(x + a.x, y + a.y, z + a.z); }
+	__host__ __device__ inline Float3 operator - (const Float3 a) const { return Float3(x - a.x, y - a.y, z - a.z); }
+	__host__ __device__ inline bool operator == (const Float3 a) const { return (a.x == x && a.y == y && a.z == z); }
+	__host__ __device__ inline void operator += (const Float3 a) { x += a.x; y += a.y; z += a.z; }
+	__host__ __device__ inline void operator -= (const Float3 a) { x -= a.x; y -= a.y; z -= a.z; }
+	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
 
 	//__device__ inline Float3 mul_highres(const double d) const {
 	//	return Float3(

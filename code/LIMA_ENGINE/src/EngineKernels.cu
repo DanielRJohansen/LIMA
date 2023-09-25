@@ -276,7 +276,8 @@ __device__ Float3 computeDihedralForces(T* entity, Float3* positions, Float3* fo
 	return forces_interim[threadIdx.x];
 }
 
-__device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers, int n_impropers, Float3* positions, Float3* utility_buffer, float* potentials_interim, float* potE) {
+__device__ Float3 computeImproperdihedralForces( ImproperDihedralBond * impropers, int n_impropers, 
+	const Float3 const * positions, Float3* utility_buffer, float* potentials_interim, float* potE) {
 
 	// First clear the buffer which will store the forces.
 	utility_buffer[threadIdx.x] = Float3(0.f);
@@ -284,23 +285,29 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 	__syncthreads();
 
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
-		ImproperDihedralBond* db = nullptr;
+		ImproperDihedralBond * db = nullptr;
 		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
 		float potential = 0.f;
 		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
-
+		
 		if (bond_index < n_impropers) {
 			db = &impropers[bond_index];
-			//printf("Firing %d of %d\n", bond_index, entity);
+			const ImproperDihedralBond idb = *db;
 			LimaForcecalc::calcImproperdihedralbondForces(
 				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
 				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
 				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
 				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
-				*db,
+				//*db,
+				idb,
 				forces,
 				potential
 			);
+
+			if (idb.k_psi != db->k_psi || potential == 42.f) {
+				printf("hey");
+			}
+
 		}
 
 		for (int i = 0; i < blockDim.x; i++) {
@@ -314,6 +321,8 @@ __device__ Float3 computeImproperdihedralForces(ImproperDihedralBond* impropers,
 		}
 	}
 	*potE += potentials_interim[threadIdx.x];
+	__syncthreads();
+
 	return utility_buffer[threadIdx.x];
 }
 

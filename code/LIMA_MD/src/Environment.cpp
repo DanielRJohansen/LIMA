@@ -151,10 +151,10 @@ void Environment::sayHello() {
 	std::string file_contents((std::istreambuf_iterator<char>(file)),
 		std::istreambuf_iterator<char>());
 
-	cout << "\033[1;32m"; // set text color to green
+	//cout << "\033[1;32m"; // set text color to green
 	cout << file_contents;
-	printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n\n");
-	cout << "\033[0m"; // reset text color
+	//printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n\n");
+	//cout << "\033[0m"; // reset text color
 }
 
 

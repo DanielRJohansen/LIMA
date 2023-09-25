@@ -240,9 +240,8 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 				throw std::runtime_error("atom_name of .gro file does not match that of .lff file");
 			}
 
-			const bool is_new_res = residues.empty() || residues.back().gro_id != record.residue_number || residues.back().name != record.residue_name;
-			//const bool is_new_res = particleinfotable[assumed_global_id].unique_res_id != current_res_id
-			//	|| record.residue_number != residues.back().gro_id;
+			const bool is_new_res = particleinfotable[assumed_global_id].unique_res_id != current_res_id
+				|| record.residue_number != residues.back().gro_id;
 			if (is_new_res) {
 				residues.push_back(Residue{ record.residue_number, static_cast<int>(residues.size()), record.residue_name, particleinfotable[assumed_global_id].chain_id });
 				current_res_id = particleinfotable[assumed_global_id].unique_res_id;
@@ -687,7 +686,7 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 		const Float3& furthestParticle = compound.positions[indexOfFurthestParticle];
 		const float radius = EngineUtils::calcHyperDistNM(&furthestParticle, &key_pos);
 
-		compound.radius = radius * 1.2f;	// Add 20% leeway
+		compound.radius = radius * 1.1f;	// Add 10% leeway
 
 		if (compound.radius > MAX_COMPOUND_RADIUS) { 
 			throw std::runtime_error(std::format("Compound radius {} spans more than {} nm!", compound.radius, MAX_COMPOUND_RADIUS).c_str()); }

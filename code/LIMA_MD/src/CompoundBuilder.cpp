@@ -30,10 +30,10 @@ struct TopologyAtom {
 };
 
 struct Topology {
-	std::vector<SingleBond> singlebonds;
-	std::vector<AngleBond> anglebonds;
-	std::vector<DihedralBond> dihedralbonds;
-	std::vector<ImproperDihedralBond> improperdihedralbonds;
+	std::vector<SingleBondFactory> singlebonds;
+	std::vector<AngleBondFactory> anglebonds;
+	std::vector<DihedralBondFactory> dihedralbonds;
+	std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
 };
 
 
@@ -84,10 +84,10 @@ private:
 	/// The particle_bonds_lut is used to determine whether particles of two different 
 	/// share a bond.
 	/// </summary>
-	void matchBondedResidues(const std::vector<SingleBond>& singlebonds);
+	void matchBondedResidues(const std::vector<SingleBondFactory>& singlebonds);
 
-	void createCompounds(const std::vector<SingleBond>& singlebonds);
-	void createBridges(const std::vector<SingleBond>& singlebonds);
+	void createCompounds(const std::vector<SingleBondFactory>& singlebonds);
+	void createBridges(const std::vector<SingleBondFactory>& singlebonds);
 
 	void distributeBondsToCompoundsAndBridges(const Topology& topology);
 
@@ -116,7 +116,7 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 
 	// We need each particle to ref singlebonds to determine which residues are bonded
 	for (int singlebond_index = 0; singlebond_index < topology.singlebonds.size(); singlebond_index++) {
-		for (uint32_t global_id : topology.singlebonds[singlebond_index].atom_indexes) {
+		for (uint32_t global_id : topology.singlebonds[singlebond_index].global_atom_indexes) {
 			particleinfotable[global_id].singlebonds_indices.emplace_back(singlebond_index);
 		}
 	}
@@ -134,6 +134,26 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 	);
 
 	m_logger->finishSection("Finished building molecules");
+
+
+	for (const auto& c : compounds) {
+		for (int i = 0; i < c.n_singlebonds; i++) {
+			const SingleBond& b = c.singlebonds[i];
+			if (b.atom_indexes[0] == b.atom_indexes[1]) {
+				throw std::runtime_error("CompoundBuilder failed\n");
+			}
+		}
+	}
+
+	for (int j = 0; j < bridges_compact->n_bridges; j++) {
+		auto& bridge = bridges_compact->compound_bridges[j];
+		for (int i = 0; i < bridge.n_singlebonds; i++) {
+			const SingleBond& b = bridge.singlebonds[i];
+			if (b.atom_indexes[0] == b.atom_indexes[1]) {
+				throw std::runtime_error("CompoundBuilder failed\n");
+			}
+		}
+	}
 
 	return CompoundCollection{ 
 		std::move(compounds), 
@@ -286,7 +306,7 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 			//const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
 			const float kb = std::stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
 
-			topology.singlebonds.emplace_back(SingleBond{ global_ids, b0, kb });
+			topology.singlebonds.emplace_back(SingleBondFactory{ global_ids, b0, kb });
 		}
 		else if (row.section == "anglebonds") {
 			assert(row.words.size() == 8);
@@ -297,7 +317,7 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 			}
 			const float theta0 = std::stof(row.words[6]);
 			const float ktheta = std::stof(row.words[7]);
-			topology.anglebonds.emplace_back(AngleBond{ global_ids, theta0, ktheta });
+			topology.anglebonds.emplace_back(AngleBondFactory{ global_ids, theta0, ktheta });
 		}
 		else if (row.section == "dihedralbonds") {
 			assert(row.words.size() == 11);
@@ -309,7 +329,7 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 			const float phi0 = std::stof(row.words[8]);
 			const float kphi = std::stof(row.words[9]);
 			const float multiplicity = std::stof(row.words[10]);
-			topology.dihedralbonds.emplace_back(DihedralBond{ global_ids, phi0, kphi, multiplicity });
+			topology.dihedralbonds.emplace_back(DihedralBondFactory{ global_ids, phi0, kphi, multiplicity });
 		}
 		else if (row.section == "improperdihedralbonds") {
 			assert(row.words.size() == 10);
@@ -320,7 +340,7 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 			}
 			const float psi0 = std::stof(row.words[8]);
 			const float kpsi = std::stof(row.words[9]);
-			topology.improperdihedralbonds.emplace_back(ImproperDihedralBond{ global_ids, psi0, kpsi });
+			topology.improperdihedralbonds.emplace_back(ImproperDihedralBondFactory{ global_ids, psi0, kpsi });
 		}
 	}
 
@@ -352,12 +372,12 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 }
 
 
-bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTable& particleinfolut, const std::vector<SingleBond>& singlebonds) {
+bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTable& particleinfolut, const std::vector<SingleBondFactory>& singlebonds) {
 	assert(left.global_id != right.global_id);
 
 	for (auto& atomleft_gid : left.atoms_globalid) {
 		for (int bond_index : particleinfolut[atomleft_gid].singlebonds_indices) {
-			const auto& atom_globalids = singlebonds[bond_index].atom_indexes;
+			const auto& atom_globalids = singlebonds[bond_index].global_atom_indexes;
 
 			for (auto& atomright_gid : right.atoms_globalid) {
 				if ((atom_globalids[0] == atomleft_gid && atom_globalids[1] == atomright_gid) ||
@@ -371,7 +391,7 @@ bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTabl
 	return false;
 }
 
-void MoleculeBuilder::createCompounds(const std::vector<SingleBond>& singlebonds) {
+void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& singlebonds) {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
 	
@@ -442,14 +462,14 @@ bool compoundsAreAlreadyConnected(const std::vector<int> compound_ids, const std
 }
 
 #include <unordered_set>
-void MoleculeBuilder::createBridges(const std::vector<SingleBond>& singlebonds) 
+void MoleculeBuilder::createBridges(const std::vector<SingleBondFactory>& singlebonds) 
 {
 	// First find which ompounds are bonded to other compounds. I assume singlebonds should find all these, 
 	// since angles and dihedrals make no sense if the singlebond is not present, as the distances between the atoms can then be extremely large
 	std::vector<std::unordered_set<int>> compound_to_bondedcompound_table(compounds.size());
 	for (const auto& bond : singlebonds) {
-		const int particle_gid_left = bond.atom_indexes[0];
-		const int particle_gid_right = bond.atom_indexes[1];
+		const int particle_gid_left = bond.global_atom_indexes[0];
+		const int particle_gid_right = bond.global_atom_indexes[1];
 
 		const int compound_gid_left = particleinfotable[particle_gid_left].compound_index;
 		const int compound_gid_right = particleinfotable[particle_gid_right].compound_index;
@@ -518,31 +538,31 @@ bool spansTwoCompounds(const uint32_t* bond_globalids, const ParticleInfoTable& 
 
 // Returns two compound id's of a bond in a bridge. The id's are sorted with lowest first
 template <int n_ids>
-std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_ids, const ParticleInfoTable& particleinfolut) {
-	std::array<int, 2> out = { particleinfolut[particle_ids[0]].compound_index, -1 };
+std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_global_ids, const ParticleInfoTable& particleinfolut) {
+	std::array<int, 2> compound_ids = { particleinfolut[particle_global_ids[0]].compound_index, -1 };
 
 	for (int i = 1; i < n_ids; i++) {
-		int compoundid_of_particle = particleinfolut[particle_ids[i]].compound_index;
-		if (compoundid_of_particle != out[0]) {
-			out[1] = compoundid_of_particle;
+		int compoundid_of_particle = particleinfolut[particle_global_ids[i]].compound_index;
+		if (compoundid_of_particle != compound_ids[0]) {
+			compound_ids[1] = compoundid_of_particle;
 			break;
 		}
 	}
 
-	if (out[1] == -1) { 
+	if (compound_ids[1] == -1) {
 		throw std::runtime_error("Failed to find the second compound of bridge"); 
 	}
 
-	if (out[0] > out[1]) {
-		std::swap(out[0], out[1]);
+	if (compound_ids[0] > compound_ids[1]) {
+		std::swap(compound_ids[0], compound_ids[1]);
 	}
 
-	return out;
+	return compound_ids;
 }
 
 template <int n_ids>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* ids, const ParticleInfoTable& particleinfolut) {
-	auto compound_ids = getTheTwoDifferentIds<n_ids>(ids, particleinfolut);
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* particle_global_ids, const ParticleInfoTable& particleinfolut) {
+	auto compound_ids = getTheTwoDifferentIds<n_ids>(particle_global_ids, particleinfolut);
 
 	for (BridgeFactory& bridge : bridges) {
 		std::vector<int> compoundids_of_bridge;
@@ -587,24 +607,24 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const ParticleInf
 	}
 }
 
-template <typename BondType>
-void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<BondType>& bonds) {
+template <typename BondTypeFactory>
+void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds) {
 
-	constexpr int atoms_in_bond = BondType::n_atoms;
+	constexpr int atoms_in_bond = BondTypeFactory::n_atoms;
 
 	for (auto& bond : bonds) {
 
-		if (spansTwoCompounds<atoms_in_bond>(bond.atom_indexes, particleinfotable)) {
-			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.atom_indexes, particleinfotable);
+		if (spansTwoCompounds<atoms_in_bond>(bond.global_atom_indexes, particleinfotable)) {
+			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.global_atom_indexes, particleinfotable);
 			bridge.addBond(particleinfotable, bond);
 		}
 		else {
-			const int compound_id = particleinfotable[bond.atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
+			const int compound_id = particleinfotable[bond.global_atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
 			CompoundFactory& compound = compounds.at(compound_id);
 			compound.addBond(particleinfotable, bond);
 		}
 
-		distributeLJIgnores<atoms_in_bond>(bp_lut_manager.get(), particleinfotable, bond.atom_indexes);
+		distributeLJIgnores<atoms_in_bond>(bp_lut_manager.get(), particleinfotable, bond.global_atom_indexes);
 	}
 }
 
@@ -613,8 +633,8 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 
 	// First check that we dont have any unrealistic bonds, and ward immediately.
 	for (const auto& bond : topology.singlebonds) {
-		int gid1 = bond.atom_indexes[0];
-		int gid2 = bond.atom_indexes[1];
+		int gid1 = bond.global_atom_indexes[0];
+		int gid2 = bond.global_atom_indexes[1];
 
 		const Float3 pos1 = nonsolvent_positions[gid1];
 		const Float3 pos2 = nonsolvent_positions[gid2];
@@ -718,41 +738,41 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	n_particles++;
 }
 
-void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBondFactory& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
 		throw std::runtime_error("Failed to add singlebond to compound"); }
 	singlebonds[n_singlebonds++] = SingleBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
+			particle_info[bondtype.global_atom_indexes[0]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[1]].local_id_compound,
 		},
 		bondtype.b0,
 		bondtype.kb
 	);
 }
 
-void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const AngleBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const AngleBondFactory& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add anglebond to compound"); }
 	anglebonds[n_anglebonds++] = AngleBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
+			particle_info[bondtype.global_atom_indexes[0]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[1]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[2]].local_id_compound,
 		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	);
 }
 
-void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const DihedralBondFactory& bondtype) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) { 
 		throw std::runtime_error("Failed to add dihedralbond to compound"); }
 	dihedrals[n_dihedrals++] = DihedralBond(
 		{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+			particle_info[bondtype.global_atom_indexes[0]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[1]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[2]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[3]].local_id_compound,
 		},
 		bondtype.phi_0,
 		bondtype.k_phi,
@@ -760,14 +780,14 @@ void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const Dihe
 	);
 }
 
-void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
+void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const ImproperDihedralBondFactory& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) { throw std::runtime_error("Failed to add improperdihedralbond to compound"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
-		std::array<uint32_t, 4>{
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[0]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[1]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[2]].local_id_compound),
-			static_cast<uint32_t>(particle_info[bondtype.atom_indexes[3]].local_id_compound),
+		{
+			particle_info[bondtype.global_atom_indexes[0]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[1]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[2]].local_id_compound,
+			particle_info[bondtype.global_atom_indexes[3]].local_id_compound,
 		},
 		bondtype.psi_0,
 		bondtype.k_psi
@@ -776,40 +796,40 @@ void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const Impr
 
 
 
-void BridgeFactory::addBond(ParticleInfoTable& particle_info, const SingleBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const SingleBondFactory& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
 		{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[1]]),
 		},
 		bondtype.b0,
 		bondtype.kb
 	};
 }
 
-void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBondFactory& bondtype) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
 		{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[2]]),
 		},		
 		bondtype.theta_0,
 		bondtype.k_theta
 	};
 }
 
-void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBondFactory& bondtype) {
 
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
-		getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+		getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[0]]),
+		getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[1]]),
+		getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[2]]),
+		getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[3]]),
 		},		
 		bondtype.phi_0,
 		bondtype.k_phi,
@@ -819,14 +839,14 @@ void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBond
 
 }
 
-void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBond& bondtype) {
+void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihedralBondFactory& bondtype) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add improperdihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
-		std::array<uint32_t,4>{
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[2]]),
-			getBridgelocalIdOfParticle(particle_info[bondtype.atom_indexes[3]]),
+		{
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[0]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[1]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[2]]),
+			getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[3]]),
 		},
 		bondtype.psi_0,
 		bondtype.k_psi,
@@ -834,7 +854,7 @@ void BridgeFactory::addBond(ParticleInfoTable& particle_info, const ImproperDihe
 }
 
 
-uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
+uint8_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 
 	// Assign bridge id to particle if it doesnt have one
 	if (particle_info.bridge_id == -1) {
@@ -847,7 +867,7 @@ uint32_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) 
 	}
 
 	// Particle already has a local id in the bridge
-	if (particle_info.local_id_bridge == -1) {
+	if (particle_info.local_id_bridge == 255) {	// This limits the amount of particles in a bridge
 		addParticle(particle_info);
 	}
 

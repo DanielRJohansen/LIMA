@@ -70,11 +70,11 @@ struct ParticleInfo {
 
 	// Added when creating compounds
 	int compound_index = -1;
-	int local_id_compound = -1;
+	uint8_t local_id_compound = 255;
 
 	// Added when allocated to a bridge
 	int bridge_id = -1;
-	int local_id_bridge = -1;
+	uint8_t local_id_bridge = 255;
 };
 using ParticleInfoTable = std::vector<ParticleInfo>;
 
@@ -93,10 +93,10 @@ public:
 	int id = -1;	// unique lima id
 
 
-	void addBond(const ParticleInfoTable&, const SingleBond&);
-	void addBond(const ParticleInfoTable&, const AngleBond&);
-	void addBond(const ParticleInfoTable&, const DihedralBond&);
-	void addBond(const ParticleInfoTable&, const ImproperDihedralBond&);
+	void addBond(const ParticleInfoTable&, const SingleBondFactory&);
+	void addBond(const ParticleInfoTable&, const AngleBondFactory&);
+	void addBond(const ParticleInfoTable&, const DihedralBondFactory&);
+	void addBond(const ParticleInfoTable&, const ImproperDihedralBondFactory&);
 
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -121,10 +121,10 @@ public:
 	}
 
 
-	void addBond(ParticleInfoTable&, const SingleBond&);
-	void addBond(ParticleInfoTable&, const AngleBond&);
-	void addBond(ParticleInfoTable&, const DihedralBond&);
-	void addBond(ParticleInfoTable&, const ImproperDihedralBond&);
+	void addBond(ParticleInfoTable&, const SingleBondFactory&);
+	void addBond(ParticleInfoTable&, const AngleBondFactory&);
+	void addBond(ParticleInfoTable&, const DihedralBondFactory&);
+	void addBond(ParticleInfoTable&, const ImproperDihedralBondFactory&);
 
 	bool containsCompound(int compound_id) const {
 		for (int i = 0; i < n_compounds; i++) {
@@ -138,7 +138,7 @@ public:
 	const int bridge_id;
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
-	uint32_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+	uint8_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
 
 	// Add particle to bridge and augment its particle info with the references to its position in this bridge
 	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge

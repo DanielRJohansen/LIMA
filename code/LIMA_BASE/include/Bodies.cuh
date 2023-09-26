@@ -29,56 +29,71 @@ struct NBAtomtype {
 
 struct SingleBond {	// IDS and indexes are used interchangeably here!
 	SingleBond(){}
-	SingleBond(std::array<int, 2> ids); // Used when loading topology only
-	SingleBond(std::array<uint32_t, 2> ids, float b0, float kb);
+	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
 
-	SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
-		atom_indexes[0] = particleindex_a;
-		atom_indexes[1] = particleindex_b;
-	}
+	//SingleBond(uint32_t particleindex_a, uint32_t particleindex_b) {
+	//	atom_indexes[0] = particleindex_a;
+	//	atom_indexes[1] = particleindex_b;
+	//}
 
 	float b0 = 0.f;
 	float kb = 0.f;
-	uint32_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
+	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
+};
+struct SingleBondFactory : public SingleBond {
+	SingleBondFactory(std::array<uint32_t, 2> ids, float b0, float kb);
+
+	uint32_t global_atom_indexes[2] = { 0,0 };
 };
 
 struct AngleBond {
 	AngleBond() {}
-	AngleBond(std::array<int, 3> ids); // Used when loading topology only
-	AngleBond(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
+	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;
 	float k_theta = 0.f;
-	uint32_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
+	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
+};
+struct AngleBondFactory : public AngleBond {
+	AngleBondFactory(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
+
+	uint32_t global_atom_indexes[3] = { 0,0, 0 };
 };
 
 struct DihedralBond {
 	const static int n_atoms = 4;
 	DihedralBond() {}
-	DihedralBond(std::array<int, 4> ids); // Used when loading topology only
-	DihedralBond(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
+	DihedralBond(std::array<uint8_t, 4> ids, float phi0, float kphi, float n);
 
 	float phi_0 = 0.f;
 	float k_phi = 0.f;
 	float n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
-	uint32_t atom_indexes[4] = {0,0,0,0};
+	uint8_t atom_indexes[4] = {0,0,0,0};
+};
+struct DihedralBondFactory : public DihedralBond {
+	DihedralBondFactory(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
+
+	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };
 
 struct ImproperDihedralBond {
 	ImproperDihedralBond() {}
-	ImproperDihedralBond(std::array<uint32_t, 4> ids); // Used when loading topology only
-	ImproperDihedralBond(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
+	ImproperDihedralBond(std::array<uint8_t, 4> ids, float psi_0, float k_psi);
 
 	//TODO: make const?
 	float psi_0 = 0.f;
 	float k_psi = 0.f;
 
-	uint32_t atom_indexes[4] = { 0,0,0,0 };
+	uint8_t atom_indexes[4] = { 0,0,0,0 };
 	const static int n_atoms = 4;
 };
+struct ImproperDihedralBondFactory : public ImproperDihedralBond {
+	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
 
+	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
+};
 
 
 

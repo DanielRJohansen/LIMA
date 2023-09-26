@@ -75,10 +75,8 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 }
 void BoxBuilder::finishBox(Simulation* simulation) {
 	const int compoundparticles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	const int solventparticles_upperbound = simulation->box_host->boxparams.n_solvents > 0
-		? SolventBlocksCircularQueue::blocks_per_grid * MAX_SOLVENTS_IN_BLOCK
-		: 0;
-	simulation->box_host->boxparams.total_particles_upperbound = compoundparticles_upperbound + solventparticles_upperbound;
+
+	simulation->box_host->boxparams.total_particles_upperbound = compoundparticles_upperbound + simulation->box_host->boxparams.n_solvents;
 
 
 	// Load meta information

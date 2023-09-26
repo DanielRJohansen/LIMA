@@ -491,7 +491,7 @@ namespace EngineUtils {
 	}
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
-		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers) 
+		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers, const float speed) 
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 
@@ -500,9 +500,10 @@ namespace EngineUtils {
 		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
-		databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
+		//databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
+		databuffers->vel_buffer[index] = speed;
 
-		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, compound_coords, force);
+		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, compound_coords, force, speed);
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 

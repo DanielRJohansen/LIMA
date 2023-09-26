@@ -547,10 +547,8 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	//float potE_sum = compound.potE_interim[threadIdx.x];
 	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
 	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
-	//Float3 force = compound.forces[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
@@ -631,6 +629,8 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
 	// From this point on, the origonal relpos is no longer acessible 
+	__syncthreads();
+	float speed = 0.f;
 	{
 		if (threadIdx.x < compound.n_particles) {	
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
@@ -639,19 +639,34 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 				//printf("here %f %f %f %d\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass, compound.atom_types[threadIdx.x]);
 			}
 
-			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
-			//const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
+			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+			
+			compound.vels_prev[threadIdx.x] = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
+			const Float3 vel_now1 = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
+
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-			compound.vels_prev[threadIdx.x] = vel_now * simparams.thermostat_scalar;
-			//compound.forces_prev[threadIdx.x] = force;
+
+			if (!(vel_now == vel_now1)) {
+				vel_prev.print('n');
+				compound.vels_prev[threadIdx.x].print('o');
+			}
+
+			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
+
 			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
+
+			speed = vel_scaled.len();
 
 			// Save pos locally, but only push to box as this kernel ends
 			compound_coords.rel_positions[threadIdx.x] = pos_now;
 		}
 	}
+	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------- //
 
 
@@ -672,15 +687,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__syncthreads();
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers);
+	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
 
 	// Push positions for next step
 	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
 	coordarray_next_ptr->loadData(compound_coords);
 
-	// Push vel and force for current step, for VelocityVS
-	box->compounds[blockIdx.x].vels_prev[threadIdx.x] = compound.vels_prev[threadIdx.x];
-	//box->compounds[blockIdx.x].forces_prev[threadIdx.x] = compound.forces_prev[threadIdx.x];
+	// Vel and Force are pushed inside the integration section
 }
 #undef compound_index
 

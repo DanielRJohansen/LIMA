@@ -503,14 +503,6 @@ struct CompoundCompact {
 	__device__ void loadData(CompoundCompact* compound) {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-			//forces[threadIdx.x] = compound->forces[threadIdx.x];
-			//compound->forces[threadIdx.x] = Float3(0.f);
-
-			//forces_prev[threadIdx.x] = compound->forces_prev[threadIdx.x];
-			vels_prev[threadIdx.x] = compound->vels_prev[threadIdx.x];
-
-
-			//potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
 
 			#ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
@@ -518,8 +510,6 @@ struct CompoundCompact {
 		}
 		else {
 			atom_types[threadIdx.x] = 0;
-			//forces[threadIdx.x] = Float3(0.f);
-			//potE_interim[threadIdx.x] = 0.f;
 
 #ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = 0;
@@ -560,6 +550,8 @@ struct Compound : public CompoundCompact {
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
+	//	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+
 };
 
 

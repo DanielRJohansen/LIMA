@@ -27,7 +27,13 @@ namespace SelfRecompile {
         std::string line;
         std::map<std::string, UserConstantInfo> defaultConstants;
 
-        while (std::getline(infile, line)) {
+        while (std::getline(infile, line))
+        {
+            // Check if the line starts with a "/" (comment)
+            if (!line.empty() && line[0] == '/') {
+                continue; // Ignore comments
+            }
+
             std::istringstream iss(line);
             std::string type1, type2, key, equals, value;
 

@@ -89,7 +89,7 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	return force * 24.f;
 }
 
-__device__ Float3 computeIntracompoundLJForces(Compound* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, BondedParticlesLUT* bonded_particles_lut) {
+__device__ Float3 computeIntracompoundLJForces(CompoundCompact* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, BondedParticlesLUT* bonded_particles_lut) {
 	Float3 force(0.f);
 	if (threadIdx.x >= compound->n_particles) { return force; }
 	for (int i = 0; i < compound->n_particles; i++) {
@@ -508,7 +508,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {
-	__shared__ Compound compound;				// Mostly bond information
+	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ CompoundState compound_state;	// Relative position in [lm]
 	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
 	__shared__ NeighborList neighborlist;		
@@ -547,9 +547,10 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	float potE_sum = compound.potE_interim[threadIdx.x];
-
-	Float3 force = compound.forces[threadIdx.x];
+	//float potE_sum = compound.potE_interim[threadIdx.x];
+	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
+	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
+	//Float3 force = compound.forces[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
@@ -638,11 +639,14 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 				//printf("here %f %f %f %d\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass, compound.atom_types[threadIdx.x]);
 			}
 
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
+			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
+			//const Float3 vel_now = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], compound.forces_prev[threadIdx.x], force, simparams.constparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
 			compound.vels_prev[threadIdx.x] = vel_now * simparams.thermostat_scalar;
-			compound.forces_prev[threadIdx.x] = force;
+			//compound.forces_prev[threadIdx.x] = force;
+			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
 
 			// Save pos locally, but only push to box as this kernel ends
 			compound_coords.rel_positions[threadIdx.x] = pos_now;
@@ -676,7 +680,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	// Push vel and force for current step, for VelocityVS
 	box->compounds[blockIdx.x].vels_prev[threadIdx.x] = compound.vels_prev[threadIdx.x];
-	box->compounds[blockIdx.x].forces_prev[threadIdx.x] = compound.forces_prev[threadIdx.x];
+	//box->compounds[blockIdx.x].forces_prev[threadIdx.x] = compound.forces_prev[threadIdx.x];
 }
 #undef compound_index
 
@@ -958,7 +962,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
-		box->compounds[p_ref->compound_id].forces[p_ref->local_id_compound] = force;
+		box->compounds[p_ref->compound_id].forces_interim[p_ref->local_id_compound] = force;
 
 		sim->box->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] = potE_sum;
 	}

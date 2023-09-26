@@ -25,7 +25,7 @@ public:
 	}
 
 
-	__device__ static void logcompoundVerifyVelocity(const Compound& compound, 
+	__device__ static void logcompoundVerifyVelocity(const CompoundCompact& compound, 
 		SimParams& simparams, const CompoundCoords& compound_coords, const Float3& force) {
 #if defined LIMASAFEMODE
 		if (compound.vels_prev[threadIdx.x] * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?

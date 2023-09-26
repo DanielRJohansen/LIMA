@@ -490,7 +490,7 @@ namespace EngineUtils {
 		return vel;
 	}
 
-	__device__ inline void LogCompoundData(Compound& compound, Box* box, CompoundCoords& compound_coords, 
+	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
 		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers) 
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }

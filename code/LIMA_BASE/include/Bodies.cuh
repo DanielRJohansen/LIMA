@@ -456,21 +456,17 @@ namespace CoordArrayQueueHelpers {
 
 
 
-struct Compound {
-	__host__ __device__ Compound() {}
+struct CompoundCompact {
+	__host__ __device__ CompoundCompact() {}
 
 	uint8_t n_particles = 0;			
-	Float3 forces[MAX_COMPOUND_PARTICLES];					// Carries forces from bridge_kernels
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];	// For drawing pretty spheres :)	//TODO Move somewhere else
 
-	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
+
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
 
-	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this
-	float potE_interim[MAX_COMPOUND_PARTICLES];
+
 
 #ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
@@ -480,23 +476,23 @@ struct Compound {
 	Float3 center_of_mass = Float3(0, 0, 0);
 
 	// These n's can be made uint8
-	uint16_t n_singlebonds = 0;
+	int n_singlebonds = 0;
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
 
-	uint16_t n_anglebonds = 0;
+	int n_anglebonds = 0;
 	AngleBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
 
-	uint16_t n_dihedrals = 0;
+	int n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 
-	int16_t n_improperdihedrals = 0;
+	int n_improperdihedrals = 0;
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
 	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 
 
-	__device__ void loadMeta(Compound* compound) {
+	__device__ void loadMeta(CompoundCompact* compound) {
 		n_particles = compound->n_particles;
 		n_singlebonds = compound->n_singlebonds;
 		n_anglebonds = compound->n_anglebonds;
@@ -504,17 +500,17 @@ struct Compound {
 		n_improperdihedrals = compound->n_improperdihedrals;
 	}
 
-	__device__ void loadData(Compound* compound) {
+	__device__ void loadData(CompoundCompact* compound) {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-			forces[threadIdx.x] = compound->forces[threadIdx.x];
-			compound->forces[threadIdx.x] = Float3(0.f);
+			//forces[threadIdx.x] = compound->forces[threadIdx.x];
+			//compound->forces[threadIdx.x] = Float3(0.f);
 
-			forces_prev[threadIdx.x] = compound->forces_prev[threadIdx.x];
+			//forces_prev[threadIdx.x] = compound->forces_prev[threadIdx.x];
 			vels_prev[threadIdx.x] = compound->vels_prev[threadIdx.x];
 
 
-			potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
+			//potE_interim[threadIdx.x] = compound->potE_interim[threadIdx.x];
 
 			#ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
@@ -522,8 +518,8 @@ struct Compound {
 		}
 		else {
 			atom_types[threadIdx.x] = 0;
-			forces[threadIdx.x] = Float3(0.f);
-			potE_interim[threadIdx.x] = 0.f;
+			//forces[threadIdx.x] = Float3(0.f);
+			//potE_interim[threadIdx.x] = 0.f;
 
 #ifdef LIMAKERNELDEBUGMODE
 			particle_global_ids[threadIdx.x] = 0;
@@ -551,7 +547,20 @@ struct Compound {
 	}
 };
 
+struct Compound : public CompoundCompact {
+	__host__ __device__ Compound() {}
 
+	// For drawing pretty spheres :)	//TODO Move somewhere else
+	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];
+
+	// Interims from the bridgekernel to compoundkernel
+	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
+	float potE_interim[MAX_COMPOUND_PARTICLES];
+	Float3 forces_interim[MAX_COMPOUND_PARTICLES];
+
+	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
+	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
+};
 
 
 

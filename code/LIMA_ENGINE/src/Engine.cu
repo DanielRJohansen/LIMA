@@ -8,6 +8,9 @@
 
 
 
+
+
+
 Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
 	: m_logger(std::move(logger))
 {
@@ -16,9 +19,17 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	simulation = std::move(sim);
 
 	const int compound_size = sizeof(CompoundCompact);
-	const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) +
+	//const int nlsit_size = sizeof(CompoundCoords);
+	const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) +
 		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2 + utilitybuffer_bytes;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
+
+	const int sbsize = sizeof(SolventBlock);
+	const int Skernel_shared_mem = (sizeof(Float3) + 1) * MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
+		+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
+		+ 4 + 4 * 3 * 2;
+
+
 
 	this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();

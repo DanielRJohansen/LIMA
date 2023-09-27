@@ -54,13 +54,13 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 
 // Two variants of this exists, with and without lut
 __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self, float* data_ptr,
-	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, BondedParticlesLUT& bonded_particles_lut) {
+	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, const BondedParticlesLUT* const bonded_particles_lut) {
 	Float3 force(0.f);
 	
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 
 		// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
-		if (bonded_particles_lut.get(threadIdx.x, neighborparticle_id)) { continue; }
+		if (bonded_particles_lut->get(threadIdx.x, neighborparticle_id)) { continue; }
 
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
@@ -89,7 +89,9 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	return force * 24.f;
 }
 
-__device__ Float3 computeIntracompoundLJForces(CompoundCompact* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, BondedParticlesLUT* bonded_particles_lut) {
+__device__ Float3 computeIntracompoundLJForces(CompoundCompact* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, 
+	const BondedParticlesLUT* const bonded_particles_lut) 
+{
 	Float3 force(0.f);
 	if (threadIdx.x >= compound->n_particles) { return force; }
 	for (int i = 0; i < compound->n_particles; i++) {
@@ -138,7 +140,9 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 	return force * 24.f;
 }
 
-__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr, float& potE_sum, const uint8_t* atomtypes_others, const int sol_id) {	// Assumes all positions are 
+__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr,
+	float& potE_sum, const uint8_t* atomtypes_others, const int sol_id) 
+{
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
 		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], data_ptr, potE_sum,
@@ -511,13 +515,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ CompoundState compound_state;	// Relative position in [lm]
 	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
 	__shared__ NeighborList neighborlist;		
-	__shared__ BondedParticlesLUT bonded_particles_lut;
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Coord utility_coord;
 	__shared__ Float3 utility_float3;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
+	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[utilitybuffer_bytes];
 
 
@@ -555,6 +559,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	{
 		{
 			__syncthreads();
+			static_assert(utilitybuffer_bytes >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
 			SingleBond* singlebonds = (SingleBond*)utility_buffer;
 			for (int i = threadIdx.x; i < compound.n_singlebonds; i += blockDim.x) {
 				singlebonds[i] = box->compounds[compound_index].singlebonds[i];
@@ -564,6 +569,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 		{
 			__syncthreads();
+			static_assert(utilitybuffer_bytes >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
 			AngleBond* anglebonds = (AngleBond*)utility_buffer;
 			for (int i = threadIdx.x; i < compound.n_anglebonds; i += blockDim.x) {
 				anglebonds[i] = box->compounds[compound_index].anglebonds[i];
@@ -573,6 +579,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 		{
 			__syncthreads();
+			static_assert(utilitybuffer_bytes >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
 			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
 			for (int i = threadIdx.x; i < compound.n_dihedrals; i += blockDim.x) {
 				dihedrals[i] = box->compounds[compound_index].dihedrals[i];
@@ -582,6 +589,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		}
 		{
 			__syncthreads();
+			static_assert(utilitybuffer_bytes >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
 			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
 			for (int i = threadIdx.x; i < compound.n_improperdihedrals; i += blockDim.x) {
 				impropers[i] = box->compounds[compound_index].impropers[i];
@@ -589,10 +597,16 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
-
-		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
-		__syncthreads();
-		force += computeIntracompoundLJForces(&compound, &compound_state, potE_sum, data_ptr, &bonded_particles_lut);
+		{
+			__syncthreads();
+			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
+			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
+			bonded_particles_lut->load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
+			__syncthreads();
+			force += computeIntracompoundLJForces(&compound, &compound_state, potE_sum, data_ptr, bonded_particles_lut);
+			__syncthreads();
+		}
+		
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -602,10 +616,14 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer_f3, &utility_float3);
 
-		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
-		const bool compounds_are_bonded = compoundpair_lut != nullptr;
-		if (compounds_are_bonded) {
-			bonded_particles_lut.load(*compoundpair_lut);
+		BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
+		const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
+		if (compounds_are_bonded) 
+		{
+			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
+			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
+
+			bonded_particles_lut->load(*compoundpair_lut_global);
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {

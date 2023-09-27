@@ -463,7 +463,6 @@ struct CompoundCompact {
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 
 
-	//Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
 
 
@@ -475,18 +474,10 @@ struct CompoundCompact {
 
 	Float3 center_of_mass = Float3(0, 0, 0);
 
-	// These n's can be made uint8
 	int n_singlebonds = 0;
-	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
-
 	int n_anglebonds = 0;
-	AngleBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
-
 	int n_dihedrals = 0;
-	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
-
 	int n_improperdihedrals = 0;
-	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
 	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
@@ -516,24 +507,6 @@ struct CompoundCompact {
 #endif
 		}
 
-		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_singlebonds)
-				singlebonds[index] = compound->singlebonds[index];
-		}
-		for (int i = 0; (i * blockDim.x) < n_anglebonds; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_anglebonds)
-				anglebonds[index] = compound->anglebonds[index];
-		}
-		for (int i = 0; (i * blockDim.x) < n_dihedrals; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_dihedrals)
-				dihedrals[index] = compound->dihedrals[index];
-		}
-		if (threadIdx.x < n_improperdihedrals) {
-			impropers[threadIdx.x] = compound->impropers[threadIdx.x];
-		}
 	}
 };
 
@@ -551,6 +524,15 @@ struct Compound : public CompoundCompact {
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+
+	// Bonds
+	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
+	AngleBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
+	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
+	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
+
+
+
 };
 
 

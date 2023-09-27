@@ -30,7 +30,7 @@ namespace CPPD {
 	}
 
 	template <typename T>
-	__device__ __host__ static T max(const T l, const T r) {
+	__device__ __host__ static constexpr T max(const T l, const T r) {
 		return r > l ? r : l;
 	}
 

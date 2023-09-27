@@ -15,9 +15,9 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 	simulation = std::move(sim);
 
-	const int compound_size = sizeof(Compound);
-	const int Ckernel_shared_mem = sizeof(Compound) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) + 
-		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2;
+	const int compound_size = sizeof(CompoundCompact);
+	const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) + sizeof(BondedParticlesLUT) +
+		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2 + utilitybuffer_bytes;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 
 	this->forcefield_host = forcefield_host;

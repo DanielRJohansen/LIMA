@@ -18,6 +18,14 @@
 #include <memory>
 #include <vector>
 //#include <algorithm>
+constexpr int utilitybuffer_bytes = CPPD::max(sizeof(BondedParticlesLUT), sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND);
+
+static_assert(utilitybuffer_bytes >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
+static_assert(utilitybuffer_bytes >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
+static_assert(utilitybuffer_bytes >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
+static_assert(utilitybuffer_bytes >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
+static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
+
 
 __global__ void compoundKernel(SimulationDevice* sim);
 __global__ void solventForceKernel(SimulationDevice* sim);

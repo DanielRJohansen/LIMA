@@ -505,7 +505,6 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 
 
-
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
@@ -513,12 +512,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
 	__shared__ NeighborList neighborlist;		
 	__shared__ BondedParticlesLUT bonded_particles_lut;
-	__shared__ Float3 utility_buffer[THREADS_PER_COMPOUNDBLOCK];
+	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Coord utility_coord;
 	__shared__ Float3 utility_float3;
 	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
+	__shared__ char utility_buffer[utilitybuffer_bytes];
 
 
 	Box* box = sim->box;
@@ -553,11 +553,42 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
-		__syncthreads();
-		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-		force += computeAnglebondForces(compound.anglebonds, compound.n_anglebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-		force += computeDihedralForces(compound.dihedrals, compound.n_dihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
+		{
+			__syncthreads();
+			SingleBond* singlebonds = (SingleBond*)utility_buffer;
+			for (int i = threadIdx.x; i < compound.n_singlebonds; i += blockDim.x) {
+				singlebonds[i] = box->compounds[compound_index].singlebonds[i];
+			}
+			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			AngleBond* anglebonds = (AngleBond*)utility_buffer;
+			for (int i = threadIdx.x; i < compound.n_anglebonds; i += blockDim.x) {
+				anglebonds[i] = box->compounds[compound_index].anglebonds[i];
+			}
+			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
+			for (int i = threadIdx.x; i < compound.n_dihedrals; i += blockDim.x) {
+				dihedrals[i] = box->compounds[compound_index].dihedrals[i];
+			}
+			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
+			for (int i = threadIdx.x; i < compound.n_improperdihedrals; i += blockDim.x) {
+				impropers[i] = box->compounds[compound_index].impropers[i];
+			}
+			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
 
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
 		__syncthreads();
@@ -569,7 +600,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer, &utility_float3);
+		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer_f3, &utility_float3);
 
 		BondedParticlesLUT* compoundpair_lut = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		const bool compounds_are_bonded = compoundpair_lut != nullptr;
@@ -579,13 +610,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 			if (threadIdx.x < compound.n_particles) {
 				force += computeIntercompoundLJForces(compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
-					&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id, bonded_particles_lut);
+					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id, bonded_particles_lut);
 			}
 		}
 		else {
 			if (threadIdx.x < compound.n_particles) {
 				force += computeIntercompoundLJForces(compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
-					&box->compounds[neighborcompound_id], utility_buffer, neighborcompound_id);
+					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id);
 			}
 		}
 		__syncthreads();
@@ -613,12 +644,12 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 			// Load the positions and add rel shift
 			if (solvent_index < nsolvents_neighbor) {
-				utility_buffer[threadIdx.x] = solventblock->rel_pos[solvent_index].toFloat3() + relpos_shift;
+				utility_buffer_f3[threadIdx.x] = solventblock->rel_pos[solvent_index].toFloat3() + relpos_shift;
 			}
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], n_elements_this_stride, utility_buffer, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
+				force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -634,25 +665,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {	
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-			if (blockIdx.x == 37 && threadIdx.x == 0 && simparams.step == 0 || true) {
-				//printf("here %f %f %f %d\n", potE_sum, compound.vels_prev[threadIdx.x].len(), mass, compound.atom_types[threadIdx.x]);
-			}
-
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
-			
-			//compound.vels_prev[threadIdx.x] = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
-			//const Float3 vel_now1 = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
-
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
-
-
-			//if (!(vel_now == vel_now1)) {
-			//	vel_prev.print('n');
-			//	compound.vels_prev[threadIdx.x].print('o');
-			//}
 
 			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
 

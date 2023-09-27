@@ -44,13 +44,38 @@ namespace TestUtils {
 		return std::move(env);
 	}
 
+	// assumes that all the values are positive
+	bool isOutsideAllowedRange(float value, float target, float allowedRangeFromTarget=0.05) {
+		if (isnan(value)) 
+			return true;
+
+		const float error = std::abs(value - target);
+		return error > target * allowedRangeFromTarget;
+	}
+
+	bool isAboveVcThreshold(float value, float target) {
+		return value > target;
+	}
+
 
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
-	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float max_vc, std::vector<float> energy_gradients, float max_energygradient_abs) {
+	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float target_vc, std::vector<float> energy_gradients, float max_energygradient_abs)
+	{
+		// Pick the correct evaluate function depending on if we have multiple VCs. Cant set a target vc to keep, if we have different sims ;)
+		auto evaluateVC = [&](float vc) {
+			if (VCs.size() > 1) {
+				return isAboveVcThreshold(vc, target_vc);
+			}
+			else {
+				return isOutsideAllowedRange(vc, target_vc);
+			}
+		};
+
+
 		for (auto& vc : VCs) {
-			if (isnan(vc) || vc > max_vc) {					
-				return { false, std::format("Variance Coefficient of {:.3e} superceeded the max of {:.3e}", vc, max_vc) };
+			if (evaluateVC(vc)) {
+				return { false, std::format("Variance Coefficient of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
 			}
 		}
 
@@ -61,7 +86,7 @@ namespace TestUtils {
 		}
 
 		float highest_vc = *std::max_element(VCs.begin(), VCs.end());
-		return { true, std::format("VC {:.3e} / {:.3e}", highest_vc, max_vc)};
+		return { true, std::format("VC {:.3e} / {:.3e}", highest_vc, target_vc)};
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }

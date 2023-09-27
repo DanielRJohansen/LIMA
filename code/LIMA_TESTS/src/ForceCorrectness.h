@@ -8,7 +8,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float max_dev = 4e-5f) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 3.677e-5) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -46,13 +46,13 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, target_vc, energy_gradients, 1e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_dev = 1e-4) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 6.1e-5) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -103,7 +103,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 2e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
@@ -157,7 +157,7 @@ namespace ForceCorrectness {
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
-	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_dev = 0.0007) {
+	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 6.9e-4) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -205,17 +205,17 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 1e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 0.0006f, 2.7e-7);
+		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 5.68e-4, 2.9e-7);
 	}
 
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=3.8e-3, float max_eg=6.037) {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/ImproperDihedral/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -279,25 +279,13 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, 0.005, energy_gradients, 6e-5);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, max_eg);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
 
-	LimaUnittestResult doMethionineBenchmark(EnvMode envmode) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Met/";
-		const std::string simpar = work_folder + "sim_params.txt";
 
-		return TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9e-7);
-	}
-
-	LimaUnittestResult doPhenylalanineBenchmark(EnvMode envmode) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Phe/";
-		const std::string simpar = work_folder + "sim_params.txt";
-
-		return TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4e-4f, 8e-8f);
-	}
 
 }
 

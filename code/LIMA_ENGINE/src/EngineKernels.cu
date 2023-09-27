@@ -557,7 +557,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		force += computeSinglebondForces(compound.singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeAnglebondForces(compound.anglebonds, compound.n_anglebonds, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += computeDihedralForces(compound.dihedrals, compound.n_dihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
-
 		force += computeImproperdihedralForces(compound.impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer, utility_buffer_f, &potE_sum);
 
 		bonded_particles_lut.load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
@@ -642,18 +641,18 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 			
-			compound.vels_prev[threadIdx.x] = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+			//compound.vels_prev[threadIdx.x] = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
-			const Float3 vel_now1 = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
+			//const Float3 vel_now1 = EngineUtils::integrateVelocityVVS(compound.vels_prev[threadIdx.x], force_prev, force, simparams.constparams.dt, mass);
 
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
 
-			if (!(vel_now == vel_now1)) {
-				vel_prev.print('n');
-				compound.vels_prev[threadIdx.x].print('o');
-			}
+			//if (!(vel_now == vel_now1)) {
+			//	vel_prev.print('n');
+			//	compound.vels_prev[threadIdx.x].print('o');
+			//}
 
 			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
 

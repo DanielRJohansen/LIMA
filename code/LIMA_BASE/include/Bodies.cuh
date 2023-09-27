@@ -463,7 +463,7 @@ struct CompoundCompact {
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 
 
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
+	//Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
 
 
@@ -550,7 +550,7 @@ struct Compound : public CompoundCompact {
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
-	//	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
 
 };
 

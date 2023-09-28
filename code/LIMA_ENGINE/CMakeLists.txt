@@ -10,6 +10,7 @@ add_library(LIMA_ENGINE
     src/EngineKernels.cu
     src/EngineUtils.cu
     src/Neighborlists.cu
+    src/Neighborlists.cpp
     src/Thermostat.cu
 )
 

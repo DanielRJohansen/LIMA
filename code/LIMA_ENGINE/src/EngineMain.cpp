@@ -2,7 +2,7 @@
 #include "Engine.cuh"
 
 int main() {
-    NListManager nlistman{};
+    //NListManager nlistman{};
 
     std::printf("\tLIMA_ENGINE self-test success\n");
 

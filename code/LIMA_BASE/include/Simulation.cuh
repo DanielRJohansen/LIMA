@@ -52,6 +52,7 @@ struct SimParams {
 
 struct BoxParams {
 	int n_compounds = 0;
+	int n_bridges = 0;
 	int64_t n_solvents = 0;
 	int64_t total_particles_upperbound = 0;
 };
@@ -214,13 +215,7 @@ public:
 	std::unique_ptr<Forcefield> forcefield;
 
 
-	// Box variable copies, here for ease of access.
-	//int n_compounds = 0;
-	int n_bridges = 0; 
-	//int n_solvents = 0;
-
 	SimulationDevice* sim_dev = nullptr;
-	//int blocks_per_solventkernel = 0;
 };
 
 namespace SimUtils {

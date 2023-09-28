@@ -19,9 +19,10 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	simulation = std::move(sim);
 
 	const int compound_size = sizeof(CompoundCompact);
-	//const int nlsit_size = sizeof(CompoundCoords);
-	const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(CompoundState) + sizeof(CompoundCoords) + sizeof(NeighborList) +
-		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) * 2 + utilitybuffer_bytes;
+	const int nlsit_size = sizeof(NeighborList);
+	const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;
+	const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(CompoundState) + sizeof(NeighborList) +
+		(sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) + sizeof(Float3) + utilitybuffer_bytes;
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 
 	const int sbsize = sizeof(SolventBlock);
@@ -197,8 +198,8 @@ void Engine::deviceMaster() {
 
 
 
-	if (simulation->sim_dev->box->bridge_bundle->n_bridges > 0) {																		// TODO: Illegal access to device mem!!
-		compoundBridgeKernel<<< simulation->sim_dev->box->bridge_bundle->n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->sim_dev);	// Must come before compoundKernel()		// DANGER
+	if (simulation->boxparams_host.n_bridges > 0) {
+		compoundBridgeKernel<<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->sim_dev);	// Must come before compoundKernel()
 	}
 
 	cudaDeviceSynchronize();

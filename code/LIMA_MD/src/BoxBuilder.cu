@@ -41,6 +41,7 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 
 	simulation->box_host->bridge_bundle = compound_collection.bridgebundle.release();					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	simulation->box_host->boxparams.n_bridges = simulation->box_host->bridge_bundle->n_bridges;
 
 	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager.release();
 
@@ -82,7 +83,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	// Load meta information
 	simulation->copyBoxVariables();
 	m_logger->print("Box contains " + std::to_string(simulation->boxparams_host.n_compounds) + " compounds, " 
-		+ std::to_string(simulation->n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
+		+ std::to_string(simulation->boxparams_host.n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
 	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield->getNBForcefield()};	// Copy

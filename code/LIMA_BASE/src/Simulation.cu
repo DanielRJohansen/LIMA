@@ -165,7 +165,7 @@ void Simulation::moveToDevice() {
 void Simulation::copyBoxVariables() {
 	boxparams_host = box_host->boxparams;
 	//n_compounds = box_host->boxparams.n_compounds;
-	n_bridges = box_host->bridge_bundle->n_bridges;
+	//n_bridges = box_host->bridge_bundle->n_bridges;
 
 
 	//n_solvents = box_host->boxparams.n_solvents;

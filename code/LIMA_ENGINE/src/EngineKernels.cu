@@ -53,8 +53,8 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 }
 
 // Two variants of this exists, with and without lut
-__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self, float* data_ptr,
-	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id, const BondedParticlesLUT* const bonded_particles_lut) {
+__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
+	const Compound* const neighbor_compound, const Float3* const neighbor_positions, int neighborcompound_id, const BondedParticlesLUT* const bonded_particles_lut) {
 	Float3 force(0.f);
 	
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
@@ -64,7 +64,7 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
-		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			LimaForcecalc::CalcLJOrigin::ComComInter,
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
@@ -73,14 +73,14 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	return force * 24.f;
 }
 
-__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self, float* data_ptr,
-	Compound* neighbor_compound, Float3* neighbor_positions, int neighborcompound_id) {
+__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
+	const Compound* const neighbor_compound, const Float3* const neighbor_positions, int neighborcompound_id) {
 	Float3 force(0.f);
 
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
 		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
 
-		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			LimaForcecalc::CalcLJOrigin::ComComInter,
 			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
@@ -89,27 +89,27 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	return force * 24.f;
 }
 
-__device__ Float3 computeIntracompoundLJForces(CompoundCompact* compound, CompoundState* compound_state, float& potE_sum, float* data_ptr, 
+__device__ Float3 computeIntracompoundLJForces(const CompoundCompact& compound, const Float3* const compound_positions, float& potE_sum,
 	const BondedParticlesLUT* const bonded_particles_lut) 
 {
 	Float3 force(0.f);
-	if (threadIdx.x >= compound->n_particles) { return force; }
-	for (int i = 0; i < compound->n_particles; i++) {
+	if (threadIdx.x >= compound.n_particles) { return force; }
+	for (int i = 0; i < compound.n_particles; i++) {
 
 		// Skip if particle is self or bonded
 		if (i == threadIdx.x || (bonded_particles_lut->get(threadIdx.x, i))) { continue; }
 
-		force += LimaForcecalc::calcLJForceOptim(compound_state->positions[threadIdx.x], compound_state->positions[i], data_ptr, potE_sum,
-			calcSigma(compound->atom_types[threadIdx.x], compound->atom_types[i]),
-			calcEpsilon(compound->atom_types[threadIdx.x], compound->atom_types[i]),
+		force += LimaForcecalc::calcLJForceOptim(compound_positions[threadIdx.x], compound_positions[i], potE_sum,
+			calcSigma(compound.atom_types[threadIdx.x], compound.atom_types[i]),
+			calcEpsilon(compound.atom_types[threadIdx.x], compound.atom_types[i]),
 			LimaForcecalc::CalcLJOrigin::ComComIntra,
-			compound->particle_global_ids[threadIdx.x], compound->particle_global_ids[i]			
+			compound.particle_global_ids[threadIdx.x], compound.particle_global_ids[i]			
 		);
 	}
 	return force * 24.f;
 }
 
-__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* relpos_others, int n_elements, bool exclude_own_index, float* data_ptr, float& potE_sum) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, bool exclude_own_index, float& potE_sum) {	// Specific to solvent kernel
 	Float3 force{};
 
 	for (int i = 0; i < n_elements; i++) {
@@ -117,7 +117,7 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		// If computing within block, dont compute force against thread's solvent
 		if (exclude_own_index && threadIdx.x == i) { continue; }
 
-		force += LimaForcecalc::calcLJForceOptim(relpos_self, relpos_others[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(relpos_self, relpos_others[i], potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 			exclude_own_index ? LimaForcecalc::CalcLJOrigin::SolSolIntra : LimaForcecalc::CalcLJOrigin::SolSolInter,
@@ -127,10 +127,10 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 	return force * 24.f;
 }
 
-__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, Float3* positions, float* data_ptr, float& potE_sum, const uint8_t atomtype_self) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOLVENT), 
 			calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT),
 			LimaForcecalc::CalcLJOrigin::SolCom,
@@ -140,12 +140,12 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 	return force * 24.f;
 }
 
-__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* positions, float* data_ptr,
+__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
 	float& potE_sum, const uint8_t* atomtypes_others, const int sol_id) 
 {
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], data_ptr, potE_sum,
+		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], potE_sum,
 			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			LimaForcecalc::CalcLJOrigin::ComSol,
@@ -343,21 +343,21 @@ __device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* cons
 }
 
 
-__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* output_buffer, Float3* utility_coord) { 
+__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* const output_buffer, Float3& utility_float3) { 
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
 
 		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
-		*utility_coord = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
+		utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 	}
 	__syncthreads();
 
 	// Eventually i could make it so i only copy the active particles in the compound
 	if (threadIdx.x < MAX_COMPOUND_PARTICLES) {
 		const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x];// +*utility_coord;
-		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3() + *utility_coord;
+		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
 	}
 	__syncthreads();
 }
@@ -512,14 +512,11 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
-	__shared__ CompoundState compound_state;	// Relative position in [lm]
-	__shared__ CompoundCoords compound_coords;	// Global positions in [lm]
+	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ NeighborList neighborlist;		
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
-	__shared__ Coord utility_coord;
 	__shared__ Float3 utility_float3;
-	__shared__ Coord rel_pos_shift;	// Maybe not needed, jsut use the utility one above?
 
 	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[utilitybuffer_bytes];
@@ -527,27 +524,29 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
-
+	const Compound* const compound_global = &box->compounds[blockIdx.x];
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
-		compound_state.setMeta(compound.n_particles);
 		neighborlist.loadMeta(&box->compound_neighborlists[blockIdx.x]);
 	}
 	__syncthreads();
-
-
 	compound.loadData(&box->compounds[blockIdx.x]);
-	auto* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
+	NodeIndex compound_origo{};
+	{
+		static_assert(utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 
-	// TODO: these compound_coords needs to be made const somehow. Changing these coords during the kernel is way too dangerous.
-	compound_coords.loadData(*coordarray_ptr);
-	neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
-	__syncthreads();
+		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
+		compound_coords->loadData(compoundcoords_global);
+		neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
+		__syncthreads();
 
-	compound_state.loadData(compound_coords);
-	__syncthreads();
+		compound_origo = compound_coords->origo;
+		compound_positions[threadIdx.x] = compound_coords->rel_positions[threadIdx.x].toFloat3();
+		__syncthreads();
+	}
+	
 
-	float data_ptr[4]{};
 
 
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
@@ -564,7 +563,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			for (int i = threadIdx.x; i < compound.n_singlebonds; i += blockDim.x) {
 				singlebonds[i] = box->compounds[compound_index].singlebonds[i];
 			}
-			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
 		{
@@ -574,7 +573,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			for (int i = threadIdx.x; i < compound.n_anglebonds; i += blockDim.x) {
 				anglebonds[i] = box->compounds[compound_index].anglebonds[i];
 			}
-			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
 		{
@@ -584,7 +583,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			for (int i = threadIdx.x; i < compound.n_dihedrals; i += blockDim.x) {
 				dihedrals[i] = box->compounds[compound_index].dihedrals[i];
 			}
-			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
 		{
@@ -594,7 +593,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			for (int i = threadIdx.x; i < compound.n_improperdihedrals; i += blockDim.x) {
 				impropers[i] = box->compounds[compound_index].impropers[i];
 			}
-			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_state.positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
 		{
@@ -603,10 +602,9 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
 			bonded_particles_lut->load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
 			__syncthreads();
-			force += computeIntracompoundLJForces(&compound, &compound_state, potE_sum, data_ptr, bonded_particles_lut);
+			force += computeIntracompoundLJForces(compound, compound_positions, potE_sum, bonded_particles_lut);
 			__syncthreads();
 		}
-		
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -614,7 +612,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_coords.origo, coords_ptr, utility_buffer_f3, &utility_float3);
+		getCompoundHyperpositionsAsFloat3(compound_origo, coords_ptr, utility_buffer_f3, utility_float3);
 
 		BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
@@ -627,13 +625,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += computeIntercompoundLJForces(compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
+				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
 					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id, bonded_particles_lut);
 			}
 		}
 		else {
 			if (threadIdx.x < compound.n_particles) {
-				force += computeIntercompoundLJForces(compound_state.positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x], data_ptr,
+				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
 					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id);
 			}
 		}
@@ -645,9 +643,9 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_coords.origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
+		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
 
-		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_coords.origo).toFloat3();	// TODO: Only t0 needs to do this
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
 
 		const SolventBlock* solventblock = box->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, simparams.step);
 		const int nsolvents_neighbor = solventblock->n_solvents;
@@ -667,7 +665,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += computeSolventToCompoundLJForces(compound_state.positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, data_ptr, potE_sum, compound.atom_types[threadIdx.x]);
+				force += computeSolventToCompoundLJForces(compound_positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -675,59 +673,67 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	// ------------------------------------------------------------ Integration ------------------------------------------------------------ //
-	// From this point on, the origonal relpos is no longer acessible 
-	__syncthreads();
-	float speed = 0.f;
+	// -------------------------------------------------------------- Integration & PBC --------------------------------------------------------------- //	
 	{
-		if (threadIdx.x < compound.n_particles) {	
-			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+		__syncthreads();
 
-			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
-
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
-
-			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
-
-			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
-			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
-
-			speed = vel_scaled.len();
-
-			// Save pos locally, but only push to box as this kernel ends
-			compound_coords.rel_positions[threadIdx.x] = pos_now;
-		}
-	}
-	__syncthreads();
-	// ------------------------------------------------------------------------------------------------------------------------------------- //
-
-
-	// ------------------------------------------------------ PERIODIC BOUNDARY CONDITION ------------------------------------------------------------------------------- // 	
-	{
-		__shared__ Coord shift_lm;	// Use utility coord for this?
+		static_assert(utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 		if (threadIdx.x == 0) {
-			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords);
+			compound_coords->origo = compound_origo;
+		}
+		//compound_coords->rel_positions[threadIdx.x] = Coord{ compound_positions[threadIdx.x] };	// Alternately load from global again? Will be more precise
+
+		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
+		compound_coords->rel_positions[threadIdx.x] = compoundcoords_global.rel_positions[threadIdx.x];
+		__syncthreads();
+
+		float speed = 0.f;
+		{
+			if (threadIdx.x < compound.n_particles) {
+				const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+
+				const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+				const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+
+				const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
+				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
+
+				const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
+
+				box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+				box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
+
+				speed = vel_scaled.len();
+
+				// Save pos locally, but only push to box as this kernel ends
+				compound_coords->rel_positions[threadIdx.x] = pos_now;
+			}
 		}
 		__syncthreads();
 
-		LIMAPOSITIONSYSTEM_HACK::shiftRelPos(compound_coords, shift_lm);
+		// PBC //
+		{
+			__shared__ Coord shift_lm;	// Use utility coord for this?
+			if (threadIdx.x == 0) {
+				shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(*compound_coords);
+			}
+			__syncthreads();
+
+			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
+			__syncthreads();
+
+
+		}
+		LIMAPOSITIONSYSTEM_HACK::applyPBC(*compound_coords);
 		__syncthreads();
+		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
 
-		
+		// Push positions for next step
+		auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
+		coordarray_next_ptr->loadData(*compound_coords);
 	}
-	LIMAPOSITIONSYSTEM_HACK::applyPBC(compound_coords);
-	__syncthreads();
-	// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ //
-
-	EngineUtils::LogCompoundData(compound, box, compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
-
-	// Push positions for next step
-	auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
-	coordarray_next_ptr->loadData(compound_coords);
-
-	// Vel and Force are pushed inside the integration section
+	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 }
 #undef compound_index
 
@@ -760,10 +766,6 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 
 	float potE_sum = 0;
-	float data_ptr[4];	// Pot, force, closest particle, ?
-	for (int i = 0; i < 4; i++)
-		data_ptr[i] = 0;
-	data_ptr[2] = 9999.f;
 
 	// temp
 	utility_buffer[threadIdx.x] = Float3{0};
@@ -799,7 +801,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, &utility_float3);	// This should take n_comp_part aswell!
+			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3);	// This should take n_comp_part aswell!
 
 
 			// Then load atomtypes of neighboring compound
@@ -812,7 +814,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 
 			if (solvent_active) {
-				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, data_ptr, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
+				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -829,7 +831,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		}
 		__syncthreads();
 		if (solvent_active) {
-			force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, data_ptr, potE_sum);
+			force += computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -858,7 +860,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				__syncthreads();
 
 				if (solvent_active) {
-					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, data_ptr, potE_sum);
+					force += computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
 				}
 				__syncthreads();
 			}

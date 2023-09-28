@@ -229,7 +229,7 @@ __device__ static const char* calcLJOriginString[] = {
 };
 
 // This function does not add the 24 scalar, the caller fucntion must do so!
-__device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1, float* data_ptr, float& potE, const float sigma, const float epsilon, 
+__device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1, float& potE, const float sigma, const float epsilon, 
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//

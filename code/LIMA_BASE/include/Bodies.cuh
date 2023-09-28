@@ -107,7 +107,7 @@ struct ImproperDihedralBondFactory : public ImproperDihedralBond {
 
 
 struct CompoundCoords {
-	__device__ void loadData(CompoundCoords& coords) {
+	__device__ void loadData(const CompoundCoords& coords) {
 		if (threadIdx.x == 0) { origo = coords.origo; };
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
@@ -462,11 +462,6 @@ struct CompoundCompact {
 	uint8_t n_particles = 0;			
 	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 
-
-
-
-
-
 #ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
 #endif
@@ -499,14 +494,6 @@ struct CompoundCompact {
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
 			#endif
 		}
-		else {
-			atom_types[threadIdx.x] = 0;
-
-#ifdef LIMAKERNELDEBUGMODE
-			particle_global_ids[threadIdx.x] = 0;
-#endif
-		}
-
 	}
 };
 

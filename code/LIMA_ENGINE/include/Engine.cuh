@@ -70,7 +70,7 @@ public:
 
 
 	EngineTimings timings{};
-	RunStatus runstatus;
+	volatile RunStatus runstatus;
 
 	ForceField_NB getForcefield() { return forcefield_host; }
 	void terminateSimulation();

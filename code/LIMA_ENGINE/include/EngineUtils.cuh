@@ -239,35 +239,25 @@ namespace LIMAPOSITIONSYSTEM {
 		return -nodeIndexToCoord(shift_node);
 	}
 
-
-
 	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
 		const int32_t magnitude_x = std::abs(relpos.x);
 		const int32_t magnitude_y = std::abs(relpos.y);
 		const int32_t magnitude_z = std::abs(relpos.z);
 
-		//if (magnitude_x <= threshold && magnitude_y <= threshold && magnitude_z <= threshold) { return Coord{ 0,0,0 }; }	// This sadly means that there are multiple correct positions for a particle :(
+		const bool out_of_bounds = 
+			(relpos.x < -threshold || relpos.x >= threshold) ||
+			(relpos.y < -threshold || relpos.y >= threshold) ||
+			(relpos.z < -threshold || relpos.z >= threshold);
 
-		// Including at bottomleftfront, excluding at toprightback
-		if (   relpos.x < -threshold || relpos.x >= threshold
-			|| relpos.y < -threshold || relpos.y >= threshold
-			|| relpos.z < -threshold || relpos.z >= threshold)
-		{
-			// Determine which magnitude is the largest
-			if (magnitude_x >= magnitude_y && magnitude_x >= magnitude_z) {
-				// The x component has the largest magnitude
-				return NodeIndex{ relpos.x < 0 ? -1 : 1, 0, 0 };
-			}
-			else if (magnitude_y >= magnitude_z) { // The y component has the largest magnitude			
-				return NodeIndex{ 0, relpos.y < 0 ? -1 : 1, 0 };
-			}
-			else { // The z component has the largest magnitude		
-				return NodeIndex{ 0, 0, relpos.z < 0 ? -1 : 1 };
-			}
-		}
-		else {
-			return NodeIndex{};
-		}		
+		const bool is_x_largest = (magnitude_x >= magnitude_y) && (magnitude_x >= magnitude_z);
+		const bool is_y_largest = (magnitude_y >= magnitude_x) && (magnitude_y >= magnitude_z);
+		const bool is_z_largest = (magnitude_z >= magnitude_x) && (magnitude_z >= magnitude_y);
+
+		const int x_component = out_of_bounds * is_x_largest * (relpos.x < 0 ? -1 : 1);
+		const int y_component = out_of_bounds * is_y_largest * (relpos.y < 0 ? -1 : 1);
+		const int z_component = out_of_bounds * is_z_largest * (relpos.z < 0 ? -1 : 1);
+
+		return NodeIndex{ x_component, y_component, z_component };
 	}
 
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it

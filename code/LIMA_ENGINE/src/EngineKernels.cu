@@ -488,9 +488,11 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
 	const NodeIndex blockId3d = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
-	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents ? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) : NodeIndex{};
-	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
+	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents 
+		? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) 
+		: NodeIndex{};
 
+	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	

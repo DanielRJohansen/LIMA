@@ -40,8 +40,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.188e-5, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 5.958e-5, 2e-7);
 
-		//loadAndEMAndRunBasicSimulation("manyt4", envmode, 2e-4);
-		//loadAndRunBasicSimulation("manyt4", envmode, 2e-4);
+		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 4e-5);
 
 		//doPool50x(EnvMode::Headless);

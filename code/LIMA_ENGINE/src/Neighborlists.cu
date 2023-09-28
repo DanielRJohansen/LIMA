@@ -113,9 +113,6 @@ namespace NListUtils {
 			// Make key positions addressable in arrays: compound_key_positions and solvent_positions
 			nlist_data_collection->preparePositionData(*simulation, step_at_update);
 
-			// First do culling of neighbors that has left CUTOFF
-			//NListUtils::cullDistantNeighbors(simulation, nlist_data_collection);
-
 			// Add all compound->compound neighbors
 			matchCompoundNeighbors(simulation, nlist_data_collection);
 

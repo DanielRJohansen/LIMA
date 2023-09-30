@@ -23,7 +23,8 @@ __device__ Float3 getCompoundAbspos(SimulationDevice& sim_dev, int compound_id)
 
 const int threads_in_compoundnlist_kernel = 256;
 
-__device__ void addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const abs_positions_buffer, const float* const cutoff_add_buffer,
+// Returns false if an error occured
+__device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const abs_positions_buffer, const float* const cutoff_add_buffer,
 	int offset, int n_compounds, float cutoff_add_self, const Float3& abspos_self, int compound_id) 
 {
 	for (int i = 0; i < threads_in_compoundnlist_kernel; i++) {
@@ -39,9 +40,11 @@ __device__ void addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 		const float dist = EngineUtils::calcHyperDistNM(&abspos_self, &querycompound_pos);
 
 		if (NListUtils::neighborWithinCutoff(&abspos_self, &querycompound_pos, CUTOFF_NM + cutoff_add_self + cutoff_add_query)) {
-			nlist.addCompound(static_cast<uint16_t>(query_compound_id));
+			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id)))
+				return false;
 		}
 	}
+	return true;
 }
 
 
@@ -88,7 +91,11 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
-			addAllNearbyCompounds(*sim_dev, nlist, abs_positions_buffer, cutoff_add_buffer, offset, n_compounds, cutoff_add_self, abspos_self, compound_id);
+			const bool success = addAllNearbyCompounds(*sim_dev, nlist, abs_positions_buffer, cutoff_add_buffer, offset, n_compounds, cutoff_add_self, abspos_self, compound_id);
+
+			if (!success) {
+				sim_dev->params->critical_error_encountered = true;
+			}
 		}
 	}
 
@@ -111,8 +118,12 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 					const float dist = EngineUtils::calcHyperDistNM(&abspos_self, &querynode_pos);
 
 					if (dist < CUTOFF_NM + cutoff_add_self) {
-						nlist.addGridnode(querynode_id);
+						const bool success = nlist.addGridnode(querynode_id);
 						// It is NOT handled here, that the gridnode must also have information about this compound;
+
+						if (!success) {
+							sim_dev->params->critical_error_encountered = true;
+						}
 					}
 				}
 			}

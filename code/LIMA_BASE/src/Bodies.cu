@@ -49,48 +49,52 @@ ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_
 
 
 
-__device__ __host__ void NeighborList::addCompound(uint16_t new_id) {
+__device__ __host__ bool NeighborList::addCompound(uint16_t new_id) {
 	if (n_compound_neighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
 		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
+		return false;
 		//throw std::runtime_error("Neighborlist overflow");
 	}
 	neighborcompound_ids[n_compound_neighbors++] = new_id;
+	return true;
 }
 
-void NeighborList::removeCompound(uint16_t neighbor_id) {
-
-	for (int i = 0; i < n_compound_neighbors; i++) {
-		if (neighborcompound_ids[i] == neighbor_id) {
-			neighborcompound_ids[i] = neighborcompound_ids[n_compound_neighbors - 1];	// Overwrite this positions with compound at the back of the line
-			n_compound_neighbors--;
-			return;
-		}
-	}
-
-	printf("\nFailed to locate neighbor compound id: %d of %d compound_ids in current nlist\n", neighbor_id, n_compound_neighbors);
-	throw std::runtime_error("Nlist failed to remove neighbor");
-}
+//void NeighborList::removeCompound(uint16_t neighbor_id) {
+//
+//	for (int i = 0; i < n_compound_neighbors; i++) {
+//		if (neighborcompound_ids[i] == neighbor_id) {
+//			neighborcompound_ids[i] = neighborcompound_ids[n_compound_neighbors - 1];	// Overwrite this positions with compound at the back of the line
+//			n_compound_neighbors--;
+//			return;
+//		}
+//	}
+//
+//	printf("\nFailed to locate neighbor compound id: %d of %d compound_ids in current nlist\n", neighbor_id, n_compound_neighbors);
+//	throw std::runtime_error("Nlist failed to remove neighbor");
+//}
 
 #ifdef ENABLE_SOLVENTS
-__device__ __host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
-	if (n_gridnodes >= max_gridnodes) { 
-		printf("No room for more nearby gridnodes");
-	}
+__device__ __host__ bool NeighborList::addGridnode(uint16_t gridnode_id) {
+	if (n_gridnodes >= max_gridnodes) {
 		//throw std::runtime_error("No room for more nearby gridnodes"); }
-	gridnode_ids[n_gridnodes++] = gridnode_id;
-}
-
-
-__host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
-	for (int i = 0; i < n_gridnodes; i++) {
-		if (gridnode_ids[i] == gridnode_id) {
-			gridnode_ids[i] = gridnode_ids[n_gridnodes - 1];
-			n_gridnodes--;
-			return;
-		}
+		printf("No room for more nearby gridnodes");
+		return false;
 	}
-	throw("Failed to remove gridnode from nlist");
+	gridnode_ids[n_gridnodes++] = gridnode_id;
+	return true;
 }
+
+
+//__host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
+//	for (int i = 0; i < n_gridnodes; i++) {
+//		if (gridnode_ids[i] == gridnode_id) {
+//			gridnode_ids[i] = gridnode_ids[n_gridnodes - 1];
+//			n_gridnodes--;
+//			return;
+//		}
+//	}
+//	throw("Failed to remove gridnode from nlist");
+//}
 #endif
 
 __device__ __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)

@@ -256,7 +256,7 @@ struct CompoundGridNode {
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
-	static const int max_nearby_compounds = 128;
+	static const int max_nearby_compounds = 92;
 	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
 	int16_t n_nearby_compounds = 0;
 };
@@ -656,10 +656,8 @@ struct ForceField_NB {
 
 class NeighborList {
 public:
-	__device__ __host__ void addCompound(uint16_t new_id);
-	__host__ void removeCompound(uint16_t new_id);
-
-
+	// returns false if an error occured
+	__device__ __host__ bool addCompound(uint16_t new_id);
 
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;
@@ -687,15 +685,15 @@ public:
 	uint16_t n_compound_neighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
-	__device__ __host__ void addGridnode(uint16_t gridnode_id);
+	// returns false if an error occured
+	__device__ __host__ bool addGridnode(uint16_t gridnode_id);
 	__host__ void removeGridnode(uint16_t gridnode_id);
 
 	static const int max_gridnodes = 96;	// Arbitrary value
 	static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
 	uint16_t gridnode_ids[max_gridnodes];
-	
+	uint16_t n_gridnodes = 0;
 #endif
-	uint8_t n_gridnodes = 0;
 
 	int associated_id = -1;
 };

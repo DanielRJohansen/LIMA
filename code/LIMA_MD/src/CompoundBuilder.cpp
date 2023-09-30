@@ -645,13 +645,12 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 	}
 
 	distributeBondsToCompoundsAndBridges(topology.singlebonds);
-	distributeBondsToCompoundsAndBridges(topology.anglebonds);
-	distributeBondsToCompoundsAndBridges(topology.dihedralbonds);
-	distributeBondsToCompoundsAndBridges(topology.improperdihedralbonds);
-
 	m_logger->print(std::format("Added {} singlebonds to molecule\n", topology.singlebonds.size()));
+	distributeBondsToCompoundsAndBridges(topology.anglebonds);
 	m_logger->print(std::format("Added {} anglebonds to molecule\n", topology.anglebonds.size()));
+	distributeBondsToCompoundsAndBridges(topology.dihedralbonds);
 	m_logger->print(std::format("Added {} dihedralbonds to molecule\n", topology.dihedralbonds.size()));
+	distributeBondsToCompoundsAndBridges(topology.improperdihedralbonds);
 	m_logger->print(std::format("Added {} improper dihedralbonds to molecule\n", topology.improperdihedralbonds.size()));
 }
 

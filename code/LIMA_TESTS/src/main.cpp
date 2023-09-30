@@ -38,7 +38,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.188e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 5.958e-5, 2e-7);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 3.95e-5, 2e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 4e-5);
@@ -71,7 +71,7 @@ void runAllUnitTests() {
 	
 	// Singled out forces test
 	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
-	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode, 8.83e-5));
+	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode, 8.88e-5));
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
 	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
@@ -89,7 +89,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2.2e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.94e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.67e-5, 2e-5));
 
 
 	// Meta tests

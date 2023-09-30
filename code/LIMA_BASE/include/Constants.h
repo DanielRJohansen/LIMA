@@ -169,7 +169,7 @@ constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed 
 // -------------------------------------------------------------------------------------------------------------- //
 
 // -------------------------------------------- Neighborlist Parameters ----------------------------------------- //
-const int STEPS_PER_NLIST_UPDATE = 10;
+const int STEPS_PER_NLIST_UPDATE = 5;
 const bool ALLOW_ASYNC_NLISTUPDATE = true;
 // -------------------------------------------------------------------------------------------------------------- //
 

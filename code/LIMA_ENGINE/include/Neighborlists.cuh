@@ -10,7 +10,7 @@
 #include <functional>
 
 namespace NListUtils {
-	static bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_nm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
+	__device__  __host__ static bool neighborWithinCutoff(const Float3* pos_a, const Float3* pos_b, const float cutoff_nm) {		// This is used for compounds with a confining_particle_sphere from key_particle BEFORE CUTOFF begins
 		const float dist = EngineUtils::calcHyperDistNM(pos_a, pos_b);
 		return dist < cutoff_nm;
 	}
@@ -36,7 +36,7 @@ public:
 
 
 	void handleNLISTS(Simulation* simulation, bool async, bool force_update, int* timing);
-	void handleNlistGPU(Simulation* simulation, bool async, bool force_update, int* timing);
+	void handleNlistGPU(Simulation* simulation, int& timing);
 
 
 	void pushNlistsToDevice(Simulation* simulation);
@@ -51,8 +51,7 @@ private:
 	std::mutex m_mutex{};
 
 	volatile bool updated_neighborlists_ready = 0;
-	std::unique_ptr<NListDataCollection> nlist_data_collection
-		;
+	std::unique_ptr<NListDataCollection> nlist_data_collection;
 
 	uint64_t prev_update_step = 0;
 };

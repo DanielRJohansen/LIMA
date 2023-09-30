@@ -40,8 +40,8 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	nlist_manager = std::make_unique<NListManager>(simulation.get());
 	bootstrapTrajbufferWithCoords();
-	nlist_manager->handleNLISTS(simulation.get(), true, true, &timings.nlist);
 
+	nlist_manager->handleNlistGPU(simulation.get(), timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -72,7 +72,8 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
-		nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
+		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
+		nlist_manager->handleNlistGPU(simulation.get(), timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();

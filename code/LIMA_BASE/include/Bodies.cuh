@@ -246,9 +246,13 @@ struct SolventBlock {
 };
 
 struct CompoundGridNode {
-	__host__ void addNearbyCompound(int16_t compound_id);
-	__host__ void addAssociatedCompound(int16_t compound_id);
-
+	__device__ __host__ void addNearbyCompound(int16_t compound_id);
+	__device__ void loadData(const CompoundGridNode& other) {
+		n_nearby_compounds = other.n_nearby_compounds;
+		for (int i = 0; i < n_nearby_compounds; i++) {
+			nearby_compound_ids[i] = other.nearby_compound_ids[i];
+		}
+	}
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
@@ -652,7 +656,7 @@ struct ForceField_NB {
 
 class NeighborList {
 public:
-	__host__ void addCompound(uint16_t new_id);
+	__device__ __host__ void addCompound(uint16_t new_id);
 	__host__ void removeCompound(uint16_t new_id);
 
 
@@ -683,7 +687,7 @@ public:
 	uint16_t n_compound_neighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
-	__host__ void addGridnode(uint16_t gridnode_id);
+	__device__ __host__ void addGridnode(uint16_t gridnode_id);
 	__host__ void removeGridnode(uint16_t gridnode_id);
 
 	static const int max_gridnodes = 96;	// Arbitrary value

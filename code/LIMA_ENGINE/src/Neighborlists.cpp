@@ -118,7 +118,7 @@ namespace NListUtils {
 			assignNearbyCompoundsToGridnodes(simulation, nlist_data_collection);
 
 			auto t1 = std::chrono::high_resolution_clock::now();
-			*timing = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+			*timing += (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
 			// SIGNALING MAIN THREAD //
 			*finished = 1;		// Thread terminates here!

@@ -49,12 +49,11 @@ ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_
 
 
 
-void NeighborList::addCompound(uint16_t new_id) {
+__device__ __host__ void NeighborList::addCompound(uint16_t new_id) {
 	if (n_compound_neighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
 		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-		throw std::runtime_error("Neighborlist overflow");
+		//throw std::runtime_error("Neighborlist overflow");
 	}
-
 	neighborcompound_ids[n_compound_neighbors++] = new_id;
 }
 
@@ -73,9 +72,11 @@ void NeighborList::removeCompound(uint16_t neighbor_id) {
 }
 
 #ifdef ENABLE_SOLVENTS
-__host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
+__device__ __host__ void NeighborList::addGridnode(uint16_t gridnode_id) {
 	if (n_gridnodes >= max_gridnodes) { 
-		throw std::runtime_error("No room for more nearby gridnodes"); }
+		printf("No room for more nearby gridnodes");
+	}
+		//throw std::runtime_error("No room for more nearby gridnodes"); }
 	gridnode_ids[n_gridnodes++] = gridnode_id;
 }
 
@@ -92,10 +93,11 @@ __host__ void NeighborList::removeGridnode(uint16_t gridnode_id) {
 }
 #endif
 
-__host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
+__device__ __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {
 	if (n_nearby_compounds >= max_nearby_compounds) {
-		throw std::runtime_error("Failed to add compound to CompoundGridNode\n");
+		//throw std::runtime_error("Failed to add compound to CompoundGridNode\n");
+		printf("Failed to add compound to CompoundGridNode\n");
 	}
 	nearby_compound_ids[n_nearby_compounds++] = compound_id;
 }

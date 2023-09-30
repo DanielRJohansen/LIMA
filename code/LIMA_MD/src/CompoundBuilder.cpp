@@ -5,7 +5,7 @@
 
 
 
-
+#include <unordered_map>
 #include <algorithm>
 #include <format>
 #include <span>
@@ -66,6 +66,8 @@ private:
 	const Forcefield* forcefield;
 
 	const std::string work_dir;
+
+	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridgesMap;
 
 	// ------------------------------------ HELPER FUNCTIONS ------------------------------------ //
 
@@ -560,27 +562,49 @@ std::array<int, 2> getTheTwoDifferentIds(const uint32_t* particle_global_ids, co
 	return compound_ids;
 }
 
-template <int n_ids>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* particle_global_ids, const ParticleInfoTable& particleinfolut) {
-	auto compound_ids = getTheTwoDifferentIds<n_ids>(particle_global_ids, particleinfolut);
 
-	for (BridgeFactory& bridge : bridges) {
-		std::vector<int> compoundids_of_bridge;
+bool bridgeContainsTheseTwoCompounds(const BridgeFactory& bridge, const std::array<int, 2> compound_ids) {
+	for (const int id : compound_ids) {
+		bool found = false;
+
 		for (int i = 0; i < bridge.n_compounds; i++) {
-			compoundids_of_bridge.emplace_back(bridge.compound_ids[i]);
-		}
-
-		// Iterate over both the compound_ids of the particles, and the compound_ids in the bridge, 
-		// and see if both compound_ids are present in the bridge
-		bool bothValuesPresent = true;
-		for (auto& compound_id : compound_ids) {
-			if (std::find(compoundids_of_bridge.begin(), compoundids_of_bridge.end(), compound_id) == compoundids_of_bridge.end()) {
-				bothValuesPresent = false;
+			if (bridge.compound_ids[i] == id) {
+				found = true;
 				break;
 			}
 		}
 
-		if (bothValuesPresent) {
+		if (!found)
+			return false;
+	}
+
+	return true;
+}
+
+
+
+template <int n_ids>
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* particle_global_ids, const ParticleInfoTable& particleinfolut, 
+	std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges)
+{
+	std::array<int, 2> compound_ids = getTheTwoDifferentIds<n_ids>(particle_global_ids, particleinfolut);
+
+	// Check if the compound_id is already associated with bridges
+	auto it = compoundToBridges.find(compound_ids[0]);
+	if (it != compoundToBridges.end()) {
+		for (BridgeFactory* bridge : it->second) {
+			if (bridgeContainsTheseTwoCompounds(*bridge, compound_ids)) {
+				return *bridge;
+			}
+		}
+	}
+
+
+	// If not found in the lookup or no matching bridge, search through all bridges
+	for (BridgeFactory& bridge : bridges) {
+		if (bridgeContainsTheseTwoCompounds(bridge, compound_ids)) {
+			// Cache the bridge reference for the first compound_id
+			compoundToBridges[compound_ids[0]].push_back(&bridge);
 			return bridge;
 		}
 	}
@@ -615,7 +639,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 	for (auto& bond : bonds) {
 
 		if (spansTwoCompounds<atoms_in_bond>(bond.global_atom_indexes, particleinfotable)) {
-			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.global_atom_indexes, particleinfotable);
+			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.global_atom_indexes, particleinfotable, compoundToBridgesMap);
 			bridge.addBond(particleinfotable, bond);
 		}
 		else {

@@ -391,71 +391,98 @@ void printFFBonded(const string& path, const Topology& topology) {
 	}
 
 	file << FFPrintHelpers::titleH1("Forcefield Bonded");
-	file << FFPrintHelpers::titleH2("Singlebonds");
-	file << FFPrintHelpers::titleH3("{IDs (global & unique) \t Atomtypes \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
-	file << FFPrintHelpers::titleH3("Potential(r) = 0.5 * k_b * (r-b_0)^2");
-	file << FFPrintHelpers::parserTitle("singlebonds");
-	for (auto& bond : topology.singlebonds) {
-		for (auto& global_id : bond.global_ids) {
-			file << to_string(global_id) << delimiter;
+	{
+		std::stringstream buffer;  // Create a stringstream to build the data
+
+		file << FFPrintHelpers::titleH2("Singlebonds");
+		file << FFPrintHelpers::titleH3("{IDs (global & unique) \t Atomtypes \t b_0 [nm] \t k_b [J/(mol * nm^2)]}");
+		file << FFPrintHelpers::titleH3("Potential(r) = 0.5 * k_b * (r-b_0)^2");
+		file << FFPrintHelpers::parserTitle("singlebonds");
+
+		for (auto& bond : topology.singlebonds) {
+			for (auto& global_id : bond.global_ids) {
+				buffer << to_string(global_id) << delimiter;
+			}
+			for (auto& type : bond.bonded_typenames) {
+				buffer << type << delimiter;
+			}
+			buffer << to_string(bond.b0) << delimiter << to_string(bond.kb) << endl;
 		}
-		for (auto& type : bond.bonded_typenames) {
-			file << type << delimiter;
-		}
-		file << to_string(bond.b0) << delimiter << to_string(bond.kb) << endl;
+		buffer << FFPrintHelpers::endBlock();
+		file << buffer.str();  // Write the entire string to the file at once
 	}
-	file << FFPrintHelpers::endBlock();
 
 
+	{
+		std::stringstream buffer;  // Create a stringstream to build the data
 
-	file << FFPrintHelpers::titleH2("Anglebonds");
-	file << FFPrintHelpers::titleH3("{Atom-IDs (global & unique) \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
-	file << FFPrintHelpers::titleH3("Potential(theta) = 0.5 * k_theta * (theta-theta_0)^2");
-	file << FFPrintHelpers::parserTitle("anglebonds");
-	for (auto& bond : topology.anglebonds) {
-		for (auto& global_id : bond.global_ids) {
-			file << to_string(global_id) << delimiter;
+		buffer << FFPrintHelpers::titleH2("Anglebonds");
+		buffer << FFPrintHelpers::titleH3("{Atom-IDs (global & unique) \t Atomtypes \t theta_0 [rad] \t k_theta [J/(mol * rad^2)}");
+		buffer << FFPrintHelpers::titleH3("Potential(theta) = 0.5 * k_theta * (theta-theta_0)^2");
+		buffer << FFPrintHelpers::parserTitle("anglebonds");
+
+		for (auto& bond : topology.anglebonds) {
+			for (auto& global_id : bond.global_ids) {
+				buffer << to_string(global_id) << delimiter;
+			}
+			for (auto& type : bond.bonded_typenames) {
+				buffer << type << delimiter;
+			}
+			buffer << to_string(bond.theta0) << delimiter << to_string(bond.ktheta) << endl;
 		}
-		for (auto& type : bond.bonded_typenames) {
-			file << type << delimiter;
-		}
-		file << to_string(bond.theta0) << delimiter << to_string(bond.ktheta) << endl;
+
+		buffer << FFPrintHelpers::endBlock();  // Include endBlock in the buffer
+
+		file << buffer.str();  // Write the entire string to the file at once
 	}
-	file << FFPrintHelpers::endBlock();
 
 
 
-	file << FFPrintHelpers::titleH2("Dihedrals");
-	file << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
-	file << FFPrintHelpers::titleH3("Potential(phi) = k_phi * (1 + cos(n * phi - phi_0))");
-	file << FFPrintHelpers::parserTitle("dihedralbonds");
-	for (auto& dihedral : topology.dihedralbonds) {
-		for (auto& global_id : dihedral.global_ids) {
-			file << to_string(global_id) << delimiter;
+	{
+		std::stringstream buffer;  // Create a stringstream to build the data
+
+		buffer << FFPrintHelpers::titleH2("Dihedrals");
+		buffer << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t phi_0 [rad] \t k_phi [J/(mol * rad^2)] \t n}");
+		buffer << FFPrintHelpers::titleH3("Potential(phi) = k_phi * (1 + cos(n * phi - phi_0))");
+		buffer << FFPrintHelpers::parserTitle("dihedralbonds");
+
+		for (auto& dihedral : topology.dihedralbonds) {
+			for (auto& global_id : dihedral.global_ids) {
+				buffer << to_string(global_id) << delimiter;
+			}
+			for (auto& type : dihedral.bonded_typenames) {
+				buffer << type << delimiter;
+			}
+			buffer << to_string(dihedral.phi0) << delimiter << to_string(dihedral.kphi) << delimiter << to_string(dihedral.n) << endl;
 		}
-		for (auto& type : dihedral.bonded_typenames) {
-			file << type << delimiter;
-		}
-		file << to_string(dihedral.phi0) << delimiter << to_string(dihedral.kphi) << delimiter << to_string(dihedral.n) << endl;
+
+		buffer << FFPrintHelpers::endBlock();  // Include endBlock in the buffer
+
+		file << buffer.str();  // Write the entire string to the file at once
 	}
-	file << FFPrintHelpers::endBlock();
 
+	{
+		std::stringstream buffer;  // Create a stringstream to build the data
 
+		buffer << FFPrintHelpers::titleH2("ImproperDihedrals");
+		buffer << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
+		buffer << FFPrintHelpers::titleH3("Potential(psi) = 0.5 * k_psi * (psi-psi_0)^2");
+		buffer << FFPrintHelpers::parserTitle("improperdihedralbonds");
 
-	file << FFPrintHelpers::titleH2("ImproperDihedrals");
-	file << FFPrintHelpers::titleH3("{Atom IDs (global & unique) \t Atomtypes \t psi_0 [rad] \t k_psi [J/(mol * rad^2)]}");
-	file << FFPrintHelpers::titleH3("Potential(psi) = 0.5 * k_psi * (psi-psi_0)^2");
-	file << FFPrintHelpers::parserTitle("improperdihedralbonds");
-	for (auto improper : topology.improperdeihedralbonds) {
-		for (auto& global_id : improper.global_ids) {
-			file << to_string(global_id) << delimiter;
+		for (auto improper : topology.improperdeihedralbonds) {
+			for (auto& global_id : improper.global_ids) {
+				buffer << to_string(global_id) << delimiter;
+			}
+			for (auto& type : improper.bonded_typenames) {
+				buffer << type << delimiter;
+			}
+			buffer << to_string(improper.psi0) << delimiter << to_string(improper.kpsi) << endl;
 		}
-		for (auto& type : improper.bonded_typenames) {
-			file << type << delimiter;
-		}
-		file << to_string(improper.psi0) << delimiter << to_string(improper.kpsi) << endl;
+
+		buffer << FFPrintHelpers::endBlock();  // Include endBlock in the buffer
+
+		file << buffer.str();  // Write the entire string to the file at once
 	}
-	file << FFPrintHelpers::endBlock();
 
 	file.close();
 }

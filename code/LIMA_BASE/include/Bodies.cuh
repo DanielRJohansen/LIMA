@@ -663,7 +663,9 @@ public:
 
 	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
 		n_compound_neighbors = nl_ptr->n_compound_neighbors;
+#ifdef ENABLE_SOLVENTS
 		n_gridnodes = nl_ptr->n_gridnodes;
+#endif
 	}
 	__device__ void loadData(NeighborList* nl_ptr) {
 		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");

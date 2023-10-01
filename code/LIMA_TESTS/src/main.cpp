@@ -38,14 +38,14 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.188e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 6.24e-5, 2e-7);
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 6.24e-5, 2e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 4.43e-5, 2.1e-7);
 
 		//doPool50x(EnvMode::Headless);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught exception: " << ex.what() << std::endl;

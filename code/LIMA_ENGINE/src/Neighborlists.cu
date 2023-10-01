@@ -99,6 +99,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		}
 	}
 
+#ifdef ENABLE_SOLVENTS
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active) 
 	{
@@ -129,6 +130,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			}
 		}
 	}
+#endif
 
 	// Push the new nlist
 	if (compound_active) {
@@ -200,10 +202,12 @@ void NListManager::handleNlistGPU(Simulation* simulation, int& timing)
 
 	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
 
+#ifdef ENABLE_SOLVENTS
 	{
 		const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
 		updateBlockgridKernel<<<n_blocks, nthreads_in_blockgridkernel>>>(simulation->sim_dev);
 	}
+#endif
 
 	cudaDeviceSynchronize();
 	const auto t1 = std::chrono::high_resolution_clock::now();

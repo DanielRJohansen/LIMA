@@ -9,7 +9,7 @@
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
 // sim with no impropers has this effect. It is very wierd, and i fear i have some undefined behavior
 // somewhere in the code
-#define LIMASAFEMODE
+//#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
@@ -91,7 +91,7 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
@@ -164,7 +164,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 50;
+const int STEPS_PER_RENDER = 300;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

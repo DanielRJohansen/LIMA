@@ -463,8 +463,48 @@ private:
 	__device__ T get(int index) const { return matrix[index]; }
 };
 
-using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
+template <int len>
+class FixedSizeMatrix<bool,len>{
+public:
+	__device__ FixedSizeMatrix() {}
+	__host__ FixedSizeMatrix(bool val) {
+		uint8_t bit = val ? 1 : 0;
+		for (int i = 0; i < m_size; i++) {
+			matrix[i] = bit ? 0xFF : 0x00;
+		}
+	}
 
+	__host__ __device__ bool get(int i1, int i2) const {
+		int index = i1 + i2 * m_len;
+		int byteIndex = index / 8;
+		int bitIndex = index % 8;
+		return (matrix[byteIndex] >> bitIndex) & 1U;
+	}
+
+	__host__ void set(int i1, int i2, bool val) {
+		int index = i1 + i2 * m_len;
+		int byteIndex = index / 8;
+		int bitIndex = index % 8;
+		if (val)
+			matrix[byteIndex] |= (1U << bitIndex);
+		else
+			matrix[byteIndex] &= ~(1U << bitIndex);
+	}
+
+	__device__ void load(const FixedSizeMatrix<bool, len>& src) {
+		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
+			matrix[i] = src.matrix[i];
+		}
+	}
+
+private:
+	const static int m_len = len;
+	const static int m_size = (m_len * m_len + 7) / 8; // Ceil division
+	uint8_t matrix[m_size]{};
+};
+
+//using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
+using BondedParticlesLUT = FixedSizeMatrix<bool,MAX_COMPOUND_PARTICLES>;
 
 class BondedParticlesLUTManager {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think

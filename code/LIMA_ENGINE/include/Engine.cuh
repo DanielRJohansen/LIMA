@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 //#include <algorithm>
+const int dihedralbuffersize = sizeof(BondedParticlesLUT);
 constexpr int utilitybuffer_bytes = CPPD::max(sizeof(BondedParticlesLUT), sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND);
 
 __global__ void compoundKernel(SimulationDevice* sim);

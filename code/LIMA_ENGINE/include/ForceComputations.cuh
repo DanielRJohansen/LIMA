@@ -94,9 +94,9 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 	const float torsion = -atan2(sin_phi, cos_phi);
 
 	if constexpr (CALC_POTE) {
-		potE = dihedral.k_phi * (1. + cos(dihedral.n * torsion - dihedral.phi_0));
+		potE = __half2float(dihedral.k_phi) * (1. + cos(__half2float(dihedral.n) * torsion - __half2float(dihedral.phi_0)));
 	}
-	const float torque = dihedral.k_phi * (dihedral.n * sin(dihedral.n * torsion - dihedral.phi_0)) / NANO_TO_LIMA;
+	const float torque = __half2float(dihedral.k_phi) * (__half2float(dihedral.n) * sin(__half2float(dihedral.n) * torsion - __half2float(dihedral.phi_0))) / NANO_TO_LIMA;
 
 
 

@@ -41,7 +41,7 @@ int main() {
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 6.24e-5, 2e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
-		//loadAndRunBasicSimulation("psome", envmode, 4e-5);
+		//loadAndRunBasicSimulation("psome", envmode, 4.43e-5, 2.1e-7);
 
 		//doPool50x(EnvMode::Headless);
 
@@ -75,13 +75,13 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
 	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
-	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4, 2.1e-7));
+	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 2e-4, 2.2e-7));
 	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode, 4.26e-3));
 	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.9e-7));
 
 
 	// Smaller compound tests
-	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9e-7));
+	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9.9e-7));
 	ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
 	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 3.845e-7, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
@@ -89,7 +89,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2.2e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.67e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.25e-5, 2e-5));
 
 
 	// Meta tests

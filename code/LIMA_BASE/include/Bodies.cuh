@@ -6,6 +6,8 @@
 #include <vector>
 #include <array>
 
+#include <cuda_fp16.h>
+
 // Hyper-fast objects for kernel, so we turn all safety off here!
 #pragma warning (push)
 #pragma warning (disable : 26495)
@@ -66,10 +68,10 @@ struct DihedralBond {
 	const static int n_atoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<uint8_t, 4> ids, float phi0, float kphi, float n);
-
-	float phi_0 = 0.f;
-	float k_phi = 0.f;
-	float n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+	
+	half phi_0 = 0.f;
+	half k_phi = 0.f;
+	half n = 0;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 	uint8_t atom_indexes[4] = {0,0,0,0};
 };
 struct DihedralBondFactory : public DihedralBond {
@@ -123,7 +125,7 @@ struct CompoundCoords {
 
 const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES+4;	// Due to AA such a TRP, thhere might be more bonds than atoms
 const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
-const int MAX_DIHEDRALBONDS_IN_COMPOUND = 256;
+const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128+64;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 struct CompoundState {							// Maybe delete this soon?
 	__device__ void setMeta(int n_p) {

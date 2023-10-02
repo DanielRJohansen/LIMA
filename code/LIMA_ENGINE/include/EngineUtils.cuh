@@ -382,7 +382,7 @@ namespace EngineUtils {
 	}
 
 	// Assumes positions in NM
-	__device__ __host__ static float calcHyperDistNM(const Float3* p1, const Float3* p2) {
+	__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
 		Float3 temp = *p2;
 		applyHyperposNM(p1, &temp);
 		return (*p1 - temp).len();

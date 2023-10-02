@@ -693,15 +693,16 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 
 
 
-std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* positions, int n_elems) {
+std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* const positions, int n_elems) {
 	const int k = CompoundInteractionBoundary::k;
-	std::array<int, k> center_indices;
+	std::array<int, k> center_indices{};
 
 
 	// Initialize k centers randomly
 	// Randomly pick k particles and set them as initial centers
 	for (int i = 0; i < k; ++i) {
-		center_indices[i] = std::rand() % n_elems;
+		//center_indices[i] = std::rand() % n_elems;
+		center_indices[i] = std::min(i*n_elems, n_elems);
 	}
 
 	// Holds the index of the center that each point is closest to
@@ -835,16 +836,16 @@ void MoleculeBuilder::calcCompoundMetaInfo() {
 
 		const int k = CompoundInteractionBoundary::k;
 		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles);
-		std::array<Float3, k> key_positions;
-		for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
+		//std::array<Float3, k> key_positions;
+		//for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
 
-		std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions);
+		//std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions);
 
-		for (int i = 0; i < k; i++) {
-			compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
-			compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
-		}
-		
+		//for (int i = 0; i < k; i++) {
+		//	compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
+		//	compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
+		//}
+		//
 
 
 

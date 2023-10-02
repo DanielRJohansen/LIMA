@@ -5,7 +5,34 @@
 		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, key_index, entryindex);
 */
 
+// Assumes the compound is active
+__device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result)
+{
+	const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev.box->coordarray_circular_queue, sim_dev.params->step, compound_id);
+	const NodeIndex compound_origo = compound_coords.origo;
 
+	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
+		const int particle_index = sim_dev.box->compounds[compound_id].interaction_boundary.key_particle_indices[i];
+		const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
+		result[i] = abspos;
+	}
+}
+
+__device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const posleft, const Float3* const posright) 
+{
+	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
+		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
+
+			const float dist = EngineUtils::calcHyperDistNM(&posleft[ileft], &posright[iright]);
+			const float max_dist = CUTOFF_NM + left.radii[ileft] + right.radii[iright];
+
+			if (dist < max_dist)
+				return true;
+		}
+	}
+
+	return false;
+}
 
 // Assumes the compound is active
 __device__ Float3 getCompoundAbspos(SimulationDevice& sim_dev, int compound_id)

@@ -462,6 +462,18 @@ namespace CoordArrayQueueHelpers {
 
 
 
+
+
+// Instead of having a single key_particle and an single radius, we now have multiple
+struct CompoundInteractionBoundary {
+	static const int k = 2;
+
+	float radii[k];	// [nm]
+	int key_particle_indices[k];
+};
+
+
+
 struct CompoundCompact {
 	__host__ __device__ CompoundCompact() {}
 
@@ -520,7 +532,7 @@ struct Compound : public CompoundCompact {
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
-
+	CompoundInteractionBoundary interaction_boundary;
 	int key_particle_index = -1;			// Index of particle initially closest to CoM
 	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 };

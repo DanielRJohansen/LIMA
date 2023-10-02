@@ -105,3 +105,7 @@ __device__ __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id
 	}
 	nearby_compound_ids[n_nearby_compounds++] = compound_id;
 }
+
+
+
+

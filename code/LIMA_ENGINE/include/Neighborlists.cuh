@@ -32,7 +32,7 @@ struct NListDataCollection {
 
 class NListManager {
 public:
-	NListManager(Simulation* simulation);
+	NListManager(Simulation* simulation) {}
 
 
 	void handleNLISTS(Simulation* simulation, bool async, bool force_update, int* timing);

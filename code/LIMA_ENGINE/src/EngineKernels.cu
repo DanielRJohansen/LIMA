@@ -4,6 +4,10 @@
 #include "Utilities.h"
 #include "KernelWarnings.cuh"
 
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
+//#include <cuda/pipeline>
+
 #pragma warning(push)
 #pragma warning(disable: E0020)
 #pragma warning(push)
@@ -54,36 +58,37 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 
 // Two variants of this exists, with and without lut
 __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
-	const Compound* const neighbor_compound, const Float3* const neighbor_positions, int neighborcompound_id, const BondedParticlesLUT* const bonded_particles_lut) {
+	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const BondedParticlesLUT* const bonded_particles_lut) {
 	Float3 force(0.f);
 	
-	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
+	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 
 		// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
 		if (bonded_particles_lut->get(threadIdx.x, neighborparticle_id)) { continue; }
 
-		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
+		const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
 		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 			LimaForcecalc::CalcLJOrigin::ComComInter,
-			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
+			0,0
+			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
 	return force * 24.f;
 }
 
 __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
-	const Compound* const neighbor_compound, const Float3* const neighbor_positions, int neighborcompound_id) {
+	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types) {
 	Float3 force(0.f);
 
-	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_compound->n_particles; neighborparticle_id++) {
-		const int neighborparticle_atomtype = neighbor_compound->atom_types[neighborparticle_id];	//// TEMPORARY, this is waaaay to many global mem accesses
+	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
+		const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
 		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
-			LimaForcecalc::CalcLJOrigin::ComComInter,
-			global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
+			LimaForcecalc::CalcLJOrigin::ComComInter
+			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
 	return force * 24.f;
@@ -153,6 +158,12 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 		);
 	}
 	return force * 24.f;
+}
+
+__device__ void cudaAtomicAdd(Float3& target, const Float3& add) {
+	atomicAdd(&target.x, add.x);
+	atomicAdd(&target.y, add.y);
+	atomicAdd(&target.z, add.z);
 }
 
 // only works if n threads >= n bonds
@@ -273,6 +284,14 @@ __device__ Float3 computeDihedralForces(const DihedralBond* const dihedrals, con
 				forces,
 				potential
 			);
+
+
+			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
+				for (int i = 0; i < db->n_atoms; i++) {
+					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
+					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
+				}
+			}
 		}
 
 		for (int i = 0; i < blockDim.x; i++) {
@@ -322,16 +341,25 @@ __device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* cons
 				forces,
 				potential
 			);
-		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && db != nullptr) {
+			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
 				for (int i = 0; i < db->n_atoms; i++) {
-					forces_interim[db->atom_indexes[i]] += forces[i];
-					potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
+					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
+					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
 				}
 			}
-			__syncthreads();
+		}
+
+		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) {
+			for (int i = 0; i < blockDim.x; i++) {
+				if (threadIdx.x == i && db != nullptr) {
+					for (int i = 0; i < db->n_atoms; i++) {
+						forces_interim[db->atom_indexes[i]] += forces[i];
+						potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
+					}
+				}
+				__syncthreads();
+			}
 		}
 	}
 
@@ -343,10 +371,11 @@ __device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* cons
 }
 
 
-__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* querycompound, Float3* const output_buffer, Float3& utility_float3) { 
+__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* const querycompound, 
+	void* output_buffer, Float3& utility_float3, const int n_particles) 
+{
 	if (threadIdx.x == 0) {
 		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
-
 		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
@@ -354,10 +383,14 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	}
 	__syncthreads();
 
+	auto block = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
+	cooperative_groups::wait(block);
+
 	// Eventually i could make it so i only copy the active particles in the compound
-	if (threadIdx.x < MAX_COMPOUND_PARTICLES) {
-		const Coord queryparticle_coord = querycompound->rel_positions[threadIdx.x];// +*utility_coord;
-		output_buffer[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
+	if (threadIdx.x < n_particles) {
+		const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
+		((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
 	}
 	__syncthreads();
 }
@@ -509,7 +542,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
-
+#include <cuda/barrier>
 
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {
@@ -519,7 +552,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_float3;
-
+	__shared__ int utility_int;
 	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[utilitybuffer_bytes];
 
@@ -550,7 +583,6 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	
 
 
-
 	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
 	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
 	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
@@ -562,19 +594,24 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 			static_assert(utilitybuffer_bytes >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
 			SingleBond* singlebonds = (SingleBond*)utility_buffer;
-			for (int i = threadIdx.x; i < compound.n_singlebonds; i += blockDim.x) {
-				singlebonds[i] = box->compounds[compound_index].singlebonds[i];
-			}
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, singlebonds, box->compounds[compound_index].singlebonds, sizeof(SingleBond) * compound.n_singlebonds);
+			cooperative_groups::wait(block);
+
 			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
 		{
 			__syncthreads();
+			const int as = sizeof(AngleBond);
 			static_assert(utilitybuffer_bytes >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
 			AngleBond* anglebonds = (AngleBond*)utility_buffer;
-			for (int i = threadIdx.x; i < compound.n_anglebonds; i += blockDim.x) {
-				anglebonds[i] = box->compounds[compound_index].anglebonds[i];
-			}
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, anglebonds, box->compounds[compound_index].anglebonds, sizeof(AngleBond) * compound.n_anglebonds);
+			cooperative_groups::wait(block);
+
 			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
@@ -582,9 +619,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 			static_assert(utilitybuffer_bytes >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
 			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
-			for (int i = threadIdx.x; i < compound.n_dihedrals; i += blockDim.x) {
-				dihedrals[i] = box->compounds[compound_index].dihedrals[i];
-			}
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, dihedrals, box->compounds[compound_index].dihedrals, sizeof(DihedralBond) * compound.n_dihedrals);
+			cooperative_groups::wait(block);
+
 			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
@@ -592,9 +631,11 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 			static_assert(utilitybuffer_bytes >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
 			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
-			for (int i = threadIdx.x; i < compound.n_improperdihedrals; i += blockDim.x) {
-				impropers[i] = box->compounds[compound_index].impropers[i];
-			}
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, impropers, box->compounds[compound_index].impropers, sizeof(ImproperDihedralBond) * compound.n_improperdihedrals);
+			cooperative_groups::wait(block);
+
 			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 			__syncthreads();
 		}
@@ -611,30 +652,48 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //	
+
+	// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
+	__syncthreads();
 	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
 		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
-		const auto coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_origo, coords_ptr, utility_buffer_f3, utility_float3);
+
+		if (threadIdx.x == 0) {
+			utility_int = box->compounds[neighborcompound_id].n_particles;
+		}
+		__syncthreads();
+
+		const CompoundCoords* coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
+		getCompoundHyperpositionsAsFloat3(compound_origo, coords_ptr, utility_buffer_f3, utility_float3, utility_int);
+
+		const int utilitybuffer_reserved_size = 1 * MAX_COMPOUND_PARTICLES;
+		uint8_t* atomtypes = (uint8_t*)utility_buffer;
+		if (threadIdx.x < utility_int) {
+			atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
+		}
+		__syncthreads();
+
+
 
 		BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 		const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
 		if (compounds_are_bonded) 
 		{
-			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
-			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
+			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
+			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
 
 			bonded_particles_lut->load(*compoundpair_lut_global);
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
 				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
-					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id, bonded_particles_lut);
+					utility_buffer_f3, utility_int, atomtypes, bonded_particles_lut);
 			}
 		}
 		else {
 			if (threadIdx.x < compound.n_particles) {
 				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
-					&box->compounds[neighborcompound_id], utility_buffer_f3, neighborcompound_id);
+					utility_buffer_f3, utility_int, atomtypes);
 			}
 		}
 		__syncthreads();
@@ -803,7 +862,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3);	// This should take n_comp_part aswell!
+			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
 
 
 			// Then load atomtypes of neighboring compound

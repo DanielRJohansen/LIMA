@@ -91,7 +91,7 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
@@ -117,6 +117,8 @@ const int MAX_COMPOUNDS = 4096;			// Arbitrary i think. true max int16_t max - 1
 
 const int NEIGHBORLIST_MAX_COMPOUNDS = 128+64;	// TODO: We need to work on getting this number down!
 const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
+
+const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
 
 
 // Related to compound bridges

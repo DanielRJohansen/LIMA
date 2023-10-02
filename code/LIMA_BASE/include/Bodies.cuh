@@ -473,15 +473,11 @@ struct CompoundCompact {
 #endif
 
 
-	Float3 center_of_mass = Float3(0, 0, 0);
-
 	int n_singlebonds = 0;
 	int n_anglebonds = 0;
 	int n_dihedrals = 0;
 	int n_improperdihedrals = 0;
 
-	int key_particle_index = -1;			// Index of particle initially closest to CoM
-	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 
 
 	__device__ void loadMeta(CompoundCompact* compound) {
@@ -525,7 +521,8 @@ struct Compound : public CompoundCompact {
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 
-
+	int key_particle_index = -1;			// Index of particle initially closest to CoM
+	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
 };
 
 
@@ -547,8 +544,10 @@ struct ParticleReference {
 	int gro_id = -1;
 #else
 	// Used by moleculebuilder only
-	ParticleReference(int compound_id, int local_id_compound) : 
-		compound_id(compound_id), local_id_compound(local_id_compound) {}
+	ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
+		compound_id(compound_id), local_id_compound(local_id_compound),
+		compoundid_local_to_bridge(compoundid_local_to_bridge) 
+	{}
 #endif
 
 	int compound_id;	// global

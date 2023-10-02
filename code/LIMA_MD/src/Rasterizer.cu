@@ -203,8 +203,9 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
         atom.pos = positions[global_id];
         atom.mass = SOLVENT_MASS;                                                         // TEMP
         atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
-        atom.color = getColor(atom.atom_type);
-
+        //atom.color = getColor(atom.atom_type);
+        ATOM_TYPE typetemp = static_cast<ATOM_TYPE>(compound_id % 7);
+        atom.color = getColor(typetemp);
         atoms[global_id] = atom;
     }
     else {

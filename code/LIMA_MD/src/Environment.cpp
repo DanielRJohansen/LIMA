@@ -97,6 +97,7 @@ void Environment::verifyBox() {
 	}
 
 
+#ifdef LIMAKERNELDEBUGMODE
 	if (print_compound_positions) {
 		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 			Compound* comp = &simulation->compounds_host[c];
@@ -105,6 +106,7 @@ void Environment::verifyBox() {
 			}
 		}
 	}
+#endif
 }
 
 bool Environment::prepareForRun() {

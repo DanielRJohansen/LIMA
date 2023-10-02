@@ -57,7 +57,7 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 }
 
 // Two variants of this exists, with and without lut
-__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
+__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const BondedParticlesLUT* const bonded_particles_lut) {
 	Float3 force(0.f);
 	
@@ -78,7 +78,7 @@ __device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t a
 	return force * 24.f;
 }
 
-__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum, uint32_t global_id_self,
+__device__ Float3 computeIntercompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types) {
 	Float3 force(0.f);
 
@@ -107,8 +107,10 @@ __device__ Float3 computeIntracompoundLJForces(const CompoundCompact& compound, 
 		force += LimaForcecalc::calcLJForceOptim(compound_positions[threadIdx.x], compound_positions[i], potE_sum,
 			calcSigma(compound.atom_types[threadIdx.x], compound.atom_types[i]),
 			calcEpsilon(compound.atom_types[threadIdx.x], compound.atom_types[i]),
-			LimaForcecalc::CalcLJOrigin::ComComIntra,
-			compound.particle_global_ids[threadIdx.x], compound.particle_global_ids[i]			
+			LimaForcecalc::CalcLJOrigin::ComComIntra
+#ifdef LIMAKERNELDEBUGMODE
+			,compound.particle_global_ids[threadIdx.x], compound.particle_global_ids[i]
+#endif
 		);
 	}
 	return force * 24.f;
@@ -686,13 +688,13 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
+				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					utility_buffer_f3, utility_int, atomtypes, bonded_particles_lut);
 			}
 		}
 		else {
 			if (threadIdx.x < compound.n_particles) {
-				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound.particle_global_ids[threadIdx.x],
+				force += computeIntercompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					utility_buffer_f3, utility_int, atomtypes);
 			}
 		}

@@ -16,7 +16,7 @@
 #endif
 
 
-#define LIMAKERNELDEBUGMODE
+//#define LIMAKERNELDEBUGMODE
 //#define DONTGENDATA
 
 constexpr float PI = 3.14159f;

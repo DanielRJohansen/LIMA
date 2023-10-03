@@ -676,6 +676,18 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 	m_logger->print(std::format("Added {} dihedralbonds to molecule\n", topology.dihedralbonds.size()));
 	distributeBondsToCompoundsAndBridges(topology.improperdihedralbonds);
 	m_logger->print(std::format("Added {} improper dihedralbonds to molecule\n", topology.improperdihedralbonds.size()));
+
+
+	// While are particle is never bonded to itself, we are not allowed to calc LJ with itself
+	// so we can doubly use this lut to avoid doing that
+
+	for (int com_id = 0; com_id < compounds.size(); com_id++) {
+		auto* lut = bp_lut_manager->get(com_id, com_id);
+		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
+			lut->set(pid, pid, true);
+		}
+	}
+
 }
 
 

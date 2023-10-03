@@ -278,8 +278,8 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, simulation->box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.key_particle_index);
-
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index);
+	//coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.interaction_boundary.key_particle_indices[0]);	// TODO: Do this a better way. Maybe still keep the 1 key? Call it centermost
 	simulation->box_host->compounds[simulation->box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 

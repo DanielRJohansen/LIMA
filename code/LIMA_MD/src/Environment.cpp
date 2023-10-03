@@ -87,9 +87,15 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 void Environment::verifyBox() {
 	for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
-		if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
+		/*if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
 			throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
+		}*/
+		for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
+			if ((simulation->compounds_host[c].interaction_boundary.radii[i] * 1.1) > BOX_LEN_HALF) {
+				throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
+			}
 		}
+		
 	}
 
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {

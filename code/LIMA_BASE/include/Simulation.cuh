@@ -82,12 +82,12 @@ template <typename T>
 class ParticleDataBuffer {
 public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps) 
-		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), n_indices(n_steps/LOG_EVERY_N_STEPS)
+		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), n_indices(n_steps/LOG_EVERY_N_STEPS), buffer(n_particles_upperbound* n_indices, T{})
 	{
-		buffer.resize(n_particles_upperbound * n_indices);
-		for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
-			buffer[i] = T{};
-		}
+		//buffer.resize(n_particles_upperbound * n_indices);
+		//for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
+		//	buffer[i] = T{};
+		//}
 	}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE

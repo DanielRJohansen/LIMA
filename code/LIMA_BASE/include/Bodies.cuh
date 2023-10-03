@@ -242,13 +242,13 @@ struct SolventBlock {
 	}
 
 	NodeIndex origo{};
-	uint16_t n_solvents = 0;
+	int n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 };
 
 struct CompoundGridNode {
-	__device__ __host__ void addNearbyCompound(int16_t compound_id);
+	__device__ __host__ bool addNearbyCompound(int16_t compound_id);
 	__device__ void loadData(const CompoundGridNode& other) {
 		n_nearby_compounds = other.n_nearby_compounds;
 		for (int i = 0; i < n_nearby_compounds; i++) {
@@ -258,9 +258,9 @@ struct CompoundGridNode {
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
-	static const int max_nearby_compounds = 92;
+	static const int max_nearby_compounds = 64+16;
 	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
-	int16_t n_nearby_compounds = 0;
+	int n_nearby_compounds = 0;
 };
 
 // Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
@@ -533,8 +533,7 @@ struct Compound : public CompoundCompact {
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	CompoundInteractionBoundary interaction_boundary;
-	int key_particle_index = -1;			// Index of particle initially closest to CoM
-	float radius = 0;	// [nm] All particles in compound are PROBABLY within this radius 
+	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 };
 
 
@@ -697,17 +696,17 @@ public:
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
-	uint16_t n_compound_neighbors = 0;
+	int n_compound_neighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured
 	__device__ __host__ bool addGridnode(uint16_t gridnode_id);
 	__host__ void removeGridnode(uint16_t gridnode_id);
 
-	static const int max_gridnodes = 96;	// Arbitrary value
+	static const int max_gridnodes = 64+4;	// Arbitrary value
 	static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
 	uint16_t gridnode_ids[max_gridnodes];
-	uint16_t n_gridnodes = 0;
+	int n_gridnodes = 0;
 #endif
 
 	int associated_id = -1;

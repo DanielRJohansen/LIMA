@@ -709,7 +709,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 	std::vector<int> labels(n_elems);
 
 	// Max number of iterations or convergence criteria
-	const int max_iter = 100;
+	const int max_iter = 50;
 
 	// Main k-means loop
 	for (int iter = 0; iter < max_iter; ++iter) {
@@ -784,7 +784,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 			if (labels[i] == j) {  // If this particle belongs to the current cluster
 				float dist = EngineUtils::calcHyperDistNM(&positions[i], &key_positions[j]);
 				if (dist > max_radius) {
-					max_radius = dist;  // Update maximum radius
+					max_radius = dist; // Update maximum radius
 				}
 			}
 		}
@@ -819,53 +819,23 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 	return closest_particle_index;
 }
 
-int indexOfParticleFurthestFromCom(Float3* positions, int n_elems, const Float3& com) {
-	int furthest_particle_index = 0;
-	float furthest_particle_distance = 0.0f;
-	for (int i = 0; i < n_elems; i++) {
-		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
-		if (dist > furthest_particle_distance) {
-			furthest_particle_distance = dist;
-			furthest_particle_index = i;
-		}
-	}
-	return furthest_particle_index;
-}
 void MoleculeBuilder::calcCompoundMetaInfo() {
 	for (CompoundFactory& compound : compounds) {
 
 		const int k = CompoundInteractionBoundary::k;
 		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles);
-		//std::array<Float3, k> key_positions;
-		//for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
+		std::array<Float3, k> key_positions;
+		for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
 
-		//std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions);
+		std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions);
 
-		//for (int i = 0; i < k; i++) {
-		//	compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
-		//	compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
-		//}
-		//
-
-
-
-
-
-
+		for (int i = 0; i < k; i++) {
+			compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
+			compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
+		}
 
 		const Float3 com = calcCOM(compound.positions, compound.n_particles);	
-		compound.key_particle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
-
-
-		const Float3& key_pos = compound.positions[compound.key_particle_index];
-		const int indexOfFurthestParticle = indexOfParticleFurthestFromCom(compound.positions, compound.n_particles, key_pos);
-		const Float3& furthestParticle = compound.positions[indexOfFurthestParticle];
-		const float radius = EngineUtils::calcHyperDistNM(&furthestParticle, &key_pos);
-
-		compound.radius = radius * 1.1f;	// Add 10% leeway
-
-		if (compound.radius > MAX_COMPOUND_RADIUS) { 
-			throw std::runtime_error(std::format("Compound radius {} spans more than {} nm!", compound.radius, MAX_COMPOUND_RADIUS).c_str()); }
+		compound.centerparticle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
 	}
 }
 

@@ -97,13 +97,15 @@ __device__ __host__ bool NeighborList::addGridnode(uint16_t gridnode_id) {
 //}
 #endif
 
-__device__ __host__ void CompoundGridNode::addNearbyCompound(int16_t compound_id)
+__device__ __host__ bool CompoundGridNode::addNearbyCompound(int16_t compound_id)
 {
 	if (n_nearby_compounds >= max_nearby_compounds) {
 		//throw std::runtime_error("Failed to add compound to CompoundGridNode\n");
 		printf("Failed to add compound to CompoundGridNode\n");
+		return false;
 	}
 	nearby_compound_ids[n_nearby_compounds++] = compound_id;
+	return true;
 }
 
 

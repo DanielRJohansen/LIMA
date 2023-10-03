@@ -1,10 +1,5 @@
 #include "Neighborlists.cuh"
 
-/*
-* const int key_index = simulation.compounds_host[compound_id].key_particle_index;
-		compound_key_positions[compound_id] = simulation.traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, key_index, entryindex);
-*/
-
 // Assumes the compound is active
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result)
 {
@@ -34,39 +29,36 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 	return false;
 }
 
-// Assumes the compound is active
-__device__ Float3 getCompoundAbspos(SimulationDevice& sim_dev, int compound_id)
+__device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& boundary, const Float3* const posleft, const Float3& point)
 {
-	const int compound_key_index = sim_dev.box->compounds[compound_id].key_particle_index;
+	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
-	const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev.box->coordarray_circular_queue, sim_dev.params->step, compound_id);
+		const float dist = EngineUtils::calcHyperDistNM(&posleft[ileft], &point);
+		const float max_dist = CUTOFF_NM + boundary.radii[ileft];
 
-	const NodeIndex compound_origo = compound_coords.origo;
+		if (dist < max_dist)
+			return true;
 
-	const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, compound_coords.rel_positions[compound_key_index]);
+	}
 
-	return abspos;
+	return false;
 }
 
-const int threads_in_compoundnlist_kernel = 256;
-
 // Returns false if an error occured
-__device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const abs_positions_buffer, const float* const cutoff_add_buffer,
-	int offset, int n_compounds, float cutoff_add_self, const Float3& abspos_self, int compound_id) 
+__device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const key_positions_others /*[n_compounds, k]*/,
+	const Float3* const key_positions_self, int offset, int n_compounds, int compound_id, const CompoundInteractionBoundary& boundary_self, 
+	const CompoundInteractionBoundary* const boundaries_others)
 {
-	for (int i = 0; i < threads_in_compoundnlist_kernel; i++) {
+	for (int i = 0; i < blockDim.x; i++) {
 		const int query_compound_id = offset + i;
 
 		if (query_compound_id == n_compounds) { break; }
 
 		if (query_compound_id == compound_id) { continue; }	// dont add self to self
 
-		const Float3& querycompound_pos = abs_positions_buffer[i];
-		const float cutoff_add_query = cutoff_add_buffer[i];
-
-		const float dist = EngineUtils::calcHyperDistNM(&abspos_self, &querycompound_pos);
-
-		if (NListUtils::neighborWithinCutoff(&abspos_self, &querycompound_pos, CUTOFF_NM + cutoff_add_self + cutoff_add_query)) {
+		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
+		if (canCompoundsInteract(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
+		{
 			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id)))
 				return false;
 		}
@@ -74,7 +66,7 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 	return true;
 }
 
-
+const int threads_in_compoundnlist_kernel = 256;
 // This kernel creates a new nlist and pushes that to the kernel. Any other kernels that may
 // interact with the neighborlist should come AFTER this kernel. Also, they should only run if this
 // has run, and thus it is not allowed to comment out this kernel call.
@@ -86,24 +78,16 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	
 	NeighborList nlist;
 
-	const Float3 abspos_self = compound_active
-		? getCompoundAbspos(*sim_dev, compound_id)
-		: Float3{};
+	Float3 key_positions_self[CompoundInteractionBoundary::k];
+	if (compound_active)
+		getCompoundAbspositions(*sim_dev, compound_id, key_positions_self);
 
-	const float cutoff_add_self = compound_active
-		? sim_dev->box->compounds[compound_id].radius
-		: 0.f;
+	const CompoundInteractionBoundary boundary_self = compound_active
+		? sim_dev->box->compounds[compound_id].interaction_boundary
+		: CompoundInteractionBoundary{};
 
-
-
-	//// Clear old nlist
-	//if (compound_active) {
-	//	nlist->n_compound_neighbors = 0;
-	//	//nlist->n_gridnodes = 0;// Do this in the other kernel
-	//}
-
-	__shared__ Float3 abs_positions_buffer[threads_in_compoundnlist_kernel];
-	__shared__ float cutoff_add_buffer[threads_in_compoundnlist_kernel];
+	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
+	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
 
 	// Loop over all compounds and add all nearbys
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
@@ -111,21 +95,20 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		const int query_compound_id = threadIdx.x + offset;
 		__syncthreads();
 		if (query_compound_id < n_compounds) {
-			abs_positions_buffer[threadIdx.x] = getCompoundAbspos(*sim_dev, query_compound_id);
-			cutoff_add_buffer[threadIdx.x] = sim_dev->box->compounds[compound_id].radius;
+			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
+			getCompoundAbspositions(*sim_dev, query_compound_id, positionsbegin);
+			boundaries[threadIdx.x] = sim_dev->box->compounds[query_compound_id].interaction_boundary;
 		}
 		__syncthreads();
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
-			const bool success = addAllNearbyCompounds(*sim_dev, nlist, abs_positions_buffer, cutoff_add_buffer, offset, n_compounds, cutoff_add_self, abspos_self, compound_id);
-
+			const bool success = addAllNearbyCompounds(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds, compound_id, boundary_self, boundaries);
 			if (!success) {
 				sim_dev->params->critical_error_encountered = true;
 			}
 		}
 	}
-
 #ifdef ENABLE_SOLVENTS
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active) 
@@ -141,14 +124,11 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 					LIMAPOSITIONSYSTEM::applyPBC(query_origo);
 
 					const int querynode_id = CompoundGrid::get1dIndex(query_origo);
-
 					const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
-					const float dist = EngineUtils::calcHyperDistNM(&abspos_self, &querynode_pos);
 
-					if (dist < CUTOFF_NM + cutoff_add_self) {
+
+					if (canCompoundInteractWithPoint(boundary_self, key_positions_self, querynode_pos)) {
 						const bool success = nlist.addGridnode(querynode_id);
-						// It is NOT handled here, that the gridnode must also have information about this compound;
-
 						if (!success) {
 							sim_dev->params->critical_error_encountered = true;
 						}
@@ -181,35 +161,36 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 
 	const Float3 block_abspos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(block_origo);
 
-	__shared__ Float3 abs_positions_buffer[nthreads_in_blockgridkernel];
-	__shared__ float cutoff_add_buffer[nthreads_in_blockgridkernel];
+	__shared__ Float3 key_positions_buffer[nthreads_in_blockgridkernel * CompoundInteractionBoundary::k];
+	__shared__ CompoundInteractionBoundary boundaries[nthreads_in_blockgridkernel];
 
 	// Loop over all compounds in batches
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
 		const int compound_id = offset + threadIdx.x;
 		__syncthreads();
 		if (compound_id < n_compounds) {
-			abs_positions_buffer[threadIdx.x] = getCompoundAbspos(*sim_dev, compound_id);
-			cutoff_add_buffer[threadIdx.x] = sim_dev->box->compounds[compound_id].radius;
+
+			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
+			getCompoundAbspositions(*sim_dev, compound_id, positionsbegin);
+			boundaries[threadIdx.x] = sim_dev->box->compounds[compound_id].interaction_boundary;
 		}
 		__syncthreads();
 
 		if (block_active) {
-			for (int i = 0; i < nthreads_in_blockgridkernel; i++) {
+			for (int i = 0; i < blockDim.x; i++) {
 				const int querycompound_id = i + offset;
 
 				if (querycompound_id >= n_compounds) { break; }
 
-				const float dist = EngineUtils::calcHyperDistNM(&block_abspos, &abs_positions_buffer[i]);
-
-				if (dist < CUTOFF_NM + cutoff_add_buffer[i]) {
-					gridnode.addNearbyCompound(querycompound_id);
-					// It is NOT handled here, that the compound must also have information about this gridnode;
+				Float3* const positionsbegin = &key_positions_buffer[i * CompoundInteractionBoundary::k];
+				if (canCompoundInteractWithPoint(boundaries[i], positionsbegin, block_abspos)) {
+					if (!gridnode.addNearbyCompound(querycompound_id)) {
+						sim_dev->params->critical_error_encountered = true;
+					}
 				}
 			}
 		}
 	}
-	
 	if (block_active) {
 		CompoundGridNode* gridnode_global = sim_dev->box->compound_grid->getBlockPtr(block_id);
 		gridnode_global->loadData(gridnode);

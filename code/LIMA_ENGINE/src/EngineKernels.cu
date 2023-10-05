@@ -521,7 +521,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
-#include <cuda/barrier>
+//#include <cuda/barrier>
 
 #define compound_index blockIdx.x
 __global__ void compoundKernel(SimulationDevice* sim) {

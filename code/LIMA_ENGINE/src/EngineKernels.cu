@@ -520,11 +520,109 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
+const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+__global__ void compoundBondsKernel(SimulationDevice* sim) {
+	__shared__ CompoundCompact compound;				// Mostly bond information
+	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
+	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
+	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 
-//#include <cuda/barrier>
+	// Buffer to be cast to different datatypes. This is dangerous!
+	__shared__ char utility_buffer[cbkernel_utilitybuffer_size];
+
+	Box* box = sim->box;
+	const Compound* const compound_global = &box->compounds[blockIdx.x];
+
+	if (threadIdx.x == 0) {
+		compound.loadMeta(&box->compounds[blockIdx.x]);
+	}
+	__syncthreads();
+	compound.loadData(&box->compounds[blockIdx.x]);
+	{
+		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
+
+		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, sim->params->step, blockIdx.x);
+		compound_coords->loadData(compoundcoords_global);
+		__syncthreads();
+
+		compound_positions[threadIdx.x] = compound_coords->rel_positions[threadIdx.x].toFloat3();
+		__syncthreads();
+	}
+
+
+
+	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
+	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
+	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
+
+
+	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
+	{
+		{
+			__syncthreads();
+			static_assert(cbkernel_utilitybuffer_size >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
+			SingleBond* singlebonds = (SingleBond*)utility_buffer;
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, singlebonds, box->compounds[blockIdx.x].singlebonds, sizeof(SingleBond) * compound.n_singlebonds);
+			cooperative_groups::wait(block);
+
+			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			const int as = sizeof(AngleBond);
+			static_assert(cbkernel_utilitybuffer_size >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
+			AngleBond* anglebonds = (AngleBond*)utility_buffer;
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, anglebonds, box->compounds[blockIdx.x].anglebonds, sizeof(AngleBond) * compound.n_anglebonds);
+			cooperative_groups::wait(block);
+
+			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			static_assert(cbkernel_utilitybuffer_size >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
+			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, dihedrals, box->compounds[blockIdx.x].dihedrals, sizeof(DihedralBond) * compound.n_dihedrals);
+			cooperative_groups::wait(block);
+
+			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			__syncthreads();
+		}
+		{
+			__syncthreads();
+			static_assert(cbkernel_utilitybuffer_size >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
+			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
+
+			auto block = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(block, impropers, box->compounds[blockIdx.x].impropers, sizeof(ImproperDihedralBond) * compound.n_improperdihedrals);
+			cooperative_groups::wait(block);
+
+			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+
+			__syncthreads();
+		}
+	}
+
+	// Push force and potE to global
+	if (threadIdx.x < compound.n_particles) {
+		sim->box->compounds[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
+		sim->box->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
+	}
+}
+
+
+
 
 #define compound_index blockIdx.x
-__global__ void compoundKernel(SimulationDevice* sim) {
+__global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ NeighborList neighborlist;		
@@ -533,12 +631,12 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_float3;
 	__shared__ int utility_int;
 	// Buffer to be cast to different datatypes. This is dangerous!
-	__shared__ char utility_buffer[utilitybuffer_bytes];
-
+	__shared__ char utility_buffer[clj_utilitybuffer_bytes];
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 	const Compound* const compound_global = &box->compounds[blockIdx.x];
+
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
 		neighborlist.loadMeta(&box->compound_neighborlists[blockIdx.x]);
@@ -547,7 +645,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	compound.loadData(&box->compounds[blockIdx.x]);
 	NodeIndex compound_origo{};
 	{
-		static_assert(utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 
 		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
@@ -562,73 +660,25 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	
 
 
-	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
 	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
 	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
 	Float3 force_LJ_sol(0.f);
+
+	// Important to wipe these, or the bondkernel will add again to next step
+	box->compounds[blockIdx.x].potE_interim[threadIdx.x] = float{};
+	box->compounds[blockIdx.x].forces_interim[threadIdx.x] = Float3{};
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
 		{
 			__syncthreads();
-			static_assert(utilitybuffer_bytes >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
-			SingleBond* singlebonds = (SingleBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, singlebonds, box->compounds[compound_index].singlebonds, sizeof(SingleBond) * compound.n_singlebonds);
-			cooperative_groups::wait(block);
-
-			force += computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			const int as = sizeof(AngleBond);
-			static_assert(utilitybuffer_bytes >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
-			AngleBond* anglebonds = (AngleBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, anglebonds, box->compounds[compound_index].anglebonds, sizeof(AngleBond) * compound.n_anglebonds);
-			cooperative_groups::wait(block);
-
-			force += computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(utilitybuffer_bytes >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
-			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, dihedrals, box->compounds[compound_index].dihedrals, sizeof(DihedralBond) * compound.n_dihedrals);
-			cooperative_groups::wait(block);
-
-			force += computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(utilitybuffer_bytes >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
-			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, impropers, box->compounds[compound_index].impropers, sizeof(ImproperDihedralBond) * compound.n_improperdihedrals);
-			cooperative_groups::wait(block);
-
-			force += computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
+			static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
 			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
 			bonded_particles_lut->load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
 			__syncthreads();
 
 			if (threadIdx.x >= compound.n_particles) {
 				// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-				//force += computeIntracompoundLJForces(compound, compound_positions, potE_sum, bonded_particles_lut);
 				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles, compound.atom_types);
 			}
 			
@@ -665,7 +715,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
 		if (compounds_are_bonded) 
 		{
-			static_assert(utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
+			static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
 			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
 
 			bonded_particles_lut->load(*compoundpair_lut_global);
@@ -724,7 +774,7 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 	{
 		__syncthreads();
 
-		static_assert(utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 		if (threadIdx.x == 0) {
 			compound_coords->origo = compound_origo;
@@ -736,27 +786,26 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 		__syncthreads();
 
 		float speed = 0.f;
-		{
-			if (threadIdx.x < compound.n_particles) {
-				const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+		if (threadIdx.x < compound.n_particles) {
+			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-				const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-				const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 
-				const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
-				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
+			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
 
-				const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
+			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
 
-				box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
-				box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
+			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
 
-				speed = vel_scaled.len();
+			speed = vel_scaled.len();
 
-				// Save pos locally, but only push to box as this kernel ends
-				compound_coords->rel_positions[threadIdx.x] = pos_now;
-			}
+			// Save pos locally, but only push to box as this kernel ends
+			compound_coords->rel_positions[threadIdx.x] = pos_now;
 		}
+		
 		__syncthreads();
 
 		// PBC //
@@ -769,12 +818,12 @@ __global__ void compoundKernel(SimulationDevice* sim) {
 
 			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
 			__syncthreads();
-
-
 		}
 		LIMAPOSITIONSYSTEM_HACK::applyPBC(*compound_coords);
 		__syncthreads();
+
 		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
+
 
 		// Push positions for next step
 		auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);

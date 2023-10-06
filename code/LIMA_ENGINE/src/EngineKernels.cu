@@ -538,6 +538,7 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 	}
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
+
 	{
 		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
@@ -627,7 +628,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ NeighborList neighborlist;		
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
-	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_float3;
 	__shared__ int utility_int;
 	// Buffer to be cast to different datatypes. This is dangerous!
@@ -670,20 +670,21 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
-		{
-			__syncthreads();
-			static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
-			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
-			bonded_particles_lut->load(*box->bonded_particles_lut_manager->get(compound_index, compound_index));	// A lut always exists within a compound
-			__syncthreads();
+		__syncthreads();
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
 
-			if (threadIdx.x >= compound.n_particles) {
-				// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles, compound.atom_types);
-			}
-			
-			__syncthreads();
+		BondedParticlesLUT* bplut_global = box->bonded_particles_lut_manager->get(compound_index, compound_index);
+		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
+
+		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
+		__syncthreads();
+
+		if (threadIdx.x >= compound.n_particles) {
+			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
+			force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles, compound.atom_types);
 		}
+
+		__syncthreads();
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -702,7 +703,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		const CompoundCoords* coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
 		getCompoundHyperpositionsAsFloat3(compound_origo, coords_ptr, utility_buffer_f3, utility_float3, utility_int);
 
-		const int utilitybuffer_reserved_size = 1 * MAX_COMPOUND_PARTICLES;
+		const int utilitybuffer_reserved_size = sizeof(uint8_t) * MAX_COMPOUND_PARTICLES;
 		uint8_t* atomtypes = (uint8_t*)utility_buffer;
 		if (threadIdx.x < utility_int) {
 			atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];

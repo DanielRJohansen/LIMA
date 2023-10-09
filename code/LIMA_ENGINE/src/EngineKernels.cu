@@ -521,7 +521,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
-__global__ void compoundBondsKernel(SimulationDevice* sim) {
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -531,6 +531,7 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 	__shared__ char utility_buffer[cbkernel_utilitybuffer_size];
 
 	Box* box = sim->box;
+	SimParams& simparams = *sim->params;
 	const Compound* const compound_global = &box->compounds[blockIdx.x];
 
 	if (threadIdx.x == 0) {
@@ -539,6 +540,7 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
 
+	__shared__ NodeIndex compound_origo;
 	{
 		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
@@ -547,16 +549,16 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 		compound_coords->loadData(compoundcoords_global);
 		__syncthreads();
 
+		if (threadIdx.x == 0)
+			compound_origo = compound_coords->origo;
+
+
 		compound_positions[threadIdx.x] = compound_coords->rel_positions[threadIdx.x].toFloat3();
 		__syncthreads();
 	}
 
-
-
-	// TODO: Make this only if particle is part of bridge, otherwise skip the fetch and just use 0
-	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
-	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
-
+	float potE_sum{};
+	Float3 force{};
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
@@ -574,7 +576,6 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 		}
 		{
 			__syncthreads();
-			const int as = sizeof(AngleBond);
 			static_assert(cbkernel_utilitybuffer_size >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
 			AngleBond* anglebonds = (AngleBond*)utility_buffer;
 
@@ -612,10 +613,76 @@ __global__ void compoundBondsKernel(SimulationDevice* sim) {
 		}
 	}
 
-	// Push force and potE to global
+	// Fetch interims from other kernels
 	if (threadIdx.x < compound.n_particles) {
-		sim->box->compounds[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
-		sim->box->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
+		force += box->compounds[blockIdx.x].forces_interim[threadIdx.x];
+		potE_sum += box->compounds[blockIdx.x].potE_interim[threadIdx.x];
+	}
+	
+
+
+
+
+
+	// -------------------------------------------------------------- Integration & PBC --------------------------------------------------------------- //	
+	{
+		__syncthreads();
+
+		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
+		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
+		if (threadIdx.x == 0) {
+			compound_coords->origo = compound_origo;
+		}
+		//compound_coords->rel_positions[threadIdx.x] = Coord{ compound_positions[threadIdx.x] };	// Alternately load from global again? Will be more precise
+
+		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
+		compound_coords->rel_positions[threadIdx.x] = compoundcoords_global.rel_positions[threadIdx.x];
+		__syncthreads();
+
+		float speed = 0.f;
+		if (threadIdx.x < compound.n_particles) {
+			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+
+			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
+
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
+			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
+
+			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
+
+			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
+			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
+
+			speed = vel_scaled.len();
+
+			// Save pos locally, but only push to box as this kernel ends
+			compound_coords->rel_positions[threadIdx.x] = pos_now;
+		}
+
+		__syncthreads();
+
+		// PBC //
+		{
+			__shared__ Coord shift_lm;	// Use utility coord for this?
+			if (threadIdx.x == 0) {
+				shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(*compound_coords);
+			}
+			__syncthreads();
+
+			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
+			__syncthreads();
+		}
+		LIMAPOSITIONSYSTEM_HACK::applyPBC(*compound_coords);
+		__syncthreads();
+
+		Float3 force_LJ_sol{};	// temp
+		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
+
+
+		// Push positions for next step
+		auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
+		coordarray_next_ptr->loadData(*compound_coords);
 	}
 }
 
@@ -635,7 +702,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
-	const Compound* const compound_global = &box->compounds[blockIdx.x];
 
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
@@ -658,13 +724,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		__syncthreads();
 	}
 	
+	float potE_sum{};
+	Float3 force{};
 
-
-	float potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
-	Float3 force = box->compounds[blockIdx.x].forces_interim[threadIdx.x];
-	Float3 force_LJ_sol(0.f);
-
-	// Important to wipe these, or the bondkernel will add again to next step
+	// Important to wipe these, or the bondkernel will add again to next step	- or is it still now?
 	box->compounds[blockIdx.x].potE_interim[threadIdx.x] = float{};
 	box->compounds[blockIdx.x].forces_interim[threadIdx.x] = Float3{};
 
@@ -771,66 +834,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	// -------------------------------------------------------------- Integration & PBC --------------------------------------------------------------- //	
-	{
-		__syncthreads();
-
-		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
-		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
-		if (threadIdx.x == 0) {
-			compound_coords->origo = compound_origo;
-		}
-		//compound_coords->rel_positions[threadIdx.x] = Coord{ compound_positions[threadIdx.x] };	// Alternately load from global again? Will be more precise
-
-		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
-		compound_coords->rel_positions[threadIdx.x] = compoundcoords_global.rel_positions[threadIdx.x];
-		__syncthreads();
-
-		float speed = 0.f;
-		if (threadIdx.x < compound.n_particles) {
-			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
-
-			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
-
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.constparams.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.constparams.dt);
-
-			const Float3 vel_scaled = vel_now * simparams.thermostat_scalar;
-
-			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
-			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
-
-			speed = vel_scaled.len();
-
-			// Save pos locally, but only push to box as this kernel ends
-			compound_coords->rel_positions[threadIdx.x] = pos_now;
-		}
-		
-		__syncthreads();
-
-		// PBC //
-		{
-			__shared__ Coord shift_lm;	// Use utility coord for this?
-			if (threadIdx.x == 0) {
-				shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(*compound_coords);
-			}
-			__syncthreads();
-
-			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
-			__syncthreads();
-		}
-		LIMAPOSITIONSYSTEM_HACK::applyPBC(*compound_coords);
-		__syncthreads();
-
-		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, sim->databuffers, speed);
 
 
-		// Push positions for next step
-		auto* coordarray_next_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step + 1, blockIdx.x);
-		coordarray_next_ptr->loadData(*compound_coords);
+
+	// This is the first kernel, so we overwrite
+	if (threadIdx.x < compound.n_particles) {
+		sim->box->compounds[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
+		sim->box->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
-	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 }
 #undef compound_index
 
@@ -1106,11 +1117,11 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__syncthreads();
 	// --------------------------------------------------------------------------------------------------------------------------------------------------- //
 
+	// This is 2nd kernel so we add to the interims
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
-		box->compounds[p_ref->compound_id].forces_interim[p_ref->local_id_compound] = force;
-
-		sim->box->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] = potE_sum;
+		box->compounds[p_ref->compound_id].forces_interim[p_ref->local_id_compound] += force;
+		sim->box->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}
 }
 

@@ -18,7 +18,7 @@
 #include <memory>
 #include <vector>
 
-__global__ void compoundBondsKernel(SimulationDevice* sim);
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
 __global__ void compoundLJKernel(SimulationDevice* sim);
 __global__ void solventForceKernel(SimulationDevice* sim);

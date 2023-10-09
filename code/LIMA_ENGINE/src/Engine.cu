@@ -198,18 +198,19 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 
 
+	if (simulation->boxparams_host.n_compounds > 0) {
+		compoundLJKernel << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
+	}
+
+	cudaDeviceSynchronize();
+
 	if (simulation->boxparams_host.n_bridges > 0) {
 		compoundBridgeKernel<<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (simulation->sim_dev);	// Must come before compoundKernel()
 	}
 
-
 	cudaDeviceSynchronize();
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundBondsKernel << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
-
-		cudaDeviceSynchronize();
-
-		compoundLJKernel<< < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
+		compoundBondsAndIntegrationKernel << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->sim_dev);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();

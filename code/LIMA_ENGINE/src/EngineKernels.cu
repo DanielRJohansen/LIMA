@@ -28,7 +28,7 @@ void Engine::setDeviceConstantMemory() {
 }
 
 __device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
-	return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5;
+	return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5f;
 }
 __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
@@ -55,7 +55,7 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 
 // Two variants of this exists, with and without lut
 __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const BondedParticlesLUT* const bonded_particles_lut)
+	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const BondedParticlesLUT* const bonded_particles_lut, LimaForcecalc::CalcLJOrigin ljorigin)
 {
 	Float3 force(0.f);
 
@@ -68,8 +68,8 @@ __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_
 
 		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
-			LimaForcecalc::CalcLJOrigin::ComComInter,
-			0,0
+			ljorigin,
+			threadIdx.x,neighborparticle_id
 			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
@@ -360,11 +360,12 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 		// calc Relative LimaPosition Shift from the origo-shift
 		utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 	}
-	__syncthreads();
+//	__syncthreads();
 
 	auto block = cooperative_groups::this_thread_block();
 	cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
 	cooperative_groups::wait(block);
+	__syncthreads();
 
 	// Eventually i could make it so i only copy the active particles in the compound
 	if (threadIdx.x < n_particles) {
@@ -742,9 +743,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
 		__syncthreads();
 
-		if (threadIdx.x >= compound.n_particles) {
+		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-			force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles, compound.atom_types);
+			force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
+				compound.atom_types, bonded_particles_lut, LimaForcecalc::CalcLJOrigin::ComComIntra);
 		}
 
 		__syncthreads();
@@ -787,7 +789,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 			if (threadIdx.x < compound.n_particles) {
 				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-					utility_buffer_f3, utility_int, atomtypes, bonded_particles_lut);
+					utility_buffer_f3, utility_int, atomtypes, bonded_particles_lut, LimaForcecalc::CalcLJOrigin::ComComInter);
 			}
 		}
 		else {

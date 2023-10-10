@@ -9,7 +9,7 @@
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
 // sim with no impropers has this effect. It is very wierd, and i fear i have some undefined behavior
 // somewhere in the code
-//#define LIMASAFEMODE
+#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
@@ -91,7 +91,7 @@ const bool POSTSIM_ANAL = true;
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-//#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 
 const int MAX_SOLVENTS_IN_BLOCK = 256;
@@ -106,7 +106,7 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
-const bool CALC_POTE = false;
+const bool CALC_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 

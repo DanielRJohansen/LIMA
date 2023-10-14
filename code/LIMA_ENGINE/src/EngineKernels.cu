@@ -21,19 +21,27 @@
 __constant__ ForceField_NB forcefield_device;
 
 void Engine::setDeviceConstantMemory() {
-	//const int forcefield_bytes = sizeof(ForceField_NB);
+	const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();
 	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
 }
 
+// __constant__ mem version
 __device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
 	return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5f;
 }
+// __shared__ mem version
+__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+	return (forcefield.particle_parameters[atomtype1].sigma + forcefield.particle_parameters[atomtype2].sigma) * 0.5f;
+}
+
 __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
 }
-
+__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+	return sqrtf(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
+}
 
 // ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
 
@@ -55,7 +63,8 @@ __device__ Coord getRandomCoord(int lcg_seed) {
 
 // Two variants of this exists, with and without lut
 __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const BondedParticlesLUT* const bonded_particles_lut, LimaForcecalc::CalcLJOrigin ljorigin)
+	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, 
+	const BondedParticlesLUT* const bonded_particles_lut, LimaForcecalc::CalcLJOrigin ljorigin)
 {
 	Float3 force(0.f);
 
@@ -77,14 +86,15 @@ __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_
 }
 
 __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types) {
+	const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield) 
+{
 	Float3 force(0.f);
 
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 		const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
 		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
-			calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
+			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 			LimaForcecalc::CalcLJOrigin::ComComInter
 			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
@@ -701,6 +711,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[clj_utilitybuffer_bytes];
 
+	__shared__ ForceField_NB forcefield_shared;
+
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
@@ -724,6 +736,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		compound_positions[threadIdx.x] = compound_coords->rel_positions[threadIdx.x].toFloat3();
 		__syncthreads();
 	}
+
+	// Load Forcefield
+	if (threadIdx.x < MAX_ATOM_TYPES)
+		forcefield_shared.particle_parameters[threadIdx.x] = forcefield_device.particle_parameters[threadIdx.x];
+
 	
 	float potE_sum{};
 	Float3 force{};
@@ -754,6 +771,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //	
+
+
 
 	// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 	__syncthreads();
@@ -795,7 +814,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		else {
 			if (threadIdx.x < compound.n_particles) {
 				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-					utility_buffer_f3, utility_int, atomtypes);
+					utility_buffer_f3, utility_int, atomtypes, forcefield_shared);
 			}
 		}
 		__syncthreads();

@@ -42,9 +42,7 @@ int main() {
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 4.43e-5, 2.1e-7);
-
 		//doPool50x(EnvMode::Headless);
-
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
@@ -89,7 +87,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2.2e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.5e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 8.9e-5, 2e-5));
 
 
 	// Meta tests

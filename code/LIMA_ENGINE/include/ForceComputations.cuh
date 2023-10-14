@@ -239,19 +239,22 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 	// Returns force in J/mol*M		?????????????!?!?//
 
 	// Directly from book
-	const float dist_sq = (pos1 - pos0).lenSquared();
+	const Float3 diff = (pos1 - pos0);
+
+	const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
 	if constexpr (HARD_CUTOFF) {
 		//printf("%f / %f\n", dist_sq, 1.8f * 1.8f * NANO_TO_LIMA * NANO_TO_LIMA);
-		if (dist_sq > 1.8f * 1.8f * NANO_TO_LIMA*NANO_TO_LIMA) {
+		constexpr float threshold = 1. / ( 1.8 * 1.8 * NANO_TO_LIMA * NANO_TO_LIMA);
+		if (dist_sq_reciprocal < threshold) {
 			return Float3{ 0,0,0 };
 		}
 	}
-
-	float s = (sigma * sigma) / dist_sq;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
+	float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
-	const float force_scalar = epsilon * s / dist_sq * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
-	const Float3 force = (pos1 - pos0) * force_scalar;
+	const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+
+	const Float3 force = diff * force_scalar;
 
 	if constexpr (CALC_POTE) {
 		potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation

@@ -9,7 +9,7 @@
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
 // sim with no impropers has this effect. It is very wierd, and i fear i have some undefined behavior
 // somewhere in the code
-#define LIMASAFEMODE
+//#define LIMASAFEMODE
 //#define LIMAPUSH
 #if defined LIMAPUSH && defined LIMASAFEMODE
 #error These are mutually exclusive

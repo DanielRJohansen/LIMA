@@ -40,7 +40,7 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
 }
 __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-	return sqrtf(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
+	return __fsqrt_rn(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
 }
 
 // ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
@@ -386,7 +386,19 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	__syncthreads();
 }
 
+__device__ void getCompoundHyperpositionsAsFloat3Async(const CompoundCoords* const querycompound,
+	void* output_buffer, const int n_particles, const Float3& relshift)
+{
+	auto block = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
+	cooperative_groups::wait(block);
 
+	// Eventually i could make it so i only copy the active particles in the compound
+	if (threadIdx.x < n_particles) {
+		const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
+		((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
+	}
+}
 
 /// <summary>
 /// </summary>
@@ -708,7 +720,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ NeighborList neighborlist;		
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_float3;
-	__shared__ int utility_int;
+	//__shared__ int utility_int;
 	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[clj_utilitybuffer_bytes];
 
@@ -772,54 +784,78 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //	
-
-
-
-	// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
-	__syncthreads();
-	for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
-		const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
-
-		if (threadIdx.x == 0) {
-			utility_int = box->compounds[neighborcompound_id].n_particles;
-		}
-		__syncthreads();
-
-		const CompoundCoords* coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-		getCompoundHyperpositionsAsFloat3(compound_origo, coords_ptr, utility_buffer_f3, utility_float3, utility_int);
+	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
+	{
+		const int batchsize = 32;
+		__shared__ Float3 relshifts[batchsize];
+		__shared__ int neighbor_n_particles[batchsize];
+		__shared__ CompoundCoords* coords_ptrs[batchsize];
 
 		const int utilitybuffer_reserved_size = sizeof(uint8_t) * MAX_COMPOUND_PARTICLES;
 		uint8_t* atomtypes = (uint8_t*)utility_buffer;
-		if (threadIdx.x < utility_int) {
-			atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
-		}
+
+		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		__syncthreads();
-
-
-
-		BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
-		const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
-		if (compounds_are_bonded) 
+		int batch_index = batchsize;
+		for (int i = 0; i < neighborlist.n_compound_neighbors; i++)
 		{
-			static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
-			BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
+			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
+			if (batch_index == batchsize) {
+				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
+					const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
+					const CompoundCoords* const querycompound = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, query_compound_id);
+					const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_origo, querycompound->origo);
+					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
 
-			bonded_particles_lut->load(*compoundpair_lut_global);
+					// calc Relative LimaPosition Shift from the origo-shift
+					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
+
+					neighbor_n_particles[threadIdx.x] = box->compounds[query_compound_id].n_particles;
+
+					coords_ptrs[threadIdx.x] = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, query_compound_id);
+				}
+				batch_index = 0;
+			}
 			__syncthreads();
 
-			if (threadIdx.x < compound.n_particles) {
-				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-					utility_buffer_f3, utility_int, atomtypes, bonded_particles_lut, LimaForcecalc::CalcLJOrigin::ComComInter, forcefield_shared);
+			const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
+			const int n_particles_neighbor = neighbor_n_particles[batch_index];
+
+			// Load the current neighbors atomtypes and positions
+			if (threadIdx.x < n_particles_neighbor) {
+				atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
 			}
-		}
-		else {
-			if (threadIdx.x < compound.n_particles) {
-				force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-					utility_buffer_f3, utility_int, atomtypes, forcefield_shared);
+			//const CompoundCoords* coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
+			//getCompoundHyperpositionsAsFloat3Async(coords_ptr, utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
+			getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
+			__syncthreads();
+
+
+
+			BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
+			const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
+			if (compounds_are_bonded)
+			{
+				static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
+				BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
+
+				bonded_particles_lut->load(*compoundpair_lut_global);
+				__syncthreads();
+
+				if (threadIdx.x < compound.n_particles) {
+					force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LimaForcecalc::CalcLJOrigin::ComComInter, forcefield_shared);
+				}
 			}
+			else {
+				if (threadIdx.x < compound.n_particles) {
+					force += computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared);
+				}
+			}
+			//__syncthreads();
+			batch_index++;
 		}
-		__syncthreads();
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 

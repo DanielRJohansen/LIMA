@@ -469,9 +469,9 @@ class FixedSizeMatrix<bool,len>{
 public:
 	__device__ FixedSizeMatrix() {}
 	__host__ FixedSizeMatrix(bool val) {
-		uint8_t bit = val ? 1 : 0;
+		//uint8_t bit = val ? 1 : 0;
 		for (int i = 0; i < m_size; i++) {
-			matrix[i] = bit ? 0xFF : 0x00;
+			matrix[i] = val ? 0xFF : 0;
 		}
 	}
 

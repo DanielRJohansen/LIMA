@@ -1,7 +1,7 @@
 #pragma once
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-constexpr float CUTOFF_NM = 1.3f;
+constexpr float CUTOFF_NM = 1.2f;
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr int _BOX_LEN_PM = 7200;

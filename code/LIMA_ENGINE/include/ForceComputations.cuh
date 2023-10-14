@@ -245,7 +245,7 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 
 	if constexpr (HARD_CUTOFF) {
 		//printf("%f / %f\n", dist_sq, 1.8f * 1.8f * NANO_TO_LIMA * NANO_TO_LIMA);
-		constexpr float threshold = 1. / ( 1.8 * 1.8 * NANO_TO_LIMA * NANO_TO_LIMA);
+		constexpr float threshold = 1. / ( 1.4 * 1.4 * NANO_TO_LIMA * NANO_TO_LIMA);
 		if (dist_sq_reciprocal < threshold) {
 			return Float3{ 0,0,0 };
 		}
@@ -257,7 +257,8 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 	const Float3 force = diff * force_scalar;
 
 	if constexpr (CALC_POTE) {
-		potE += 4. * epsilon * s * (s - 1.f) * 0.5;	// 0.5 to account for 2 particles doing the same calculation
+		//potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for 2 particles doing the same calculation
+		potE += 2.f * epsilon * s * (s - 1.f);
 	}
 #if defined LIMASAFEMODE
 	auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;

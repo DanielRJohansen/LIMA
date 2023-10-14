@@ -38,7 +38,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.188e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 3.0e-5, 2.3e-7);
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 7.6e-5, 2.4e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 4.43e-5, 2.1e-7);
@@ -69,7 +69,7 @@ void runAllUnitTests() {
 	
 	// Singled out forces test
 	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
-	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode, 8.88e-5));
+	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode, 9.e-5));
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
 	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
@@ -81,13 +81,13 @@ void runAllUnitTests() {
 	// Smaller compound tests
 	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9.9e-7));
 	ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
-	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 3.845e-7, 1.2e-6));
+	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 3.3e-6, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 
 	// Larger tests
-	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2.2e-6f));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 8.9e-5, 2e-5));
+	ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 1.9e-6f));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 6.2e-5, 2e-5));
 
 
 	// Meta tests

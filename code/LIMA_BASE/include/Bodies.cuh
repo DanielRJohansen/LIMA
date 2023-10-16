@@ -472,6 +472,41 @@ struct CompoundInteractionBoundary {
 	int key_particle_indices[k];
 };
 
+// This part is needed to compress the amount of atomtypes are "stored" in a compound
+// We will pre-compute all combinations of the compressed atomtypes with ALL OTHER atomtypes.
+// This precomputation is done host-side once before the simulation begins.
+// At the creation i expect the will be 16*48*2*2bytes of data in this table, which is 3kb, so the 
+// compression is crucial
+// LATID == local atomtype id
+struct CompoundAtomtypesCompression {
+	
+	__host__ void addParticle(int atomtype_id, int particle_lid, std::vector<int>& local_atomtype_to_LATID_map) {
+		if (local_atomtype_to_LATID_map[atomtype_id] == -1) {
+			// First of this atomtype in compound
+
+			if (n_unique_LATIDs == max_atomtypes_in_compound) {
+				throw std::runtime_error("Cannot add more unique atomtypes to this compound");
+			}
+
+			local_atomtype_to_LATID_map[atomtype_id] = n_unique_LATIDs;	// Only used in factory
+
+			LATID_to_atomtype[n_unique_LATIDs] = atomtype_id;
+			particleid_to_LATID[particle_lid] = local_atomtype_to_LATID_map[atomtype_id];
+
+			n_unique_LATIDs++;
+		}
+		else {
+			// LATID already exists
+			particleid_to_LATID[particle_lid] = local_atomtype_to_LATID_map[atomtype_id];
+		}
+	}
+
+
+	static const int max_atomtypes_in_compound = 24;
+	int8_t LATID_to_atomtype[max_atomtypes_in_compound];
+	int n_unique_LATIDs = 0;
+	int8_t particleid_to_LATID[MAX_COMPOUND_PARTICLES];
+};
 
 
 struct CompoundCompact {
@@ -490,7 +525,9 @@ struct CompoundCompact {
 	int n_dihedrals = 0;
 	int n_improperdihedrals = 0;
 
-
+	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
+	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
+	int n_bonded_compounds = 0;
 
 	__device__ void loadMeta(CompoundCompact* compound) {
 		n_particles = compound->n_particles;
@@ -498,6 +535,7 @@ struct CompoundCompact {
 		n_anglebonds = compound->n_anglebonds;
 		n_dihedrals = compound->n_dihedrals;
 		n_improperdihedrals = compound->n_improperdihedrals;
+		n_bonded_compounds = compound->n_bonded_compounds;
 	}
 
 	__device__ void loadData(CompoundCompact* compound) {
@@ -511,6 +549,7 @@ struct CompoundCompact {
 	}
 };
 
+// Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
 	__host__ __device__ Compound() {}
 
@@ -534,6 +573,13 @@ struct Compound : public CompoundCompact {
 
 	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
+
+	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
+
+
+	CompoundAtomtypesCompression compressed_atomtypes;
+
+
 };
 
 
@@ -668,6 +714,8 @@ struct ForceField_NB {
 
 class NeighborList {
 public:
+	//__device__ __device__ NeighborList() {}
+	//__device__ NeighborList(int id) : associated_id(id) {}
 	// returns false if an error occured
 	__device__ __host__ bool addCompound(uint16_t new_id);
 
@@ -694,6 +742,8 @@ public:
 #endif
 	}
 
+	// It is guaranteed that the first compoudns are bonded_compounds. How many, that is something the compound
+	// itself keeps track of
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
 	int n_compound_neighbors = 0;

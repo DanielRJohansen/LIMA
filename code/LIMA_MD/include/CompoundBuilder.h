@@ -83,7 +83,9 @@ using ParticleInfoTable = std::vector<ParticleInfo>;
 class CompoundFactory : public Compound {
 public:
 	CompoundFactory() {}
-	CompoundFactory(const int id) : id(id) {
+	CompoundFactory(const int id) : 
+		id(id), local_atomtype_to_LATID_map(MAX_ATOM_TYPES, -1)
+	{
 		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
 			potE_interim[i] = 0.f;
 		}
@@ -102,8 +104,13 @@ public:
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
 	}
 
+	void addIdOfBondedCompound(int id);
+
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
 	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug
+
+
+	std::vector<int> local_atomtype_to_LATID_map;
 };
 
 

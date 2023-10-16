@@ -688,6 +688,18 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 		}
 	}
 
+	// Finally tell each compound which other compounds they are bonded to for faster lookup of LUTs
+	for (const auto& bridge : compound_bridges) {
+		for (int i = 0; i < bridge.n_compounds; i++) {
+			for (int ii = i + 1; ii < bridge.n_compounds; ii++) {
+				if (bridge.compound_ids[i] == bridge.compound_ids[ii]) {
+					throw std::runtime_error("A bridge contains the same compound twice");
+				}
+				compounds[bridge.compound_ids[i]].addIdOfBondedCompound(bridge.compound_ids[ii]);
+				compounds[bridge.compound_ids[ii]].addIdOfBondedCompound(bridge.compound_ids[i]);
+			}
+		}
+	}
 }
 
 
@@ -873,6 +885,9 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	atom_types[n_particles] = atomtype_id;
 	atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
 
+	// Map the particle to a LATID
+	compressed_atomtypes.addParticle(atomtype_id, n_particles, local_atomtype_to_LATID_map);
+
 	n_particles++;
 }
 
@@ -931,6 +946,20 @@ void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const Impr
 		bondtype.k_psi
 	);
 }
+
+void CompoundFactory::addIdOfBondedCompound(int id) {
+	if (n_bonded_compounds == max_bonded_compounds) { throw std::runtime_error("Failed to add bonded compound id to compound"); }
+
+	for (int i = 0; i < n_bonded_compounds; i++) {
+		// If the other compound is already saved, move do nothing
+		if (bonded_compound_ids[i] == id)
+			return;
+	}
+	bonded_compound_ids[n_bonded_compounds++] = id;
+}
+
+
+
 
 
 

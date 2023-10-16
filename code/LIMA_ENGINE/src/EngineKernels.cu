@@ -40,6 +40,7 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
 	return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
 }
 __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+	//return 1.4f;
 	return __fsqrt_rn(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
 }
 
@@ -794,11 +795,15 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		const int utilitybuffer_reserved_size = sizeof(uint8_t) * MAX_COMPOUND_PARTICLES;
 		uint8_t* atomtypes = (uint8_t*)utility_buffer;
 
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
+		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
+
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		__syncthreads();
 		int batch_index = batchsize;
 		for (int i = 0; i < neighborlist.n_compound_neighbors; i++)
 		{
+			__syncthreads();
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (batch_index == batchsize) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
@@ -815,8 +820,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 					coords_ptrs[threadIdx.x] = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, query_compound_id);
 				}
 				batch_index = 0;
+				__syncthreads();
 			}
-			__syncthreads();
 
 			const uint16_t neighborcompound_id = neighborlist.neighborcompound_ids[i];
 			const int n_particles_neighbor = neighbor_n_particles[batch_index];
@@ -825,20 +830,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			if (threadIdx.x < n_particles_neighbor) {
 				atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
 			}
-			//const CompoundCoords* coords_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_id);
-			//getCompoundHyperpositionsAsFloat3Async(coords_ptr, utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
 			getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
 			__syncthreads();
 
 
-
-			BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
-			const bool compounds_are_bonded = compoundpair_lut_global != nullptr;
-			if (compounds_are_bonded)
+			// The bonded compounds always comes first in the list
+			if (i < compound.n_bonded_compounds)
 			{
-				static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
-				BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
-
+				BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
 				bonded_particles_lut->load(*compoundpair_lut_global);
 				__syncthreads();
 
@@ -853,7 +852,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared);
 				}
 			}
-			//__syncthreads();
 			batch_index++;
 		}
 	}

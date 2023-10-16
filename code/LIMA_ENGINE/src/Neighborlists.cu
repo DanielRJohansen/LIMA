@@ -47,14 +47,31 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 // Returns false if an error occured
 __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const key_positions_others /*[n_compounds, k]*/,
 	const Float3* const key_positions_self, int offset, int n_compounds, int compound_id, const CompoundInteractionBoundary& boundary_self, 
-	const CompoundInteractionBoundary* const boundaries_others)
+	const CompoundInteractionBoundary* const boundaries_others,
+	int n_bonded_compounds, const int* const bonded_compound_ids)
 {
+	// Now add all compounds nearby we are NOT bonded to. (They were added before this)
 	for (int i = 0; i < blockDim.x; i++) {
 		const int query_compound_id = offset + i;
 
 		if (query_compound_id == n_compounds) { break; }
 
 		if (query_compound_id == compound_id) { continue; }	// dont add self to self
+
+		// Dont add bonded compounds to list again
+		bool is_bonded_to_query = false;
+		for (int i = 0; i < n_bonded_compounds; i++) {
+			if (query_compound_id == bonded_compound_ids[i]) { 
+				is_bonded_to_query = true;
+				break;
+			}
+		}
+		if (is_bonded_to_query) { continue; }
+
+	/*	auto lut = sim_dev.box->bonded_particles_lut_manager->get(compound_id, query_compound_id);
+		if (lut != nullptr || query_compound_id == nlist.neighborcompound_ids[0]) {
+			printf("WTF is going on here %d %d\n", compound_id, query_compound_id);
+		}*/
 
 		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
 		if (canCompoundsInteract(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
@@ -86,6 +103,22 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		? sim_dev->box->compounds[compound_id].interaction_boundary
 		: CompoundInteractionBoundary{};
 
+	int bonded_compound_ids[Compound::max_bonded_compounds];
+	const int n_bonded_compounds = compound_active
+		? sim_dev->box->compounds[compound_id].n_bonded_compounds
+		: 0;
+	for (int i = 0; i < n_bonded_compounds; i++) {
+		bonded_compound_ids[i] = sim_dev->box->compounds[compound_id].bonded_compound_ids[i];
+	}
+	// First add all the bonded compounds to the list
+	{
+		// First add the compounds that we are bonded to
+		for (int i = 0; i < n_bonded_compounds; i++) {
+			if (!nlist.addCompound(static_cast<uint16_t>(bonded_compound_ids[i]))) { sim_dev->params->critical_error_encountered = true; }
+		}
+	}
+
+
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
 
@@ -103,7 +136,8 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
-			const bool success = addAllNearbyCompounds(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds, compound_id, boundary_self, boundaries);
+			const bool success = addAllNearbyCompounds(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds, 
+				compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids);
 			if (!success) {
 				sim_dev->params->critical_error_encountered = true;
 			}

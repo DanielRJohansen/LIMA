@@ -529,6 +529,17 @@ namespace EngineUtils {
 		auto pos2 = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(o2, relpos2);
 		return (pos1 - pos2).len();
 	}
+
+	__device__ static bool isOutsideCutoff(const float dist_sq_reciprocal) {
+		if constexpr (HARD_CUTOFF) {
+			constexpr float threshold = 1. / (CUTOFF_LM * CUTOFF_LM);
+			if (dist_sq_reciprocal < threshold) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
 };
 
 

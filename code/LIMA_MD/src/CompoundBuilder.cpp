@@ -885,9 +885,6 @@ void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int a
 	atom_types[n_particles] = atomtype_id;
 	atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
 
-	// Map the particle to a LATID
-	compressed_atomtypes.addParticle(atomtype_id, n_particles, local_atomtype_to_LATID_map);
-
 	n_particles++;
 }
 

@@ -229,7 +229,7 @@ __device__ static const char* calcLJOriginString[] = {
 };
 
 // This function does not add the 24 scalar, the caller fucntion must do so!
-__device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1, float& potE, const float sigma, const float epsilon, 
+__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
 	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
@@ -239,17 +239,6 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 	// Returns force in J/mol*M		?????????????!?!?//
 
 	// Directly from book
-	const Float3 diff = (pos1 - pos0);
-
-	const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-
-	if constexpr (HARD_CUTOFF) {
-		//printf("%f / %f\n", dist_sq, 1.8f * 1.8f * NANO_TO_LIMA * NANO_TO_LIMA);
-		constexpr float threshold = 1. / ( 1.4 * 1.4 * NANO_TO_LIMA * NANO_TO_LIMA);
-		if (dist_sq_reciprocal < threshold) {
-			return Float3{ 0,0,0 };
-		}
-	}
 	float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;
 	const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
@@ -267,11 +256,11 @@ __device__ static Float3 calcLJForceOptim(const Float3& pos0, const Float3& pos1
 		////((*pos1 - *pos0) * force_scalar).print('f');
 		pos0.print('0');
 		pos1.print('1');
-		printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n", 
+		printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
 			calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);
 	}
 #endif
 
 	return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
-	}
+}
 }	// End of namespace LimaForcecalc

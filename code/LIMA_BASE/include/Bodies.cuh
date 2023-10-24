@@ -472,43 +472,6 @@ struct CompoundInteractionBoundary {
 	int key_particle_indices[k];
 };
 
-// This part is needed to compress the amount of atomtypes are "stored" in a compound
-// We will pre-compute all combinations of the compressed atomtypes with ALL OTHER atomtypes.
-// This precomputation is done host-side once before the simulation begins.
-// At the creation i expect the will be 16*48*2*2bytes of data in this table, which is 3kb, so the 
-// compression is crucial
-// LATID == local atomtype id
-struct CompoundAtomtypesCompression {
-	
-	__host__ void addParticle(int atomtype_id, int particle_lid, std::vector<int>& local_atomtype_to_LATID_map) {
-		if (local_atomtype_to_LATID_map[atomtype_id] == -1) {
-			// First of this atomtype in compound
-
-			if (n_unique_LATIDs == max_atomtypes_in_compound) {
-				throw std::runtime_error("Cannot add more unique atomtypes to this compound");
-			}
-
-			local_atomtype_to_LATID_map[atomtype_id] = n_unique_LATIDs;	// Only used in factory
-
-			LATID_to_atomtype[n_unique_LATIDs] = atomtype_id;
-			particleid_to_LATID[particle_lid] = local_atomtype_to_LATID_map[atomtype_id];
-
-			n_unique_LATIDs++;
-		}
-		else {
-			// LATID already exists
-			particleid_to_LATID[particle_lid] = local_atomtype_to_LATID_map[atomtype_id];
-		}
-	}
-
-
-	static const int max_atomtypes_in_compound = 24;
-	int8_t LATID_to_atomtype[max_atomtypes_in_compound];
-	int n_unique_LATIDs = 0;
-	int8_t particleid_to_LATID[MAX_COMPOUND_PARTICLES];
-};
-
-
 struct CompoundCompact {
 	__host__ __device__ CompoundCompact() {}
 
@@ -575,11 +538,6 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-
-
-	CompoundAtomtypesCompression compressed_atomtypes;
-
-
 };
 
 

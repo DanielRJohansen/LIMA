@@ -76,7 +76,11 @@ __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_
 
 		const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
-		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
+		const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
+		const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+		if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+
+		force += LimaForcecalc::calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 			ljorigin,
 			threadIdx.x,neighborparticle_id
@@ -94,17 +98,21 @@ __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_
 	for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 		const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
-		force += LimaForcecalc::calcLJForceOptim(self_pos, neighbor_positions[neighborparticle_id], potE_sum,
+		const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
+		const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+		if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+
+		force += LimaForcecalc::calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 			LimaForcecalc::CalcLJOrigin::ComComInter
 			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
-		);
+			);
 	}
 	return force * 24.f;
 }
 
 
-__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, bool exclude_own_index, float& potE_sum) {	// Specific to solvent kernel
+__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {	// Specific to solvent kernel
 	Float3 force{};
 
 	for (int i = 0; i < n_elements; i++) {
@@ -112,7 +120,11 @@ __device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, con
 		// If computing within block, dont compute force against thread's solvent
 		if (exclude_own_index && threadIdx.x == i) { continue; }
 
-		force += LimaForcecalc::calcLJForceOptim(relpos_self, relpos_others[i], potE_sum,
+		const Float3 diff = (relpos_others[i] - relpos_self);
+		const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+		if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+
+		force += LimaForcecalc::calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 			forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 			exclude_own_index ? LimaForcecalc::CalcLJOrigin::SolSolIntra : LimaForcecalc::CalcLJOrigin::SolSolInter,
@@ -126,7 +138,12 @@ __device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const
 const ForceField_NB& forcefield) {	// Specific to solvent kernel
 	Float3 force{};
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], potE_sum,
+
+		const Float3 diff = (positions[i] - self_pos);
+		const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+		if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+
+		force += LimaForcecalc::calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 			calcSigma(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 			calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 			LimaForcecalc::CalcLJOrigin::SolCom,
@@ -141,7 +158,12 @@ __device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const
 {
 	Float3 force(0.f);
 	for (int i = 0; i < n_particles; i++) {
-		force += LimaForcecalc::calcLJForceOptim(self_pos, positions[i], potE_sum,
+
+		const Float3 diff = (positions[i] - self_pos);
+		const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+		if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+
+		force += LimaForcecalc::calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 			calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 			LimaForcecalc::CalcLJOrigin::ComSol,

@@ -34,7 +34,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndEMAndRunBasicSimulation("SolventBenchmark", envmode, 2e-6);
+		//loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f);
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.188e-5, 2e-5);
@@ -86,7 +86,7 @@ void runAllUnitTests() {
 
 
 	// Larger tests
-	//ADD_TEST(testman, "SolventBenchmark", loadAndEMAndRunBasicSimulation("Solventsonly", envmode, 3.7e-6f));
+	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f));
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.1e-5, 2e-5));
 
 

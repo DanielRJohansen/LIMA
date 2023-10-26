@@ -14,7 +14,7 @@
 #include <iostream>
 #include <optional>
 #include <functional>
-
+#include <filesystem>
 
 namespace TestUtils {
 #ifndef __linux__
@@ -24,13 +24,25 @@ namespace TestUtils {
 	const std::string simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
 #endif
 
+	std::string getMostSuitableGroFile(const std::string& workdir) {
+		const std::string em = workdir + "molecule/em.gro";
+		const std::string conf = workdir + "molecule/conf.gro";
+		if (std::filesystem::exists(em)) {
+			return em;
+		}
+		else {
+			return conf;
+		}
+	}
+
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<InputSimParams> simparams, EnvMode envmode) {
 		
 		const std::string work_folder = simulations_dir + foldername + "/";
-		const std::string conf = work_folder + "molecule/conf.gro";
+		//const std::string conf = work_folder + "molecule/conf.gro";
+		const std::string conf = getMostSuitableGroFile(work_folder);
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
 

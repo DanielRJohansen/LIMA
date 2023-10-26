@@ -35,7 +35,7 @@ class Environment
 {
 public:
 	Environment(const Environment&) = delete;
-	Environment(const string& wf, EnvMode mode);
+	Environment(const string& wf, EnvMode mode, bool save_output);
 
 	void CreateSimulation(string conf_filename, string topol_filename, InputSimParams);
 
@@ -81,6 +81,7 @@ private:
 	void sayHello();
 
 	EnvMode m_mode;
+	const bool save_output;
 
 	std::unique_ptr<Display> display;
 	int step_at_last_render = 0;

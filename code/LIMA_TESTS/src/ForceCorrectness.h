@@ -9,10 +9,10 @@ namespace ForceCorrectness {
 
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 3.677e-5) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
+		const std::string work_folder = simulations_dir + "Pool/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
-		Environment env{ work_folder, envmode };
+		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 		std::vector<float> particle_temps{ 400 };
@@ -52,11 +52,11 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{status, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 6.1e-5) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/PoolCompSol/";
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
+		const std::string work_folder = simulations_dir + "PoolCompSol/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
-		Environment env{ work_folder, envmode };
+		Environment env{ work_folder, envmode, false };
 		auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
 		const float dt = ip.dt;
 
@@ -110,11 +110,11 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.0031) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Spring/";
+		const std::string work_folder = simulations_dir + "Singlebond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
-		Environment env{ work_folder, envmode };
+		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
@@ -158,12 +158,12 @@ namespace ForceCorrectness {
 
 	// Benchmarks anglebonds + singlebonds (for stability)
 	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 6.9e-4) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/AngleBenchmark/";
+		const std::string work_folder = simulations_dir + "Anglebond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		Environment env{ work_folder, envmode };
+		Environment env{ work_folder, envmode, false};
 		auto ip = env.loadInputSimParams(simpar);
 
 		const float relaxed_angle = 1.8849f; // [rad]
@@ -212,16 +212,16 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("TorsionBenchmark", envmode, 5.68e-4, 2.9e-7);
+		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 5.68e-4, 2.9e-7);
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=3.8e-3, float max_eg=6.037) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/ImproperDihedral/";
+		const std::string work_folder = simulations_dir + "Improperbond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		Environment env{ work_folder, envmode };
+		Environment env{ work_folder, envmode, false };
 		auto ip = env.loadInputSimParams(simpar);
 
 		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]

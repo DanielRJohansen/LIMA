@@ -18,7 +18,8 @@
 
 namespace TestUtils {
 #ifndef __linux__
-	const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
+	//const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
+	const std::string simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
 	const std::string simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
 #endif
@@ -33,7 +34,7 @@ namespace TestUtils {
 		const std::string topol = work_folder + "molecule/topol.top";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		auto env = std::make_unique<Environment>(work_folder, envmode );
+		auto env = std::make_unique<Environment>(work_folder, envmode, false);
 
 		const InputSimParams ip = simparams.hasValue()
 			? simparams.value()

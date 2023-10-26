@@ -50,7 +50,7 @@ namespace TestMDStability {
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		const std::string name = "T4LysozymeNoSolventSmall";
+		const std::string name = "8ResNoSol";
 		const std::string work_folder = simulations_dir + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 

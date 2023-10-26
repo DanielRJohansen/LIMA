@@ -10,10 +10,11 @@ using std::string;
 using std::cout;
 using std::printf;
 
-Environment::Environment(const string& wf, EnvMode mode)
+Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	: work_folder(wf)
 	, m_mode(mode)
 	, m_logger{ LimaLogger::compact, m_mode, "environment", wf }
+	, save_output(save_output)
 {
 	switch (mode)
 	{
@@ -211,6 +212,14 @@ void Environment::run(bool em_variant) {
 void Environment::postRunEvents() {
 	if (simulation->getStep() == 0) { return; }
 
+	if (POSTSIM_ANAL) {
+		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_folder));
+		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
+	}
+
+	if (!save_output) { return; }
+
+
 	const std::string out_dir = work_folder + "Steps_" + std::to_string(simulation->getStep()) + "/";
 
 	const std::filesystem::path out_path{ out_dir };
@@ -225,11 +234,6 @@ void Environment::postRunEvents() {
 			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->boxparams_host.n_compounds, "total p upperbound", simulation->boxparams_host.total_particles_upperbound);
 		printH2();
 	}
-	
-	
-	if (0) {
-		//Filehandler::dumpToFile(simulation->loggingdata.data(), 10 * simulation->getStep(), out_dir + "logdata.bin");	Wrong due to LOGEVERYNSTEPS
-	}
 
 	if (simulation->sim_dev->params->critical_error_encountered) {
 		Filehandler::dumpToFile(simulation->trainingdata.data(),
@@ -243,14 +247,11 @@ void Environment::postRunEvents() {
 	}
 
 	if (POSTSIM_ANAL) {
-		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_folder));
-		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
 		Filehandler::dumpToFile(
 			postsim_anal_package.energy_data.data(),
 			postsim_anal_package.energy_data.size(),
 			out_dir + "energy.bin"
 		);
-		//dumpToFile(analyzed_package.temperature_data, analyzed_package.n_temperature_values, out_dir + "temperature.bin");
 	}
 
 	if (DUMP_POTE) {

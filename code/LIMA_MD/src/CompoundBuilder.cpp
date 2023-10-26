@@ -242,6 +242,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 				continue;	// Treat all three solvents atoms as a single point, so no hydrogens here
 			}
 
+			// Ensure all nonsolvents have been added before adding solvents. Dunno if necessary?
 			if (nonsolvent_positions.size() != particleinfotable.size()) {
 				throw std::runtime_error(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})", 
 					nonsolvent_positions.size(), particleinfotable.size()).c_str());

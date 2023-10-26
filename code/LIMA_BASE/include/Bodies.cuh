@@ -167,7 +167,7 @@ struct Solvent {
 
 
 
-static constexpr int BOXGRID_NODE_LEN_pico = 1200;
+static constexpr int BOXGRID_NODE_LEN_pico = 1000;
 static constexpr float BOXGRID_NODE_LEN = static_cast<float>(BOXGRID_NODE_LEN_pico * PICO_TO_LIMA);	// [lm]
 static_assert((static_cast<int64_t>(BOX_LEN) % static_cast<int64_t>(BOXGRID_NODE_LEN)) == 0, "Illegal box dimension");
 static constexpr int32_t BOXGRID_NODE_LEN_i = BOXGRID_NODE_LEN_pico * PICO_TO_LIMA;

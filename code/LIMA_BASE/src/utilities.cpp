@@ -15,7 +15,7 @@ LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const string&
     if (enable_logging) {
         std::filesystem::create_directories(log_dir);
         const auto logFilePath = log_dir + name + "_log.txt";
-        logFile.open(logFilePath, std::ios::out | std::ios::app);
+        logFile.open(logFilePath, std::ios::out);
     }    
 }
 

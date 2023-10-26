@@ -85,7 +85,7 @@ int main(int argc, char** argv)
 	try {
 		MdrunSetup setup = parseProgramArguments(argc, argv);
 		std::cout << "LIMA is preparing simulation in dir " << setup.work_dir << "\n";
-		auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
+		auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
 		const InputSimParams ip = env->loadInputSimParams(setup.simpar);
 		//std::cout << setup.structure << "\t" << setup.topol << "\n";
 		env->CreateSimulation(setup.structure, setup.topol, ip);

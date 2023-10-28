@@ -111,7 +111,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	//const int64_t n_steps = simulation->getStep();
 	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep());
 
-	if (simulation->getStep() < 3) { return Analyzer::AnalyzedPackage(); }
+	if (n_entryindices < 2) { return Analyzer::AnalyzedPackage(); }
 
 	std::vector<Float3> average_energy;
 	average_energy.resize(n_entryindices - 2);	// Ignore first and last step	// TODO: Rework this, no longer necessary as we use VVS

@@ -33,7 +33,7 @@ namespace TestMDStability {
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();
-		Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
+		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		const auto analytics = env->getAnalyzedPackage();
 		

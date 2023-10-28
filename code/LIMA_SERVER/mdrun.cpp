@@ -92,11 +92,11 @@ int main(int argc, char** argv)
 		env->run();
 	}
 	catch (const std::runtime_error& ex) {
-		std::cerr << "LIMA encountered an exception:\n\t " << ex.what();
+		std::cerr << "LIMA encountered an exception:\n\t " << ex.what() << std::endl;
 		return 1;
 	}
 	catch (...) {
-		std::cerr << "LIMA caught an unknown exception";
+		std::cerr << "LIMA caught an unknown exception\n";
 		return 1;
 	}
 

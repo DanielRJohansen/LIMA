@@ -41,7 +41,7 @@ int main() {
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
-		//loadAndRunBasicSimulation("psome", envmode, 4.43e-5, 2.1e-7);
+		//loadAndRunBasicSimulation("psome", envmode, 7.6e-5, 1.1e-6);
 		//doPool50x(EnvMode::Headless);
 		runAllUnitTests();
 	}
@@ -86,7 +86,7 @@ void runAllUnitTests() {
 
 
 	// Larger tests
-	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f));
+	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 3.26e-6f));
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.1e-5, 2e-5));
 
 

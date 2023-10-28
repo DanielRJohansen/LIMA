@@ -1025,11 +1025,12 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
-	const int query_range = 1;
+	const int query_range = 2;
 	for (int x = -query_range; x <= query_range; x++) {
 		for (int y = -query_range; y <= query_range; y++) {
 			for (int z = -query_range; z <= query_range; z++) {
 				const NodeIndex dir{ x,y,z };
+				if (dir.sum() > 3) { continue; }
 				if (dir.isZero()) { continue; }
 
 				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);

@@ -153,7 +153,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
-
 					NodeIndex query_origo = compound_origo + NodeIndex{ x,y,z };
 					LIMAPOSITIONSYSTEM::applyPBC(query_origo);
 

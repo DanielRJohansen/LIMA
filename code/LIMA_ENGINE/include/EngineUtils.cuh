@@ -452,12 +452,12 @@ namespace EngineUtils {
 		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	}
 
-	__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
-		NodeIndex new_nodeindex = SolventBlocksCircularQueue::get3dIndex(blockId) + transfer_direction;
-		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
-		auto index = SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
-		return &transfermodule_array[index];
-	}
+	//__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
+	//	NodeIndex new_nodeindex = SolventBlocksCircularQueue::get3dIndex(blockId) + transfer_direction;
+	//	LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
+	//	const int index = SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
+	//	return &transfermodule_array[index];
+	//}
 
 
 
@@ -475,8 +475,8 @@ namespace EngineUtils {
 
 		return pos_tadd1;
 	}
-	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const double dt, const double mass) {
-		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5 / mass);
+	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
+		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
 	}
 
@@ -490,7 +490,6 @@ namespace EngineUtils {
 		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
-		//databuffers->vel_buffer[index] = compound.vels_prev[threadIdx.x].len();
 		databuffers->vel_buffer[index] = speed;
 
 		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, compound_coords, force, speed);

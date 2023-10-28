@@ -419,7 +419,7 @@ struct SolventTransferqueue {
 struct SolventBlockTransfermodule {
 	// Only use directly (full plane contact) adjacent blocks
 	static const int n_queues = 6;			// or, adjecent_solvent_blocks
-	static const int max_queue_size = 64;	// Maybe this is a bit dangerous
+	static const int max_queue_size = 32;	// Maybe this is a bit dangerous
 
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];

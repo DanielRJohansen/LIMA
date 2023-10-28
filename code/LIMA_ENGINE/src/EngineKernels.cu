@@ -928,7 +928,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
-static_assert(MAX_SOLVENTS_IN_BLOCK > MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
+static_assert(MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
@@ -952,7 +952,6 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 
 
-	float potE_sum = 0;
 
 	// temp
 	utility_buffer[threadIdx.x] = Float3{0};
@@ -967,9 +966,9 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	__syncthreads();	
 
 
-	Float3 force(0.f);
+	Float3 force{};
+	float potE_sum{};
 	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
-
 
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
@@ -998,8 +997,6 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
-
-
 			if (solvent_active) {
 				force += computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
 			}
@@ -1056,12 +1053,10 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	
 
 	Coord relpos_next{};
-
 	if (solvent_active) {
-		const auto mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
+		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
 		Solvent& solventdata_ref = box->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
 		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.constparams.dt, mass);

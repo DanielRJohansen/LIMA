@@ -85,6 +85,7 @@ private:
 
 	std::unique_ptr<Display> display;
 	int step_at_last_render = 0;
+	int step_at_last_update = 0;
 
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;

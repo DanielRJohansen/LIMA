@@ -284,29 +284,28 @@ void Environment::postRunEvents() {
 
 
 
-void Environment::handleStatus(int64_t step, int64_t n_steps) {
+void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 	if (m_mode == Headless) {
 		return;
 	}
 
-	const int steps_since_render = step - step_at_last_render;
-	if (steps_since_render > STEPS_PER_RENDER) {
+	const int steps_since_update = step - step_at_last_update;
+	if (steps_since_update >= STEPS_PER_RENDER) {
 
-		double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_render * (n_steps - step) / 60);
+		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
+		const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
 
 		printf("\r\tStep #%06llu", step);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
-			duration / steps_since_render,
-			engine->timings.compound_kernels / steps_since_render,
-			engine->timings.solvent_kernels / steps_since_render,
-			engine->timings.cpu_master/ steps_since_render,
-			engine->timings.nlist/ steps_since_render,
+			duration / steps_since_update,
+			engine->timings.compound_kernels / steps_since_update,
+			engine->timings.solvent_kernels / steps_since_update,
+			engine->timings.cpu_master/ steps_since_update,
+			engine->timings.nlist/ steps_since_update,
 			remaining_minutes);
 
-
+		step_at_last_update = step;
 		engine->timings.reset();
-		
 		time0 = std::chrono::high_resolution_clock::now();
 	}
 }

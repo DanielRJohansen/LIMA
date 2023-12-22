@@ -6,10 +6,7 @@
 
 using namespace LIMA_Print;
 
-Forcefield::Forcefield(VerbosityLevel vl) : vl(vl) {};
-
-
-void Forcefield::loadForcefield(string molecule_dir) {
+Forcefield::Forcefield(VerbosityLevel vl, const std::string& molecule_dir) : vl(vl) {
 	if (vl >= CRITICAL_INFO) { printH2("Building forcefield"); }
 
 
@@ -18,7 +15,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 		: Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff");
 
 
-	const SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(nonbonded_path, vl>= V1);
+	const SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(nonbonded_path, vl >= V1);
 
 	// First load the nb forcefield
 	auto atomtypes = loadAtomTypes(nonbonded_parsed);					// 1 entry per type in compressed forcefield
@@ -33,7 +30,7 @@ void Forcefield::loadForcefield(string molecule_dir) {
 		printf("Nonbonded parameters size: %llu bytes\n", sizeof(ForceField_NB));
 		printH2("Finished building forcefield");
 	}
-}
+};
 
 template <int n>
 bool isMatch(const uint32_t* topolbonds, const std::array<int, n> query_ids) {

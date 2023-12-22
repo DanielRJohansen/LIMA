@@ -9,9 +9,10 @@ using namespace LIMA_Print;
 using std::string;
 using std::cout;
 using std::printf;
+namespace lfs = Filehandler;
 
 Environment::Environment(const string& wf, EnvMode mode, bool save_output)
-	: work_folder(wf)
+	: work_dir(wf)
 	, m_mode(mode)
 	, m_logger{ LimaLogger::compact, m_mode, "environment", wf }
 	, save_output(save_output)
@@ -27,22 +28,41 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	case EnvMode::Headless:
 		break;
 	}
+
+	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
+}
+
+void Environment::CreateSimulation(float boxsize_nm) {
+	//prepFF();									// TODO: Make check in here whether we can skip this!
+
+	Filehandler::createDefaultSimFilesIfNotAvailable(work_dir, boxsize_nm);
+
+	InputSimParams ip{};
+	SimParams simparams{ ip };
+	setupEmptySimulation(simparams);
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
-	prepFF();									// TODO: Make check in here whether we can skip this!
+	//prepFF();									// TODO: Make check in here whether we can skip this!
+	//LimaForcefieldBuilder::buildForcefield(work_dir, m_mode);
+
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get());
 
+	const string gro_name = lfs::extractFilename(gro_path);	// TODO: This should not be the permanent solution, figure out if i want paths or names
+	const string top_name = lfs::extractFilename(topol_path);
+
 	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
-		simulation->forcefield.get(), 
-		work_folder, 
-		SILENT, 
-		gro_path, 
-		work_folder+"/molecule/",
-		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_folder),
+		lfs::pathJoin(work_dir, "molecule"),
+		gro_name,
+		top_name,
+		V1,
+		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
 		IGNORE_HYDROGEN);
+
+	//TODO Find a better place for this
+	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
@@ -58,14 +78,35 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 	setupEmptySimulation(simparams);
 	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);
 	simulation->extraparams = simulation_src.extraparams;
+
+	//TODO Find a better place for this
+	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
+}
+
+void Environment::createMembrane() {
+	// Load in the lipid types, for now just POPC
+
+	//BoxBuilder::
+	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC";
+	CompoundCollection POPC = LIMA_MOLECULEBUILD::buildMolecules(
+		POPC_PATH,
+		"popc.gro",
+		"popc.itp");
+
+	// Insert the x lipids with plenty of distance in a non-pbc box
+
+	// Draw each lipid towards the center - no pbc
+
+	// Remove all lipids that are not inside the box, perhaps with a small margin so they wont explode with pbc
+
+	// Run EM for a while - with pbc
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
 	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
 
 
-	simulation = std::make_unique<Simulation>(simparams, work_folder + "/molecule/", m_mode);
-	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_folder));
+	simulation = std::make_unique<Simulation>(simparams, work_dir + "/molecule/", m_mode);
 
 	verifySimulationParameters();
 }
@@ -140,7 +181,7 @@ bool Environment::prepareForRun() {
 	engine = std::make_unique<Engine>(
 		std::move(simulation),
 		simulation->forcefield->getNBForcefield(), 
-		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_folder));
+		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 	return true;
 
 	
@@ -213,14 +254,14 @@ void Environment::postRunEvents() {
 	if (simulation->getStep() == 0) { return; }
 
 	if (POSTSIM_ANAL) {
-		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_folder));
+		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));
 		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
 	}
 
 	if (!save_output) { return; }
 
 
-	const std::string out_dir = work_folder + "Steps_" + std::to_string(simulation->getStep()) + "/";
+	const std::string out_dir = work_dir + "Steps_" + std::to_string(simulation->getStep()) + "/";
 
 	const std::filesystem::path out_path{ out_dir };
 	std::filesystem::create_directories(out_path);
@@ -325,13 +366,6 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 	return displayStillExists;
 }
 
-void Environment::prepFF() {
-	ForcefieldMaker FFM(work_folder, m_mode);	// Not to confuse with the engine FFM!!!!=!?!
-
-	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
-	FFM.prepSimulationForcefield(ignore_atomtype);
-}
-
 void Environment::renderTrajectory(string trj_path)
 {
 	/*
@@ -416,7 +450,7 @@ InputSimParams Environment::loadInputSimParams(const std::string& path) {
 
 std::unique_ptr<Simulation> Environment::getSim() {
 	// Should we delete the forcefield here?
-	boxbuilder.reset();
+	//boxbuilder.reset();
 	engine.reset();
 	return std::move(simulation);
 }

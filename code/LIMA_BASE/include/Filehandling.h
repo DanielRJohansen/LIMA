@@ -19,17 +19,19 @@ struct SimpleParsedFile {
 };
 
 // TODO: Why the fuck can i not make this a namespace???!
-struct Filehandler {
+namespace Filehandler {
 	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
 
 	static std::string pathJoin(std::string a, std::string b) { return a + "/" + b; }
 
 	// Dunno if this works for folders too
-	static void assertPath(const std::string& path);
+	void assertPath(const std::string& path);
 
-	static bool fileExists(const std::string& path);
+	bool fileExists(const std::string& path);
 
-	static std::map<std::string, double> parseINIFile(const std::string path);
+	std::string extractFilename(const std::string& path);
+
+	std::map<std::string, double> parseINIFile(const std::string path);
 
 	static std::vector<std::vector<std::string>> readFile(const std::string path, 
 		std::vector<char> comment_markers = { ';', '/' },
@@ -37,10 +39,14 @@ struct Filehandler {
 		int end_at = std::numeric_limits<int>::max(), bool verbose = false);
 
 	static SimpleParsedFile parseItpFile(const std::string& path, bool verbose=true);
-	static SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
-	static SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
-	static SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
-	static SimpleParsedFile parseGroFile(const std::string& path, bool verbose);
+	SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
+	SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
+	SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
+	SimpleParsedFile parseGroFile(const std::string& path, bool verbose);
+
+
+	void createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm);	// creates conf topol and sim_params
+
 
 	// These should be in interface maybe?
 	template <typename T>

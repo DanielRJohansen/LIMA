@@ -10,20 +10,16 @@
 
 constexpr int ATOMTYPE_SOLVENT = 0;
 
-using std::string;
-
 class Forcefield {
 public:
 
-	Forcefield(VerbosityLevel vl);
-
-	void loadForcefield(std::string molecule_dir);
+	Forcefield(VerbosityLevel vl, const std::string& molecule_dir);
 
 	ForceField_NB getNBForcefield() const {
 		return forcefield_nb;
 	}
 
-	int atomTypeToIndex(const char& atom) const {
+	static int atomTypeToIndex(const char& atom) {
 		if (atom == 'C')
 			return 1;
 		if (atom == 'O')

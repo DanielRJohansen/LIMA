@@ -21,6 +21,10 @@ public:
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
 	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
 
+
+	// Will create a membrane with lipids that are spread far apart
+	void createMembrane(Simulation& sim);
+
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
 	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
@@ -51,8 +55,6 @@ private:
 
 
 	// ---------------------------------------------------- Variables ---------------------------------------------------- //
-	const float box_len = BOX_LEN;
-	const float box_base = 0;
 
 	const std::unique_ptr<LimaLogger> m_logger;
 

@@ -142,8 +142,7 @@ Simulation::Simulation(const SimParams& ip, const std::string& molecule_path, En
 	simparams_host{ ip }
 {
 	box_host = std::make_unique<Box>();
-	forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1);
-	forcefield->loadForcefield(molecule_path);
+	//forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1, molecule_path);
 }
 
 

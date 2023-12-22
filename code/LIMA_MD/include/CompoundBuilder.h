@@ -19,12 +19,12 @@ struct CompoundCollection;
 namespace LIMA_MOLECULEBUILD {
 	// This is the only function to be called from outside :)
 	CompoundCollection buildMolecules(
-		Forcefield* ff,					// Can be removed when we dont need to do the stupid color lookup anymore
-		const std::string& work_dir, 
-		VerbosityLevel vl,
-		const string& gro_path, 
-		const string& topol_path, 
-		std::unique_ptr<LimaLogger> logger,
+		//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
+		const std::string& molecule_dir,	// We need access to .lff files aswell
+		const std::string& gro_name = "conf.gro",
+		const std::string& top_name = "topol.top",
+		VerbosityLevel vl = CRITICAL_INFO,
+		std::unique_ptr<LimaLogger> logger = makeLimaloggerBareboned("CompoundBuilder"),
 		bool ignore_hydrogens = true
 		);
 }

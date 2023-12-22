@@ -13,6 +13,7 @@
 
 using std::string, std::cout, std::endl, std::to_string;
 using FileRows = std::vector<std::vector<std::string>>;
+namespace lfs = Filehandler;
 
 namespace ForcefieldMakerTypes {
 	struct BondedTypes {
@@ -64,17 +65,6 @@ const float water_epsilon = 0.1591f * kcalToJoule;
 
 static const NB_Atomtype Water_atomtype{ "WATER", 0, water_mass, water_sigma, water_epsilon };
 
-
-ForcefieldMaker::ForcefieldMaker(const string& workdir, EnvMode envmode, const string& conf_file, const string& topol_file) :
-	molecule_dir(Filehandler::pathJoin(workdir, "molecule")),
-	logger(LimaLogger::LogMode::compact, envmode, "forcefieldmaker", workdir),
-	m_verbose(envmode != Headless)
-{
-	conf_path = Filehandler::pathJoin(molecule_dir, conf_file);
-	topol_path = Filehandler::pathJoin(molecule_dir, topol_file);
-	Filehandler::assertPath(conf_path);
-	Filehandler::assertPath(topol_path);
-}
 
 void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& forcefield) {
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
@@ -207,12 +197,19 @@ void loadTopology(Topology& topology, const std::string& molecule_dir, const std
 			// This means we also need to catch and ignores regular comments here, since ; is used as comments in itp files..
 			//; residue  -8 THR rtp THR  q +1.0
 			if (row.words[0][0] == ';') {
-				if (row.words[1] == "residue") {
+				if (row.words[1] == "residue" || row.words[1] == "lipid_section") {
 					current_unique_residue_cnt++;
 				}
 				continue;
 			}
 
+			// Special case: The first set of atoms we read are from a topol file that starts with a non-residue such as a lipid
+			// TODO: WARNING: DANGER: SERIOUS: This means reading 2 consecutive lipids will make the two lipids into the same residue!!!
+			// Solved with adding lipid_section manually to all lipid files
+			//current_unique_residue_cnt = std::max(current_unique_residue_cnt, 0);
+			if (current_unique_residue_cnt == -1) {
+				throw std::runtime_error("Something is wrong, we should have a res_id by now.");
+			}
 
 			assert(row.words.size() >= 8);
 
@@ -509,21 +506,43 @@ std::vector<std::string> getFiles() {
 	return files;
 }
 
-void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
+
+
+
+
+void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, const std::string& output_dir,
+	const std::string& conf_name, const std::string& topol_name, EnvMode envmode)
+{
+	
+	//LimaLogger logger{ LimaLogger::LogMode::compact, envmode, "forcefieldmaker", work_dir };
+	const bool verbose(envmode != Headless);
+	const string conf_path = lfs::pathJoin(molecule_dir, conf_name);
+	const string topol_path = lfs::pathJoin(molecule_dir, topol_name);
+	lfs::assertPath(conf_path);
+	lfs::assertPath(topol_path);
+
+
+
+
+
+
+
+	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
 	// Check if filtered files already exists, if so return
 	BondedTypes forcefield;
-	
+
 	std::vector<std::string> files = getFiles();
 
 	for (auto& file_path : files) {
-		const SimpleParsedFile parsedfile = Filehandler::parsePrmFile(file_path, m_verbose);
+		const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
 		loadFileIntoForcefield(parsedfile, forcefield);
 	}
 
 	// Load the topology
 	Topology topology{};
+	int current_chain_id = -1;
 	int unique_residue_cnt = -1;
-	loadTopology(topology, molecule_dir, molecule_dir+"/topol.top", ignored_atomtype, current_chain_id, unique_residue_cnt);
+	loadTopology(topology, molecule_dir, topol_path, ignore_atomtype, current_chain_id, unique_residue_cnt);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);
@@ -532,7 +551,8 @@ void ForcefieldMaker::prepSimulationForcefield(const char ignored_atomtype) {
 	// Match the topology with the forcefields.
 	fillTBondParametersFromForcefield(forcefield, topology);
 
-	printFFNonbonded(Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff"), atomtype_map, atomtypes_filtered);
-	printFFBonded(Filehandler::pathJoin(molecule_dir, "ffbonded.lff"), topology);
-	logger.finishSection("Prepare Forcefield has finished");
+
+	printFFNonbonded(lfs::pathJoin(output_dir, "ffnonbonded.lff"), atomtype_map, atomtypes_filtered);
+	printFFBonded(lfs::pathJoin(output_dir, "ffbonded.lff"), topology);
+	//logger.finishSection("Prepare Forcefield has finished");
 }

@@ -19,6 +19,8 @@
 namespace TestUtils {
 #ifndef __linux__
 	//const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
+
+
 	const std::string simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
 	const std::string simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";

@@ -26,7 +26,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 
 	const int sbsize = sizeof(SolventBlock);
-	const int Skernel_shared_mem = (sizeof(Float3) + 1) * MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
+	const int Skernel_shared_mem = (sizeof(Float3) + 1) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
 		+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
 		+ 4 + 4 * 3 * 2;
 
@@ -218,7 +218,7 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		solventForceKernel<< < SolventBlocksCircularQueue::blocks_per_grid, MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
+		solventForceKernel<< < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (simulation->sim_dev);
 
 
 		cudaDeviceSynchronize();

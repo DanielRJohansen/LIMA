@@ -224,7 +224,8 @@ struct NB_Atomtype {
 
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int global_id, int gro_id, int chain_id, int res_id, const std::string& atomtype, const std::string& atomname, int unique_resid) : global_id(global_id), gro_id(gro_id), chain_id(chain_id), res_id(res_id), atomname(atomname), atomtype(atomtype), unique_res_id(unique_resid) {}
+	Atom(int global_id, int gro_id, int chain_id, int res_id, const std::string& atomtype, const std::string& atomname, int unique_resid) 
+		: global_id(global_id), gro_id(gro_id), chain_id(chain_id), res_id(res_id), atomname(atomname), atomtype(atomtype), unique_res_id(unique_resid) {}
 	Atom(const Atom& atom) = default;
 	int global_id;
 	int gro_id;										// Come from topol.top file

@@ -12,6 +12,7 @@
 #include <array>
 using namespace LIMA_Print;
 
+namespace lfs = Filehandler;
 
 struct GroRecord {
 	int residue_number{};
@@ -39,7 +40,7 @@ struct Topology {
 
 class MoleculeBuilder {
 public:
-	MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger>, const std::string& work_dir = "", VerbosityLevel vl = SILENT);
+	MoleculeBuilder(std::unique_ptr<LimaLogger>, VerbosityLevel vl = SILENT);
 
 	// Upon creation of the CompoundCollection, the MoleculeBuilder object is no longer valid,
 	// as it move's it's data instead of copying!
@@ -63,9 +64,9 @@ private:
 
 	std::unique_ptr<LimaLogger> m_logger;
 	const VerbosityLevel verbosity_level;
-	const Forcefield* forcefield;
+	//const Forcefield* forcefield;
 
-	const std::string work_dir;
+	//const std::string work_dir;
 
 	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridgesMap;
 
@@ -102,10 +103,9 @@ private:
 	void insertSolventAtom(const GroRecord& record);
 };
 
-MoleculeBuilder::MoleculeBuilder(Forcefield* ff, std::unique_ptr<LimaLogger> logger, const std::string& work_dir, VerbosityLevel vl) :
+MoleculeBuilder::MoleculeBuilder(std::unique_ptr<LimaLogger> logger, VerbosityLevel vl) :
 	m_logger(std::move(logger)),
-	verbosity_level(vl), 
-	forcefield(ff) 
+	verbosity_level(vl)
 {}
 
 CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) {
@@ -215,7 +215,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 
 	for (auto& length_str : parsedfile.rows.back().words) {
 		if (std::stof(length_str) != BOX_LEN_NM) {
-			throw std::runtime_error(".gro file box size does not match the compiler defined box size");
+			//throw std::runtime_error(".gro file box size does not match the compiler defined box size");	// TODO: move this to engine's validate sim
 		}
 	}
 
@@ -436,7 +436,7 @@ void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& sing
 			compounds.back().addParticle(
 				nonsolvent_positions[atom_gid],
 				particleinfo.atomtype_id,
-				forcefield->atomTypeToIndex(particleinfo.atomname[0]),
+				Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
 				atom_gid
 				);
 		}
@@ -656,7 +656,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topology) {
 	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>();
 
-	// First check that we dont have any unrealistic bonds, and ward immediately.
+	// First check that we dont have any unrealistic bonds, and warn immediately.
 	for (const auto& bond : topology.singlebonds) {
 		int gid1 = bond.global_atom_indexes[0];
 		int gid2 = bond.global_atom_indexes[1];
@@ -988,7 +988,8 @@ void BridgeFactory::addBond(ParticleInfoTable& particle_info, const AngleBondFac
 
 void BridgeFactory::addBond(ParticleInfoTable& particle_info, const DihedralBondFactory& bondtype) {
 
-	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add dihedralbond to bridge"); }
+	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) { 
+		throw std::runtime_error("Failed to add dihedralbond to bridge"); }
 	dihedrals[n_dihedrals++] = DihedralBond{
 		{
 		getBridgelocalIdOfParticle(particle_info[bondtype.global_atom_indexes[0]]),
@@ -1069,20 +1070,25 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 
 
 
-
+#include "ForcefieldMaker.h"
 
 
 
 CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
-	Forcefield* ff,
-	const std::string& work_dir,
+	//Forcefield* ff,
+	const std::string& molecule_dir,
+	const std::string& gro_name,
+	const std::string& top_name,
 	VerbosityLevel vl,
-	const string& gro_path,
-	const string& molecule_dir,
 	std::unique_ptr<LimaLogger> logger,
 	bool ignore_hydrogens
 ) 
 {
-	MoleculeBuilder mb{ ff, std::move(logger), work_dir, vl};
-	return mb.buildMolecules(gro_path, molecule_dir, ignore_hydrogens);
+	//const string molecule_dir = work_dir + "/molecule";
+	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, gro_name, top_name, EnvMode::Headless);
+
+
+	MoleculeBuilder mb{std::move(logger), vl};
+	
+	return mb.buildMolecules(lfs::pathJoin(molecule_dir, gro_name), molecule_dir, ignore_hydrogens);
 }

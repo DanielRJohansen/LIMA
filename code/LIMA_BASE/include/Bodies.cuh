@@ -211,6 +211,8 @@ public:
 
 // blocks are notcentered 
 struct SolventBlock {
+	static const int MAX_SOLVENTS_IN_BLOCK = 64;
+
 	__device__ __host__ SolventBlock() {};
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		origo = block.origo; // Not necessary, is given by the blockIdx.x
@@ -441,7 +443,7 @@ struct SolventBlockTransfermodule {
 };
 
 using STransferQueue = SolventTransferqueue< SolventBlockTransfermodule::max_queue_size>;
-using SRemainQueue = SolventTransferqueue<MAX_SOLVENTS_IN_BLOCK>;
+using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 

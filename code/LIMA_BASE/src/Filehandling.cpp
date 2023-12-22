@@ -50,6 +50,21 @@ bool Filehandler::fileExists(const std::string& path) {
 	return std::filesystem::exists(path);
 }
 
+std::string Filehandler::extractFilename(const std::string& path) {
+	// Find the last occurrence of both forward slash and backslash
+	size_t lastSlashPos = path.find_last_of("/\\");
+
+	// Check if a slash is found
+	if (lastSlashPos != std::string::npos) {
+		// Extract the substring from the last slash to the end of the string
+		return path.substr(lastSlashPos + 1);
+	}
+	else {
+		// If no slash is found, the entire path is the file name
+		return path;
+	}
+}
+
 // Uses ';' and ' ' as delimiters
 vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
 	std::ifstream file;
@@ -396,4 +411,31 @@ SimpleParsedFile Filehandler::parseGroFile(const std::string& path, bool verbose
 		}
 	}
 	return parsedfile;
+}
+
+void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm) {
+	const string simparams_path = dir + "/sim_params.txt";
+	if (!Filehandler::fileExists(simparams_path)) {	// TODO: Make this string a default-constant somewhere
+		const string contents = "";
+		std::ofstream file(simparams_path);
+		file << contents;
+		file.close();
+	}
+
+	const string gro_path = dir + "/conf.gro";
+	if (!Filehandler::fileExists(gro_path)) {	// TODO: Make this string a default-constant somewhere
+		const string boxsize_str = std::to_string(boxsize_nm) + " ";	// add space between dims
+		const string contents = " \n0\n\t\t"+ boxsize_str + boxsize_str + boxsize_str;	// Title, n_atoms, box dimensions
+		std::ofstream file(gro_path);
+		file << contents;
+		file.close();
+	}
+
+	const string top_path = dir + "/topol.top";
+	if (!Filehandler::fileExists(top_path)) {	// TODO: Make this string a default-constant somewhere
+		const string contents = "[ moleculetype ]\n[ atoms ]\n[ bonds ]\n[ angles ]\n[ dihedrals ]\n[dihedrals]\n";
+		std::ofstream file(top_path);
+		file << contents;
+		file.close();
+	}
 }

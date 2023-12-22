@@ -46,7 +46,7 @@ public:
     };   
 
     LimaLogger(const LimaLogger&) = delete;
-    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::string& workfolder="");
+    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::string& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
     ~LimaLogger();
 
     void startSection(const std::string& input);
@@ -82,6 +82,10 @@ private:
     void clearLine();
     bool clear_next = false;
 };
+
+static std::unique_ptr<LimaLogger> makeLimaloggerBareboned(const std::string& name) {
+    return std::make_unique<LimaLogger>(LimaLogger::LogMode::compact, EnvMode::Headless, name);
+}
 
 // Lima Algorithm Library
 namespace LAL {

@@ -7,31 +7,16 @@
 
 struct NB_Atomtype;
 
-class ForcefieldMaker {
+namespace LimaForcefieldBuilder {
 
-public:
-	ForcefieldMaker(
-		const std::string& workdir,
-		EnvMode envmode,
-		const std::string& conf_file = "conf.gro",
-		const std::string& topol_file = "topol.top"
-	);
-
-	void prepSimulationForcefield(const char ignored_atomtype);
-
-
-
-private:
-
-	const std::string molecule_dir;
-	//const std::string forcefield_dir;
-
-	const bool m_verbose;
-
-	int current_chain_id = -1;
-
-	std::string conf_path = "";
-	std::string topol_path = "";
-	
-	LimaLogger logger;
-};
+	/// <summary>
+	/// Create ffbonded.lff and ffnonbonded.lff files.
+	/// </summary>
+	/// <param name="molecule_dir">Dir where conf and topol are, with all .itp include files</param>
+	/// <param name="output_dir">Where .lff files will be created</param>
+	/// <param name="conf_name">name of main .gro file in molecule_dir</param>
+	/// <param name="topol_name">name of main .top/.itp file in molecule_dir</param>
+	/// <param name="envmode"></param>
+	void buildForcefield(const std::string& molecule_dir, const std::string& output_dir,
+		const std::string& conf_path, const std::string& topol_path, EnvMode envmode);
+}

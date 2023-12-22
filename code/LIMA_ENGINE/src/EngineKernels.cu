@@ -928,10 +928,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
-static_assert(MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
+static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 __global__ void solventForceKernel(SimulationDevice* sim) {
-	__shared__ Float3 utility_buffer[MAX_SOLVENTS_IN_BLOCK];
-	__shared__ uint8_t utility_buffer_small[MAX_SOLVENTS_IN_BLOCK];
+	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
 	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 	__shared__ int utility_int;

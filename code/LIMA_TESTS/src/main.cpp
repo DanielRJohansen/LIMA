@@ -1,9 +1,7 @@
-
-
 #include "ForceCorrectness.h"
 #include "MDStability.cuh"
 #include "EnergyMinimization.cuh"
-
+#include "MembraneBuilder.h"
 
 
 
@@ -11,6 +9,7 @@ using namespace TestUtils;
 using namespace ForceCorrectness;
 using namespace TestMDStability;
 using namespace StressTesting;
+using namespace TestMembraneBuilder;
 
 void runAllUnitTests();
 
@@ -43,6 +42,12 @@ int main() {
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 7.6e-5, 1.1e-6);
 		//doPool50x(EnvMode::Headless);
+		
+
+
+
+		//testBuildmembraneSmall(envmode);
+
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

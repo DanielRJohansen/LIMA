@@ -5,7 +5,11 @@
 #include <cctype>
 #include "Environment.h"
 
+#include "MoleculeGraph.h"
+
 #include "CommandlineUtils.h"
+
+namespace fs = std::filesystem;
 
 struct MembraneBuilderSetup {
 
@@ -69,6 +73,18 @@ int membraneBuilder(int argc, char** argv) {
 	const InputSimParams ip = env.loadInputSimParams(setup.simparams);
 
 	env.CreateSimulation(setup.coordinate_file, setup.topol_file, ip);
+
+	return 0;
+}
+
+int reorderMoleculeParticles(int argc, char** argv) {
+	if (argc != 3)
+		throw std::runtime_error(std::format("reordermoleculeparticles expected 2 arguments (.gro file & .top file), but got {}", argc - 1));
+
+	const fs::path gro_path = argv[1];
+	const fs::path top_path = argv[2];
+
+	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(gro_path, top_path);
 
 	return 0;
 }

@@ -1,4 +1,7 @@
+// For generic file utilities, for specialized features use MDFiles.h instead
 #pragma once
+
+
 
 #include <iostream>
 #include <vector>
@@ -18,6 +21,9 @@ struct SimpleParsedFile {
 	std::vector<Row> rows;
 };
 
+
+
+
 // TODO: Why the fuck can i not make this a namespace???!
 namespace Filehandler {
 	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
@@ -28,6 +34,8 @@ namespace Filehandler {
 	void assertPath(const std::string& path);
 
 	bool fileExists(const std::string& path);
+
+	//void replaceTabs(std::string& str);
 
 	std::string extractFilename(const std::string& path);
 

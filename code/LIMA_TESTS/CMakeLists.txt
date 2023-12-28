@@ -4,7 +4,7 @@ find_package(CUDA REQUIRED)
 
 add_executable(limatests
     src/main.cpp
-)
+ "src/MinorPrograms.h")
 
 target_include_directories(limatests PRIVATE
     ${CUDA_INCLUDE_DIRS}

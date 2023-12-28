@@ -1,5 +1,4 @@
 #include "Filehandling.h"
-//#include "LIMA_BASE/include/Filehandling.h"
 
 #include <assert.h>
 #include <algorithm>
@@ -373,7 +372,10 @@ SimpleParsedFile Filehandler::parseGroFile(const std::string& path, bool verbose
 
 		if (skipCnt > 0) {
 
-
+			if (skipCnt == 2) {
+				// 1st line is title
+				parsedfile.rows.push_back({ "title" , { line } });
+			}
 			if (skipCnt == 1) {
 				// 2nd line is atom count
 				parsedfile.rows.reserve(std::stoi(line));

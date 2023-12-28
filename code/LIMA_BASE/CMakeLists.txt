@@ -9,7 +9,7 @@ add_library(LIMA_BASE STATIC
     src/LimaTypes.cu
     src/Simulation.cu
     src/utilities.cpp
-)
+ "include/MoleculeGraph.h" "src/MoleculeGraph.cpp" "include/MDFiles.h" "src/MDFiles.cpp")
 
 
 

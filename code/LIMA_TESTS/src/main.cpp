@@ -2,7 +2,7 @@
 #include "MDStability.cuh"
 #include "EnergyMinimization.cuh"
 #include "MembraneBuilder.h"
-
+#include "MinorPrograms.h"
 
 
 using namespace TestUtils;
@@ -10,7 +10,7 @@ using namespace ForceCorrectness;
 using namespace TestMDStability;
 using namespace StressTesting;
 using namespace TestMembraneBuilder;
-
+using namespace TestMinorPrograms;
 void runAllUnitTests();
 
 
@@ -45,7 +45,7 @@ int main() {
 		
 
 
-
+		testReorderMoleculeParticles();
 		//testBuildmembraneSmall(envmode);
 
 		runAllUnitTests();

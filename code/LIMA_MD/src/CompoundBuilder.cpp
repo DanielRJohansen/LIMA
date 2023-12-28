@@ -14,6 +14,7 @@ using namespace LIMA_Print;
 
 namespace lfs = Filehandler;
 
+// TODO: Remove this from here and use MDFiles.h instead
 struct GroRecord {
 	int residue_number{};
 	std::string residue_name{};
@@ -221,10 +222,10 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 
 
 	// Find atom count to resize particle_info
-	if (parsedfile.rows[0].section != "n_atoms") {
-		throw std::runtime_error("Expected first line of parsed gro file to contain atom count");
+	if (parsedfile.rows[1].section != "n_atoms") {
+		throw std::runtime_error("Expected second line of parsed gro file to contain atom count");
 	}
-	const int n_atoms_total = std::stoi(parsedfile.rows[0].words[0]);
+	const int n_atoms_total = std::stoi(parsedfile.rows[1].words[0]);
 	int current_res_id = -1;	// unique
 
 	for (const auto& row : parsedfile.rows) {

@@ -27,14 +27,61 @@ GroRecord parseGroLine(const std::string& line) {
 	std::istringstream(line.substr(36, 8)) >> record.position.z;
 
 	if (line.size() >= 68) {
+		record.velocity = Float3{};
 		// Parse velocity (in nm/ps (or km/s), x y z in 3 columns, each 8 positions with 4 decimal places)
-		std::istringstream(line.substr(44, 8)) >> record.velocity.x;
-		std::istringstream(line.substr(52, 8)) >> record.velocity.y;
-		std::istringstream(line.substr(60, 8)) >> record.velocity.z;
+		std::istringstream(line.substr(44, 8)) >> record.velocity->x;
+		std::istringstream(line.substr(52, 8)) >> record.velocity->y;
+		std::istringstream(line.substr(60, 8)) >> record.velocity->z;
 	}
 
 	return record;
 }
+
+std::string composeGroLine(const GroRecord& record) {
+	std::ostringstream oss;
+
+	// Format and write each part of the GroRecord
+	oss << std::setw(5) << std::left << record.residue_number
+		<< std::setw(5) << std::left << record.residue_name
+		<< std::setw(5) << std::left << record.atom_name
+		<< std::setw(5) << std::right << record.gro_id
+		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.x
+		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.y
+		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.z;
+
+	// Append velocity if present
+	if (record.velocity) {
+		oss << std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->x
+			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->y
+			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->z;
+	}
+
+	return oss.str();
+}
+
+std::string ParsedTopologyFile::MoleculetypeEntry::composeString() const {
+	std::ostringstream oss;
+	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl;
+	return oss.str();
+}
+
+std::string ParsedTopologyFile::AtomsEntry::composeString() const {
+	std::ostringstream oss;
+	oss << std::right
+		<< std::setw(10) << nr
+		<< std::setw(10) << type
+		<< std::setw(10) << resnr
+		<< std::setw(10) << residue
+		<< std::setw(10) << atom
+		<< std::setw(10) << cgnr
+		<< std::setw(10) << std::fixed << std::setprecision(2) << charge
+		<< std::setw(10) << std::fixed << std::setprecision(3) << mass;
+	return oss.str();
+}
+
+
+
+
 
 
 ParsedGroFile MDFiles::loadGroFile(const std::filesystem::path& path) {
@@ -98,6 +145,7 @@ std::string extractSectionName(const std::string& line) {
 	if (start != std::string::npos && end != std::string::npos) {
 		// Extract the text between '[' and ']'
 		std::string sectionName = line.substr(start + 1, end - start - 1);
+		removeWhitespace(sectionName);
 		return sectionName;
 	}
 	return "";
@@ -130,10 +178,13 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 			continue;
 		}
 
-		if (line[0] == '[')
+		if (line[0] == '[') {
 			current_section = getNextTopologySection(current_section, extractSectionName(line));
+			continue;
+		}
 
-		if (line[0] == ';' && current_section != title) { continue; }	// Only title-sections reads the comments
+		// Check if current line is commented
+		if (firstNonspaceCharIsQuery(line, ';') && current_section != title) { continue; }	// Only title-sections reads the comments
 
 
 		std::istringstream iss(line);
@@ -195,4 +246,63 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 		}
 	}
 	return topfile;
+}
+
+void ParsedGroFile::printToFile(const std::filesystem::path& path) {
+	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expectec .gro", path.extension().string())); }
+
+
+	std::ofstream file(path);
+	if (!file.is_open()) {
+		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+	}
+
+	// Print the title and number of atoms
+	file << title << "\n";
+	file << n_atoms << "\n";
+
+	// Iterate over atoms and print them
+	for (const auto& atom : atoms) {
+		// You need to define how GroRecord is formatted
+		file << composeGroLine(atom) << "\n";
+	}
+
+	// Print the box size
+	file << box_size.x << " " << box_size.y << " " << box_size.z << "\n";
+
+	file.close();
+}
+
+std::string ParsedTopologyFile::generateLegend(std::vector<std::string> elements)
+{
+	std::ostringstream legend;
+	legend << ';'; // Start with a semicolon
+
+	for (const auto& element : elements) {
+		legend << std::setw(10) << std::right << element;
+	}
+	return legend.str();
+}
+
+void ParsedTopologyFile::printToFile(const std::filesystem::path& path) {
+	const auto ext = path.extension().string();
+	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expectec [.top/.itp]", ext)); }
+
+	std::ofstream file(path);
+	if (!file.is_open()) {
+		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+	}
+
+	file << title << "\n";
+
+	//if (!molecules.entries.empty()) { file << molecules.composeString(); }
+	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }
+	
+	
+	file << atoms.composeString();
+	file << singlebonds.composeString();
+	file << pairs.composeString();
+	file << anglebonds.composeString();
+	file << dihedralbonds.composeString();
+	file << improperdihedralbonds.composeString();
 }

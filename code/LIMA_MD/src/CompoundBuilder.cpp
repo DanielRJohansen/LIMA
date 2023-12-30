@@ -173,7 +173,7 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 
 
 
-GroRecord parseGroLine(const std::string& line) {
+GroRecord parseGroLineTemp(const std::string& line) {
 	GroRecord record;
 
 	// Parse residue number (5 positions, integer)
@@ -231,7 +231,7 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 	for (const auto& row : parsedfile.rows) {
 		if (row.section != "atoms") { continue; }
 
-		GroRecord record = parseGroLine(row.words[0]);
+		GroRecord record = parseGroLineTemp(row.words[0]);
 
 		if (record.atom_name[0] == 'H' && IGNORE_HYDROGEN) {
 			continue; 

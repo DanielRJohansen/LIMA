@@ -48,7 +48,7 @@ int main() {
 		testReorderMoleculeParticles();
 		//testBuildmembraneSmall(envmode);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

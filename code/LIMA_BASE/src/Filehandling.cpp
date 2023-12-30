@@ -8,7 +8,8 @@
 #include <fstream>
 #include <filesystem>
 #include <format>
-
+#include <cctype>
+#include <vector>
 using std::string, std::vector, std::map, std::stringstream;
 
 
@@ -47,6 +48,22 @@ void Filehandler::assertPath(const std::string& path) {
 
 bool Filehandler::fileExists(const std::string& path) {
 	return std::filesystem::exists(path);
+}
+
+
+
+void Filehandler::removeWhitespace(std::string& str) {
+	str.erase(std::remove_if(str.begin(), str.end(), 
+		[](unsigned char ch) {return std::isspace(static_cast<int>(ch));}),
+		str.end());
+}
+
+bool Filehandler::firstNonspaceCharIsQuery(const std::string& str, char query) {
+	auto first_non_space = std::find_if(str.begin(), str.end(), [](unsigned char ch) {
+		return !std::isspace(static_cast<int>(ch));
+	});
+
+	return (first_non_space != str.end() && *first_non_space == query);
 }
 
 std::string Filehandler::extractFilename(const std::string& path) {

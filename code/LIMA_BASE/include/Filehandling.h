@@ -35,6 +35,10 @@ namespace Filehandler {
 
 	bool fileExists(const std::string& path);
 
+	void removeWhitespace(std::string& str);
+
+	bool firstNonspaceCharIsQuery(const std::string& str, char query);
+
 	//void replaceTabs(std::string& str);
 
 	std::string extractFilename(const std::string& path);

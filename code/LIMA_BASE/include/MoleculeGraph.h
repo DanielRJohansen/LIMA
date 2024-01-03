@@ -53,59 +53,43 @@ namespace LimaMoleculeGraph {
 	class Chain {
 		// First node is guaranteed to be non-hydrogen. Last node is not.
 		std::vector<int> nodeids{};	// All atoms, TRUE ids
-		int terminusIndex = -1;  // Index of the last non-hydrogen atom
+
+		std::vector<std::unique_ptr<Chain>> subchains; 
+
+		int backbone_len = 0;
+		int height = 0;	// Furthest len to a leaf in any subchain
 
 	public:
-		void append(const MoleculeGraph::Node& node, std::set<int>& ids_already_in_a_chain) {
-			if (ids_already_in_a_chain.contains(node.atomid))
-				throw std::runtime_error("Didn't expect this atom to already be in a chain");
-			ids_already_in_a_chain.insert(node.atomid);
+		// Dont do this after using other append
+		void append(const MoleculeGraph::Node& node, std::set<int>& ids_already_in_a_chain);
+		void append(std::unique_ptr<Chain> chain);
+		int getHeight() const { return height; }
 
-			nodeids.push_back(node.atomid);
+		const std::vector<std::unique_ptr<Chain>>& getSubchains() const { return subchains; }
 
-			if (!node.isHydrogen()) terminusIndex = nodeids.size() - 1;
+		void sort() {
+			auto sort_condition = [](auto& a, auto& b) { return a->getHeight() < b->getHeight(); };
+			std::sort(subchains.begin(), subchains.end(), sort_condition);
+
+			for (auto& subchain : subchains)
+				subchain->sort();
 		}
 
-		// Inserts a chain just before the current terminus
-		void insert(const Chain& chain) {
-			//nodeids.insert(nodeids.end() - 1, chain.nodeids.begin(), chain.nodeids.end());
-			
-			// Calculate the insertion position based on the terminus index
-			auto insertPos = nodeids.begin() + terminusIndex;
-			nodeids.insert(insertPos, chain.nodeids.begin(), chain.nodeids.end());
 
-			// Update the terminus index to reflect the new position
-			terminusIndex += chain.nodeids.size();
-		}
-
-		// Returns terminus non-hydrogen member of the chain
-		int getBack() {
-			if (terminusIndex != -1) {
-				return nodeids[terminusIndex];
-			}
-			throw std::runtime_error("Terminus is not set");
-		}
 
 		const std::vector<int>& getNodeIds() const { return nodeids; }
-		int getNNodesInChain() const { return nodeids.size(); }
-		int parentchain_id = -1;
 	};
 
 	MoleculeGraph createGraph(const ParsedTopologyFile& topolfile);
 
-	// Selects a random terminus carbon, and starts making chains from that point.
-	// 1-atom functional groups are treated as separate chains. Particles in chains are in order
-	// of how they appear in the chain, and thus the ids are not guaranteed to be sequential.
-	// The order of the chains follows a DepthFirst like structure
-	std::vector<Chain> getAllSubchains(const MoleculeGraph& molgraph);
-
 	/// <summary>
 	/// Reorders the particles so they are sequential inside of the subchains, and that particles of
 	/// touching subchains are in order aswell
+	/// TODO: This function should throw if trying to work with any files containing ; Residue in the itp
+	/// file, as that structure may not be kept.
 	/// </summary>
-	/// <param name="gro_path">Reads and overwrites indices& ids of particles</param>
-	/// <param name="top_path">Reads and overwrites indices& ids of particles + bonds</param>
-	void reorderoleculeParticlesAccoringingToSubchains(fs::path gro_path, fs::path top_path);
+	void reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, 
+		const fs::path& gro_path_out, const fs::path& top_path_out);
 
 };
 

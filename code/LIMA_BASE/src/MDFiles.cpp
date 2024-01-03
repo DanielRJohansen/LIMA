@@ -191,7 +191,7 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 		switch (current_section)
 		{
 		case title:
-			topfile.title.append(line);
+			topfile.title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
 		case molecules:
 			throw std::runtime_error("This is not yet implemented");
@@ -293,7 +293,7 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) {
 		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
 	}
 
-	file << title << "\n";
+	file << title << "\n\n";
 
 	//if (!molecules.entries.empty()) { file << molecules.composeString(); }
 	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }

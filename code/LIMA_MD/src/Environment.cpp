@@ -92,7 +92,7 @@ void Environment::createMembrane() {
 		POPC_PATH,
 		"popc.gro",
 		"popc.itp");
-
+	int a = 0;
 	// Insert the x lipids with plenty of distance in a non-pbc box
 
 	// Draw each lipid towards the center - no pbc

@@ -81,10 +81,12 @@ int reorderMoleculeParticles(int argc, char** argv) {
 	if (argc != 3)
 		throw std::runtime_error(std::format("reordermoleculeparticles expected 2 arguments (.gro file & .top file), but got {}", argc - 1));
 
-	const fs::path gro_path = argv[1];
-	const fs::path top_path = argv[2];
+	const fs::path gro_path_in = argv[1];
+	const fs::path top_path_in = argv[2];
+	const fs::path gro_path_out = argv[3];
+	const fs::path top_path_out = argv[4];
 
-	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(gro_path, top_path);
+	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(gro_path_in, top_path_in, gro_path_out, top_path_out);
 
 	return 0;
 }

@@ -108,7 +108,8 @@ namespace FTHelpers {
 
 
 	template <typename GenericBondType>
-	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, bool first_attempt =true) {
+	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, 
+		bool first_attempt =true) {
 		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
 
 		//query_type.sort();

@@ -16,6 +16,24 @@ void MoleculeGraph::connectNodes(int left_id, int right_id) {
 	nodes[right_id].addNeighbor(&nodes[left_id]);
 }
 
+void Chain::append(const MoleculeGraph::Node& node, std::set<int>& ids_already_in_a_chain) {
+	if (ids_already_in_a_chain.contains(node.atomid))
+		throw std::runtime_error("Didn't expect this atom to already be in a chain");
+	ids_already_in_a_chain.insert(node.atomid);
+
+	nodeids.push_back(node.atomid);
+
+	if (!node.isHydrogen()) {
+		backbone_len++;
+		height++;
+	}
+}
+
+void Chain::append(std::unique_ptr<Chain> chain) {
+	height = std::max(height, chain->height + backbone_len);
+	subchains.push_back(std::move(chain));
+}
+
 MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile) {
 	MoleculeGraph graph;
 
@@ -59,176 +77,106 @@ void addConnectedHydrogensToChain(std::set<int>& ids_already_in_a_chain, const s
 	}
 }
 
+std::unique_ptr<Chain> makeSubChain(int start_id, const MoleculeGraph& molgraph, std::set<int>& ids_already_in_a_chain) {
+	auto chain = std::make_unique<Chain>();
 
+	int current_id = start_id;
+	while (true) {
+		const MoleculeGraph::Node* current_node = &molgraph.nodes.at(current_id);
+		
+		// Add the current node in backbone
+		chain->append(molgraph.nodes.at(current_id), ids_already_in_a_chain);
 
-vector<Chain> LimaMoleculeGraph::getAllSubchains(const MoleculeGraph& molgraph) {
-	vector<Chain> chains{};
-	std::set<int> ids_already_in_a_chain{};
+		// Add hydrogens connected to node
+		addConnectedHydrogensToChain(ids_already_in_a_chain, current_node->getNeighbors(), *chain);
 
-	// Stack used to perform depth first search for chains, which ensure coherent ordering of chains
-	std::stack<int> chainstartNodeIdsStack;
-	chainstartNodeIdsStack.push(getIdOfValidChainStartingPoint(molgraph));
+		// Is the current node an intersection of chains, then find the chainstart ids of adjecent chains, and terminate current chain
+		if (current_node->getNNonhydrogenNeighbors() > 2) {
 
-	// Assign all particles to chains
-	while (true)
-	{
-		//const int id_of_starting_node = getIdOfValidChainStartingPoint(molgraph, ids_already_in_a_chain);
-		if (chainstartNodeIdsStack.empty()) { break; }
-		const int id_of_starting_node = chainstartNodeIdsStack.top();
-		chainstartNodeIdsStack.pop();
-		if (id_of_starting_node == -1) { break; }
+			for (int i = 0; i < current_node->getNNeighbors(); i++) {
 
-
-		// Create new chain
-		chains.emplace_back(Chain{});
-		const MoleculeGraph::Node* current_node = &molgraph.nodes.at(4);
-
-		int next_id = id_of_starting_node;
-		while (true) {
-			current_node = &molgraph.nodes.at(next_id);
-
-			chains.back().append(molgraph.nodes.at(next_id), ids_already_in_a_chain);
-
-			addConnectedHydrogensToChain(ids_already_in_a_chain, current_node->getNeighbors(), chains.back());
-
-
-			// Is the current node an intersection of chains, then find the chainstart ids of adjecent chains, and terminate current chain
-			if (current_node->getNNonhydrogenNeighbors() > 2) {
-				for (int i = 0; i < current_node->getNNonhydrogenNeighbors(); i++) {
-
-					// Push all nearby non-hydrogens to the stack of chain-starts
-					const MoleculeGraph::Node& neighbor = *current_node->getNeighbors()[i];
-					if (!neighbor.isHydrogen() && !ids_already_in_a_chain.contains(neighbor.atomid))
-						chainstartNodeIdsStack.push(neighbor.atomid);
+				// Push all nearby non-hydrogens to the stack of chain-starts
+				const MoleculeGraph::Node& neighbor = *current_node->getNeighbors()[i];
+				if (!neighbor.isHydrogen() && !ids_already_in_a_chain.contains(neighbor.atomid)) {
+					chain->append(std::move(makeSubChain(neighbor.atomid, molgraph, ids_already_in_a_chain)));
 				}
-
-				break;
 			}
-
-
-			next_id = getIdOfNextValidNodeInChain(ids_already_in_a_chain, current_node->getNeighbors());
-			if (next_id == -1)
-				break;
-
+			break;
 		}
+
+		// Go to next node in backbone of chain
+		current_id = getIdOfNextValidNodeInChain(ids_already_in_a_chain, current_node->getNeighbors());
+		if (current_id == -1)
+			break;
 	}
-
-	// Finally find parent chain of each chain
-	const int n_chains = chains.size();
-
-	for (int rhs_chain_id = 1; rhs_chain_id < n_chains; rhs_chain_id++) {
-		const int rhs_chain_start_nodeid = chains[rhs_chain_id].getNodeIds().at(0);
-		const MoleculeGraph::Node& rhs_chain_startnode = molgraph.nodes.at(rhs_chain_start_nodeid);
-
-		// Lambda to find parent chain, so i can throw if we fail.
-		auto findParentchainId = [&]() {
-			// Loop over all chains left of current chain
-			for (int lhs_chain_id = 0; lhs_chain_id < rhs_chain_id; lhs_chain_id++) {
-				const int lhs_chain_end_nodeid = chains[lhs_chain_id].getBack();
-
-				if (rhs_chain_startnode.isConnected(lhs_chain_end_nodeid)) {
-					return lhs_chain_id;
-				}
-			}
-			throw std::runtime_error("Failed to find parent chain");
-		};
-
-		chains[rhs_chain_id].parentchain_id = findParentchainId();	
-	}
-
-	return chains;
+	
+	return std::move(chain);
 }
 
+// Returns the root chain
+std::unique_ptr<Chain> getChainTree(const MoleculeGraph& molgraph) {
+	
+	std::set<int> ids_already_in_a_chain{};
 
+	const int start_id = getIdOfValidChainStartingPoint(molgraph);
 
+	std::unique_ptr<Chain> root = makeSubChain(start_id, molgraph, ids_already_in_a_chain);
+
+	return root;
+}
+
+void makeParticleReorderMapping(const Chain& chain, std::vector<int>& map, int& next_new_id) {
+	for (const int id : chain.getNodeIds()) {
+		if (id >= map.size())
+			map.resize(id + 2);
+
+		map[id] = next_new_id++;
+	}
+
+	for (auto& subchain : chain.getSubchains()) {
+		makeParticleReorderMapping(*subchain, map, next_new_id);
+	}
+}
 
 // Returns a mapping where from=index in vector, and to= value on that index
 // Remember that index 0 must not be used!
-std::vector<int> makeParticleReorderMapping(const std::vector<Chain>& subchains) {
+std::vector<int> makeParticleReorderMapping(const Chain& root_chain) {
 	std::vector<int> map(1);
 	map[0] = -1;
 	int next_new_id = 1;	// Sadly MD files are 1d indexes
 
-	for (const Chain& chain : subchains) {
-		for (const int id : chain.getNodeIds()) {
-			if (id >= map.size())
-				map.resize(id + 1);
+	makeParticleReorderMapping(root_chain, map, next_new_id);
 
-			map[id] = next_new_id++;
-		}
-	}
 	return map;
 }
 
-void mergeTinySidechainsIntoParentchains(std::vector<Chain>& chains) {
-	const int cutoff_chain_size = 5;	// Including hydrogens
-
-	for (int chain_id = 1; chain_id < chains.size(); chain_id++) {
-		const Chain& chain = chains[chain_id];
-		if (chain.getNNodesInChain() < cutoff_chain_size) {
-			// Merge the tinychain into its parent
-			chains[chain.parentchain_id].insert(chain);
-
-			// All chains that has the current chain as parent, should update to the chains parent. 
-			// Chains that has a parent id higher than the current chain, should dec that index
-			for (int i = chain_id + 1; i < chains.size(); i++) {
-				if (chains[i].parentchain_id == chain_id)
-					chains[i].parentchain_id = chain.parentchain_id;
-				else if (chains[i].parentchain_id > chain_id)
-					chains[i].parentchain_id--;
-			}
-
-			// Move all subsequent chains 1 step forward
-			for (int i = chain_id; i < chains.size() - 1; i++) {
-				chains[i] = chains[i + 1];
-			}
-			chains.pop_back();
-
-			// Now list is 1 shorter, so dec iterator
-			chain_id--;
-		}
-	}
-}
-
-// Reorder so subsequent subchains always comes with the shortest one first
-void reorderSubchains(std::vector<Chain>& subchains, const MoleculeGraph& molgraph)
-{
-	// Two chains that have the same parent but are out of order should be swapped
-	auto sortCondition = [](const Chain& a, const Chain& b) {
-		if (a.parentchain_id == b.parentchain_id && a.getNNodesInChain() > b.getNNodesInChain()) { return true; }
-		return false;
-		};
-	std::sort(subchains.begin(), subchains.end(), sortCondition);
-}
-
 template<typename T>
-void overwriteParticleIds(std::vector<T> bonds, const std::vector<int>& map) {
-	for (auto bond : bonds) {
+void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
+	for (auto& bond : bonds) {
 		for (int i = 0; i < bond.n; i++) {
 			bond.atom_indexes[i] = map[bond.atom_indexes[i]];
 		}
 	}	
 }
 
-void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(fs::path gro_path, fs::path top_path) {
-	ParsedGroFile grofile = MDFiles::loadGroFile(gro_path);
-	ParsedTopologyFile topfile = MDFiles::loadTopologyFile(top_path);
+void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, const fs::path& gro_path_out, const fs::path& top_path_out) {
+	ParsedGroFile grofile = MDFiles::loadGroFile(gro_path_in);
+	ParsedTopologyFile topfile = MDFiles::loadTopologyFile(top_path_in);
 
 	const MoleculeGraph molgraph = createGraph(topfile);
-	std::vector<Chain> chains = getAllSubchains(molgraph);
+	std::unique_ptr<Chain> root_chain = getChainTree(molgraph);
 
-	mergeTinySidechainsIntoParentchains(chains);
-	reorderSubchains(chains, molgraph);
+	root_chain->sort();
 
 	// dont use index 0 of map
-	const std::vector<int> map = makeParticleReorderMapping(chains);
+	const std::vector<int> map = makeParticleReorderMapping(*root_chain);
 
 	// Overwrite all references to gro_ids in the files
 	for (auto& atom : grofile.atoms) {
 		atom.gro_id = map[atom.gro_id];
 	}
 
-	for (auto atom : topfile.atoms.entries) {
+	for (auto& atom : topfile.atoms.entries) {
 		atom.nr = map[atom.nr];
 	}
 	overwriteParticleIds<>(topfile.singlebonds.entries, map);
@@ -240,16 +188,13 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(fs::path g
 	// Re-sort all entries with the new groids
 	std::sort(grofile.atoms.begin(), grofile.atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
 
-	std::sort(topfile.atoms.entries.begin(), topfile.atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr > b.nr; });
-	std::sort(topfile.singlebonds.entries.begin(), topfile.singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atom_indexes[0] > b.atom_indexes[0]; });
-	std::sort(topfile.pairs.entries.begin(), topfile.pairs.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] > b.atom_indexes[0]; });
-	std::sort(topfile.anglebonds.entries.begin(), topfile.anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] > b.atom_indexes[0]; });
-	std::sort(topfile.dihedralbonds.entries.begin(), topfile.dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] > b.atom_indexes[0]; });
-	std::sort(topfile.improperdihedralbonds.entries.begin(), topfile.improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] > b.atom_indexes[0]; });
+	std::sort(topfile.atoms.entries.begin(), topfile.atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr < b.nr; });
+	std::sort(topfile.singlebonds.entries.begin(), topfile.singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atom_indexes[0] < b.atom_indexes[0]; });
+	std::sort(topfile.pairs.entries.begin(), topfile.pairs.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
+	std::sort(topfile.anglebonds.entries.begin(), topfile.anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
+	std::sort(topfile.dihedralbonds.entries.begin(), topfile.dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
+	std::sort(topfile.improperdihedralbonds.entries.begin(), topfile.improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
 
-	gro_path.replace_filename(gro_path.stem().string() + "_new" + gro_path.extension().string());
-	top_path.replace_filename(top_path.stem().string() + "_new" + top_path.extension().string());
-
-	grofile.printToFile(gro_path);
-	topfile.printToFile(top_path);
+	grofile.printToFile(gro_path_out);
+	topfile.printToFile(top_path_out);
 }

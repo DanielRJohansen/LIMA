@@ -15,6 +15,9 @@ public:
 	};
 	void buildBox(Simulation* simulation);
 	void addCompoundCollection(Simulation* simulation, CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	void addMembrane(Simulation& sim, CompoundCollection& lipid);
+
+
 	//void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
 	//void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation);
@@ -29,7 +32,8 @@ public:
 	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
 private:
-	void insertCompoundInBox(const CompoundFactory& compound, Simulation* simulation);
+	template<typename BoundaryCondition>
+	void insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset = Float3{});
 	
 	void setupDataBuffers(Simulation& simulation, const uint64_t n_steps);
 	void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps);

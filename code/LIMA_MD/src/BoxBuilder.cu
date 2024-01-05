@@ -33,7 +33,7 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {
-		insertCompoundInBox(compound, simulation);
+		insertCompoundInBox<PeriodicBoundaryCondition>(compound, *simulation);
 	}
 
 	simulation->extraparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
@@ -47,6 +47,82 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 	m_logger->print("CompoundCollection added to box\n");
 }
+
+void centerMoleculeAroundOrigo(CompoundCollection& mol) {
+	Float3 position_sum{};
+	int count = 0;
+	for (const auto& compound : mol.compounds) {
+		for (int i = 0; i < compound.n_particles; i++) {
+			position_sum += compound.positions[i];
+			count++;
+			
+		}
+		
+	}
+	
+		const Float3 offset = position_sum / static_cast<float>(count);
+	for (auto& compound : mol.compounds) {
+		for (int i = 0; i < compound.n_particles; i++) {
+			compound.positions[i] -= offset;
+			
+		}
+		
+	}
+	
+}
+
+Float3 calcDimensions(const CompoundCollection & mol)
+ {
+	BoundingBox bb{};
+	
+		for (const auto& compound : mol.compounds) {
+		for (int i = 0; i < compound.n_particles; i++) {
+			for (int dim = 0; dim < 3; dim++) {
+				*bb.min.placeAt(dim) = std::min(bb.min.at(dim), compound.positions[i].at(dim));
+				*bb.max.placeAt(dim) = std::max(bb.max.at(dim), compound.positions[i].at(dim));
+				
+			}
+			
+		}
+		
+	}
+	
+		const Float3 dims{ bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z };
+	return dims;
+	}
+
+void BoxBuilder::addMembrane(Simulation& sim, CompoundCollection& lipid)
+{
+	centerMoleculeAroundOrigo(lipid);
+
+
+	const float lipid_density = 0.5;                        // [lipids/nm^2]
+	const Float3 padding = Float3{ 0.1f };          // [nm]
+	const Float3 mol_dims = calcDimensions(lipid);  // [nm]
+
+	const Float3 lipids_per_dim_f = sim.boxparams_host.dims * lipid_density;        // We dont xare about z
+	Int3 lipids_per_dim{
+	static_cast<int>(std::ceil(lipids_per_dim_f.x)),
+	static_cast<int>(std::ceil(lipids_per_dim_f.y)),
+	1 };
+	lipids_per_dim.x += (lipids_per_dim.x % 2) == 0;
+	lipids_per_dim.y += (lipids_per_dim.y % 2) == 0;
+
+
+	const Float3 startpoint = Float3{ 0.f };
+	const Float3 dist = mol_dims + padding;
+
+	for (int x = -lipids_per_dim.x / 2; x <= lipids_per_dim.x / 2; x++) {
+		for (int y = -lipids_per_dim.y / 2; y <= lipids_per_dim.y / 2; y++) {
+			const Float3 center = dist * Float3{ static_cast<float>(x), static_cast<float>(y), 0.f };
+
+			for (const CompoundFactory& compound : lipid.compounds) {
+				insertCompoundInBox<NoBoundaryCondition>(compound, sim, center);
+			}
+		}
+	}
+}
+
 
 void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
@@ -253,8 +329,14 @@ void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimPara
 
 // ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
+	//const float M = SOLVENT_MASS;				// kg/mol
+	//const double T = 313.;	// Kelvin
+	//const double R = 8.3144;					// J/(Kelvin*mol)
+	//const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
-void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation* simulation)
+	//Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
+template<typename BoundaryCondition>
+void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
 {
 	std::vector<LimaPosition> positions;
 	std::vector<LimaPosition> positions_prev;
@@ -262,25 +344,15 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	positions_prev.reserve(MAX_COMPOUND_PARTICLES);
 
 
-	const float M = SOLVENT_MASS;				// kg/mol
-	const double T = 313.;	// Kelvin
-	const double R = 8.3144;					// J/(Kelvin*mol)
-	const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
-
-	Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
 		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
-
-		const Float3 pos_prev_nm = (extern_position - compound_united_vel * simulation->simparams_host.constparams.dt);
-		positions_prev.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(pos_prev_nm));
 	}
 
-	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, simulation->box_host->boxparams.n_compounds);
+	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation.box_host->coordarray_circular_queue, 0, simulation.box_host->boxparams.n_compounds);
 	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index);
-	//coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.interaction_boundary.key_particle_indices[0]);	// TODO: Do this a better way. Maybe still keep the 1 key? Call it centermost
-	simulation->box_host->compounds[simulation->box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
+	simulation.box_host->compounds[simulation.box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 
 

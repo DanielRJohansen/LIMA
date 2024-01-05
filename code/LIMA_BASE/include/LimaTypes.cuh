@@ -416,8 +416,10 @@ struct LimaPosition {
 //}
 
 struct BoundingBox {
-	BoundingBox() {}
-	BoundingBox(Float3 min, Float3 max) : min(min), max(max) {}
+	BoundingBox(
+		Float3 min = Float3{ std::numeric_limits<float>::max() },
+		Float3 max = Float3{ std::numeric_limits<float>::lowest() }) 
+		: min(min), max(max) {}
 
 
 	Float3 min, max;

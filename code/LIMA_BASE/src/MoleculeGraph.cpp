@@ -1,5 +1,7 @@
 #include "MoleculeGraph.h"
+
 #include <stack>
+#include <algorithm>
 
 using namespace LimaMoleculeGraph;
 using std::string;
@@ -32,6 +34,14 @@ void Chain::append(const MoleculeGraph::Node& node, std::set<int>& ids_already_i
 void Chain::append(std::unique_ptr<Chain> chain) {
 	height = std::max(height, chain->height + backbone_len);
 	subchains.push_back(std::move(chain));
+}
+
+void Chain::sort() {
+	auto sort_condition = [](auto& a, auto& b) { return a->getHeight() < b->getHeight(); };
+	std::sort(subchains.begin(), subchains.end(), sort_condition);
+
+	for (auto& subchain : subchains)
+		subchain->sort();
 }
 
 MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile) {

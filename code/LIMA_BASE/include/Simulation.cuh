@@ -51,6 +51,8 @@ struct SimParams {
 };
 
 struct BoxParams {
+	Float3 dims{};
+
 	int n_compounds = 0;
 	int n_bridges = 0;
 	int64_t n_solvents = 0;

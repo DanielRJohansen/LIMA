@@ -44,11 +44,44 @@ namespace CPPD {
 	}
 }
 
+class NoBoundaryCondition {
+public:
+	//__host__ void static applyBC(NodeIndex& origo) {}
 
+	//__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
 
+};
 
-namespace LIMAPOSITIONSYSTEM {
-	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
+class PeriodicBoundaryCondition {
+public:
+	__device__ __host__ void static applyBC(NodeIndex& origo) {
+		origo.x += BOXGRID_N_NODES * (origo.x < 0);
+		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
+		origo.y += BOXGRID_N_NODES * (origo.y < 0);
+		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
+		origo.z += BOXGRID_N_NODES * (origo.z < 0);
+		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
+	}
+
+	__device__ __host__ static void applyPBC(NodeIndex& origo) {
+		origo.x += BOXGRID_N_NODES * (origo.x < 0);
+		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
+		origo.y += BOXGRID_N_NODES * (origo.y < 0);
+		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
+		origo.z += BOXGRID_N_NODES * (origo.z < 0);
+		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
+	}
+
+	__device__ __host__ static void applyBC(LimaPosition& position) {
+		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
+		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
+		position.x += BOX_LEN_i * (position.x + offset < 0);
+		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
+		position.y += BOX_LEN_i * (position.y + offset < 0);
+		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
+		position.z += BOX_LEN_i * (position.z + offset < 0);
+		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
+	}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
 		const NodeIndex difference = static_index - movable_index;
@@ -70,26 +103,43 @@ namespace LIMAPOSITIONSYSTEM {
 		movable_position.z -= BOX_LEN_i * (difference.z < -BOX_LEN_i / 2);
 	}
 
+	__device__ __host__ static void applyPBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
+		current_position.x += BOX_LEN_NM * (current_position.x < 0.f);
+		current_position.x -= BOX_LEN_NM * (current_position.x > BOX_LEN_NM);
+		current_position.y += BOX_LEN_NM * (current_position.y < 0.f);
+		current_position.y -= BOX_LEN_NM * (current_position.y > BOX_LEN_NM);
+		current_position.z += BOX_LEN_NM * (current_position.z < 0.f);
+		current_position.z -= BOX_LEN_NM * (current_position.z > BOX_LEN_NM);
+	}
+};
+
+
+
+namespace LIMAPOSITIONSYSTEM {
+	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
+
+	template <typename BoundaryCondition>
+	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
+		BoundaryCondition::applyHyperpos(static_index, movable_index);
+	}
+
+	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {
+		PeriodicBoundaryCondition::applyHyperpos(static_position, movable_position);
+	}
+
 	__device__ __host__ static void applyPBC(NodeIndex& origo) {
-		origo.x += BOXGRID_N_NODES * (origo.x < 0);
-		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
-		origo.y += BOXGRID_N_NODES * (origo.y < 0);
-		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
-		origo.z += BOXGRID_N_NODES * (origo.z < 0);
-		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
+		PeriodicBoundaryCondition::applyBC(origo);
 	}
 
 	__device__ __host__ static void applyPBC(SolventCoord& coord) { applyPBC(coord.origo); }
 
 	__device__ __host__ static void applyPBC(LimaPosition& position) {
-		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
-		position.x += BOX_LEN_i * (position.x + offset < 0);
-		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
-		position.y += BOX_LEN_i * (position.y + offset < 0);
-		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
-		position.z += BOX_LEN_i * (position.z + offset < 0);
-		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
+		PeriodicBoundaryCondition::applyBC(position);
+	}
+
+	// LimaPosition in [nm]
+	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
+		PeriodicBoundaryCondition::applyPBCNM(*current_position);
 	}
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
@@ -105,15 +155,6 @@ namespace LIMAPOSITIONSYSTEM {
 		const Float3 pos_lm = pos_nm * NANO_TO_LIMA;
 		return LimaPosition{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
 	}
-	
-	//// Safe to call with any Coord
-	//__device__ __host__ static NodeIndex coordToNodeIndex(const Coord& coord) { 
-	//	return NodeIndex{ 
-	//		coord.x / BOXGRID_NODE_LEN_i, 
-	//		coord.y / BOXGRID_NODE_LEN_i , 
-	//		coord.z / BOXGRID_NODE_LEN_i 
-	//	}; 
-	//}
 
 	// Converts to nodeindex, applies PBC
 	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position) {
@@ -162,7 +203,7 @@ namespace LIMAPOSITIONSYSTEM {
 	__host__ static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
 		// Subtract nodeindex from abs position to get relative position
 		LimaPosition hyperpos = absolute_position;
-		LIMAPOSITIONSYSTEM::applyHyperpos(createLimaPosition(nodeindex), hyperpos);
+		applyHyperpos(createLimaPosition(nodeindex), hyperpos);
 		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * static_cast<int64_t>(max_node_diff)) {
@@ -216,7 +257,7 @@ namespace LIMAPOSITIONSYSTEM {
 	// Get hyper index of "other"
 	__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
 		NodeIndex temp = other;
-		applyHyperpos(self, temp);
+		applyHyperpos<PeriodicBoundaryCondition>(self, temp);
 		return temp;
 	}
 
@@ -267,8 +308,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 		EngineUtilsWarnings::verifyValidRelpos(relpos);
 
-		//return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos + rel_blockcenter, blocklen_half);
-		return LIMAPOSITIONSYSTEM::getOnehotDirection(relpos, blocklen_half);
+		return getOnehotDirection(relpos, blocklen_half);
 	}
 
 	/// <summary>NListManager
@@ -402,13 +442,7 @@ namespace EngineUtils {
 
 
 
-	// LimaPosition in [nm]
-	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
-		for (int dim = 0; dim < 3; dim++) {
-			*current_position->placeAt(dim) += BOX_LEN_NM * (current_position->at(dim) < 0.f);
-			*current_position->placeAt(dim) -= BOX_LEN_NM * (current_position->at(dim) > BOX_LEN_NM);
-		}
-	}
+
 
 
 

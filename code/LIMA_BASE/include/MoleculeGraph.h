@@ -67,13 +67,7 @@ namespace LimaMoleculeGraph {
 
 		const std::vector<std::unique_ptr<Chain>>& getSubchains() const { return subchains; }
 
-		void sort() {
-			auto sort_condition = [](auto& a, auto& b) { return a->getHeight() < b->getHeight(); };
-			std::sort(subchains.begin(), subchains.end(), sort_condition);
-
-			for (auto& subchain : subchains)
-				subchain->sort();
-		}
+		void sort();
 
 
 

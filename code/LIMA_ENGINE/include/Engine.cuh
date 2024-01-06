@@ -18,14 +18,17 @@
 #include <memory>
 #include <vector>
 
-//__global__ void compoundBondsAndIntegrationKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
+template <typename BoundaryCondition>
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice<BoundaryCondition>* sim);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
 template <typename BoundaryCondition>
 __global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim);
-//__global__ void solventForceKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
-//
-//__global__ void compoundBridgeKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
-//__global__ void solventTransferKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
+template <typename BoundaryCondition>
+__global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim);
+template <typename BoundaryCondition>
+__global__ void compoundBridgeKernel(SimulationDevice<BoundaryCondition>* sim);
+template <typename BoundaryCondition>
+__global__ void solventTransferKernel(SimulationDevice<BoundaryCondition>* sim);
 
 struct EngineTimings {
 	int compound_kernels{};

@@ -15,7 +15,7 @@ public:
 	};
 	void buildBox(Simulation* simulation);
 	void addCompoundCollection(Simulation* simulation, CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
-	void addMembrane(Simulation& sim, CompoundCollection& lipid);
+	//void addMembrane(Simulation& sim, CompoundCollection& lipid);
 
 
 	//void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
@@ -26,7 +26,7 @@ public:
 
 
 	// Will create a membrane with lipids that are spread far apart
-	void createMembrane(Simulation& sim);
+	//void createMembrane(Simulation& sim);
 
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
 	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);

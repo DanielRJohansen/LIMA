@@ -81,7 +81,7 @@
 //					for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
 //
 //						NodeIndex query_origo = compound_nodeindex + NodeIndex{ x,y,z };
-//						LIMAPOSITIONSYSTEM::applyPBC(query_origo);
+//						LIMAPOSITIONSYSTEM::applyBC(query_origo);
 //
 //						CompoundGridNode* querynode = nlist_data_collection->compoundgrid->getBlockPtr(query_origo);
 //						const int querynode_id = CompoundGrid::get1dIndex(query_origo);

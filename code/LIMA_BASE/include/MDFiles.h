@@ -5,7 +5,10 @@
 #include <filesystem>
 #include "Bodies.cuh"
 #include "Filehandling.h"
+#include "Simulation.cuh"
+
 #include <optional>
+#include <functional>
 
 struct GroRecord {
 	int residue_number{};
@@ -18,7 +21,7 @@ struct GroRecord {
 
 struct ParsedGroFile {
 	std::string title;
-	int n_atoms{ -1 };
+	int n_atoms{ 0 };
 	std::vector<GroRecord>atoms;
 	Float3 box_size{};
 
@@ -42,6 +45,8 @@ struct ParsedTopologyFile {	//.top or .itp
 
 	// Variable names are from .itp file
 	struct AtomsEntry {
+		std::optional<std::string> section_name{};// Either a residue or lipid_section
+
 		int nr{};	// Not guaranteed to be unique, atleast not with multiple files!
 		std::string type{};
 		int resnr{};
@@ -53,6 +58,8 @@ struct ParsedTopologyFile {	//.top or .itp
 		
 		std::string composeString() const;
 	};
+
+
 
 	template <size_t N>
 	struct GenericBond {
@@ -110,14 +117,13 @@ struct ParsedTopologyFile {	//.top or .itp
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
 	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
-
 	Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
 	Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
 	Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
 	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
 	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
 
-	Float3 box_size{};
+	//Float3 box_size{};
 };
 
 
@@ -125,5 +131,7 @@ namespace MDFiles {
 	namespace fs = std::filesystem;
 
 	ParsedGroFile loadGroFile(const fs::path& path);
+	ParsedGroFile loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
+
 	ParsedTopologyFile loadTopologyFile(const fs::path& path);
 }

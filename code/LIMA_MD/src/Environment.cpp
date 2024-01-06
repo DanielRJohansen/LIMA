@@ -1,6 +1,8 @@
 #include "Environment.h"
 #include "Printer.h"
 #include "ChemfilesInterface.h"
+#include "MDFiles.h"
+#include "SimulationBuilder.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -35,11 +37,13 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 void Environment::CreateSimulation(float boxsize_nm) {
 	//prepFF();									// TODO: Make check in here whether we can skip this!
 
-	Filehandler::createDefaultSimFilesIfNotAvailable(work_dir, boxsize_nm);
+	//Filehandler::createDefaultSimFilesIfNotAvailable(work_dir, boxsize_nm);
 
 	InputSimParams ip{};
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
+	boxbuilder->buildBox(simulation.get());
+	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
@@ -85,19 +89,39 @@ void Environment::CreateSimulation(const Simulation& simulation_src, const Input
 
 void Environment::createMembrane() {
 	// Load in the lipid types, for now just POPC
+	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC/";
+	ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
+	ParsedTopologyFile inputtopologyfile = MDFiles::loadTopologyFile(POPC_PATH + "POPC.itp");
 
-	//BoxBuilder::
-	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC";
-	CompoundCollection POPC = LIMA_MOLECULEBUILD::buildMolecules(
-		POPC_PATH,
-		"popc.gro",
-		"popc.itp");
-	int a = 0;
 	// Insert the x lipids with plenty of distance in a non-pbc box
+	auto membranefiles = SimulationBuilder::buildMembrane({ inputgrofile, inputtopologyfile }, simulation->box_host->boxparams.dims);
+	
+
+
+
+	// Save box to .gro and .top file
+	membranefiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	membranefiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	//MDFiles::loadGroFile(*simulation->box_host).printToFile(lfs::pathJoin(work_dir, "molecule/membranegro"));
+
+
+	// Reset env
+	resetEnvironment();
+
+
+	// Create simulation and run on the newly created files in the workfolder
+	InputSimParams ip{};
+	ip.boundarycondition = NoBC;
+	ip.n_steps = 10000;
+	CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+
+
 
 	// Draw each lipid towards the center - no pbc
+	run();
 
-	// Remove all lipids that are not inside the box, perhaps with a small margin so they wont explode with pbc
+
+	// Remove all lipids that are not inside the box, perhaps with a small margin so they wont explode with pbcgit di
 
 	// Run EM for a while - with pbc
 }

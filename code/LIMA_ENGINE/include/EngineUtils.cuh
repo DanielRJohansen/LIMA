@@ -46,9 +46,9 @@ namespace CPPD {
 
 class NoBoundaryCondition {
 public:
-	//__host__ void static applyBC(NodeIndex& origo) {}
+	__host__ void static applyBC(NodeIndex& origo) {}
 
-	//__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
+	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
 
 };
 
@@ -63,7 +63,7 @@ public:
 		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
 	}
 
-	__device__ __host__ static void applyPBC(NodeIndex& origo) {
+	__device__ __host__ static void applyPC(NodeIndex& origo) {
 		origo.x += BOXGRID_N_NODES * (origo.x < 0);
 		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
 		origo.y += BOXGRID_N_NODES * (origo.y < 0);
@@ -103,7 +103,7 @@ public:
 		movable_position.z -= BOX_LEN_i * (difference.z < -BOX_LEN_i / 2);
 	}
 
-	__device__ __host__ static void applyPBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
+	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
 		current_position.x += BOX_LEN_NM * (current_position.x < 0.f);
 		current_position.x -= BOX_LEN_NM * (current_position.x > BOX_LEN_NM);
 		current_position.y += BOX_LEN_NM * (current_position.y < 0.f);
@@ -127,19 +127,19 @@ namespace LIMAPOSITIONSYSTEM {
 		PeriodicBoundaryCondition::applyHyperpos(static_position, movable_position);
 	}
 
-	__device__ __host__ static void applyPBC(NodeIndex& origo) {
+	__device__ __host__ static void applyBC(NodeIndex& origo) {
 		PeriodicBoundaryCondition::applyBC(origo);
 	}
 
-	__device__ __host__ static void applyPBC(SolventCoord& coord) { applyPBC(coord.origo); }
+	__device__ __host__ static void applyBC(SolventCoord& coord) { applyBC(coord.origo); }
 
-	__device__ __host__ static void applyPBC(LimaPosition& position) {
+	__device__ __host__ static void applyBC(LimaPosition& position) {
 		PeriodicBoundaryCondition::applyBC(position);
 	}
 
 	// LimaPosition in [nm]
-	__device__ __host__ static void applyPBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
-		PeriodicBoundaryCondition::applyPBCNM(*current_position);
+	__device__ __host__ static void applyBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
+		PeriodicBoundaryCondition::applyBCNM(*current_position);
 	}
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
@@ -157,6 +157,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Converts to nodeindex, applies PBC
+	template <typename BoundaryCondition>
 	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position) {
 		int offset = BOXGRID_NODE_LEN_i / 2;
 		NodeIndex nodeindex{
@@ -164,7 +165,7 @@ namespace LIMAPOSITIONSYSTEM {
 			static_cast<int>((position.y + offset) / BOXGRID_NODE_LEN_i),
 			static_cast<int>((position.z + offset) / BOXGRID_NODE_LEN_i)
 		};
-		applyPBC(nodeindex);
+		BoundaryCondition::applyBC(nodeindex);
 		return nodeindex;
 	}
 
@@ -176,7 +177,7 @@ namespace LIMAPOSITIONSYSTEM {
 			static_cast<int32_t>(std::roundf(position.y * factor)),
 			static_cast<int32_t>(std::roundf(position.z * factor))
 		};
-		applyPBC(nodeindex);
+		applyBC(nodeindex);
 		return nodeindex;
 	}
 
@@ -219,7 +220,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const LimaPosition& position) {
-		const NodeIndex nodeindex = absolutePositionToNodeIndex(position);
+		const NodeIndex nodeindex = absolutePositionToNodeIndex<PeriodicBoundaryCondition>(position);
 		const Coord relpos = getRelativeCoord(position, nodeindex);
 		return std::make_tuple(nodeindex, relpos);
 	}
@@ -234,11 +235,12 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
 	/// <returns></returns>
+	template <typename BoundaryCondition>
 	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
-		compoundcoords.origo = absolutePositionToNodeIndex(positions[key_particle_index]);
+		compoundcoords.origo = absolutePositionToNodeIndex<BoundaryCondition>(positions[key_particle_index]);
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
@@ -318,14 +320,14 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="position">Absolute position of solvent [nm] </param>
 	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const LimaPosition& position) {
 		LimaPosition hyperpos = position;
-		applyPBC(hyperpos);
+		applyBC(hyperpos);
 
 		//const auto [nodeindex, relpos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
 		NodeIndex nodeindex; Coord relpos;
 		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement(hyperpos);
 
 		SolventCoord solventcoord{ nodeindex, relpos };
-		applyPBC(solventcoord);
+		applyBC(solventcoord);
 		return solventcoord;
 	}
 
@@ -350,9 +352,9 @@ public:
 		coords.rel_positions[threadIdx.x] += shift_lm;
 	}
 
-	__device__ static void applyPBC(CompoundCoords& coords) {
+	__device__ static void applyBC(CompoundCoords& coords) {
 		if (threadIdx.x != 0) { return; }
-		LIMAPOSITIONSYSTEM::applyPBC(coords.origo);
+		LIMAPOSITIONSYSTEM::applyBC(coords.origo);
 	}
 
 
@@ -482,13 +484,13 @@ namespace EngineUtils {
 
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
-		LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
+		LIMAPOSITIONSYSTEM::applyBC(new_nodeindex);
 		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	}
 
 	//__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
 	//	NodeIndex new_nodeindex = SolventBlocksCircularQueue::get3dIndex(blockId) + transfer_direction;
-	//	LIMAPOSITIONSYSTEM::applyPBC(new_nodeindex);
+	//	LIMAPOSITIONSYSTEM::applyBC(new_nodeindex);
 	//	const int index = SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	//	return &transfermodule_array[index];
 	//}

@@ -58,7 +58,7 @@ void Filehandler::removeWhitespace(std::string& str) {
 		str.end());
 }
 
-bool Filehandler::firstNonspaceCharIsQuery(const std::string& str, char query) {
+bool Filehandler::firstNonspaceCharIs(const std::string& str, char query) {
 	auto first_non_space = std::find_if(str.begin(), str.end(), [](unsigned char ch) {
 		return !std::isspace(static_cast<int>(ch));
 	});

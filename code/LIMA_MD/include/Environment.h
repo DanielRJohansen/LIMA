@@ -60,8 +60,10 @@ public:
 
 
 
-
+	// Run a standard MD sim
 	void run(bool em_variant=false);
+
+
 
 
 	// Return if cannot run

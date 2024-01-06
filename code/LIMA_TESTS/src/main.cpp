@@ -36,7 +36,7 @@ int main() {
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f);
 
 
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.240e-5, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.240e-5, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
@@ -47,6 +47,7 @@ int main() {
 
 		//testReorderMoleculeParticles();
 		//testBuildmembraneSmall(envmode);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.240e-5, 2e-5);
 
 		runAllUnitTests();
 	}

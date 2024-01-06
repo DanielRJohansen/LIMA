@@ -197,7 +197,7 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
     const int inc = sim->getStep() > 2000 ? 10 : 1;
     
 
-    std::vector<Float3> positions(sim->extraparams.total_particles);
+    std::vector<Float3> positions(sim->boxparams_host.total_particles);
     for (int entryindex = 0; entryindex < LIMALOGSYSTEM::getDataentryIndex(sim->getStep()); entryindex += inc) {
 
         int index = 0; 

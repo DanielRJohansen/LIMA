@@ -720,7 +720,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
 			__syncthreads();
 		}
-		LIMAPOSITIONSYSTEM_HACK::applyPBC(*compound_coords);
+		LIMAPOSITIONSYSTEM_HACK::applyBC(*compound_coords);
 		__syncthreads();
 
 		Float3 force_LJ_sol{};	// temp

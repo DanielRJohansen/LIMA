@@ -77,7 +77,7 @@ struct Float3 {
 	__host__ __device__ inline void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ inline void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
 	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
-
+	
 
 	//__device__ inline Float3 mul_highres(const double d) const {
 	//	return Float3(

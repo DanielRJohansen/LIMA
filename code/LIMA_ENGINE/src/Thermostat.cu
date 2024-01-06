@@ -33,7 +33,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB
 	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->boxparams_host.n_solvents));
 
 	const long double total_kinE = (sum_kinE_compound + sum_kinE_solvents) / AVOGADROSNUMBER;
-	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->extraparams.total_particles);
+	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->boxparams_host.total_particles);
 
 	return package;
 }

@@ -12,7 +12,7 @@ add_library(LIMA_MD STATIC
     src/Interface.cpp
     src/Rasterizer.cu
     src/VirtualPathMaker.cpp
-)
+ "include/SimulationBuilder.h" "src/SimulationBuilder.cpp")
 
 
 target_include_directories(LIMA_MD PUBLIC
@@ -51,7 +51,7 @@ endif()
 # Self-test executable
 #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --relocatable-device-code=true")
 find_package(CUDA REQUIRED)
-add_executable(md_self_test src/Main.cpp)
+add_executable(md_self_test src/Main.cpp "include/SimulationBuilder.h" "src/SimulationBuilder.cpp")
 set_target_properties(md_self_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(md_self_test PROPERTIES CUDA_ARCHITECTURES "89")
 #target_link_libraries(md_self_test LIMA_BASE)

@@ -37,7 +37,7 @@ namespace Filehandler {
 
 	void removeWhitespace(std::string& str);
 
-	bool firstNonspaceCharIsQuery(const std::string& str, char query);
+	bool firstNonspaceCharIs(const std::string& str, char query);
 
 	//void replaceTabs(std::string& str);
 

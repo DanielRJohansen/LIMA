@@ -16,6 +16,7 @@ constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove thi
 
 const int DEBUGDATAF3_NVARS = 4;
 
+enum BoundaryConditionSelect{NoBC, PBC};
 
 // All members of this struct are double's so they can be parsed easily by std::map, without using variant
 // TODO: Change these to optionals, so we can easily overload only those which values exist
@@ -25,6 +26,7 @@ struct InputSimParams {
 	float dt = 100.f;			// [ls]
 	uint32_t n_steps = 1000;
 	bool em_variant=false;
+	BoundaryConditionSelect boundarycondition{ PBC };
 private:
 	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
 		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
@@ -51,18 +53,18 @@ struct SimParams {
 };
 
 struct BoxParams {
-	Float3 dims{};
+	Float3 dims{BOX_LEN_NM};
 
 	int n_compounds = 0;
 	int n_bridges = 0;
 	int64_t n_solvents = 0;
 	int64_t total_particles_upperbound = 0;
+	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 };
 
 // Params in simulation host-side only
 struct SimparamsExtra {
 	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
-	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 };
 
 struct DatabuffersDevice {

@@ -9,7 +9,7 @@ rm -rf ./*
 
 
 log_file=./limabuild.log
-cmake ../ -Wno-dev > "$log_file" 2>&1
+cmake ../ -Wno-dev #> "$log_file" 2>&1
 if [ $? -ne 0 ]; then
     echo "CMake failed"
     exit 1
@@ -18,7 +18,7 @@ fi
 #cores=$(lscpu | grep "Core(s) per socket" | awk '{print $4}')
 #make -j$cores
 
-make install > "$log_file" 2>&1
+make install #> "$log_file" 2>&1
 if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1

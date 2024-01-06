@@ -112,7 +112,8 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	return box;
 }
 
-SimulationDevice::SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host) {
+template <typename BoundaryCondition>
+SimulationDevice<BoundaryCondition>::SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host) {
 	genericCopyToDevice(params_host, &params, 1);
 	
 	databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds);
@@ -127,7 +128,8 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, std::unique_ptr
 	box_host.reset();
 }
 
-void SimulationDevice::deleteMembers() {
+template <typename BoundaryCondition>
+void SimulationDevice<BoundaryCondition>::deleteMembers() {
 	box->deleteMembers();
 	cudaFree(box);
 
@@ -157,7 +159,7 @@ Simulation::~Simulation() {
 
 void Simulation::moveToDevice() {
 	if (sim_dev != nullptr) { throw "Expected simdev to be null to move sim to device"; };
-	sim_dev = new SimulationDevice(simparams_host, std::move(box_host));
+	sim_dev = new SimulationDevice<PeriodicBoundaryCondition>(simparams_host, std::move(box_host));
 	sim_dev = genericMoveToDevice(sim_dev, 1);
 }
 

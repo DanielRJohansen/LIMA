@@ -6,6 +6,7 @@
 #include <map>
 #include <assert.h>
 #include <memory>
+#include "BoundaryCondition.cuh"
 
 struct ForceField_NB;
 class Forcefield;
@@ -161,6 +162,7 @@ struct Box {
 
 };
 
+//template <typename BoundaryCondition>
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box);
@@ -168,6 +170,7 @@ struct SimulationDevice {
 	// Recursively free members
 	void deleteMembers();  // Use cudaFree on *this immediately after
 
+	//BoundaryCondition boundarycondition;
 
 	SimParams* params;
 	Box* box;

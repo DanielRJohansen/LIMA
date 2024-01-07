@@ -52,7 +52,7 @@ public:
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
-	void CreateSimulation(const Simulation& simulation_src, InputSimParams);
+	void CreateSimulation(Simulation& simulation_src, InputSimParams);
 
 	void createMembrane();
 

@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "SimulationDevice.cuh"
 #include "Engine.cuh"
 
 #include <vector>
@@ -34,7 +35,7 @@ public:
 		std::vector<float> temperature_data;
 	};
 
-	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
+	AnalyzedPackage analyzeEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
 	static void printEnergy(AnalyzedPackage* package);
 	//static float getVarianceCoefficient(const std::vector<float>& total_energy);
@@ -49,8 +50,8 @@ public:
 
 
 private:
-	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
-	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
+	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t n_steps);
+	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t n_steps);
 
 	float* potE_buffer_device = nullptr;
 	float* vel_buffer_device = nullptr;

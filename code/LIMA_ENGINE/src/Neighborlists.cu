@@ -162,7 +162,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice<BoundaryCondition>* 
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
 					NodeIndex query_origo = compound_origo + NodeIndex{ x,y,z };
-					LIMAPOSITIONSYSTEM::applyBC(query_origo);
+					LIMAPOSITIONSYSTEM::applyBC<BoundaryCondition>(query_origo);
 
 					const int querynode_id = CompoundGrid::get1dIndex(query_origo);
 					const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
@@ -243,13 +243,13 @@ __global__ void updateBlockgridKernel(SimulationDevice<BoundaryCondition>* sim_d
 template __global__ void updateBlockgridKernel(SimulationDevice<PeriodicBoundaryCondition>* sim_dev);
 
 
-void NListManager::handleNlistGPU(Simulation* simulation, int& timing)
+void NeighborLists::updateNlists(SimulationDevice<PeriodicBoundaryCondition>* sim_dev, int n_compounds, int& timing)
 {
 	const auto t0 = std::chrono::high_resolution_clock::now();
 
 	{
-		const int n_blocks = simulation->boxparams_host.n_compounds / threads_in_compoundnlist_kernel + 1;
-		updateCompoundNlistsKernel << < n_blocks, threads_in_compoundnlist_kernel >> > (simulation->sim_dev);	// Must come before any other kernel()
+		const int n_blocks = n_compounds / threads_in_compoundnlist_kernel + 1;
+		updateCompoundNlistsKernel << < n_blocks, threads_in_compoundnlist_kernel >> > (sim_dev);	// Must come before any other kernel()
 	}
 
 	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
@@ -257,7 +257,7 @@ void NListManager::handleNlistGPU(Simulation* simulation, int& timing)
 #ifdef ENABLE_SOLVENTS
 	{
 		const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
-		updateBlockgridKernel<<<n_blocks, nthreads_in_blockgridkernel>>>(simulation->sim_dev);
+		updateBlockgridKernel<<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
 	}
 #endif
 

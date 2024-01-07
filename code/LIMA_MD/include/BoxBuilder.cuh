@@ -29,7 +29,7 @@ public:
 	//void createMembrane(Simulation& sim);
 
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
-	void copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
+	void copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
 private:
 	template<typename BoundaryCondition>

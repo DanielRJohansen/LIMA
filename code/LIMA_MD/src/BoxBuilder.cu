@@ -156,7 +156,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
-			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(position);
+			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition<PeriodicBoundaryCondition>(position);
 			
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
 
@@ -197,11 +197,12 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 }
 
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
-void BoxBuilder::copyBoxState(Simulation* simulation, Box* boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
+void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
 {
 	if (boxsrc_current_step < 1) { throw std::runtime_error("It is not yet possible to create a new box from an old un-run box"); }
 
-	simulation->box_host = SimUtils::copyToHost(boxsrc);
+	//simulation->box_host = SimUtils::copyToHost(boxsrc);
+	simulation->box_host = std::move(boxsrc);
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{

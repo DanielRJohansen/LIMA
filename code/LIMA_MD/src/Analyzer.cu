@@ -105,7 +105,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 
 
-Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
+Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
 	//const int64_t n_steps = simulation->getStep();
@@ -134,8 +134,8 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
-		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
-		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);
+		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, sim_dev, steps_in_kernel);
+		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, sim_dev, steps_in_kernel);
 
 		for (int64_t ii = 0; ii < steps_in_kernel; ii++) {
 			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
@@ -150,7 +150,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
 }
 
-std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
+std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t n_steps) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
@@ -164,7 +164,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 		cudaMalloc(&data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->sim_dev->box, simulation->sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (sim_dev->box, sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);	// TODO: FIx
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
 		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
@@ -185,7 +185,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 }
 
 
-std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
+std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t steps_in_kernel) {
 	const uint64_t n_datapoints = simulation->boxparams_host.n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
@@ -196,8 +196,8 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
-		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->sim_dev->box->boxparams.n_compounds, 1);
-		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (simulation->sim_dev->box, simulation->sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);
+		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), sim_dev->box->boxparams.n_compounds, 1);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (sim_dev->box, sim_dev->params, potE_buffer_device, vel_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
@@ -206,10 +206,9 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 
 
 		for (uint64_t step = 0; step < steps_in_kernel; step++) {
-			for (uint64_t i = 0; i < simulation->sim_dev->box->boxparams.n_compounds; i++) {
-				total_compound_energy[step] += host_data[i + step * simulation->sim_dev->box->boxparams.n_compounds];
+			for (uint64_t i = 0; i < sim_dev->box->boxparams.n_compounds; i++) {
+				total_compound_energy[step] += host_data[i + step * sim_dev->box->boxparams.n_compounds];
 			}
-			//total_compound_energy[step] *= (1.f / (simulation->total_compound_particles));
 		}
 
 	}

@@ -7,6 +7,7 @@
 #include "Constants.h"
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "SimulationDevice.cuh"
 #include "Forcefield.cuh"
 #include "Utilities.h"
 
@@ -70,7 +71,11 @@ public:
 	void runAsync(std::unique_ptr<Simulation>, RunStatus& runstatus);
 
 
-	std::unique_ptr<Simulation> takeBackSim() { return std::move(simulation); }
+	std::unique_ptr<Simulation> takeBackSim() { 
+		assert(sim_dev);
+		simulation->box_host = SimUtils::copyToHost(sim_dev->box);
+		return std::move(simulation); 
+	}
 
 
 	EngineTimings timings{};
@@ -79,6 +84,7 @@ public:
 	ForceField_NB getForcefield() { return forcefield_host; }
 	void terminateSimulation();
 
+	SimulationDevice<PeriodicBoundaryCondition>* getSimDev() { return sim_dev; }
 
 private:
 
@@ -87,7 +93,6 @@ private:
 	void deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
-	std::unique_ptr<NListManager> nlist_manager;
 	void setDeviceConstantMemory();
 
 
@@ -113,7 +118,9 @@ private:
 
 	ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
-	std::unique_ptr<Simulation> simulation;
+	std::unique_ptr<Simulation> simulation = nullptr;
+
+	SimulationDevice<PeriodicBoundaryCondition>* sim_dev = nullptr;
 };
 
 

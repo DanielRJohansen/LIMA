@@ -162,34 +162,14 @@ struct Box {
 
 };
 
-template <typename BoundaryCondition>
-struct SimulationDevice {
-	SimulationDevice(const SimulationDevice&) = delete;
-	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box);
-	
-	// Recursively free members
-	void deleteMembers();  // Use cudaFree on *this immediately after
 
-	BoundaryCondition boundarycondition;
-
-	SimParams* params;
-	Box* box;
-	DatabuffersDevice* databuffers;
-};
 
 // This stays on host
 class Simulation {
 public:
 	Simulation(const SimParams& sim_params, const std::string& molecule_path, EnvMode envmode);
 
-	~Simulation();
-	void moveToDevice();
 	void copyBoxVariables();
-	void incStep() {
-		assert(sim_dev);
-		simparams_host.step++;
-		sim_dev->params->step++;
-	}
 	
 	inline int64_t getStep() const { return simparams_host.step; }
 	
@@ -222,7 +202,7 @@ public:
 	std::unique_ptr<Forcefield> forcefield;
 
 
-	SimulationDevice<PeriodicBoundaryCondition>* sim_dev = nullptr;
+//	SimulationDevice<PeriodicBoundaryCondition>* sim_dev = nullptr;
 };
 
 namespace SimUtils {

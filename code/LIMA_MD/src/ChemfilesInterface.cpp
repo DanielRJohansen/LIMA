@@ -206,7 +206,7 @@ void TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
 
 
         for (int compound_id = 0; compound_id < sim->boxparams_host.n_compounds; compound_id++) {
-            for (int i = 0; i < sim->sim_dev->box->compounds[compound_id].n_particles; i++) {
+            for (int i = 0; i < sim->box_host->compounds[compound_id].n_particles; i++) {
                 positions[index++] = sim->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, i, entryindex);
             }
         }

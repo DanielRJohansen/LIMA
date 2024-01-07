@@ -63,7 +63,7 @@ void Engine::handleBoxtemp() {
 		
 		// Apply 1/n scalar for n steps.
 
-		simulation->sim_dev->params->thermostat_scalar = temp_scalar;
+		sim_dev->params->thermostat_scalar = temp_scalar;
 	}	
 }
 

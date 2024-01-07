@@ -388,7 +388,7 @@ __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, c
 	void* output_buffer, Float3& utility_float3, const int n_particles) 
 {
 	if (threadIdx.x == 0) {
-		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(origo_self, querycompound->origo);
+		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<PeriodicBoundaryCondition>(origo_self, querycompound->origo);
 		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
@@ -493,7 +493,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 		if (threadIdx.x < queue_local.n_elements) {
 
 			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
-			const int blockid_global = EngineUtils::getNewBlockId(transferdir_queue, blockId3d);
+			const int blockid_global = EngineUtils::getNewBlockId<PeriodicBoundaryCondition>(transferdir_queue, blockId3d);
 			KernelHelpersWarnings::assertValidBlockId(blockid_global);
 
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
@@ -551,7 +551,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 		? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) 
 		: NodeIndex{};
 
-	const int new_blockid = EngineUtils::getNewBlockId(transfer_dir, blockId3d);
+	const int new_blockid = EngineUtils::getNewBlockId<PeriodicBoundaryCondition>(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	
@@ -721,7 +721,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice<BoundaryCondi
 			LIMAPOSITIONSYSTEM_HACK::shiftRelPos(*compound_coords, shift_lm);
 			__syncthreads();
 		}
-		LIMAPOSITIONSYSTEM_HACK::applyBC(*compound_coords);
+		LIMAPOSITIONSYSTEM_HACK::applyBC<BoundaryCondition>(*compound_coords);
 		__syncthreads();
 
 		Float3 force_LJ_sol{};	// temp
@@ -834,7 +834,7 @@ __global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
 					const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
 					const CompoundCoords* const querycompound = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, query_compound_id);
-					const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_origo, querycompound->origo);
+					const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, querycompound->origo);
 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
 
 					// calc Relative LimaPosition Shift from the origo-shift
@@ -886,7 +886,7 @@ __global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex(compound_origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
+		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
 
@@ -1036,7 +1036,7 @@ __global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim) {
 				if (dir.sum() > 3) { continue; }
 				if (dir.isZero()) { continue; }
 
-				const int blockindex_neighbor = EngineUtils::getNewBlockId(dir, block_origo);
+				const int blockindex_neighbor = EngineUtils::getNewBlockId<BoundaryCondition>(dir, block_origo);
 				KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
 
 				const SolventBlock* solventblock_neighbor = box->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, simparams.step);
@@ -1168,7 +1168,7 @@ __global__ void compoundBridgeKernel(SimulationDevice<BoundaryCondition>* sim) {
 	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
 	if (threadIdx.x < bridge.n_compounds) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
+		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(box->coordarray_circular_queue, simparams.step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
 	}
 
 

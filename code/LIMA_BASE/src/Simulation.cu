@@ -112,55 +112,12 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	return box;
 }
 
-template <typename BoundaryCondition>
-SimulationDevice<BoundaryCondition>::SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host) {
-	genericCopyToDevice(params_host, &params, 1);
-	
-	databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds);
-	databuffers = genericMoveToDevice(databuffers, 1);
-
-	box_host->moveToDevice();
-	cudaMallocManaged(&box, sizeof(Box));
-	cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);
-
-	box_host->owns_members = false;
-	box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
-	box_host.reset();
-}
-
-template <typename BoundaryCondition>
-void SimulationDevice<BoundaryCondition>::deleteMembers() {
-	box->deleteMembers();
-	cudaFree(box);
-
-	databuffers->freeMembers();
-	cudaFree(databuffers);
-
-	cudaFree(params);
-}
-
 
 Simulation::Simulation(const SimParams& ip, const std::string& molecule_path, EnvMode envmode) :
 	simparams_host{ ip }
 {
 	box_host = std::make_unique<Box>();
 	//forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1, molecule_path);
-}
-
-
-
-Simulation::~Simulation() {
-	if (sim_dev != nullptr) {
-		sim_dev->deleteMembers();
-		cudaFree(sim_dev);
-	}
-
-}
-
-void Simulation::moveToDevice() {
-	if (sim_dev != nullptr) { throw "Expected simdev to be null to move sim to device"; };
-	sim_dev = new SimulationDevice<PeriodicBoundaryCondition>(simparams_host, std::move(box_host));
-	sim_dev = genericMoveToDevice(sim_dev, 1);
 }
 
 void Simulation::copyBoxVariables() {

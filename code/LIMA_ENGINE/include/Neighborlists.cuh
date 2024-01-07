@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "SimulationDevice.cuh"
 #include "EngineUtils.cuh"
 
 #include <chrono>
@@ -17,41 +18,10 @@ namespace NListUtils {
 };
 
 
-struct NListDataCollection {
-	NListDataCollection(Simulation* simulation);
 
-	void preparePositionData(const Simulation& simulation, uint32_t step_at_update);
+namespace NeighborLists {
 
-	Float3 compound_key_positions[MAX_COMPOUNDS];	// [nm] absolute position
-	//NodeIndex compound_origos[MAX_COMPOUNDS];		// compound's corresponding gridnode
-
-	// These are loaded before simulaiton start. Kept on host, and copied to device each update.
-	std::vector<NeighborList> compound_neighborlists;
-	std::unique_ptr<CompoundGrid> compoundgrid;
-};
-
-class NListManager {
-public:
-	NListManager(Simulation* simulation) {};
+	void updateNlists(SimulationDevice<PeriodicBoundaryCondition>* sim_dev, int n_compounds, int& timing);
 
 
-	void handleNLISTS(Simulation* simulation, bool async, bool force_update, int* timing);
-	void handleNlistGPU(Simulation* simulation, int& timing);
-
-
-	void pushNlistsToDevice(Simulation* simulation);
-
-
-	int stepsSinceUpdate(uint64_t currentSimStep) const { 
-		return static_cast<int>(currentSimStep - prev_update_step); 
-	}
-
-private:
-
-	std::mutex m_mutex{};
-
-	volatile bool updated_neighborlists_ready = 0;
-	std::unique_ptr<NListDataCollection> nlist_data_collection;
-
-	uint64_t prev_update_step = 0;
 };

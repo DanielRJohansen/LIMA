@@ -75,12 +75,13 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 #endif
 }
 
-void Environment::CreateSimulation(const Simulation& simulation_src, const InputSimParams ip) {
+void Environment::CreateSimulation(Simulation& simulation_src, const InputSimParams ip) {
 	// If we already have a box, we must have a forcefield too, no?
 
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
-	boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);
+	//boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);	// TODO: Fix this again
+	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simparams_host, simulation_src.simparams_host.step);	// TODO: Fix this again
 	simulation->extraparams = simulation_src.extraparams;
 
 	//TODO Find a better place for this
@@ -191,7 +192,7 @@ bool Environment::prepareForRun() {
 	if (simulation->ready_to_run) { return true; }
 
 	boxbuilder->finishBox(simulation.get());
-	simulation->moveToDevice();	// Only moves the Box to the device
+	//simulation->moveToDevice();	// Only moves the Box to the device
 
 
 	
@@ -206,13 +207,8 @@ bool Environment::prepareForRun() {
 		std::move(simulation),
 		simulation->forcefield->getNBForcefield(), 
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
+
 	return true;
-
-	
-
-	
-
-	return simulation->ready_to_run;
 }
 
 
@@ -269,7 +265,8 @@ void Environment::run(bool em_variant) {
 	
 	m_logger.finishSection("Simulation Finished");
 
-	if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
+	//if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
+	if (simulation->finished) {
 		postRunEvents();
 	}
 }
@@ -279,7 +276,7 @@ void Environment::postRunEvents() {
 
 	if (POSTSIM_ANAL) {
 		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));
-		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
+		postsim_anal_package = analyzer.analyzeEnergy(simulation.get(), engine->getSimDev());
 	}
 
 	if (!save_output) { return; }
@@ -300,11 +297,11 @@ void Environment::postRunEvents() {
 		printH2();
 	}
 
-	if (simulation->sim_dev->params->critical_error_encountered) {
-		Filehandler::dumpToFile(simulation->trainingdata.data(),
-			(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds * simulation->getStep(),
-			out_dir + "sim_traindata.bin");
-	}
+	//if (simulation->sim_dev->params->critical_error_encountered) {
+	//	Filehandler::dumpToFile(simulation->trainingdata.data(),
+	//		(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds * simulation->getStep(),
+	//		out_dir + "sim_traindata.bin");
+	//}
 	
 	if (DUMP_TRAJ) {
 		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
@@ -328,18 +325,18 @@ void Environment::postRunEvents() {
 #endif 
 
 #ifndef __linux__
-	if (!simulation->sim_dev->params->critical_error_encountered && 0) {	// Skipping for now
-		string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
-			+ out_dir + " "
-			+ std::to_string(simulation->getStep()) + " "
-			+ "0" + " "											// do_shuffle
-			+ std::to_string(simulation->boxparams_host.n_compounds) + " "
-			+ std::to_string(MAX_COMPOUND_PARTICLES)
-			;
+	//if (!simulation->sim_dev->params->critical_error_encountered && 0) {	// Skipping for now
+	//	string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
+	//		+ out_dir + " "
+	//		+ std::to_string(simulation->getStep()) + " "
+	//		+ "0" + " "											// do_shuffle
+	//		+ std::to_string(simulation->boxparams_host.n_compounds) + " "
+	//		+ std::to_string(MAX_COMPOUND_PARTICLES)
+	//		;
 
-		cout << data_processing_command << "\n\n";
-		system(&data_processing_command[0]);
-	}
+	//	cout << data_processing_command << "\n\n";
+	//	system(&data_processing_command[0]);
+	//}
 #endif
 
 	simulation->ready_to_run = false;

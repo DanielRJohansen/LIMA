@@ -5,7 +5,6 @@
 #include "Simulation.cuh"
 
 
-template <typename BoundaryCondition>
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
@@ -34,9 +33,6 @@ struct SimulationDevice {
 
 		cudaFree(params);
 	}
-
-	BoundaryCondition boundarycondition;
-
 	SimParams* params;
 	Box* box;
 	DatabuffersDevice* databuffers;

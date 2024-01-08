@@ -63,7 +63,9 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		top_name,
 		V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
-		IGNORE_HYDROGEN);
+		IGNORE_HYDROGEN,
+		ip.boundarycondition
+		);
 
 	//TODO Find a better place for this
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
@@ -205,6 +207,7 @@ bool Environment::prepareForRun() {
 
 	engine = std::make_unique<Engine>(
 		std::move(simulation),
+		simulation->simparams_host.constparams.bc_select,
 		simulation->forcefield->getNBForcefield(), 
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 

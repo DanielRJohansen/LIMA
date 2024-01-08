@@ -378,7 +378,7 @@ float minDist(CompoundState& compoundstate, Float3 particle_pos) {
 	float mindist = 999999;
 	for (size_t i = 0; i < compoundstate.n_particles; i++) {
 		//float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
-		float dist = EngineUtils::calcHyperDistNM(&compoundstate.positions[i], &particle_pos);		// Hmmm doesn't fit the namespace...
+		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&compoundstate.positions[i], &particle_pos);		// Hmmm doesn't fit the namespace...
 		mindist = std::min(mindist, dist);
 	}
 	return mindist;

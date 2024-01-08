@@ -1,7 +1,17 @@
 #pragma once
 
 
-
+// This is the only function to be called from outside :)
+//template <typename BoundaryCondition>
+//CompoundCollection buildMolecules(
+//	//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
+//	const std::string& molecule_dir,	// We need access to .lff files aswell
+//	const std::string& gro_name = "conf.gro",
+//	const std::string& top_name = "topol.top",
+//	VerbosityLevel vl = CRITICAL_INFO,
+//	std::unique_ptr<LimaLogger> logger = makeLimaloggerBareboned("CompoundBuilder"),
+//	bool ignore_hydrogens = true
+//	);
 #include <string.h>
 #include <fstream>
 #include <vector>
@@ -12,21 +22,25 @@
 #include "Constants.h"
 #include "Forcefield.cuh"
 #include "Utilities.h"
-
+#include "EngineUtils.cuh"
 
 struct CompoundCollection;
 
 namespace LIMA_MOLECULEBUILD {
-	// This is the only function to be called from outside :)
+
 	CompoundCollection buildMolecules(
 		//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
 		const std::string& molecule_dir,	// We need access to .lff files aswell
-		const std::string& gro_name = "conf.gro",
-		const std::string& top_name = "topol.top",
-		VerbosityLevel vl = CRITICAL_INFO,
-		std::unique_ptr<LimaLogger> logger = makeLimaloggerBareboned("CompoundBuilder"),
-		bool ignore_hydrogens = true
-		);
+		const std::string& gro_name,
+		const std::string& top_name,
+		VerbosityLevel vl,
+		std::unique_ptr<LimaLogger>,
+		bool ignore_hydrogens,
+		BoundaryConditionSelect bc_select
+	);
+	//template<>CompoundCollection buildMolecules<PeriodicBoundaryCondition>(
+	//	const std::string&, const std::string&, const std::string&, VerbosityLevel, 
+	//	std::unique_ptr<LimaLogger>, bool);
 }
 
 
@@ -91,7 +105,28 @@ public:
 		}
 	}
 
-	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int gro_id);
+	template <typename BoundaryCondition>
+	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id) {
+		if (n_particles >= MAX_COMPOUND_PARTICLES) {
+			throw std::runtime_error("Failed to add particle to compound");
+		}
+
+		// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
+		Float3 hyperpos = position;
+		if (n_particles > 0) {
+			LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(&positions[0], &hyperpos);
+		}
+
+		// Variables only present in factory
+		positions[n_particles] = hyperpos;
+		global_ids[n_particles] = global_id;
+
+		// Variables present in Compound
+		atom_types[n_particles] = atomtype_id;
+		atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
+
+		n_particles++;
+	}
 	int id = -1;	// unique lima id
 
 

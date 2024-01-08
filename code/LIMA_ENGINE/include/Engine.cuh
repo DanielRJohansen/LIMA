@@ -20,16 +20,16 @@
 #include <vector>
 
 template <typename BoundaryCondition>
-__global__ void compoundBondsAndIntegrationKernel(SimulationDevice<BoundaryCondition>* sim);
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
 template <typename BoundaryCondition>
-__global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim);
+__global__ void compoundLJKernel(SimulationDevice* sim);
 template <typename BoundaryCondition>
-__global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim);
+__global__ void solventForceKernel(SimulationDevice* sim);
 template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice<BoundaryCondition>* sim);
+__global__ void compoundBridgeKernel(SimulationDevice* sim);
 template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice<BoundaryCondition>* sim);
+__global__ void solventTransferKernel(SimulationDevice* sim);
 
 struct EngineTimings {
 	int compound_kernels{};
@@ -58,7 +58,7 @@ struct RunStatus {
 
 class Engine {
 public:
-	Engine(std::unique_ptr<Simulation>, ForceField_NB, std::unique_ptr<LimaLogger>);
+	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, ForceField_NB, std::unique_ptr<LimaLogger>);
 	~Engine();
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
@@ -84,7 +84,7 @@ public:
 	ForceField_NB getForcefield() { return forcefield_host; }
 	void terminateSimulation();
 
-	SimulationDevice<PeriodicBoundaryCondition>* getSimDev() { return sim_dev; }
+	SimulationDevice* getSimDev() { return sim_dev; }
 
 private:
 
@@ -120,7 +120,9 @@ private:
 	uint64_t step_at_last_traj_transfer = 0;
 	std::unique_ptr<Simulation> simulation = nullptr;
 
-	SimulationDevice<PeriodicBoundaryCondition>* sim_dev = nullptr;
+	SimulationDevice* sim_dev = nullptr;
+
+	const BoundaryConditionSelect bc_select;
 };
 
 

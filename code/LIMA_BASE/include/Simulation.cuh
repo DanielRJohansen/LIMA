@@ -35,10 +35,12 @@ private:
 };
 
 struct SimParamsConst {
-	SimParamsConst(uint64_t ns, float dt, bool ev) : n_steps(ns), dt(dt), em_variant(ev) {}
+	SimParamsConst(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
+		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
 	uint64_t n_steps;
 	float dt;									// [ls]
 	bool em_variant;
+	BoundaryConditionSelect bc_select;
 };
 
 struct SimParams {

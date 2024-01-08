@@ -61,6 +61,11 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	template <typename BoundaryCondition>
+	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
+		BoundaryCondition::applyHyperposNM(static_particle, movable_particle);
+	}
+
+	template <typename BoundaryCondition>
 	__device__ __host__ static void applyBC(NodeIndex& origo) {
 		BoundaryCondition::applyBC(origo);
 	}
@@ -279,6 +284,13 @@ namespace LIMAPOSITIONSYSTEM {
 		const NodeIndex diff = right_hyper - left;
 		return nodeIndexToAbsolutePosition(diff).len();
 	}
+
+	template <typename BoundaryCondition>
+		__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
+		Float3 temp = *p2;
+		LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(p1, &temp);
+		return (*p1 - temp).len();
+	}
 };
 
 
@@ -357,23 +369,9 @@ namespace LIMALOGSYSTEM {
 namespace EngineUtils {
 
 	// -------------------------------------------------------- Functions in NM - doesnt fit well here! -------------------------------------------------------- //
-	// Assumes positions in NM
-	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
-		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
-		const float boxlenhalf_nm = boxlen_nm / 2.f;
-
-		for (int i = 0; i < 3; i++) {
-			*movable_particle->placeAt(i) += boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) > boxlenhalf_nm);
-			*movable_particle->placeAt(i) -= boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) < -boxlenhalf_nm);
-		}
-	}
 
 	// Assumes positions in NM
-	__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
-		Float3 temp = *p2;
-		applyHyperposNM(p1, &temp);
-		return (*p1 - temp).len();
-	}
+
 
 	__device__ __host__ static float calcKineticEnergy(const float velocity, const float mass) {
 		return 0.5f * mass * velocity * velocity;

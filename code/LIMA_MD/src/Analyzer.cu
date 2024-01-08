@@ -105,7 +105,7 @@ void __global__ monitorSolventEnergyKernel(Box* box, const SimParams* simparams,
 
 
 
-Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
+Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation, SimulationDevice* sim_dev) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
 	//const int64_t n_steps = simulation->getStep();
@@ -150,7 +150,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation, Simula
 	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
 }
 
-std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t n_steps) {
+std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, SimulationDevice* sim_dev, uint64_t n_steps) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
@@ -185,7 +185,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, Simul
 }
 
 
-std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, SimulationDevice<PeriodicBoundaryCondition>* sim_dev, uint64_t steps_in_kernel) {
+std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, SimulationDevice* sim_dev, uint64_t steps_in_kernel) {
 	const uint64_t n_datapoints = simulation->boxparams_host.n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);

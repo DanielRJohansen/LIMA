@@ -11,8 +11,8 @@
 
 
 
-Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
-	: m_logger(std::move(logger))
+Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
+	: bc_select(bc), m_logger(std::move(logger))
 {
 
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
@@ -32,7 +32,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 
 	// Create the Sim_dev
 	if (sim_dev != nullptr) { throw "Expected simdev to be null to move sim to device"; };
-	sim_dev = new SimulationDevice<PeriodicBoundaryCondition>(simulation->simparams_host, std::move(simulation->box_host));
+	sim_dev = new SimulationDevice(simulation->simparams_host, std::move(simulation->box_host));
 	sim_dev = genericMoveToDevice(sim_dev, 1);
 
 
@@ -46,7 +46,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, ForceField_NB forcefield_host, s
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
+	NeighborLists::updateNlists<PeriodicBoundaryCondition>(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -86,7 +86,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
-		NeighborLists::updateNlists(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
+		NeighborLists::updateNlists<PeriodicBoundaryCondition>(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
@@ -212,18 +212,18 @@ void Engine::deviceMaster() {
 
 
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundLJKernel << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		compoundLJKernel<PeriodicBoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
 	cudaDeviceSynchronize();
 
 	if (simulation->boxparams_host.n_bridges > 0) {
-		compoundBridgeKernel<<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
+		compoundBridgeKernel<PeriodicBoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundBondsAndIntegrationKernel << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();
@@ -231,13 +231,13 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		solventForceKernel<< < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
+		solventForceKernel<PeriodicBoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			solventTransferKernel << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
+			solventTransferKernel<PeriodicBoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
 		}
 	}
 	cudaDeviceSynchronize();

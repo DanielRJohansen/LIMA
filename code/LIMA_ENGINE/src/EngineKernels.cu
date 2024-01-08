@@ -383,12 +383,12 @@ __device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* cons
 	return force;
 }
 
-
+template <typename BoundaryCondition>
 __device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* const querycompound, 
 	void* output_buffer, Float3& utility_float3, const int n_particles) 
 {
 	if (threadIdx.x == 0) {
-		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<PeriodicBoundaryCondition>(origo_self, querycompound->origo);
+		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(origo_self, querycompound->origo);
 		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 		// calc Relative LimaPosition Shift from the origo-shift
@@ -470,6 +470,7 @@ __device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, 
 /// <param name="transferqueues">In shared memory</param>
 /// <param name="relpos_next">Register</param>
 /// <param name="transfermodules">Global memory</param>
+template <typename BoundaryCondition>
 __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, 
 	const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const NodeIndex& blockId3d) {
 
@@ -493,7 +494,7 @@ __device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& s
 		if (threadIdx.x < queue_local.n_elements) {
 
 			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
-			const int blockid_global = EngineUtils::getNewBlockId<PeriodicBoundaryCondition>(transferdir_queue, blockId3d);
+			const int blockid_global = EngineUtils::getNewBlockId<BoundaryCondition>(transferdir_queue, blockId3d);
 			KernelHelpersWarnings::assertValidBlockId(blockid_global);
 
 			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
@@ -543,6 +544,7 @@ __device__ void compressRemainers(const SolventBlock& solventblock_current_local
 	}
 }
 
+template <typename BoundaryCondition>
 __device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
@@ -551,11 +553,11 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 		? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) 
 		: NodeIndex{};
 
-	const int new_blockid = EngineUtils::getNewBlockId<PeriodicBoundaryCondition>(transfer_dir, blockId3d);
+	const int new_blockid = EngineUtils::getNewBlockId<BoundaryCondition>(transfer_dir, blockId3d);
 	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
 
 	
-	transferOut(transfer_dir, solventblock_current_local, new_blockid, relpos_next, transferqueues_local, transfermodules_global, blockId3d);
+	transferOut<BoundaryCondition>(transfer_dir, solventblock_current_local, new_blockid, relpos_next, transferqueues_local, transfermodules_global, blockId3d);
 
 	SolventBlockTransfermodule* remain_transfermodule = &transfermodules_global[blockIdx.x];
 	compressRemainers(solventblock_current_local, solventblock_next_global, relpos_next, utility_buffer, remain_transfermodule, remain);
@@ -569,7 +571,7 @@ __device__ void transferOutAndCompressRemainders(const SolventBlock& solventbloc
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 template <typename BoundaryCondition>
-__global__ void compoundBondsAndIntegrationKernel(SimulationDevice<BoundaryCondition>* sim) {
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -733,14 +735,14 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice<BoundaryCondi
 		coordarray_next_ptr->loadData(*compound_coords);
 	}
 }
-template __global__ void compoundBondsAndIntegrationKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
-
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition>(SimulationDevice* sim);
 
 
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition>
-__global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim) {
+__global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ NeighborList neighborlist;		
@@ -925,8 +927,8 @@ __global__ void compoundLJKernel(SimulationDevice<BoundaryCondition>* sim) {
 		sim->box->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundLJKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
-
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
+template __global__ void compoundLJKernel<NoBoundaryCondition>(SimulationDevice* sim);
 #undef compound_index
 
 
@@ -935,7 +937,7 @@ template  __global__ void compoundLJKernel(SimulationDevice<PeriodicBoundaryCond
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition>
-__global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim) {
+__global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
@@ -993,7 +995,7 @@ __global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim) {
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
+			getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
 
 
 			// Then load atomtypes of neighboring compound
@@ -1083,7 +1085,7 @@ __global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim) {
 	SolventBlock* solventblock_next_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);
 
 	if (SolventBlocksCircularQueue::isTransferStep(simparams.step)) {
-		transferOutAndCompressRemainders(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
+		transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
 	}
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
@@ -1093,7 +1095,9 @@ __global__ void solventForceKernel(SimulationDevice<BoundaryCondition>* sim) {
 		}
 	}
 }
-template __global__ void solventForceKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
+template __global__ void solventForceKernel<NoBoundaryCondition>(SimulationDevice* sim);
+
 #undef solvent_index
 #undef solvent_mass
 #undef solvent_active
@@ -1104,7 +1108,7 @@ template __global__ void solventForceKernel(SimulationDevice<PeriodicBoundaryCon
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice<BoundaryCondition>* sim) {
+__global__ void solventTransferKernel(SimulationDevice* sim) {
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
@@ -1141,14 +1145,14 @@ __global__ void solventTransferKernel(SimulationDevice<BoundaryCondition>* sim) 
 		solventblock_next->n_solvents = n_solvents_next;
 	}
 }
-template __global__ void solventTransferKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
-
+template __global__ void solventTransferKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
+template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDevice* sim);
 
 
 
 #define particle_id_bridge threadIdx.x
 template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice<BoundaryCondition>* sim) {
+__global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
@@ -1208,6 +1212,7 @@ __global__ void compoundBridgeKernel(SimulationDevice<BoundaryCondition>* sim) {
 		sim->box->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}
 }
-template __global__ void compoundBridgeKernel(SimulationDevice<PeriodicBoundaryCondition>* sim);
+template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
+template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim);
 #pragma warning (pop)
 #pragma warning (pop)

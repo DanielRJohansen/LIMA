@@ -1,11 +1,12 @@
 #include "CompoundBuilder.h"
 #include "Printer.h"
 #include "EngineUtils.cuh"
-
+#include "BoundaryCondition.cuh"
 
 
 
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <format>
 #include <span>
@@ -38,10 +39,13 @@ struct Topology {
 	std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
 };
 
-
+template <typename BoundaryCondition>
 class MoleculeBuilder {
 public:
-	MoleculeBuilder(std::unique_ptr<LimaLogger>, VerbosityLevel vl = SILENT);
+	MoleculeBuilder(std::unique_ptr<LimaLogger> logger, VerbosityLevel vl = SILENT) :
+		m_logger(std::move(logger)),
+		verbosity_level(vl)
+	{}
 
 	// Upon creation of the CompoundCollection, the MoleculeBuilder object is no longer valid,
 	// as it move's it's data instead of copying!
@@ -104,13 +108,10 @@ private:
 	void insertSolventAtom(const GroRecord& record);
 };
 
-MoleculeBuilder::MoleculeBuilder(std::unique_ptr<LimaLogger> logger, VerbosityLevel vl) :
-	m_logger(std::move(logger)),
-	verbosity_level(vl)
-{}
 
-CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) {
-
+template <typename BoundaryCondition>
+CompoundCollection MoleculeBuilder<BoundaryCondition>::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) 
+{
 	m_logger->startSection("Building Molecules");
 	particleinfotable = loadAtomInfo(molecule_dir);
 	loadAtomPositions(gro_path);
@@ -205,7 +206,8 @@ GroRecord parseGroLineTemp(const std::string& line) {
 	return record;
 }
 
-void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could be const if not for the temporary atomname for rendering
+template <typename BoundaryCondition>
+void MoleculeBuilder<BoundaryCondition>::loadAtomPositions(const std::string& gro_path) {	// could be const if not for the temporary atomname for rendering
 
 	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
 
@@ -285,7 +287,8 @@ void MoleculeBuilder::loadAtomPositions(const std::string& gro_path) {	// could 
 	}
 }
 
-Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
+template <typename BoundaryCondition>
+Topology MoleculeBuilder<BoundaryCondition>::loadTopology(const std::string& molecule_dir)
 {
 	const string bonded_path = Filehandler::fileExists(Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff"))
 		? Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff")
@@ -351,7 +354,8 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 	return topology;
 }
 
-std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molecule_dir) {
+template <typename BoundaryCondition>
+std::vector<ParticleInfo> MoleculeBuilder<BoundaryCondition>::loadAtomInfo(const std::string& molecule_dir) {
 	const string nonbonded_path = Filehandler::fileExists(Filehandler::pathJoin(molecule_dir, "custom_ffnonbonded.lff"))
 		? Filehandler::pathJoin(molecule_dir, "custom_ffnonbonded.lff")
 		: Filehandler::pathJoin(molecule_dir, "ffnonbonded.lff");
@@ -395,7 +399,8 @@ bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTabl
 	return false;
 }
 
-void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& singlebonds) {
+template <typename BoundaryCondition>
+void MoleculeBuilder<BoundaryCondition>::createCompounds(const std::vector<SingleBondFactory>& singlebonds) {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
 	
@@ -434,7 +439,7 @@ void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& sing
 			particleinfo.local_id_compound = compounds.back().n_particles;
 
 			// Then add the particle to the compound
-			compounds.back().addParticle(
+			compounds.back().addParticle<BoundaryCondition>(
 				nonsolvent_positions[atom_gid],
 				particleinfo.atomtype_id,
 				Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
@@ -465,8 +470,8 @@ bool compoundsAreAlreadyConnected(const std::vector<int> compound_ids, const std
 	return false;
 }
 
-#include <unordered_set>
-void MoleculeBuilder::createBridges(const std::vector<SingleBondFactory>& singlebonds) 
+template <typename BoundaryCondition>
+void MoleculeBuilder<BoundaryCondition>::createBridges(const std::vector<SingleBondFactory>& singlebonds)
 {
 	// First find which ompounds are bonded to other compounds. I assume singlebonds should find all these, 
 	// since angles and dihedrals make no sense if the singlebond is not present, as the distances between the atoms can then be extremely large
@@ -633,8 +638,9 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const ParticleInf
 	}
 }
 
+template <typename BoundaryCondition>
 template <typename BondTypeFactory>
-void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds) {
+void MoleculeBuilder<BoundaryCondition>::distributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds) {
 
 	constexpr int atoms_in_bond = BondTypeFactory::n_atoms;
 
@@ -654,7 +660,8 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const std::vector<Bon
 	}
 }
 
-void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topology) {
+template <typename BoundaryCondition>
+void MoleculeBuilder<BoundaryCondition>::distributeBondsToCompoundsAndBridges(const Topology& topology) {
 	bp_lut_manager = std::make_unique<BondedParticlesLUTManager>();
 
 	// First check that we dont have any unrealistic bonds, and warn immediately.
@@ -664,7 +671,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 
 		const Float3 pos1 = nonsolvent_positions[gid1];
 		const Float3 pos2 = nonsolvent_positions[gid2];
-		const float hyper_dist = EngineUtils::calcHyperDistNM(&pos1, &pos2);
+		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&pos1, &pos2);
 		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
 			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
 		}
@@ -718,7 +725,7 @@ void MoleculeBuilder::distributeBondsToCompoundsAndBridges(const Topology& topol
 
 
 
-
+template <typename BoundaryCondition>
 std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* const positions, int n_elems) {
 	const int k = CompoundInteractionBoundary::k;
 	std::array<int, k> center_indices{};
@@ -744,7 +751,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 		for (int i = 0; i < n_elems; ++i) {
 			float min_dist = std::numeric_limits<float>::infinity();
 			for (int j = 0; j < k; ++j) {
-				float dist = EngineUtils::calcHyperDistNM(&positions[i], &positions[center_indices[j]]);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&positions[i], &positions[center_indices[j]]);
 				if (dist < min_dist) {
 					min_dist = dist;
 					labels[i] = j; // Assign this particle to cluster j
@@ -774,7 +781,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 		for (int j = 0; j < k; ++j) {
 			float min_dist = std::numeric_limits<float>::infinity();
 			for (int i = 0; i < n_elems; ++i) {
-				float dist = EngineUtils::calcHyperDistNM(&positions[i], &new_centers[j]);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&positions[i], &new_centers[j]);
 				if (dist < min_dist) {
 					min_dist = dist;
 					center_indices[j] = i; // Update the center index to this particle
@@ -786,6 +793,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 	return center_indices; // Return the indices of particles that are final centers
 }
 
+template <typename BoundaryCondition>
 std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions, int n_particles, const std::array<Float3, CompoundInteractionBoundary::k>& key_positions) {
 	std::array<float, CompoundInteractionBoundary::k> radii;
 	std::vector<int> labels(n_particles);  // Holds the index of the closest key particle for each particle
@@ -794,7 +802,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 	for (int i = 0; i < n_particles; ++i) {
 		float min_dist = std::numeric_limits<float>::infinity();
 		for (size_t j = 0; j < CompoundInteractionBoundary::k; ++j) {
-			float dist = EngineUtils::calcHyperDistNM(&positions[i], &key_positions[j]);
+			float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&positions[i], &key_positions[j]);
 			if (dist < min_dist) {
 				min_dist = dist;
 				labels[i] = j;  // Assign this particle to cluster j
@@ -808,7 +816,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 
 		for (int i = 0; i < n_particles; ++i) {
 			if (labels[i] == j) {  // If this particle belongs to the current cluster
-				float dist = EngineUtils::calcHyperDistNM(&positions[i], &key_positions[j]);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&positions[i], &key_positions[j]);
 				if (dist > max_radius) {
 					max_radius = dist; // Update maximum radius
 				}
@@ -822,21 +830,23 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 	return radii;
 }
 
+template <typename BoundaryCondition>
 Float3 calcCOM(const Float3* positions, int n_elems) {
 	Float3 com{};
 	for (int i = 0; i < n_elems; i++) {
 		Float3 pos = positions[i];
-		EngineUtils::applyHyperposNM(&positions[i], &pos);	// Hyperpos around particle 0, since we dont know key position yet
+		LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(&positions[i], &pos);	// Hyperpos around particle 0, since we dont know key position yet
 		com += pos;
 	}
 	return com / static_cast<float>(n_elems);
 }
 
+template <typename BoundaryCondition>
 int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com) {
 	int closest_particle_index = 0;
 	float closest_particle_distance = std::numeric_limits<float>::infinity();
 	for (int i = 0; i < n_elems; i++) {
-		const float dist = EngineUtils::calcHyperDistNM(&positions[i], &com);
+		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&positions[i], &com);
 		if (dist < closest_particle_distance) {
 			closest_particle_distance = dist;
 			closest_particle_index = i;
@@ -845,51 +855,29 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 	return closest_particle_index;
 }
 
-void MoleculeBuilder::calcCompoundMetaInfo() {
+template <typename BoundaryCondition>
+void MoleculeBuilder<BoundaryCondition>::calcCompoundMetaInfo() {
 	for (CompoundFactory& compound : compounds) {
 
 		const int k = CompoundInteractionBoundary::k;
-		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles);
+		std::array<int, k> key_indices = kMeansClusterCenters<BoundaryCondition>(compound.positions, compound.n_particles);
 		std::array<Float3, k> key_positions;
 		for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
 
-		std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions);
+		std::array<float, k> radii = clusterRadii<BoundaryCondition>(compound.positions, compound.n_particles, key_positions);
 
 		for (int i = 0; i < k; i++) {
 			compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
 			compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
 		}
 
-		const Float3 com = calcCOM(compound.positions, compound.n_particles);	
-		compound.centerparticle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com);
+		const Float3 com = calcCOM<BoundaryCondition>(compound.positions, compound.n_particles);
+		compound.centerparticle_index = indexOfParticleClosestToCom<BoundaryCondition>(compound.positions, compound.n_particles, com);
 	}
 }
 
 
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
-
-void CompoundFactory::addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id) {
-	if (n_particles >= MAX_COMPOUND_PARTICLES) {
-		throw std::runtime_error("Failed to add particle to compound");
-	}
-	
-	// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
-	Float3 hyperpos = position;
-	if (n_particles > 0) {
-		EngineUtils::applyHyperposNM(&positions[0], &hyperpos);
-	}
-
-	// Variables only present in factory
-	positions[n_particles] = hyperpos;
-	global_ids[n_particles] = global_id;
-
-	// Variables present in Compound
-	atom_types[n_particles] = atomtype_id;
-	atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
-
-	n_particles++;
-}
-
 void CompoundFactory::addBond(const ParticleInfoTable& particle_info, const SingleBondFactory& bondtype) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) { 
 		throw std::runtime_error("Failed to add singlebond to compound"); }
@@ -1074,7 +1062,6 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 #include "ForcefieldMaker.h"
 
 
-
 CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
 	//Forcefield* ff,
 	const std::string& molecule_dir,
@@ -1082,14 +1069,22 @@ CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
 	const std::string& top_name,
 	VerbosityLevel vl,
 	std::unique_ptr<LimaLogger> logger,
-	bool ignore_hydrogens
+	bool ignore_hydrogens,
+	BoundaryConditionSelect bc_select
 ) 
 {
 	//const string molecule_dir = work_dir + "/molecule";
 	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, gro_name, top_name, EnvMode::Headless);
 
 
-	MoleculeBuilder mb{std::move(logger), vl};
-	
-	return mb.buildMolecules(lfs::pathJoin(molecule_dir, gro_name), molecule_dir, ignore_hydrogens);
+	switch (bc_select) {
+	case NoBC: {
+		MoleculeBuilder<NoBoundaryCondition> mb{ std::move(logger), vl };
+		return mb.buildMolecules(lfs::pathJoin(molecule_dir, gro_name), molecule_dir, ignore_hydrogens);
+	}
+	case PBC: {
+		MoleculeBuilder<PeriodicBoundaryCondition> mb{ std::move(logger), vl };
+		return mb.buildMolecules(lfs::pathJoin(molecule_dir, gro_name), molecule_dir, ignore_hydrogens);
+	}
+	}
 }

@@ -5,8 +5,13 @@ class NoBoundaryCondition {
 public:
 	__host__ void static applyBC(NodeIndex& origo) {}
 
+	__device__ __host__ static void applyBC(LimaPosition& position) {}
+
+	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
+
 	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
 
+	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {}
 };
 
 class PeriodicBoundaryCondition {
@@ -20,14 +25,14 @@ public:
 		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
 	}
 
-	__device__ __host__ static void applyPC(NodeIndex& origo) {
-		origo.x += BOXGRID_N_NODES * (origo.x < 0);
-		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
-		origo.y += BOXGRID_N_NODES * (origo.y < 0);
-		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
-		origo.z += BOXGRID_N_NODES * (origo.z < 0);
-		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
-	}
+	//__device__ __host__ static void applyPC(NodeIndex& origo) {
+	//	origo.x += BOXGRID_N_NODES * (origo.x < 0);
+	//	origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
+	//	origo.y += BOXGRID_N_NODES * (origo.y < 0);
+	//	origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
+	//	origo.z += BOXGRID_N_NODES * (origo.z < 0);
+	//	origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
+	//}
 
 	__device__ __host__ static void applyBC(LimaPosition& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
@@ -60,6 +65,16 @@ public:
 		movable_position.z -= BOX_LEN_i * (difference.z < -BOX_LEN_i / 2);
 	}
 
+	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
+		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
+		const float boxlenhalf_nm = boxlen_nm / 2.f;
+
+		for (int i = 0; i < 3; i++) {
+			*movable_particle->placeAt(i) += boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) > boxlenhalf_nm);
+			*movable_particle->placeAt(i) -= boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) < -boxlenhalf_nm);
+		}
+	}
+
 	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
 		current_position.x += BOX_LEN_NM * (current_position.x < 0.f);
 		current_position.x -= BOX_LEN_NM * (current_position.x > BOX_LEN_NM);
@@ -68,4 +83,6 @@ public:
 		current_position.z += BOX_LEN_NM * (current_position.z < 0.f);
 		current_position.z -= BOX_LEN_NM * (current_position.z > BOX_LEN_NM);
 	}
+
+
 };

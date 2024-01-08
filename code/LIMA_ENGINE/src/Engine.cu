@@ -46,7 +46,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, Forc
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists<PeriodicBoundaryCondition>(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host.n_compounds, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -86,7 +86,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
-		NeighborLists::updateNlists<PeriodicBoundaryCondition>(sim_dev, simulation->boxparams_host.n_compounds, timings.nlist);
+		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host.n_compounds, timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
@@ -212,18 +212,21 @@ void Engine::deviceMaster() {
 
 
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundLJKernel<PeriodicBoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL(compoundLJKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, sim_dev);
+		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
 	cudaDeviceSynchronize();
 
 	if (simulation->boxparams_host.n_bridges > 0) {
-		compoundBridgeKernel<PeriodicBoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
+		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
+		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
 	}
 
 	cudaDeviceSynchronize();
 	if (simulation->boxparams_host.n_compounds > 0) {
-		compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL(compoundBondsAndIntegrationKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, sim_dev);
+		//compoundBondsAndIntegrationKernel<BoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();
@@ -231,13 +234,15 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		solventForceKernel<PeriodicBoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL(solventForceKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
+		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			solventTransferKernel<PeriodicBoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
+			//solventTransferKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
 		}
 	}
 	cudaDeviceSynchronize();

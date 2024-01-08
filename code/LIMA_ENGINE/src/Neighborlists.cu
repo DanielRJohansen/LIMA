@@ -186,6 +186,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	}
 }
 template __global__ void updateCompoundNlistsKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev);
+template __global__ void updateCompoundNlistsKernel<NoBoundaryCondition>(SimulationDevice* sim_dev);
 
 
 template <typename BoundaryCondition>
@@ -240,42 +241,34 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 	}
 }
 template __global__ void updateBlockgridKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev);
+template __global__ void updateBlockgridKernel<NoBoundaryCondition>(SimulationDevice* sim_dev);
 
 
 
 
-void NeighborLists::_updateCompoundNlistsKernel(int n_compounds, SimulationDevice* sim_dev) {
-	updateCompoundNlistsKernel<PeriodicBoundaryCondition> << < n_compounds / threads_in_compoundnlist_kernel + 1, threads_in_compoundnlist_kernel >> > (sim_dev);
+
+
+void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSelect bc_select, int n_compounds, int& timing)
+{
+	const auto t0 = std::chrono::high_resolution_clock::now();
+
+	{
+		const int n_blocks = n_compounds / threads_in_compoundnlist_kernel + 1;
+		LAUNCH_GENERIC_KERNEL(updateCompoundNlistsKernel, n_blocks, threads_in_compoundnlist_kernel, bc_select, sim_dev);
+		//updateCompoundNlistsKernel<BoundaryCondition> << < n_blocks, threads_in_compoundnlist_kernel >> > (sim_dev);	// Must come before any other kernel()
+	}
+
+	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
+
+#ifdef ENABLE_SOLVENTS
+	{
+		const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
+		LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev);
+		//updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
+	}
+#endif
+
+	cudaDeviceSynchronize();
+	const auto t1 = std::chrono::high_resolution_clock::now();
+	timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 }
-void NeighborLists::_updateBlockgridKernel(int n_compounds, SimulationDevice* sim_dev) {
-	updateBlockgridKernel<PeriodicBoundaryCondition> << < CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1, nthreads_in_blockgridkernel >> > (sim_dev);
-}
-
-
-
-
-//void NeighborLists::updateNlists(SimulationDevice* sim_dev, int n_compounds, int& timing)
-//{
-//	const auto t0 = std::chrono::high_resolution_clock::now();
-//
-//	{
-//		const int n_blocks = n_compounds / threads_in_compoundnlist_kernel + 1;
-//		updateCompoundNlistsKernel << < n_blocks, threads_in_compoundnlist_kernel >> > (sim_dev);	// Must come before any other kernel()
-//	}
-//
-//	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
-//
-//#ifdef ENABLE_SOLVENTS
-//	{
-//		const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
-//		updateBlockgridKernel<<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
-//	}
-//#endif
-//
-//	cudaDeviceSynchronize();
-//	const auto t1 = std::chrono::high_resolution_clock::now();
-//	timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
-//}
-
-
-//template<> void NeighborLists::updateNlists<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int n_compounds, int& timing);

@@ -19,6 +19,9 @@ const int DEBUGDATAF3_NVARS = 4;
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
+
+
+
 // All members of this struct are double's so they can be parsed easily by std::map, without using variant
 // TODO: Change these to optionals, so we can easily overload only those which values exist
 struct InputSimParams {
@@ -202,9 +205,6 @@ public:
 	std::vector<Compound> compounds_host;
 	//ForceField_NB forcefield;
 	std::unique_ptr<Forcefield> forcefield;
-
-
-//	SimulationDevice<PeriodicBoundaryCondition>* sim_dev = nullptr;
 };
 
 namespace SimUtils {

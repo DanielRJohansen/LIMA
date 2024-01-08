@@ -83,6 +83,22 @@ public:
 		current_position.z += BOX_LEN_NM * (current_position.z < 0.f);
 		current_position.z -= BOX_LEN_NM * (current_position.z > BOX_LEN_NM);
 	}
-
-
 };
+
+// This macro functions calls the correct kernel, depending on the BoundaryCondition select
+#define LAUNCH_GENERIC_KERNEL(kernel, grid_size, block_size, bc_select, kernel_arg) \
+do { \
+	switch (bc_select) { \
+		case NoBC: \
+        kernel<NoBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+        break; \
+\
+		case PBC: \
+        kernel<PeriodicBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+        break; \
+\
+		default: \
+		throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL"); \
+	} \
+} \
+while(0);	// Dont question the do-while, its safer for some reason i barely understand

@@ -87,18 +87,46 @@ public:
 
 // This macro functions calls the correct kernel, depending on the BoundaryCondition select
 #define LAUNCH_GENERIC_KERNEL(kernel, grid_size, block_size, bc_select, kernel_arg) \
-do { \
-	switch (bc_select) { \
-		case NoBC: \
-        kernel<NoBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
-        break; \
-\
-		case PBC: \
-        kernel<PeriodicBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
-        break; \
-\
-		default: \
-		throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL"); \
+	do { \
+		switch (bc_select) { \
+			case NoBC: \
+			kernel<NoBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+			break; \
+	\
+			case PBC: \
+			kernel<PeriodicBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+			break; \
+	\
+			default: \
+			throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL"); \
+		} \
 	} \
-} \
-while(0);	// Dont question the do-while, its safer for some reason i barely understand
+	while(0);	// Dont question the do-while, its safer for some reason i barely understand
+
+// Macro that calls the correct function, depending on the boundarycondition select
+#define CALL_FUNCTION_WITH_BC(func, bc_select, ...) \
+    do { \
+        switch (bc_select) { \
+            case NoBC: \
+                func<NoBoundaryCondition>(__VA_ARGS__); \
+                break; \
+            case PBC: \
+                func<PeriodicBoundaryCondition>(__VA_ARGS__); \
+                break; \
+            default: \
+                throw std::runtime_error("Unsupported boundary condition in CALL_FUNCTION_WITH_BC"); \
+        } \
+    } while (0)
+
+// This is just pure ChatGPT magic now...
+#define CALL_FUNCTION_WITH_BC_RET(func, bc_select, ...) \
+    ([&]() -> decltype(auto) { \
+        switch (bc_select) { \
+            case NoBC: \
+                return func<NoBoundaryCondition>(__VA_ARGS__); \
+            case PBC: \
+                return func<PeriodicBoundaryCondition>(__VA_ARGS__); \
+            default: \
+                throw std::runtime_error("Unsupported boundary condition in CALL_FUNCTION_WITH_BC_RET"); \
+        } \
+    }())

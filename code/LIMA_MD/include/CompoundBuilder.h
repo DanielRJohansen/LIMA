@@ -38,9 +38,6 @@ namespace LIMA_MOLECULEBUILD {
 		bool ignore_hydrogens,
 		BoundaryConditionSelect bc_select
 	);
-	//template<>CompoundCollection buildMolecules<PeriodicBoundaryCondition>(
-	//	const std::string&, const std::string&, const std::string&, VerbosityLevel, 
-	//	std::unique_ptr<LimaLogger>, bool);
 }
 
 

@@ -32,8 +32,9 @@ void BoxBuilder::buildBox(Simulation* simulation) {
 
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
-	for (const CompoundFactory& compound : compound_collection.compounds) {
-		insertCompoundInBox<PeriodicBoundaryCondition>(compound, *simulation);
+	for (const CompoundFactory& compound : compound_collection.compounds) {		
+		CALL_FUNCTION_WITH_BC(insertCompoundInBox, simulation->simparams_host.constparams.bc_select, compound, *simulation);
+		//insertCompoundInBox<BoundaryCondition>(compound, *simulation);
 	}
 
 	simulation->extraparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
@@ -156,7 +157,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
-			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition<PeriodicBoundaryCondition>(position);
+
+			const SolventCoord solventcoord = CALL_FUNCTION_WITH_BC_RET(LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition, simulation->simparams_host.constparams.bc_select, position);
+			//const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition<BoundaryCondition>(position);
 			
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
 
@@ -374,15 +377,15 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 //	return true;
 //}
 
-float minDist(CompoundState& compoundstate, Float3 particle_pos) {
-	float mindist = 999999;
-	for (size_t i = 0; i < compoundstate.n_particles; i++) {
-		//float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
-		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&compoundstate.positions[i], &particle_pos);		// Hmmm doesn't fit the namespace...
-		mindist = std::min(mindist, dist);
-	}
-	return mindist;
-}
+//float minDist(CompoundState& compoundstate, Float3 particle_pos) {
+//	float mindist = 999999;
+//	for (size_t i = 0; i < compoundstate.n_particles; i++) {
+//		//float dist = EngineUtils::calcHyperDist(&compound->prev_positions[i], &particle_pos);
+//		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&compoundstate.positions[i], &particle_pos);		// Hmmm doesn't fit the namespace...
+//		mindist = std::min(mindist, dist);
+//	}
+//	return mindist;
+//}
 
 // This funciton is currently blank! TODO: fix
 bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool verbose)

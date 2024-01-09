@@ -15,12 +15,13 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 }
 template __device__ void getCompoundAbspositions<PeriodicBoundaryCondition>(SimulationDevice& sim_dev, int compound_id, Float3* result);
 
+template <typename BoundaryCondition>
 __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const posleft, const Float3* const posright) 
 {
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
 
-			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&posleft[ileft], &posright[iright]);
+			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &posright[iright]);
 			const float max_dist = CUTOFF_NM + left.radii[ileft] + right.radii[iright];
 
 			if (dist < max_dist)
@@ -31,11 +32,12 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 	return false;
 }
 
+template <typename BoundaryCondition>
 __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& boundary, const Float3* const posleft, const Float3& point)
 {
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&posleft[ileft], &point);
+		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &point);
 		const float max_dist = CUTOFF_NM + boundary.radii[ileft];
 
 		if (dist < max_dist)
@@ -77,7 +79,7 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 		}*/
 
 		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
-		if (canCompoundsInteract(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
+		if (canCompoundsInteract<BoundaryCondition>(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
 		{
 			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id)))
 				return false;
@@ -168,7 +170,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 					const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
 
 
-					if (canCompoundInteractWithPoint(boundary_self, key_positions_self, querynode_pos)) {
+					if (canCompoundInteractWithPoint<BoundaryCondition>(boundary_self, key_positions_self, querynode_pos)) {
 						const bool success = nlist.addGridnode(querynode_id);
 						if (!success) {
 							sim_dev->params->critical_error_encountered = true;
@@ -227,7 +229,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 				if (querycompound_id >= n_compounds) { break; }
 
 				Float3* const positionsbegin = &key_positions_buffer[i * CompoundInteractionBoundary::k];
-				if (canCompoundInteractWithPoint(boundaries[i], positionsbegin, block_abspos)) {
+				if (canCompoundInteractWithPoint<BoundaryCondition>(boundaries[i], positionsbegin, block_abspos)) {
 					if (!gridnode.addNearbyCompound(querycompound_id)) {
 						sim_dev->params->critical_error_encountered = true;
 					}

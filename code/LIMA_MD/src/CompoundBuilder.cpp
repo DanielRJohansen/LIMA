@@ -85,7 +85,7 @@ private:
 
 
 	// Only works for fixed positions gro files!! Meaning max, 99.999 particles
-	void loadAtomPositions(const std::string& gro_path);
+	void loadAtomPositions(const SimpleParsedFile& parsedgrofile);
 
 	/// <summary>
 	/// Goes through all the residues, and fills the bondedresidue_ids vector. 
@@ -114,7 +114,9 @@ CompoundCollection MoleculeBuilder<BoundaryCondition>::buildMolecules(const stri
 {
 	m_logger->startSection("Building Molecules");
 	particleinfotable = loadAtomInfo(molecule_dir);
-	loadAtomPositions(gro_path);
+
+	const SimpleParsedFile parsedgrofile = Filehandler::parseGroFile(gro_path, false);
+	loadAtomPositions(parsedgrofile);
 
 	const Topology& topology = loadTopology(molecule_dir);
 
@@ -164,7 +166,9 @@ CompoundCollection MoleculeBuilder<BoundaryCondition>::buildMolecules(const stri
 		static_cast<int>(nonsolvent_positions.size()),
 		std::move(bp_lut_manager), 
 		std::move(bridges_compact),
-		std::move(solvent_positions) };
+		std::move(solvent_positions),
+		stof(parsedgrofile.rows.back().words[0])	// TODO: Find a better way..
+	};
 }
 
 
@@ -207,20 +211,20 @@ GroRecord parseGroLineTemp(const std::string& line) {
 }
 
 template <typename BoundaryCondition>
-void MoleculeBuilder<BoundaryCondition>::loadAtomPositions(const std::string& gro_path) {	// could be const if not for the temporary atomname for rendering
+void MoleculeBuilder<BoundaryCondition>::loadAtomPositions(const SimpleParsedFile& parsedfile) {	// could be const if not for the temporary atomname for rendering
 
-	const SimpleParsedFile parsedfile = Filehandler::parseGroFile(gro_path, false);
+
 
 	// First check box has correct size
 	if (parsedfile.rows.back().section != "box_size") {
 		throw std::runtime_error("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
 	}
 
-	for (auto& length_str : parsedfile.rows.back().words) {
-		if (std::stof(length_str) != BOX_LEN_NM) {
-			//throw std::runtime_error(".gro file box size does not match the compiler defined box size");	// TODO: move this to engine's validate sim
-		}
-	}
+	//for (auto& length_str : parsedfile.rows.back().words) {
+	//	if (std::stof(length_str) != BOX_LEN_NM) {
+	//		//throw std::runtime_error(".gro file box size does not match the compiler defined box size");	// TODO: move this to engine's validate sim
+	//	}
+	//}
 
 
 	// Find atom count to resize particle_info
@@ -1074,7 +1078,7 @@ CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
 ) 
 {
 	//const string molecule_dir = work_dir + "/molecule";
-	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, gro_name, top_name, EnvMode::Headless);
+	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, gro_name, top_name, EnvMode::Headless);	// Doesnt actually use .gro now..
 
 
 	switch (bc_select) {

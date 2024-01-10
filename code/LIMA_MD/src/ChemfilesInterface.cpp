@@ -103,15 +103,16 @@ class TRRFormat {
     ShittyFileFormat file;
 
     void get_cell(std::vector<float>& box) {
-        box[0] = 1.f * BOX_LEN_NM;
-        box[1] = 0.f;
-        box[2] = 0.f;
-        box[3] = 0.f;
-        box[4] = 1.f * BOX_LEN_NM;
-        box[5] = 0.f;
-        box[6] = 0.f;
-        box[7] = 0.f;
-        box[8] = 1.f * BOX_LEN_NM;
+        throw std::runtime_error("Cannot access BOX_LEN, dev please fix");
+        //box[0] = 1.f * BOX_LEN_NM;
+        //box[1] = 0.f;
+        //box[2] = 0.f;
+        //box[3] = 0.f;
+        //box[4] = 1.f * BOX_LEN_NM;
+        //box[5] = 0.f;
+        //box[6] = 0.f;
+        //box[7] = 0.f;
+        //box[8] = 1.f * BOX_LEN_NM;
     }
 
     void write_frame_header(const FrameHeader& header) {

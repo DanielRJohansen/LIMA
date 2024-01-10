@@ -58,8 +58,9 @@ namespace SimulationBuilder{
 
 		centerMoleculeAroundOrigo(inputgrofile);
 
-		const float lipid_density = 0.5;                        // [lipids/nm^2]
-		const Float3 padding = Float3{ 0.1f };          // [nm]
+		//const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
+		const float lipid_density = 1.f;
+		const Float3 padding = Float3{ 0.05f };          // [nm]
 		const Float3 mol_dims = calcDimensions(inputgrofile);  // [nm]
 
 		const int n_lipids_total = lipid_density * box_dims.x * box_dims.y;

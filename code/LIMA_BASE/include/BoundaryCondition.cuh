@@ -1,5 +1,6 @@
 #pragma once
 
+#include <UserConstants.h>
 
 class NoBoundaryCondition {
 public:

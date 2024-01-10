@@ -18,6 +18,9 @@ public:
 	ForceField_NB getNBForcefield() const {
 		return forcefield_nb;
 	}
+	const ForceField_NB& getNBForcefieldRef() const {
+		return forcefield_nb;
+	}
 
 	static int atomTypeToIndex(const char& atom) {
 		if (atom == 'C')

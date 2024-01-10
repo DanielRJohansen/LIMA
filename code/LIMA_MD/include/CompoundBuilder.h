@@ -194,4 +194,6 @@ struct CompoundCollection {
 	std::unique_ptr<CompoundBridgeBundleCompact> bridgebundle;
 
 	const std::vector<Float3> solvent_positions;
+
+	const float box_size;
 };

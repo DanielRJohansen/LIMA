@@ -10,7 +10,7 @@ namespace TestMembraneBuilder {
 	{
 		Environment env{ simulations_dir + "/MembraneSmall", envmode, false};
 
-		env.CreateSimulation(5.f);
+		env.CreateSimulation(7.f);
 		env.createMembrane();
 
 

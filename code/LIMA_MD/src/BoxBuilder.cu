@@ -6,8 +6,10 @@
 
 using namespace LIMA_Print;
 
-void BoxBuilder::buildBox(Simulation* simulation) {
+void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	m_logger->startSection("Building box");
+
+	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];

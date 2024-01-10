@@ -59,7 +59,7 @@ struct SimParams {
 };
 
 struct BoxParams {
-	Float3 dims{BOX_LEN_NM};
+	Float3 dims{};	 // [nm]
 
 	int n_compounds = 0;
 	int n_bridges = 0;
@@ -203,7 +203,6 @@ public:
 	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
-	//ForceField_NB forcefield;
 	std::unique_ptr<Forcefield> forcefield;
 };
 

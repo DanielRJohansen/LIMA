@@ -516,9 +516,9 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 	
 	//LimaLogger logger{ LimaLogger::LogMode::compact, envmode, "forcefieldmaker", work_dir };
 	const bool verbose(envmode != Headless);
-	const string conf_path = lfs::pathJoin(molecule_dir, conf_name);
+	//const string conf_path = lfs::pathJoin(molecule_dir, conf_name);
 	const string topol_path = lfs::pathJoin(molecule_dir, topol_name);
-	lfs::assertPath(conf_path);
+	//lfs::assertPath(conf_path);
 	lfs::assertPath(topol_path);
 
 

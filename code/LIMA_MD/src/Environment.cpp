@@ -42,7 +42,7 @@ void Environment::CreateSimulation(float boxsize_nm) {
 	InputSimParams ip{};
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
-	boxbuilder->buildBox(simulation.get());
+	boxbuilder->buildBox(simulation.get(), boxsize_nm);
 	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 }
 
@@ -52,7 +52,6 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 
 	SimParams simparams{ ip };
 	setupEmptySimulation(simparams);
-	boxbuilder->buildBox(simulation.get());
 
 	const string gro_name = lfs::extractFilename(gro_path);	// TODO: This should not be the permanent solution, figure out if i want paths or names
 	const string top_name = lfs::extractFilename(topol_path);
@@ -69,6 +68,8 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 
 	//TODO Find a better place for this
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
+
+	boxbuilder->buildBox(simulation.get(), collection.box_size);
 
 	boxbuilder->addCompoundCollection(simulation.get(), collection);
 
@@ -140,8 +141,8 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
-	static_assert(BOX_LEN > 3.f, "Box too small");
-	static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
+	//static_assert(BOX_LEN > 3.f, "Box too small");
+	//static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
 
 	static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
 	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
@@ -150,7 +151,7 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 
 	auto a = static_cast<int>(static_cast<double>(_BOX_LEN_PM) * 1000);
 	// Assert that boxlen is a multiple of nodelen
-	assert((static_cast<int>(static_cast<double>(_BOX_LEN_PM)*1000) % BOXGRID_NODE_LEN_pico) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
+	//assert((static_cast<int>(static_cast<double>(_BOX_LEN_PM)*1000) % BOXGRID_NODE_LEN_pico) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
 }
 
 void Environment::verifyBox() {
@@ -160,9 +161,9 @@ void Environment::verifyBox() {
 			throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
 		}*/
 		for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
-			if ((simulation->compounds_host[c].interaction_boundary.radii[i] * 1.1) > BOX_LEN_HALF) {
+			/*if ((simulation->compounds_host[c].interaction_boundary.radii[i] * 1.1) > BOX_LEN_HALF) {
 				throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
-			}
+			}*/
 		}
 		
 	}
@@ -279,7 +280,7 @@ void Environment::postRunEvents() {
 
 	if (POSTSIM_ANAL) {
 		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));
-		postsim_anal_package = analyzer.analyzeEnergy(simulation.get(), engine->getSimDev());
+		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
 	}
 
 	if (!save_output) { return; }

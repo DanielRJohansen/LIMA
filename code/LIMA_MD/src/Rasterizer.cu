@@ -16,10 +16,10 @@ std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::v
     LIMA_UTILS::genericErrorCheck("Error before renderer");
 	RenderAtom* atoms_dev = getAllAtoms(positions, compounds, boxparams, step);
 
-    std::vector<RenderBall> balls_host = processAtoms(atoms_dev, boxparams.total_particles_upperbound);
+    std::vector<RenderBall> balls_host = processAtoms(atoms_dev, boxparams.total_particles_upperbound, boxparams.dims.x);
     cudaFree(atoms_dev);
 
-    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y < b.pos.y; });    
+    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y > b.pos.y; });    
 
     LIMA_UTILS::genericErrorCheck("Error after renderer");
 
@@ -31,7 +31,7 @@ std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::v
 
 __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds);
 __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms);
-__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls);
+__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float box_len_nm);
 
 __global__ void kernelA(Box* box) {
     // Do nothing
@@ -71,10 +71,10 @@ RenderAtom* Rasterizer::getAllAtoms(const Float3* positions, const std::vector<C
 }
 
 
-std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, int total_particles_upperbound) {
+std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, int total_particles_upperbound, float box_len_nm) {
     RenderBall* balls_device;
     cudaMalloc(&balls_device, sizeof(RenderBall) * total_particles_upperbound);
-    processAtomsKernel <<< total_particles_upperbound/128+1, 128 >>> (atoms, balls_device);
+    processAtomsKernel <<< total_particles_upperbound/128+1, 128 >>> (atoms, balls_device, box_len_nm);
     LIMA_UTILS::genericErrorCheck("Error during rendering");
 
     std::vector<RenderBall> balls_host(total_particles_upperbound);
@@ -238,7 +238,7 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
     }
 }
 
-__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) { 
+__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float box_len_nm) { 
     const int index = threadIdx.x + blockIdx.x * blockDim.x;
     
     RenderAtom atom = atoms[index];
@@ -251,8 +251,8 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls) {
     // Convert units to normalized units for OpenGL
     atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
 
-    atom.pos = atom.pos / BOX_LEN_NM - 0.5f;    // normalize from -0.5->0.5
-    atom.pos *= 1.4f;                           // scale a bit up
+    atom.pos = atom.pos / box_len_nm - 0.5f;    // normalize from -0.5->0.5
+    //atom.pos *= 1.4f;                           // scale a bit up
 
     //for (int dim = 0; dim < 3; dim++) {
     //    *atom.pos.placeAt(dim) = (atom.pos.at(dim) / BOX_LEN_NM - 0.5f);

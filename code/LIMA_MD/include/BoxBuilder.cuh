@@ -13,7 +13,7 @@ public:
 	{
 		srand(290128309);
 	};
-	void buildBox(Simulation* simulation);
+	void buildBox(Simulation* simulation, float boxsize_nm);
 	void addCompoundCollection(Simulation* simulation, CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	//void addMembrane(Simulation& sim, CompoundCollection& lipid);
 

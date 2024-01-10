@@ -31,7 +31,7 @@ private:
 	RenderAtom* getAllAtoms(const Float3* positions, 
 		const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
 
-	std::vector<RenderBall> processAtoms(RenderAtom* atoms, int total_particles_upperbound);
+	std::vector<RenderBall> processAtoms(RenderAtom* atoms, int total_particles_upperbound, float boxlen_nm);
 
 
 };

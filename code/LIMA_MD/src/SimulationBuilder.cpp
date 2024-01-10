@@ -9,16 +9,16 @@
 void centerMoleculeAroundOrigo(ParsedGroFile& grofile) {
 	if (grofile.n_atoms != grofile.atoms.size()) {
 		throw std::runtime_error(std::format("Mismatch between grofiles n_atoms ({}) and actual number of atoms ({})", grofile.n_atoms, grofile.atoms.size()));
+	}
 
-		Float3 position_sum{};
-		for (const auto& atom : grofile.atoms) {
-			position_sum += atom.position;
-		}
+	Float3 position_sum{};
+	for (const auto& atom : grofile.atoms) {
+		position_sum += atom.position;
+	}
 
-		const Float3 offset = position_sum / static_cast<float>(grofile.n_atoms);
-		for (auto& atom : grofile.atoms) {
-			atom.position -= offset;
-		}
+	const Float3 offset = position_sum / static_cast<float>(grofile.n_atoms);
+	for (auto& atom : grofile.atoms) {
+		atom.position -= offset;
 	}
 }
 
@@ -73,7 +73,7 @@ namespace SimulationBuilder{
 		lipids_per_dim.y += (lipids_per_dim.y % 2) == 0;
 
 
-		const Float3 startpoint = Float3{ 0.f };
+		const Float3 startpoint = Float3{ box_dims.x * 0.5f };
 		const Float3 dist = mol_dims + padding;
 
 
@@ -88,7 +88,7 @@ namespace SimulationBuilder{
 
 		for (int x = -lipids_per_dim.x / 2; x <= lipids_per_dim.x / 2; x++) {
 			for (int y = -lipids_per_dim.y / 2; y <= lipids_per_dim.y / 2; y++) {
-				const Float3 center_offset = dist * Float3{ static_cast<float>(x), static_cast<float>(y), 0.f };
+				const Float3 center_offset = startpoint + dist * Float3{ static_cast<float>(x), static_cast<float>(y), 0.f };
 				
 
 				const int current_atom_nr_offset = current_residue_nr_offset * inputgrofile.n_atoms;

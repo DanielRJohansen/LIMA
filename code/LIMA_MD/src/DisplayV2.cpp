@@ -20,7 +20,7 @@ void setupProjection(int screenWidth, int screenHeight) {
     // Set up the view (camera) using translations and rotations
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    glTranslatef(0.0f, .0f, -2.5f);  // Move the scene away from the camera    
+    glTranslatef(0.0f, .0f, -3.5f);  // Move the scene away from the camera    
     glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);  // Rotate around the x-axis
 }
 

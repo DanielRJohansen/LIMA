@@ -1,8 +1,11 @@
 #include "Engine.cuh"
+#include "EngineUtils.cuh"
+#include "SimulationDevice.cuh"
+
 #include <algorithm>
 
 
-static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB& forcefield_host) {
+static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	TemperaturPackage package{};
 
 	const uint64_t step = simulation->getStep() - 1;	// We haven't loaded data for current step onto host yet.
@@ -12,7 +15,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB
 	long double sum_kinE_compound = 0.;	// [J/mol]
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
-			const float mass = forcefield_host.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
+			const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);
 			const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
 
@@ -23,7 +26,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
 	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
-		const float mass = forcefield_host.particle_parameters[ATOMTYPE_SOLVENT].mass;
+		const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[ATOMTYPE_SOLVENT].mass;
 		const float velocity = simulation->vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 		const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
 
@@ -42,7 +45,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation, ForceField_NB
 
 void Engine::handleBoxtemp() {
 	const float target_temp = 310.f;				// [k]
-	const TemperaturPackage temp_package = getBoxTemperature(simulation.get(), forcefield_host);
+	const TemperaturPackage temp_package = getBoxTemperature(simulation.get());
 	const float temp = temp_package.temperature;
 
 	simulation->temperature_buffer.push_back(temp_package.temperature);

@@ -168,6 +168,12 @@ void Environment::verifyBox() {
 		
 	}
 
+	if (simulation->simparams_host.constparams.bc_select == NoBC && simulation->boxparams_host.n_solvents != 0) {
+		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
+	}
+
+	
+
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
 		throw std::runtime_error("Error: Solvent mass is unreasonably large");
 	}
@@ -209,7 +215,6 @@ bool Environment::prepareForRun() {
 	engine = std::make_unique<Engine>(
 		std::move(simulation),
 		simulation->simparams_host.constparams.bc_select,
-		simulation->forcefield->getNBForcefield(), 
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 
 	return true;

@@ -3,15 +3,19 @@
 #include "Engine.cuh"
 #include "Utilities.h"
 #include "EngineUtils.cuh"
+#include "Neighborlists.cuh"
+
+#include "EngineBodies.cuh"
+#include "SimulationDevice.cuh"
 
 #include <algorithm>
+#include <format>
 
 
 
 
 
-
-Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, ForceField_NB forcefield_host, std::unique_ptr<LimaLogger> logger)
+Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc), m_logger(std::move(logger))
 {
 
@@ -38,7 +42,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, Forc
 
 
 
-	this->forcefield_host = forcefield_host;
+	//this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
@@ -46,7 +50,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, Forc
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host.n_compounds, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -59,6 +63,17 @@ Engine::~Engine() {
 	assert(simulation == nullptr);
 }
 
+std::unique_ptr<Simulation> Engine::takeBackSim() {
+	assert(sim_dev);
+	simulation->box_host = SimUtils::copyToHost(sim_dev->box);
+	return std::move(simulation);
+}
+
+void Engine::verifyEngine() {
+	if (simulation->boxparams_host.dims.x != BOX_LEN_NM) {
+		throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
+	}
+}
 
 void Engine::step() {
 	LIMA_UTILS::genericErrorCheck("Error before step!");
@@ -86,7 +101,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host.n_compounds, timings.nlist);
+		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host, timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();

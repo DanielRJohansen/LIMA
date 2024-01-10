@@ -7,17 +7,17 @@
 #include "Constants.h"
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-#include "SimulationDevice.cuh"
+//#include "SimulationDevice.cuh"
 #include "Forcefield.cuh"
 #include "Utilities.h"
 
-#include "Neighborlists.cuh"
 
 
 
 
 #include <memory>
-#include <vector>
+
+class SimulationDevice;
 
 template <typename BoundaryCondition>
 __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim);
@@ -56,13 +56,14 @@ struct RunStatus {
 	bool critical_error_occured = false;
 };
 
+
 class Engine {
 public:
-	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, ForceField_NB, std::unique_ptr<LimaLogger>);
+	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
 	~Engine();
 
 	// Todo: Make env run in another thread, so engine has it's own thread entirely
-	// I'm sure that will help the branch predictor alot!
+	// I'm sure that will help the branch predictor alot! Actually, probably no.
 	void step();
 
 	/// <summary>
@@ -71,17 +72,12 @@ public:
 	void runAsync(std::unique_ptr<Simulation>, RunStatus& runstatus);
 
 
-	std::unique_ptr<Simulation> takeBackSim() { 
-		assert(sim_dev);
-		simulation->box_host = SimUtils::copyToHost(sim_dev->box);
-		return std::move(simulation); 
-	}
+	std::unique_ptr<Simulation> takeBackSim();
 
 
 	EngineTimings timings{};
 	volatile RunStatus runstatus;
 
-	ForceField_NB getForcefield() { return forcefield_host; }
 	void terminateSimulation();
 
 	SimulationDevice* getSimDev() { return sim_dev; }
@@ -94,7 +90,7 @@ private:
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void setDeviceConstantMemory();
-
+	void verifyEngine();
 
 	// streams every n steps
 	void offloadLoggingData(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
@@ -116,7 +112,7 @@ private:
 
 	int testval = 0;
 
-	ForceField_NB forcefield_host;
+	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
 	std::unique_ptr<Simulation> simulation = nullptr;
 

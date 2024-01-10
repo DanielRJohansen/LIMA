@@ -2,16 +2,10 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-#include "SimulationDevice.cuh"
-#include "Engine.cuh"
+#include "Utilities.h"
 
 #include <vector>
-#include <iostream>
-#include <chrono>
-#include <cstring>
 #include <string>
-//#include "Forcefield.cuh"
-
 
 
 class Analyzer {

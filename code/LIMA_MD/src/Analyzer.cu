@@ -1,9 +1,8 @@
-
-
 #include "Analyzer.cuh"
 #include "Printer.h"
-#include "Utilities.h"
 #include "Forcefield.cuh"
+#include "EngineUtils.cuh"
+
 #include <algorithm>
 
 using namespace LIMA_Print;

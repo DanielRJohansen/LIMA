@@ -1,6 +1,7 @@
 #include "BoxBuilder.cuh"
 #include "EngineUtils.cuh"
 #include "Printer.h"
+#include "BoundaryCondition.cuh"
 #include <random>
 
 
@@ -16,11 +17,6 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 
 	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
 	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
-
-
-	simulation->box_host->compound_grid = new CompoundGrid();
-
-	simulation->box_host->compound_neighborlists = new NeighborList[MAX_COMPOUNDS];
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 
@@ -93,7 +89,6 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 	// Copy forcefield to sim
 	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield->getNBForcefield()};	// Copy
-	//simulation->forcefield = ForceField_NB{ forcefield };			// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });

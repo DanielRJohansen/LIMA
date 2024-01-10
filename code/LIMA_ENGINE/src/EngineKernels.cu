@@ -3,6 +3,9 @@
 #include "ForceComputations.cuh"
 #include "Utilities.h"
 #include "KernelWarnings.cuh"
+#include "EngineUtils.cuh"
+
+#include "SimulationDevice.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
@@ -17,12 +20,12 @@
 
 // ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
 
-// Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
+// TODO?: Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
 __constant__ ForceField_NB forcefield_device;
 
 void Engine::setDeviceConstantMemory() {
 	const int forcefield_bytes = sizeof(ForceField_NB);
-	cudaMemcpyToSymbol(forcefield_device, &forcefield_host, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
+	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield->getNBForcefieldRef(), sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaDeviceSynchronize();
 	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
 }
@@ -760,7 +763,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// Load positions
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&box->compounds[blockIdx.x]);
-		neighborlist.loadMeta(&box->compound_neighborlists[blockIdx.x]);
+		neighborlist.loadMeta(&sim->compound_neighborlists[blockIdx.x]);
 	}
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
@@ -771,7 +774,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		const CompoundCoords& compoundcoords_global = *CoordArrayQueueHelpers::getCoordarrayRef(box->coordarray_circular_queue, simparams.step, blockIdx.x);
 		compound_coords->loadData(compoundcoords_global);
-		neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
+		//neighborlist.loadData(&box->compound_neighborlists[blockIdx.x]);
+		neighborlist.loadData(&sim->compound_neighborlists[blockIdx.x]);
 		__syncthreads();
 
 		compound_origo = compound_coords->origo;
@@ -981,7 +985,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
-		const CompoundGridNode* compoundgridnode = box->compound_grid->getBlockPtr(blockIdx.x);
+		const CompoundGridNode* compoundgridnode = sim->compound_grid->getBlockPtr(blockIdx.x);
 		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
 		__syncthreads();
 

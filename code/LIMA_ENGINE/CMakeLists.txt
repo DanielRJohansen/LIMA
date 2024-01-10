@@ -10,7 +10,7 @@ add_library(LIMA_ENGINE
     src/EngineKernels.cu
     src/EngineUtils.cu
     src/Neighborlists.cu
-    src/Neighborlists.cpp
+    
     src/Thermostat.cu
 )
 
@@ -35,5 +35,5 @@ endif()
 
 
 # Self-test executable
-add_executable(engine_self_test src/EngineMain.cpp)
+add_executable(engine_self_test src/EngineMain.cpp "src/EngineBodies.cuh")
 target_link_libraries(engine_self_test LIMA_ENGINE)

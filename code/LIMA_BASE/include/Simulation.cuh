@@ -1,12 +1,11 @@
 #pragma once
 
-//#include "QuantomTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
 #include <map>
 #include <assert.h>
 #include <memory>
-#include "BoundaryCondition.cuh"
+//#include "BoundaryCondition.cuh"
 
 struct ForceField_NB;
 class Forcefield;
@@ -150,13 +149,11 @@ struct Box {
 	CompoundCoords* coordarray_circular_queue = nullptr;
 
 	Solvent* solvents = nullptr;
+
 	// Positions and solvent_ids
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
-	CompoundGrid* compound_grid = nullptr;
-
-	NeighborList* compound_neighborlists = nullptr;
 
 
 	// TODO: this should be removed from box, i dont think it is used in the engine kernels

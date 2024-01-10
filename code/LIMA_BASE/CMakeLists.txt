@@ -5,9 +5,9 @@ add_library(LIMA_BASE STATIC
     src/Printer.cpp
     src/Bodies.cu
     src/Filehandling.cpp
-    src/Forcefield.cu
-    src/LimaTypes.cu
-    src/Simulation.cu
+    src/Forcefield.cpp
+    src/LimaTypes.cpp
+    src/Simulation.cpp
     src/utilities.cpp
  "include/MoleculeGraph.h" "src/MoleculeGraph.cpp" "include/MDFiles.h" "src/MDFiles.cpp")
 

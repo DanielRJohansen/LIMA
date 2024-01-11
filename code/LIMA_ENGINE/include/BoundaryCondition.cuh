@@ -98,15 +98,15 @@ public:
         } \
     } while (0)
 
-// This is just pure ChatGPT magic now...
-#define CALL_FUNCTION_WITH_BC_RET(func, bc_select, ...) \
-    ([&]() -> decltype(auto) { \
-        switch (bc_select) { \
-            case NoBC: \
-                return func<NoBoundaryCondition>(__VA_ARGS__); \
-            case PBC: \
-                return func<PeriodicBoundaryCondition>(__VA_ARGS__); \
-            default: \
-                throw std::runtime_error("Unsupported boundary condition in CALL_FUNCTION_WITH_BC_RET"); \
-        } \
-    }())
+//// This is just pure ChatGPT magic now...
+//#define CALL_FUNCTION_WITH_BC_RET(func, bc_select, ...) \
+//    ([&]() -> decltype(auto) { \
+//        switch (bc_select) { \
+//            case NoBC: \
+//                return func<NoBoundaryCondition>(__VA_ARGS__); \
+//            case PBC: \
+//                return func<PeriodicBoundaryCondition>(__VA_ARGS__); \
+//            default: \
+//                throw std::runtime_error("Unsupported boundary condition in CALL_FUNCTION_WITH_BC_RET"); \
+//        } \
+//    }())

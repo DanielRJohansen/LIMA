@@ -277,9 +277,15 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	template <typename BoundaryCondition>
-		__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
+	__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
 		Float3 temp = *p2;
 		LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(p1, &temp);
+		return (*p1 - temp).len();
+	}
+	__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2, float boxlen_nm, BoundaryConditionSelect bc) {
+		Float3 temp = *p2;
+		//LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(p1, &temp);
+		BoundaryConditionPublic::applyHyperposNM(p1, &temp, boxlen_nm, bc);
 		return (*p1 - temp).len();
 	}
 };

@@ -162,14 +162,14 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
 
-			const Float3 direction = get3RandomSigned().norm();
-			const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
-			const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
+			//const Float3 direction = get3RandomSigned().norm();
+			//const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
+			//const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
 
-			SolventCoord solventcoord_prev = solventcoord;
-			solventcoord_prev.rel_position -= Coord{ deltapos_lm };
+			//SolventCoord solventcoord_prev = solventcoord;
+			//solventcoord_prev.rel_position -= Coord{ deltapos_lm };
 
-			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents, SolventBlocksCircularQueue::first_step_prev);
+			//simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents, SolventBlocksCircularQueue::first_step_prev);
 
 			simulation->box_host->boxparams.n_solvents++;
 		}

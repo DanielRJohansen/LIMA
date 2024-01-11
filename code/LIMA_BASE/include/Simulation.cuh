@@ -150,6 +150,8 @@ struct Box {
 
 	Solvent* solvents = nullptr;
 
+	//SolventCoord
+
 	// Positions and solvent_ids
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 

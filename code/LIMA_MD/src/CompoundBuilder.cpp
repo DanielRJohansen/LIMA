@@ -1,7 +1,6 @@
 #include "CompoundBuilder.h"
 #include "Printer.h"
 #include "EngineUtils.cuh"
-#include "BoundaryCondition.cuh"
 
 
 
@@ -72,9 +71,6 @@ private:
 
 	std::unique_ptr<LimaLogger> m_logger;
 	const VerbosityLevel verbosity_level;
-	//const Forcefield* forcefield;
-
-	//const std::string work_dir;
 
 	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridgesMap;
 
@@ -761,7 +757,8 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 		for (int i = 0; i < n_elems; ++i) {
 			float min_dist = std::numeric_limits<float>::infinity();
 			for (int j = 0; j < k; ++j) {
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&positions[i], &positions[center_indices[j]]);
+				//float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&positions[i], &positions[center_indices[j]]);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &positions[center_indices[j]], boxlen_nm, bc);
 				if (dist < min_dist) {
 					min_dist = dist;
 					labels[i] = j; // Assign this particle to cluster j
@@ -1075,7 +1072,6 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 
 
 CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
-	//Forcefield* ff,
 	const std::string& molecule_dir,
 	const std::string& gro_name,
 	const std::string& top_name,

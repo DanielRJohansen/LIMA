@@ -20,9 +20,6 @@ void Box::moveToDevice() {
 	solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
 
 
-	transfermodule_array = genericMoveToDevice(transfermodule_array, SolventBlocksCircularQueue::blocks_per_grid);
-
-
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
 	forcefield = genericMoveToDevice(forcefield, 1);
@@ -37,8 +34,6 @@ void Box::deleteMembers() {
 		cudaFree(coordarray_circular_queue);
 		cudaFree(solventblockgrid_circularqueue);
 
-		cudaFree(transfermodule_array);
-
 		cudaFree(forcefield);
 
 		cudaFree(bridge_bundle);
@@ -52,7 +47,6 @@ void Box::deleteMembers() {
 		delete[] compounds;
 		delete[] coordarray_circular_queue;
 		delete solventblockgrid_circularqueue;
-		delete[] transfermodule_array;
 
 
 		delete[] bridge_bundle;
@@ -85,8 +79,6 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 
 	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
 	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost();
-
-	genericCopyToHost(&box->transfermodule_array, SolventBlocksCircularQueue::blocks_per_grid);
 
 	
 	genericCopyToHost(&box->forcefield, 1);

@@ -1,7 +1,7 @@
 #include "BoxBuilder.cuh"
 #include "EngineUtils.cuh"
 #include "Printer.h"
-#include "BoundaryCondition.cuh"
+//#include "BoundaryCondition.cuh"	// TODO: This should be private to engine
 #include <random>
 
 
@@ -16,7 +16,7 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
 
 	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
-	simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
+	//simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 
@@ -31,8 +31,9 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 
 void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {		
-		CALL_FUNCTION_WITH_BC(insertCompoundInBox, simulation->simparams_host.constparams.bc_select, compound, *simulation);
+		//CALL_FUNCTION_WITH_BC(insertCompoundInBox, simulation->simparams_host.constparams.bc_select, compound, *simulation);
 		//insertCompoundInBox<BoundaryCondition>(compound, *simulation);
+		insertCompoundInBox(compound, *simulation);
 	}
 
 	simulation->extraparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
@@ -155,9 +156,10 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 
-			const SolventCoord solventcoord = CALL_FUNCTION_WITH_BC_RET(LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition, simulation->simparams_host.constparams.bc_select, position);
-			//const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition<BoundaryCondition>(position);
-			
+			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
+				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.constparams.bc_select);
+
+
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
 
 			const Float3 direction = get3RandomSigned().norm();
@@ -263,7 +265,6 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 	//const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
 
 	//Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
-template<typename BoundaryCondition>
 void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
 {
 	std::vector<LimaPosition> positions;
@@ -275,7 +276,7 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation.box_host->coordarray_circular_queue, 0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound<BoundaryCondition>(positions, compound.centerparticle_index);
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.constparams.bc_select);
 	simulation.box_host->compounds[simulation.box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 

@@ -447,7 +447,8 @@ void MoleculeBuilder<BoundaryCondition>::createCompounds(const std::vector<Singl
 				nonsolvent_positions[atom_gid],
 				particleinfo.atomtype_id,
 				Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
-				atom_gid
+				atom_gid,
+				7.f, PBC
 				);
 		}
 	}

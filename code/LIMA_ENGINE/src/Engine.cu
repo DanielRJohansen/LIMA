@@ -5,6 +5,7 @@
 #include "EngineUtils.cuh"
 #include "Neighborlists.cuh"
 
+#include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
 #include "SimulationDevice.cuh"
 

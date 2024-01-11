@@ -10,8 +10,6 @@ public:
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
-	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
-
 	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {}
 };
 
@@ -25,15 +23,6 @@ public:
 		origo.z += BOXGRID_N_NODES * (origo.z < 0);
 		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
 	}
-
-	//__device__ __host__ static void applyPC(NodeIndex& origo) {
-	//	origo.x += BOXGRID_N_NODES * (origo.x < 0);
-	//	origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
-	//	origo.y += BOXGRID_N_NODES * (origo.y < 0);
-	//	origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
-	//	origo.z += BOXGRID_N_NODES * (origo.z < 0);
-	//	origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
-	//}
 
 	__device__ __host__ static void applyBC(LimaPosition& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
@@ -54,16 +43,6 @@ public:
 		movable_index.y -= BOXGRID_N_NODES * (difference.y < -(BOXGRID_N_NODES / 2));
 		movable_index.z += BOXGRID_N_NODES * (difference.z > (BOXGRID_N_NODES / 2));
 		movable_index.z -= BOXGRID_N_NODES * (difference.z < -(BOXGRID_N_NODES / 2));
-	}
-
-	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {
-		const LimaPosition difference = static_position - movable_position;
-		movable_position.x += BOX_LEN_i * (difference.x > BOX_LEN_i / 2);
-		movable_position.x -= BOX_LEN_i * (difference.x < -BOX_LEN_i / 2);
-		movable_position.y += BOX_LEN_i * (difference.y > BOX_LEN_i / 2);
-		movable_position.y -= BOX_LEN_i * (difference.y < -BOX_LEN_i / 2);
-		movable_position.z += BOX_LEN_i * (difference.z > BOX_LEN_i / 2);
-		movable_position.z -= BOX_LEN_i * (difference.z < -BOX_LEN_i / 2);
 	}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {

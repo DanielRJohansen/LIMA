@@ -103,7 +103,7 @@ public:
 	}
 
 	template <typename BoundaryCondition>
-	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id) {
+	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id, float boxlen_nm, BoundaryConditionSelect bc) {
 		if (n_particles >= MAX_COMPOUND_PARTICLES) {
 			throw std::runtime_error("Failed to add particle to compound");
 		}
@@ -112,6 +112,7 @@ public:
 		Float3 hyperpos = position;
 		if (n_particles > 0) {
 			LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(&positions[0], &hyperpos);
+			//BoundaryConditionPublic::applyHyperposNM(&positions[0], &hyperpos, boxlen_nm, bc);
 		}
 
 		// Variables only present in factory

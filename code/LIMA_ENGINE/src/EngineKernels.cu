@@ -6,6 +6,7 @@
 #include "EngineUtils.cuh"
 
 #include "SimulationDevice.cuh"
+#include "BoundaryCondition.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
@@ -1089,7 +1090,8 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	SolventBlock* solventblock_next_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);
 
 	if (SolventBlocksCircularQueue::isTransferStep(simparams.step)) {
-		transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
+		//transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
+		transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
 	}
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
@@ -1116,7 +1118,7 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;
 
-	SolventBlockTransfermodule* transfermodule = &box->transfermodule_array[blockIdx.x];
+	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	
 	SolventBlock* solventblock_current = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step);
 	SolventBlock* solventblock_next = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simparams.step + 1);

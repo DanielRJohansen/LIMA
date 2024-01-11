@@ -32,7 +32,6 @@ public:
 	void copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step);
 
 private:
-	template<typename BoundaryCondition>
 	void insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset = Float3{});
 	
 	void setupDataBuffers(Simulation& simulation, const uint64_t n_steps);

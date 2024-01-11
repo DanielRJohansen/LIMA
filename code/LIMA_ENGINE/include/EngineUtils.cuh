@@ -8,8 +8,7 @@
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
 #include "EngineUtilsWarnings.cuh"
-
-
+#include "BoundaryConditionPublic.h"
 
 //#include <cuda.h>
 //#include <device_launch_parameters.h>
@@ -49,7 +48,6 @@ namespace CPPD {
 
 namespace LIMAPOSITIONSYSTEM {
 	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
-
 	template <typename BoundaryCondition>
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
 		BoundaryCondition::applyHyperpos(static_index, movable_index);
@@ -99,30 +97,18 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Converts to nodeindex, applies PBC
-	template <typename BoundaryCondition>
-	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position) {
+	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position, BoundaryConditionSelect bc, float boxlen_nm) {
 		int offset = BOXGRID_NODE_LEN_i / 2;
 		NodeIndex nodeindex{
 			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
 			static_cast<int>((position.y + offset) / BOXGRID_NODE_LEN_i),
 			static_cast<int>((position.z + offset) / BOXGRID_NODE_LEN_i)
 		};
-		BoundaryCondition::applyBC(nodeindex);
+		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
+
 		return nodeindex;
 	}
 
-	// Used only for neighborlist. Might be temp. Input-position in nm!
-	template <typename BoundaryCondition>
-	__host__ static NodeIndex absolutePositionToNodeIndex(const Float3& position) {
-		constexpr float factor = NANO_TO_LIMA / BOXGRID_NODE_LEN;
-		NodeIndex nodeindex{
-			static_cast<int32_t>(std::roundf(position.x * factor)),
-			static_cast<int32_t>(std::roundf(position.y * factor)),
-			static_cast<int32_t>(std::roundf(position.z * factor))
-		};
-		applyBC<BoundaryCondition>(nodeindex);
-		return nodeindex;
-	}
 
 	/// <summary>
 	/// Converts a nodeindex to a relative position in [lm]. ONLY safe to call with relatively small node indexes. 
@@ -144,11 +130,13 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	template <typename BoundaryCondition>
-	__host__ static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff=1) {
+	//template <typename BoundaryCondition>
+	static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
 		LimaPosition hyperpos = absolute_position;
-		applyHyperpos<BoundaryCondition>(createLimaPosition(nodeindex), hyperpos);
+		//applyHyperpos<PeriodicBoundaryCondition>(createLimaPosition(nodeindex), hyperpos);
+		BoundaryConditionPublic::applyHyperpos(createLimaPosition(nodeindex), hyperpos, boxlen_nm, bc);
+
 		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * static_cast<int64_t>(max_node_diff)) {
@@ -163,10 +151,11 @@ namespace LIMAPOSITIONSYSTEM {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
-	template <typename BoundaryCondition>
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const LimaPosition& position) {
-		const NodeIndex nodeindex = absolutePositionToNodeIndex<BoundaryCondition>(position);
-		const Coord relpos = getRelativeCoord<BoundaryCondition>(position, nodeindex);
+
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {
+		//const NodeIndex nodeindex = absolutePositionToNodeIndex<BoundaryCondition>(position);
+		const NodeIndex nodeindex = absolutePositionToNodeIndex(position, bc, boxlen_nm);	// TEMP
+		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
 		return std::make_tuple(nodeindex, relpos);
 	}
 
@@ -179,17 +168,16 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	/// <returns></returns>
-	template <typename BoundaryCondition>
-	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index) {
+	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
-		compoundcoords.origo = absolutePositionToNodeIndex<BoundaryCondition>(positions[key_particle_index]);
+		//compoundcoords.origo = absolutePositionToNodeIndex<BoundaryCondition>(positions[key_particle_index]);
+		compoundcoords.origo = absolutePositionToNodeIndex(positions[key_particle_index], bc, boxlen_nm);	//TEMP
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord<BoundaryCondition>(positions[i], compoundcoords.origo, 2);	
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 2, boxlen_nm, bc);	
 		}
 		return compoundcoords;
 	}
@@ -264,17 +252,20 @@ namespace LIMAPOSITIONSYSTEM {
 	/// Applies PBC to the solvent
 	/// </summary>
 	/// <param name="position">Absolute position of solvent [nm] </param>
-	template <typename BoundaryCondition>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const LimaPosition& position) {
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
 		LimaPosition hyperpos = position;
-		applyBC<BoundaryCondition>(hyperpos);
+		//applyBC<BoundaryCondition>(hyperpos);
+		BoundaryConditionPublic::applyBC(hyperpos, boxlen_nm, bc);
+
 
 		//const auto [nodeindex, relpos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(position);
 		NodeIndex nodeindex; Coord relpos;
-		std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement<BoundaryCondition>(hyperpos);
+		//std::tie(nodeindex, relpos) = LIMAPOSITIONSYSTEM::absolutePositionPlacement<BoundaryCondition>(hyperpos);
+		std::tie(nodeindex, relpos) = absolutePositionPlacement(hyperpos, boxlen_nm, bc);
 
 		SolventCoord solventcoord{ nodeindex, relpos };
-		applyBC<BoundaryCondition>(solventcoord);
+		//applyBC<BoundaryCondition>(solventcoord);
+		BoundaryConditionPublic::applyBC(solventcoord.origo, boxlen_nm, bc);
 		return solventcoord;
 	}
 

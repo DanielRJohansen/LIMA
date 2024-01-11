@@ -1,19 +1,23 @@
 #pragma once
 
 #include "Bodies.cuh"
-#include "BoundaryCondition.cuh"	// TODO: Remove
 #include "Simulation.cuh"
 #include "EngineBodies.cuh"
 
-
+/// <summary>
+/// All members of this will only ever exist on device. Immediately after creating this class
+/// it must also be moved to device.
+/// </summary>
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
 	{
-		cudaMalloc(&compound_grid, sizeof(CompoundGrid));
-		
+		// Allocate structures for keeping track of solvents and compounds
+		cudaMalloc(&compound_grid, sizeof(CompoundGrid));		
 		cudaMalloc(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
+		cudaMalloc(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
+
 
 
 		genericCopyToDevice(params_host, &params, 1);
@@ -49,6 +53,9 @@ struct SimulationDevice {
 
 	// Compounds can see which compounds are near them
 	NeighborList* compound_neighborlists = nullptr;
+
+	// Module used to move solvents to a new block, in parallel
+	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	SimParams* params;
 	Box* box;

@@ -153,9 +153,6 @@ struct Box {
 	// Positions and solvent_ids
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
-	SolventBlockTransfermodule* transfermodule_array = nullptr;
-
-
 	// TODO: this should be removed from box, i dont think it is used in the engine kernels
 	ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 

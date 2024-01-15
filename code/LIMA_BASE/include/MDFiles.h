@@ -35,7 +35,15 @@ struct ParsedTopologyFile {	//.top or .itp
 
 	struct MoleculeEntry {
 		std::string name;
+
+		//std::vector<ParsedTopologyFile*> include_files;
+		//std::vector<std::unique_ptr<ParsedTopologyFile>> include_files;
+
 	};
+
+	
+	//ParsedTopologyFile* include_files;	// TODO: make this a section too, so we can print the files
+
 	struct MoleculetypeEntry {
 		std::string name;
 		int nrexcl{};
@@ -55,7 +63,8 @@ struct ParsedTopologyFile {	//.top or .itp
 		int cgnr{};
 		float charge{};
 		float mass{};
-		
+		int chain_id{ -1 };
+
 		std::string composeString() const;
 	};
 

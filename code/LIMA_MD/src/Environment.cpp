@@ -90,7 +90,7 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 }
 
-void Environment::createMembrane() {
+void Environment::createMembrane(bool carryout_em) {
 	// Load in the lipid types, for now just POPC
 	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC/";
 	ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
@@ -106,27 +106,27 @@ void Environment::createMembrane() {
 	membranefiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
 	membranefiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 	//MDFiles::loadGroFile(*simulation->box_host).printToFile(lfs::pathJoin(work_dir, "molecule/membranegro"));
-
-
 	// Reset env
 	resetEnvironment();
 
 
 	// Create simulation and run on the newly created files in the workfolder
-	SimParams ip{};
-	ip.bc_select = NoBC;
-	ip.n_steps = 40000;
-	ip.snf_select = HorizontalSqueeze;
-	ip.em_variant = true;
-	CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+	if (carryout_em) {
 
+		SimParams ip{};
+		ip.bc_select = NoBC;
+		ip.n_steps = 4000;
+		ip.snf_select = HorizontalSqueeze;
+		ip.em_variant = true;
+		CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
 
+		// Draw each lipid towards the center - no pbc
+		run();
 
-	// Draw each lipid towards the center - no pbc
-	run();
+		// Ensure all particles are inside box
+	}
 
-
-	// Remove all lipids that are not inside the box, perhaps with a small margin so they wont explode with pbcgit di
+	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
 
 	// Run EM for a while - with pbc
 }

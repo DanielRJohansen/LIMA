@@ -167,10 +167,14 @@ bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTa
 	return true;
 }
 
+#include "MDFiles.h"
+
 // call this funciton initially with current_unique_residue_cnt=-1
 void loadTopology(Topology& topology, const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom, int& current_chain_id, int& current_unique_residue_cnt)
 {
 	const SimpleParsedFile parsedfile = Filehandler::parseTopFile(topol_path, false);
+
+	//const ParsedTopologyFile topolfile = MDFiles::loadTopologyFile(topol_path);
 
 	
 

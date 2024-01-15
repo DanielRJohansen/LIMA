@@ -155,7 +155,7 @@ ParsedGroFile MDFiles::loadGroFile(const Box& box, std::function<Float3(NodeInde
 	return grofile;
 }
 
-enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, no_section};
+enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, no_section};
 
 TopologySection getNextTopologySection(TopologySection current_section, const std::string& directive) {
 	if (directive == "molecules") {
@@ -182,6 +182,10 @@ TopologySection getNextTopologySection(TopologySection current_section, const st
 		else
 			return impropers;
 	}
+	else if (directive == "position_restraints")
+		return position_restraints;
+	else if (directive == "system")
+		return _system;
 	else {
 		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
 	}
@@ -210,7 +214,13 @@ bool containsSubString(const std::istringstream& stream, const std::string& quer
 	return false;
 }
 
-ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) {
+namespace fs = std::filesystem;
+
+void includeFileInTopology(ParsedTopologyFile& topology, const fs::path& path) {
+
+}
+
+ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 	assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
 
 	ParsedTopologyFile topfile{};
@@ -229,8 +239,6 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 	std::string sectionname = "";
 
 	while (getline(file, line)) {
-
-		//replaceTabs(line);
 
 		std::vector<char> ignores = { ';', '#' };
 		char delimiter = ' ';
@@ -255,9 +263,24 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 		case title:
 			topfile.title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
-		case molecules:
+		case molecules: {
+			//assert(row.words.size() == 2);
+			std::string include_name;
+			iss >> include_name;
+
+			// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
+			if (include_name == "SOL")
+				continue;
+
+			fs::path include_topol_path = path;
+			//include_topol_path.re
+			const fs::path include_top_file = path.parent_path().append("/topol_" + include_name + ".itp");
+			//current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
+			//loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id, current_unique_residue_cnt);
+
 			throw std::runtime_error("This is not yet implemented");
 			break;
+		}
 		case moleculetype:
 		{
 			ParsedTopologyFile::MoleculetypeEntry moleculetype{};
@@ -316,7 +339,8 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const std::filesystem::path& path) 
 			break;
 		}
 		default:
-			throw std::runtime_error("Illegal state");
+			// Do nothing
+			//throw std::runtime_error("Illegal state");
 			break;
 		}
 	}

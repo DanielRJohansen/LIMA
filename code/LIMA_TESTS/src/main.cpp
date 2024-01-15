@@ -47,7 +47,7 @@ int main() {
 
 		//testReorderMoleculeParticles();
 		//testBuildmembraneSmall(envmode);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.642e-5, 2e-5);
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);
 
 		runAllUnitTests();
 	}
@@ -93,7 +93,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.01e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.642e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.5e-6, 2e-5));
 
 
 	// Meta tests

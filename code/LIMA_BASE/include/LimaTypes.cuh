@@ -372,6 +372,12 @@ struct NodeIndex : public Int3 {
 			m.z
 		);
 	}
+
+	__device__ bool isInBox(int nodes_per_dim) const {
+		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
+			return false;
+		return true;
+	}
 };
 
 /// <summary>

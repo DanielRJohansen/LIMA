@@ -36,7 +36,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	//	+ 4 + 4 * 3 * 2;
 
 	// Create the Sim_dev
-	if (sim_dev != nullptr) { throw "Expected simdev to be null to move sim to device"; };
+	if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
 	sim_dev = new SimulationDevice(simulation->simparams_host, std::move(simulation->box_host));
 	sim_dev = genericMoveToDevice(sim_dev, 1);
 
@@ -101,6 +101,10 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
+		if (simulation->simparams_host.em_variant) {
+			sim_dev->signals->thermostat_scalar = 0.999f;	// The current implementation of em is only this, overwriting the velocity scaler to always be 0.5
+		}
+
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
 	}

@@ -115,8 +115,9 @@ void Environment::createMembrane() {
 	// Create simulation and run on the newly created files in the workfolder
 	SimParams ip{};
 	ip.bc_select = NoBC;
-	ip.n_steps = 10000;
+	ip.n_steps = 40000;
 	ip.snf_select = HorizontalSqueeze;
+	ip.em_variant = true;
 	CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
 
 

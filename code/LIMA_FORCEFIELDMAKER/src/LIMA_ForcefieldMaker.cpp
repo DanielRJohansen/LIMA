@@ -308,7 +308,7 @@ int findIndexOfAtomtype(const string& query_atomtype_name, const std::vector<NB_
 		}
 	}
 
-	throw "Failed to find atomtype";
+	throw std::runtime_error("Failed to find atomtype");
 }
 
 const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(const Topology& topology, const std::vector<NB_Atomtype>& atomtypes_filtered) {

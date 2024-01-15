@@ -140,7 +140,7 @@ namespace LIMAPOSITIONSYSTEM {
 		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * static_cast<int64_t>(max_node_diff)) {
-			throw "Tried to place a position that was not correcly assigned a node";
+			throw std::runtime_error("Tried to place a position that was not correcly assigned a node");
 		}
 
 		return Coord{ static_cast<int32_t>(relpos.x), static_cast<int32_t>(relpos.y), static_cast<int32_t>(relpos.z) };
@@ -177,7 +177,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 2, boxlen_nm, bc);	
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);	
 		}
 		return compoundcoords;
 	}

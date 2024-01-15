@@ -265,7 +265,7 @@ float getVarianceCoefficient(const std::vector<float>& vec) {
 	const float mean = getMean(vec);
 
 	if (stddev == 0.f && mean == 0.f) { return 0.f; }
-	return  stddev / mean;
+	return  stddev / std::abs(mean);
 }
 
 void printRow(string title, std::vector<float>& vec) {

@@ -28,18 +28,38 @@ namespace SupernaturalForces {
 			const float dist_x = BOX_LEN_HALF_NM - avg_compound_position_nm.x;
 			const float dist_y = BOX_LEN_HALF_NM - avg_compound_position_nm.y;
 
-			const float factor = 0.00001f;
 
-			const float force_x = std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
-				? dist_x * dist_x * factor * (dist_x < 0 * -1.f) 
+
+
+			// Constant force
+			float force_x{}, force_y{};
+
+			const float const_factor = 0.000005f;
+			force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
+				? const_factor
 				: 0.f;
-			const float force_y = std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
-				? dist_y * dist_y * factor * (dist_y < 0 * -1.f)
+			force_y += std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
+				? const_factor
 				: 0.f;
+
+			// Linear force
+			const float lin_factor = 0.000002f;
+			force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
+				? std::abs(dist_x) * lin_factor
+				: 0.f;
+			force_y += std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
+				? std::abs(dist_y) * lin_factor
+				: 0.f;
+
+			// Apply signed force
+			if (dist_x < 0)
+				force_x *= -1.f;
+			if (dist_y < 0)
+				force_y *= -1.f;
 
 			// Apply squeeze force
-			//particle_force.x += force_x;
-			//particle_force.y += force_y;
+			particle_force.x += force_x;
+			particle_force.y += force_y;
 			//if (avg_compound_position_nm.y > BOX_LEN_NM)
 			//	particle_force.y -= 0.000001f;
 

@@ -49,7 +49,7 @@ Display::Display() :
     logger.finishSection("Display initialized");
 
     setupProjection(display_width, display_height);
-    updateCamera(20.f, 0.f);    // Tilt the camera slightly up
+    updateCamera(45.f, 0.f);    // Tilt the camera slightly up
 }
 
 Display::~Display() {

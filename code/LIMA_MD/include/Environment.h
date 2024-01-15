@@ -47,12 +47,12 @@ public:
 	/// <summary>
 	/// Create a simulation from existing files
 	/// </summary>
-	void CreateSimulation(std::string conf_filename, std::string topol_filename, InputSimParams);
+	void CreateSimulation(std::string conf_filename, std::string topol_filename, SimParams);
 
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
-	void CreateSimulation(Simulation& simulation_src, InputSimParams);
+	void CreateSimulation(Simulation& simulation_src, SimParams);
 
 	void createMembrane();
 
@@ -69,7 +69,7 @@ public:
 	// Return if cannot run
 	bool prepareForRun();
 
-	static InputSimParams loadInputSimParams(const std::string& path);
+	static SimParams loadSimParams(const std::string& path);
 	void renderTrajectory(std::string trj_path);
 	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
 

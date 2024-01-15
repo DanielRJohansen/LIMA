@@ -24,9 +24,9 @@ namespace ForceCorrectness {
 			const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 			int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
-			InputSimParams ip{};
-			ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			env.CreateSimulation(conf, topol, ip);
+			SimParams params{};
+			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
@@ -57,7 +57,7 @@ namespace ForceCorrectness {
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		Environment env{ work_folder, envmode, false };
-		auto ip = env.loadInputSimParams(work_folder + "sim_params.txt");
+		auto ip = env.loadSimParams(work_folder + "sim_params.txt");
 		const float dt = ip.dt;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
@@ -71,7 +71,7 @@ namespace ForceCorrectness {
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 				const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
-				InputSimParams ip{};
+
 				ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 				env.CreateSimulation(conf, topol, ip);
 
@@ -118,7 +118,7 @@ namespace ForceCorrectness {
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
-		InputSimParams ip = env.loadInputSimParams(simpar);
+		SimParams ip = env.loadSimParams(simpar);
 
 
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
@@ -164,7 +164,7 @@ namespace ForceCorrectness {
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		Environment env{ work_folder, envmode, false};
-		auto ip = env.loadInputSimParams(simpar);
+		auto ip = env.loadSimParams(simpar);
 
 		const float relaxed_angle = 1.8849f; // [rad]
 		std::vector<float> angle_errors{ 0.5f, 0.7f }; //(t-t0) [rad]
@@ -222,7 +222,7 @@ namespace ForceCorrectness {
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		Environment env{ work_folder, envmode, false };
-		auto ip = env.loadInputSimParams(simpar);
+		auto ip = env.loadSimParams(simpar);
 
 		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
@@ -296,7 +296,7 @@ namespace StressTesting {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		auto ip = Environment::loadInputSimParams(simpar);
+		auto ip = Environment::loadSimParams(simpar);
 		ip.n_steps = 100;
 
 		auto func = [&]() {

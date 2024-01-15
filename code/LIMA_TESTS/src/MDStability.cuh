@@ -18,7 +18,7 @@ namespace TestMDStability {
 	using namespace TestUtils;
 
 	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
-		InputSimParams emparams{ 20, 2000, true };
+		SimParams emparams{ 2000, 20, true, PBC };
 		auto env = basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
@@ -29,7 +29,7 @@ namespace TestMDStability {
 		//InputSimParams simparams{ 100, 2000 };
 		const std::string work_folder = simulations_dir + folder_name + "/";
 		const std::string simpar_path = work_folder + "sim_params.txt";
-		const InputSimParams simparams = env->loadInputSimParams(simpar_path);
+		const SimParams simparams = env->loadSimParams(simpar_path);
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, simparams);
 		env->run();

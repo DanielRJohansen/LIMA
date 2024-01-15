@@ -92,7 +92,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield->getNBForcefield()};	// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
-	const auto n_steps = std::max(simulation->simparams_host.constparams.n_steps, uint64_t{ 1 });
+	const auto n_steps = std::max(simulation->simparams_host.n_steps, uint64_t{ 1 });
 	setupDataBuffers(*simulation, n_steps);
 	setupTrainingdataBuffers(*simulation, n_steps);
 	LIMA_UTILS::genericErrorCheck("Error during log-data mem. allocation");
@@ -157,7 +157,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.constparams.bc_select);
+				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.bc_select);
 
 
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
@@ -199,7 +199,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 }
 
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
-void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimParams& simparams_src, uint32_t boxsrc_current_step)
+void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimSignals& simparams_src, uint32_t boxsrc_current_step)
 {
 	if (boxsrc_current_step < 1) { throw std::runtime_error("It is not yet possible to create a new box from an old un-run box"); }
 
@@ -276,7 +276,7 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation.box_host->coordarray_circular_queue, 0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.constparams.bc_select);
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.bc_select);
 	simulation.box_host->compounds[simulation.box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 

@@ -18,43 +18,42 @@ const int DEBUGDATAF3_NVARS = 4;
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
+enum SupernaturalForcesSelect{None, HorizontalSqueeze};
 
 
 
-// All members of this struct are double's so they can be parsed easily by std::map, without using variant
-// TODO: Change these to optionals, so we can easily overload only those which values exist
-struct InputSimParams {
+struct SimParams {
+	SimParams() {}
+	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
+		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
+	//SimParams(const InputSimParams& ip);
+
 	void overloadParams(std::map<std::string, double>& dict);
 
-	float dt = 100.f;			// [ls]
-	uint32_t n_steps = 1000;
-	bool em_variant=false;
-	BoundaryConditionSelect boundarycondition{ PBC };
+
+	uint64_t n_steps = 1000;
+	float dt = 100.f;									// [ls]
+	bool em_variant = false;
+	BoundaryConditionSelect bc_select{ PBC };
+	SupernaturalForcesSelect snf_select{ None };
+
 private:
 	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
 		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
 	}
 };
 
-struct SimParamsConst {
-	SimParamsConst(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
-		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
-	uint64_t n_steps;
-	float dt;									// [ls]
-	bool em_variant;
-	BoundaryConditionSelect bc_select;
-};
-
-struct SimParams {
-	SimParams(const InputSimParams& ip);
-	SimParams(const SimParamsConst& spc) : constparams(spc) {}
+struct SimSignals {
+	SimSignals() {}
+	//SimSignals(const InputSimParams& ip);
+	//SimSignals(const SimParams& spc) : constparams(spc) {}
 
 
 	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
 	float thermostat_scalar = 1.f;
 
-	const SimParamsConst constparams;
+	//const SimParams constparams;
 };
 
 struct BoxParams {
@@ -172,7 +171,7 @@ public:
 
 	void copyBoxVariables();
 	
-	inline int64_t getStep() const { return simparams_host.step; }
+	inline int64_t getStep() const { return simsignals_host.step; }
 	
 	bool ready_to_run = false;
 	bool finished = false;
@@ -194,6 +193,8 @@ public:
 
 	std::unique_ptr<Box> box_host;
 
+
+	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
 	SimParams simparams_host;
 	BoxParams boxparams_host;	// only available after box_device has been created
 	SimparamsExtra extraparams;	// only available after box_device has been created

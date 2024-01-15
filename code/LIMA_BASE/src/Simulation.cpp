@@ -95,8 +95,8 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 }
 
 
-Simulation::Simulation(const SimParams& ip, const std::string& molecule_path, EnvMode envmode) :
-	simparams_host{ ip }
+Simulation::Simulation(const SimParams& params, const std::string& molecule_path, EnvMode envmode) :
+	simparams_host{ params }
 {
 	box_host = std::make_unique<Box>();
 	//forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1, molecule_path);
@@ -120,13 +120,19 @@ void Simulation::copyBoxVariables() {
 	//box_host->boxparams.total_particles_upperbound = total_particles_upperbound;
 }
 
-void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
+//void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
+//	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
+//	overloadParam(dict, &n_steps, "n_steps");
+//}
+
+void SimParams::overloadParams(std::map<std::string, double>& dict) {
 	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
 	overloadParam(dict, &n_steps, "n_steps");
 }
 
-SimParams::SimParams(const InputSimParams& ip) : constparams{ip.n_steps, ip.dt, ip.em_variant, ip.boundarycondition }
-{}
+//SimParams::SimParams(const InputSimParams& ip) : 
+//	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)
+//{}
 
 DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds) {
 	// Permanent Outputs for energy & trajectory analysis

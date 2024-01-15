@@ -18,8 +18,11 @@ struct SimulationDevice {
 		cudaMalloc(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
 		cudaMalloc(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
 
-
-
+		{
+			SimSignals temp{};
+			genericCopyToDevice(temp, &signals, 1);
+		}
+		
 		genericCopyToDevice(params_host, &params, 1);
 
 		databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds);
@@ -58,6 +61,7 @@ struct SimulationDevice {
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	SimParams* params;
+	SimSignals* signals;
 	Box* box;
 	DatabuffersDevice* databuffers;
 };

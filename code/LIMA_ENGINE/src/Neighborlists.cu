@@ -10,7 +10,7 @@
 template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result)
 {
-	const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev.box->coordarray_circular_queue, sim_dev.params->step, compound_id);
+	const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev.box->coordarray_circular_queue, sim_dev.signals->step, compound_id);
 	const NodeIndex compound_origo = compound_coords.origo;
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
@@ -129,7 +129,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	{
 		// First add the compounds that we are bonded to
 		for (int i = 0; i < n_bonded_compounds; i++) {
-			if (!nlist.addCompound(static_cast<uint16_t>(bonded_compound_ids[i]))) { sim_dev->params->critical_error_encountered = true; }
+			if (!nlist.addCompound(static_cast<uint16_t>(bonded_compound_ids[i]))) { sim_dev->signals->critical_error_encountered = true; }
 		}
 	}
 
@@ -154,7 +154,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds,
 				compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids);
 			if (!success) {
-				sim_dev->params->critical_error_encountered = true;
+				sim_dev->signals->critical_error_encountered = true;
 			}
 		}
 	}
@@ -162,7 +162,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active) 
 	{
-		const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev->box->coordarray_circular_queue, sim_dev->params->step, compound_id);
+		const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev->box->coordarray_circular_queue, sim_dev->signals->step, compound_id);
 		const NodeIndex compound_origo = compound_coords.origo;
 
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
@@ -178,7 +178,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 					if (canCompoundInteractWithPoint<BoundaryCondition>(boundary_self, key_positions_self, querynode_pos)) {
 						const bool success = nlist.addGridnode(querynode_id);
 						if (!success) {
-							sim_dev->params->critical_error_encountered = true;
+							sim_dev->signals->critical_error_encountered = true;
 						}
 					}
 				}
@@ -237,7 +237,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 				Float3* const positionsbegin = &key_positions_buffer[i * CompoundInteractionBoundary::k];
 				if (canCompoundInteractWithPoint<BoundaryCondition>(boundaries[i], positionsbegin, block_abspos)) {
 					if (!gridnode.addNearbyCompound(querycompound_id)) {
-						sim_dev->params->critical_error_encountered = true;
+						sim_dev->signals->critical_error_encountered = true;
 					}
 				}
 			}

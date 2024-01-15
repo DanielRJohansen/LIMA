@@ -458,7 +458,7 @@ namespace EngineUtils {
 	}
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
-		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimParams& simparams, DatabuffersDevice* databuffers, const float speed) 
+		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimSignals& simparams, DatabuffersDevice* databuffers, const float speed)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 

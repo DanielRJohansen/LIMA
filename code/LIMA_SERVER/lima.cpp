@@ -70,7 +70,7 @@ int membraneBuilder(int argc, char** argv) {
 
 	Environment env{ setup.work_dir, setup.envmode, true };
 	
-	const InputSimParams ip = env.loadInputSimParams(setup.simparams);
+	const SimParams ip = env.loadSimParams(setup.simparams);
 
 	env.CreateSimulation(setup.coordinate_file, setup.topol_file, ip);
 

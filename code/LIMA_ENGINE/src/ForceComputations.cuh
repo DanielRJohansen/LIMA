@@ -5,7 +5,7 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
-
+#include "EngineUtils.cuh"
 
 
 namespace LimaForcecalc {
@@ -263,4 +263,237 @@ __device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_s
 
 	return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+__device__ void cudaAtomicAdd(Float3& target, const Float3& add) {
+	atomicAdd(&target.x, add.x);
+	atomicAdd(&target.y, add.y);
+	atomicAdd(&target.z, add.z);
+}
+
+// ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
+
+// only works if n threads >= n bonds
+__device__ Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
+	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+{
+
+	// First clear the buffer which will store the forces.
+	forces_interim[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_singlebonds; bond_offset++) {
+		const SingleBond* pb = nullptr;
+		Float3 forces[2] = { Float3{}, Float3{} };
+		float potential = 0.f;
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+		if (bond_index < n_singlebonds) {
+			pb = &singlebonds[bond_index];
+
+			LimaForcecalc::calcSinglebondForces(
+				positions[pb->atom_indexes[0]],
+				positions[pb->atom_indexes[1]],
+				*pb,
+				forces,
+				potential
+			);
+		}
+
+		for (int i = 0; i < blockDim.x; i++) {
+			if (threadIdx.x == i && pb != nullptr) {
+				for (int i = 0; i < 2; i++) {
+					forces_interim[pb->atom_indexes[i]] += forces[i];
+					potentials_interim[pb->atom_indexes[i]] += potential * 0.5f;
+				}
+			}
+			__syncthreads();
+		}
+	}
+
+	*potE += potentials_interim[threadIdx.x];
+	const Float3 force = forces_interim[threadIdx.x];
+	__syncthreads();
+
+	return force;
+}
+
+
+__device__ Float3 computeAnglebondForces(const AngleBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
+	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+{
+	// First clear the buffer which will store the forces.
+	forces_interim[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_anglebonds; bond_offset++) {
+		const AngleBond* ab = nullptr;
+		Float3 forces[3] = { Float3{}, Float3{}, Float3{} };
+		float potential = 0.f;
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+		if (bond_index < n_anglebonds) {
+			ab = &anglebonds[bond_index];
+
+			LimaForcecalc::calcAnglebondForces(
+				positions[ab->atom_indexes[0]],
+				positions[ab->atom_indexes[1]],
+				positions[ab->atom_indexes[2]],
+				*ab,
+				forces,
+				potential
+			);
+		}
+
+
+		for (int i = 0; i < blockDim.x; i++) {
+			if (threadIdx.x == i && ab != nullptr) {
+				for (int i = 0; i < ab->n_atoms; i++) {
+					forces_interim[ab->atom_indexes[i]] += forces[i];
+					potentials_interim[ab->atom_indexes[i]] += potential / 3.f;
+				}
+			}
+			__syncthreads();
+		}
+	}
+
+	*potE += potentials_interim[threadIdx.x];
+	const Float3 force = forces_interim[threadIdx.x];
+	__syncthreads();
+
+	return force;
+}
+
+
+__device__ Float3 computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,
+	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+{
+	// First clear the buffer which will store the forces.
+	forces_interim[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_dihedrals; bond_offset++) {
+		const DihedralBond* db = nullptr;
+		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
+		float potential = 0.f;
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+		if (bond_index < n_dihedrals) {
+			db = &dihedrals[bond_index];
+			LimaForcecalc::calcDihedralbondForces(
+				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				*db,
+				forces,
+				potential
+			);
+
+
+			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
+				for (int i = 0; i < db->n_atoms; i++) {
+					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
+					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
+				}
+			}
+		}
+
+		for (int i = 0; i < blockDim.x; i++) {
+			if (threadIdx.x == i && db != nullptr) {
+				for (int i = 0; i < 4; i++) {
+					forces_interim[db->atom_indexes[i]] += forces[i];
+					potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
+				}
+			}
+			__syncthreads();
+		}
+	}
+
+	*potE += potentials_interim[threadIdx.x];
+	const Float3 force = forces_interim[threadIdx.x];
+	__syncthreads();
+
+	return force;
+}
+
+__device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,
+	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+{
+	__syncthreads();
+
+	// First clear the buffer which will store the forces.
+	forces_interim[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
+		const ImproperDihedralBond* db = nullptr;
+		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
+		float potential = 0.f;
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+
+		if (bond_index < n_impropers) {
+			db = &impropers[bond_index];
+
+			LimaForcecalc::calcImproperdihedralbondForces(
+				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				*db,
+				forces,
+				potential
+			);
+
+			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
+				for (int i = 0; i < db->n_atoms; i++) {
+					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
+					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
+				}
+			}
+		}
+
+		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) {
+			for (int i = 0; i < blockDim.x; i++) {
+				if (threadIdx.x == i && db != nullptr) {
+					for (int i = 0; i < db->n_atoms; i++) {
+						forces_interim[db->atom_indexes[i]] += forces[i];
+						potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
+					}
+				}
+				__syncthreads();
+			}
+		}
+	}
+
+	*potE += potentials_interim[threadIdx.x];
+	const Float3 force = forces_interim[threadIdx.x];
+	__syncthreads();
+
+	return force;
+}
+
+
+
 }	// End of namespace LimaForcecalc

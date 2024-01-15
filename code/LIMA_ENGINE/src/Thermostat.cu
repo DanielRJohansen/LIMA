@@ -60,13 +60,13 @@ void Engine::handleBoxtemp() {
 
 		
 		// I just added this to not change any temperatures too rapidly. However in EM we can go faster, and should so we reach goal temperature before sim starts
-		const float max_scalar = simulation->simparams_host.constparams.em_variant ? MAX_THERMOSTAT_SCALER * 10.f : MAX_THERMOSTAT_SCALER;
+		const float max_scalar = simulation->simparams_host.em_variant ? MAX_THERMOSTAT_SCALER * 10.f : MAX_THERMOSTAT_SCALER;
 		temp_scalar = std::clamp(temp_scalar, 1.f - max_scalar, 1.f + max_scalar);
 		
 		
 		// Apply 1/n scalar for n steps.
 
-		sim_dev->params->thermostat_scalar = temp_scalar;
+		sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE
 	}	
 }
 

@@ -39,19 +39,18 @@ void Environment::CreateSimulation(float boxsize_nm) {
 
 	//Filehandler::createDefaultSimFilesIfNotAvailable(work_dir, boxsize_nm);
 
-	InputSimParams ip{};
-	SimParams simparams{ ip };
+	SimParams simparams{};
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get(), boxsize_nm);
 	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 }
 
-void Environment::CreateSimulation(string gro_path, string topol_path, const InputSimParams ip) {
+void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
 	//prepFF();									// TODO: Make check in here whether we can skip this!
 	//LimaForcefieldBuilder::buildForcefield(work_dir, m_mode);
 
-	SimParams simparams{ ip };
-	setupEmptySimulation(simparams);
+	//SimParams simparams{ ip };
+	setupEmptySimulation(params);
 
 	const string gro_name = lfs::extractFilename(gro_path);	// TODO: This should not be the permanent solution, figure out if i want paths or names
 	const string top_name = lfs::extractFilename(topol_path);
@@ -63,7 +62,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 		V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
 		IGNORE_HYDROGEN,
-		ip.boundarycondition
+		simulation->simparams_host.bc_select
 		);
 
 	//TODO Find a better place for this
@@ -78,13 +77,13 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Inp
 #endif
 }
 
-void Environment::CreateSimulation(Simulation& simulation_src, const InputSimParams ip) {
+void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 	// If we already have a box, we must have a forcefield too, no?
 
-	SimParams simparams{ ip };
-	setupEmptySimulation(simparams);
+	//SimParams simparams{ ip };
+	setupEmptySimulation(params);
 	//boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);	// TODO: Fix this again
-	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simparams_host, simulation_src.simparams_host.step);	// TODO: Fix this again
+	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);	// TODO: Fix this again
 	simulation->extraparams = simulation_src.extraparams;
 
 	//TODO Find a better place for this
@@ -114,9 +113,10 @@ void Environment::createMembrane() {
 
 
 	// Create simulation and run on the newly created files in the workfolder
-	InputSimParams ip{};
-	ip.boundarycondition = NoBC;
+	SimParams ip{};
+	ip.bc_select = NoBC;
 	ip.n_steps = 10000;
+	ip.snf_select = HorizontalSqueeze;
 	CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
 
 
@@ -168,7 +168,7 @@ void Environment::verifyBox() {
 		
 	}
 
-	if (simulation->simparams_host.constparams.bc_select == NoBC && simulation->boxparams_host.n_solvents != 0) {
+	if (simulation->simparams_host.bc_select == NoBC && simulation->boxparams_host.n_solvents != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}
 
@@ -214,7 +214,7 @@ bool Environment::prepareForRun() {
 
 	engine = std::make_unique<Engine>(
 		std::move(simulation),
-		simulation->simparams_host.constparams.bc_select,
+		simulation->simparams_host.bc_select,
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 
 	return true;
@@ -471,8 +471,8 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 
 
 
-InputSimParams Environment::loadInputSimParams(const std::string& path) {
-	InputSimParams simparams{};
+SimParams Environment::loadSimParams(const std::string& path) {
+	SimParams simparams{};
 	auto param_dict = Filehandler::parseINIFile(path);
 	simparams.overloadParams(param_dict);
 	return simparams;

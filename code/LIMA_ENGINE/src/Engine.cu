@@ -51,7 +51,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -83,8 +83,8 @@ void Engine::step() {
 	//simulation->incStep();
 	assert(simulation);
 	assert(sim_dev);
-	simulation->simparams_host.step++;
-	sim_dev->params->step++;
+	simulation->simsignals_host.step++;
+	sim_dev->signals->step++;	// UNSAFE
 
 	hostMaster();
 
@@ -102,7 +102,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.constparams.bc_select, simulation->boxparams_host, timings.nlist);
+		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
 	}
 	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 		offloadTrainData();
@@ -110,9 +110,9 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();
-	runstatus.critical_error_occured = sim_dev->params->critical_error_encountered;	// TODO: Can i get this from simparams_host?
+	runstatus.critical_error_occured = sim_dev->signals->critical_error_encountered;	// TODO: Can i get this from simparams_host? UNSAFE
 	// most recent positions are handled automaticall by transfer_traj
-	runstatus.simulation_finished = runstatus.current_step >= simulation->simparams_host.constparams.n_steps || runstatus.critical_error_occured;
+	runstatus.simulation_finished = runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured;
 
 	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp
 	//	simulation->box->thermostat_scalar = 1.f;

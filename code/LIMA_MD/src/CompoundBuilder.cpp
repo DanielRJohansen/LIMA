@@ -10,19 +10,20 @@
 #include <format>
 #include <span>
 #include <array>
+
 using namespace LIMA_Print;
 
 namespace lfs = Filehandler;
 
 // TODO: Remove this from here and use MDFiles.h instead
-struct GroRecord {
-	int residue_number{};
-	std::string residue_name{};
-	std::string atom_name{};
-	int gro_id{};
-	Float3 position{};
-	Float3 velocity{};
-};
+//struct GroRecord {
+//	int residue_number{};
+//	std::string residue_name{};
+//	std::string atom_name{};
+//	int gro_id{};
+//	Float3 position{};
+//	Float3 velocity{};
+//};
 
 // we need this struct because only the topology has a distinct ordering of which atoms (purely position based) belong to which residue
 // This is so fucked up insane, but its the standard so :(
@@ -47,9 +48,9 @@ public:
 		verbosity_level(vl)
 	{}
 
-	// Upon creation of the CompoundCollection, the MoleculeBuilder object is no longer valid,
+	// Upon creation of the BoxImage, the MoleculeBuilder object is no longer valid,
 	// as it move's it's data instead of copying!
-	CompoundCollection buildMolecules(const string& gro_path, const string& topol_path, bool ignore_hydrogens = true);
+	std::unique_ptr<BoxImage> buildMolecules(const ParsedGroFile& gro_file, const string& topol_path, bool ignore_hydrogens = true);
 
 private:
 
@@ -84,7 +85,7 @@ private:
 
 
 	// Only works for fixed positions gro files!! Meaning max, 99.999 particles
-	void loadAtomPositions(const SimpleParsedFile& parsedgrofile);
+	void loadAtomPositions( const ParsedGroFile& grofile);
 
 	/// <summary>
 	/// Goes through all the residues, and fills the bondedresidue_ids vector. 
@@ -108,17 +109,16 @@ private:
 };
 
 
-
-CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const string& molecule_dir, bool ignore_hydrogens) 
+std::unique_ptr<BoxImage> MoleculeBuilder::buildMolecules(const ParsedGroFile& grofile, const string& molecule_dir, bool ignore_hydrogens)
 {
 	m_logger->startSection("Building Molecules");
 	particleinfotable = loadAtomInfo(molecule_dir);
 
-	const SimpleParsedFile parsedgrofile = Filehandler::parseGroFile(gro_path, false);
-	const float boxlen_nm = stof(parsedgrofile.rows.back().words[0]);
+
+	const float boxlen_nm = grofile.box_size.x;
 
 
-	loadAtomPositions(parsedgrofile);
+	loadAtomPositions(grofile);
 	const Topology& topology = loadTopology(molecule_dir);
 
 	// We need each particle to ref singlebonds to determine which residues are bonded
@@ -162,100 +162,39 @@ CompoundCollection MoleculeBuilder::buildMolecules(const string& gro_path, const
 		}
 	}
 
-	return CompoundCollection{ 
-		std::move(compounds), 
+	return std::make_unique<BoxImage>(
+		std::move(compounds),
 		static_cast<int>(nonsolvent_positions.size()),
-		std::move(bp_lut_manager), 
+		std::move(bp_lut_manager),
 		std::move(bridges_compact),
 		std::move(solvent_positions),
-		boxlen_nm	// TODO: Find a better way..
-	};
+		boxlen_nm,	// TODO: Find a better way..
+		std::move(particleinfotable),
+		ParsedGroFile{ grofile }
+	);
 }
 
-
-
-
-
-
-
-
-GroRecord parseGroLineTemp(const std::string& line) {
-	GroRecord record;
-
-	// Parse residue number (5 positions, integer)
-	std::istringstream(line.substr(0, 5)) >> record.residue_number;
-
-	// Parse residue name (5 characters)
-	record.residue_name = line.substr(5, 5);
-	record.residue_name.erase(std::remove(record.residue_name.begin(), record.residue_name.end(), ' '), record.residue_name.end());
-
-	// Parse atom name (5 characters)
-	record.atom_name = line.substr(10, 5);
-	record.atom_name.erase(std::remove(record.atom_name.begin(), record.atom_name.end(), ' '), record.atom_name.end());
-
-	// Parse atom number (5 positions, integer)
-	std::istringstream(line.substr(15, 5)) >> record.gro_id;
-
-	// Parse position (in nm, x y z in 3 columns, each 8 positions with 3 decimal places)
-	std::istringstream(line.substr(20, 8)) >> record.position.x;
-	std::istringstream(line.substr(28, 8)) >> record.position.y;
-	std::istringstream(line.substr(36, 8)) >> record.position.z;
-
-	if (line.size() >= 68) {
-		// Parse velocity (in nm/ps (or km/s), x y z in 3 columns, each 8 positions with 4 decimal places)
-		std::istringstream(line.substr(44, 8)) >> record.velocity.x;
-		std::istringstream(line.substr(52, 8)) >> record.velocity.y;
-		std::istringstream(line.substr(60, 8)) >> record.velocity.z;
-	}
-
-	return record;
-}
-
-
-void MoleculeBuilder::loadAtomPositions(const SimpleParsedFile& parsedfile) {	// could be const if not for the temporary atomname for rendering
-
-
-
-	// First check box has correct size
-	if (parsedfile.rows.back().section != "box_size") {
-		throw std::runtime_error("Parsed gro file did not contain a box-size at the expected line (2nd last line)");
-	}
-
-	//for (auto& length_str : parsedfile.rows.back().words) {
-	//	if (std::stof(length_str) != BOX_LEN_NM) {
-	//		//throw std::runtime_error(".gro file box size does not match the compiler defined box size");	// TODO: move this to engine's validate sim
-	//	}
-	//}
-
-
-	// Find atom count to resize particle_info
-	if (parsedfile.rows[1].section != "n_atoms") {
-		throw std::runtime_error("Expected second line of parsed gro file to contain atom count");
-	}
-	const int n_atoms_total = std::stoi(parsedfile.rows[1].words[0]);
+void MoleculeBuilder::loadAtomPositions(const ParsedGroFile& grofile)
+{
 	int current_res_id = -1;	// unique
 
-	for (const auto& row : parsedfile.rows) {
-		if (row.section != "atoms") { continue; }
-
-		GroRecord record = parseGroLineTemp(row.words[0]);
-
-		if (record.atom_name[0] == 'H' && IGNORE_HYDROGEN) {
-			continue; 
+	for (const GroRecord& atom : grofile.atoms) {
+		if (atom.atom_name[0] == 'H' && IGNORE_HYDROGEN) {
+			continue;
 		}
 
-		const bool entry_is_solvent = record.residue_name == "WATER" || record.residue_name == "SOL" || record.residue_name == "HOH";
+		const bool entry_is_solvent = atom.residue_name == "WATER" || atom.residue_name == "SOL" || atom.residue_name == "HOH";
 		if (entry_is_solvent) {
-			if (record.atom_name[0] != 'O') {
+			if (atom.atom_name[0] != 'O') {
 				continue;	// Treat all three solvents atoms as a single point, so no hydrogens here
 			}
 
 			// Ensure all nonsolvents have been added before adding solvents. Dunno if necessary?
 			if (nonsolvent_positions.size() != particleinfotable.size()) {
-				throw std::runtime_error(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})", 
+				throw std::runtime_error(std::format("Trying to add solvents, but nonsolvents added ({}) does not equal the expect amount of .lff file ({})",
 					nonsolvent_positions.size(), particleinfotable.size()).c_str());
 			}
-			solvent_positions.push_back(record.position);
+			solvent_positions.push_back(atom.position);
 		}
 		else {
 			const int assumed_global_id = nonsolvent_positions.size();
@@ -267,19 +206,20 @@ void MoleculeBuilder::loadAtomPositions(const SimpleParsedFile& parsedfile) {	//
 			/*if (record.gro_id != particleinfotable[assumed_global_id].gro_id) {
 				throw std::runtime_error("gro_id of .gro file does not match that of .lff file");
 			}*/
-			if (record.atom_name != particleinfotable[assumed_global_id].atomname) {
+
+			if (atom.atom_name != particleinfotable[assumed_global_id].atomname) {
 				throw std::runtime_error("atom_name of .gro file does not match that of .lff file");
 			}
 
 			const bool is_new_res = particleinfotable[assumed_global_id].unique_res_id != current_res_id
-				|| record.residue_number != residues.back().gro_id;
+				|| atom.residue_number != residues.back().gro_id;
 			if (is_new_res) {
-				residues.push_back(Residue{ record.residue_number, static_cast<int>(residues.size()), record.residue_name, particleinfotable[assumed_global_id].chain_id });
+				residues.push_back(Residue{ atom.residue_number, static_cast<int>(residues.size()), atom.residue_name, particleinfotable[assumed_global_id].chain_id });
 				current_res_id = particleinfotable[assumed_global_id].unique_res_id;
 			}
-			
+
 			residues.back().atoms_globalid.emplace_back(assumed_global_id);
-			nonsolvent_positions.emplace_back(record.position);
+			nonsolvent_positions.emplace_back(atom.position);
 
 			if (residues.back().atoms_globalid.size() > MAX_COMPOUND_PARTICLES) {
 				throw std::runtime_error(std::format("Cannot handle residue with {} particles\n", residues.back().atoms_globalid.size()).c_str());
@@ -1071,19 +1011,19 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 #include "ForcefieldMaker.h"
 
 
-CompoundCollection LIMA_MOLECULEBUILD::buildMolecules(
+std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::string& molecule_dir,
-	const std::string& gro_name,
-	const std::string& top_name,
+	//const std::string& gro_name,
+	const ParsedGroFile& gro_file,
+	const ParsedTopologyFile& topol_file,
 	VerbosityLevel vl,
 	std::unique_ptr<LimaLogger> logger,
 	bool ignore_hydrogens,
 	BoundaryConditionSelect bc_select
 ) 
 {
-	//const string molecule_dir = work_dir + "/molecule";
-	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, gro_name, top_name, EnvMode::Headless);	// Doesnt actually use .gro now..
+	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, topol_file, EnvMode::Headless);	// Doesnt actually use .gro now..
 
 	MoleculeBuilder mb{ std::move(logger), bc_select, vl };
-	return mb.buildMolecules(lfs::pathJoin(molecule_dir, gro_name), molecule_dir, ignore_hydrogens);
+	return mb.buildMolecules(gro_file, molecule_dir, ignore_hydrogens);
 }

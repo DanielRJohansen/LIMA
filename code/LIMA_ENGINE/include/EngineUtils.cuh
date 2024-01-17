@@ -355,6 +355,7 @@ namespace LIMALOGSYSTEM {
 
 	__device__ __host__ static int64_t getDataentryIndex(int64_t step) {
 		if (step % LOG_EVERY_N_STEPS != 0) {
+			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
 			return 0;
 		}
 		assert(step % LOG_EVERY_N_STEPS == 0);

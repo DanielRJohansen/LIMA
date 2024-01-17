@@ -3,7 +3,7 @@
 
 // This is the only function to be called from outside :)
 //template <typename BoundaryCondition>
-//CompoundCollection buildMolecules(
+//BoxImage buildMolecules(
 //	//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
 //	const std::string& molecule_dir,	// We need access to .lff files aswell
 //	const std::string& gro_name = "conf.gro",
@@ -23,16 +23,17 @@
 #include "Forcefield.cuh"
 #include "Utilities.h"
 #include "EngineUtils.cuh"
+#include "MDFiles.h"
 
-struct CompoundCollection;
+struct BoxImage;
 
 namespace LIMA_MOLECULEBUILD {
 
-	CompoundCollection buildMolecules(
+	std::unique_ptr<BoxImage> buildMolecules(
 		//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
 		const std::string& molecule_dir,	// We need access to .lff files aswell
-		const std::string& gro_name,
-		const std::string& top_name,
+		const ParsedGroFile& gro_file,
+		const ParsedTopologyFile& top_file,
 		VerbosityLevel vl,
 		std::unique_ptr<LimaLogger>,
 		bool ignore_hydrogens,
@@ -184,9 +185,9 @@ private:
 	void addParticle(ParticleInfo&);
 };
 
-
-struct CompoundCollection {
-	std::vector<CompoundFactory> compounds;
+// A translation unit between Gro file representation, and LIMA Box representation
+struct BoxImage {
+	const std::vector<CompoundFactory> compounds;
 	const int32_t total_compound_particles;
 
 	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
@@ -196,4 +197,8 @@ struct CompoundCollection {
 	const std::vector<Float3> solvent_positions;
 
 	const float box_size;
+
+	const ParticleInfoTable particleinfotable;
+
+	ParsedGroFile grofile;
 };

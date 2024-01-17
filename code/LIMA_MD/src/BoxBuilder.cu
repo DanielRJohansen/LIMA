@@ -29,7 +29,7 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 }
 
 
-void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollection& compound_collection) {
+void BoxBuilder::addBoxImage(Simulation* simulation, BoxImage& compound_collection) {
 	for (const CompoundFactory& compound : compound_collection.compounds) {		
 		//CALL_FUNCTION_WITH_BC(insertCompoundInBox, simulation->simparams_host.constparams.bc_select, compound, *simulation);
 		//insertCompoundInBox<BoundaryCondition>(compound, *simulation);
@@ -45,7 +45,7 @@ void BoxBuilder::addCompoundCollection(Simulation* simulation, CompoundCollectio
 
 	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager.release();
 
-	m_logger->print("CompoundCollection added to box\n");
+	m_logger->print("BoxImage added to box\n");
 }
 
 

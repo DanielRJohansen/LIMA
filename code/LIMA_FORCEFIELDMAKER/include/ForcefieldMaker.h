@@ -4,6 +4,7 @@
 
 #include "Utilities.h"
 #include "LimaTypes.cuh"
+#include "MDFiles.h"
 
 struct NB_Atomtype;
 
@@ -18,5 +19,5 @@ namespace LimaForcefieldBuilder {
 	/// <param name="topol_name">name of main .top/.itp file in molecule_dir</param>
 	/// <param name="envmode"></param>
 	void buildForcefield(const std::string& molecule_dir, const std::string& output_dir,
-		const std::string& conf_path, const std::string& topol_path, EnvMode envmode);
+		const ParsedTopologyFile& topol_file, EnvMode envmode);
 }

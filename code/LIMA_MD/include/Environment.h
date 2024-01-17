@@ -49,6 +49,10 @@ public:
 	/// </summary>
 	void CreateSimulation(std::string conf_filename, std::string topol_filename, SimParams);
 
+	// The basic createSim
+	void CreateSimulation(const ParsedGroFile&, const ParsedTopologyFile&, const SimParams&);
+
+
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
@@ -67,6 +71,10 @@ public:
 
 	// Run a standard MD sim
 	void run(bool em_variant=false);
+
+	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
+	// atoms in the input coordinate file.
+	ParsedGroFile writeBoxCoordinatesToFile();
 
 
 
@@ -122,6 +130,8 @@ private:
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
 	std::vector<Compound>* compounds = nullptr;
 	BoxParams boxparams;
+
+	std::unique_ptr<BoxImage> boximage;
 
 	Analyzer::AnalyzedPackage postsim_anal_package;
 #ifdef __linux__

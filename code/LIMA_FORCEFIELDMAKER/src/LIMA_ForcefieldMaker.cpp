@@ -242,19 +242,19 @@ void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfi
 
 
 // call this funciton initially with current_unique_residue_cnt=-1
-Topology loadTopology(const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom)
+Topology loadTopology(const std::string& molecule_dir, const ParsedTopologyFile& topol_file, const char ignored_atom)
 {
 	Topology topology{};
 	int current_chain_id = -1;
 	int current_unique_residue_cnt = -1;
 	
-	const std::unique_ptr<ParsedTopologyFile> topolfile = MDFiles::loadTopologyFile(topol_path);
+	//const std::unique_ptr<ParsedTopologyFile> topolfile = MDFiles::loadTopologyFile(topol_path);
 
 	// First load the top-level topol
-	includeFileInTopology(topology, *topolfile, current_chain_id, current_unique_residue_cnt);
+	includeFileInTopology(topology, topol_file, current_chain_id, current_unique_residue_cnt);
 
 	// Now load all includes (.itp)
-	for (const auto& molecule : topolfile->molecules.entries) {
+	for (const auto& molecule : topol_file.molecules.entries) {
 		current_chain_id++;
 		includeFileInTopology(topology, *molecule.include_file, current_chain_id, current_unique_residue_cnt);
 	}
@@ -507,15 +507,15 @@ std::vector<std::string> getFiles() {
 
 
 void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, const std::string& output_dir,
-	const std::string& conf_name, const std::string& topol_name, EnvMode envmode)
+	const ParsedTopologyFile& topol_file, EnvMode envmode)
 {
 	
 	//LimaLogger logger{ LimaLogger::LogMode::compact, envmode, "forcefieldmaker", work_dir };
 	const bool verbose(envmode != Headless);
 	//const string conf_path = lfs::pathJoin(molecule_dir, conf_name);
-	const string topol_path = lfs::pathJoin(molecule_dir, topol_name);
+	//const string topol_path = lfs::pathJoin(molecule_dir, topol_name);
 	//lfs::assertPath(conf_path);
-	lfs::assertPath(topol_path);
+	//lfs::assertPath(topol_path);
 
 
 	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
@@ -528,8 +528,8 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 		const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
 		loadFileIntoForcefield(parsedfile, forcefield);
 	}
-
-	Topology topology = loadTopology(molecule_dir, topol_path, ignore_atomtype);
+	
+	Topology topology = loadTopology(molecule_dir, topol_file, ignore_atomtype);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);

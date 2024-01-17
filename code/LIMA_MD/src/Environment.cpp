@@ -35,10 +35,6 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 }
 
 void Environment::CreateSimulation(float boxsize_nm) {
-	//prepFF();									// TODO: Make check in here whether we can skip this!
-
-	//Filehandler::createDefaultSimFilesIfNotAvailable(work_dir, boxsize_nm);
-
 	SimParams simparams{};
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get(), boxsize_nm);
@@ -46,19 +42,20 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	//prepFF();									// TODO: Make check in here whether we can skip this!
-	//LimaForcefieldBuilder::buildForcefield(work_dir, m_mode);
+	const ParsedGroFile gro_file = MDFiles::loadGroFile(gro_path);
+	const std::unique_ptr<ParsedTopologyFile> topol_file = MDFiles::loadTopologyFile(topol_path);
 
-	//SimParams simparams{ ip };
+	CreateSimulation(gro_file, *topol_file, params);
+}
+
+void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTopologyFile& topolfile, const SimParams& params) 
+{
 	setupEmptySimulation(params);
 
-	const string gro_name = lfs::extractFilename(gro_path);	// TODO: This should not be the permanent solution, figure out if i want paths or names
-	const string top_name = lfs::extractFilename(topol_path);
-
-	CompoundCollection collection = LIMA_MOLECULEBUILD::buildMolecules(
+	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		lfs::pathJoin(work_dir, "molecule"),
-		gro_name,
-		top_name,
+		grofile,
+		topolfile,
 		V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
 		IGNORE_HYDROGEN,
@@ -68,12 +65,12 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Sim
 	//TODO Find a better place for this
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 
-	boxbuilder->buildBox(simulation.get(), collection.box_size);
+	boxbuilder->buildBox(simulation.get(), boximage->box_size);
 
-	boxbuilder->addCompoundCollection(simulation.get(), collection);
+	boxbuilder->addBoxImage(simulation.get(), *boximage);
 
 #ifdef ENABLE_SOLVENTS
-	boxbuilder->solvateBox(simulation.get(), collection.solvent_positions);
+	boxbuilder->solvateBox(simulation.get(), boximage->solvent_positions);
 #endif
 }
 
@@ -98,22 +95,15 @@ void Environment::createMembrane(bool carryout_em) {
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
 	auto monolayerfiles = SimulationBuilder::buildMembrane({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
-	auto& current_files = monolayerfiles;
-
-
-	// Save box to .gro and .top file
-	//monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	//monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
-	//MDFiles::loadGroFile(*simulation->box_host).printToFile(lfs::pathJoin(work_dir, "molecule/membranegro"));
-	// Reset env
-	//resetEnvironment();
-
 
 	// Create simulation and run on the newly created files in the workfolder
-	if (carryout_em) {
-		current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-		current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 
+	return;
+
+	// Monolayer energy Minimization NoBC
+	{
 		SimParams ip{};
 		ip.bc_select = NoBC;
 		ip.n_steps = 4000;
@@ -123,18 +113,32 @@ void Environment::createMembrane(bool carryout_em) {
 
 		// Draw each lipid towards the center - no pbc
 		run();
-
-		// Ensure all particles are inside box
 	}
+	
+
+	// Ensure all particles are inside box
+
+	ParsedGroFile em_monolayer_grofile = writeBoxCoordinatesToFile();
+	//auto em_monolayer_grofile = MDFiles::loadGroFile(work_dir + "/molecule/membrane.gro");
+	
 
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-	auto membranefiles2 = SimulationBuilder::makeBilayerFromMonolayer({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
-	// Run EM for a while - with pbc
+	auto bilayerfiles = SimulationBuilder::makeBilayerFromMonolayer({ em_monolayer_grofile, monolayerfiles.second }, simulation->box_host->boxparams.dims);
 
+	// Run EM for a while - with pbc
+	{
+		SimParams ip{};
+		ip.n_steps = 400;
+		ip.dt = 50.f;
+		CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+
+		// Draw each lipid towards the center - no pbc
+		run();
+	}
 
 	// Save box to .gro and .top file
-	current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	//current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	//current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
@@ -286,6 +290,30 @@ void Environment::run(bool em_variant) {
 		postRunEvents();
 	}
 }
+
+ParsedGroFile Environment::writeBoxCoordinatesToFile() {
+	ParsedGroFile outputfile{ boximage->grofile };
+
+	if (simulation->boxparams_host.n_solvents != 0) {
+		throw std::runtime_error("This function is now designed to handle solvents");
+	}
+
+	for (int i = 0; i < outputfile.atoms.size(); i++) {
+		const int cid = boximage->particleinfotable[i].compound_index;
+		const int pid = boximage->particleinfotable[i].local_id_compound;
+
+		int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->simsignals_host.step-1);
+		const Float3 new_position = simulation->traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
+		
+		outputfile.atoms[i].position = new_position;
+	}
+
+	// Handle solvents somehow
+
+	//outputfile.printToFile(work_dir + "/molecule/" + filename + ".gro");
+	return outputfile;
+}
+
 
 void Environment::postRunEvents() {
 	if (simulation->getStep() == 0) { return; }

@@ -14,8 +14,8 @@ public:
 		srand(290128309);
 	};
 	void buildBox(Simulation* simulation, float boxsize_nm);
-	void addCompoundCollection(Simulation* simulation, CompoundCollection& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
-	//void addMembrane(Simulation& sim, CompoundCollection& lipid);
+	void addBoxImage(Simulation* simulation, BoxImage& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	//void addMembrane(Simulation& sim, BoxImage& lipid);
 
 
 	//void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);

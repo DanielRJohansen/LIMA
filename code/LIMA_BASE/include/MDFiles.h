@@ -29,21 +29,30 @@ struct ParsedGroFile {
 };
 
 struct ParsedTopologyFile {	//.top or .itp
+
+	~ParsedTopologyFile() {
+		for (auto& mol : molecules.entries) {
+			mol.deletePtr();
+		}
+	}
+
 	static std::string generateLegend(std::vector<std::string> elements);
 
 	static const int width = 10;	// Width of elements in files
 
 	struct MoleculeEntry {
-		std::string name;
+		std::string name{};
 
-		//std::vector<ParsedTopologyFile*> include_files;
-		//std::vector<std::unique_ptr<ParsedTopologyFile>> include_files;
+		// TODO: We need to be able to recursively write these to files too
 
+		ParsedTopologyFile* include_file = nullptr;	// TODO: Unsafe, fix with unique_ptr, but i dont know how
+		//std::unique_ptr<ParsedTopologyFile> include_files;
+		void deletePtr() {
+			delete include_file;
+		}
 	};
 
 	
-	//ParsedTopologyFile* include_files;	// TODO: make this a section too, so we can print the files
-
 	struct MoleculetypeEntry {
 		std::string name;
 		int nrexcl{};
@@ -63,7 +72,7 @@ struct ParsedTopologyFile {	//.top or .itp
 		int cgnr{};
 		float charge{};
 		float mass{};
-		int chain_id{ -1 };
+		//int chain_id{ -1 };
 
 		std::string composeString() const;
 	};
@@ -122,6 +131,7 @@ struct ParsedTopologyFile {	//.top or .itp
 
 	std::string title;
 
+	MoleculeEntry me;
 	Section<MoleculeEntry> molecules{ "[ molecule ]", generateLegend({}) };
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
@@ -142,5 +152,5 @@ namespace MDFiles {
 	ParsedGroFile loadGroFile(const fs::path& path);
 	ParsedGroFile loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
 
-	ParsedTopologyFile loadTopologyFile(const fs::path& path);
+	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
 }

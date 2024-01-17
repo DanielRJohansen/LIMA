@@ -94,24 +94,25 @@ void Environment::createMembrane(bool carryout_em) {
 	// Load in the lipid types, for now just POPC
 	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC/";
 	ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
-	ParsedTopologyFile inputtopologyfile = MDFiles::loadTopologyFile(POPC_PATH + "POPC.itp");
+	std::unique_ptr<ParsedTopologyFile> inputtopologyfile = MDFiles::loadTopologyFile(POPC_PATH + "POPC.itp");
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
-	auto membranefiles = SimulationBuilder::buildMembrane({ inputgrofile, inputtopologyfile }, simulation->box_host->boxparams.dims);
-	
-
+	auto monolayerfiles = SimulationBuilder::buildMembrane({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
+	auto& current_files = monolayerfiles;
 
 
 	// Save box to .gro and .top file
-	membranefiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	membranefiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	//monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	//monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 	//MDFiles::loadGroFile(*simulation->box_host).printToFile(lfs::pathJoin(work_dir, "molecule/membranegro"));
 	// Reset env
-	resetEnvironment();
+	//resetEnvironment();
 
 
 	// Create simulation and run on the newly created files in the workfolder
 	if (carryout_em) {
+		current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+		current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 
 		SimParams ip{};
 		ip.bc_select = NoBC;
@@ -127,8 +128,13 @@ void Environment::createMembrane(bool carryout_em) {
 	}
 
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-
+	auto membranefiles2 = SimulationBuilder::makeBilayerFromMonolayer({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
 	// Run EM for a while - with pbc
+
+
+	// Save box to .gro and .top file
+	current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {

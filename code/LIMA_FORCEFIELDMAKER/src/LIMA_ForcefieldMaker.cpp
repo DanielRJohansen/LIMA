@@ -152,6 +152,22 @@ void loadFileIntoForcefield(const SimpleParsedFile& parsedfile, BondedTypes& for
 }
 
 template <int n>
+bool getGlobalIDsAndTypenames(const int (&gro_ids)[n], const AtomInfoTable& atominfotable, const int chain_id, std::array<int, n>& global_ids, std::array<string, n>& atomtypes) {
+	for (int i = 0; i < n; i++) {
+		const int gro_id = gro_ids[i];
+
+		if (!atominfotable.exists(chain_id, gro_id)) {
+			return false;
+		}
+		const Atom& atom = atominfotable.getConstRef(chain_id, gro_id);
+		global_ids[i] = atom.global_id;
+		atomtypes[i] = atom.atomtype;
+	}
+
+	return true;
+}
+
+template <int n>
 bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTable& atominfotable, const int chain_id, std::array<int, n>& global_ids, std::array<string, n>& atomtypes) {
 	for (int i = 0; i < n; i++) {
 		const int gro_id = stoi(words[i]);
@@ -169,105 +185,81 @@ bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTa
 
 #include "MDFiles.h"
 
-// call this funciton initially with current_unique_residue_cnt=-1
-void loadTopology(Topology& topology, const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom, int& current_chain_id, int& current_unique_residue_cnt)
-{
-	const SimpleParsedFile parsedfile = Filehandler::parseTopFile(topol_path, false);
+void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfile, int& current_chain_id, int& current_unique_residue_cnt) {
+	for (const auto& atom : topolfile.atoms.entries) {
+		if (current_chain_id == -1) {
+			current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
+		}
+		const int gro_id = atom.nr;
 
-	//const ParsedTopologyFile topolfile = MDFiles::loadTopologyFile(topol_path);
-
-	
-
-	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
-		if (row.section == "molecules") {
-			assert(row.words.size() == 2);
-
-			// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
-			if(row.words[0] == "SOL")
-				continue;
-
-			const std::string include_top_file = molecule_dir + "/topol_" + row.words[0] + ".itp";
-			current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
-			loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id, current_unique_residue_cnt);
+		if (atom.section_name.has_value()) {
+			current_unique_residue_cnt++;
 		}
 
-		if (row.section == "atoms") {
-
-			if (current_chain_id == -1) {
-				current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
-			}
-
-			// In topology files we use lines like below to distinct different residues. 
-			// This means we also need to catch and ignores regular comments here, since ; is used as comments in itp files..
-			//; residue  -8 THR rtp THR  q +1.0
-			if (row.words[0][0] == ';') {
-				if (row.words[1] == "residue" || row.words[1] == "lipid_section") {
-					current_unique_residue_cnt++;
-				}
-				continue;
-			}
-
-			// Special case: The first set of atoms we read are from a topol file that starts with a non-residue such as a lipid
-			// TODO: WARNING: DANGER: SERIOUS: This means reading 2 consecutive lipids will make the two lipids into the same residue!!!
-			// Solved with adding lipid_section manually to all lipid files
-			//current_unique_residue_cnt = std::max(current_unique_residue_cnt, 0);
-			if (current_unique_residue_cnt == -1) {
-				throw std::runtime_error("Something is wrong, we should have a res_id by now.");
-			}
-
-			assert(row.words.size() >= 8);
-
-			const int gro_id = stoi(row.words[0]);
-			const string atomtype = row.words[1];
-			const int residue_id = stoi(row.words[2]);
-			const string atomname = row.words[4];		// nb type??
-			const float charge = stof(row.words[6]);	// not currently used
-			const float mass = stof(row.words[7]);		// not currently used
-
-			if (atomtype[0] == ignored_atom) {	// Typically for ignoring hydrogen
-				continue;
-			}
-
-			topology.atominfotable.insert(current_chain_id, gro_id, atomtype, atomname, residue_id, current_unique_residue_cnt);
-			topology.active_atomtypes.insert(atomtype);
+		// Special case: The first set of atoms we read are from a topol file that starts with a non-residue such as a lipid
+		// TODO: WARNING: DANGER: SERIOUS: This means reading 2 consecutive lipids will make the two lipids into the same residue!!!
+		// Solved with adding lipid_section manually to all lipid files
+		// current_unique_residue_cnt = std::max(current_unique_residue_cnt, 0);
+		if (current_unique_residue_cnt == -1) {
+			throw std::runtime_error("Something is wrong, we should have a res_id by now.");
 		}
-		else if (row.section == "bonds") {
-			assert(row.words.size() >= 3);
 
-			std::array<int, 2> global_ids;
-			std::array<string, 2> atomtypes;
-			if (getGlobalIDsAndTypenames<2>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
-				topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes});
-			}		
-		}
-		else if (row.section == "angles") {
-			assert(row.words.size() >= 4);
+		topology.atominfotable.insert(current_chain_id, gro_id, atom.type, atom.atom, atom.resnr, current_unique_residue_cnt);
+		//topology.atominfotable.insert(current_chain_id, gro_id, atom.atomtype, atomname, residue_id, current_unique_residue_cnt);
+		topology.active_atomtypes.insert(atom.type);
+	}
 
-			std::array<int, 3> global_ids;
-			std::array<string, 3> atomtypes;
-			if (getGlobalIDsAndTypenames<3>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
-				topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
-			}
-		}
-		else if (row.section == "dihedrals") {
-			assert(row.words.size() >= 5);
-
-			std::array<int, 4> global_ids;
-			std::array<string, 4> atomtypes;
-			if (getGlobalIDsAndTypenames<4>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
-				topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
-			}
-		}
-		else if (row.section == "improperdihedrals") {
-			assert(row.words.size() >= 5);
-
-			std::array<int, 4> global_ids;
-			std::array<string, 4> atomtypes;
-			if (getGlobalIDsAndTypenames<4>(row.words, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
-				topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ global_ids, atomtypes });
-			}
+	for (const auto& bond : topolfile.singlebonds.entries) {
+		std::array<int, 2> global_ids;
+		std::array<string, 2> atomtypes;
+		if (getGlobalIDsAndTypenames<2>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes });
 		}
 	}
+	for (const auto& bond : topolfile.anglebonds.entries) {
+		std::array<int, 3> global_ids;
+		std::array<string, 3> atomtypes;
+		if (getGlobalIDsAndTypenames<3>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
+		}
+	}
+	for (const auto& bond : topolfile.dihedralbonds.entries) {
+		std::array<int, 4> global_ids;
+		std::array<string, 4> atomtypes;
+		if (getGlobalIDsAndTypenames<4>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
+		}
+	}
+	for (const auto& bond : topolfile.improperdihedralbonds.entries) {
+		std::array<int, 4> global_ids;
+		std::array<string, 4> atomtypes;
+		if (getGlobalIDsAndTypenames<4>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+			topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ global_ids, atomtypes });
+		}
+	}
+}
+
+
+
+// call this funciton initially with current_unique_residue_cnt=-1
+Topology loadTopology(const std::string& molecule_dir, const std::string& topol_path, const char ignored_atom)
+{
+	Topology topology{};
+	int current_chain_id = -1;
+	int current_unique_residue_cnt = -1;
+	
+	const std::unique_ptr<ParsedTopologyFile> topolfile = MDFiles::loadTopologyFile(topol_path);
+
+	// First load the top-level topol
+	includeFileInTopology(topology, *topolfile, current_chain_id, current_unique_residue_cnt);
+
+	// Now load all includes (.itp)
+	for (const auto& molecule : topolfile->molecules.entries) {
+		current_chain_id++;
+		includeFileInTopology(topology, *molecule.include_file, current_chain_id, current_unique_residue_cnt);
+	}
+
+	return topology;
 }
 
 
@@ -526,11 +518,6 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 	lfs::assertPath(topol_path);
 
 
-
-
-
-
-
 	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
 	// Check if filtered files already exists, if so return
 	BondedTypes forcefield;
@@ -542,11 +529,7 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 		loadFileIntoForcefield(parsedfile, forcefield);
 	}
 
-	// Load the topology
-	Topology topology{};
-	int current_chain_id = -1;
-	int unique_residue_cnt = -1;
-	loadTopology(topology, molecule_dir, topol_path, ignore_atomtype, current_chain_id, unique_residue_cnt);
+	Topology topology = loadTopology(molecule_dir, topol_path, ignore_atomtype);
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);

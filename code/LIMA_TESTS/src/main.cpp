@@ -46,10 +46,10 @@ int main() {
 
 
 		//testReorderMoleculeParticles();
-		//testBuildmembraneSmall(envmode);
+		testBuildmembraneSmall(envmode, true);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -96,7 +96,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.5e-6, 2e-5));
 
 	// Programs test
-	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode));
+	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
 
 
 	// Meta tests

@@ -12,5 +12,5 @@ namespace SimulationBuilder {
 
 	Filepair buildMembrane(Filepair inputfiles, Float3 box_dims);
 
-
+	Filepair makeBilayerFromMonolayer(const Filepair& inputfiles, Float3 box_dims);
 };

@@ -155,41 +155,56 @@ ParsedGroFile MDFiles::loadGroFile(const Box& box, std::function<Float3(NodeInde
 	return grofile;
 }
 
-enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, no_section};
+enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section};
 
-TopologySection getNextTopologySection(TopologySection current_section, const std::string& directive) {
-	if (directive == "molecules") {
-		return molecules;
+class TopologySectionGetter {
+	int dihedralCount = 0;
+
+public:
+	TopologySection operator()(const std::string& directive) {
+		if (directive == "molecules") {
+			return molecules;
+		}
+		else if (directive == "moleculetype") {
+			return moleculetype;
+		}
+		else if (directive == "atoms") {
+			return atoms;
+		}
+		else if (directive == "bonds") {
+			return bonds;
+		}
+		else if (directive == "pairs") {
+			return pairs;
+		}
+		else if (directive == "angles") {
+			return angles;
+		}
+		else if (directive == "dihedrals") {
+			dihedralCount++;
+			if (dihedralCount == 1) {
+				return dihedrals;
+			}
+			else if (dihedralCount == 2) {
+				return impropers;
+			}
+			else
+				throw std::runtime_error("Encountered the 'dihedral' directive more than 2 times in the same .itp/.top file");
+		}
+		else if (directive == "position_restraints") {
+			return position_restraints;
+		}
+		else if (directive == "system") {
+			return _system;
+		}
+		else if (directive == "cmap") {
+			return cmap;
+		}
+		else {
+			throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
+		}
 	}
-	else if (directive == "moleculetype") {
-		return moleculetype;
-	}
-	else if (directive == "atoms") {
-		return atoms;
-	}
-	else if (directive == "bonds") {
-		return bonds;
-	}
-	else if (directive == "pairs") {
-		return pairs;
-	}
-	else if (directive == "angles") {
-		return angles;
-	}
-	else if (directive == "dihedrals") {
-		if (current_section != dihedrals)
-			return dihedrals;
-		else
-			return impropers;
-	}
-	else if (directive == "position_restraints")
-		return position_restraints;
-	else if (directive == "system")
-		return _system;
-	else {
-		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
-	}
-}
+};
 
 std::string extractSectionName(const std::string& line) {
 	size_t start = line.find('[');
@@ -220,10 +235,14 @@ void includeFileInTopology(ParsedTopologyFile& topology, const fs::path& path) {
 
 }
 
-ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
+std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& path) {
 	assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
 
-	ParsedTopologyFile topfile{};
+	std::unique_ptr<ParsedTopologyFile> topfile = std::make_unique<ParsedTopologyFile>();
+
+	const char delimiter = ' ';
+	const std::vector<char> ignores = { ';', '#' };
+
 
 	std::ifstream file;
 	file.open(path);
@@ -232,6 +251,7 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 	}
 	
 	TopologySection current_section{ title };
+	TopologySectionGetter getTopolSection{};
 
 	// Forward declaring for optimization reasons
 	std::string line{}, word{};
@@ -240,8 +260,6 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 
 	while (getline(file, line)) {
 
-		std::vector<char> ignores = { ';', '#' };
-		char delimiter = ' ';
 
 		if (line.size() == 0) {
 			current_section = no_section;
@@ -249,7 +267,8 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 		}
 
 		if (line[0] == '[') {
-			current_section = getNextTopologySection(current_section, extractSectionName(line));
+			//current_section = getNextTopologySection(current_section, extractSectionName(line));
+			current_section = getTopolSection(extractSectionName(line));
 			continue;
 		}
 
@@ -261,7 +280,7 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 		switch (current_section)
 		{
 		case title:
-			topfile.title.append(line + "\n");	// +\n because getline implicitly strips it away.
+			topfile->title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
 		case molecules: {
 			//assert(row.words.size() == 2);
@@ -273,19 +292,23 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 				continue;
 
 			fs::path include_topol_path = path;
-			//include_topol_path.re
-			const fs::path include_top_file = path.parent_path().append("/topol_" + include_name + ".itp");
+			include_topol_path.replace_filename("topol_" + include_name + ".itp");
+			//include_topol_path.append("/topol_" + include_name + ".itp");
+			//auto a = path.stem();
+			//const fs::path include_top_file = path.parent_path().append("/topol_" + include_name + ".itp");
+			ParsedTopologyFile* f = loadTopologyFile(include_topol_path).release();
+			topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ include_name, f });
 			//current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
 			//loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id, current_unique_residue_cnt);
 
-			throw std::runtime_error("This is not yet implemented");
+			//throw std::runtime_error("This is not yet implemented");
 			break;
 		}
 		case moleculetype:
 		{
 			ParsedTopologyFile::MoleculetypeEntry moleculetype{};
 			iss >> moleculetype.name >> moleculetype.nrexcl;
-			topfile.moleculetypes.entries.emplace_back(moleculetype);
+			topfile->moleculetypes.entries.emplace_back(moleculetype);
 			break;
 		}
 		case atoms:
@@ -299,10 +322,10 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 			else {
 				ParsedTopologyFile::AtomsEntry atom;
 				iss >> atom.nr >> atom.type >> atom.resnr >> atom.residue >> atom.atom >> atom.cgnr >> atom.charge >> atom.mass;
-				topfile.atoms.entries.emplace_back(atom);
+				topfile->atoms.entries.emplace_back(atom);
 
 				if (sectionname != "") {
-					topfile.atoms.entries.back().section_name = sectionname;
+					topfile->atoms.entries.back().section_name = sectionname;
 					sectionname = "";
 				}
 			}
@@ -311,31 +334,31 @@ ParsedTopologyFile MDFiles::loadTopologyFile(const fs::path& path) {
 		case bonds: {
 			ParsedTopologyFile::SingleBond singlebond{};
 			iss >> singlebond.atom_indexes[0] >> singlebond.atom_indexes[1] >> singlebond.funct;
-			topfile.singlebonds.entries.emplace_back(singlebond);
+			topfile->singlebonds.entries.emplace_back(singlebond);
 			break;
 		}
 		case pairs: {
 			ParsedTopologyFile::Pair pair{};
 			iss >> pair.atom_indexes[0] >> pair.atom_indexes[1] >> pair.funct;
-			topfile.pairs.entries.emplace_back(pair);
+			topfile->pairs.entries.emplace_back(pair);
 			break;
 		}
 		case angles: {
 			ParsedTopologyFile::AngleBond angle{};
 			iss >> angle.atom_indexes[0] >> angle.atom_indexes[1] >> angle.atom_indexes[2] >> angle.funct;
-			topfile.anglebonds.entries.emplace_back(angle);
+			topfile->anglebonds.entries.emplace_back(angle);
 			break; 
 		}
 		case dihedrals: {
 			ParsedTopologyFile::DihedralBond dihedral{};
 			iss >> dihedral.atom_indexes[0] >> dihedral.atom_indexes[1] >> dihedral.atom_indexes[2] >> dihedral.atom_indexes[3] >> dihedral.funct;
-			topfile.dihedralbonds.entries.emplace_back(dihedral);
+			topfile->dihedralbonds.entries.emplace_back(dihedral);
 			break;
 		}
 		case impropers: {
 			ParsedTopologyFile::ImproperDihedralBond improper{};
 			iss >> improper.atom_indexes[0] >> improper.atom_indexes[1] >> improper.atom_indexes[2] >> improper.atom_indexes[3] >> improper.funct;
-			topfile.improperdihedralbonds.entries.emplace_back(improper);
+			topfile->improperdihedralbonds.entries.emplace_back(improper);
 			break;
 		}
 		default:

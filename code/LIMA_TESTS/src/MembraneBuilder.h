@@ -47,13 +47,12 @@ namespace TestMembraneBuilder {
 
 
 
-	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode)
+	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{
 		const fs::path work_dir = simulations_dir + "/BuildMembraneSmall";
 		Environment env{ work_dir.string(), envmode, false};
 
 		env.CreateSimulation(7.f);
-		const bool do_em = envmode == Full && 0;
 		env.createMembrane(do_em);
 
 		const fs::path mol_dir = work_dir / "molecule";

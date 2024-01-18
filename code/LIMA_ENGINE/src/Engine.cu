@@ -202,6 +202,7 @@ void Engine::offloadTrainData() {
 
 
 void Engine::bootstrapTrajbufferWithCoords() {
+	if (simulation->simparams_host.n_steps == 0) return;
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->boxparams_host.n_compounds);

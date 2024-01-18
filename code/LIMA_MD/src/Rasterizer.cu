@@ -11,7 +11,7 @@
 
 
 
-std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step) {
+std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, Float3 camera_normal) {
 
     LIMA_UTILS::genericErrorCheck("Error before renderer");
 	RenderAtom* atoms_dev = getAllAtoms(positions, compounds, boxparams, step);
@@ -19,7 +19,14 @@ std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::v
     std::vector<RenderBall> balls_host = processAtoms(atoms_dev, boxparams.total_particles_upperbound, boxparams.dims.x);
     cudaFree(atoms_dev);
 
-    std::sort(balls_host.begin(), balls_host.end(), [](const RenderBall& a, const RenderBall& b) {return !a.disable && a.pos.y > b.pos.y; });    
+    std::sort(balls_host.begin(), balls_host.end(), [camera_normal](const RenderBall& a, const RenderBall& b) {
+        float dotA = a.pos.x * camera_normal.x + a.pos.y * camera_normal.y + a.pos.z * camera_normal.z;
+        float dotB = b.pos.x * camera_normal.x + b.pos.y * camera_normal.y + b.pos.z * camera_normal.z;
+
+        // Compare dot products for sorting
+        return !a.disable && dotA > dotB;
+        });
+
 
     LIMA_UTILS::genericErrorCheck("Error after renderer");
 
@@ -32,13 +39,6 @@ std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::v
 __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds);
 __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms);
 __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float box_len_nm);
-
-__global__ void kernelA(Box* box) {
-    // Do nothing
-}
-__global__ void kernelB(Box* box) {
-    // Do nothing
-}
 
 RenderAtom* Rasterizer::getAllAtoms(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step) {
 	RenderAtom* atoms;

@@ -44,12 +44,15 @@ namespace SupernaturalForces {
 
 			// Linear force
 			const float lin_factor = 0.000002f;
-			force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
+			/*force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
 				? std::abs(dist_x) * lin_factor
 				: 0.f;
 			force_y += std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
 				? std::abs(dist_y) * lin_factor
-				: 0.f;
+				: 0.f;*/
+			force_x += std::abs(dist_x) * lin_factor;
+			force_y += std::abs(dist_y) * lin_factor;
+
 
 			// Apply signed force
 			if (dist_x < 0)

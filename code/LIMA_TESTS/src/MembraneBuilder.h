@@ -56,14 +56,32 @@ namespace TestMembraneBuilder {
 		env.createMembrane(do_em);
 
 		const fs::path mol_dir = work_dir / "molecule";
-		const string err1 = compareFiles(mol_dir / "membrane.gro", mol_dir / "membrane_reference.gro");
-		if (err1 != "") {
-			return LimaUnittestResult{ LimaUnittestResult::FAIL , err1, envmode == Full };
+
+
+		std::vector<std::array<std::string, 2>> files = { {"monolayer.gro", "monolayer_reference.gro"}, {"monolayer.top", "monolayer_reference.top"} };
+
+		if (!do_em) {
+			// These files are altered by the em, and thus the comparison cannot be made
+			files.push_back({ "membrane.gro", "membrane_reference.gro" });
+			files.push_back({ "membrane.top", "membrane_reference.top" });				
 		}
-		const string err2 = compareFiles(mol_dir / "membrane.top", mol_dir / "membrane_reference.top");
-		if (err2 != "") {
-			return LimaUnittestResult{ LimaUnittestResult::FAIL , err2, envmode == Full };
+			
+
+		for (const auto& pair : files) {
+			const string error = compareFiles(mol_dir / pair[0], mol_dir / pair[1]);
+			if (error != "") {
+				return LimaUnittestResult{ LimaUnittestResult::FAIL , error, envmode == Full };
+			}
 		}
+
+		//const string err1 = compareFiles(mol_dir / "monolayer.gro", mol_dir / "monolayer_reference.gro");
+		//if (err1 != "") {
+		//	return LimaUnittestResult{ LimaUnittestResult::FAIL , err1, envmode == Full };
+		//}
+		//const string err2 = compareFiles(mol_dir / "monolayer.top", mol_dir / "monolayer_reference.top");
+		//if (err2 != "") {
+		//	return LimaUnittestResult{ LimaUnittestResult::FAIL , err2, envmode == Full };
+		//}
 
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS , "No error", envmode == Full};
 

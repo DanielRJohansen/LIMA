@@ -192,7 +192,7 @@ namespace SimulationBuilder{
 		overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile.improperdihedralbonds.entries, atomnr_offset);
 
 
-		return inputfiles;
+		return { outputgrofile, outputtopologyfile };
 	}
 
 

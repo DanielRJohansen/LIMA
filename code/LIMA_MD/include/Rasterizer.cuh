@@ -4,7 +4,6 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-//#include "Forcefield.cuh"
 
 
 
@@ -23,7 +22,7 @@ public:
 	Rasterizer() {};
 	
 	std::vector<RenderBall> render(const Float3* positions,
-		const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
+		const std::vector<Compound>& compounds, const BoxParams&, int64_t step, Float3 camera_normal);
 
 
 private:

@@ -18,6 +18,8 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
+		//loadAndRunBasicSimulation("DisplayTest", envmode);
+
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 

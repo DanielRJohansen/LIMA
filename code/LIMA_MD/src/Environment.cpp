@@ -97,19 +97,20 @@ void Environment::createMembrane(bool carryout_em) {
 	auto monolayerfiles = SimulationBuilder::buildMembrane({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
 
 	// Create simulation and run on the newly created files in the workfolder
-	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.gro"));
+	monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.top"));
 
-	return;
+	//return;
 
 	// Monolayer energy Minimization NoBC
 	{
 		SimParams ip{};
 		ip.bc_select = NoBC;
-		ip.n_steps = 4000;
+		ip.n_steps = carryout_em ? 40000 : 0;
 		ip.snf_select = HorizontalSqueeze;
 		ip.em_variant = true;
-		CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+		//CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+		CreateSimulation(monolayerfiles.first, monolayerfiles.second, ip);
 
 		// Draw each lipid towards the center - no pbc
 		run();
@@ -118,27 +119,32 @@ void Environment::createMembrane(bool carryout_em) {
 
 	// Ensure all particles are inside box
 
-	ParsedGroFile em_monolayer_grofile = writeBoxCoordinatesToFile();
+	ParsedGroFile monolayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : monolayerfiles.first;
 	//auto em_monolayer_grofile = MDFiles::loadGroFile(work_dir + "/molecule/membrane.gro");
 	
 
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-	auto bilayerfiles = SimulationBuilder::makeBilayerFromMonolayer({ em_monolayer_grofile, monolayerfiles.second }, simulation->box_host->boxparams.dims);
+	auto bilayerfiles = SimulationBuilder::makeBilayerFromMonolayer({ monolayer_grofile_em, monolayerfiles.second }, simulation->box_host->boxparams.dims);
 
 	// Run EM for a while - with pbc
 	{
 		SimParams ip{};
-		ip.n_steps = 400;
+		ip.n_steps = carryout_em ? 2000 : 0;
+		//ip.n_steps = 10000;
 		ip.dt = 50.f;
-		CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
+		ip.bc_select = NoBC;
+		CreateSimulation(bilayerfiles.first, bilayerfiles.second, ip);
 
 		// Draw each lipid towards the center - no pbc
 		run();
 	}
+	ParsedGroFile bilayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : bilayerfiles.first;
 
+	
 	// Save box to .gro and .top file
-	//current_files.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	//current_files.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
+	bilayer_grofile_em.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
+	//bilayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));	// TEMP
+	bilayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {

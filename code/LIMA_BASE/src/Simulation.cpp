@@ -162,6 +162,7 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 
 	// TRAINING DATA and TEMPRARY OUTPUTS
 	{
+#ifdef GENERATETRAINDATA
 		size_t n_outdata = 10 * STEPS_PER_LOGTRANSFER;
 		size_t n_traindata = std::max(static_cast<size_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER, size_t{ 1 });	// This is a hack; can't allocate 0 bytes.
 		assert(n_outdata && "Tried to create outdata buffer with 0 datapoints");
@@ -170,9 +171,9 @@ DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_co
 		size_t bytesize_mb = (sizeof(float) * n_outdata + sizeof(Float3) * n_traindata) / 1'000'000;
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
 
-
 		cudaMallocManaged(&outdata, sizeof(float) * n_outdata);	// 10 data streams for 10k steps. 1 step at a time.
 		cudaMallocManaged(&data_GAN, sizeof(Float3) * n_traindata);
+#endif
 	}
 	
 }
@@ -182,6 +183,8 @@ void DatabuffersDevice::freeMembers() {
 	cudaFree(traj_buffer);
 	cudaFree(vel_buffer);
 
+#ifdef GENERATETRAINDATA
 	cudaFree(outdata);
 	cudaFree(data_GAN);
+#endif
 }

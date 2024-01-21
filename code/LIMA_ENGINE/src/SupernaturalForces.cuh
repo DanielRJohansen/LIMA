@@ -22,7 +22,7 @@ namespace SupernaturalForces {
 
 
 	namespace {// anon namespace
-		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force) {
+		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force, float particle_mass) {
 			const float box_padding = 0.3;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
 			const float dist_x = BOX_LEN_HALF_NM - avg_compound_position_nm.x;
@@ -34,7 +34,7 @@ namespace SupernaturalForces {
 			// Constant force
 			float force_x{}, force_y{};
 
-			const float const_factor = 0.000005f;
+			const float const_factor = 0.0000025f;
 			force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
 				? const_factor
 				: 0.f;
@@ -43,7 +43,7 @@ namespace SupernaturalForces {
 				: 0.f;
 
 			// Linear force
-			const float lin_factor = 0.000002f;
+			const float lin_factor = 0.000003f;
 			/*force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
 				? std::abs(dist_x) * lin_factor
 				: 0.f;
@@ -60,20 +60,27 @@ namespace SupernaturalForces {
 			if (dist_y < 0)
 				force_y *= -1.f;
 
+			float mass_factor = particle_mass * 100.f;	// If we scale the forces by their inverted mass, we avoid the problem of lighter molecules being pushed faster than the heavier
+			if (mass_factor < 0.1f || mass_factor > 4.f) {
+				printf("mass factor %f mass %f\n", mass_factor, particle_mass);
+			}	
+			//mass_factor = 1.f;
+
 			// Apply squeeze force
-			particle_force.x += force_x;
-			particle_force.y += force_y;
+			particle_force.x += force_x * mass_factor;
+			particle_force.y += force_y * mass_factor;
 			//if (avg_compound_position_nm.y > BOX_LEN_NM)
 			//	particle_force.y -= 0.000001f;
 
 
 			// Elimitenate z translation
-			particle_force.z -= avg_compound_force_z;
+			particle_force.z -= avg_compound_force_z;// *mass_factor;
 		};
 	}
 
 	// Overwrites the force that is given as an argument to the function
-	__device__ void applyHorizontalSqueeze(Float3* utilitybuffer_f3, float* utilitybuffer_f, char* utilitybuffer, const Float3* const compound_positions, int n_particles, const NodeIndex& compound_origo, Float3& force) {
+	__device__ void applyHorizontalSqueeze(Float3* utilitybuffer_f3, float* utilitybuffer_f, char* utilitybuffer, const Float3* const compound_positions, 
+		int n_particles, const NodeIndex& compound_origo, Float3& force, float mass) {
 		static_assert(cbkernel_utilitybuffer_size >= sizeof(Float3) * 2);
 		Float3* avg_abspos_nm = reinterpret_cast<Float3*>(utilitybuffer);
 		float* avg_force_z = reinterpret_cast<float*>(&utilitybuffer[sizeof(Float3)]);
@@ -98,6 +105,8 @@ namespace SupernaturalForces {
 		}
 		__syncthreads();
 
-		SupernaturalForces::_applyHorizontalSqueeze(*avg_abspos_nm, *avg_force_z, force);
+		if (threadIdx.x < n_particles)
+			SupernaturalForces::_applyHorizontalSqueeze(*avg_abspos_nm, *avg_force_z, force, mass);
+		__syncthreads();
 	}
 }

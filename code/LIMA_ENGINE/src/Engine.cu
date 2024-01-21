@@ -158,12 +158,13 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
+#ifdef GENERATETRAINDATA
 	cudaMemcpy(	// THIS IS PROLLY WRONG NOW
 		&simulation->loggingdata[startindex * 10],
 		sim_dev->databuffers->outdata, 
 		sizeof(float) * 10 * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
-
+#endif
 	cudaDeviceSynchronize();
 }
 
@@ -190,6 +191,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 
 
 void Engine::offloadTrainData() {
+#ifdef GENERATETRAINDATA
 	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds;
 	if (values_per_step == 0) {
 		return;	// No data to transfer
@@ -198,6 +200,7 @@ void Engine::offloadTrainData() {
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
 	cudaMemcpy(&simulation->trainingdata[step_offset], sim_dev->databuffers->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck("Cuda error during traindata offloading\n");
+#endif
 }
 
 

@@ -69,6 +69,7 @@ void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps
 }
 
 void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
+#ifdef GENERATETRAINDATA
 	uint64_t n_loggingdata_host = 10 * n_steps;
 	uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.boxparams_host.n_compounds;
 	auto datasize_str = std::to_string((float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
@@ -76,12 +77,13 @@ void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t
 
 	simulation.loggingdata.resize(n_loggingdata_host);
 	simulation.trainingdata.resize(n_traindata_host);
+#endif
 }
 void BoxBuilder::finishBox(Simulation* simulation) {
 	const int compoundparticles_upperbound = simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 
 	simulation->box_host->boxparams.total_particles_upperbound = compoundparticles_upperbound + simulation->box_host->boxparams.n_solvents;
-
+	
 
 	// Load meta information
 	simulation->copyBoxVariables();

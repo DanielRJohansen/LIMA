@@ -129,7 +129,7 @@ void Environment::createMembrane(bool carryout_em) {
 	// Run EM for a while - with pbc
 	{
 		SimParams ip{};
-		ip.n_steps = carryout_em ? 2000 : 0;
+		ip.n_steps = carryout_em ? 10000 : 0;
 		//ip.n_steps = 10000;
 		ip.dt = 50.f;
 		ip.bc_select = NoBC;

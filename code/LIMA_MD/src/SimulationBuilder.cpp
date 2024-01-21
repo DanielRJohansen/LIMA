@@ -154,9 +154,8 @@ namespace SimulationBuilder{
 		return { outputgrofile, outputtopologyfile };
 	}
 
-	Filepair makeBilayerFromMonolayer(const Filepair& inputfiles, Float3 box_dims) {
-	//ParsedGroFile inputgrofile = inputfiles.first;
-	//ParsedTopologyFile inputtopologyfile = inputfiles.second;
+	Filepair makeBilayerFromMonolayer(const Filepair& inputfiles, Float3 box_dims)
+	{
 		auto [inputgrofile, inputtopologyfile] = inputfiles;
 
 		const float lowest_zpos = std::min_element(inputgrofile.atoms.begin(), inputgrofile.atoms.end(), 
@@ -165,20 +164,35 @@ namespace SimulationBuilder{
 
 		if (lowest_zpos < 0.f) { throw std::runtime_error("Didnt expect bilayer to go below box"); }
 
-		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			const float padding = 0.05;	// [nm]
-			pos = -pos;	// Mirror atom in xy plane
-			pos += lowest_zpos * 2.f - padding;	// Move atom back up to the first layer
-			};
 
+		const float padding_between_layers = 0.05;	// [nm]
+
+
+
+		// Copy the existing gro and top file into the output files
 		ParsedGroFile outputgrofile{ inputgrofile };
 		outputgrofile.box_size = box_dims;
 		outputgrofile.title = "Lipid bi-layer consisting of " + inputgrofile.title;
 		ParsedTopologyFile outputtopologyfile{inputtopologyfile};
 		outputtopologyfile.title = "Lipid bi-layer consisting of " + inputtopologyfile.title;
 
+
+		// Translate all the existing postions, so the tails are where the middle of the membrane should be
+		const float translation_z = (box_dims.z / 2.f + padding_between_layers/2.f) - lowest_zpos;
+		for (auto& atom : outputgrofile.atoms) {
+			atom.position.z += translation_z;
+		}
+
+
+
 		const int atomnr_offset = inputgrofile.n_atoms;
 		const int resnr_offset = inputgrofile.atoms.back().residue_number;
+
+		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+			pos.z = -pos.z;	// Mirror atom in xy plane
+			pos.z += box_dims.z - padding_between_layers;	// times 2 since
+			//pos.z += lowest_zpos * 2.f - padding;	// Move atom back up to the first layer
+			};
 
 		for (int atom_nr = 0; atom_nr < inputgrofile.n_atoms; atom_nr++) {
 			addAtomToFile(outputgrofile, outputtopologyfile, inputgrofile.atoms[atom_nr], inputtopologyfile.atoms.entries[atom_nr],

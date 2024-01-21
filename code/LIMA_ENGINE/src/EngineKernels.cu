@@ -472,7 +472,8 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
 	if (simparams.snf_select == HorizontalSqueeze) {
-		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force);
+		const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
 	}
 
 

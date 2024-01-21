@@ -81,8 +81,11 @@ struct DatabuffersDevice {
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 
+	
+#ifdef GENERATETRAINDATA
 	float* outdata = nullptr;					// Temp, for longging values to whatever
 	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
+#endif
 	//Float3* debugdataf3 = nullptr;
 };
 
@@ -183,9 +186,10 @@ public:
 
 	std::vector<float> temperature_buffer;
 
+#ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;
 	std::vector<float> loggingdata;
-
+#endif
 
 
 

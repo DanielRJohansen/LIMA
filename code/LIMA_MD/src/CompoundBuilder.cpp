@@ -239,61 +239,22 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 		? Filehandler::pathJoin(molecule_dir, "custom_ffbonded.lff")
 		: Filehandler::pathJoin(molecule_dir, "ffbonded.lff");
 
-	const SimpleParsedFile bonded_parsed = Filehandler::parseLffFile(bonded_path, false);
+	MDFiles::ParsedLffFile bondedff{ bonded_path };
 
 	Topology topology{};
 
 
-
-	for (auto& row : bonded_parsed.rows) {
-		if (row.section == "singlebonds") {
-			assert(row.words.size() == 6);
-
-			std::array<uint32_t, 2> global_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 2; i++) {
-				global_ids[i] = std::stoi(row.words[i]);
-			}
-			const float b0 = std::stof(row.words[4]) * NANO_TO_LIMA;							// convert [nm] to [lm]
-			// Units of kb is [J/mol/nm^2]. One nm is for the error in forcecalc, and one distance in integration
-			//const float kb = stof(row.words[5]) / (NANO_TO_PICO * NANO_TO_LIMA);		// convert [J/(mol * nm^2)] to [J/(mol *  * lm)
-			const float kb = std::stof(row.words[5]) / (NANO_TO_LIMA * NANO_TO_LIMA);
-
-			topology.singlebonds.emplace_back(SingleBondFactory{ global_ids, b0, kb });
-		}
-		else if (row.section == "anglebonds") {
-			assert(row.words.size() == 8);
-
-			std::array<uint32_t, 3> global_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 3; i++) {
-				global_ids[i] = std::stoi(row.words[i]);
-			}
-			const float theta0 = std::stof(row.words[6]);
-			const float ktheta = std::stof(row.words[7]);
-			topology.anglebonds.emplace_back(AngleBondFactory{ global_ids, theta0, ktheta });
-		}
-		else if (row.section == "dihedralbonds") {
-			assert(row.words.size() == 11);
-
-			std::array<uint32_t, 4> global_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 4; i++) {
-				global_ids[i] = std::stoi(row.words[i]);
-			}
-			const float phi0 = std::stof(row.words[8]);
-			const float kphi = std::stof(row.words[9]);
-			const float multiplicity = std::stof(row.words[10]);
-			topology.dihedralbonds.emplace_back(DihedralBondFactory{ global_ids, phi0, kphi, multiplicity });
-		}
-		else if (row.section == "improperdihedralbonds") {
-			assert(row.words.size() == 10);
-
-			std::array<uint32_t, 4> global_ids; //{ stoi(row.words[0]), stoi(row.words[1]) };
-			for (int i = 0; i < 4; i++) {
-				global_ids[i] = std::stoi(row.words[i]);
-			}
-			const float psi0 = std::stof(row.words[8]);
-			const float kpsi = std::stof(row.words[9]);
-			topology.improperdihedralbonds.emplace_back(ImproperDihedralBondFactory{ global_ids, psi0, kpsi });
-		}
+	for (const auto& bond : bondedff.singlebonds.entries) {
+		topology.singlebonds.emplace_back(SingleBondFactory{ bond.global_ids, bond.b0 * NANO_TO_LIMA, bond.kb / (NANO_TO_LIMA * NANO_TO_LIMA) });
+	}
+	for (const auto& bond : bondedff.anglebonds.entries) {
+		topology.anglebonds.emplace_back(AngleBondFactory{ bond.global_ids, bond.theta0, bond.ktheta});
+	}
+	for (const auto& bond : bondedff.dihedralbonds.entries) {
+		topology.dihedralbonds.emplace_back(DihedralBondFactory{ bond.global_ids, bond.phi0, bond.kphi, bond.n });
+	}
+	for (const auto& bond : bondedff.improperdihedralbonds.entries) {
+		topology.improperdihedralbonds.emplace_back(ImproperDihedralBondFactory{ bond.global_ids, bond.psi0, bond.kpsi});
 	}
 
 	return topology;

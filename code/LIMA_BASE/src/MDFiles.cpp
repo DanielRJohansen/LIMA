@@ -4,6 +4,8 @@
 #include<format>
 
 using namespace Filehandler;
+using namespace MDFiles;
+namespace fs = std::filesystem;
 
 GroRecord parseGroLine(const std::string& line) {
 	GroRecord record;
@@ -229,11 +231,7 @@ bool containsSubString(const std::istringstream& stream, const std::string& quer
 	return false;
 }
 
-namespace fs = std::filesystem;
 
-void includeFileInTopology(ParsedTopologyFile& topology, const fs::path& path) {
-
-}
 
 std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& path) {
 	assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
@@ -427,4 +425,87 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) {
 	file << anglebonds.composeString();
 	file << dihedralbonds.composeString();
 	file << improperdihedralbonds.composeString();
+}
+
+
+ParsedLffFile::LffSection getLffSection(const std::string& directive) {
+	if (directive == "singlebonds")
+		return ParsedLffFile::singlebond;
+	else if (directive == "anglebonds")
+		return ParsedLffFile::anglebond;
+	else if (directive == "dihedralbonds")
+		return ParsedLffFile::dihedralbond;
+	else if (directive == "improperdihedralbonds")
+		return ParsedLffFile::improperdihedralbond;
+	else
+		return ParsedLffFile::no_section;
+}
+
+ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
+	if (path.extension().string() != std::string{ ".lff" }) { throw std::runtime_error(std::format("Expected .lff extension with file {}", path.string())); }
+
+
+
+
+	std::ifstream file;
+	file.open(path);
+	if (!file.is_open() || file.fail()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
+	}
+
+	LffSection current_section{ title };
+
+	// Forward declaring for optimization reasons
+	std::string line{}, word{};
+	std::string sectionname = "";
+	while (getline(file, line)) {
+
+		if (line.size() == 0) {
+			current_section = no_section;
+			continue;
+		}
+
+		if (line[0] == '#') {
+			//current_section = getNextTopologySection(current_section, extractSectionName(line));
+			current_section = getLffSection(line.substr(2));
+			continue;
+		}
+
+		// Check if current line is commented
+		if (firstNonspaceCharIs(line, '/') && current_section != title) { continue; }	// Only title-sections reads the comments
+
+
+		std::istringstream iss(line);
+		switch (current_section)
+		{
+		case singlebond: {
+			ParsedLffFile::Singlebond singlebond{};
+			std::string atomtypes[2];
+			iss >> singlebond.global_ids[0] >> singlebond.global_ids[1] >> atomtypes[0] >> atomtypes[1] >> singlebond.b0 >> singlebond.kb;
+			singlebonds.entries.emplace_back(singlebond);
+			break;
+		}
+		case anglebond: {
+			ParsedLffFile::Anglebond anglebond{};
+			std::string atomtypes[3];
+			iss >> anglebond.global_ids[0] >> anglebond.global_ids[1] >> anglebond.global_ids[2] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> anglebond.theta0 >> anglebond.ktheta;
+			anglebonds.entries.emplace_back(anglebond);
+			break;
+		}
+		case dihedralbond: {
+			ParsedLffFile::Dihedralbond dihedralbond{};
+			std::string atomtypes[4];
+			iss >> dihedralbond.global_ids[0] >> dihedralbond.global_ids[1] >> dihedralbond.global_ids[2] >> dihedralbond.global_ids[3] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> atomtypes[3] >> dihedralbond.phi0 >> dihedralbond.kphi >> dihedralbond.n;
+			dihedralbonds.entries.emplace_back(dihedralbond);
+			break;
+		}
+		case improperdihedralbond: {
+			ParsedLffFile::Improperdihedralbond improperdihedralbond{};
+			std::string atomtypes[4];
+			iss >> improperdihedralbond.global_ids[0] >> improperdihedralbond.global_ids[1] >> improperdihedralbond.global_ids[2] >> improperdihedralbond.global_ids[3] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> atomtypes[3] >> improperdihedralbond.psi0 >> improperdihedralbond.kpsi;
+			improperdihedralbonds.entries.emplace_back(improperdihedralbond);
+			break;
+		}
+		}
+	}
 }

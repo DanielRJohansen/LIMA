@@ -28,6 +28,29 @@ struct ParsedGroFile {
 	void printToFile(const std::filesystem::path& path);
 };
 
+template <typename EntryType>
+struct Section {
+	const std::string title;	// or "directive" in gromacs terms
+	const std::string legend;
+	std::vector<EntryType> entries;
+
+	std::string composeString() {
+		std::ostringstream oss;
+
+		oss << title << '\n';
+
+		//oss << EntryType::legend << "\n";
+		oss << legend << "\n";
+		for (const EntryType& entry : entries) {
+			const std::string s = entry.composeString();
+			oss << s << '\n';
+		}
+
+		oss << '\n';
+		return oss.str();
+	}
+};
+
 struct ParsedTopologyFile {	//.top or .itp
 
 	~ParsedTopologyFile() {
@@ -103,29 +126,6 @@ struct ParsedTopologyFile {	//.top or .itp
 	using DihedralBond = GenericBond<4>;
 	using ImproperDihedralBond = GenericBond<4>;
 
-	template <typename EntryType>
-	struct Section {
-		const std::string title;	// or "directive" in gromacs terms
-		const std::string legend;
-		std::vector<EntryType> entries;
-
-		std::string composeString() {
-			std::ostringstream oss;
-
-			oss << title << '\n';
-
-			//oss << EntryType::legend << "\n";
-			oss << legend << "\n";
-			for (const EntryType& entry : entries) {
-				const std::string s = entry.composeString();
-				oss << s << '\n';
-			}
-
-			oss << '\n';
-			return oss.str();
-		}
-	};
-
 
 	void printToFile(const std::filesystem::path& path);
 
@@ -153,4 +153,44 @@ namespace MDFiles {
 	ParsedGroFile loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
 
 	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
+
+
+
+
+
+
+
+	struct ParsedLffFile {
+		enum LffSection { title, singlebond, anglebond, dihedralbond, improperdihedralbond, no_section };
+
+		ParsedLffFile(const fs::path& path);
+		fs::path path;
+
+		struct Singlebond {
+			std::array<uint32_t,2> global_ids;
+			float b0;
+			float kb;
+		};
+		struct Anglebond {
+			std::array<uint32_t, 3> global_ids;
+			float theta0;
+			float ktheta;
+		};
+		struct Dihedralbond {
+			std::array<uint32_t, 4> global_ids;
+			float phi0;
+			float kphi;
+			float n;
+		};
+		struct Improperdihedralbond {
+			std::array<uint32_t, 4> global_ids;
+			float psi0;
+			float kpsi;
+		};
+
+		Section<Singlebond> singlebonds;
+		Section<Anglebond> anglebonds;
+		Section<Dihedralbond> dihedralbonds;
+		Section<Improperdihedralbond> improperdihedralbonds;
+	};
 }

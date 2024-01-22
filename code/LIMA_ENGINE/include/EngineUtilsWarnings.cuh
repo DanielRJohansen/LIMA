@@ -26,16 +26,16 @@ public:
 
 
 	__device__ static void logcompoundVerifyVelocity(const CompoundCompact& compound, 
-		SimSignals& simparams, const CompoundCoords& compound_coords, const Float3& force, const float speed) {
+		const SimParams& simparams, SimSignals& simsignals, const CompoundCoords& compound_coords, const Float3& force, const float speed) {
 #if defined LIMASAFEMODE
-		if (speed * simparams.constparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
+		if (speed * simparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
 			//(compound.vels_prev[threadIdx.x] * simparams.constparams.dt).print('V');
 			force.print('F');
 			//LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(compound_coords.origo).print('O');
 			//LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]).print('P');
 
-			simparams.critical_error_encountered = true;
+			simsignals.critical_error_encountered = true;
 		}
 #endif
 	}

@@ -12,7 +12,7 @@ namespace LimaForcecalc {
 
 // ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
 
-__device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE) {
+__device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
 	// Calculates bond force on both particles					//
 	// Calculates forces as J/mol*M								//
 	// kb [J/(mol*lm^2)]
@@ -34,7 +34,10 @@ __device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, c
 
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
-		printf("\nSingleBond: dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", difference.len()/NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype.b0 / NANO_TO_LIMA, bondtype.kb, force_scalar);
+		//std::cout << "SingleBond : " << kernelname << " dist " << difference.len() / NANO_TO_LIMA;
+		printf("\nSingleBond: bridge %d dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", bridgekernel, difference.len() / NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype.b0 / NANO_TO_LIMA, bondtype.kb, force_scalar);
+		//pos_a.print('a');
+		//pos_b.print('b');
 		//printf("errfm %f\n", error_fm);
 		//printf("pot %f\n", *potE);
 	}
@@ -254,10 +257,10 @@ __device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_s
 	if (force.len() > 1.f || pot > 1e+8) {
 		//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
 		////((*pos1 - *pos0) * force_scalar).print('f');
-		pos0.print('0');
-		pos1.print('1');
-		printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
-			calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);
+		//pos0.print('0');
+		//pos1.print('1');
+		/*printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
+			calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);*/
 	}
 #endif
 
@@ -291,9 +294,8 @@ __device__ void cudaAtomicAdd(Float3& target, const Float3& add) {
 
 // only works if n threads >= n bonds
 __device__ Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+	Float3* const forces_interim, float* const potentials_interim, float* const potE, int bridgekernel)
 {
-
 	// First clear the buffer which will store the forces.
 	forces_interim[threadIdx.x] = Float3(0.f);
 	potentials_interim[threadIdx.x] = 0.f;
@@ -313,7 +315,8 @@ __device__ Float3 computeSinglebondForces(const SingleBond* const singlebonds, c
 				positions[pb->atom_indexes[1]],
 				*pb,
 				forces,
-				potential
+				potential,
+				bridgekernel
 			);
 		}
 

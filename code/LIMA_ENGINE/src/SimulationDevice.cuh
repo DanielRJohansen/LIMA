@@ -14,9 +14,9 @@ struct SimulationDevice {
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
 	{
 		// Allocate structures for keeping track of solvents and compounds
-		cudaMalloc(&compound_grid, sizeof(CompoundGrid));		
-		cudaMalloc(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
-		cudaMalloc(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
+		cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
+		cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
+		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
 
 		{
 			SimSignals temp{};

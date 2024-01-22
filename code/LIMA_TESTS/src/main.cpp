@@ -49,8 +49,8 @@ int main() {
 
 		//testReorderMoleculeParticles();
 		//testBuildmembraneSmall(envmode, true);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);
-		//TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 2.9e-7);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);		
+
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

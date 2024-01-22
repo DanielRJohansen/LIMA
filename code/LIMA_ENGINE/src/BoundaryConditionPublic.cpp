@@ -8,6 +8,8 @@ public:
 
 	static void applyBC(LimaPosition& position) {}
 
+	static void applyBC(Float3& position, float boxlen_nm) {}
+
 };
 
 class PeriodicBoundaryCondition {
@@ -44,6 +46,15 @@ public:
 		position.z -= boxlen_i * (position.z + offset >= boxlen_i);
 	}
 
+	static void applyBC(Float3& position, float boxlen_nm) {
+		position.x += boxlen_nm * (position.x < 0.f);
+		position.x -= boxlen_nm * (position.x > boxlen_nm);
+		position.y += boxlen_nm * (position.y < 0.f);
+		position.y -= boxlen_nm * (position.y > boxlen_nm);
+		position.z += boxlen_nm * (position.z < 0.f);
+		position.z -= boxlen_nm * (position.z > boxlen_nm);
+	}
+
 	static void applyHyperposNM(const Float3* static_particle, Float3* movable_particle, float boxlen_nm) {
 		const float boxlenhalf_nm = boxlen_nm / 2.f;
 
@@ -78,6 +89,19 @@ void BoundaryConditionPublic::applyBC(LimaPosition& position, float boxlen_nm, B
 	}
 	case PBC: {
 		PeriodicBoundaryCondition::applyBC(position, boxlen_nm);
+		break;
+	}
+	}
+}
+
+void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect bc) {
+	switch (bc) {
+	case NoBC: {
+		NoBoundaryCondition::applyBC(pos_nm, boxlen_nm);
+		break;
+	}
+	case PBC: {
+		PeriodicBoundaryCondition::applyBC(pos_nm, boxlen_nm);
 		break;
 	}
 	}

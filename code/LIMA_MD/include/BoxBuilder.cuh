@@ -31,6 +31,8 @@ public:
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
 	void copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimSignals& simparams_src, uint32_t boxsrc_current_step);
 
+	bool verifyAllParticlesIsInsideBox(Simulation& sim, float padding = 0.f, bool verbose=true);
+
 private:
 	void insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset = Float3{});
 	

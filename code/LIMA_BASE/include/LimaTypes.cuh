@@ -13,6 +13,7 @@
 #include <limits>
 #include "Constants.h"
 #include <vector>
+#include <format>
 
 struct TestType {
 	static int get();
@@ -49,6 +50,10 @@ struct Int3 {
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
 		printf("%c %c %d\t %d\t %d\n", nl, c, x, y, z);
+	}
+
+	std::string toString() const {
+		return std::format("{} {} {}", x, y, z);
 	}
 
 	int x = 0, y = 0, z = 0;
@@ -185,6 +190,9 @@ struct Float3 {
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
 
+	std::string toString() const {
+		return std::format("{} {} {}", x, y, z);
+	}
 
 	__host__ __device__ void rotateAroundOrigo(Float3 pitch_yaw_roll) {	//pitch around x, yaw around z, tilt around y
 		// pitch and yaw is relative to global coordinates. 
@@ -373,7 +381,7 @@ struct NodeIndex : public Int3 {
 		);
 	}
 
-	__device__ bool isInBox(int nodes_per_dim) const {
+	__device__ __host__ bool isInBox(int nodes_per_dim) const {
 		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
 			return false;
 		return true;

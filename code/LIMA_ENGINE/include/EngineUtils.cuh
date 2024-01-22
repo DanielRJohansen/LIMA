@@ -14,6 +14,8 @@
 //#include <device_launch_parameters.h>
 //#include <cuda_runtime_api.h>
 
+
+
 namespace ForceCalc {
 //	-
 };
@@ -459,18 +461,18 @@ namespace EngineUtils {
 	}
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
-		float* potE_sum, Float3& force, Float3& force_LJ_sol, SimSignals& simparams, DatabuffersDevice* databuffers, const float speed)
+		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, DatabuffersDevice* databuffers, const float speed)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (simparams.step % LOG_EVERY_N_STEPS != 0) { return; }
+		if (simsignals.step % LOG_EVERY_N_STEPS != 0) { return; }
 
-		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simparams.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
 
-		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, compound_coords, force, speed);
+		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 

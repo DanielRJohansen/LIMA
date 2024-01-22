@@ -183,19 +183,26 @@ namespace SimulationBuilder{
 			atom.position.z += translation_z;
 		}
 
-
+		const float lowest_zpos2 = std::min_element(outputgrofile.atoms.begin(), outputgrofile.atoms.end(),
+			[](const GroRecord& a, const GroRecord& b) {return a.position.z < b.position.z; }
+		)->position.z;	//[nm]
 
 		const int atomnr_offset = inputgrofile.n_atoms;
 		const int resnr_offset = inputgrofile.atoms.back().residue_number;
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+			if (pos.z < box_dims.z / 2.f)
+				pos.print('Q');
+			float a = pos.z;
 			pos.z = -pos.z;	// Mirror atom in xy plane
 			pos.z += box_dims.z - padding_between_layers;	// times 2 since
 			//pos.z += lowest_zpos * 2.f - padding;	// Move atom back up to the first layer
+			if (pos.z > box_dims.z / 2.f)
+				printf("Pos z %f\n", pos.z);
 			};
 
 		for (int atom_nr = 0; atom_nr < inputgrofile.n_atoms; atom_nr++) {
-			addAtomToFile(outputgrofile, outputtopologyfile, inputgrofile.atoms[atom_nr], inputtopologyfile.atoms.entries[atom_nr],
+			addAtomToFile(outputgrofile, outputtopologyfile, outputgrofile.atoms[atom_nr], outputtopologyfile.atoms.entries[atom_nr],
 				atomnr_offset, resnr_offset, position_transform);
 		}
 

@@ -23,41 +23,33 @@ namespace SupernaturalForces {
 
 	namespace {// anon namespace
 		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force, float particle_mass) {
-			const float box_padding = 0.3;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
+			const float box_padding = 1.4f;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
-			const float dist_x = BOX_LEN_HALF_NM - avg_compound_position_nm.x;
-			const float dist_y = BOX_LEN_HALF_NM - avg_compound_position_nm.y;
-
-
+			const float dist_x = CPPD::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.x) - BOX_LEN_HALF_NM + box_padding, 0.f);
+			const float dist_y = CPPD::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.y) - BOX_LEN_HALF_NM + box_padding, 0.f);
 
 
 			// Constant force
 			float force_x{}, force_y{};
 
-			const float const_factor = 0.0000025f;
-			force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
-				? const_factor
-				: 0.f;
-			force_y += std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
-				? const_factor
-				: 0.f;
+			const float const_factor = 0.00001f;
+			force_x += const_factor;
+			force_y += const_factor;
 
 			// Linear force
-			const float lin_factor = 0.000003f;
-			/*force_x += std::abs(dist_x) > BOX_LEN_HALF_NM - box_padding
-				? std::abs(dist_x) * lin_factor
-				: 0.f;
-			force_y += std::abs(dist_y) > BOX_LEN_HALF_NM - box_padding
-				? std::abs(dist_y) * lin_factor
-				: 0.f;*/
-			force_x += std::abs(dist_x) * lin_factor;
-			force_y += std::abs(dist_y) * lin_factor;
+			const float lin_factor = 0.00003f;
+			force_x += dist_x * lin_factor;
+			force_y += dist_y * lin_factor;
 
+			// Exp force
+			const float exp_factor = 0.000001;
+			force_x += dist_x * dist_x * exp_factor;
+			force_y += dist_y * dist_y * exp_factor;
 
 			// Apply signed force
-			if (dist_x < 0)
+			if (avg_compound_position_nm.x > BOX_LEN_HALF_NM)
 				force_x *= -1.f;
-			if (dist_y < 0)
+			if (avg_compound_position_nm.y > BOX_LEN_HALF_NM)
 				force_y *= -1.f;
 
 			float mass_factor = particle_mass * 100.f;	// If we scale the forces by their inverted mass, we avoid the problem of lighter molecules being pushed faster than the heavier

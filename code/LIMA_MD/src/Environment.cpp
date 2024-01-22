@@ -106,7 +106,7 @@ void Environment::createMembrane(bool carryout_em) {
 	{
 		SimParams ip{};
 		ip.bc_select = NoBC;
-		ip.n_steps = carryout_em ? 40000 : 0;
+		ip.n_steps = carryout_em ? 10000 : 0;
 		ip.snf_select = HorizontalSqueeze;
 		ip.em_variant = true;
 		//CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
@@ -114,6 +114,9 @@ void Environment::createMembrane(bool carryout_em) {
 
 		// Draw each lipid towards the center - no pbc
 		run();
+
+		if (carryout_em)
+			if (!boxbuilder->verifyAllParticlesIsInsideBox(*simulation, 0.06f)) { return; }	// FAIL
 	}
 	
 
@@ -129,10 +132,10 @@ void Environment::createMembrane(bool carryout_em) {
 	// Run EM for a while - with pbc
 	{
 		SimParams ip{};
-		ip.n_steps = carryout_em ? 10000 : 0;
+		ip.n_steps = carryout_em ? 30000 : 0;
 		//ip.n_steps = 10000;
-		ip.dt = 50.f;
-		ip.bc_select = NoBC;
+		ip.dt = 25.f;
+		ip.bc_select = PBC;
 		CreateSimulation(bilayerfiles.first, bilayerfiles.second, ip);
 
 		// Draw each lipid towards the center - no pbc
@@ -215,6 +218,12 @@ bool Environment::prepareForRun() {
 		return false; 
 	}
 
+	m_logger.startSection("Simulation started");
+
+	step_at_last_render = 0;
+	step_at_last_update = 0;
+	time0 = std::chrono::high_resolution_clock::now();
+
 	if (simulation->ready_to_run) { return true; }
 
 	boxbuilder->finishBox(simulation.get());
@@ -257,11 +266,7 @@ void Environment::sayHello() {
 void Environment::run(bool em_variant) {
 	if (!prepareForRun()) { return; }
 
-	step_at_last_render = 0;
 
-	m_logger.startSection("Simulation started");
-
-	time0 = std::chrono::high_resolution_clock::now();
 	while (true) {
 		if (engine->runstatus.simulation_finished) { break; }
 		if (em_variant)

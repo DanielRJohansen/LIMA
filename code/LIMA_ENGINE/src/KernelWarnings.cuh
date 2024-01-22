@@ -115,7 +115,7 @@ namespace SolventTransferWarnings {
 	
 	__device__ void assertMaxPlacedSolventsIsWithinLimits(int n_solvents_next, bool& critical_error_encountered) {
 #if defined LIMASAFEMODE
-		if (threadIdx.x == 0 && n_solvents_next >= MAX_SOLVENTS_IN_BLOCK) {
+		if (threadIdx.x == 0 && n_solvents_next >= SolventBlock::MAX_SOLVENTS_IN_BLOCK) {
 			printf("Tried to put %d solvents in a single block\n", n_solvents_next);
 			critical_error_encountered = true;
 		}

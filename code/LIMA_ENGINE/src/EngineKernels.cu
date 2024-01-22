@@ -420,7 +420,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 			cooperative_groups::memcpy_async(block, singlebonds, box->compounds[blockIdx.x].singlebonds, sizeof(SingleBond) * compound.n_singlebonds);
 			cooperative_groups::wait(block);
 
-			force += LimaForcecalc::computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			force += LimaForcecalc::computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
 			__syncthreads();
 		}
 		{
@@ -532,7 +532,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		__syncthreads();
 
 		Float3 force_LJ_sol{};	// temp
-		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, *signals, sim->databuffers, speed);
+		EngineUtils::LogCompoundData(compound, box, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, *signals, sim->databuffers, speed);
 
 
 		// Push positions for next step
@@ -1006,7 +1006,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 
 	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
 	{											// So for the very first step, these ´should all be 0, but they are not??										TODO: Look into this at some point!!!! 
-		force += LimaForcecalc::computeSinglebondForces(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
+		force += LimaForcecalc::computeSinglebondForces(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
 		force += LimaForcecalc::computeAnglebondForces(bridge.anglebonds, bridge.n_anglebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += LimaForcecalc::computeDihedralForces(bridge.dihedrals, bridge.n_dihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
 		force += LimaForcecalc::computeImproperdihedralForces(bridge.impropers, bridge.n_improperdihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);

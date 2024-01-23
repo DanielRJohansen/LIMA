@@ -68,7 +68,7 @@ namespace SelfRecompile {
 
     void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
         std::ofstream outfile(filename);
-
+        outfile << "#pragma once\n\n";
         for (const auto& pair : constants) {
             outfile << pair.second.type << " " << pair.first << " = " << pair.second.value << ";\n";
         }

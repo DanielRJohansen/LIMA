@@ -4,7 +4,7 @@ find_package(OpenGL REQUIRED)
 
 add_library(LIMA_MD STATIC
     src/Analyzer.cu
-    src/BoxBuilder.cu
+    src/BoxBuilder.cpp
     src/ChemfilesInterface.cpp
     src/CompoundBuilder.cpp
     src/DisplayV2.cpp

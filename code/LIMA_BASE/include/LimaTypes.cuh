@@ -13,7 +13,6 @@
 #include <limits>
 #include "Constants.h"
 #include <vector>
-#include <format>
 
 struct TestType {
 	static int get();
@@ -53,7 +52,8 @@ struct Int3 {
 	}
 
 	std::string toString() const {
-		return std::format("{} {} {}", x, y, z);
+		//return std::format("{} {} {}", x, y, z);
+		return std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
 	}
 
 	int x = 0, y = 0, z = 0;
@@ -191,7 +191,8 @@ struct Float3 {
 	}
 
 	std::string toString() const {
-		return std::format("{} {} {}", x, y, z);
+		//return std::format("{} {} {}", x, y, z);
+		return std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
 	}
 
 	__host__ __device__ void rotateAroundOrigo(Float3 pitch_yaw_roll) {	//pitch around x, yaw around z, tilt around y

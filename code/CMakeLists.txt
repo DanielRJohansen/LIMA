@@ -1,5 +1,5 @@
 # Main cmakelist
-cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 
 if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.

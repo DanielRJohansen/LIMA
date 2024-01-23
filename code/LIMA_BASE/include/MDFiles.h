@@ -25,7 +25,7 @@ struct ParsedGroFile {
 	std::vector<GroRecord>atoms;
 	Float3 box_size{};
 
-	void printToFile(const std::filesystem::path& path);
+	void printToFile(const std::filesystem::path& path) const;
 };
 
 template <typename EntryType>

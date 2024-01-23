@@ -90,7 +90,7 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 void Environment::createMembrane(bool carryout_em) {
 	// Load in the lipid types, for now just POPC
 	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC/";
-	ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
+	const ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
 	std::unique_ptr<ParsedTopologyFile> inputtopologyfile = MDFiles::loadTopologyFile(POPC_PATH + "POPC.itp");
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
@@ -99,8 +99,6 @@ void Environment::createMembrane(bool carryout_em) {
 	// Create simulation and run on the newly created files in the workfolder
 	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.gro"));
 	monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.top"));
-
-	//return;
 
 	// Monolayer energy Minimization NoBC
 	{
@@ -119,10 +117,7 @@ void Environment::createMembrane(bool carryout_em) {
 			if (!boxbuilder->verifyAllParticlesIsInsideBox(*simulation, 0.06f)) { return; }	// FAIL
 	}
 	
-
-	// Ensure all particles are inside box
-
-	ParsedGroFile monolayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : monolayerfiles.first;
+	const ParsedGroFile monolayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : monolayerfiles.first;
 	//auto em_monolayer_grofile = MDFiles::loadGroFile(work_dir + "/molecule/membrane.gro");
 	
 
@@ -133,15 +128,14 @@ void Environment::createMembrane(bool carryout_em) {
 	{
 		SimParams ip{};
 		ip.n_steps = carryout_em ? 30000 : 0;
-		//ip.n_steps = 10000;
-		ip.dt = 25.f;
-		ip.bc_select = PBC;
+		ip.dt = 50.f;
+		ip.bc_select = carryout_em ? PBC : NoBC;	// Cannot insert compounds with PBC, if they are not in box
 		CreateSimulation(bilayerfiles.first, bilayerfiles.second, ip);
 
 		// Draw each lipid towards the center - no pbc
 		run();
 	}
-	ParsedGroFile bilayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : bilayerfiles.first;
+	const ParsedGroFile bilayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : bilayerfiles.first;
 
 	
 	// Save box to .gro and .top file

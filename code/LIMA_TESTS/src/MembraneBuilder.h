@@ -64,8 +64,7 @@ namespace TestMembraneBuilder {
 			// These files are altered by the em, and thus the comparison cannot be made
 			files.push_back({ "membrane.gro", "membrane_reference.gro" });
 			files.push_back({ "membrane.top", "membrane_reference.top" });				
-		}
-			
+		}		
 
 		for (const auto& pair : files) {
 			const string error = compareFiles(mol_dir / pair[0], mol_dir / pair[1]);
@@ -74,45 +73,6 @@ namespace TestMembraneBuilder {
 			}
 		}
 
-		//const string err1 = compareFiles(mol_dir / "monolayer.gro", mol_dir / "monolayer_reference.gro");
-		//if (err1 != "") {
-		//	return LimaUnittestResult{ LimaUnittestResult::FAIL , err1, envmode == Full };
-		//}
-		//const string err2 = compareFiles(mol_dir / "monolayer.top", mol_dir / "monolayer_reference.top");
-		//if (err2 != "") {
-		//	return LimaUnittestResult{ LimaUnittestResult::FAIL , err2, envmode == Full };
-		//}
-
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS , "No error", envmode == Full};
-
-		//// Do em
-		//env->run(true);
-		////Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
-
-		//// Do sim
-		////InputSimParams simparams{ 100, 2000 };
-		//const std::string work_folder = simulations_dir + folder_name + "/";
-		//const std::string simpar_path = work_folder + "sim_params.txt";
-		//const InputSimParams simparams = env->loadInputSimParams(simpar_path);
-		//auto sim = env->getSim();
-		//env->CreateSimulation(*sim, simparams);
-		//env->run();
-		////Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
-
-		//const auto analytics = env->getAnalyzedPackage();
-
-		//if (envmode != Headless) {
-		//	Analyzer::printEnergy(analytics);
-		//	LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
-		//	LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
-		//}
-
-		//const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
-		//const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
-
-		//return LimaUnittestResult{ status, result.second, envmode == Full };
-
-
-
 	}
 }

@@ -368,7 +368,7 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 	return topfile;
 }
 
-void ParsedGroFile::printToFile(const std::filesystem::path& path) {
+void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expectec .gro", path.extension().string())); }
 
 

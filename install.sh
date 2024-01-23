@@ -52,12 +52,14 @@ if [ "$1" = "-all" ]; then
         sudo pacman -S make --noconfirm
         sudo pacman -S cuda --noconfirm
         sudo pacman -S cuda-tools --noconfirm
+        sudo pacman -S base-devel --noconfirm
         ;;
     "Ubuntu")
         sudo apt-get update
         sudo apt-get install -y cmake
         sudo apt-get install -y make
         sudo apt-get install -y nvidia-cuda-toolkit
+        sudo apt-get install -y build-essential
         ;;
     esac
 elif [ "$1" = "-none" ]; then

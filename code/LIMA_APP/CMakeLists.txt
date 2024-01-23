@@ -1,5 +1,5 @@
 #LIMA_APPS
-cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 
 # We dont need CUDA, but we need the CMAKE error as soon as possible
 project(lima LANGUAGES CXX CUDA)

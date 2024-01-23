@@ -21,7 +21,15 @@ echo "Installing dependencies"
 #mkdir -p "$source_dir"/dependencies
 #cp -r ./dependencies/* "$source_dir"/dependencies/
 
-
+# Determine the distribution
+if [ -f /etc/arch-release ]; then
+    DISTRO="Arch"
+elif [ -f /etc/lsb-release ]; then
+    DISTRO="Ubuntu"
+else
+    echo "Unsupported distribution"
+    exit 1
+fi
 
 # Check if we should install external dependencies
     # Check if the user provided exactly one argument
@@ -32,11 +40,26 @@ fi
 if [ "$1" = "-all" ]; then
     echo "Welcome to the LIMA Dynamics installer"
     echo "Installing dependencies"
-    pacman -S cmake --noconfirm
-    pacman -S make --noconfirm
-    pacman -S cuda --noconfirm
-    pacman -S cuda-tools --noconfirm
-    #pacman -S glfw-x11 --noconfirm
+    #pacman -S cmake --noconfirm
+    #pacman -S make --noconfirm
+    #pacman -S cuda --noconfirm
+    #pacman -S cuda-tools --noconfirm
+    ##pacman -S glfw-x11 --noconfirm
+
+    case $DISTRO in
+    "Arch")
+        sudo pacman -S cmake --noconfirm
+        sudo pacman -S make --noconfirm
+        sudo pacman -S cuda --noconfirm
+        sudo pacman -S cuda-tools --noconfirm
+        ;;
+    "Ubuntu")
+        sudo apt-get update
+        sudo apt-get install -y cmake
+        sudo apt-get install -y make
+        sudo apt-get install -y nvidia-cuda-toolkit
+        ;;
+    esac
 elif [ "$1" = "-none" ]; then
     echo "No dependencies will be installed."
 else

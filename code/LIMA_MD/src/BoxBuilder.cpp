@@ -303,7 +303,7 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation.box_host->coordarray_circular_queue, 0, simulation.box_host->boxparams.n_compounds);
 	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.bc_select);
 	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BOXGRID_N_NODES)) {
-		throw std::runtime_error(std::format("Invalid origo compound origo {}", coords_now.origo.toString()));
+		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 
 	simulation.box_host->compounds[simulation.box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory

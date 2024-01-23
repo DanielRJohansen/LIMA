@@ -56,10 +56,18 @@ if [ "$1" = "-all" ]; then
         ;;
     "Ubuntu")
         sudo apt-get update
-        sudo apt-get install -y cmake
+        
         sudo apt-get install -y make
         sudo apt-get install -y nvidia-cuda-toolkit
         sudo apt-get install -y build-essential
+
+        # apt's version of cmake is behind, so overwrite it
+        #sudo apt-get install -y cmake
+        sudo apt remove cmake -y
+        sudo apt install python3-pip
+        pip install cmake --upgrade
+        echo 'export PATH="$PATH:$HOME/.local/bin"' >> $HOME/.bashrc
+        source $HOME/.bashrc
         ;;
     esac
 elif [ "$1" = "-none" ]; then

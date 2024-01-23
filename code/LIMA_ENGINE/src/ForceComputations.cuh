@@ -36,8 +36,8 @@ __device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, c
 	if (abs(error) > bondtype.b0/2.f || 0) {
 		//std::cout << "SingleBond : " << kernelname << " dist " << difference.len() / NANO_TO_LIMA;
 		printf("\nSingleBond: bridge %d dist %f error: %f [nm] b0 %f [nm] kb %.10f [J/mol] force %f\n", bridgekernel, difference.len() / NANO_TO_LIMA, error / NANO_TO_LIMA, bondtype.b0 / NANO_TO_LIMA, bondtype.kb, force_scalar);
-		//pos_a.print('a');
-		//pos_b.print('b');
+		pos_a.print('a');
+		pos_b.print('b');
 		//printf("errfm %f\n", error_fm);
 		//printf("pot %f\n", *potE);
 	}

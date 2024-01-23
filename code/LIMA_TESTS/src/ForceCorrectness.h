@@ -83,7 +83,7 @@ namespace ForceCorrectness {
 			// Give the solvent a velocty
 			{
 				const float vel = EngineUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
-				env.getSimPtr()->box_host->solvents[0].vel_prev = Float3{ -1, 0, 0 } *vel;
+				env.getSimPtr()->box_host->solvents[0].vel_prev = Float3{ -1, 0, 0 } * vel;
 			}
 
 

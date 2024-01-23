@@ -115,7 +115,7 @@ const int GRIDNODE_QUERY_RANGE = 2;
 constexpr int MAX_COMPOUND_PARTICLES = 64;
 const int MAX_COMPOUNDS = 4096;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
-const int NEIGHBORLIST_MAX_COMPOUNDS = 128+64+512;	// TODO: We need to work on getting this number down!
+const int NEIGHBORLIST_MAX_COMPOUNDS = 128+64+128;	// TODO: We need to work on getting this number down!
 //const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;

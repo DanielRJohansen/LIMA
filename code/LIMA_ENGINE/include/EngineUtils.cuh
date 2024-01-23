@@ -98,13 +98,25 @@ namespace LIMAPOSITIONSYSTEM {
 		return LimaPosition{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
 	}
 
+	
+	template<typename T>
+	T floor_div(T num, T denom) {
+		static_assert(std::is_integral<T>::value, "floor_div requires integer types");
+		return (num - (num < 0 ? denom - 1 : 0)) / denom;
+	}
+
 	// Converts to nodeindex, applies PBC
 	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position, BoundaryConditionSelect bc, float boxlen_nm) {
-		int offset = BOXGRID_NODE_LEN_i / 2;
-		NodeIndex nodeindex{
+		const int64_t offset = BOXGRID_NODE_LEN_i / 2;
+		/*NodeIndex nodeindex{
 			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
 			static_cast<int>((position.y + offset) / BOXGRID_NODE_LEN_i),
 			static_cast<int>((position.z + offset) / BOXGRID_NODE_LEN_i)
+		};*/
+		NodeIndex nodeindex{
+			(int)floor_div(position.x + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i)),
+			(int)floor_div(position.y + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i)),
+			(int)floor_div(position.z + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i))
 		};
 		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
 
@@ -181,6 +193,11 @@ namespace LIMAPOSITIONSYSTEM {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
 			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);	
 		}
+		if (compoundcoords.rel_positions[key_particle_index].maxElement() > BOXGRID_NODE_LEN_i) {
+			compoundcoords.rel_positions[key_particle_index].print('k');
+			//printf("%d\n", compoundcoords.rel_positions[key_particle_index].maxElement());
+			throw std::runtime_error("Failed to place compound correctly.");
+		}
 		return compoundcoords;
 	}
 
@@ -204,18 +221,18 @@ namespace LIMAPOSITIONSYSTEM {
 	// Shift refers to the wanted difference in the relative positions, thus origo must move -shift.
 	// Keep in mind that origo is in nm and rel_pos are in lm
 	// ONLY CALL FROM THREAD 0
-	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index=0) {
+	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index) {
 		//const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
 		//const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
 
-		const NodeIndex shift_node = NodeIndex{
+		const NodeIndex shift = NodeIndex{
 			coords.rel_positions[keyparticle_index].x / (BOXGRID_NODE_LEN_i/2),	// /2 so we switch to new index once we are halfway there
 			coords.rel_positions[keyparticle_index].y / (BOXGRID_NODE_LEN_i/2),
 			coords.rel_positions[keyparticle_index].z / (BOXGRID_NODE_LEN_i/2)
 		};
-
-		coords.origo += shift_node;
-		return -nodeIndexToCoord(shift_node);
+		EngineUtilsWarnings::verifyCompoundOrigoshiftDuringIntegrationIsValid(shift, coords.rel_positions[keyparticle_index]);
+		coords.origo += shift;
+		return -nodeIndexToCoord(shift);
 	}
 
 	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
@@ -524,29 +541,29 @@ namespace EngineUtils {
 
 namespace LIMAKERNELDEBUG {
 
-	__device__ void static compoundIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered) {
-		const auto dif = (relpos_next - relpos_prev);
-		const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
-		if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 3.f) {
-			//printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
-			printf("\nParticle is moving too fast\n");
-			dif.printS('D');
-			force.print('F');
-			relpos_next.printS('R');
-			critical_error_encountered = true;
-		}
-	}
+	//__device__ void static compoundIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered) {
+	//	const auto dif = (relpos_next - relpos_prev);
+	//	const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
+	//	if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 3.f) {
+	//		//printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
+	//		printf("\nParticle is moving too fast\n");
+	//		dif.printS('D');
+	//		force.print('F');
+	//		relpos_next.printS('R');
+	//		critical_error_encountered = true;
+	//	}
+	//}
 
-	__device__ void static solventIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered, int id) {
-		const auto dif = (relpos_next - relpos_prev);
-		const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
-		if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff) {
-			printf("\nSolvent %d moving too fast\n", id);
-			dif.printS('D');
-			force.print('F');
-			critical_error_encountered = true;
-		}
-	}
+	//__device__ void static solventIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered, int id) {
+	//	const auto dif = (relpos_next - relpos_prev);
+	//	const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
+	//	if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff) {
+	//		printf("\nSolvent %d moving too fast\n", id);
+	//		dif.printS('D');
+	//		force.print('F');
+	//		critical_error_encountered = true;
+	//	}
+	//}
 
 	// 
 	//__device__ bool static forceTooLarge(const Float3& force, const float threshold=0.5) { // 

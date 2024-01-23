@@ -33,7 +33,7 @@ namespace KernelHelpersWarnings {
 	__device__ void assertHyperorigoIsValid(const NodeIndex& querycompound_hyperorigo, const NodeIndex& origo_self) {
 #if defined LIMASAFEMODE
 		if ((querycompound_hyperorigo - origo_self).maxElement() > 10) {
-			printf("Here::\n");
+			printf("Here:: %d\n", blockIdx.x);
 			origo_self.print('s');
 			querycompound_hyperorigo.print('q');
 		}

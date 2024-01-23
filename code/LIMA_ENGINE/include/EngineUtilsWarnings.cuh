@@ -28,7 +28,7 @@ public:
 	__device__ static void logcompoundVerifyVelocity(const CompoundCompact& compound, 
 		const SimParams& simparams, SimSignals& simsignals, const CompoundCoords& compound_coords, const Float3& force, const float speed) {
 #if defined LIMASAFEMODE
-		if (speed * simparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
+		if (!simparams.em_variant && speed * simparams.dt > BOXGRID_NODE_LEN_i / 20) {	// Do we move more than 1/20 of a box per step?
 			printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
 			//(compound.vels_prev[threadIdx.x] * simparams.constparams.dt).print('V');
 			force.print('F');
@@ -59,9 +59,17 @@ public:
 #if defined LIMASAFEMODE
 		const NodeIndex origo_shift = from - to;
 		if (abs(origo_shift.x) > 10 || abs(origo_shift.y) > 10 || abs(origo_shift.z) > 10) {
-			printf("block %d thread %d\n", blockIdx.x, threadIdx.x);
+			printf("Invalid origo shift block %d thread %d\n", blockIdx.x, threadIdx.x);
 			from.print('f');
 			to.print('t');
+		}
+#endif
+	}
+
+	__device__ static void verifyCompoundOrigoshiftDuringIntegrationIsValid(const NodeIndex& shift, const Coord& kp_relpos) {
+#if defined LIMASAFEMODE
+		if (shift.maxElement() > 1) {
+			printf("Compound origo cannot shift more than 1 nodeindex per dim per integration, was %d %d %d.\nKeyparticle Relpos was %d %d %d\n", shift.x, shift.y, shift.z, kp_relpos.x, kp_relpos.y, kp_relpos.z);
 		}
 #endif
 	}

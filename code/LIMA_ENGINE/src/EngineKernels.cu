@@ -521,7 +521,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		{
 			__shared__ Coord shift_lm;	// Use utility coord for this?
 			if (threadIdx.x == 0) {
-				shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(*compound_coords);
+				shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(*compound_coords, compound_global->centerparticle_index);
 			}
 			__syncthreads();
 

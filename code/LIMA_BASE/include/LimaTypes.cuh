@@ -339,6 +339,10 @@ struct Coord {
 		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
 	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
+	__device__ __host__ static int32_t max(int l, int r) { return l > r ? l : r; }
+
+	__device__ __host__ int32_t maxElement() const { return max(std::abs(x), max(std::abs(y), std::abs(z))); }
+
 	__host__ int32_t* get(int dim) {
 		switch (dim)
 		{

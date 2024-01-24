@@ -34,5 +34,5 @@ endif()
 
 
 # Self-test executable
-add_executable(engine_self_test src/EngineMain.cpp "src/EngineBodies.cuh" "src/BoundaryConditionPublic.cpp")
+add_executable(engine_self_test src/EngineMain.cu)
 target_link_libraries(engine_self_test LIMA_ENGINE)

@@ -41,7 +41,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.240e-5, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
 
-		loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
+		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 		//loadAndRunBasicSimulation("psome", envmode, 7.6e-5, 1.1e-6);
 		//doPool50x(EnvMode::Headless);
 		
@@ -51,7 +51,7 @@ int main() {
 		//testBuildmembraneSmall(envmode, true);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);		
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

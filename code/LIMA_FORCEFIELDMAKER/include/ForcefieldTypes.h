@@ -281,7 +281,7 @@ public:
 
 
 // Returns whether string a is smaller than string b
-bool isStringSmaller(const std::string& a, const std::string& b) 
+static bool isStringSmaller(const std::string& a, const std::string& b) 
 {
 	for (int i = 0; i < std::min(a.length(), b.length()); i++) {
 		if (a[i] > b[i])

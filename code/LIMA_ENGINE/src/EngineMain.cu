@@ -1,7 +1,5 @@
 #include <iostream>
 
-#include "EngineUtils.cuh"
-
 #include <cuda_runtime.h>
 
 __global__ void addArrays(int* a, int* b, int* c, int size) {
@@ -9,6 +7,30 @@ __global__ void addArrays(int* a, int* b, int* c, int size) {
     if (idx < size) {
         c[idx] = a[idx] + b[idx];
     }
+}
+
+
+template<typename T>
+T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+    if (n_elements == 0) { return nullptr; }
+
+    T* gpu_ptr = nullptr;
+    size_t bytesize = n_elements * sizeof(T);
+
+    cudaMallocManaged(&gpu_ptr, bytesize);
+
+    auto cuda_status = cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);
+    if (cuda_status != cudaSuccess) {
+        std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+        throw std::runtime_error("Move to device failed");
+    }
+
+    if (n_elements == 1)
+        delete data_ptr;
+    else
+        delete[] data_ptr;
+
+    return gpu_ptr;
 }
 
 int main() {

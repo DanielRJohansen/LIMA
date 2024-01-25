@@ -3,6 +3,7 @@
 #include "ChemfilesInterface.h"
 #include "MDFiles.h"
 #include "SimulationBuilder.h"
+#include "EngineUtils.cuh"
 
 #include <filesystem>
 #include <stdexcept>

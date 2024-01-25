@@ -12,8 +12,6 @@ echo "\nWelcome to the LIMA Dynamics installer\n"
 
 install_dir="$PWD"  # dir where repository with install files are
 program_dir="/opt/LIMA"
-source_dir="$program_dir"/source
-
 
 echo "Using $program_dir as install directory"
 rm -rf "$program_dir"/
@@ -78,13 +76,14 @@ fi
 # Prepare the source code
 mkdir "$program_dir"
 mkdir "$program_dir/build"
+mkdir "$program_dir/source"
 #mkdir -p "$source_dir"/build
 cp -r "$install_dir"/code/* "$source_dir"
 cp -r "$install_dir"/resources "$program_dir/."
 
 # Build the public "lima" executable
 cd "$program_dir"/build
-cmake "$source_dir"/LIMA_APP/
+cmake "$program_dir/source/LIMA_APP/"
 make install
 echo -e "\n\tLIMA client have been installed\n\n"
 

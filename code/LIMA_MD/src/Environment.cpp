@@ -1,6 +1,5 @@
 #include "Environment.h"
 #include "Printer.h"
-#include "ChemfilesInterface.h"
 #include "MDFiles.h"
 #include "SimulationBuilder.h"
 #include "EngineUtils.cuh"
@@ -355,7 +354,7 @@ void Environment::postRunEvents() {
 	
 	if (DUMP_TRAJ) {
 		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
-		TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
+		MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
 	}
 
 	if (POSTSIM_ANAL) {

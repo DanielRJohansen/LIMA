@@ -10,6 +10,7 @@ add_library(LIMA_BASE STATIC
     src/utilities.cpp
     src/MoleculeGraph.cpp
     src/MDFiles.cpp
+    src/TrrFileInterface.cpp
 )
 
 target_include_directories(LIMA_BASE PRIVATE ${CUDA_INCLUDE_DIRS})

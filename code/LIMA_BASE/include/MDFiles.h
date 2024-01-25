@@ -156,7 +156,9 @@ namespace MDFiles {
 
 
 
-
+	struct TrrFile {
+		static void dumpToFile(const Simulation* sim, const std::string& path);
+	};
 
 
 

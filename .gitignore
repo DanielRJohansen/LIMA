@@ -34,4 +34,6 @@
 #added by me
 *.vs*
 *CMakeSettings*
-*code/out/*
+*code/out*
+*CMakeSettings.json
+*/code/obsolete*s

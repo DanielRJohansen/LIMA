@@ -78,7 +78,7 @@ mkdir "$program_dir"
 mkdir "$program_dir/build"
 mkdir "$program_dir/source"
 #mkdir -p "$source_dir"/build
-cp -r "$install_dir"/code/* "$source_dir"
+cp -r "$install_dir"/code/* "$program_dir/source"
 cp -r "$install_dir"/resources "$program_dir/."
 
 # Build the public "lima" executable
@@ -90,6 +90,7 @@ echo -e "\n\tLIMA client have been installed\n\n"
 
 # Build LIMA once in /opt/, to ensure everything works
 cd "$program_dir/build"
+rm -rf ./*
 cmake ../source/ 
 if [ $? -ne 0 ]; then
     echo "CMake failed"

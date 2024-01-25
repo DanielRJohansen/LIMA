@@ -33,6 +33,16 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
     return gpu_ptr;
 }
 
+bool errorCheck() {
+    cudaDeviceSynchronize();
+    auto cuda_status = cudaGetLastError();
+    if (cuda_status != cudaSuccess) {
+        std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 int main() {
     const int size = 256;
     int* a = new int[size];
@@ -45,15 +55,17 @@ int main() {
         c[i] = 0;
     }
 
-    genericMoveToDevice(a, size);
-    genericMoveToDevice(b, size);
-    genericMoveToDevice(c, size);
+    a = genericMoveToDevice(a, size);
+    b = genericMoveToDevice(b, size);
+    c = genericMoveToDevice(c, size);
 
     addArrays << <256 / 32, 32 >> > (a, b, c, size);
+    if (errorCheck())
+        return 1;
 
     for (int i = 0; i < size; i++) {
         if (c[i] != i * 2) {
-            std::printf("Failed self-test\n");
+            std::printf("Failed CUDA test. %d+%d != %d\n", a[i], b[i], c[i]);
             return 1;
         }
     }
@@ -61,7 +73,7 @@ int main() {
     cudaFree(a);
     cudaFree(b);
     cudaFree(c);
-    std::printf("\tLIMA_ENGINE self-test success\n");
+    std::printf("\tLIMA_ENGINE: CUDA-test successful\n");
 
     return 0;
 }

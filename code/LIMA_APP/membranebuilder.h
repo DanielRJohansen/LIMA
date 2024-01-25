@@ -6,8 +6,11 @@
 #include "autorecompile.h"
 #endif
 
-int mdrun(int argc, char** argv)
+int buildMembrane(int argc, char** argv)
 {
+
+
+
 #ifdef __linux__
 	// Recompile system to fit simparams
 	const int compile_failed = SelfRecompile::autoRecompile();
@@ -21,6 +24,12 @@ int mdrun(int argc, char** argv)
         command += " ";
         command += argv[i];
     }
+
+    //const fs::path work_dir = simulations_dir + "/BuildMembraneSmall";
+    //Environment env{ work_dir.string(), envmode, false };
+
+    //env.CreateSimulation(7.f);
+    //env.createMembrane(do_em);
 
     return system(command.c_str());
 }

@@ -118,7 +118,7 @@ echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 # Run Self Test
 # check cuda works
 $program_dir"/build/LIMA_ENGINE/engine_self_test"
-if [ $? -ne 1 ]; then
+if [ $? -ne 0s ]; then
     echo "engine_self_test failed"
     exit 1
 fi
@@ -127,12 +127,12 @@ fi
 cd "$install_dir"
 if [ "$1" != "-notest" ]; then
     #su -c "./selftest.sh" $SUDO_USER
-    sims_dir=~/LIMA/simulations
+    sims_dir=/home/$SUDO_USER/LIMA/simulations
     echo "Running self test in dir $sims_dir"
 
     mkdir -p "$sims_dir"
 
-    cd ~/LIMA
+    cd /home/$SUDO_USER/LIMA
     git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
 
     cp -r ./LIMA_data/* $sims_dir/ #exclude .gitignore
@@ -141,5 +141,5 @@ if [ "$1" != "-notest" ]; then
     cd "$sims_dir"/T4Lysozyme
     #cd "$sims_dir"/manyt4
 
-    lima mdrun
+    $SUDO_USER -u lima mdrun  # Run asnot sudo
 fi

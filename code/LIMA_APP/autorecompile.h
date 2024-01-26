@@ -206,6 +206,6 @@ namespace SelfRecompile {
         std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
         // This call goes to the wrong dir, but the script will cd to the right folder before it compiles
         //return system((source_dir + "recompile.sh").c_str());
-        recompile();
+        return recompile();
     }
 }

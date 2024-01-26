@@ -169,8 +169,8 @@ namespace SelfRecompile {
         // Copy UserConstants.h
         fs::copy("UserConstants.h", programDir + "source/LIMA_BASE/include/UserConstants.h", fs::copy_options::overwrite_existing);
 
-        fs::createDirectory(buildDir);
-        fs::createDirectory(applicationsDir);
+        fs::create_directories(buildDir);
+        fs::create_directories(applicationsDir);
         clearDirectory(buildDir);
 
         // Change to build directory

@@ -10,6 +10,10 @@
 #include <filesystem>
 #include <format>
 
+// Are these necessary?
+#include <sys/stat.h>
+#include <sys/types.h>
+
 namespace fs = std::filesystem;
 
 namespace SelfRecompile {
@@ -90,18 +94,116 @@ namespace SelfRecompile {
         writeConstantsToFile("./UserConstants.h", constants);
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    void clearDirectory(const std::string& path) {
+        if (fs::exists(path) && fs::is_directory(path)) {
+            fs::remove_all(path);
+            fs::create_directory(path);
+        }
+    }
+
+    void copyFiles(const std::string& src, const std::string& dest) {
+        try {
+            fs::copy(src, dest, fs::copy_options::overwrite_existing | fs::copy_options::recursive);
+            std::cout << "Files copied from " << src << " to " << dest << std::endl;
+        }
+        catch (const fs::filesystem_error& e) {
+            std::cerr << e.what() << std::endl;
+        }
+    }
+
+    int copySourceToUserProgram() {
+        const std::string home = getenv("HOME");
+        const std::string sourceDir = home + "/LIMA/source";
+        const std::string optSourceDir = "/opt/LIMA/source";
+
+        fs::create_directories(sourceDir);
+
+        clearDirectory(sourceDir);  // In case there was already code there
+
+        copyFiles(optSourceDir, sourceDir);
+
+        return 0;
+    }
+
+    bool runSystemCommand(const std::string& command, const std::string& logFile) {
+        std::string fullCommand = command + " > " + logFile + " 2>&1";
+        int result = std::system(fullCommand.c_str());
+        if (result != 0) {
+            std::cerr << "Command failed: " << command << std::endl;
+            std::ifstream log(logFile);
+            if (log.is_open()) {
+                std::cerr << log.rdbuf();
+                log.close();
+            }
+            return false;
+        }
+        return true;
+    }
+
+    int recompile() {
+        const std::string home = getenv("HOME");
+        const std::string programDir = home + "/LIMA/";
+        const std::string buildDir = home + "/LIMA/build";
+        const std::string applicationsDir = home + "/LIMA/applications";
+        const std::string logFile = buildDir + "/limabuild.log";
+
+        // Copy UserConstants.h
+        fs::copy("UserConstants.h", programDir + "source/LIMA_BASE/include/UserConstants.h", fs::copy_options::overwrite_existing);
+
+        fs::createDirectory(buildDir);
+        fs::createDirectory(applicationsDir);
+        clearDirectory(buildDir);
+
+        // Change to build directory
+        fs::current_path(buildDir);
+
+        // Run cmake and make
+        if (!runSystemCommand("cmake " + programDir + "source -Wno-dev", logFile) ||
+            !runSystemCommand("make install", logFile)) {
+            return 1;
+        }
+
+        // Move LIMA_TESTS/limatests
+        fs::rename("LIMA_TESTS/limatests", "../limatests");
+
+        return 0;
+    }
+
+
+
     int autoRecompile() 
     {
-        const int err = system((source_dir + "copyToUserProgram.sh").c_str());
-        if (err) return err;
+        //const int err = system((source_dir + "copyToUserProgram.sh").c_str());
+        //if (err) return err;
+        // Copy all code to to ~/LIMA/source
+        copySourceToUserProgram();
 
-
+        // Override default userparams with sim_params from user
         overrideUserParams();
 
         // Call compile script
         std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
-
         // This call goes to the wrong dir, but the script will cd to the right folder before it compiles
-        return system((source_dir + "recompile.sh").c_str());
+        //return system((source_dir + "recompile.sh").c_str());
+        recompile();
     }
 }

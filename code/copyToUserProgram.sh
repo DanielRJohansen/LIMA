@@ -8,7 +8,6 @@
 # We are currently in opt which we dont have privileges to alter. So we move everything to local
 
 mkdir -p ~/LIMA/source
-mkdir -p ~/LIMA/applications
 rm -rf ~/LIMA/source/*
 #cp -rf "$SCRIPT_DIR"/* ~/LIMA/source
 cp -rf /opt/LIMA/source/* ~/LIMA/source

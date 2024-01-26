@@ -7,6 +7,7 @@ cp UserConstants.h ~/LIMA/source/LIMA_BASE/include/
 program_dir="~/LIMA/"
 
 mkdir -p ~/LIMA/build
+mkdir -p ~/LIMA/applications
 cd ~/LIMA/build
 rm -rf ./*
 

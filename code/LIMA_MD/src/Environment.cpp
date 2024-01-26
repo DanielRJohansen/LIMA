@@ -331,7 +331,7 @@ void Environment::postRunEvents() {
 	if (!save_output) { return; }
 
 
-	const std::string out_dir = work_dir + "Steps_" + std::to_string(simulation->getStep()) + "/";
+	const std::string out_dir = work_dir + "/Steps_" + std::to_string(simulation->getStep()) + "/";
 
 	const std::filesystem::path out_path{ out_dir };
 	std::filesystem::create_directories(out_path);

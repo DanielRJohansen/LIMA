@@ -8,13 +8,6 @@ if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
 
 echo "\nWelcome to the LIMA Dynamics installer\n"
 
-install_dir="$PWD"  # dir where repository with install files are
-program_dir="/opt/LIMA"
-
-echo "Using $program_dir as install directory"
-rm -rf "$program_dir"/
-
-
 
 ## -- INSTALL DEPENDENCIES  -- ##
 echo "Installing dependencies"
@@ -47,14 +40,14 @@ if [ "$1" = "-all" ]; then
         sudo pacman -S cuda --noconfirm
         sudo pacman -S cuda-tools --noconfirm
         sudo pacman -S base-devel --noconfirm
-        sudo pacman -S gcc-13 --noconfirm
+        sudo pacman -S gcc-13 g++-13 --noconfirm
         ;;
     "Ubuntu")
         sudo apt-get update
         sudo apt-get install -y make
         sudo apt-get install -y nvidia-cuda-toolkit
         sudo apt-get install -y build-essential
-        sudo apt-get install -y gcc-13
+        sudo apt-get install -y gcc-13 g++-13
         sudo apt-get install -y cmake
         ;;
     esac
@@ -74,12 +67,15 @@ fi
 ## -- INSTALL LIMA  -- ##
 
 # Prepare the source code
+install_dir="$PWD"  # dir where repository with install files are
+program_dir="/opt/LIMA"
+
+echo "Using $program_dir as install directory"
+rm -rf "$program_dir"
 mkdir "$program_dir"
-mkdir "$program_dir/build"
-mkdir "$program_dir/source"
-#mkdir -p "$source_dir"/build
-cp -r "$install_dir"/code/* "$program_dir/source"
-cp -r "$install_dir"/resources "$program_dir/."
+
+# copy everything from installdir to program_dir
+cp -r "$install_dir"/* "$program_dir"/. 
 
 # Build the public "lima" executable
 cd "$program_dir"/build

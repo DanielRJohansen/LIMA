@@ -1,0 +1,138 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "code/LIMA_FORCEFIELDMAKER/LIMA_FORCEFIELDMAKER.lib"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"code/LIMA_FORCEFIELDMAKER/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 3,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 16,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 11,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /O2 /Ob1 /DNDEBUG -std:c++20 -MD -Zi"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "C:/Users/Daniel/git_repo/LIMA/code/LIMA_FORCEFIELDMAKER/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.2/include"
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/Users/Daniel/git_repo/LIMA/code/LIMA_BASE/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					1
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "LIMA_BASE::@33f404d26709abe39ff1"
+		}
+	],
+	"id" : "LIMA_FORCEFIELDMAKER::@f705ac90ea7b56bbe531",
+	"name" : "LIMA_FORCEFIELDMAKER",
+	"nameOnDisk" : "LIMA_FORCEFIELDMAKER.lib",
+	"paths" : 
+	{
+		"build" : "code/LIMA_FORCEFIELDMAKER",
+		"source" : "code/LIMA_FORCEFIELDMAKER"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "code/LIMA_FORCEFIELDMAKER/src/ForcefieldTypes.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "code/LIMA_FORCEFIELDMAKER/src/LIMA_ForcefieldMaker.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

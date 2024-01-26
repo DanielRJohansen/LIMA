@@ -1,0 +1,264 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-RelWithDebInfo-d0094a50bb2071803777.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"projectIndex" : 0,
+					"source" : "."
+				},
+				{
+					"build" : "code/LIMA_BASE",
+					"jsonFile" : "directory-code.LIMA_BASE-RelWithDebInfo-a17d70ffa3e1a47ef83d.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_BASE",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "code/LIMA_ENGINE",
+					"jsonFile" : "directory-code.LIMA_ENGINE-RelWithDebInfo-0412fbc8b1967afb6b06.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_ENGINE",
+					"targetIndexes" : 
+					[
+						1,
+						5
+					]
+				},
+				{
+					"build" : "code/LIMA_TOOLS",
+					"jsonFile" : "directory-code.LIMA_TOOLS-RelWithDebInfo-6758255a62ad5c1e730f.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_TOOLS",
+					"targetIndexes" : 
+					[
+						4
+					]
+				},
+				{
+					"build" : "code/LIMA_FORCEFIELDMAKER",
+					"jsonFile" : "directory-code.LIMA_FORCEFIELDMAKER-RelWithDebInfo-5f6b6da1bf0374e44fd0.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_FORCEFIELDMAKER",
+					"targetIndexes" : 
+					[
+						2,
+						6
+					]
+				},
+				{
+					"build" : "code/LIMA_MD",
+					"jsonFile" : "directory-code.LIMA_MD-RelWithDebInfo-415c0092a9b9cc079f6a.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_MD",
+					"targetIndexes" : 
+					[
+						3,
+						9
+					]
+				},
+				{
+					"build" : "code/LIMA_TESTS",
+					"jsonFile" : "directory-code.LIMA_TESTS-RelWithDebInfo-de5ed71c8388d4d521e3.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_TESTS",
+					"targetIndexes" : 
+					[
+						8
+					]
+				},
+				{
+					"build" : "code/LIMA_SERVER",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-code.LIMA_SERVER-RelWithDebInfo-a3503de10068db4a9faf.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "code/LIMA_SERVER",
+					"targetIndexes" : 
+					[
+						7,
+						10
+					]
+				}
+			],
+			"name" : "RelWithDebInfo",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7
+					],
+					"name" : "lima",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "LIMA_BASE::@33f404d26709abe39ff1",
+					"jsonFile" : "target-LIMA_BASE-RelWithDebInfo-fc23cfac948cb5e9d73c.json",
+					"name" : "LIMA_BASE",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "LIMA_ENGINE::@fb205ba82c3d42036cc8",
+					"jsonFile" : "target-LIMA_ENGINE-RelWithDebInfo-ddf3d352b0b00ad3d8ee.json",
+					"name" : "LIMA_ENGINE",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "LIMA_FORCEFIELDMAKER::@f705ac90ea7b56bbe531",
+					"jsonFile" : "target-LIMA_FORCEFIELDMAKER-RelWithDebInfo-2c5038d24c1db47a6900.json",
+					"name" : "LIMA_FORCEFIELDMAKER",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 5,
+					"id" : "LIMA_MD::@68807d31d260c3f32e39",
+					"jsonFile" : "target-LIMA_MD-RelWithDebInfo-ddd3b55dab6d810e03c5.json",
+					"name" : "LIMA_MD",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "LIMA_TOOLS::@f73dbf970cba1fb97873",
+					"jsonFile" : "target-LIMA_TOOLS-RelWithDebInfo-95d66b763fee7c432002.json",
+					"name" : "LIMA_TOOLS",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "engine_self_test::@fb205ba82c3d42036cc8",
+					"jsonFile" : "target-engine_self_test-RelWithDebInfo-a323863cd8a2d9d92ad3.json",
+					"name" : "engine_self_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "ffm_self_test::@f705ac90ea7b56bbe531",
+					"jsonFile" : "target-ffm_self_test-RelWithDebInfo-e94b0d2bc0f2f515db1f.json",
+					"name" : "ffm_self_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "lima::@b623ae0f3dfcbece2891",
+					"jsonFile" : "target-lima-RelWithDebInfo-12a3c4f15abe00aa07f2.json",
+					"name" : "lima",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 6,
+					"id" : "limatests::@ffba8fffab64470680e0",
+					"jsonFile" : "target-limatests-RelWithDebInfo-6d699845231b42458944.json",
+					"name" : "limatests",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 5,
+					"id" : "md_self_test::@68807d31d260c3f32e39",
+					"jsonFile" : "target-md_self_test-RelWithDebInfo-2be4f521484764dfb4e1.json",
+					"name" : "md_self_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "mdrun::@b623ae0f3dfcbece2891",
+					"jsonFile" : "target-mdrun-RelWithDebInfo-d3011cd91ae9c8be4eba.json",
+					"name" : "mdrun",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/Daniel/git_repo/LIMA/build/x64-Release",
+		"source" : "C:/Users/Daniel/git_repo/LIMA"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

@@ -34,6 +34,9 @@
 #added by me
 *.vs*
 *CMakeSettings*
-*code/out*
 *CMakeSettings.json
-*/code/obsolete*s
+*/code/obsolete*
+
+# Ignore contents of build, but not build
+!build/
+!build/*

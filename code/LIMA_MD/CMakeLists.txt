@@ -15,7 +15,7 @@ add_library(LIMA_MD STATIC
 target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CUDA_INCLUDE_DIRS}    
-    ${CMAKE_SOURCE_DIR}/dependencies/GLFW/include
+    ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_include_directories(LIMA_MD PRIVATE
@@ -28,7 +28,7 @@ target_link_libraries(LIMA_MD LIMA_ENGINE)
 target_link_libraries(LIMA_MD LIMA_TOOLS)
 target_link_libraries(LIMA_MD LIMA_FORCEFIELDMAKER)
 if (WIN32)
-    target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/dependencies/GLFW/lib/glfw3.lib)
+    target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib)
 endif()
 #target_include_directories(LIMA_MD PRIVATE ${OPENGL_INCLUDE_DIR})
 target_link_libraries(LIMA_MD ${OPENGL_LIBRARIES})

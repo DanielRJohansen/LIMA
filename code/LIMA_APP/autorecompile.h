@@ -1,14 +1,14 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <map>
-#include <string>
-#include <unistd.h>
-#include <stdlib.h>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <sstream>
+#include <stdlib.h>
+#include <string>
+#include <unistd.h>
 
 // Are these necessary?
 #include <sys/stat.h>
@@ -132,14 +132,14 @@ namespace SelfRecompile {
 
     int copySourceToUserProgram() {
         const std::string home = getenv("HOME");
-        const std::string sourceDir = home + "/LIMA/source";
-        const std::string optSourceDir = "/opt/LIMA/source";
+        const std::string userprogramDir = home + "/LIMA";
+        const std::string optDir = "/opt/LIMA";
 
-        fs::create_directories(sourceDir);
+        fs::create_directories(userprogramDir);
 
-        clearDirectory(sourceDir);  // In case there was already code there
+        clearDirectory(userprogramDir);  // In case there was already code there
 
-        copyFiles(optSourceDir, sourceDir);
+        copyFiles(optDir, userprogramDir);
 
         return 0;
     }

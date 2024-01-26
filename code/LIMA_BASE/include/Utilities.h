@@ -8,8 +8,6 @@
 #include "LimaTypes.cuh"
 #include <memory>
 
-#include <device_launch_parameters.h>
-#include <cuda_runtime_api.h>
 
 namespace LIMA_UTILS {
 

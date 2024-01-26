@@ -38,5 +38,7 @@
 */code/obsolete*
 
 # Ignore contents of build, but not build
-build/?*
+build/*
+# I dunno how else to include the build dir...
+!build/build.txt
 out*

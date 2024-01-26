@@ -39,3 +39,4 @@
 
 # Ignore contents of build, but not build
 build/*
+out*

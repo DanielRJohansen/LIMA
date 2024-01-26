@@ -24,13 +24,14 @@ int main(int argc, char** argv) {
     if (program == "mdrun") mdrun(argc, argv);
     else {
         // Any other lima program can be caught directly by LIMA_SERVER/lima
-        std::string command = "~/LIMA/applications/mdrun";
-        for (int i = 1; i < argc; ++i) {
-            command += " ";
-            command += argv[i];
-        }
+        std::cout << "program:" << program << ":\n";
+        //  std::string command = "~/LIMA/applications/mdrun";  Use getenv(home instead
+        //for (int i = 1; i < argc; ++i) {
+        //    command += " ";
+        //    command += argv[i];
+        //}
 
-        return system(command.c_str());
+        //return system(command.c_str());
     }
     //else std::cout << "lima program: \"" << program << "\" is not recognized\n";
 

@@ -133,7 +133,7 @@ namespace SelfRecompile {
 
         fs::create_directories(userprogramDir);
 
-        clearDirectory(userprogramDir);  // In case there was already code there
+        //clearDirectory(userprogramDir + "/source/code");  // In case there was already code there
 
         copyFiles(optDir, userprogramDir);
 

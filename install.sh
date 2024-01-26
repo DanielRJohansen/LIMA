@@ -90,7 +90,7 @@ if [ $? -ne 0 ]; then
     echo "CMake failed"
     exit 1
 fi
-make install 
+make install -j
 if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1

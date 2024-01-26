@@ -21,6 +21,6 @@ int mdrun(int argc, char** argv)
         command += " ";
         command += argv[i];
     }
-
+    std::cout << "executing cmd: " << command << "\n";
     return system(command.c_str());
 }

@@ -9,6 +9,18 @@ void sayHello() {
 
 int main(int argc, char** argv) {
 
+    // Sanitise input, remove sudo or sudo_user args
+    int limaPosition = 0;
+    for (int i = 0; i < argc; ++i) {
+        if (std::string(argv[i]) == "lima") {
+            limaPosition = i;
+            break;
+        }
+    }
+    argc -= (limaPosition);
+    argv += (limaPosition);
+
+
     sayHello();
 
 

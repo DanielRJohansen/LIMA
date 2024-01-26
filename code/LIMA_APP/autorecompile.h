@@ -111,16 +111,18 @@ namespace SelfRecompile {
 
     void clearDirectory(const std::string& path, bool keep_directory) {
         if (fs::exists(path) && fs::is_directory(path)) {
+            std::cout << "clearing dir" << path << "...";
             fs::remove_all(path);
             if (keep_directory)
                 fs::create_directory(path);
+            std::cout << "done!\n";
         }
     }
 
     void copyFiles(const std::string& src, const std::string& dest) {
         try {
             fs::copy(src, dest, fs::copy_options::overwrite_existing | fs::copy_options::recursive);
-            //std::cout << "Files copied from " << src << " to " << dest << std::endl;
+            std::cout << "Files copied from " << src << " to " << dest << std::endl;
         }
         catch (const fs::filesystem_error& e) {
             std::cerr << e.what() << std::endl;

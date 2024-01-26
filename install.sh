@@ -10,7 +10,6 @@ echo "\nWelcome to the LIMA Dynamics installer\n"
 
 
 ## -- INSTALL DEPENDENCIES  -- ##
-echo "Installing dependencies"
 
 # Determine the distribution
 if [ -f /etc/arch-release ]; then
@@ -29,7 +28,6 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 if [ "$1" = "-all" ]; then
-    echo "Welcome to the LIMA Dynamics installer"
     echo "Installing dependencies"
 
     case $DISTRO in

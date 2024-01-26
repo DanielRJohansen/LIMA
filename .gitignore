@@ -39,5 +39,5 @@
 
 # Ignore contents of build, but not build
 build/*
-!build/test.txt
+!build
 out*

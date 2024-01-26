@@ -4,8 +4,6 @@
 # Then it installs itself in /opt/LIMA/
 # Finally it executes 2 tests so ensure everything is working correctly
 
-
-
 if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
 
 echo "\nWelcome to the LIMA Dynamics installer\n"
@@ -120,6 +118,10 @@ echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 # Run Self Test
 # check cuda works
 $program_dir"/build/LIMA_ENGINE/engine_self_test"
+if [ $? -ne 1 ]; then
+    echo "engine_self_test failed"
+    exit 1
+fi
 
 # Run small sim
 cd "$install_dir"
@@ -127,17 +129,17 @@ if [ "$1" != "-notest" ]; then
     #su -c "./selftest.sh" $SUDO_USER
     sims_dir=~/LIMA/simulations
     echo "Running self test in dir $sims_dir"
-    
+
     mkdir -p "$sims_dir"
-    
+
     cd ~/LIMA
     git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
-    
+
     cp -r ./LIMA_data/* $sims_dir/ #exclude .gitignore
     #rsync -q -av --exclude '.*' ./LIMA_data/ "$sims_dir/"  # Exclude hidden files/directories
-    
+
     cd "$sims_dir"/T4Lysozyme
     #cd "$sims_dir"/manyt4
-    
+
     lima mdrun
 fi

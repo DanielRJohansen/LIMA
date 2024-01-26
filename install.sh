@@ -72,14 +72,14 @@ program_dir="/opt/LIMA"
 
 echo "Using $program_dir as install directory"
 rm -rf "$program_dir"
-mkdir "$program_dir"
+mkdir "$program_dir"/
 
 # copy everything from installdir to program_dir
-cp -r "$install_dir"/* "$program_dir"/. 
+cp -r "$install_dir"/* "$program_dir"/
 
 # Build the public "lima" executable
 cd "$program_dir"/build
-cmake "$program_dir/source/LIMA_APP/"
+cmake "$program_dir/code/LIMA_APP/"
 make install
 echo -e "\n\tLIMA client have been installed\n\n"
 
@@ -87,7 +87,7 @@ echo -e "\n\tLIMA client have been installed\n\n"
 # Build LIMA once in /opt/, to ensure everything works
 cd "$program_dir/build"
 rm -rf ./*
-cmake ../source/ 
+cmake ../ 
 if [ $? -ne 0 ]; then
     echo "CMake failed"
     exit 1

@@ -17,9 +17,6 @@
 namespace fs = std::filesystem;
 
 namespace SelfRecompile {
-
-    const std::string source_dir = "/opt/LIMA/source/";
-
     struct UserConstantInfo {
         std::string type;
         std::string value;
@@ -82,8 +79,7 @@ namespace SelfRecompile {
         char cwd[1024];
         getcwd(cwd, sizeof(cwd));
         std::string currentDirectory(cwd);
-
-        std::map<std::string, UserConstantInfo> constants = readDefaultConstants(source_dir + "LIMA_BASE/include/DefaultUserConstants.h");
+        std::map<std::string, UserConstantInfo> constants = readDefaultConstants("/opt/LIMA/code/LIMA_BASE/include/DefaultUserConstants.h");
 
         const std::string params_path = currentDirectory + "/sim_params.txt";
         if (!fs::exists(params_path)) {
@@ -167,7 +163,7 @@ namespace SelfRecompile {
         const std::string logFile = buildDir + "/limabuild.log";
 
         // Copy UserConstants.h
-        fs::copy("UserConstants.h", programDir + "source/LIMA_BASE/include/UserConstants.h", fs::copy_options::overwrite_existing);
+        fs::copy("UserConstants.h", programDir + "code/LIMA_BASE/include/UserConstants.h", fs::copy_options::overwrite_existing);
 
         fs::create_directories(buildDir);
         fs::create_directories(applicationsDir);
@@ -177,7 +173,7 @@ namespace SelfRecompile {
         fs::current_path(buildDir);
 
         // Run cmake and make
-        if (!runSystemCommand("cmake " + programDir + "source -Wno-dev", logFile) ||
+        if (!runSystemCommand("cmake " + programDir + " -Wno-dev", logFile) ||
             !runSystemCommand("make install", logFile)) {
             return 1;
         }

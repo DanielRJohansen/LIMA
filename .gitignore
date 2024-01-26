@@ -38,5 +38,5 @@
 */code/obsolete*
 
 # Ignore contents of build, but not build
-build/?*
+build/**
 out*

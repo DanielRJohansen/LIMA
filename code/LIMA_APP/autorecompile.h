@@ -136,8 +136,6 @@ namespace SelfRecompile {
         fs::create_directories(userprogramDir);
 
         copyFiles(optDir, userprogramDir);
-
-        return 0;
     }
 
     bool runSystemCommand(const std::string& command, const std::string& logFile) {

@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     else {
         // Any other lima program can be caught directly by LIMA_SERVER/lima
         std::cout << "program:" << program << ":\n";
-        std::string command = "~/LIMA/applications/limaserver";  Use getenv(home instead
+        std::string command = "~/LIMA/applications/limaserver"; // Use getenv(home instead
         for (int i = 1; i < argc; ++i) {
             command += " ";
             command += argv[i];

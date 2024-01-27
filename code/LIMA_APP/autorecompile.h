@@ -76,9 +76,6 @@ namespace SelfRecompile {
     }
 
     void overrideUserParams() {
-        //char cwd[1024];
-        //getcwd(cwd, sizeof(cwd));
-        //std::string currentDirectory(cwd);
         const std::string currentDirectory = fs::current_path().string();
         std::map<std::string, UserConstantInfo> constants = readDefaultConstants("/opt/LIMA/code/LIMA_BASE/include/DefaultUserConstants.h");
 

@@ -137,5 +137,6 @@ if [ "$1" != "-notest" ]; then
     cd "$sims_dir"/T4Lysozyme
     #cd "$sims_dir"/manyt4
 
-    $SUDO_USER -u lima mdrun  # Run asnot sudo
+    #lima mdrun # doesnt work, because this scrip has sudo, and the program must run as normal user
+    #$SUDO_USER -u lima mdrun  # Doesnt work, because 2nd arg must be mdrun, otherwise the program doesnt know what to do
 fi

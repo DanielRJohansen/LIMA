@@ -172,21 +172,26 @@ namespace SelfRecompile {
         clearDirectory(buildDir, true);
 
         // Change to build directory
-        fs::current_path(buildDir);
+        //fs::current_path(buildDir);
 
+         // Change current_path to buildDir, then compile files, and finally switch back to the working dir
+        fs::path work_dir = fs::current_path();
+        fs::current_path(buildDir);
         // Run cmake and make
         if (!runSystemCommand("cmake " + programDir + " -Wno-dev", logFile) ||
             !runSystemCommand("make install -j", logFile)) {
+            fs::current_path(work_dir);
             return 1;
         }
-
         // Move LIMA_TESTS/limatests
         fs::rename("code/LIMA_TESTS/limatests", "../applications/limatests");
         clearDirectory(buildDir, false);
         //clearDirectory(sourceDir, false)
-
+        // Change back to previous path
+        fs::current_path(work_dir);
         return 0;
     }
+
 
 
 

@@ -127,14 +127,13 @@ namespace SelfRecompile {
         }
     }
 
-    int copySourceToUserProgram() {
+    // Copies everything from /opt/LIMA to ~/LIMA
+    void copySourceToUserProgram() {
         const std::string home = getenv("HOME");
         const std::string userprogramDir = home + "/LIMA";
         const std::string optDir = "/opt/LIMA";
 
         fs::create_directories(userprogramDir);
-
-        //clearDirectory(userprogramDir + "/source/code");  // In case there was already code there
 
         copyFiles(optDir, userprogramDir);
 
@@ -171,9 +170,6 @@ namespace SelfRecompile {
         fs::create_directories(applicationsDir);
         clearDirectory(buildDir, true);
 
-        // Change to build directory
-        //fs::current_path(buildDir);
-
          // Change current_path to buildDir, then compile files, and finally switch back to the working dir
         fs::path work_dir = fs::current_path();
         fs::current_path(buildDir);
@@ -197,9 +193,6 @@ namespace SelfRecompile {
 
     int autoRecompile() 
     {
-        //const int err = system((source_dir + "copyToUserProgram.sh").c_str());
-        //if (err) return err;
-        // Copy all code to to ~/LIMA/source
         copySourceToUserProgram();
 
         // Override default userparams with sim_params from user
@@ -208,7 +201,6 @@ namespace SelfRecompile {
         // Call compile script
         std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
         // This call goes to the wrong dir, but the script will cd to the right folder before it compiles
-        //return system((source_dir + "recompile.sh").c_str());
         return recompile();
     }
 }

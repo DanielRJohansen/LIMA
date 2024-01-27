@@ -32,7 +32,6 @@ if [ "$1" = "-all" ]; then
 
     case $DISTRO in
     "Arch")
-        sudo pacman -Syu
         sudo pacman -S cmake --noconfirm
         sudo pacman -S make --noconfirm
         sudo pacman -S cuda --noconfirm
@@ -41,7 +40,6 @@ if [ "$1" = "-all" ]; then
         sudo pacman -S gcc-13 g++-13 --noconfirm
         ;;
     "Ubuntu")
-        sudo apt-get update
         sudo apt-get install -y make
         sudo apt-get install -y nvidia-cuda-toolkit
         sudo apt-get install -y build-essential

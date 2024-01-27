@@ -85,7 +85,10 @@ namespace SelfRecompile {
         }
         readAndOverrideConstants(params_path, constants);
 
-        writeConstantsToFile("./UserConstants.h", constants);
+        writeConstantsToFile("UserConstants.h", constants);
+        if (!fs::exists("UserConstants.h")) {
+            throw std::runtime_error(std::format("Expected file {}, but it was not found", params_path).c_str());
+        }
     }
 
 
@@ -179,10 +182,9 @@ namespace SelfRecompile {
         }
         // Move LIMA_TESTS/limatests
         fs::rename("code/LIMA_TESTS/limatests", "../applications/limatests");
+        fs::current_path(work_dir); // Change back to previous path
         clearDirectory(buildDir, false);
-        //clearDirectory(sourceDir, false)
-        // Change back to previous path
-        fs::current_path(work_dir);
+        
         return 0;
     }
 
@@ -196,9 +198,7 @@ namespace SelfRecompile {
         // Override default userparams with sim_params from user
         overrideUserParams();
 
-        // Call compile script
-        std::printf("Optimization LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
-        // This call goes to the wrong dir, but the script will cd to the right folder before it compiles
+        std::printf("Optimizing LIMA engine for your simulation parameters (This should take approx 1 minute)\n");
         return recompile();
     }
 }

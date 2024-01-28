@@ -85,5 +85,9 @@ namespace LimaMoleculeGraph {
 	void reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, 
 		const fs::path& gro_path_out, const fs::path& top_path_out);
 
+	static void reorderoleculeParticlesAccoringingToSubchains(const fs::path& to_dir, const fs::path& from_dir, const std::string& name) {
+		reorderoleculeParticlesAccoringingToSubchains(from_dir / (name + ".gro"), from_dir / (name + ".itp"), to_dir / (name + ".gro"), to_dir / (name + ".itp"));
+	}
+
 };
 

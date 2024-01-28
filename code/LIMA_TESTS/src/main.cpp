@@ -47,8 +47,8 @@ int main() {
 		
 
 
-		//testReorderMoleculeParticles();
-		//testBuildmembraneSmall(envmode, true);
+		//testReorderMoleculeParticles(envmode);
+		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);		
 
 		runAllUnitTests();
@@ -99,6 +99,8 @@ void runAllUnitTests() {
 
 	// Programs test
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
+	ADD_TEST(testman, "ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
+
 
 
 	// Meta tests

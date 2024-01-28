@@ -124,13 +124,14 @@ if [ "$1" != "-notest" ]; then
 
     mkdir -p "$sims_dir"
 
-    chmod 777 /home/$SUDO_USER/LIMA -R
-
     cd /home/$SUDO_USER/LIMA
     git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
 
     cp -r ./LIMA_data/* $sims_dir/ #exclude .gitignore
     #rsync -q -av --exclude '.*' ./LIMA_data/ "$sims_dir/"  # Exclude hidden files/directories
+
+    chmod 777 /home/$SUDO_USER/LIMA -R
+
 
     cd "$sims_dir"/T4Lysozyme
     #cd "$sims_dir"/manyt4

@@ -46,12 +46,34 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 		
 
+		//std::vector<std::string> targets = { "DDPC" };
+		////std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol" };
+		////const string target = "DAPC";
+		//for (auto target : targets) {
+		//	try {
+		//		const std::string to_folder = "C:/Users/Daniel/git_repo/LIMA/resources/Lipids/" + target + "/";
+		//		const std::string from_folder = "C:/Users/Daniel/git_repo/LIMA/resources/Lipids/" + target + "/";
+		//		LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(to_folder, from_folder, target);
+		//	}
+		//	catch (...) {
+		//		// do nothing
+		//	}
+		//}
+
+
+
+		//const fs::path work_dir = simulations_dir + "/BuildMembraneSmall";
+		//Environment env{ work_dir.string(), envmode, false };
+		//env.CreateSimulation(7.f);
+		//env.createMembrane(true, {LipidSelect{"DDPC", 100}});
+
+
 
 		//testReorderMoleculeParticles(envmode);
-		//testBuildmembraneSmall(envmode, false);
+		testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);		
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

@@ -86,6 +86,9 @@ namespace SimulationBuilder{
 
 	Filepair buildMembrane(Filepair inputfiles, Float3 box_dims) {
 		auto [inputgrofile, inputtopologyfile] = inputfiles;
+		if (inputgrofile.n_atoms != inputtopologyfile.atoms.entries.size()) {
+			throw std::runtime_error("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.");
+		}
 		//ParsedGroFile inputgrofile = inputfiles.;
 		//ParsedTopologyFile inputtopologyfile = inputfiles.second;
 

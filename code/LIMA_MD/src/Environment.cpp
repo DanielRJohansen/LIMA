@@ -87,11 +87,12 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 }
 
-void Environment::createMembrane(bool carryout_em) {
+void Environment::createMembrane(bool carryout_em, LipidsSelection lipidselection) {
 	// Load in the lipid types, for now just POPC
-	const std::string POPC_PATH = main_dir + "/resources/Lipids/POPC/";
-	const ParsedGroFile inputgrofile = MDFiles::loadGroFile(POPC_PATH + "popc.gro");
-	std::unique_ptr<ParsedTopologyFile> inputtopologyfile = MDFiles::loadTopologyFile(POPC_PATH + "POPC.itp");
+	const std::string lipid_name = lipidselection[0].lipidname;
+	const std::string lipid_path = main_dir + "/resources/Lipids/"+lipid_name + "/";
+	const ParsedGroFile inputgrofile = MDFiles::loadGroFile(lipid_path + lipid_name + ".gro");
+	std::unique_ptr<ParsedTopologyFile> inputtopologyfile = MDFiles::loadTopologyFile(lipid_path + lipid_name + ".itp");
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
 	auto monolayerfiles = SimulationBuilder::buildMembrane({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);

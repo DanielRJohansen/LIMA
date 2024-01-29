@@ -63,7 +63,7 @@ public:
 	/// </summary>
 	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
 	/// which ensures all particles are inside the box</param>
-	void createMembrane(bool carryout_em=true);
+	void createMembrane(bool carryout_em=true, LipidsSelection lipidselection={LipidSelect{"POPC", 100}});
 
 
 

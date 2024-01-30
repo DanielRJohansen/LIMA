@@ -37,7 +37,6 @@ if [ "$1" = "-all" ]; then
         sudo pacman -S cuda --noconfirm
         sudo pacman -S cuda-tools --noconfirm
         sudo pacman -S base-devel --noconfirm
-        sudo pacman -S gcc-13 g++-13 --noconfirm
         ;;
     "Ubuntu")
         sudo apt-get install -y make
@@ -76,7 +75,15 @@ cp -r "$install_dir"/* "$program_dir"/
 # Build the public "lima" executable
 cd "$program_dir"/build
 cmake "$program_dir/code/LIMA_APP/"
+if [ $? -ne 0 ]; then
+    echo "CMake failed"
+    exit 1
+fi
 make install
+if [ $? -ne 0 ]; then
+    echo "Make failed"
+    exit 1
+fi
 echo -e "\n\tLIMA client have been installed\n\n"
 
 

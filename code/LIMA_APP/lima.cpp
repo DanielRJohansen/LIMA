@@ -3,7 +3,7 @@
 // Finally we simply forward all args to the limaserver program
 
 #include <iostream>
-#include "mdrun.h"
+#include "autorecompile.h"
 
 constexpr bool requiresRecompile(const std::string& program) {
     const bool requiresEngine = program == "mdrun" || program == "buildmembrane";
@@ -28,7 +28,8 @@ int main(int argc, char** argv)
 
     std::string command = "~/LIMA/applications/limaserver"; // Use getenv(home instead
     for (int i = 1; i < argc; ++i) {
-        command += " " + argv[i];
+        command += " ";
+        command += argv[i];
     }
 
     return system(command.c_str());

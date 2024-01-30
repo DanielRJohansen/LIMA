@@ -17,11 +17,15 @@ set(CMAKE_CUDA_STANDARD 20)
 set(CUDA_SEPARABLE_COMPILATION ON)
 
 
-#set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_89")
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_89,code=sm_89")
 
+# Only gcc v13 and never can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
+find_program(GCC_13_FOUND g++-13)
+if(GCC_13_FOUND)
+    set(CMAKE_CXX_COMPILER g++-13)
+endif()
+
 if (UNIX)
-	set(CMAKE_CXX_COMPILER g++-13)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 endif()

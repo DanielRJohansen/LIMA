@@ -8,7 +8,7 @@
 #include "CompoundBuilder.h"
 #include "VirtualPathMaker.h"
 #include "BoxBuilder.cuh"
-
+#include "SimulationBuilder.h"
 
 // For logging
 #include <fstream>
@@ -63,7 +63,7 @@ public:
 	/// </summary>
 	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
 	/// which ensures all particles are inside the box</param>
-	void createMembrane(bool carryout_em=true, LipidsSelection lipidselection={LipidSelect{"POPC", 100}});
+	void createMembrane(LipidsSelection& lipidselection, bool carryout_em = true);
 
 
 

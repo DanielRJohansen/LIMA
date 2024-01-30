@@ -149,8 +149,8 @@ struct ParsedTopologyFile {	//.top or .itp
 namespace MDFiles {
 	namespace fs = std::filesystem;
 
-	ParsedGroFile loadGroFile(const fs::path& path);
-	ParsedGroFile loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
+	std::unique_ptr<ParsedGroFile> loadGroFile(const fs::path& path);
+	std::unique_ptr<ParsedGroFile> loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
 
 	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
 

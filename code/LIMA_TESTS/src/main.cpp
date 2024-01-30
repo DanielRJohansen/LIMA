@@ -69,7 +69,10 @@ int main() {
 		//const fs::path work_dir = simulations_dir + "/BuildMembraneSmall";
 		//Environment env{ work_dir.string(), envmode, false };
 		//env.CreateSimulation(7.f);
-		//env.createMembrane(true, {LipidSelect{"SM16", 100}});
+		//LipidsSelection lipids;
+		//lipids.emplace_back(LipidSelect{ "POPE", 50 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 50 });
+		//env.createMembrane(lipids, true);
 
 
 

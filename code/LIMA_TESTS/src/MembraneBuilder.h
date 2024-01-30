@@ -12,7 +12,9 @@ namespace TestMembraneBuilder {
 
 
 
+	void thing(LipidsSelection& s) {
 
+	}
 
 	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{
@@ -20,10 +22,13 @@ namespace TestMembraneBuilder {
 		Environment env{ work_dir.string(), envmode, false};
 
 		env.CreateSimulation(7.f);
-		env.createMembrane(do_em);
-
+		LipidsSelection lipidselection;
+		for (const auto& name : LipidSelect::valid_lipids) {
+			lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10});	// 10% of each lipid, except 50% POPC
+		}
+		env.createMembrane(lipidselection, do_em);
 		const fs::path mol_dir = work_dir / "molecule";
-
+		const int a = sizeof(LipidSelect);
 
 		std::vector<std::array<std::string, 2>> files = { {"monolayer.gro", "monolayer_reference.gro"}, {"monolayer.top", "monolayer_reference.top"} };
 

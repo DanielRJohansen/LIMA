@@ -734,6 +734,3 @@ enum VerbosityLevel {
 };
 
 enum EnvMode { Full, ConsoleOnly, Headless };
-
-struct LipidSelect { const std::string lipidname; const int percentage; };
-using LipidsSelection = std::vector<LipidSelect>;

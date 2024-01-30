@@ -42,10 +42,10 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	const ParsedGroFile gro_file = MDFiles::loadGroFile(gro_path);
+	const auto gro_file = MDFiles::loadGroFile(gro_path);
 	const std::unique_ptr<ParsedTopologyFile> topol_file = MDFiles::loadTopologyFile(topol_path);
 
-	CreateSimulation(gro_file, *topol_file, params);
+	CreateSimulation(*gro_file, *topol_file, params);
 }
 
 void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTopologyFile& topolfile, const SimParams& params) 
@@ -87,15 +87,17 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 }
 
-void Environment::createMembrane(bool carryout_em, LipidsSelection lipidselection) {
-	// Load in the lipid types, for now just POPC
-	const std::string lipid_name = lipidselection[0].lipidname;
-	const std::string lipid_path = main_dir + "/resources/Lipids/"+lipid_name + "/";
-	const ParsedGroFile inputgrofile = MDFiles::loadGroFile(lipid_path + lipid_name + ".gro");
-	std::unique_ptr<ParsedTopologyFile> inputtopologyfile = MDFiles::loadTopologyFile(lipid_path + lipid_name + ".itp");
+void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_em) {
+	// Load the files for each lipid
+	for (auto& lipid : lipidselection) {
+		const std::string lipid_path = main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
+		lipid.grofile = MDFiles::loadGroFile(lipid_path + lipid.lipidname + ".gro");
+		lipid.topfile = MDFiles::loadTopologyFile(lipid_path + lipid.lipidname + ".itp");
+	}
+
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
-	auto monolayerfiles = SimulationBuilder::buildMembrane({ inputgrofile, *inputtopologyfile }, simulation->box_host->boxparams.dims);
+	auto monolayerfiles = SimulationBuilder::buildMembrane(lipidselection, simulation->box_host->boxparams.dims);
 
 	// Create simulation and run on the newly created files in the workfolder
 	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.gro"));

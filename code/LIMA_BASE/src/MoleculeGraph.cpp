@@ -170,7 +170,7 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 }
 
 void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, const fs::path& gro_path_out, const fs::path& top_path_out) {
-	ParsedGroFile grofile = MDFiles::loadGroFile(gro_path_in);
+	auto grofile = MDFiles::loadGroFile(gro_path_in);
 	auto topfile = MDFiles::loadTopologyFile(top_path_in);
 
 	const MoleculeGraph molgraph = createGraph(*topfile);
@@ -182,7 +182,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::
 	const std::vector<int> map = makeParticleReorderMapping(*root_chain);
 
 	// Overwrite all references to gro_ids in the files
-	for (auto& atom : grofile.atoms) {
+	for (auto& atom : grofile->atoms) {
 		atom.gro_id = map[atom.gro_id];
 	}
 
@@ -196,7 +196,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::
 	overwriteParticleIds<>(topfile->improperdihedralbonds.entries, map);
 
 	// Re-sort all entries with the new groids
-	std::sort(grofile.atoms.begin(), grofile.atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
+	std::sort(grofile->atoms.begin(), grofile->atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
 
 	std::sort(topfile->atoms.entries.begin(), topfile->atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr < b.nr; });
 	std::sort(topfile->singlebonds.entries.begin(), topfile->singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atom_indexes[0] < b.atom_indexes[0]; });
@@ -205,6 +205,6 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::
 	std::sort(topfile->dihedralbonds.entries.begin(), topfile->dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
 	std::sort(topfile->improperdihedralbonds.entries.begin(), topfile->improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
 
-	grofile.printToFile(gro_path_out);
+	grofile->printToFile(gro_path_out);
 	topfile->printToFile(top_path_out);
 }

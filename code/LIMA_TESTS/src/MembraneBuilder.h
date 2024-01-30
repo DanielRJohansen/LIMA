@@ -27,9 +27,11 @@ namespace TestMembraneBuilder {
 			lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10});	// 10% of each lipid, except 50% POPC
 		}
 		env.createMembrane(lipidselection, do_em);
-		const fs::path mol_dir = work_dir / "molecule";
-		const int a = sizeof(LipidSelect);
 
+
+
+		// Test that the output files match the reference output files
+		const fs::path mol_dir = work_dir / "molecule";
 		std::vector<std::array<std::string, 2>> files = { {"monolayer.gro", "monolayer_reference.gro"}, {"monolayer.top", "monolayer_reference.top"} };
 
 		if (!do_em) {

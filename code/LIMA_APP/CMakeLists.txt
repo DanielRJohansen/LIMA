@@ -1,15 +1,13 @@
 #LIMA_APPS
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 
-# We dont need CUDA, but we need the CMAKE error as soon as possible
-project(lima LANGUAGES CXX CUDA)
+project(lima LANGUAGES CXX)
 
 # Set the installation directory to /usr/local/bin
 set(CMAKE_INSTALL_PREFIX /usr/local)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 20)
 
 if (UNIX)
     set(CMAKE_CXX_COMPILER g++-13)

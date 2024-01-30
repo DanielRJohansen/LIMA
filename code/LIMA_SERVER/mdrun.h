@@ -67,26 +67,18 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 
 
 
-int main(int argc, char** argv) 
+int mdrun(int argc, char** argv) 
 {
-	try {
-		std::cout << "LIMA is preparing simulation in dir ";
-		MdrunSetup setup = parseProgramArguments(argc, argv);
-		std::cout << setup.work_dir << "\n";
-		auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
-		const SimParams ip = env->loadSimParams(setup.simpar);
-		//std::cout << setup.structure << "\t" << setup.topol << "\n";
-		env->CreateSimulation(setup.structure, setup.topol, ip);
-		env->run();
-	}
-	catch (const std::runtime_error& ex) {
-		std::cerr << "LIMA encountered an exception:\n\t " << ex.what() << std::endl;
-		return 1;
-	}
-	catch (...) {
-		std::cerr << "LIMA caught an unknown exception\n";
-		return 1;
-	}
+
+	std::cout << "LIMA is preparing simulation in dir ";
+	MdrunSetup setup = parseProgramArguments(argc, argv);
+	std::cout << setup.work_dir << "\n";
+	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
+	const SimParams ip = env->loadSimParams(setup.simpar);
+	//std::cout << setup.structure << "\t" << setup.topol << "\n";
+	env->CreateSimulation(setup.structure, setup.topol, ip);
+	env->run();
+
 
 	return 0;
 }

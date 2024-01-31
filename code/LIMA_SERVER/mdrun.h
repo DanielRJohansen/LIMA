@@ -74,7 +74,7 @@ int mdrun(int argc, char** argv)
 	MdrunSetup setup = parseProgramArguments(argc, argv);
 	std::cout << setup.work_dir << "\n";
 	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
-	const SimParams ip = env->loadSimParams(setup.simpar);
+	const SimParams ip(SimParams::defaultPath());
 	//std::cout << setup.structure << "\t" << setup.topol << "\n";
 	env->CreateSimulation(setup.structure, setup.topol, ip);
 	env->run();

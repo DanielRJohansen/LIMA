@@ -57,7 +57,7 @@ namespace ForceCorrectness {
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		Environment env{ work_folder, envmode, false };
-		auto ip = env.loadSimParams(work_folder + "sim_params.txt");
+		SimParams ip{ work_folder + "sim_params.txt"};
 		const float dt = ip.dt;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
@@ -118,7 +118,7 @@ namespace ForceCorrectness {
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
-		SimParams ip = env.loadSimParams(simpar);
+		SimParams params{ simpar };
 
 
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
@@ -126,7 +126,7 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto bond_len_error : bond_len_errors) {
-			env.CreateSimulation(conf, topol, ip);
+			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
@@ -164,7 +164,7 @@ namespace ForceCorrectness {
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		Environment env{ work_folder, envmode, false};
-		auto ip = env.loadSimParams(simpar);
+		SimParams params{ simpar };
 
 		const float relaxed_angle = 1.8849f; // [rad]
 		std::vector<float> angle_errors{ 0.5f, 0.7f }; //(t-t0) [rad]
@@ -172,7 +172,7 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			env.CreateSimulation(conf, topol, ip);
+			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
@@ -222,14 +222,14 @@ namespace ForceCorrectness {
 		const std::string simpar = work_folder + "sim_params.txt";
 
 		Environment env{ work_folder, envmode, false };
-		auto ip = env.loadSimParams(simpar);
+		SimParams params{ simpar };
 
 		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			env.CreateSimulation(conf, topol, ip);
+			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
@@ -296,11 +296,11 @@ namespace StressTesting {
 		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		auto ip = Environment::loadSimParams(simpar);
-		ip.n_steps = 100;
+		SimParams params{ simpar };
+		params.n_steps = 100;
 
 		auto func = [&]() {
-			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.0001f, 1e-7, ip, false);
+			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.0001f, 1e-7, params, false);
 		};
 		TestUtils::stressTest(func, 50);
 		return true;

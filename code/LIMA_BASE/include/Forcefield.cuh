@@ -15,7 +15,7 @@ public:
 
 	Forcefield(VerbosityLevel vl, const std::string& molecule_dir);
 
-	ForceField_NB getNBForcefield() const {
+	ForceField_NB constexpr getNBForcefield() const {
 		return forcefield_nb;
 	}
 	const ForceField_NB& getNBForcefieldRef() const {

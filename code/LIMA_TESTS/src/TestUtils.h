@@ -52,7 +52,8 @@ namespace TestUtils {
 
 		const SimParams ip = simparams.hasValue()
 			? simparams.value()
-			: env->loadSimParams(simpar);
+			: SimParams{ simpar };
+		
 
 		env->CreateSimulation(conf, topol, ip);
 

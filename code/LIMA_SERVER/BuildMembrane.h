@@ -4,6 +4,7 @@
 #include <vector>
 #include <filesystem>
 
+
 #include "CommandlineUtils.h"
 namespace fs = std::filesystem;
 
@@ -14,17 +15,9 @@ struct BuildMembraneSetup{
 
         int sizeValue = 0;
         for (int i = 1; i < argc; ++i) {
-            std::string arg = argv[i];
-            if (arg == "-size") {
-                boxsize = true;
-                if (i + 1 < argc && isInteger(argv[i + 1])) {
-                    sizeValue = std::stoi(argv[++i]);
-                }
-                else {
-                    std::cerr << "Invalid -size argument. It must have exactly one integer value." << std::endl;
-                }
-            }
-            else if (arg == "-lipids") {
+            const std::string arg = argv[i];
+
+            if (arg == "-lipids") {
                 while (i + 2 < argc && argv[i + 1][0] != '-' && isInteger(argv[i + 2])) {
                     lipids.emplace_back(argv[++i], std::stoi(argv[++i]));
                 }
@@ -38,7 +31,6 @@ struct BuildMembraneSetup{
 	EnvMode envmode = Full;
 
 	fs::path work_dir;
-    int boxsize = 0;
     std::vector<std::pair<std::string, int>> lipids;
 
 private:
@@ -56,8 +48,11 @@ int buildMembrane(int argc, char** argv) {
 
     auto a = setup.work_dir.string();
 	Environment env{ a, setup.envmode, false};
+    const SimParams params{ SimParams::defaultPath() };
 
-	env.CreateSimulation(7.f);
+
+
+	env.CreateSimulation(params.box_size);
 	LipidsSelection lipidselection;
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(LipidSelect{ lipid.first, lipid.second });

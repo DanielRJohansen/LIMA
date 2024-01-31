@@ -43,7 +43,7 @@ namespace Filehandler {
 
 	std::string extractFilename(const std::string& path);
 
-	std::map<std::string, double> parseINIFile(const std::string path);
+	std::map<std::string, std::string> parseINIFile(const std::string& path);
 
 	static std::vector<std::vector<std::string>> readFile(const std::string path, 
 		std::vector<char> comment_markers = { ';', '/' },

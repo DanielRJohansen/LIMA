@@ -39,7 +39,7 @@ Float3 calcDimensions(const ParsedGroFile& grofile)
 	return dims;
 }
 
-float fursthestDistanceToZAxis(const LipidsSelection& lipidselection) {
+float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
 		for (const auto& atom : lipid.grofile->atoms) {
@@ -88,7 +88,7 @@ void addAtomToFile(ParsedGroFile& outputgrofile, ParsedTopologyFile& outputtopol
 }
 
 
-void validateLipidselection(const LipidsSelection& lipidselection) {
+void constexpr validateLipidselection(const LipidsSelection& lipidselection) {
 	int total_percentage = 0;
 	for (const auto& lipid : lipidselection) {
 		total_percentage += lipid.percentage;

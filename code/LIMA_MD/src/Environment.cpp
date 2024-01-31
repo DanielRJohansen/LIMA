@@ -1,11 +1,20 @@
+#include <filesystem>
+#include <string>
+#include <assert.h>  
+
+
+
 #include "Environment.h"
 #include "Printer.h"
 #include "MDFiles.h"
-#include "SimulationBuilder.h"
 #include "EngineUtils.cuh"
+#include "CompoundBuilder.h"
+#include "VirtualPathMaker.h"
+#include "DisplayV2.h"
+#include "BoxBuilder.cuh"
+#include "Engine.cuh"
+#include "ForcefieldMaker.h"
 
-#include <filesystem>
-#include <stdexcept>
 
 using namespace LIMA_Print;
 using std::string;
@@ -33,6 +42,8 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
 }
+
+Environment::~Environment() {}
 
 void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
@@ -156,7 +167,7 @@ void Environment::setupEmptySimulation(const SimParams& simparams) {
 	verifySimulationParameters();
 }
 
-void Environment::verifySimulationParameters() {	// Not yet implemented
+void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
 	//static_assert(BOX_LEN > 3.f, "Box too small");
 	//static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
@@ -513,13 +524,6 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 //}
 
 
-
-SimParams Environment::loadSimParams(const std::string& path) {
-	SimParams simparams{};
-	auto param_dict = Filehandler::parseINIFile(path);
-	simparams.overloadParams(param_dict);
-	return simparams;
-}
 
 std::unique_ptr<Simulation> Environment::getSim() {
 	// Should we delete the forcefield here?

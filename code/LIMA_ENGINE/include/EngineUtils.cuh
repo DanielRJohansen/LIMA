@@ -358,15 +358,15 @@ public:
 namespace LIMALOGSYSTEM {
 
 	// Same as below, but we dont expect to be an even interval
-	static int64_t getMostRecentDataentryIndex(int64_t step) {
+	static constexpr int64_t getMostRecentDataentryIndex(int64_t step) {
 		return step / LOG_EVERY_N_STEPS;
 	}
 
-	static int64_t getNIndicesBetweenSteps(int64_t from, int64_t to) {
+	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to) {
 		return getMostRecentDataentryIndex(to) - getMostRecentDataentryIndex(from);
 	}
 
-	__device__ __host__ static int64_t getDataentryIndex(int64_t step) {
+	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step) {
 		if (step % LOG_EVERY_N_STEPS != 0) {
 			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
 			return 0;
@@ -384,7 +384,7 @@ namespace EngineUtils {
 	// Assumes positions in NM
 
 
-	__device__ __host__ static float calcKineticEnergy(const float velocity, const float mass) {
+	__device__ __host__ constexpr static float calcKineticEnergy(const float velocity, const float mass) {
 		return 0.5f * mass * velocity * velocity;
 	}
 
@@ -421,13 +421,13 @@ namespace EngineUtils {
 	}
 	// http://hyperphysics.phy-astr.gsu.edu/hbase/Kinetic/kintem.html
 
-	static float kineticEnergyToTemperature(long double kineticEnergy /*[J]*/, int numParticles) {
+	static float constexpr kineticEnergyToTemperature(long double kineticEnergy /*[J]*/, int numParticles) {
 		const double temperature = kineticEnergy * (2.0 / 3.0) / (BOLTZMANNCONSTANT * numParticles);
 		return static_cast<float>(temperature);
 	}
 
 	//// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	__device__ static int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+	__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
 
 		const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
 		//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
@@ -520,7 +520,7 @@ namespace EngineUtils {
 		return (pos1 - pos2).len();
 	}
 
-	__device__ static bool isOutsideCutoff(const float dist_sq_reciprocal) {
+	__device__ static bool constexpr isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
 			constexpr float threshold = 1. / (CUTOFF_LM * CUTOFF_LM);
 			if (dist_sq_reciprocal < threshold) {

@@ -1,5 +1,84 @@
+#include <assert.h>
+#include <map>
+#include <functional>
+#include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
+
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
+
+using std::string;
+
+template <typename T>
+constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
+	for (auto& pair : pairs) {
+		if (pair.first == val_str) {
+			return pair.second;
+		}
+	}
+
+	throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_str + " " + val_str);
+}
+
+// Helper function for overwriting templates
+template <typename T>
+constexpr void overwriteParamNonNumbers(std::map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
+	if (dict.count(key)) {
+		val = transform(dict[key]);
+	}
+}
+
+template <typename T>
+constexpr void overloadParamNumber(std::map<std::string, std::string>& dict, T& param,
+	std::string key, std::function<T(const T&)> transform = [](const T& v) {return v; })
+{
+	static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>, "T must be an integral or floating-point type.");
+
+	if (dict.count(key)) {
+		if constexpr (std::is_integral_v<T>) {
+			// For integral types (e.g., int)
+			param = static_cast<T>(std::stoi(dict[key]));
+		}
+		else if constexpr (std::is_floating_point_v<T>) {
+			// For floating-point types (e.g., float, double)
+			param = static_cast<T>(transform(std::stof(dict[key])));
+		}
+	}
+}
+
+SimParams::SimParams(const std::string& path) {
+	auto dict = Filehandler::parseINIFile(path);
+	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
+	overloadParamNumber(dict, n_steps, "n_steps");
+	overloadParamNumber(dict, box_size, "box_size");
+
+	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
+		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }}, "em", value); }
+	);
+
+	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
+		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC}}, "boundarycondition", value); }
+	);
+}
+
+
+void SimParams::dumpToFile(const std::string& filename) {
+	std::ofstream file(filename);
+	if (!file.is_open()) {
+		// Handle the error, e.g., by throwing an exception or logging an error message
+		throw std::runtime_error("Unable to open file: " + filename);
+	}
+
+	file << "n_steps=" << n_steps << "\n";
+	file << "dt= " << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
+	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
+	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
+	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
+	file << "Box Size: " << box_size << " # [nm]\n";
+
+	file.close();
+}
+
+
 
 Box::~Box() {
 	if (owns_members) { deleteMembers(); }
@@ -125,10 +204,7 @@ void Simulation::copyBoxVariables() {
 //	overloadParam(dict, &n_steps, "n_steps");
 //}
 
-void SimParams::overloadParams(std::map<std::string, double>& dict) {
-	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
-	overloadParam(dict, &n_steps, "n_steps");
-}
+
 
 //SimParams::SimParams(const InputSimParams& ip) : 
 //	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)

@@ -2,10 +2,8 @@
 
 #include "Constants.h"
 #include "Bodies.cuh"
-#include <map>
-#include <assert.h>
 #include <memory>
-//#include "BoundaryCondition.cuh"
+
 
 struct ForceField_NB;
 class Forcefield;
@@ -20,35 +18,25 @@ enum BoundaryConditionSelect{NoBC, PBC};
 
 enum SupernaturalForcesSelect{None, HorizontalSqueeze};
 
-
-
 struct SimParams {
 	SimParams() {}
+	SimParams(const std::string& path);
 	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
 		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
-	//SimParams(const InputSimParams& ip);
 
-	void overloadParams(std::map<std::string, double>& dict);
-
+	void dumpToFile(const std::string& filename = "sim_params.txt");
 
 	uint64_t n_steps = 1000;
 	float dt = 100.f;									// [ls]
 	bool em_variant = false;
 	BoundaryConditionSelect bc_select{ PBC };
 	SupernaturalForcesSelect snf_select{ None };
+	float box_size = 7.f;								// [nm]
 
-private:
-	template <typename T> void overloadParam(std::map <std::string, double>& dict, T* param, std::string key, float scalar = 1.f) {
-		if (dict.count(key)) { *param = static_cast<T>(dict[key] * scalar); }
-	}
+	static constexpr std::string defaultPath() { return "sim_params.txt"; };
 };
 
 struct SimSignals {
-	SimSignals() {}
-	//SimSignals(const InputSimParams& ip);
-	//SimSignals(const SimParams& spc) : constparams(spc) {}
-
-
 	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
 	float thermostat_scalar = 1.f;

@@ -130,33 +130,32 @@ vector<vector<string>> Filehandler::readFile(const string path, vector<char> com
 	return rows;
 }
 
-map<string, double> Filehandler::parseINIFile(const string path) {
-	// TODO: add read here
-	//if (verbosity_level >= V1) { cout << "Reading particles from file " << path << "\n"; }
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-        throw std::runtime_error(std::format("Failed to open file {}\n", path).c_str());
-    }
 
-	map<string, double> dict;
-
-	string line;
-	while (getline(file, line)) {
-		int i = 0;
-		string pair[2];
-		stringstream ss(line);
-		string word;
-		while (getline(ss, word, '=')) {
-			word.erase(std::remove_if(word.begin(), word.end(), isspace), word.end());
-			pair[i++] = word;
-
-			if (i == 2) { dict[pair[0]] = stod(pair[1]); }
-		}
+// Reads "key=value" pairs from a file. Disregards all comments (#)
+std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& path) {
+	std::ifstream file(path);
+	if (!file.is_open()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path));
 	}
 
-	file.close();
+	std::map<std::string, std::string> dict;
+	std::string line;
+	while (getline(file, line)) {
+		// Sanitize line by removing everything after a '#' character
+		size_t commentPos = line.find('#');
+		if (commentPos != std::string::npos) {
+			line = line.substr(0, commentPos);
+		}
 
+		std::stringstream ss(line);
+		std::string key, value;
+		if (getline(ss, key, '=') && getline(ss, value)) {
+			// Remove spaces from both key and value
+			key.erase(remove_if(key.begin(), key.end(), ::isspace), key.end());
+			value.erase(remove_if(value.begin(), value.end(), ::isspace), value.end());
+			dict[key] = value;
+		}
+	}
 	return dict;
 }
 

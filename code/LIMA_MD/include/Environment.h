@@ -1,42 +1,28 @@
 #pragma once
 
-#include "Bodies.cuh"
-#include "DisplayV2.h"
-#include "Interface.h"
-#include "Engine.cuh"
-#include "Analyzer.cuh"
-#include "CompoundBuilder.h"
-#include "VirtualPathMaker.h"
-#include "BoxBuilder.cuh"
-#include "SimulationBuilder.h"
-
-// For logging
-#include <fstream>
-#include <string>
-#include <assert.h>  
-#include <stdlib.h>
-#include <stdio.h>
 #include <memory>
+#include <chrono>
 
-
-#ifndef __linux__
-#include <direct.h>
-#endif
-
-
-#include "ForcefieldMaker.h"
+#include "Analyzer.cuh"
+#include "SimulationBuilder.h"
+#include "Bodies.cuh"
 
 
 
-
+class BoxBuilder;
+class Display;
+struct BoxImage;
+class Engine;
 
 
 class Environment
 {
 
 public:
+	Environment() = delete;
 	Environment(const Environment&) = delete;
 	Environment(const std::string& wf, EnvMode mode, bool save_output);
+	~Environment();
 
 	/// <summary>
 	/// Create a simulation, and create the necessary files in process, if the defaults
@@ -82,8 +68,14 @@ public:
 	// Return if cannot run
 	bool prepareForRun();
 
-	static SimParams loadSimParams(const std::string& path);
+
+	
+	
+	
+	
+	
 	void renderTrajectory(std::string trj_path);
+	
 	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
@@ -100,7 +92,7 @@ private:
 	void resetEnvironment();
 
 	void setupEmptySimulation(const SimParams&);
-	void verifySimulationParameters();			// Constants before doing anything
+	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
 	void postRunEvents();
@@ -114,7 +106,7 @@ private:
 	EnvMode m_mode;
 	const bool save_output;
 
-	std::unique_ptr<Display> display;
+	std::unique_ptr<Display> display = nullptr;
 	int step_at_last_render = 0;
 	int step_at_last_update = 0;
 

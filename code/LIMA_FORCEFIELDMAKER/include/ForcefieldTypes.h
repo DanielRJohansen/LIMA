@@ -112,8 +112,6 @@ namespace FTHelpers {
 		bool first_attempt =true) {
 		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
 
-		//query_type.sort();
-
 		float best_likeness = 0;
 		GenericBondType best_bond = forcefield.at(0);
 		for (const GenericBondType& ff_bondtype : forcefield) {
@@ -152,7 +150,7 @@ namespace FTHelpers {
 			std::cout << std::to_string(id) << " ";
 		}
 		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
-		throw std::runtime_error("findBestMatchInForcefield failed");
+		throw std::runtime_error("\nfindBestMatchInForcefield failed");
 	}
 
 	template <typename GenericBondType>

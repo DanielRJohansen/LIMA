@@ -106,7 +106,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 		if (simulation->simparams_host.em_variant) {
-			sim_dev->signals->thermostat_scalar = 0.999f;	// The current implementation of em is only this, overwriting the velocity scaler to always be 0.5
+			sim_dev->signals->thermostat_scalar = 0.9995f;	// The current implementation of em is only this, overwriting the velocity scaler to always be 0.5
 		}
 
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);

@@ -21,6 +21,7 @@ using std::string;
 using std::cout;
 using std::printf;
 namespace lfs = Filehandler;
+namespace fs = std::filesystem;
 
 Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	: work_dir(wf)
@@ -39,6 +40,10 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	case EnvMode::Headless:
 		break;
 	}
+
+	const auto moldir = fs::path(wf) / "molecule";	// TODO: Find a better place for this
+	if (!fs::exists(moldir))
+		fs::create_directory(moldir);
 
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
 }

@@ -65,20 +65,23 @@ int main() {
 	
 
 
-
-		//const fs::path work_dir = simulations_dir + "/BuildMembraneSmall";
+		
+		//const fs::path work_dir = simulations_dir + "/test";
+		//SimParams params{};
+		//params.dumpToFile(work_dir.string() + "/sim_params.txt");
 		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(7.f);
+		//env.CreateSimulation(20.f);
 		//LipidsSelection lipids;
-		//lipids.emplace_back(LipidSelect{ "POPE", 50 });
-		//lipids.emplace_back(LipidSelect{ "DMPC", 50 });
+		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
 		//env.createMembrane(lipids, true);
 
 
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.75e-6, 2e-5);		
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.4e-5, 2e-5);		
 
 		runAllUnitTests();
 	}
@@ -124,7 +127,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.01e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 7.5e-6, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.4e-5, 2e-5));
 
 	// Programs test
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));

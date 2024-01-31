@@ -42,7 +42,7 @@ namespace SupernaturalForces {
 			force_y += dist_y * lin_factor;
 
 			// Exp force
-			const float exp_factor = 0.000001;
+			const float exp_factor = 0.000000;
 			force_x += dist_x * dist_x * exp_factor;
 			force_y += dist_y * dist_y * exp_factor;
 

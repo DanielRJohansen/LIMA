@@ -150,26 +150,26 @@ __device__ Int3 getColor(ATOM_TYPE atom_type) {
     }
 }
 
+//https://en.wikipedia.org/wiki/Van_der_Waals_radius
 __device__ float getRadius(ATOM_TYPE atom_type) {
     switch (atom_type)
     {
-
     case ATOM_TYPE::H:
-        return 0.04;
+        return 0.109f * 0.1f;   // Make smaller for visibility
     case ATOM_TYPE::C:
-        return 0.1;
+        return 0.17f;
     case ATOM_TYPE::N:
-        return 0.1;
+        return 0.155f;
     case ATOM_TYPE::O:
-        return 0.12;
+        return 0.152f;
     case ATOM_TYPE::SOL:
-        return 0.05;
+        return 0.152f * 0.1f;   // Make smaller for visibility
     case ATOM_TYPE::P:
-        return 0.15;
+        return 0.18f;
     case ATOM_TYPE::NONE:
-        return 1;
+        return 1.f;
     default:
-        return 1;
+        return 1.f;
     }
 }
 
@@ -246,11 +246,9 @@ __global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float b
     
     //atom.color = getColor(atom.atom_type);
 
-    atom.radius = (getRadius(atom.atom_type)) / (1.f+atom.pos.y * 0.00000000001f);       // [nm]
+    atom.radius = getRadius(atom.atom_type) * 1.f/box_len_nm;       // [nm]
 
     // Convert units to normalized units for OpenGL
-    atom.radius = 0.25f * atom.radius;            // Yeah, i'm just eyeballing this..
-
     atom.pos = atom.pos / box_len_nm - 0.5f;    // normalize from -0.5->0.5
     //atom.pos *= 1.4f;                           // scale a bit up
 

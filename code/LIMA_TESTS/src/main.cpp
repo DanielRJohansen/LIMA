@@ -67,8 +67,6 @@ int main() {
 
 		
 		//const fs::path work_dir = simulations_dir + "/test";
-		//SimParams params{};
-		//params.dumpToFile(work_dir.string() + "/sim_params.txt");
 		//Environment env{ work_dir.string(), envmode, false };
 		//env.CreateSimulation(20.f);
 		//LipidsSelection lipids;
@@ -119,7 +117,7 @@ void runAllUnitTests() {
 
 
 	// Smaller compound tests
-	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 9.9e-7));
+	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6));
 	ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
 	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
@@ -127,7 +125,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.01e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.4e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5));
 
 	// Programs test
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));

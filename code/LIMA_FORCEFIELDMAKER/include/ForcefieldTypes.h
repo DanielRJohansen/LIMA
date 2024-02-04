@@ -27,158 +27,6 @@
 
 #include <span>
 
-namespace FTHelpers {
-	using std::vector, std::string;
-
-	static bool charIsNumber(char c) {
-		return ((int)c > 47 && (int)c < 58);
-	}
-	static bool charIsNumberAbove1(char c) {
-		return ((int)c > 49 && (int)c < 58);
-	}
-	static float _calcLikeness(const string& query_type, const string& forcefield_type) {
-
-		// Edgecase: perfect match
-		if (query_type == forcefield_type) { return 1.f; }
-
-		// Edgecase: wildcard
-		if (forcefield_type == "X") {
-			return 0.9f;
-		}
-
-		float likeness = 0;
-		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
-
-		for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
-			if (query_type[i] == forcefield_type[i])
-				likeness += point_scale;
-			else
-				break;
-		}
-		return likeness;
-	}
-		
-			
-	template <class DerivedType>
-	static float calcLikeness(DerivedType query_type, const DerivedType &forcefield_type) {
-		float likeness_unflipped = 1.f;
-		for (int i = 0; i < DerivedType::n_atoms; i++) {
-			likeness_unflipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
-		}
-
-		//query_type.flip();
-
-		float likeness_flipped = 1.f;
-		for (int i = 0; i < DerivedType::n_atoms; i++) {
-			likeness_flipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
-		}
-
-		return std::max(likeness_flipped, likeness_unflipped);
-	}
-
-	static bool isSorted(string* leftmost, string* rightmost) {
-		int ptr = 0;
-		while (leftmost->length() > ptr && rightmost->length() > ptr) {
-			if ((int)(*leftmost)[ptr] < (int)(*rightmost)[ptr]) {
-				return true;
-			}
-			else if ((int)(*leftmost)[ptr] > (int)(*rightmost)[ptr]) {
-				return false;
-			}
-			ptr++;
-		}
-		if (leftmost->length() > rightmost->length()) {
-			return false;
-		}
-		return true;
-	}
-
-
-	static string makeBondTag(std::span<string>atom_ids) {
-		string out = "";
-		for (const auto& atom_id : atom_ids) {
-			out = out + atom_id + "-";
-		}
-		out.pop_back();	// remove the last '-'
-		return out;
-	}
-
-
-
-
-
-	template <typename GenericBondType>
-	static const GenericBondType findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, 
-		bool first_attempt =true) {
-		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
-
-		float best_likeness = 0;
-		GenericBondType best_bond = forcefield.at(0);
-		for (const GenericBondType& ff_bondtype : forcefield) {
-			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
-
-
-			if (likeness > best_likeness) {
-				best_likeness = likeness;
-				best_bond = ff_bondtype;
-			}
-		}
-		if (best_likeness > 0.01f)
-			return best_bond;
-
-
-		// Special case for flipping import dihedrals. only temp // TODO: Find a better solution
-		if (GenericBondType::n_atoms == 4 && first_attempt) {
-			GenericBondType query_flipped = query_type;
-			query_flipped.flip();
-			return findBestMatchInForcefield(query_flipped, forcefield, false);
-		}
-
-
-		std::cout << "Failed to match bond types.\n Closest match ";
-		for (auto& name : best_bond.bonded_typenames) {
-			std::cout << name << " ";
-		}
-		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
-		printf("\nLikeness %f\n", best_likeness);
-		printf("Query typenames: ");
-		for (auto& name : query_type.bonded_typenames) {
-			std::cout << name << " ";
-		}
-		printf("\nQuery gro_ids: ");
-		for (auto& id : query_type.global_ids) {
-			std::cout << std::to_string(id) << " ";
-		}
-		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
-		throw std::runtime_error("\nfindBestMatchInForcefield failed");
-	}
-
-	template <typename GenericBondType>
-	static void assignForceVariablesFromForcefield(vector<GenericBondType>& topol_bonds, const vector<GenericBondType>& forcefield) {
-		std::unordered_map<string, const GenericBondType> forcefieldMap;
-
-		for (int i = 0; i < topol_bonds.size(); i++) {
-			//std::cout << std::format("\rAssigning FF parameters to {} {} of {}", 
-			//	GenericBondType::getBondtype(), i+1, topol_bonds->size());
-
-			GenericBondType* bond = &topol_bonds.at(i);
-
-			// Try to see if we have already searched for a dihedral with an identical order of identical atom types
-			string tag = FTHelpers::makeBondTag(bond->bonded_typenames);
-			auto cachedFF = forcefieldMap.find(tag);
-
-			if (cachedFF != forcefieldMap.end()) {
-				const GenericBondType& appropriateForcefieldType = cachedFF->second;
-				bond->assignForceVariables(appropriateForcefieldType);
-			}
-			else {
-				const GenericBondType appropriateForcefieldType = findBestMatchInForcefield(*bond, forcefield);
-				forcefieldMap.insert({ tag, appropriateForcefieldType });
-				bond->assignForceVariables(appropriateForcefieldType);
-			}
-		}
-	}
-};
 
 
 
@@ -277,27 +125,6 @@ public:
 };
 
 
-
-// Returns whether string a is smaller than string b
-static bool isStringSmaller(const std::string& a, const std::string& b) 
-{
-	for (int i = 0; i < std::min(a.length(), b.length()); i++) {
-		if (a[i] > b[i])
-			return false;
-		else if (a[i] < b[i]) {
-			return true;
-		}
-	}
-
-	// If they are identical by a is longer
-	if (a.length() > b.length())
-		return false;
-
-	return true;
-}
-
-
-
 template <int n_atoms>	// n atoms in bond
 struct BondtypeBase {
 	BondtypeBase(const std::array<std::string, n_atoms>& typenames) : bonded_typenames(typenames) {
@@ -340,7 +167,7 @@ struct Singlebondtype : public BondtypeBase<2>{
 	}
 
 	void sort() override {
-		if (isStringSmaller(bonded_typenames[1], bonded_typenames[0])) {
+		if (bonded_typenames[1] < bonded_typenames[0]) {
 			flip();
 		}			
 	}
@@ -374,7 +201,7 @@ struct Anglebondtype : public BondtypeBase<3> {
 	}
 
 	void sort() override {
-		if (isStringSmaller(bonded_typenames[2], bonded_typenames[0])) {
+		if (bonded_typenames[2] < bonded_typenames[0]) {
 			flip();
 		}
 	}
@@ -385,6 +212,9 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) 
 		: BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) 
 	{
+		if (typenames[0] == "X" && typenames[3] == "X") {
+			int a = 0;
+		}
 		sort();
 	}
 	Dihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
@@ -409,13 +239,13 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 
 	void sort() override {
 		// If out is wrong, flip
-		if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
+		if (bonded_typenames[3] < bonded_typenames[0]) {
 			flip();
 		}
 		// If outer is identical, but inner is wrong, flip
 		else if (
 			bonded_typenames[0] == bonded_typenames[3] && 
-			isStringSmaller(bonded_typenames[2], bonded_typenames[1])) 
+			bonded_typenames[2] < bonded_typenames[1]) 
 		{
 			flip();
 		}
@@ -452,16 +282,171 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 
 	//TODO: Check with Ali that this is okay?!
 	void sort() override {
-		// If out is wrong, flip
-		//if (isStringSmaller(bonded_typenames[3], bonded_typenames[0])) {
-		//	flip();
-		//}
-		// If outer is identical, but inner is wrong, flip
-	/*	else if (
-			bonded_typenames[0] == bonded_typenames[3] &&
-			isStringSmaller(bonded_typenames[2], bonded_typenames[1]))
-		{
-			flip();
-		}*/
+		// Improper dihedrals cannot be sorted, as they are asymmetric
 	}
 };
+
+
+
+namespace FTHelpers {
+	using std::vector, std::string;
+
+	static bool charIsNumber(char c) {
+		return ((int)c > 47 && (int)c < 58);
+	}
+	static bool charIsNumberAbove1(char c) {
+		return ((int)c > 49 && (int)c < 58);
+	}
+	static float _calcLikeness(const string& query_type, const string& forcefield_type) {
+
+		// Edgecase: perfect match
+		if (query_type == forcefield_type) { return 1.f; }
+
+		// Edgecase: wildcard
+		if (forcefield_type == "X") {
+			return 0.9f;
+		}
+
+		float likeness = 0;
+		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
+
+		for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
+			if (query_type[i] == forcefield_type[i])
+				likeness += point_scale;
+			else
+				break;
+		}
+		return likeness;
+	}
+
+
+	template <class DerivedType>
+	static float calcLikeness(DerivedType query_type, const DerivedType& forcefield_type) {
+		float likeness_unflipped = 1.f;
+		for (int i = 0; i < DerivedType::n_atoms; i++) {
+			likeness_unflipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
+		}
+
+		//query_type.flip();
+
+		float likeness_flipped = 1.f;
+		for (int i = 0; i < DerivedType::n_atoms; i++) {
+			likeness_flipped *= FTHelpers::_calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
+		}
+
+		return std::max(likeness_flipped, likeness_unflipped);
+	}
+
+	static bool isSorted(string* leftmost, string* rightmost) {
+		int ptr = 0;
+		while (leftmost->length() > ptr && rightmost->length() > ptr) {
+			if ((int)(*leftmost)[ptr] < (int)(*rightmost)[ptr]) {
+				return true;
+			}
+			else if ((int)(*leftmost)[ptr] > (int)(*rightmost)[ptr]) {
+				return false;
+			}
+			ptr++;
+		}
+		if (leftmost->length() > rightmost->length()) {
+			return false;
+		}
+		return true;
+	}
+
+
+	static string makeBondTag(const std::span<string>& atom_ids) {
+		string out = "";
+		for (const auto& atom_id : atom_ids) {
+			out = out + atom_id + "-";
+		}
+		out.pop_back();	// remove the last '-'
+		return out;
+	}
+
+
+
+
+
+	template <typename GenericBondType>
+	static const GenericBondType& findBestMatchInForcefield(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, bool first_attempt = true) {
+		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
+
+		float best_likeness = 0;
+		const GenericBondType* best_bond = &forcefield.at(0); // Use pointer to avoid initial copy
+		for (const GenericBondType& ff_bondtype : forcefield) { // Iterate by reference
+			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
+
+			if (likeness > best_likeness) {
+				best_likeness = likeness;
+				best_bond = &ff_bondtype; // Update pointer to the current best match
+			}
+		}
+
+		if (best_likeness > 0.01f) {
+			return *best_bond; // Dereference the pointer to return the object
+		}
+
+
+		// Special case for flipping both types of dihedrals.
+		// Dihedrals needs to be flipped because X C O X and X O C X is both valid
+		// I dont know why we need to flip impropers :(  
+		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype> || std::is_same_v<GenericBondType, Improperdihedralbondtype>) {
+			if (first_attempt) {
+				GenericBondType query_flipped = query_type;
+				query_flipped.flip();
+				return findBestMatchInForcefield(query_flipped, forcefield, false);
+			}
+		}
+		
+
+
+		std::cout << "Failed to match bond types.\n Closest match ";
+		for (auto& name : best_bond->bonded_typenames) {
+			std::cout << name << " ";
+		}
+		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype>) {
+			std::cout << "Dihedral type\n";
+		}
+		else {
+			std::cout << "Improper type\n";
+		}
+		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
+		printf("\nLikeness %f\n", best_likeness);
+		printf("Query typenames: ");
+		for (auto& name : query_type.bonded_typenames) {
+			std::cout << name << " ";
+		}
+		printf("\nQuery gro_ids: ");
+		for (auto& id : query_type.global_ids) {
+			std::cout << std::to_string(id) << " ";
+		}
+		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
+		throw std::runtime_error("\nfindBestMatchInForcefield failed");
+	}
+
+	template <typename GenericBondType>
+	static void assignForceVariablesFromForcefield(vector<GenericBondType>& topol_bonds, const vector<GenericBondType>& forcefield) 
+	{
+		std::unordered_map<string, const GenericBondType> forcefieldMap;
+
+		for (GenericBondType& bond : topol_bonds ) {
+
+			// Try to see if we have already searched for a bond with an identical order of identical atom types
+			const string tag = FTHelpers::makeBondTag(bond.bonded_typenames);
+			auto cachedFF = forcefieldMap.find(tag);
+
+			if (cachedFF != forcefieldMap.end()) {
+				// Load the cachedFF into bond
+				bond.assignForceVariables(cachedFF->second);
+				//const GenericBondType& appropriateForcefieldType = cachedFF->second;
+				//bond.assignForceVariables(appropriateForcefieldType);
+			}
+			else {
+				const GenericBondType& appropriateForcefieldType = findBestMatchInForcefield(bond, forcefield);
+				forcefieldMap.insert({ tag, appropriateForcefieldType });
+				bond.assignForceVariables(appropriateForcefieldType);
+			}
+		}
+	}
+};//bond.assignForceVariables(*cachedFF->second);

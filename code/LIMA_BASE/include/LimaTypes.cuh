@@ -530,6 +530,8 @@ private:
 //using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
 using BondedParticlesLUT = FixedSizeMatrix<bool,MAX_COMPOUND_PARTICLES>;
 
+// TODO: EASY: Make this N_compounds X 10 instead of N x N as we have now. Each compound is likely only bonded to the nearby 10 compounds anyways
+// But write a test to make sure
 class BondedParticlesLUTManager {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
 	static const int n_elements = MAX_COMPOUNDS * max_bonded_compounds;

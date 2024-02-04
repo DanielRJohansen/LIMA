@@ -20,6 +20,7 @@
 class SimulationDevice;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+const int lutsize = sizeof(BondedParticlesLUTManager);
 template <typename BoundaryCondition>
 __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);

@@ -143,6 +143,8 @@ void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
 	auto bilayerfiles = SimulationBuilder::makeBilayerFromMonolayer({ monolayer_grofile_em, monolayerfiles.second }, simulation->box_host->boxparams.dims);
 
+	bilayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/bilayer.top"));
+
 	// Run EM for a while - with pbc
 	{
 		SimParams ip{};

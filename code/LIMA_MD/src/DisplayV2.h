@@ -51,7 +51,7 @@ private:
 	Rasterizer rasterizer;
 	bool initGLFW();
 
-	void updateCamera(float pitch, float yaw);
+	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
 
 	void drawFilledCircle(const RenderBall& ball);
 	void drawBalls(const std::vector<RenderBall>& balls, int n_balls);
@@ -64,7 +64,7 @@ private:
 
 	float camera_pitch = 0.f;
 	float camera_yaw = 0.f;
-
+	float camera_distance = -3.5;
 	Float3 camera_normal{ 0.f,1.f,0.f };
 
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";

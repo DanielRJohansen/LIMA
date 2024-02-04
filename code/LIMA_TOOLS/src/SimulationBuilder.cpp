@@ -82,9 +82,9 @@ void addAtomToFile(ParsedGroFile& outputgrofile, ParsedTopologyFile& outputtopol
 
 	outputtopologyfile.atoms.entries.emplace_back(input_atom_top);
 	outputtopologyfile.atoms.entries.back().nr += atom_offset;
-	outputtopologyfile.atoms.entries.back().nr %= 100000;
+	//outputtopologyfile.atoms.entries.back().nr %= 100000;
 	outputtopologyfile.atoms.entries.back().resnr += residue_offset;
-	outputtopologyfile.atoms.entries.back().resnr %= 100000;
+	//outputtopologyfile.atoms.entries.back().resnr %= 100000;
 }
 
 
@@ -250,9 +250,6 @@ namespace SimulationBuilder{
 		const int resnr_offset = inputgrofile.atoms.back().residue_number;
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			if (pos.z < box_dims.z / 2.f)
-				pos.print('Q');
-			float a = pos.z;
 			pos.z = -pos.z;	// Mirror atom in xy plane
 			pos.z += box_dims.z - padding_between_layers;	// times 2 since
 			//pos.z += lowest_zpos * 2.f - padding;	// Move atom back up to the first layer

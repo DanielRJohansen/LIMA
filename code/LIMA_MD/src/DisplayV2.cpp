@@ -19,12 +19,13 @@ void setupProjection(int screenWidth, int screenHeight) {
     glFrustum(-fW, fW, -fH, fH, nearPlane, farPlane);
 }
 
-void Display::updateCamera(float pitch, float yaw) {
+void Display::updateCamera(float pitch, float yaw, float delta_distance) {
 
     // Reset previous rotations
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    glTranslatef(0.0f, .0f, -3.5f);  // Move the scene away from the camera    
+    camera_distance += delta_distance;
+    glTranslatef(0.0f, .0f, camera_distance);  // Move the scene away from the camera    
     glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);  // Rotate around the x-axis
     
 
@@ -75,7 +76,13 @@ Display::Display() :
                 case GLFW_KEY_RIGHT:
                     display->updateCamera(display->camera_pitch, display->camera_yaw - delta);
                     break;
-                }
+                case GLFW_KEY_PAGE_UP:
+                    display->updateCamera(display->camera_pitch, display->camera_yaw, 0.5f);
+                    break;
+                case GLFW_KEY_PAGE_DOWN:
+					display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
+					break;
+                }                              
             }
         }
         };

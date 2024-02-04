@@ -52,7 +52,7 @@ SimParams::SimParams(const std::string& path) {
 	overloadParamNumber(dict, box_size, "box_size");
 
 	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
-		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }}, "em", value); }
+		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }
 	);
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
@@ -69,11 +69,11 @@ void SimParams::dumpToFile(const std::string& filename) {
 	}
 
 	file << "n_steps=" << n_steps << "\n";
-	file << "dt= " << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
+	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
 	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
-	file << "Box Size: " << box_size << " # [nm]\n";
+	file << "Box Size=" << box_size << " # [nm]\n";
 
 	file.close();
 }

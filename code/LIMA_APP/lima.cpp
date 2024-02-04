@@ -3,9 +3,18 @@
 // Finally we simply forward all args to the limaserver program
 
 #include <iostream>
+#include <filesystem>
 #include "autorecompile.h"
 
-constexpr bool requiresRecompile(const std::string& program) {
+namespace fs = std::filesystem;
+constexpr bool requiresRecompile(const std::string& program)
+{
+    // The first time we call LIMA, we wont have the limaserver yet,
+    // so yes recompile
+    if (!fs::exists("~/LIMA/applications/limaserver"))
+        return true;
+
+
     const bool requiresEngine = program == "mdrun" || program == "buildmembrane";
 
     // TODO: Add some logic to check if the users params are the same as the current engine is compiled with
@@ -26,7 +35,7 @@ int main(int argc, char** argv)
         if (compile_failed) return 1;
     }
 
-    std::string command = "~/LIMA/applications/limaserver"; // Use getenv(home instead
+    std::string command = "~/LIMA/applications/limaserver"; // Use getenv(home insteadmv
     for (int i = 1; i < argc; ++i) {
         command += " ";
         command += argv[i];

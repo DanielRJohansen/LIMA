@@ -37,7 +37,8 @@ int main(int argc, char** argv)
 		const std::string program = argv[1];
 
 		if (program == "mdrun") { mdrun(argc, argv); }
-		else if (program == "membranebuilder") { buildMembrane(argc, argv); }
+		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
+		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
 		}

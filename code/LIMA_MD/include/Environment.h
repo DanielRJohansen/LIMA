@@ -6,6 +6,7 @@
 #include "Analyzer.cuh"
 #include "SimulationBuilder.h"
 #include "Bodies.cuh"
+#include "DisplayV2.h"
 
 
 

@@ -18,8 +18,10 @@ struct BuildMembraneSetup{
             const std::string arg = argv[i];
 
             if (arg == "-lipids") {
+                // If we have atleasat 2 more args, and next arg is not a keyword, and second arg is an integer
                 while (i + 2 < argc && argv[i + 1][0] != '-' && isInteger(argv[i + 2])) {
-                    lipids.emplace_back(argv[++i], std::stoi(argv[++i]));
+                    lipids.emplace_back(argv[i+1], std::stoi(argv[i+2]));
+                    i+=2;
                 }
                 if ((i + 1 < argc && argv[i + 1][0] != '-') || (lipids.size() * 2 != argc - i - 1)) {
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;

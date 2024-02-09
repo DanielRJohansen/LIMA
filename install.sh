@@ -4,7 +4,7 @@
 # Then it installs itself in /opt/LIMA/
 # Finally it executes 2 tests so ensure everything is working correctly
 
-if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
+#if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
 
 echo "\nWelcome to the LIMA Dynamics installer\n"
 
@@ -66,11 +66,11 @@ install_dir="$PWD"  # dir where repository with install files are
 program_dir="/opt/LIMA"
 
 echo "Using $program_dir as install directory"
-rm -rf "$program_dir"
-mkdir "$program_dir"/
+sudo rm -rf "$program_dir"
+sudo mkdir "$program_dir"/
 
 # copy everything from installdir to program_dir
-cp -r "$install_dir"/* "$program_dir"/
+sudo cp -r "$install_dir"/* "$program_dir"/
 
 # Build the public "lima" executable
 cd "$program_dir"/build
@@ -85,7 +85,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 # Make this readable for all users
-chmod 755 /opt/LIMA -R
+chmod 777 /opt/LIMA -R
 echo -e "\n\tLIMA client have been installed\n\n"
 
 
@@ -107,7 +107,7 @@ if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1
 fi
-chmod 775 $userprogram_dir -R
+chmod 777 $userprogram_dir -R
 
 echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 

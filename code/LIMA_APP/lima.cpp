@@ -27,7 +27,7 @@ constexpr bool requiresRecompile(const std::string& program)
 int main(int argc, char** argv) 
 {
     if (argc < 2) {
-        std::printf("Please call lima with a program to execute (e.g. lima mdrun conf.gro topol.top)");
+        std::printf("Please call lima with a program to execute (e.g. lima mdrun conf.gro topol.top)\n");
         return 0;
     }
 

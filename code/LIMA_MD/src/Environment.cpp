@@ -123,7 +123,7 @@ void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_
 	{
 		SimParams ip{};
 		ip.bc_select = NoBC;
-		ip.n_steps = carryout_em ? 10000 : 0;
+		ip.n_steps = carryout_em ? 15000 : 0;
 		ip.snf_select = HorizontalSqueeze;
 		ip.em_variant = true;
 		//CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);

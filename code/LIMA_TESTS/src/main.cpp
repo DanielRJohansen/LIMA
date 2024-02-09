@@ -66,14 +66,14 @@ int main() {
 
 
 		
-		//const fs::path work_dir = simulations_dir + "/test";
-		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(20.f);
-		//LipidsSelection lipids;
-		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
-		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
-		//env.createMembrane(lipids, true);
+		const fs::path work_dir = simulations_dir + "/test";
+		Environment env{ work_dir.string(), envmode, false };
+		env.CreateSimulation(20.f);
+		LipidsSelection lipids;
+		lipids.emplace_back(LipidSelect{ "POPC", 50 });
+		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
+		env.createMembrane(lipids, true);
 
 
 
@@ -81,7 +81,7 @@ int main() {
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.4e-5, 2e-5);		
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

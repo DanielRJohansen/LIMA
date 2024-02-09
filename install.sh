@@ -84,6 +84,7 @@ if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1
 fi
+chmod 777 /opt/LIMA -R
 echo -e "\n\tLIMA client have been installed\n\n"
 
 

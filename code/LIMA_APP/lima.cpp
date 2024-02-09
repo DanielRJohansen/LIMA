@@ -1,7 +1,7 @@
 // This is basically a wrapper for the real lima program
 // Here it is determined if we need to recompile LIMA, and do the recompile if needed. 
 // Finally we simply forward all args to the limaserver program
-
+#include <stdlib.h>
 #include <iostream>
 #include <filesystem>
 #include "autorecompile.h"
@@ -11,7 +11,9 @@ constexpr bool requiresRecompile(const std::string& program)
 {
     // The first time we call LIMA, we wont have the limaserver yet,
     // so yes recompile
-    if (!fs::exists("~/LIMA/applications/limaserver"))
+    const std::string limaserver_path = getenv("HOME") + "/LIMA/applications/limaserver";
+    std::cout << limaserver_path;
+    if (!fs::exists(limaserver_path))
         return true;
 
 
@@ -35,7 +37,7 @@ int main(int argc, char** argv)
         if (compile_failed) return 1;
     }
 
-    std::string command = "~/LIMA/applications/limaserver"; // Use getenv(home insteadmv
+    std::string command = limaserver_path; // Use getenv(home insteadmv
     for (int i = 1; i < argc; ++i) {
         command += " ";
         command += argv[i];

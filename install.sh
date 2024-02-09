@@ -119,14 +119,14 @@ echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 
 # Run Self Test
 # check cuda works
-$program_dir"/build/code/LIMA_ENGINE/engine_self_test"
+$userprogram_dir"/build/code/LIMA_ENGINE/engine_self_test"
 if [ $? -ne 0 ]; then
     echo "engine_self_test failed"
     exit 1
 fi
 
 # Run small sim
-cd "$install_dir"
+cd "$userprogram_dir"
 if [ "$1" != "-notest" ]; then
     #su -c "./selftest.sh" $SUDO_USER
     sims_dir=/home/$SUDO_USER/LIMA/simulations

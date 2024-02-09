@@ -87,8 +87,11 @@ fi
 echo -e "\n\tLIMA client have been installed\n\n"
 
 
-# Build LIMA once in /opt/, to ensure everything works
-cd "$program_dir/build"
+# Build LIMA once in ~/LIMA, to ensure everything works
+userprogram_dir="/home/$SUDO_USER/LIMA"
+cp -r "$install_dir"/* "$userprogram_dir"/
+
+cd "$userprogram_dir/build"
 rm -rf ./*
 cmake ../ 
 if [ $? -ne 0 ]; then

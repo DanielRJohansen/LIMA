@@ -92,6 +92,7 @@ echo -e "\n\tLIMA client have been installed\n\n"
 # Build LIMA once in ~/LIMA, to ensure everything works
 userprogram_dir="/home/$SUDO_USER/LIMA"
 # Make this dir readable and writable for the user and the group, but only readable for others
+mkdir "$userprogram_dir"
 cp -r "$install_dir"/* "$userprogram_dir"/
 
 cd "$userprogram_dir/build"

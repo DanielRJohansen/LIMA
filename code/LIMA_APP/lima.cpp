@@ -11,7 +11,7 @@ constexpr bool requiresRecompile(const std::string& program)
 {
     // The first time we call LIMA, we wont have the limaserver yet,
     // so yes recompile
-    const std::string limaserver_path = getenv("HOME") + "/LIMA/applications/limaserver";
+    const std::string limaserver_path = std::string(getenv("HOME")) + "/LIMA/applications/limaserver";
     std::cout << limaserver_path;
     if (!fs::exists(limaserver_path))
         return true;

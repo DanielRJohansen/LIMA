@@ -92,7 +92,6 @@ echo -e "\n\tLIMA client have been installed\n\n"
 # Build LIMA once in ~/LIMA, to ensure everything works
 userprogram_dir="/home/$SUDO_USER/LIMA"
 # Make this dir readable and writable for the user and the group, but only readable for others
-chmod 775 $userprogram_dir -R
 cp -r "$install_dir"/* "$userprogram_dir"/
 
 cd "$userprogram_dir/build"
@@ -107,6 +106,7 @@ if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1
 fi
+chmod 775 $userprogram_dir -R
 
 echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 

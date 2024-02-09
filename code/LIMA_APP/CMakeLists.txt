@@ -24,4 +24,4 @@ target_include_directories(lima PRIVATE
 )
 
 # Specify the installation target
-install(TARGETS lima DESTINATION bin)
+install(TARGETS lima DESTINATION /bin)

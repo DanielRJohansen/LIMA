@@ -32,7 +32,7 @@ int reorderMoleculeParticles(int argc, char** argv) {
 
 // TODO: Expand this with the options for each program
 void printHelp() {
-	std::cout << "LIMA - A molecular dynamics simulation engine\n";
+	std::cout << "LIMA - the faster Molecular Dynamics Engine\n";
 	std::cout << "Usage: lima <program> <args>\n";
 	std::cout << "Available programs:\n";
 	std::cout << "  mdrun\n";

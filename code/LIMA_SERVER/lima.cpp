@@ -30,6 +30,17 @@ int reorderMoleculeParticles(int argc, char** argv) {
 	return 0;
 }
 
+// TODO: Expand this with the options for each program
+void printHelp() {
+	std::cout << "LIMA - A molecular dynamics simulation engine\n";
+	std::cout << "Usage: lima <program> <args>\n";
+	std::cout << "Available programs:\n";
+	std::cout << "  mdrun\n";
+	std::cout << "  buildmembrane\n";
+	//std::cout << "  reordermoleculeparticles\n";
+	std::cout << "  makesimparams\n";
+}
+
 
 int main(int argc, char** argv) 
 {
@@ -39,6 +50,7 @@ int main(int argc, char** argv)
 		if (program == "mdrun") { mdrun(argc, argv); }
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
+		else if (program == "-help" || program =="-h"||program == "help") { printHelp(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
 		}

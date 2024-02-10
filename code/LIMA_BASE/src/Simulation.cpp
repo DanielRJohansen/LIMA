@@ -49,7 +49,7 @@ SimParams::SimParams(const std::string& path) {
 	auto dict = Filehandler::parseINIFile(path);
 	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
 	overloadParamNumber(dict, n_steps, "n_steps");
-	overloadParamNumber(dict, box_size, "box_size");
+	overloadParamNumber(dict, box_size, "boxlen");
 
 	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
 		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }

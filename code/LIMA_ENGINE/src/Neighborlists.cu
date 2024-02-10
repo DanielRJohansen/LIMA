@@ -28,7 +28,7 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
 
 			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &posright[iright]);
-			const float max_dist = CUTOFF_NM + left.radii[ileft] + right.radii[iright];
+			const float max_dist = UserConstants::CUTOFF_NM + left.radii[ileft] + right.radii[iright];
 			if (dist < max_dist)
 				return true;
 		}
@@ -43,7 +43,7 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
 		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &point);
-		const float max_dist = CUTOFF_NM + boundary.radii[ileft];
+		const float max_dist = UserConstants::CUTOFF_NM + boundary.radii[ileft];
 
 		if (dist < max_dist)
 			return true;

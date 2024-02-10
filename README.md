@@ -32,24 +32,31 @@ Copy all files to **/opt/LIMA** navigate to **build** and run **cmake ..**
 
 ## LIMA would not be possible without scientific contributions of many researchers. Citations for resources below:
 
+### LIPIDS
+Lipid files supplied by Stockholm Lipids:
+http://www.fos.su.se/~sasha/SLipids/Downloads.html
+Dr. Joakim JÃ¤mbeck
+Prof. Alexander Lyubartsev
+
+
 Saturated PC lipids:
 Derivation and Systematic Validation of a Refined All-Atom Force Field for Phosphatidylcholine Lipids,            
-Joakim P. M. Jämbeck, Alexander P. Lyubartsev, J. Phys. Chem. B, 2012, 116 (10), 3164-3179
+Joakim P. M. Jï¿½mbeck, Alexander P. Lyubartsev, J. Phys. Chem. B, 2012, 116 (10), 3164-3179
 DOI: 10.1021/jp212503e
 
 
 POPC, DOPC, SOPC, DOPE, POPE and similar:
-An Extension and Further Validation of an All-Atomistic Force Field for Biological Membranes, Joakim P. M. Jämbeck, Alexander P. Lyubartsev, J. Chem. Theory Comput., 8 (8), 2938-2948 DOI: 10.1021/ct300342n
+An Extension and Further Validation of an All-Atomistic Force Field for Biological Membranes, Joakim P. M. Jï¿½mbeck, Alexander P. Lyubartsev, J. Chem. Theory Comput., 8 (8), 2938-2948 DOI: 10.1021/ct300342n
 
 PS, PG, SM lipids and Cholesterol:
 Another Piece of the Membrane Puzzle: Extending Slipids Further,
-Joakim P. M. Jämbeck, Alexander P. Lyubartsev, J. Chem. Theory Comput., 9 (1), 774-784 (2013) 
+Joakim P. M. Jï¿½mbeck, Alexander P. Lyubartsev, J. Chem. Theory Comput., 9 (1), 774-784 (2013) 
 DOI: 10.1021/ct300777p
 
 
 Polyunsaturated lipids:
 Extension of the Slipids Force Field for Polyunsaturated Lipids,
-Inna Ermilova, Alexander P. Lyubartsev, J. Phys. Chem. B, 120 (50), pp 12826–12842 (2016) 
+Inna Ermilova, Alexander P. Lyubartsev, J. Phys. Chem. B, 120 (50), pp 12826ï¿½12842 (2016) 
 DOI: 10.1021/acs.jpcb.6b05422
 
 
@@ -57,3 +64,12 @@ Slipids update 2020:
 Optimization of Slipids Force Field Parameters Describing Headgroups of Phospholipids,
 Fredrik Grote, Alexander P. Lyubartsev, J. Phys. Chem. B, 124 (50), pp 8784-8793 (2020) 
 DOI: 10.1021/acs.jpcb.0c06386 
+
+
+
+
+
+
+
+
+

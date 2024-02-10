@@ -82,7 +82,10 @@ void readAndOverrideConstants(const std::string& filename, std::map<std::string,
 		std::istringstream iss(line);
 		std::string key, value;
 		if (std::getline(iss, key, '=') && std::getline(iss, value)) {
-			//std::cout << std::format("Key {} value {}\n", key, value);
+			// The value may contain a comment, so remove '#' and anything that comes after it			
+			const size_t comment_pos = value.find('#');
+			if (comment_pos != std::string::npos)
+				value = value.substr(0, comment_pos);
 
 			if (constants.find(key) != constants.end()) {
 				constants[key].value = value;
@@ -92,7 +95,7 @@ void readAndOverrideConstants(const std::string& filename, std::map<std::string,
 }
 
 void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
-	std::ofstream outfile(filename);
+	std::stringstream outfile;
 	std::cout << filename <<"\n";
 	outfile << "#pragma once\n\nnamespace UserConstants {\n";
 	for (const auto& pair : constants) {

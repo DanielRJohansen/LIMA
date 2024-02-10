@@ -68,11 +68,7 @@ namespace SelfRecompile {
             std::istringstream iss(line);
             std::string key, value;
             if (std::getline(iss, key, '=') && std::getline(iss, value)) {
-                // The value may contain a comment, so remove '#' and anything that comes after it			
-                const size_t comment_pos = value.find('#');
-                if (comment_pos != std::string::npos)
-                    value = value.substr(0, comment_pos);
-
+                //std::cout << std::format("Key {} value {}\n", key, value);
 
                 if (constants.find(key) != constants.end()) {
                     constants[key].value = value;
@@ -84,7 +80,6 @@ namespace SelfRecompile {
     void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
         std::ofstream outfile(filename);
         outfile << "#pragma once\n\nnamespace UserConstants {\n";
-
         for (const auto& pair : constants) {
             outfile << pair.second.type << " " << pair.first << " = " << pair.second.value << ";\n";
         }

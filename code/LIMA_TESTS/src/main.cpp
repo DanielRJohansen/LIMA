@@ -32,9 +32,133 @@ void runAllUnitTests();
 //}
 
 
+struct UserConstantInfo {
+	std::string type;
+	std::string value;
+};
+
+std::map<std::string, UserConstantInfo> readDefaultConstants(const std::string& filename) {
+	std::ifstream infile(filename);
+	std::string line;
+	std::map<std::string, UserConstantInfo> defaultConstants;
+
+	while (std::getline(infile, line))
+	{
+		// Removed escaped char from start of line
+		if (line[0] == '\t') {
+			line.erase(0, 1);
+		}
+
+		// Check if the line starts with a "/" (comment)
+		if (line.empty() || line[0] == '/') {
+			continue; // Ignore comments
+		}
+
+
+		// Check if line contains a key-value pair
+		if (line.find('=') == std::string::npos)
+			continue;
+
+		std::istringstream iss(line);
+		std::string type1, type2, key, equals, value;
+
+		if (iss >> type1 >> type2 >> key >> equals >> value) {
+			UserConstantInfo info = { type1 + " " + type2, value };
+			// Remove trailing semicolon if it exists
+			if (value.back() == ';') {
+				value.pop_back();
+			}
+			defaultConstants[key] = info;
+		}
+	}
+	return defaultConstants;
+}
+
+void readAndOverrideConstants(const std::string& filename, std::map<std::string, UserConstantInfo>& constants) {
+	std::ifstream infile(filename);
+	std::string line;
+
+	while (std::getline(infile, line)) {
+		std::istringstream iss(line);
+		std::string key, value;
+		if (std::getline(iss, key, '=') && std::getline(iss, value)) {
+			//std::cout << std::format("Key {} value {}\n", key, value);
+
+			if (constants.find(key) != constants.end()) {
+				constants[key].value = value;
+			}
+		}
+	}
+}
+
+void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
+	std::ofstream outfile(filename);
+	std::cout << filename <<"\n";
+	outfile << "#pragma once\n\nnamespace UserConstants {\n";
+	for (const auto& pair : constants) {
+		outfile << pair.second.type << " " << pair.first << " = " << pair.second.value << ";\n";
+	}
+	outfile << "}\n";
+}
+
+void overrideUserParams() {
+	std::map<std::string, UserConstantInfo> constants = readDefaultConstants("C:/Users/Daniel/git_repo/LIMA/code/LIMA_BASE/include/DefaultUserConstants.h");
+
+	const std::string params_path = "C:/Users/Daniel/git_repo/LIMA_data/test/sim_params.txt";
+	if (!fs::exists(params_path)) {
+		throw std::runtime_error(std::format("Expected file {}, but it was not found", params_path).c_str());
+	}
+	readAndOverrideConstants(params_path, constants);
+
+	writeConstantsToFile("UserConstants.h", constants);
+	if (!fs::exists("UserConstants.h")) {
+		throw std::runtime_error(std::format("Expected file {}, but it was not found", params_path).c_str());
+	}
+}
+
+
+
+
+
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+
+		overrideUserParams();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 
@@ -66,14 +190,14 @@ int main() {
 
 
 		
-		const fs::path work_dir = simulations_dir + "/test";
-		Environment env{ work_dir.string(), envmode, false };
-		env.CreateSimulation(20.f);
-		LipidsSelection lipids;
-		lipids.emplace_back(LipidSelect{ "POPC", 50 });
-		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
-		env.createMembrane(lipids, true);
+		//const fs::path work_dir = simulations_dir + "/test";
+		//Environment env{ work_dir.string(), envmode, false };
+		//env.CreateSimulation(20.f);
+		//LipidsSelection lipids;
+		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
+		//env.createMembrane(lipids, true);
 
 
 

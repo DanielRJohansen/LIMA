@@ -73,7 +73,7 @@ void SimParams::dumpToFile(const std::string& filename) {
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
 	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
-	file << "boxlen_nm=" << box_size << " # [nm]\n";
+	file << "boxlen=" << box_size << " # [nm]\n";
 
 	file.close();
 }

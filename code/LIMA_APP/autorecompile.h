@@ -30,10 +30,16 @@ namespace SelfRecompile {
 
         while (std::getline(infile, line))
         {
+            // Removed escaped char from start of line
+            if (line[0] == '\t') {
+                line.erase(0, 1);
+            }
+
             // Check if the line starts with a "/" (comment)
-            if (!line.empty() && line[0] == '/') {
+            if (line.empty() || line[0] == '/') {
                 continue; // Ignore comments
             }
+
 
             // Check if line contains a key-value pair
             if (line.find('=') == std::string::npos)

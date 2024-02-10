@@ -60,7 +60,7 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr int _BOX_LEN_PM = UserConstants::boxlen_nm * 1000;
+constexpr int _BOX_LEN_PM = UserConstants::boxlen * 1000;
 constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound

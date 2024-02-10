@@ -224,7 +224,7 @@ namespace SimulationBuilder{
 		if (lowest_zpos < 0.f) { throw std::runtime_error("Didnt expect bilayer to go below box"); }
 
 
-		const float padding_between_layers = 0.03;	// [nm]
+		const float padding_between_layers = 0.05;	// [nm]
 
 
 

@@ -42,9 +42,9 @@ namespace SupernaturalForces {
 			force_y += dist_y * lin_factor;
 
 			// Exp force
-			const float exp_factor = 0.000000;
+			/*const float exp_factor = 0.000000;
 			force_x += dist_x * dist_x * exp_factor;
-			force_y += dist_y * dist_y * exp_factor;
+			force_y += dist_y * dist_y * exp_factor;*/
 
 			// Apply signed force
 			if (avg_compound_position_nm.x > BOX_LEN_HALF_NM)

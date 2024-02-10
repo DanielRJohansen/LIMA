@@ -148,7 +148,7 @@ void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_
 	// Run EM for a while - with pbc
 	{
 		SimParams ip{};
-		ip.n_steps = carryout_em ? 30000 : 0;
+		ip.n_steps = carryout_em ? 3000 : 0;
 		ip.dt = 50.f;
 		ip.bc_select = carryout_em ? PBC : NoBC;	// Cannot insert compounds with PBC, if they are not in box
 		CreateSimulation(bilayerfiles.first, bilayerfiles.second, ip);

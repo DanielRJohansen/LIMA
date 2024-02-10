@@ -36,7 +36,7 @@ namespace SelfRecompile {
             }
 
             // Check if line contains a key-value pair
-            if (ifstr.find('=') == std::string::npos)
+            if (line.find('=') == std::string::npos)
                 continue;
 
             std::istringstream iss(line);
@@ -73,8 +73,7 @@ namespace SelfRecompile {
 
     void writeConstantsToFile(const std::string& filename, const std::map<std::string, UserConstantInfo>& constants) {
         std::ofstream outfile(filename);
-        outfile << "#pragma once\n\n\
-            namespace UserConstants {\n";
+        outfile << "#pragma once\n\nnamespace UserConstants {\n";
         for (const auto& pair : constants) {
             outfile << pair.second.type << " " << pair.first << " = " << pair.second.value << ";\n";
         }

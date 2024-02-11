@@ -33,8 +33,8 @@
 
 #added by me
 *.vs*
-*CMakeSettings*
-*CMakeSettings.json
+#*CMakeSettings*
+#CMakeSettings.json
 */code/obsolete*
 
 # Ignore contents of build, but not build

@@ -528,7 +528,7 @@ void distributeLJIgnores(BondedParticlesLUTManager* bplut_man, const ParticleInf
 			const auto pinfo_other = pinfo[gid_other];
 
 			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(pinfo_self.compound_index, pinfo_other.compound_index);
-			BondedParticlesLUT* lut = bplut_man->get(pinfo_self.compound_index, pinfo_other.compound_index);
+			BondedParticlesLUT* lut = bplut_man->get(pinfo_self.compound_index, pinfo_other.compound_index, true);
 			lut->set(pinfo_self.local_id_compound, pinfo_other.local_id_compound, true);
 		}
 	}

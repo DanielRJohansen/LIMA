@@ -85,7 +85,7 @@ private:
 static std::unique_ptr<LimaLogger> makeLimaloggerBareboned(const std::string& name) {
     return std::make_unique<LimaLogger>(LimaLogger::LogMode::compact, EnvMode::Headless, name);
 }
-
+#include <cmath>
 // Lima Algorithm Library
 namespace LAL {
 
@@ -97,9 +97,31 @@ namespace LAL {
 
 
 
+    constexpr int powi(int base, int exp) {
+        int res = 1;
+        for (int i = 0; i < exp; i++) {
+			res *= base;
+		}
+        return res;
+    }
+    constexpr int ceilFloatToInt(float num) {
+        return (static_cast<float>(static_cast<int>(num)) == num)
+            ? static_cast<int>(num)
+            : static_cast<int>(num) + ((num > 0) ? 1 : 0);
+    }
 
+    constexpr float pow_constexpr(float base, int exp) {
+        return (exp == 0) ? 1 : base * pow_constexpr(base, exp - 1);
+    }
 
-
+    // This is not sustainable....
+    constexpr float log2f_constexpr(float val) {
+        return (val < 2.0f) 
+            ? (val - 1.0f) / (val + 1.0f) + (1.0f / 3.0f) 
+                * pow_constexpr((val - 1.0f) / (val + 1.0f), 3) + (1.0f / 5.0f) 
+                * pow_constexpr((val - 1.0f) / (val + 1.0f), 5) 
+            : 1.0f + log2f_constexpr(val / 2.0f);
+    }
 
     template<typename T>
     class optional {
@@ -138,5 +160,6 @@ namespace LAL {
         }
 
         bool hasValue() const { return _hasValue; }
+
     };    
 }

@@ -31,6 +31,7 @@ struct Int3 {
 	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ inline Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
 	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
+	__host__ __device__ inline Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
 	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int)floor((float)x * a), (int)floor((float)y * a), (int)floor((float)z * a)); }
 
 	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
@@ -530,58 +531,55 @@ private:
 //using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
 using BondedParticlesLUT = FixedSizeMatrix<bool,MAX_COMPOUND_PARTICLES>;
 
-// TODO: EASY: Make this N_compounds X 10 instead of N x N as we have now. Each compound is likely only bonded to the nearby 10 compounds anyways
-// But write a test to make sure
 class BondedParticlesLUTManager {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
 	static const int n_elements = MAX_COMPOUNDS * max_bonded_compounds;
-	BondedParticlesLUT luts[n_elements];
-	int connected_compound_id[n_elements];
 
+	BondedParticlesLUT luts[n_elements];
+	uint32_t connected_compound_ids_masks[MAX_COMPOUNDS];
+
+	__device__ __host__ int getLocalIndex(int id_self, int id_other) {
+		return (max_bonded_compounds/2) + (id_other - id_self);
+	}
+	__device__ __host__ int getGlobalIndex(int local_index, int id_self) {
+		return id_self*max_bonded_compounds + local_index;
+	}
+	__device__ __host__ uint32_t getMask(int index) {
+		return 1u << index;
+	}
 
 public:
 	BondedParticlesLUTManager() {
 		for (int i = 0; i < n_elements; i++) {
-			connected_compound_id[i] = -1;
 			luts[i] = BondedParticlesLUT(false);
-		}
-
-		// Initially connect all luts to itself, because all compounds asummes this exists.
-		// Only relevant for cases with compounds consisting of 1 particle
-		for (int i = 0; i < MAX_COMPOUNDS; i++) {
-			connected_compound_id[i * max_bonded_compounds] = i;
 		}
 	}
 
-	// If the lut between the two compounds exists, returns ptr to it, otherwise returns nullptr
-	__device__ __host__ BondedParticlesLUT* get(int id_self, int id_other){
-		for (int i = 0; i < max_bonded_compounds; i++) {
-			const int index = id_self * max_bonded_compounds + i;
-			if (connected_compound_id[index] == id_other) {
-				return &luts[index];
-			}
+	__device__ BondedParticlesLUT* get(int id_self, int id_other){
+		// The around around when this function is called on device, should ensure 
+		// that there is always an entry in the table for the 2 compounds 
+		return &luts[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
+	}
+
+	__host__ BondedParticlesLUT* get(int id_self, int id_other, bool) {
+		if (std::abs(id_self - id_other > 2)) {
+			throw std::runtime_error("Cannot get BPLUT for compounds with distanecs > 2 in id-space");
+		}
+
+		const int local_index = getLocalIndex(id_self, id_other);
+		if (connected_compound_ids_masks[id_self] & getMask(local_index)) {
+			return &luts[getGlobalIndex(local_index, id_self)];
 		}
 		return nullptr;
 	}
 
 	__host__ void addNewConnectedCompoundIfNotAlreadyConnected(int id_self, int id_other) {
-		for (int i = 0; i < max_bonded_compounds; i++) {
-			const int index = id_self * max_bonded_compounds + i;
 
-			// If already conencted, do nothing
-			if (connected_compound_id[index] == id_other) {
-				return;
-			}
-
-			// If not connected add
-			if (connected_compound_id[index] == -1) {
-				connected_compound_id[index] = id_other;
-				return;
-			}
+		if (std::abs(id_self - id_other > 2)) {
+			throw std::runtime_error("Cannot connect compounds that are too far apart in id space");
 		}
 
-		// Not connected, and no more room
-		throw std::runtime_error("Cannot connect another compound to LUTMan");
+		connected_compound_ids_masks[id_self] |= getMask(getLocalIndex(id_self, id_other));
 	}
 };
 

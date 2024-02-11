@@ -5,7 +5,9 @@ add_library(LIMA_ENGINE
     src/EngineUtils.cu
     src/Neighborlists.cu 
     src/Thermostat.cu
-    src/BoundaryConditionPublic.cpp)
+    src/BoundaryConditionPublic.cpp
+    src/ChargeOcttree.cu
+)
 
 target_include_directories(LIMA_ENGINE PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}/src

@@ -10,15 +10,12 @@
 #include "EngineUtilsWarnings.cuh"
 #include "BoundaryConditionPublic.h"
 
+
 //#include <cuda.h>
 //#include <device_launch_parameters.h>
 //#include <cuda_runtime_api.h>
 
-
-
-namespace ForceCalc {
-//	-
-};
+//#include <device_functions.h>
 
 //#include "cuda/std/cmath"
 //#include "cuda/std//utility"
@@ -462,8 +459,10 @@ namespace EngineUtils {
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
+#ifndef ENABLE_INTEGRATEPOSITION
+		return pos;
+#endif
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
-
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
@@ -530,6 +529,39 @@ namespace EngineUtils {
 		return false;
 	}
 	
+
+
+	//template<typename T>
+	//void __device__ ParallelSum(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
+	//	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
+	//	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
+	//		if ((threadIdx.x + i) < array_len) {
+	//			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
+	//		}
+	//		__syncthreads();
+	//		arrayptr[threadIdx.x] = temp;
+	//		__syncthreads();
+	//	}
+	//}
+
+
+	//__device__ void ParallelSum(float* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
+	//	float temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
+	//	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
+	//		if ((threadIdx.x + i) < array_len) {
+	//			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
+	//		}
+	//		__syncthreads();
+	//		arrayptr[threadIdx.x] = temp;
+	//		__syncthreads();
+	//	}
+	//}
+
+
+
+
+
+
 };
 
 
@@ -578,8 +610,8 @@ namespace DEBUGUTILS {
 
 // LIMA algorithm Library
 namespace LAL {
-	__device__ constexpr int getBlellochTablesize(int n) {
-		const float nf = static_cast<float>(n);
-		return CPPD::ceil(nf * log2f(nf) * 2.f);
-	}
+	//__device__ constexpr int getBlellochTablesize(int n) {
+	//	const float nf = static_cast<float>(n);
+	//	return CPPD::ceil(nf * std::log2f(nf) * 2.f);
+	//}
 }

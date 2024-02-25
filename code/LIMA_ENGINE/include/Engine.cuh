@@ -38,12 +38,14 @@ struct EngineTimings {
 	int solvent_kernels{};
 	int cpu_master{};
 	int nlist{};
+	int electrostatics{};
 
 	void reset() {
 		compound_kernels = 0;
 		solvent_kernels = 0;
 		cpu_master = 0;
 		nlist = 0;
+		electrostatics = 0;
 	}
 };
 

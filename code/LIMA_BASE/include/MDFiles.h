@@ -93,7 +93,7 @@ struct ParsedTopologyFile {	//.top or .itp
 		std::string residue{};
 		std::string atom{};
 		int cgnr{};
-		float charge{};
+		float charge{};// In elementary charges [e]. Convert to C/mol before using
 		float mass{};
 		//int chain_id{ -1 };
 

@@ -41,18 +41,6 @@ namespace ForcefieldMakerTypes {
 		std::vector<Dihedralbondtype> dihedralbonds;
 		std::vector<Improperdihedralbondtype> improperdeihedralbonds;
 	};
-
-	struct AtomtypeMapping {
-		AtomtypeMapping(int global, int gro, int chain_id, int res_id, int atomtype_id, const std::string& name, int unique_residue_id) 
-			: global_id(global), gro_id(gro), chain_id(chain_id), residue_id(res_id), atomtype_id(atomtype_id), atomname(name), unique_residue_id(unique_residue_id) {}
-		const int global_id;	// Given by LIMA
-		const int gro_id;		// not unique
-		const int chain_id;		// Unique
-		const int residue_id;	// Unique within chain (i fucking hope..)
-		const int atomtype_id;	// simulation specific
-		const std::string atomname;
-		const int unique_residue_id;
-	};
 }
 
 using namespace ForcefieldMakerTypes;
@@ -186,7 +174,7 @@ bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTa
 #include "MDFiles.h"
 
 void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfile, int& current_chain_id, int& current_unique_residue_cnt) {
-	for (const auto& atom : topolfile.atoms.entries) {
+	for (const ParsedTopologyFile::AtomsEntry& atom : topolfile.atoms.entries) {
 		if (current_chain_id == -1) {
 			current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
 		}
@@ -204,8 +192,9 @@ void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfi
 			throw std::runtime_error("Something is wrong, we should have a res_id by now.");
 		}
 
-		topology.atominfotable.insert(current_chain_id, gro_id, atom.type, atom.atom, atom.resnr, current_unique_residue_cnt);
-		//topology.atominfotable.insert(current_chain_id, gro_id, atom.atomtype, atomname, residue_id, current_unique_residue_cnt);
+		// Global id of -1 will be immediately overwritten..
+		topology.atominfotable.insert(Atom{ -1, gro_id, current_chain_id, atom.resnr, atom.type, atom.atom, current_unique_residue_cnt, atom.charge * elementaryChargeToCoulombPerMole });
+
 		topology.active_atomtypes.insert(atom.type);
 	}
 
@@ -307,14 +296,11 @@ int findIndexOfAtomtype(const string& query_atomtype_name, const std::vector<NB_
 	throw std::runtime_error("Failed to find atomtype");
 }
 
-const std::vector<AtomtypeMapping> mapGroidsToSimulationspecificAtomtypeids(const Topology& topology, const std::vector<NB_Atomtype>& atomtypes_filtered) {
-	std::vector<AtomtypeMapping> map;
-
-	for (const Atom& atom : topology.atominfotable.getAllAtoms()) {
+void assignSimulationspecificAtomtypeIdsToAtoms(Topology& topology, const std::vector<NB_Atomtype>& atomtypes_filtered) {
+	for (Atom& atom : topology.atominfotable.getAllAtoms()) {
 		const int filted_atomtype_id = findIndexOfAtomtype(atom.atomtype, atomtypes_filtered);
-		map.push_back(AtomtypeMapping{ atom.global_id, atom.gro_id, atom.chain_id, atom.res_id, filted_atomtype_id, atom.atomname, atom.unique_res_id });
+		atom.atomtype_id = filted_atomtype_id;
 	}
-	return map;
 }
 
 
@@ -339,7 +325,7 @@ namespace FFPrintHelpers {
 
 const char delimiter = ' ';
 
-void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& atomtype_map, const std::vector<NB_Atomtype>& filtered_atomtypes) {
+void printFFNonbonded(const string& path, const std::vector<Atom>& atoms, const std::vector<NB_Atomtype>& filtered_atomtypes) {
 	std::ofstream file(path, std::ofstream::out);
 	if (!file.is_open()) {
 		throw std::runtime_error(std::format("Failed to open file {}", path).c_str());
@@ -359,16 +345,17 @@ void printFFNonbonded(const string& path, const std::vector<AtomtypeMapping>& at
 
 
 	file << FFPrintHelpers::titleH2("GRO_id to simulation-specific atomtype map");
-	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t residue_id \t atomtype_id \t atomname \t unique_residue_id}");
+	file << FFPrintHelpers::titleH3("{global_id \t gro_id \t chain_id \t residue_id \t atomtype_id \t atomname \t unique_residue_id \t charge [Coulomb/mol]}");
 	file << FFPrintHelpers::parserTitle("atomtype_map");
-	for (auto& mapping : atomtype_map) {
-		file << to_string(mapping.global_id) << delimiter 
-			<< to_string(mapping.gro_id) << delimiter 
-			<< to_string(mapping.chain_id) << delimiter 
-			<< to_string(mapping.residue_id) << delimiter 
-			<< to_string(mapping.atomtype_id) << delimiter 
-			<< mapping.atomname << delimiter
-			<< mapping.unique_residue_id
+	for (auto& atom : atoms) {
+		file << to_string(atom.global_id) << delimiter
+			<< to_string(atom.gro_id) << delimiter
+			<< to_string(atom.chain_id) << delimiter
+			<< to_string(atom.res_id) << delimiter
+			<< to_string(atom.atomtype_id) << delimiter
+			<< atom.atomname << delimiter
+			<< atom.unique_res_id << delimiter
+			<< atom.charge
 			<< endl;
 	}
 	file << FFPrintHelpers::endBlock();
@@ -533,13 +520,13 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 
 	// Filter for the atomtypes used in this simulation and map to them
 	const std::vector<NB_Atomtype> atomtypes_filtered = filterAtomtypes(topology, forcefield);
-	const std::vector<AtomtypeMapping> atomtype_map = mapGroidsToSimulationspecificAtomtypeids(topology, atomtypes_filtered);
+	assignSimulationspecificAtomtypeIdsToAtoms(topology, atomtypes_filtered);
 
 	// Match the topology with the forcefields.
 	fillTBondParametersFromForcefield(forcefield, topology);
 
 
-	printFFNonbonded(lfs::pathJoin(output_dir, "ffnonbonded.lff"), atomtype_map, atomtypes_filtered);
+	printFFNonbonded(lfs::pathJoin(output_dir, "ffnonbonded.lff"), topology.atominfotable.getAllAtoms(), atomtypes_filtered);
 	printFFBonded(lfs::pathJoin(output_dir, "ffbonded.lff"), topology);
 	//logger.finishSection("Prepare Forcefield has finished");
 }

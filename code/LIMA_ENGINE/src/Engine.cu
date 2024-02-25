@@ -11,6 +11,7 @@
 
 #include <algorithm>
 
+#include "ChargeOcttree.cuh"
 
 
 
@@ -244,7 +245,11 @@ void Engine::deviceMaster() {
 		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
+
+	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
+	timings.electrostatics += SCA::handleElectrostatics(sim_dev, simulation->boxparams_host);
+	const auto t0b = std::chrono::high_resolution_clock::now();
 
 	if (simulation->boxparams_host.n_bridges > 0) {
 		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
@@ -278,7 +283,7 @@ void Engine::deviceMaster() {
 #endif
 	const auto t2 = std::chrono::high_resolution_clock::now();
 
-	const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+	const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0b + t0a - t0).count();
 	const int solvents_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
 	timings.compound_kernels += compounds_duration;

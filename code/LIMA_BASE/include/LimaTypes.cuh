@@ -35,6 +35,7 @@ struct Int3 {
 	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int)floor((float)x * a), (int)floor((float)y * a), (int)floor((float)z * a)); }
 
 	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
+	__host__ __device__ void operator /= (const int a) { x /= a; y /= a; z /= a; }
 
 	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }

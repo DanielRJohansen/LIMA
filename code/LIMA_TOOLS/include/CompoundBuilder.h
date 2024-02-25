@@ -11,6 +11,7 @@
 #include "Utilities.h"
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
+#include "ForcefieldTypes.h"
 
 #include "MDFiles.h"
 
@@ -55,17 +56,12 @@ struct Residue {
 	//std::vector<int> bondedresidue_ids;	// GIDs of residue with which this shares a singlebond
 };
 
-struct ParticleInfo {
+struct ParticleInfo : public Atom{
 	// All member variables are in the order they get assigned
+	
+	// The Atom variables are added when this object is intially created
+	
 
-	// Added when the entry is created, as the nonbonded.lff file is read.
-	const int global_id;
-	const int gro_id;
-	const int chain_id;
-	const int atomtype_id;
-	const std::string atomname;
-	const int residue_groid;
-	const int unique_res_id;
 	// Added when determining which residues of the chains are connected
 	std::vector<int> singlebonds_indices;	// indices of singlebonds of which this atom is in
 
@@ -92,7 +88,7 @@ public:
 		}
 	}
 
-	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id, float boxlen_nm, BoundaryConditionSelect bc) {
+	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
 		if (n_particles >= MAX_COMPOUND_PARTICLES) {
 			throw std::runtime_error("Failed to add particle to compound");
 		}
@@ -111,6 +107,8 @@ public:
 		// Variables present in Compound
 		atom_types[n_particles] = atomtype_id;
 		atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
+
+		atom_charges[n_particles] = charge;
 
 		n_particles++;
 	}

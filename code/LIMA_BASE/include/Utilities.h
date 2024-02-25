@@ -115,12 +115,12 @@ namespace LAL {
     }
 
     // This is not sustainable....
-    constexpr float log2f_constexpr(float val) {
+    constexpr float log2f(float val) {
         return (val < 2.0f) 
             ? (val - 1.0f) / (val + 1.0f) + (1.0f / 3.0f) 
                 * pow_constexpr((val - 1.0f) / (val + 1.0f), 3) + (1.0f / 5.0f) 
                 * pow_constexpr((val - 1.0f) / (val + 1.0f), 5) 
-            : 1.0f + log2f_constexpr(val / 2.0f);
+            : 1.0f + log2f(val / 2.0f);
     }
 
     template<typename T>

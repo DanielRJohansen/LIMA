@@ -726,6 +726,21 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
+		// Electrostatic
+#ifdef ENABLE_SCA
+	if (threadIdx.x < compound.n_particles) {
+		//Coord{}
+		//compound_positions[threadIdx.x].print('C');
+		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
+		LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&abspos);
+		//abspos.print('p', true);
+		//compound_origo.print('o');
+		//compound_positions[threadIdx.x].print('r');
+		//LIMAPOSITIONSYSTEM::applyPBCNM(&abspos);
+		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
+	}
+#endif
+
 
 
 	// This is the first kernel, so we overwrite

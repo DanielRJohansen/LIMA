@@ -15,6 +15,9 @@
 #error These are mutually exclusive
 #endif
 
+#define ELECTROSTATICS
+#define ENABLE_LJ
+#define ENABLE_INTEGRATEPOSITION
 
 //#define GENERATETRAINDATA
 
@@ -54,6 +57,8 @@ constexpr float CUTOFF_LM = UserConstants::CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
+
+constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER;	// [C/mol]
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -164,7 +169,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 100;
+const int STEPS_PER_RENDER = 200;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

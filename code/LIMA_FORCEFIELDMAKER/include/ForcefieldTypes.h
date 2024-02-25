@@ -71,8 +71,9 @@ struct NB_Atomtype {
 
 // This is for bonded atoms!!!!!!!!!!!
 struct Atom {
-	Atom(int global_id, int gro_id, int chain_id, int res_id, const std::string& atomtype, const std::string& atomname, int unique_resid) 
-		: global_id(global_id), gro_id(gro_id), chain_id(chain_id), res_id(res_id), atomname(atomname), atomtype(atomtype), unique_res_id(unique_resid) {}
+	Atom(){}
+	Atom(int global_id, int gro_id, int chain_id, int res_id, const std::string& atomtype, const std::string& atomname, int unique_resid, float charge) 
+		: global_id(global_id), gro_id(gro_id), chain_id(chain_id), res_id(res_id), atomname(atomname), atomtype(atomtype), unique_res_id(unique_resid), charge(charge) {}
 	Atom(const Atom& atom) = default;
 	int global_id;
 	int gro_id;										// Come from topol.top file
@@ -82,7 +83,7 @@ struct Atom {
 	std::string atomtype;	
 	std::string atomname;	// I dunno what this is for
 	int atomtype_id;				// Asigned later
-	//float charge;
+	float charge;
 };
 
 class AtomInfoTable {
@@ -94,7 +95,7 @@ class AtomInfoTable {
 
 public:
 
-	const std::vector<Atom>& getAllAtoms() const { return atoms; }
+	std::vector<Atom>& getAllAtoms() { return atoms; }
 
 	Atom& get(int chain_id, int atom_gro_id) {	// gro id is relative to chain only
 		const int global_id = map.find(chain_id)->second.find(atom_gro_id)->second;
@@ -108,11 +109,15 @@ public:
 		return atoms[global_id];
 	}
 
-	void insert(int chain_id, int atom_gro_id, const std::string& atomtype, const std::string& atomname, int res_id, int unique_resid) {
+
+	// Atom will have its global_id overwritten before insertion
+	void insert(const Atom& atom) {
 		const int global_id = atoms.size();
-		map[chain_id][atom_gro_id] = global_id;
-		atoms.push_back(Atom{ global_id , atom_gro_id, chain_id, res_id, atomtype, atomname, unique_resid });
+		map[atom.chain_id][atom.gro_id] = global_id;
+		atoms.emplace_back(atom);
+		atoms.back().global_id = global_id;
 	}
+
 	bool exists(int chain_id, int atom_gro_id) const {
 		auto chain_it = map.find(chain_id);
 		if (chain_it == map.end()) {

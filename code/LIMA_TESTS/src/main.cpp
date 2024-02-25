@@ -44,6 +44,7 @@ int main() {
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
 		//doSinglebondBenchmark(envmode);
@@ -86,7 +87,7 @@ int main() {
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);		
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

@@ -241,6 +241,10 @@ __device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_s
 	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
 	// Returns force in J/mol*M		?????????????!?!?//
 
+#ifndef ENABLE_LJ
+	return Float3{};
+#endif
+
 	// Directly from book
 	float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 	s = s * s * s;

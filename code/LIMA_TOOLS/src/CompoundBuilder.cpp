@@ -16,10 +16,10 @@ namespace lfs = Filehandler;
 
 // we need this struct because only the topology has a distinct ordering of which atoms (purely position based) belong to which residue
 // This is so fucked up insane, but its the standard so :(
-struct TopologyAtom {
-	const std::string type;			// As it is read in the top/itp file
-	const int global_residue_id;	// Given by limi
-};
+//struct TopologyAtom {
+//	const std::string type;			// As it is read in the top/itp file
+//	const int global_residue_id;	// Given by limi
+//};
 
 struct Topology {
 	std::vector<SingleBondFactory> singlebonds;
@@ -83,7 +83,7 @@ private:
 	/// </summary>
 	void matchBondedResidues(const std::vector<SingleBondFactory>& singlebonds);
 
-	void createCompounds(const std::vector<SingleBondFactory>& singlebonds, float boxlen_nm);
+	void createCompounds(const Topology& topology, float boxlen_nm);
 	void createBridges(const std::vector<SingleBondFactory>& singlebonds);
 
 	void distributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen_nm);
@@ -117,7 +117,7 @@ std::unique_ptr<BoxImage> MoleculeBuilder::buildMolecules(const ParsedGroFile& g
 		}
 	}
 
-	createCompounds(topology.singlebonds, boxlen_nm);
+	createCompounds(topology, boxlen_nm);
 	createBridges(topology.singlebonds);
 
 	distributeBondsToCompoundsAndBridges(topology, boxlen_nm);
@@ -232,7 +232,6 @@ Topology MoleculeBuilder::loadTopology(const std::string& molecule_dir)
 
 	Topology topology{};
 
-
 	for (const auto& bond : bondedff.singlebonds.entries) {
 		topology.singlebonds.emplace_back(SingleBondFactory{ bond.global_ids, bond.b0 * NANO_TO_LIMA, bond.kb / (NANO_TO_LIMA * NANO_TO_LIMA) });
 	}
@@ -258,17 +257,24 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 	const SimpleParsedFile nonbonded_parsed = Filehandler::parseLffFile(nonbonded_path, false);
 
 	ParticleInfoTable atominfotable{};
+	
 
 	for (auto& row : nonbonded_parsed.rows) {
 		if (row.section == "atomtype_map") {
-			const int global_id = std::stoi(row.words[0]);
-			const int gro_id = std::stoi(row.words[1]);
-			const int chain_id = std::stoi(row.words[2]);
-			const int residue_groid = std::stoi(row.words[3]);
-			const int atomtype_id = std::stoi(row.words[4]);
-			const auto& atomname = row.words[5];
-			const int unique_res_id = std::stoi(row.words[6]);
-			atominfotable.emplace_back(ParticleInfo{ global_id, gro_id, chain_id, atomtype_id, atomname, residue_groid, unique_res_id });
+			Atom atom;
+			atom.global_id = std::stoi(row.words[0]);
+			atom.gro_id = std::stoi(row.words[1]);
+			atom.chain_id = std::stoi(row.words[2]);
+			atom.res_id = std::stoi(row.words[3]);
+			atom.atomtype_id = std::stoi(row.words[4]);
+			atom.atomname = row.words[5];
+			atom.unique_res_id = std::stoi(row.words[6]);
+			atom.charge = std::stof(row.words[7]);
+
+			// We no longer have atomtype as a string, so jsut use name twice, it doesnt matter from here on
+			//Atom atom{ global_id, gro_id, chain_id, residue_groid, atomname, atomname, unique_res_id, charge };
+			//atom.atomtype_id = atomtype_id;
+			atominfotable.emplace_back(ParticleInfo{ atom });
 		}
 	}
 	return atominfotable;
@@ -295,7 +301,7 @@ bool areBonded(const Residue& left, const Residue& right, const ParticleInfoTabl
 }
 
 
-void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& singlebonds, float boxlen_nm) {
+void MoleculeBuilder::createCompounds(const Topology& topology, float boxlen_nm) {
 	// Nothing to do if we have no residues
 	if (residues.empty()) { return; }
 	
@@ -311,7 +317,7 @@ void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& sing
 
 		// If necessary start new compound
 		if (new_residue) {
-			const bool is_bonded_with_previous_residue = residue_index == 0 || areBonded(residues[residue_index - 1], residue, particleinfotable, singlebonds);
+			const bool is_bonded_with_previous_residue = residue_index == 0 || areBonded(residues[residue_index - 1], residue, particleinfotable, topology.singlebonds);
 			const bool compound_has_room_for_residue = compounds.back().hasRoomForRes(residue.atoms_globalid.size());
 
 			// If we are either a new molecule, or same molecule but the current compound has no more room, make new compound
@@ -339,7 +345,8 @@ void MoleculeBuilder::createCompounds(const std::vector<SingleBondFactory>& sing
 				particleinfo.atomtype_id,
 				Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
 				atom_gid,
-				boxlen_nm, bc_select
+				boxlen_nm, bc_select,
+				particleinfotable[atom_gid].charge
 				);
 		}
 	}

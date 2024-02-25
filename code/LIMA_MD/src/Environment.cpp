@@ -428,12 +428,13 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 		const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
 
 		printf("\r\tStep #%06llu", step);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
+		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
 			duration / steps_since_update,
 			engine->timings.compound_kernels / steps_since_update,
 			engine->timings.solvent_kernels / steps_since_update,
 			engine->timings.cpu_master/ steps_since_update,
 			engine->timings.nlist/ steps_since_update,
+			engine->timings.electrostatics / steps_since_update,
 			remaining_minutes);
 
 		step_at_last_update = step;

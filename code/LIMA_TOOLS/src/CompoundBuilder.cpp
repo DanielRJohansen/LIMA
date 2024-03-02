@@ -261,6 +261,7 @@ std::vector<ParticleInfo> MoleculeBuilder::loadAtomInfo(const std::string& molec
 
 	for (auto& row : nonbonded_parsed.rows) {
 		if (row.section == "atomtype_map") {
+			assert(row.words.size() >= 8);
 			Atom atom;
 			atom.global_id = std::stoi(row.words[0]);
 			atom.gro_id = std::stoi(row.words[1]);

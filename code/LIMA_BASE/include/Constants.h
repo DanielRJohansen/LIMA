@@ -15,7 +15,7 @@
 #error These are mutually exclusive
 #endif
 
-#define ELECTROSTATICS
+//#define ENABLE_ELECTROSTATICS
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
@@ -169,7 +169,7 @@ constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_TH
 #error It is not allowed to use display on linux as of right now
 #endif
 
-const int STEPS_PER_RENDER = 200;
+const int STEPS_PER_RENDER = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 

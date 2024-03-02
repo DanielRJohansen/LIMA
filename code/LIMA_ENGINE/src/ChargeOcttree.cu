@@ -12,7 +12,7 @@ using namespace SCA;
 
 template<typename T>
 __device__ void ParallelSum(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
-	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
+	T temp;			// This is a lazy solution, but maybe it is also fast? Definitely simple..
 	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
 		if ((threadIdx.x + i) < array_len) {
 			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
@@ -21,6 +21,23 @@ __device__ void ParallelSum(T* arrayptr, int array_len) {				// Places the resul
 		arrayptr[threadIdx.x] = temp;
 		__syncthreads();
 	}
+}
+
+__device__ void ParallelSum(float* arrayPtr, int arrayLen, int stride) {
+	const int index = threadIdx.x * stride;
+	float temp{};
+	//if (index < arrayLen) {
+		for (int i = 1; i < arrayLen; i *= 2) {			
+			if ((index + i) < arrayLen) {
+				temp = arrayPtr[index] + arrayPtr[index + i];
+			}
+			__syncthreads();
+			if ((index + i) < arrayLen) {
+				arrayPtr[index] = temp;
+			}
+			__syncthreads();
+		}
+	//}
 }
 
 // diff = self-other
@@ -62,114 +79,91 @@ namespace OcttreeHelpers {
 }
 
 
-
-
-
-
-// Loop over all 8 children
-//for (int x_off = 0; x_off < 2; x_off++) {
-//	for (int y_off = 0; y_off < 2; y_off++) {
-//		for (int z_off = 0; z_off < 2; z_off++) {
-
-
-
-//__global__ void propagateChargesUp(ChargeOctTree* tree, int depth, size_t depth_offset, size_t depth_offset_child, int n_nodes_per_dim, int n_nodes_per_dim_child, float nodelen_nm) {
+//__global__ void propagateChargesUpMultipleLevels(SimulationDevice* simdev, int startDepth) {
+//	__shared__ float charges[8*8];
+//	charges[threadIdx.y * 8 + threadIdx.x] = 0;
+//	ChargeOctTree* tree = simdev->charge_octtree;
 //
-//	__shared__ float charges[64][8];
+//	// Calculate initial Parent and Child nodesIDs
+//	const Int3 index_3d{ 
+//		blockIdx.x*2 + threadIdx.y%2, 
+//		blockIdx.y*2 + (threadIdx.y / 2) % 2,
+//		blockIdx.z*2 + (threadIdx.y /4)};	// Dont nneed modulo here?
 //
-//	charges[threadIdx.y][threadIdx.x] = 0;
-//
-//	// Threads distributed along x axis to maximize coalescence
-//	const Int3 index_3d{ blockIdx.x, blockIdx.y, threadIdx.y };
-//	if (index_3d.x >= n_nodes_per_dim) { return; }
-//
-//
-//	const size_t node_index = OcttreeHelpers::GetAbsIndex(index_3d, n_nodes_per_dim, depth_offset);
-//	const Float3 pos_abs_self = OcttreeHelpers::getAbsPos(index_3d, nodelen_nm);
-//
-//	float charge = 0.f;
-//
-//				
 //	const int x_off = threadIdx.x % 2;
 //	const int y_off = (threadIdx.x / 2) % 2;
-//	const int z_off = (threadIdx.x / 4) % 2;
+//	const int z_off = (threadIdx.x / 4);
 //
-//	// Dont need PBC, since we are only looking at direct children
 //	const Int3 query_index3d = index_3d * 2 + Int3{ x_off, y_off, z_off };
+//	{
+//		const int depth = startDepth;
+//		const int n_nodes_per_dim = 1 << depth;
+//		const size_t query_index = OcttreeHelpers::GetAbsIndex(query_index3d, n_nodes_per_dim * 2, tree->depthOffsets[depth + 1]); // Adjust depth_offset as needed
+//		const float query_charge = tree->chargenodes[query_index];
 //
-//	const size_t query_index = OcttreeHelpers::GetAbsIndex(query_index3d, n_nodes_per_dim_child, depth_offset_child);
-//	const float query_chargenode = tree->chargenodes[query_index];
-//	charges[threadIdx.y][threadIdx.x] += query_chargenode;
+//	
 //
-//	ParallelSum<float>(charges[threadIdx.y], 8);
+//		charges[threadIdx.y * 8 + threadIdx.x] += query_charge;
 //
-//	if (threadIdx.x == 0) {
-//		tree->chargenodes[node_index] = charges[threadIdx.y][0];
+//
+//		__syncthreads(); // Prolly not needed
+//		//ParallelSum<float>(charges[threadIdx.y], 8);
+//		ParallelSum(&charges[threadIdx.y*8], 8, 1);
+//
+//		const size_t node_index = OcttreeHelpers::GetAbsIndex(index_3d, n_nodes_per_dim, tree->depthOffsets[depth]);
+//
+//		if (threadIdx.x == 0) {
+//			tree->chargenodes[node_index] = charges[threadIdx.y*8 + 0];
+//		}		
+//	}
+//	{
+//		const int depth = startDepth-1;
+//		const int n_nodes_per_dim = 1 << depth;		
+//
+//		if (threadIdx.y == 0 && threadIdx.x == 0) {
+//			float chargeSum{};
+//
+//			for (int i = 0; i < 8; i++)
+//				chargeSum += charges[i*8];
+//
+//			const size_t node_index = OcttreeHelpers::GetAbsIndex(index_3d/2, n_nodes_per_dim, tree->depthOffsets[depth]);
+//			tree->chargenodes[node_index] = chargeSum;
+//		}
 //	}
 //}
 
-__global__ void propagateChargesUp(ChargeOctTree* tree) {
-	__shared__ float charges[64][8];
 
 
-	charges[threadIdx.y][threadIdx.x] = 0;
+// Specialized to handle ALOT of data
+__global__ void propagateChargesUp(SimulationDevice* simdev, int depth, int nNodesPerDim, size_t depthOffset) {
+	float2 buffer;
 
-	//int depth = ChargeOctTree::depthForcetree-1;
-	//int n_nodes_per_dim = 1 << depth; // Assuming the tree is complete and balanced
+	float chargeSum = 0.f;
 
-	//// Calculate initial 3D index and node index
-	const Int3 index_3d{ blockIdx.x, blockIdx.y, threadIdx.y };
+	for (int zOff = 0; zOff < 2; zOff++) {
+		for (int yOff = 0; yOff < 2; yOff++) {
+			const Int3 queryIndex3D{
+				threadIdx.x * 2,
+				blockIdx.y * 2 + yOff,
+				blockIdx.z * 2 + zOff};
 
-
-	for (int depth = ChargeOctTree::depthForcetree - 1; depth >= 3; depth--) {
-		const int n_nodes_per_dim = 1 << depth;
-
-		if (index_3d.x >= n_nodes_per_dim || index_3d.y >= n_nodes_per_dim) return;	// But we still need all threads
-
-
-
-		const size_t depth_offset = tree->depthOffsets[depth];
-
-		float charge = 0.f;
-		const int x_off = threadIdx.x % 2;
-		const int y_off = (threadIdx.x / 2) % 2;
-		const int z_off = (threadIdx.x / 4) % 2;
-
-		Int3 query_index3d = index_3d * 2 + Int3{ x_off, y_off, z_off };
-		size_t query_index = OcttreeHelpers::GetAbsIndex(query_index3d, n_nodes_per_dim * 2, depth_offset); // Adjust depth_offset as needed
-		float query_charge = tree->chargenodes[query_index];
-		charges[threadIdx.y][threadIdx.x] += query_charge;
-
-		ParallelSum<float>(charges[threadIdx.y], 8);
-
-		const size_t node_index = OcttreeHelpers::GetAbsIndex(index_3d, n_nodes_per_dim, depth_offset);
-
-		if (threadIdx.x == 0) {
-			tree->chargenodes[node_index] = charges[threadIdx.y][0];
+			//const size_t query_index = OcttreeHelpers::GetAbsIndex(queryIndex3D, nNodesPerDim * 2, tree->depthOffsets[depth + 1]); // Adjust depth_offset as needed
+			const size_t query_index = OcttreeHelpers::GetAbsIndex(queryIndex3D, nNodesPerDim * 2, depthOffset); // Adjust depth_offset as needed
+			buffer = *reinterpret_cast<float2*>(&simdev->charge_octtree->chargenodes[query_index]);
+			chargeSum += buffer.x;
+			chargeSum += buffer.y;
 		}
-
-		__syncthreads(); // Ensure all threads have written their results
-
-		// Prepare for the next iteration (move up the tree)
-		if (index_3d.x % 2 == 0 && index_3d.y % 2 == 0 && index_3d.z % 2 == 0) {
-			// This block will participate in the next level
-			index_3d = index_3d / 2;
-			//node_index = OcttreeHelpers::GetAbsIndex(index_3d, n_nodes_per_dim / 2, depth_offset); // Adjust depth_offset for the parent level
-		}
-		else {
-			break; // This block does not participate in computing charges at the next level
-		}
-
-		depth--;
-		n_nodes_per_dim /= 2;
-		//depth_offset = ...; // Update depth_offset to point to the start of the block at the new depth
-		__syncthreads(); // Ensure all threads are synchronized before potentially looping again
 	}
+
+
+	const Int3 index3D{ threadIdx.x, blockIdx.y, blockIdx.z };
+	const size_t node_index = OcttreeHelpers::GetAbsIndex(index3D, nNodesPerDim, simdev->charge_octtree->depthOffsets[depth]);
+	simdev->charge_octtree->chargenodes[node_index] = chargeSum;
 }
 
 
 // 32 threads per block. 1 block per node in the force-tree
-__global__ void DownwardSweep(ChargeOctTree* tree) {	
+__global__ void DownwardSweep(SimulationDevice* simdev) {	
 	__shared__ Float3 forces[32];
 
 	forces[threadIdx.x] = Float3{};
@@ -180,11 +174,12 @@ __global__ void DownwardSweep(ChargeOctTree* tree) {
 	
 
 	//const float forcenodeCharge = tree->chargenodes[OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::force_n_leafnodes_per_dim, forcenodes_depthoffset)];
-	const float forcenodeCharge = tree->chargenodes[OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree, tree->depthOffsets[ChargeOctTree::depthForcetree])];
+	const size_t forcenodeIndex = OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree, simdev->charge_octtree->depthOffsets[ChargeOctTree::depthForcetree]);
+	const float forcenodeCharge = simdev->charge_octtree->chargenodes[forcenodeIndex];
 
-	if (std::abs(forcenodeCharge) < 1e-6) {
-		return;
-	}
+	//if (std::abs(forcenodeCharge) < 1e-6) {
+	//	return;
+	//}
 
 	for (int depth = 3; depth < ChargeOctTree::depthForcetree; depth++)
 	{
@@ -201,7 +196,7 @@ __global__ void DownwardSweep(ChargeOctTree* tree) {
 
 		//const size_t depthOffset = ChargeOctTree::getDepthOffset(depth);
 		//const size_t depthOffset = depthOffsets[depth];
-		const size_t depthOffset = tree->depthOffsets[depth];
+		const size_t depthOffset = simdev->charge_octtree->depthOffsets[depth];
 
 
 		const int surroundingNodesTotal = range * 2 * range * 2 * range * 2;
@@ -221,8 +216,9 @@ __global__ void DownwardSweep(ChargeOctTree* tree) {
 			OcttreeHelpers::applyPBC(query_index3d, nNodesPerDim);
 
 			const size_t query_index = OcttreeHelpers::GetAbsIndex(query_index3d, nNodesPerDim, depthOffset);
-			const float query_chargenode = tree->chargenodes[query_index];
-
+			const float query_chargenode = simdev->charge_octtree->chargenodes[query_index];
+			//if (query_chargenode > 0.f)
+			//	printf("Query charge %f\n", query_chargenode);
 
 
 			Float3 pos_abs_query = OcttreeHelpers::getAbsPos(query_index3d, nodelenNM);
@@ -233,19 +229,12 @@ __global__ void DownwardSweep(ChargeOctTree* tree) {
 	}
 	__syncthreads();
 
-	//EngineUtils::ParallelSum(forces, 6 * 6 * 6);
 	ParallelSum(forces, 32);
-
 
 	// Push the force to the tree
 	if (threadIdx.x == 0) {
-		//if (forces[0].len() != 0.f)
-		//	forces[0].print('F', true);
-
 		const size_t forcenodeIndex = OcttreeHelpers::GetIndexAtDepth(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree);
-		/*forcenodeId3D.print('W');
-		printf("Sending to index %d\n", (int)forcenodeIndex);*/
-		tree->halfforceNodes[forcenodeIndex] = forces[0];
+		simdev->charge_octtree->halfforceNodes[forcenodeIndex] = forces[0];
 	}
 }
 
@@ -280,67 +269,57 @@ __global__ void CompoundsFetchChargeforce(SimulationDevice* simdev) {
 
 
 
-void wipeCharges(ChargeOctTree* tree_dev) {
-	cudaMemset(tree_dev->chargenodes, 0, ChargeOctTree::nNodesChargetree * sizeof(float));
-}
 
 
 namespace SCA {
+	float* chargenodesPtr;	// For quickly clearing all charges
+
+	void wipeCharges() {
+		cudaMemset(chargenodesPtr, 0, ChargeOctTree::nNodesChargetree * sizeof(float));
+	}
+
 	ChargeOctTree::ChargeOctTree() {
 		cudaMalloc(&chargenodes, nNodesChargetree * sizeof(float));
 		//cudaMalloc(&halfcharge_forces, n_nonleaf_nodes * sizeof(Float3));
 		cudaMalloc(&halfforceNodes, force_n_leafnodes * sizeof(Float3));
 		//cudaMalloc(&nodelists, n_nonleaf_nodes * sizeof(NodeList));
+		chargenodesPtr = chargenodes;
 
-		static const std::array<size_t, ChargeOctTree::depthChargetree> depthOffsetsTemp = ChargeOctTree::getDepthOffsets();
+		static const std::array<size_t, ChargeOctTree::depthChargetree+1> depthOffsetsTemp = ChargeOctTree::getDepthOffsets();
 		cudaMalloc(&depthOffsets, sizeof(depthOffsetsTemp));
-		const auto a = sizeof(depthOffsetsTemp);
+		const size_t a = sizeof(depthOffsetsTemp);
 		cudaMemcpy(depthOffsets, depthOffsetsTemp.data(), sizeof(depthOffsetsTemp), cudaMemcpyHostToDevice);
 	}
 	// TODO: Make destructor
 
 
-
 	int handleElectrostatics(SimulationDevice* sim_dev, const BoxParams& boxparams) {
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
-
 		for (int depth = ChargeOctTree::depthChargetree - 1; depth >= 3; depth--) {
-			// Threads distributed along x axis to maximize coalescence
-			const int n_nodes_per_dim = OcttreeHelpers::getNNodesPerDim(depth);
-			const uint3 gridDims{ n_nodes_per_dim, n_nodes_per_dim, 1 };
-			const uint3 blockDims{ 8, n_nodes_per_dim, 1 };
-
-
-			if (blockDims.y > 64) throw std::runtime_error("Shared mem can't handle more right now");
-			propagateChargesUp<<<gridDims, blockDims >>>(sim_dev->charge_octtree, depth, OcttreeHelpers::getDepthOffset(depth), OcttreeHelpers::getDepthOffset(depth + 1),
-				n_nodes_per_dim, OcttreeHelpers::getNNodesPerDim(depth + 1), OcttreeHelpers::getNodelenAtDepth(depth));
-			LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
+			const int parentnodesPerDim = OcttreeHelpers::getNNodesPerDim(depth);
+			const uint3 blockDims{ 1, parentnodesPerDim, parentnodesPerDim };
+			propagateChargesUp << < blockDims, parentnodesPerDim >> > (sim_dev, depth, parentnodesPerDim, OcttreeHelpers::getDepthOffset(depth + 1));
+			//LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
 		}
 
-		propagateChargesUp << <gridDims, blockDims >> > (sim_dev->charge_octtree, depth, OcttreeHelpers::getDepthOffset(depth), OcttreeHelpers::getDepthOffset(depth + 1),
-			n_nodes_per_dim, OcttreeHelpers::getNNodesPerDim(depth + 1), OcttreeHelpers::getNodelenAtDepth(depth));
-		LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
-
-		const auto t1 = std::chrono::high_resolution_clock::now();
 		{
 			const uint3 gridDims{ ChargeOctTree::nLeafnodesPerDim_Forcetree, ChargeOctTree::nLeafnodesPerDim_Forcetree, ChargeOctTree::nLeafnodesPerDim_Forcetree };
-			DownwardSweep << <gridDims, 32 >> > (sim_dev->charge_octtree);
-			LIMA_UTILS::genericErrorCheck("SCA error during propagate down");
+			DownwardSweep << <gridDims, 32 >> > (sim_dev);
+			//LIMA_UTILS::genericErrorCheck("SCA error during propagate down");
 		}	
 		
+		const auto t1 = std::chrono::high_resolution_clock::now();
+
+
 		CompoundsFetchChargeforce<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>(sim_dev);
 
-		//distributeChargesCompounds << < boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (sim_dev);
 		LIMA_UTILS::genericErrorCheck("SCA error during distributeForces");
 
-		wipeCharges(sim_dev->charge_octtree);
-
-
+		wipeCharges();
 
 
 		const auto t2 = std::chrono::high_resolution_clock::now();
-		//const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		return static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 	}
 }

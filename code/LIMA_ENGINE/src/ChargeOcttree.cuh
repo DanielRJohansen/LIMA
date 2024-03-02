@@ -7,9 +7,15 @@
 #include <math.h>
 #include "Utilities.h"
 
-#define ENABLE_SCA
 
 class SimulationDevice;
+
+
+
+// Important!
+// There is no root node in the charge tree, so the first node of depth=1is at index 0
+// The reason for this, is that the root note containing 1 float (charge) fucks up the alignment of 
+// all subsequent nodes, since we want each node to align with a 64bit cacheline
 
 
 
@@ -35,17 +41,17 @@ namespace OcttreeHelpers {
 		return static_cast<float>(static_cast<double>(BOX_LEN_NM) / LAL::powi(2, depth));
 	}
 	static constexpr size_t getDepthOffset(int depth) {
-		return (LAL::powi(8, depth) - 1) / 7;
+		// No offset at depth 1!
+		if (depth == 0)
+			return 0;
+		return (LAL::powi(8, depth) - 1) / 7 - 1;	// -1 to account for the lack of a root node
 	}
 }
-
-
-
 
 // Superior coulumb algorithm
 namespace SCA {
 	// The distance between nodes at the lowest level will be no greater than this value
-	constexpr float min_grid_spacing = 0.08;	// [nm]
+	constexpr float min_grid_spacing = 0.08f;	// [nm]
 
 	constexpr float coulumb_constant = 8.99e+9 * 1e-18; // N m^2/C^2 -> [N nm^2 /C^2]
 
@@ -58,7 +64,8 @@ namespace SCA {
 
 		__device__ void pushChargeToLeaf(const Float3& abspos_of_charge, const float charge) {
 			const Int3 index3d = getClosestChargeLeafnodeIndex3d(abspos_of_charge);
-			const size_t abs_index = OcttreeHelpers::GetAbsIndex(index3d, n_leafnodes_per_dim, depth_offset_leafs);
+			const size_t abs_index = OcttreeHelpers::GetAbsIndex(
+				index3d, nLeafnodesPerDim_Chargetree, depth_offset_leafs);
 			chargenodes[abs_index] = charge;
 		}
 		__device__ Float3 getForceAtLeaf(const Float3& abspos_of_charge, const float charge) {
@@ -71,15 +78,12 @@ namespace SCA {
 
 
 
-
-
-
-
 		static constexpr int depthChargetree = LAL::ceilFloatToInt(LAL::log2f(BOX_LEN_NM / min_grid_spacing));
 		static constexpr int depthForcetree = depthChargetree - 2;	// So ~< 64 particles per leafnode, maybe too many
 
 
-		static constexpr size_t nNodesChargetree = (LAL::powi(8, depthChargetree + 1) - 1) / 7;
+		//static constexpr size_t nNodesChargetree = (LAL::powi(8, depthChargetree + 1) - 1) / 7-1;	// -1 because there is no root node
+		static constexpr size_t nNodesChargetree = OcttreeHelpers::getDepthOffset(depthChargetree + 1);
 
 		// Always on device
 		float* chargenodes = nullptr;		// Full tree
@@ -88,28 +92,17 @@ namespace SCA {
 		size_t* depthOffsets;// TODO: move this array to constant memory?
 
 		static constexpr int nLeafnodesPerDim_Forcetree = LAL::powi(2, depthForcetree);
+		static constexpr int nLeafnodesPerDim_Chargetree = LAL::powi(2, depthChargetree);
 
 
-		
+		static constexpr std::array <size_t, depthChargetree+1> getDepthOffsets() {
+			std::array<size_t, depthChargetree+1> depth_offsets{};
 
-
-
-
-
-
-
-
-
-		static constexpr std::array <size_t, depthChargetree> getDepthOffsets() {
-			std::array<size_t, depthChargetree> depth_offsets{};
-
-			for (int i = 0; i < depthChargetree; i++) {
+			for (int i = 0; i < depthChargetree+1; i++) {
 				depth_offsets[i] = OcttreeHelpers::getDepthOffset(i);
 			}
 			return depth_offsets;
 		}
-
-
 
 		static constexpr float forcetree_leafnodelen = BOX_LEN_NM / nLeafnodesPerDim_Forcetree;
 
@@ -133,9 +126,10 @@ namespace SCA {
 			};
 		}
 
-		static constexpr int n_leafnodes_per_dim = LAL::powi(2, depthChargetree);
-		static constexpr float abspos_to_chargeleafnumber = static_cast<float>(n_leafnodes_per_dim) / BOX_LEN_NM;
-		static constexpr float abspos_to_forceleafnumber = static_cast<float>(nLeafnodesPerDim_Forcetree) / BOX_LEN_NM;
+		static constexpr float abspos_to_chargeleafnumber = 
+			static_cast<float>(nLeafnodesPerDim_Chargetree) / BOX_LEN_NM;
+		static constexpr float abspos_to_forceleafnumber = 
+			static_cast<float>(nLeafnodesPerDim_Forcetree) / BOX_LEN_NM;
 
 		const size_t depth_offset_leafs = OcttreeHelpers::getDepthOffset(depthChargetree);
 
@@ -143,6 +137,8 @@ namespace SCA {
 
 	};
 	
+	// Instantiates a chargeocttree on the device, and returns the device ptr to the tree
+	//ChargeOctTree* MakeChargeOcttree();
 
 	// returns timing [ys]
 	int handleElectrostatics(SimulationDevice* sim_dev, const BoxParams& boxparams);

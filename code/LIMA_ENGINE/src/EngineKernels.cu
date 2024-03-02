@@ -727,7 +727,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 
 		// Electrostatic
-#ifdef ENABLE_SCA
+#ifdef ENABLE_ELECTROSTATICS
 	if (threadIdx.x < compound.n_particles) {
 		//Coord{}
 		//compound_positions[threadIdx.x].print('C');

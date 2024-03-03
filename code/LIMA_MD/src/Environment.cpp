@@ -23,6 +23,12 @@ using std::printf;
 namespace lfs = Filehandler;
 namespace fs = std::filesystem;
 
+
+// ------------------------------------------------ Display Parameters ------------------------------------------ //
+const int STEPS_PER_RENDER = 50;
+constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
+// -------------------------------------------------------------------------------------------------------------- //
+
 Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	: work_dir(wf)
 	, m_mode(mode)

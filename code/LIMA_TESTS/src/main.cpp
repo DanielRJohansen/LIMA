@@ -3,7 +3,7 @@
 #include "EnergyMinimization.cuh"
 #include "MembraneBuilder.h"
 #include "MinorPrograms.h"
-
+#include "ElectrostaticsTests.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -11,6 +11,7 @@ using namespace TestMDStability;
 using namespace StressTesting;
 using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
+using namespace ElectrostaticsTests;
 void runAllUnitTests();
 
 //void makeLipids() {
@@ -31,8 +32,26 @@ void runAllUnitTests();
 //}
 //}
 
+void MakeChargeParticlesSim() {
+	Environment env("C:/Users/Daniel/git_repo/LIMA_data/ElectrostaticField", EnvMode::Headless, false);
 
+	env.createSimulationFiles(7.f);
 
+	// Create 5 custom particles
+	AtomsSelection atomsSelection{
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -1.f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -.2f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -0.f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.2f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 1.f, 10.f}, 20}
+	};
+
+	MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
+	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.1f, 10.f);
+
+	simfiles.grofile->printToFile();
+	simfiles.topfile->printToFile();
+}
 
 
 
@@ -82,10 +101,12 @@ int main() {
 		env.createMembrane(lipids, true);*/
 
 
-
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);		
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);	
+			
+		//MakeChargeParticlesSim();
+		//TestChargedParticlesEndInCorrectSection(envmode);
 
 		runAllUnitTests();
 	}

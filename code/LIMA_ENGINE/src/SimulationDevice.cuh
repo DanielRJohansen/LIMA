@@ -28,7 +28,7 @@ struct SimulationDevice {
 		
 		genericCopyToDevice(params_host, &params, 1);
 
-		databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds);
+		databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds, params_host.data_logging_interval);
 		databuffers = genericMoveToDevice(databuffers, 1);
 
 		box_host->moveToDevice();

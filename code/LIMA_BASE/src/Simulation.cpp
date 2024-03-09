@@ -210,10 +210,10 @@ void Simulation::copyBoxVariables() {
 //	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)
 //{}
 
-DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds) {
+DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds, int loggingInterval) {
 	// Permanent Outputs for energy & trajectory analysis
 	{
-		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER / LOG_EVERY_N_STEPS;
+		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER / loggingInterval;
 		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");

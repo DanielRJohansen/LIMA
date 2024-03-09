@@ -53,16 +53,16 @@ void BoxBuilder::addBoxImage(Simulation* simulation, BoxImage& compound_collecti
 
 void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
 	// Permanent Outputs for energy & trajectory analysis
-	const size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps / LOG_EVERY_N_STEPS;
+	const size_t n_datapoints = simulation.boxparams_host.total_particles_upperbound * n_steps / simulation.simparams_host.data_logging_interval;
 	const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 	m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
 
 
-	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
-	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
+	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
+	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
 
 #ifndef DONTGETDATA
-	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps);
+	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
 #endif
 
 	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
@@ -253,7 +253,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 	for (int cid = 0; cid < sim.boxparams_host.n_compounds; cid++) {
 		for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
 		{
-			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1);
+			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
 			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.dims.x, sim.simparams_host.bc_select);

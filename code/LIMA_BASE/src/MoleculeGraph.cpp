@@ -48,7 +48,7 @@ MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile
 	MoleculeGraph graph;
 
 	for (const auto& atom : topolfile.atoms.entries) {
-		graph.addNode(atom.nr, atom.atom);
+		graph.addNode(atom.nr, atom.atomname);
 	}
 
 	for (const auto& bond : topolfile.singlebonds.entries) {
@@ -170,7 +170,7 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 }
 
 void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, const fs::path& gro_path_out, const fs::path& top_path_out) {
-	auto grofile = MDFiles::loadGroFile(gro_path_in);
+	auto grofile = std::make_unique<ParsedGroFile>(gro_path_in);
 	auto topfile = MDFiles::loadTopologyFile(top_path_in);
 
 	const MoleculeGraph molgraph = createGraph(*topfile);

@@ -344,7 +344,8 @@ void MoleculeBuilder::createCompounds(const Topology& topology, float boxlen_nm)
 			compounds.back().addParticle(
 				nonsolvent_positions[atom_gid],
 				particleinfo.atomtype_id,
-				Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
+				particleinfo.atomname[0],
+				//Forcefield::atomTypeToIndex(particleinfo.atomname[0]),
 				atom_gid,
 				boxlen_nm, bc_select,
 				particleinfotable[atom_gid].charge

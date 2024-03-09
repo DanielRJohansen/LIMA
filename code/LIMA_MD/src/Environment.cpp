@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 50;
+const int STEPS_PER_RENDER = 1;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -64,10 +64,10 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	const auto gro_file = MDFiles::loadGroFile(gro_path);
+	const auto grofile = std::make_unique<ParsedGroFile>(gro_path);
 	const std::unique_ptr<ParsedTopologyFile> topol_file = MDFiles::loadTopologyFile(topol_path);
 
-	CreateSimulation(*gro_file, *topol_file, params);
+	CreateSimulation(*grofile, *topol_file, params);
 }
 
 void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTopologyFile& topolfile, const SimParams& params) 
@@ -113,7 +113,7 @@ void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_
 	// Load the files for each lipid
 	for (auto& lipid : lipidselection) {
 		const std::string lipid_path = main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
-		lipid.grofile = MDFiles::loadGroFile(lipid_path + lipid.lipidname + ".gro");
+		lipid.grofile = std::make_unique<ParsedGroFile>(lipid_path + lipid.lipidname + ".gro");
 		lipid.topfile = MDFiles::loadTopologyFile(lipid_path + lipid.lipidname + ".itp");
 	}
 
@@ -171,9 +171,20 @@ void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_
 	bilayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
 }
 
+void Environment::createSimulationFiles(float boxlen) {
+	ParsedGroFile grofile{};
+	grofile.box_size = Float3{ boxlen };
+	grofile.printToFile(work_dir + "/molecule/conf.gro");
+
+	ParsedTopologyFile topfile{};
+	topfile.printToFile(work_dir + "/molecule/topol.top");
+
+	SimParams simparams{};
+	simparams.dumpToFile(work_dir+"/sim_params.txt");
+}
+
 void Environment::setupEmptySimulation(const SimParams& simparams) {
 	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
-
 
 	simulation = std::make_unique<Simulation>(simparams, work_dir + "/molecule/", m_mode);
 
@@ -213,7 +224,7 @@ void Environment::verifyBox() {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}
 
-	
+	assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
 		throw std::runtime_error("Error: Solvent mass is unreasonably large");
@@ -258,6 +269,8 @@ bool Environment::prepareForRun() {
 	// TEMP, this is a bad solution
 	compounds = &simulation->compounds_host;
 	boxparams = simulation->boxparams_host;
+	coloringMethod = simulation->simparams_host.coloring_method;
+
 
 	engine = std::make_unique<Engine>(
 		std::move(simulation),
@@ -334,7 +347,7 @@ ParsedGroFile Environment::writeBoxCoordinatesToFile() {
 		const int cid = boximage->particleinfotable[i].compound_index;
 		const int pid = boximage->particleinfotable[i].local_id_compound;
 
-		int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->simsignals_host.step-1);
+		int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->simsignals_host.step-1, simulation->simparams_host.data_logging_interval);
 		const Float3 new_position = simulation->traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
 		
 		outputfile.atoms[i].position = new_position;
@@ -456,7 +469,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 	if (engine->runstatus.current_step - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
-		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature);
+		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;
 	}
 

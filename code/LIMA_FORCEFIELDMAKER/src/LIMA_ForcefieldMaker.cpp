@@ -193,7 +193,7 @@ void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfi
 		}
 
 		// Global id of -1 will be immediately overwritten..
-		topology.atominfotable.insert(Atom{ -1, gro_id, current_chain_id, atom.resnr, atom.type, atom.atom, current_unique_residue_cnt, atom.charge * elementaryChargeToCoulombPerMole });
+		topology.atominfotable.insert(Atom{ -1, gro_id, current_chain_id, atom.resnr, atom.type, atom.atomname, current_unique_residue_cnt, atom.charge * elementaryChargeToCoulombPerMole });
 
 		topology.active_atomtypes.insert(atom.type);
 	}
@@ -484,7 +484,7 @@ std::vector<std::string> getFiles() {
 	files.push_back(ff_dir + "/par_all36m_prot.prm");
 	//files.push_back(ff_dir + "/par_all36_cgenff.prm");
 	files.push_back(ff_dir + "/par_all22_prot.prm");
-
+	files.push_back(ff_dir + "/../lima_custom_forcefield.prm");
 
 	return files;
 }

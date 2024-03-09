@@ -108,7 +108,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
 	//const int64_t n_steps = simulation->getStep();
-	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep());
+	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
 	if (n_entryindices < 2) { return Analyzer::AnalyzedPackage(); }
 
@@ -359,7 +359,7 @@ Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std:
 void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir) {
 	std::vector<float> energies;
 	
-	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1); entryindex++) {
+	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simparams_host.data_logging_interval); entryindex++) {
 
 		for (int compound_id = 0; compound_id < sim.boxparams_host.n_compounds; compound_id++) {
 			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {

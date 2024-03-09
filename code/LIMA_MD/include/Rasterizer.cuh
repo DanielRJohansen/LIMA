@@ -16,19 +16,18 @@ struct RenderAtom {
 };
 
 
-
 class Rasterizer {
 public:
 	Rasterizer() {};
 	
 	std::vector<RenderBall> render(const Float3* positions,
-		const std::vector<Compound>& compounds, const BoxParams&, int64_t step, Float3 camera_normal);
+		const std::vector<Compound>& compounds, const BoxParams&, int64_t step, Float3 camera_normal, ColoringMethod coloringmethod);
 
 
 private:
-	/// <summary>	/// Returns a pointer to a list of atoms on the device	/// </summary>
-	RenderAtom* getAllAtoms(const Float3* positions, 
-		const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
+	
+	//RenderAtom* getAllAtoms(const Float3* positions, 
+	//	const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step);
 
 	std::vector<RenderBall> processAtoms(RenderAtom* atoms, int total_particles_upperbound, float boxlen_nm);
 

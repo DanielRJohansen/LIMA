@@ -134,7 +134,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 void Engine::terminateSimulation() {
 	const auto steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
-	if ((steps_since_transfer) > LOG_EVERY_N_STEPS) {
+	if ((steps_since_transfer) > simulation->simparams_host.data_logging_interval) {
 		offloadLoggingData(steps_since_transfer);
 		offloadTrajectory(steps_since_transfer);
 	}
@@ -147,8 +147,8 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
 
 	const int64_t startstep = simulation->getStep() - steps_to_transfer;
-	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep);
-	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep());
+	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
+	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
 	cudaMemcpy(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
@@ -177,8 +177,8 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 #ifndef DONTGENDATA
 
 	const int64_t startstep = simulation->getStep() - steps_to_transfer;
-	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep);
-	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep());
+	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
+	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
 	cudaMemcpy(
 		//&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
@@ -191,7 +191,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	cudaDeviceSynchronize();
 #endif
 	step_at_last_traj_transfer = simulation->getStep();
-	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep()-1));
+	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep()-1, simulation->simparams_host.data_logging_interval));
 }
 
 
@@ -245,11 +245,13 @@ void Engine::deviceMaster() {
 		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
+	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 
 	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 #ifdef ENABLE_ELECTROSTATICS
-	timings.electrostatics += SCA::handleElectrostatics(sim_dev, simulation->boxparams_host);
+	if (simulation->simparams_host.enable_electrostatics)
+		timings.electrostatics += SCA::handleElectrostatics(sim_dev, simulation->boxparams_host);
 #endif
 	const auto t0b = std::chrono::high_resolution_clock::now();
 

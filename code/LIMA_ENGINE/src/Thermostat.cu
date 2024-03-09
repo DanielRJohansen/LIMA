@@ -9,7 +9,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	TemperaturPackage package{};
 
 	const uint64_t step = simulation->getStep() - 1;	// We haven't loaded data for current step onto host yet.
-	const auto entryindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(step);
+	const auto entryindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(step, simulation->simparams_host.data_logging_interval);
 
 
 	long double sum_kinE_compound = 0.;	// [J/mol]

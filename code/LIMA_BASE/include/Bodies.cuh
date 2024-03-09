@@ -403,9 +403,8 @@ struct CompoundCompact {
 struct Compound : public CompoundCompact {
 	__host__ __device__ Compound() {}
 
-	// For drawing pretty spheres :)	//TODO Move somewhere else
-	uint8_t atom_color_types[MAX_COMPOUND_PARTICLES];
 
+	
 	// Interims from the bridgekernel to compoundkernel
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 	float potE_interim[MAX_COMPOUND_PARTICLES];
@@ -426,6 +425,9 @@ struct Compound : public CompoundCompact {
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
 	float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
+
+	// For drawing pretty spheres :)
+	char atomLetters[MAX_COMPOUND_PARTICLES];
 };
 
 

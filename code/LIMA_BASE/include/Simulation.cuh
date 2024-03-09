@@ -8,6 +8,7 @@
 struct ForceField_NB;
 class Forcefield;
 
+enum ColoringMethod { Atomname, Charge };
 
 
 constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
@@ -32,6 +33,12 @@ struct SimParams {
 	BoundaryConditionSelect bc_select{ PBC };
 	SupernaturalForcesSelect snf_select{ None };
 	float box_size = 7.f;								// [nm]
+	bool enable_electrostatics = false;
+
+
+	ColoringMethod coloring_method = ColoringMethod::Atomname;
+
+	int data_logging_interval = 5;
 
 	static constexpr std::string defaultPath() { return "sim_params.txt"; };
 };
@@ -61,7 +68,7 @@ struct SimparamsExtra {
 
 struct DatabuffersDevice {
 	DatabuffersDevice(const DatabuffersDevice&) = delete;
-	DatabuffersDevice(size_t total_particles_upperbound, int n_compounds);
+	DatabuffersDevice(size_t total_particles_upperbound, int n_compounds, int loggingInterval);
 	void freeMembers();
 
 
@@ -80,9 +87,9 @@ struct DatabuffersDevice {
 template <typename T>
 class ParticleDataBuffer {
 public:
-	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps) 
+	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, int loggingInterval) 
 		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
-		n_indices(std::max(n_steps/LOG_EVERY_N_STEPS,1ull)), buffer(n_particles_upperbound* n_indices, T{})
+		n_indices(std::max(n_steps/ loggingInterval,1ull)), buffer(n_particles_upperbound* n_indices, T{})
 	{
 		//buffer.resize(n_particles_upperbound * n_indices);
 		//for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
@@ -199,3 +206,7 @@ public:
 namespace SimUtils {
 	std::unique_ptr<Box> copyToHost(Box* box_dev);
 };
+
+
+
+

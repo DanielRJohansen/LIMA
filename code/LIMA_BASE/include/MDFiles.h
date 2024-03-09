@@ -20,12 +20,19 @@ struct GroRecord {
 };
 
 struct ParsedGroFile {
-	std::string title;
+	ParsedGroFile() {};
+	ParsedGroFile(const std::filesystem::path& path);
+	std::string title="";
 	int n_atoms{ 0 };
 	std::vector<GroRecord>atoms;
 	Float3 box_size{};
 
+	std::filesystem::path m_path;
+
+	void printToFile() const { printToFile(m_path);};
 	void printToFile(const std::filesystem::path& path) const;
+
+	void addEntry(std::string residue_name, std::string atom_name, const Float3& position);
 };
 
 template <typename EntryType>
@@ -34,7 +41,7 @@ struct Section {
 	const std::string legend;
 	std::vector<EntryType> entries;
 
-	std::string composeString() {
+	std::string composeString() const {
 		std::ostringstream oss;
 
 		oss << title << '\n';
@@ -91,7 +98,7 @@ struct ParsedTopologyFile {	//.top or .itp
 		std::string type{};
 		int resnr{};
 		std::string residue{};
-		std::string atom{};
+		std::string atomname{};
 		int cgnr{};
 		float charge{};// In elementary charges [e]. Convert to C/mol before using
 		float mass{};
@@ -126,12 +133,12 @@ struct ParsedTopologyFile {	//.top or .itp
 	using DihedralBond = GenericBond<4>;
 	using ImproperDihedralBond = GenericBond<4>;
 
+	void printToFile(const std::filesystem::path& path) const;
+	void printToFile() const { printToFile(m_path); };
 
-	void printToFile(const std::filesystem::path& path);
-
-	std::string title;
-
-	MoleculeEntry me;
+	std::string title="";
+	std::filesystem::path m_path;
+	//MoleculeEntry me;
 	Section<MoleculeEntry> molecules{ "[ molecule ]", generateLegend({}) };
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
@@ -146,11 +153,10 @@ struct ParsedTopologyFile {	//.top or .itp
 };
 
 
+
 namespace MDFiles {
 	namespace fs = std::filesystem;
 
-	std::unique_ptr<ParsedGroFile> loadGroFile(const fs::path& path);
-	std::unique_ptr<ParsedGroFile> loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos);
 
 	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
 
@@ -195,4 +201,14 @@ namespace MDFiles {
 		Section<Dihedralbond> dihedralbonds;
 		Section<Improperdihedralbond> improperdihedralbonds;
 	};
+
+
+	// Maybe add simparams here too?
+	struct SimulationFilesCollection {
+		SimulationFilesCollection() {};
+		SimulationFilesCollection(const fs::path& workDir);
+		std::unique_ptr<ParsedGroFile> grofile;
+		std::unique_ptr<ParsedTopologyFile> topfile;
+	};
+
 }

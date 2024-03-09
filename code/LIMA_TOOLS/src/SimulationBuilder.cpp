@@ -104,35 +104,39 @@ void constexpr validateLipidselection(const LipidsSelection& lipidselection) {
 	}
 }
 
-struct GetNextRandomLipid {
-	GetNextRandomLipid(const LipidsSelection& lipidselection) : lipidselection(lipidselection) {
-		// Make a vector that points to the lipid selection index, so we can randomly select lipids
-		for (int i = 0; i < lipidselection.size(); i++) {
-			for (int j = 0; j < lipidselection[i].percentage; j++)
-				lipid_selection_indexes.push_back(i);
+template <typename Selection>
+struct SampleSelectionRandomly {
+	// Seedoffset is so we can get repeatable but different outcomes from multiple instantiations
+	SampleSelectionRandomly(const Selection& selection, int seedOffset=0) : selection(selection) {
+		// Make a vector that points to the  selection index, so we can randomly select lipids
+		for (int i = 0; i < selection.size(); i++) {
+			for (int j = 0; j < selection[i].percentage; j++)
+				selection_indexes.push_back(i);
 		}
 		// Shuffle the vector
-		g = std::mt19937(34896495);
+		g = std::mt19937(34896495 + seedOffset);
 
-		std::shuffle(lipid_selection_indexes.begin(), lipid_selection_indexes.end(), g);
+		std::shuffle(selection_indexes.begin(), selection_indexes.end(), g);
 	}
 
-	const LipidSelect& operator()() {
-		if (lipidselect == 100) {
-			lipidselect = 0;
-			std::shuffle(lipid_selection_indexes.begin(), lipid_selection_indexes.end(), g);
+	const auto& operator()() {
+		if (select == 100) {
+			select = 0;
+			std::shuffle(selection_indexes.begin(), selection_indexes.end(), g);
 		}
-		return lipidselection[lipid_selection_indexes[lipidselect++]];
+		return selection[selection_indexes[select++]];
 	}
 
 private:
-	const LipidsSelection& lipidselection;
-	std::vector<int> lipid_selection_indexes;
+	const Selection& selection;
+	std::vector<int> selection_indexes;
 
-	int lipidselect = 0;
+	int select = 0;
 	std::mt19937 g;
 };
 
+using GetNextRandomLipid = SampleSelectionRandomly<LipidsSelection>;
+using GetNextRandomParticle = SampleSelectionRandomly<AtomsSelection>;
 
 namespace SimulationBuilder{
 
@@ -271,10 +275,64 @@ namespace SimulationBuilder{
 
 		return { outputgrofile, outputtopologyfile };
 	}
+}
 
+void SimulationBuilder::DistributeParticlesInBox(ParsedGroFile& grofile, ParsedTopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
+{
+	const int blocksPerDim = static_cast<int>(std::ceilf(grofile.box_size.x / 2.f));
+	const float blockLen = grofile.box_size.x / static_cast<float>(blocksPerDim);
 
+	const float usableBlocklen = blockLen - minDistBetweenAnyParticle;
 
+	const int particlesPerBlock = static_cast<int>(std::ceil(particlesPerNm3 * blockLen * blockLen * blockLen));
 
+	srand(1238971);
 
-	
+	GetNextRandomParticle getNextRandomParticle{ particles };
+
+	std::vector<Float3> positionsInThisBlock(particlesPerBlock);
+
+	// Divide the box into small subblocks
+	for (int z = 0; z < blocksPerDim; z++) {
+		for (int y = 0; y < blocksPerDim; y++) {
+			for (int x = 0; x < blocksPerDim; x++) {
+
+				const Float3 blockStart = { x * blockLen, y * blockLen, z * blockLen };
+
+				// For each block, create the required number of particles. Only check there's no collision inside the box, 
+				// as inter-block collisions are automatically handled by the margin
+				for (int relativeParticleIndex = 0; relativeParticleIndex < particlesPerBlock; ) {
+					AtomtypeSelect atomtypeselect = getNextRandomParticle();
+
+					const Float3 position = Float3{
+						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
+						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
+						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f
+					} + blockStart;
+
+					bool collision = false;
+					for (int i = 0; i < relativeParticleIndex; i++) {
+						if ((positionsInThisBlock[i] - position).len() < minDistBetweenAnyParticle) {	// No need for PBC, since it's inside blocks
+							collision = true;
+							break;
+						}
+					}
+
+					// If no collision, add the particle to the gro and top file
+					if (!collision) {
+						positionsInThisBlock[relativeParticleIndex] = position;
+						grofile.addEntry("XXX", atomtypeselect.atomtype.atomname, position);
+
+						// Add first the basic atomtype, and then correct the IDs after
+						topfile.atoms.entries.emplace_back(atomtypeselect.atomtype);
+						if (topfile.atoms.entries.size() > 1) {
+							topfile.atoms.entries.back().nr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].nr + 1;
+							topfile.atoms.entries.back().resnr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].resnr +1;
+						}
+						relativeParticleIndex++;
+					}
+				}
+			}
+		}
+	}
 }

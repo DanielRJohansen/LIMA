@@ -20,7 +20,7 @@ struct TestType {
 
 
 
-enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S };
+enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM};
 
 
 struct Int3 {

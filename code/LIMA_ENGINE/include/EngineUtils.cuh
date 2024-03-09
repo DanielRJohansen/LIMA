@@ -355,21 +355,21 @@ public:
 namespace LIMALOGSYSTEM {
 
 	// Same as below, but we dont expect to be an even interval
-	static constexpr int64_t getMostRecentDataentryIndex(int64_t step) {
-		return step / LOG_EVERY_N_STEPS;
+	static constexpr int64_t getMostRecentDataentryIndex(int64_t step, int loggingInterval) {
+		return step / loggingInterval;
 	}
 
-	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to) {
-		return getMostRecentDataentryIndex(to) - getMostRecentDataentryIndex(from);
+	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to, int loggingInterval) {
+		return getMostRecentDataentryIndex(to, loggingInterval) - getMostRecentDataentryIndex(from, loggingInterval);
 	}
 
-	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step) {
-		if (step % LOG_EVERY_N_STEPS != 0) {
+	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step, int loggingInterval) {
+		if (step % loggingInterval != 0) {
 			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
 			return 0;
 		}
-		assert(step % LOG_EVERY_N_STEPS == 0);
-		return step / LOG_EVERY_N_STEPS;
+		assert(step % loggingInterval == 0);
+		return step / loggingInterval;
 	}
 };
 
@@ -424,11 +424,11 @@ namespace EngineUtils {
 	}
 
 	//// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local) {
+	__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local, int loggingInterval) {
 
 		const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
 		//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
-		const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer) * total_particles_upperbound;
+		const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
 		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		return step_offset + compound_offset + particle_id_local;
 	}
@@ -475,9 +475,9 @@ namespace EngineUtils {
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (simsignals.step % LOG_EVERY_N_STEPS != 0) { return; }
+		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
 
-		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x);
+		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x, simparams.data_logging_interval);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
@@ -486,13 +486,13 @@ namespace EngineUtils {
 	}
 
 	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 
-		const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers) 
+		const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers, int loggingInterval)
 	{
-		if (step % LOG_EVERY_N_STEPS != 0) { return; }
+		if (step % loggingInterval != 0) { return; }
 
 
 		if (solvent_active) {
-			const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x]);
+			const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x], loggingInterval);
 
 
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);

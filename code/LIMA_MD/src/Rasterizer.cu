@@ -9,12 +9,49 @@
 #include <algorithm>
 #include <cuda/std/cmath>
 
+__global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds, ColoringMethod coloringMethod);
+__global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms);
+__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float box_len_nm);
+
+/// <summary>	/// Returns a pointer to a list of atoms on the device	/// </summary>
+RenderAtom* getAllAtoms(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, ColoringMethod coloringMethod) {
+    RenderAtom* atoms;
+    cudaMallocManaged(&atoms, sizeof(RenderAtom) * boxparams.total_particles_upperbound);
 
 
-std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, Float3 camera_normal) {
+
+
+    Float3* positions_dev;
+    cudaMallocManaged(&positions_dev, sizeof(Float3) * boxparams.total_particles_upperbound);
+    cudaMemcpy(positions_dev, positions, sizeof(Float3) * boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
+
+
+    Compound* compounds_dev;
+    cudaMallocManaged(&compounds_dev, sizeof(Compound) * boxparams.n_compounds);
+    cudaMemcpy(compounds_dev, compounds.data(), sizeof(Compound) * boxparams.n_compounds, cudaMemcpyHostToDevice);
+
+
+    if (boxparams.n_compounds > 0) {
+        loadCompoundatomsKernel << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (atoms, step, positions_dev, compounds_dev, coloringMethod);
+    }
+    if (boxparams.n_solvents > 0) {
+        loadSolventatomsKernel << < boxparams.n_solvents / 128 + 1, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
+    }
+
+
+    cudaFree(positions_dev);
+    cudaFree(compounds_dev);
+    return atoms;
+}
+
+
+
+
+
+std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, Float3 camera_normal, ColoringMethod coloringMethod) {
 
     LIMA_UTILS::genericErrorCheck("Error before renderer");
-	RenderAtom* atoms_dev = getAllAtoms(positions, compounds, boxparams, step);
+	RenderAtom* atoms_dev = getAllAtoms(positions, compounds, boxparams, step, coloringMethod);
 
     std::vector<RenderBall> balls_host = processAtoms(atoms_dev, boxparams.total_particles_upperbound, boxparams.dims.x);
     cudaFree(atoms_dev);
@@ -36,40 +73,6 @@ std::vector<RenderBall> Rasterizer::render(const Float3* positions, const std::v
 
 
 
-__global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds);
-__global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms);
-__global__ void processAtomsKernel(RenderAtom* atoms, RenderBall* balls, float box_len_nm);
-
-RenderAtom* Rasterizer::getAllAtoms(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step) {
-	RenderAtom* atoms;
-	cudaMallocManaged(&atoms, sizeof(RenderAtom) * boxparams.total_particles_upperbound);
-
-
-
-  
-    Float3* positions_dev;
-    cudaMallocManaged(&positions_dev, sizeof(Float3) * boxparams.total_particles_upperbound);
-    cudaMemcpy(positions_dev, positions, sizeof(Float3) * boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
-
-    
-    Compound* compounds_dev;
-    cudaMallocManaged(&compounds_dev, sizeof(Compound) * boxparams.n_compounds);
-    cudaMemcpy(compounds_dev, compounds.data(), sizeof(Compound) * boxparams.n_compounds, cudaMemcpyHostToDevice);
-
-
-    if (boxparams.n_compounds > 0) {
-        loadCompoundatomsKernel << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (atoms, step, positions_dev, compounds_dev);
-    }
-	if (boxparams.n_solvents > 0) {
-		loadSolventatomsKernel << < boxparams.n_solvents / 128+1, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
-	}
-
-
-    cudaFree(positions_dev);
-    cudaFree(compounds_dev);
-	return atoms;
-}
-
 
 std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, int total_particles_upperbound, float box_len_nm) {
     RenderBall* balls_device;
@@ -87,45 +90,24 @@ std::vector<RenderBall> Rasterizer::processAtoms(RenderAtom* atoms, int total_pa
 
 
 
-
-
-
-
-__device__ ATOM_TYPE RAS_getTypeFromIndex(int atom_index) {
-    switch (atom_index)
+__device__ ATOM_TYPE RAS_getTypeFromAtomletter(char atom) {
+    switch (atom)
     {
-    case 0:
-        return ATOM_TYPE::SOL;
-    case 1:
+    case 'C':
         return ATOM_TYPE::C;
-    case 2:
+    case 'O':
         return ATOM_TYPE::O;
-    case 3:
+    case 'N':
         return ATOM_TYPE::N;
-    case 4:
+    case 'H':
         return ATOM_TYPE::H;
-    case 5: 
+    case 'P':
         return ATOM_TYPE::P;
-    case 6:
-        return ATOM_TYPE::SOL;
+    case 'l':
+		return ATOM_TYPE::LIMA_CUSTOM;
     default:
         return ATOM_TYPE::NONE;
     }
-}
-
-__device__ ATOM_TYPE RAS_getTypeFromMass(double mass) {
-    mass *= 1000.f;   //convert to g
-    if (mass < 4)
-        return ATOM_TYPE::H;
-    if (mass < 14)
-        return ATOM_TYPE::C;
-    if (mass < 15)
-        return ATOM_TYPE::N;
-    if (mass < 18)
-        return ATOM_TYPE::O;
-    if (mass < 32)
-        return ATOM_TYPE::P;
-    return ATOM_TYPE::NONE;
 }
 
 __device__ Int3 getColor(ATOM_TYPE atom_type) {
@@ -150,6 +132,7 @@ __device__ Int3 getColor(ATOM_TYPE atom_type) {
     }
 }
 
+
 //https://en.wikipedia.org/wiki/Van_der_Waals_radius
 __device__ float getRadius(ATOM_TYPE atom_type) {
     switch (atom_type)
@@ -166,6 +149,8 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
         return 0.152f * 0.4f;   // Make smaller for visibility
     case ATOM_TYPE::P:
         return 0.18f;
+    case ATOM_TYPE::LIMA_CUSTOM:
+	    return 0.1f;
     case ATOM_TYPE::NONE:
         return 1.f;
     default:
@@ -188,7 +173,7 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
 /// <param name="step"></param>
 /// <param name="positions">Absolute positions in nm of all particles (compounds first then solvents)</param>
 /// <returns></returns>
-__global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds) {
+__global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds, ColoringMethod coloringMethod) {
 
     const int local_id = threadIdx.x;
     const int compound_id = blockIdx.x;
@@ -202,8 +187,17 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
         RenderAtom atom{};
         atom.pos = positions[global_id];
         atom.mass = SOLVENT_MASS;                                                         // TEMP
-        atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
-        atom.color = getColor(atom.atom_type);
+        //atom.color = getColor(compound->atomLetters[local_id]);
+        //atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
+        atom.atom_type = RAS_getTypeFromAtomletter(compound->atomLetters[local_id]);
+
+        if (coloringMethod == ColoringMethod::Atomname)
+            atom.color = getColor(atom.atom_type);
+        else if (coloringMethod == ColoringMethod::Charge) {
+            const float chargeNormalized = (compound->atom_charges[local_id] + elementaryChargeToCoulombPerMole)  / (elementaryChargeToCoulombPerMole*2.f);
+            atom.color = Int3(255.f * chargeNormalized, 0, 255.f - 255.f * chargeNormalized);
+        }
+
         //ATOM_TYPE typetemp = static_cast<ATOM_TYPE>(compound_id % 7);
         //atom.color = getColor(typetemp);
         atoms[global_id] = atom;

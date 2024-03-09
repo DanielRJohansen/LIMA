@@ -16,6 +16,10 @@ struct BoxImage;
 class Engine;
 
 
+
+
+
+
 class Environment
 {
 
@@ -52,7 +56,10 @@ public:
 	/// which ensures all particles are inside the box</param>
 	void createMembrane(LipidsSelection& lipidselection, bool carryout_em = true);
 
-
+	/// <summary>
+	/// Create .gro .top and simparams.txt files in the current directory
+	/// </summary>
+	void createSimulationFiles(float boxlen);
 
 
 
@@ -119,6 +126,8 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
+
+	ColoringMethod coloringMethod;	// Not ideal to have here..
 
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
 	std::vector<Compound>* compounds = nullptr;

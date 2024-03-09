@@ -88,7 +88,7 @@ public:
 		}
 	}
 
-	void addParticle(const Float3& position, int atomtype_id, int atomtype_color_id, int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
+	void addParticle(const Float3& position, int atomtype_id, char atomLetter, int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
 		if (n_particles >= MAX_COMPOUND_PARTICLES) {
 			throw std::runtime_error("Failed to add particle to compound");
 		}
@@ -106,7 +106,7 @@ public:
 
 		// Variables present in Compound
 		atom_types[n_particles] = atomtype_id;
-		atom_color_types[n_particles] = atomtype_color_id;	// wtf is this
+		atomLetters[n_particles] = atomLetter;
 
 		atom_charges[n_particles] = charge;
 

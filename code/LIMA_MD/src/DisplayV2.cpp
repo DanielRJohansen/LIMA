@@ -195,52 +195,15 @@ void drawBoxOutline() {
     glVertex3f(min, max, min);
     glVertex3f(min, max, max);
     glEnd();
-    return;
-
-
-
-    //glLineWidth(20.0f);  // Set the line width
-    //glColor3f(1.0f, 0.0f, 0.0f);  // Set the color to red
-
-    //glBegin(GL_LINES);
-
-    //float boxWidth = 800;  // 80% of 1000 pixels
-    //float boxHeight = 800; // Assuming square box for simplicity
-    //float boxDepth = 800;  // Depth can be the same or different
-
-    //Float3 minCorner = { -boxWidth / 2, -boxHeight / 2, -boxDepth / 2 };
-    //Float3 maxCorner = { boxWidth / 2, boxHeight / 2, boxDepth / 2 };
-
-    //Float3 points[8] = {
-    //    {minCorner.at(0), minCorner.at(1), minCorner.at(2)},  // 0: min-min-min
-    //    {maxCorner.at(0), minCorner.at(1), minCorner.at(2)},  // 1: max-min-min
-    //    {maxCorner.at(0), minCorner.at(1), maxCorner.at(2)},  // 2: max-min-max
-    //    {minCorner.at(0), minCorner.at(1), maxCorner.at(2)},  // 3: min-min-max
-    //    {minCorner.at(0), maxCorner.at(1), minCorner.at(2)},  // 4: min-max-min
-    //    {maxCorner.at(0), maxCorner.at(1), minCorner.at(2)},  // 5: max-max-min
-    //    {maxCorner.at(0), maxCorner.at(1), maxCorner.at(2)},  // 6: max-max-max
-    //    {minCorner.at(0), maxCorner.at(1), maxCorner.at(2)}   // 7: min-max-max
-    //};
-
-    //int edges[12][2] = {
-    //    {0, 1}, {1, 2}, {2, 3}, {3, 0},  // Bottom edges
-    //    {4, 5}, {5, 6}, {6, 7}, {7, 4},  // Top edges
-    //    {0, 4}, {1, 5}, {2, 6}, {3, 7}   // Side edges
-    //};
-
-    //for (int i = 0; i < 12; ++i) {
-    //    glVertex3f(points[edges[i][0]].at(0), points[edges[i][0]].at(1), points[edges[i][0]].at(2));
-    //    glVertex3f(points[edges[i][1]].at(0), points[edges[i][1]].at(1), points[edges[i][1]].at(2));
-    //}
-
-    //glEnd();
 }
 
 
-void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature) {
+void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto balls = rasterizer.render(positions, compounds, boxparams, step, camera_normal);
+    auto balls = rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod);
+    //glClearColor(0x1c / 255.f, 0x24 / 255.f, 0x3f / 255.f, 1);
+    //glClearColor(0.2f, 0.2f, 0.2f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     drawBoxOutline();

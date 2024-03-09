@@ -702,7 +702,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		const SolventBlock* solventblock = box->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, signals->step);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
-		
+
 
 		// There are many more solvents in a block, than threads in this kernel, so we need to loop in strides of blockdim.x
 		__syncthreads();	// Dont load buffer before all are finished with the previous iteration
@@ -722,21 +722,16 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			__syncthreads();
 		}
 	}
+	
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-		// Electrostatic
+	// Electrostatic
 #ifdef ENABLE_ELECTROSTATICS
-	if (threadIdx.x < compound.n_particles) {
-		//Coord{}
-		//compound_positions[threadIdx.x].print('C');
+	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
 		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
 		LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&abspos);
-		//abspos.print('p', true);
-		//compound_origo.print('o');
-		//compound_positions[threadIdx.x].print('r');
-		//LIMAPOSITIONSYSTEM::applyPBCNM(&abspos);
 		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
 #endif
@@ -899,7 +894,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
 
-		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, signals->step, sim->databuffers);
+		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, signals->step, sim->databuffers, simparams.data_logging_interval);
 	}
 
 

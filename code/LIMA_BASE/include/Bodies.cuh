@@ -121,23 +121,45 @@ struct CompoundCoords {
 class CompoundcoordsCircularQueue {
 	CompoundCoords* queue = nullptr;
 
-
+	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue;
 public:
 	static const int queueLen = 3;
+	static const int nElementsInQueue = queueLen * MAX_COMPOUNDS;
+
+	__host__ static CompoundcoordsCircularQueue* CreateQueue() {
+		auto coordQueue = new CompoundcoordsCircularQueue();		
+		coordQueue->queue = new CompoundCoords[nElementsInQueue];
+		return coordQueue;
+	}
+
+	__host__ CompoundcoordsCircularQueue* moveToDevice() {
+		queue = genericMoveToDevice(queue, nElementsInQueue);
+		//is_on_device = true;
+		return genericMoveToDevice(this, 1);
+	}
+
+	__host__ CompoundcoordsCircularQueue* copyToHost() {
+		CompoundcoordsCircularQueue* this_host = new CompoundcoordsCircularQueue();
+		this_host->queue = new CompoundCoords[MAX_COMPOUNDS * queueLen];
+		cudaMemcpy(this_host->queue, queue, queueBytesize, cudaMemcpyDeviceToHost);
+		return this_host;
+	}
 
 	__host__ __device__ CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
 		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
 		return &queue[index0_of_currentstep_coordarray + compound_index];
 	}
+
+	__host__ void Flush() {
+		for (size_t i = 0; i < queueLen * MAX_COMPOUNDS; i++) {
+			queue[i] = CompoundCoords{};
+		}
+	}
+
+	// Get raw ptr. Try to avoid using
+	__host__ CompoundCoords* data() { return queue; }
 };
 
-namespace CoordArrayQueueHelpers {
-	__host__ __device__ static CompoundCoords* getCoordarrayRef(CompoundCoords* coordarray_circular_queue,
-		uint32_t step, uint32_t compound_index) {
-		const int index0_of_currentstep_coordarray = (step % 3) * MAX_COMPOUNDS;
-		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
-	}
-}
 
 
 
@@ -270,19 +292,10 @@ public:
 
 
 	__host__ SolventBlocksCircularQueue* moveToDevice() {
-		SolventBlock* blocks_dev_ptr = nullptr;
-		cudaMallocManaged(&blocks_dev_ptr, gridqueue_bytesize);
-		cudaMemcpy(blocks_dev_ptr, blocks, gridqueue_bytesize, cudaMemcpyHostToDevice);
-		delete[] blocks;
-		blocks = blocks_dev_ptr;
+		blocks = genericMoveToDevice(blocks, blocks_total);
+
 		is_on_device = true;
-
-
-		SolventBlocksCircularQueue* this_dev_ptr;
-		cudaMallocManaged(&this_dev_ptr, sizeof(SolventBlocksCircularQueue));
-		cudaMemcpy(this_dev_ptr, this, sizeof(SolventBlocksCircularQueue), cudaMemcpyHostToDevice);	
-		// LEAK: I think we leak *this here
-		return this_dev_ptr;
+		return genericMoveToDevice(this, 1);
 	}
 
 	// Fuck me this seems overcomplicated

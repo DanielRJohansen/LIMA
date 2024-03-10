@@ -10,7 +10,7 @@
 template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result)
 {
-	const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev.box->coordarray_circular_queue, sim_dev.signals->step, compound_id);
+	const CompoundCoords& compound_coords = *sim_dev.box->compoundcoordsCircularQueue->getCoordarrayRef(sim_dev.signals->step, compound_id);
 	const NodeIndex compound_origo = compound_coords.origo;
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
@@ -163,7 +163,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active) 
 	{
-		const CompoundCoords& compound_coords = *CoordArrayQueueHelpers::getCoordarrayRef(sim_dev->box->coordarray_circular_queue, sim_dev->signals->step, compound_id);
+		const CompoundCoords& compound_coords = *sim_dev->box->compoundcoordsCircularQueue->getCoordarrayRef(sim_dev->signals->step, compound_id);
 		const NodeIndex compound_origo = compound_coords.origo;
 
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {

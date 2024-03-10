@@ -136,6 +136,7 @@ void Engine::terminateSimulation() {
 	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 	offloadTrajectory(stepsReadyToTransfer);	
+	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
 #include <assert.h>
 
@@ -215,7 +216,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->boxparams_host.n_compounds);
-	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->coordarray_circular_queue, sizeof(CompoundCoords) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
+	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck(error);
 	
 

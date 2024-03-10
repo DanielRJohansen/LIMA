@@ -95,8 +95,9 @@ void Box::moveToDevice() {
 
 	solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
 
-	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, coordarray_circular_queue_n_elements);
+	//coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, coordarray_circular_queue_n_elements);
 	solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
+	compoundcoordsCircularQueue = compoundcoordsCircularQueue->moveToDevice();
 
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
@@ -110,7 +111,7 @@ void Box::moveToDevice() {
 void Box::deleteMembers() {
 	if (is_on_device) {
 		cudaFree(compounds);
-		cudaFree(coordarray_circular_queue);
+		cudaFree(compoundcoordsCircularQueue);
 		cudaFree(solventblockgrid_circularqueue);
 
 		cudaFree(forcefield);
@@ -124,8 +125,8 @@ void Box::deleteMembers() {
 	}
 	else {
 		delete[] compounds;
-		delete[] coordarray_circular_queue;
-		delete solventblockgrid_circularqueue;
+		delete compoundcoordsCircularQueue;// I think this should have a destructor
+		delete solventblockgrid_circularqueue;	// I think this should have a destructor
 
 
 		delete[] bridge_bundle;
@@ -154,7 +155,8 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
 
 	genericCopyToHost(&box->compounds, MAX_COMPOUNDS);
-	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * 3);
+	//genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * 3);
+	box->compoundcoordsCircularQueue = box->compoundcoordsCircularQueue->copyToHost();
 
 	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
 	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost();

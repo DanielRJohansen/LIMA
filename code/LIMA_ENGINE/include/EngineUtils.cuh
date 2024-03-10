@@ -324,9 +324,9 @@ public:
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
 	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
 	template <typename BoundaryCondition>
-	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
-		NodeIndex& nodeindex_left = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
-		NodeIndex& nodeindex_right = CoordArrayQueueHelpers::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
+	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundcoordsCircularQueue* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
+		NodeIndex& nodeindex_left = coordarray_circular_queue->getCoordarrayRef(step, compound_index_left)->origo;
+		NodeIndex& nodeindex_right = coordarray_circular_queue->getCoordarrayRef(step, compound_index_right)->origo;
 
 		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(nodeindex_left, nodeindex_right);
 		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;

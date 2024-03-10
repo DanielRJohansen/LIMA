@@ -163,7 +163,9 @@ struct Box {
 	//bool marked_for_delete = true;
 
 	Compound* compounds = nullptr;
-	CompoundCoords* coordarray_circular_queue = nullptr;
+	//CompoundCoords* coordarray_circular_queue = nullptr;
+	CompoundcoordsCircularQueue* compoundcoordsCircularQueue = nullptr;
+
 
 	Solvent* solvents = nullptr;
 

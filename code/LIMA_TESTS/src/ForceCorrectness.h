@@ -129,7 +129,7 @@ namespace ForceCorrectness {
 			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 
 			coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
 
@@ -175,7 +175,7 @@ namespace ForceCorrectness {
 			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 
 			// First rotate particle #3 to the relaxed position + the error angle
 			Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
@@ -232,7 +232,7 @@ namespace ForceCorrectness {
 			env.CreateSimulation(conf, topol, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = CoordArrayQueueHelpers::getCoordarrayRef(box_host->coordarray_circular_queue, 0, 0);
+			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 
 			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
 

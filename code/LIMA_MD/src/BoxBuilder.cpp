@@ -13,8 +13,8 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
-
+	//simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
+	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
 	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
 	//simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
 
@@ -168,7 +168,6 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 {
 	if (boxsrc_current_step < 1) { throw std::runtime_error("It is not yet possible to create a new box from an old un-run box"); }
 
-	//simulation->box_host = SimUtils::copyToHost(boxsrc);
 	simulation->box_host = std::move(boxsrc);
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
@@ -178,16 +177,14 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 		const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
 		// Copy only the current step to temporary storage
-		CompoundCoords* src_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, boxsrc_current_step, 0);
+		CompoundCoords* src_t0 = simulation->box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
 		memcpy(coords_t0.data(), src_t0, bytesize);
 
 		// Clear all of the data
-		for (size_t i = 0; i < Box::coordarray_circular_queue_n_elements; i++) {
-			simulation->box_host->coordarray_circular_queue[i] = CompoundCoords{};
-		}
+		simulation->box_host->compoundcoordsCircularQueue->Flush();
 
 		// Copy the temporary storage back into the queue
-		CompoundCoords* dest_t0 = CoordArrayQueueHelpers::getCoordarrayRef(simulation->box_host->coordarray_circular_queue, 0, 0);
+		CompoundCoords* dest_t0 = simulation->box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		memcpy(dest_t0, coords_t0.data(), bytesize);
 	}
 
@@ -263,7 +260,7 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
 	}
 
-	CompoundCoords& coords_now = *CoordArrayQueueHelpers::getCoordarrayRef(simulation.box_host->coordarray_circular_queue, 0, simulation.box_host->boxparams.n_compounds);
+	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);
 	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.bc_select);
 	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BOXGRID_N_NODES)) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));

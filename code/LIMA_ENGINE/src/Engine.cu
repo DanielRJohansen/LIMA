@@ -113,9 +113,9 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
 	}
-	if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
-		offloadTrainData();
-	}
+	//if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
+	//	offloadTrainData();
+	//}
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();

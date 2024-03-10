@@ -51,7 +51,7 @@ void Engine::handleBoxtemp() {
 	simulation->temperature_buffer.push_back(temp_package.temperature);
 
 	simulation->temperature = temp;	// For display :)
-
+	runstatus.current_temperature = temp;
 	
 	if constexpr(UserConstants::APPLY_THERMOSTAT) {
 		// So we avoid dividing by 0

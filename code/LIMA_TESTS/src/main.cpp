@@ -47,7 +47,7 @@ void MakeChargeParticlesSim() {
 	};
 
 	MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
-	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.1f, 10.f);
+	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 10.f);
 
 	simfiles.grofile->printToFile();
 	simfiles.topfile->printToFile();

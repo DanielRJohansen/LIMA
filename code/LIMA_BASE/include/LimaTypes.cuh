@@ -714,17 +714,8 @@ struct Trajectory {
 };
 
 
-struct RenderBall {
-	RenderBall() {}
-	__host__ __device__ RenderBall(const Float3 pos, const float radius, const Int3 color, const ATOM_TYPE atom_type) :pos(pos), radius(radius), color(color) {
-		disable = atom_type == ATOM_TYPE::NONE;
-	}
-	Float3 pos;	// only uses x and y
-	float radius = 0.f;
-	Int3 color;
-	bool disable = false;
-};
 
+ 
 // Order is critical, as many times something like "bool verbose = vl > V1" occurs
 enum VerbosityLevel {
 	SILENT,

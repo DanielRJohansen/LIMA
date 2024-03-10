@@ -106,7 +106,7 @@ void findPerpendicularVector(const Float3& v, Float3& perp1, Float3& perp2) {
     perp2 = v.cross(perp1);
 }
 
-void Display::drawFilledCircle(const RenderBall& ball) {
+void Display::drawFilledCircle(const RenderAtom& ball) {
     float light = 0.5;
     Int3 shaded_color = ball.color * light;
     glColor3ub((uint8_t)shaded_color.x, (uint8_t)shaded_color.y, (uint8_t)shaded_color.z);
@@ -137,10 +137,10 @@ void Display::drawFilledCircle(const RenderBall& ball) {
 }
 
 
-void Display::drawBalls(const std::vector<RenderBall>& balls, int n_balls) {
-    for (const auto& ball : balls) {
-        if (!ball.disable) {
-            drawFilledCircle(ball);
+void Display::drawBalls(const std::vector<RenderAtom>& renderAtoms, int n_balls) {
+    for (const auto& atom : renderAtoms) {
+        if (!atom.Disabled()) {
+            drawFilledCircle(atom);
         }
     }
 }
@@ -201,14 +201,14 @@ void drawBoxOutline() {
 void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto balls = rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod);
+    const std::vector<RenderAtom>& renderAtoms = rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod);
     //glClearColor(0x1c / 255.f, 0x24 / 255.f, 0x3f / 255.f, 1);
     //glClearColor(0.2f, 0.2f, 0.2f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     drawBoxOutline();
     //drawFilledCircle(balls[0]);
-    drawBalls(balls, boxparams.total_particles_upperbound);
+    drawBalls(renderAtoms, boxparams.total_particles_upperbound);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);

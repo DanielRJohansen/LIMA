@@ -53,8 +53,8 @@ private:
 
 	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
 
-	void drawFilledCircle(const RenderBall& ball);
-	void drawBalls(const std::vector<RenderBall>& balls, int n_balls);
+	void drawFilledCircle(const RenderAtom& ball);
+	void drawBalls(const std::vector<RenderAtom>& balls, int n_balls);
 
 
 

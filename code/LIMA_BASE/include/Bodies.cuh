@@ -116,31 +116,37 @@ struct CompoundCoords {
 
 	NodeIndex origo{};								// [nm]
 	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
-
-
-	__host__ void static copyInitialCoordConfiguration(CompoundCoords* coords,
-		CompoundCoords* coords_prev, CompoundCoords* coordarray_circular_queue);
-	//__host__ Float3 getAbsolutePositionLM(int particle_id);
 };
 
-const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES+4;	// Due to AA such a TRP, thhere might be more bonds than atoms
-const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
-const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128+64;
-const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
-struct CompoundState {							// Maybe delete this soon?
-	__device__ void setMeta(int n_p) {
-		n_particles = n_p;
+class CompoundcoordsCircularQueue {
+	CompoundCoords* queue = nullptr;
+
+
+public:
+	static const int queueLen = 3;
+
+	__host__ __device__ CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
+		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
+		return &queue[index0_of_currentstep_coordarray + compound_index];
 	}
-	__device__ void loadData(const CompoundCoords& coords) {
-		if (threadIdx.x < n_particles)
-			positions[threadIdx.x] = coords.rel_positions[threadIdx.x].toFloat3();
-	}
-
-
-
-	Float3 positions[MAX_COMPOUND_PARTICLES];
-	uint8_t n_particles = 0;
 };
+
+namespace CoordArrayQueueHelpers {
+	__host__ __device__ static CompoundCoords* getCoordarrayRef(CompoundCoords* coordarray_circular_queue,
+		uint32_t step, uint32_t compound_index) {
+		const int index0_of_currentstep_coordarray = (step % 3) * MAX_COMPOUNDS;
+		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
+	}
+}
+
+
+
+
+
+
+
+
+
 
 struct SolventCoord {
 	__device__ __host__ SolventCoord() {}
@@ -338,14 +344,6 @@ public:
 
 
 
-namespace CoordArrayQueueHelpers {
-	__host__ __device__ static CompoundCoords* getCoordarrayRef(CompoundCoords* coordarray_circular_queue,
-		uint32_t step, uint32_t compound_index) {
-		const int index0_of_currentstep_coordarray = (step % STEPS_PER_LOGTRANSFER) * MAX_COMPOUNDS;
-		return &coordarray_circular_queue[index0_of_currentstep_coordarray + compound_index];
-	}
-}
-
 
 
 
@@ -398,6 +396,11 @@ struct CompoundCompact {
 		}
 	}
 };
+
+const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES + 4;	// Due to AA such a TRP, thhere might be more bonds than atoms
+const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
+const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64;
+const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {

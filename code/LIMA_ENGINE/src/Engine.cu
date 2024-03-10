@@ -98,10 +98,10 @@ void Engine::step() {
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
-	if ((simulation->getStep() % STEPS_PER_LOGTRANSFER) == 0) {
+	if (DatabuffersDevice::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
 		offloadLoggingData();
 		offloadTrajectory();
-
+		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
@@ -133,11 +133,9 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 }
 
 void Engine::terminateSimulation() {
-	const auto steps_since_transfer = simulation->getStep() % STEPS_PER_LOGTRANSFER;
-	if ((steps_since_transfer) > simulation->simparams_host.data_logging_interval) {
-		offloadLoggingData(steps_since_transfer);
-		offloadTrajectory(steps_since_transfer);
-	}
+	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+	offloadLoggingData(stepsReadyToTransfer);
+	offloadTrajectory(stepsReadyToTransfer);	
 }
 #include <assert.h>
 
@@ -145,8 +143,10 @@ void Engine::terminateSimulation() {
 
 void Engine::offloadLoggingData(const int steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
+	if (steps_to_transfer == 0) { return; }
 
-	const int64_t startstep = simulation->getStep() - steps_to_transfer;
+
+	const int64_t startstep = simulation->getStep() - steps_to_transfer * simulation->simparams_host.data_logging_interval;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
@@ -175,6 +175,7 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 
 void Engine::offloadTrajectory(const int steps_to_transfer) {
 #ifndef DONTGENDATA
+	if (steps_to_transfer == 0) { return; }
 
 	const int64_t startstep = simulation->getStep() - steps_to_transfer;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);

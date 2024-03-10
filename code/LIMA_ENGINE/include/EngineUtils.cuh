@@ -424,14 +424,14 @@ namespace EngineUtils {
 	}
 
 	//// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local, int loggingInterval) {
+	//__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local, int loggingInterval) {
 
-		const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
-		//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
-		const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return step_offset + compound_offset + particle_id_local;
-	}
+	//	const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
+	//	//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
+		//const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
+	//	const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
+	//	return step_offset + compound_offset + particle_id_local;
+	//}
 
 	template <typename BoundaryCondition>
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
@@ -477,7 +477,8 @@ namespace EngineUtils {
 
 		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
 
-		const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x, simparams.data_logging_interval);
+		//const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x, simparams.data_logging_interval);
+		const int index = databuffers->GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval);
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
@@ -492,7 +493,8 @@ namespace EngineUtils {
 
 
 		if (solvent_active) {
-			const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x], loggingInterval);
+			//const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x], loggingInterval);
+			const int index = databuffers->GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval);
 
 
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);

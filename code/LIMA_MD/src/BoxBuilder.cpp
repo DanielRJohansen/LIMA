@@ -106,43 +106,6 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 }
 
 
-
-
-
-int BoxBuilder::solvateBox(Simulation* simulation)
-{
-	//simulation->box->solvents = new Solvent[MAX_SOLVENTS];
-	//
-	//// First we calculate how to set up the particles in a perfect grid
-	//const int bodies_per_dim = static_cast<int>(ceil(cbrt((double)N_SOLVATE_MOLECULES)));
-	//const float dist_between_particles = (BOX_LEN) / static_cast<float>(bodies_per_dim);	// dist_per_index
-	//const float base = box_base + dist_between_particles / 2.f;
-	//printf("Bodies per dim: %d. Dist per dim: %.3f\n", bodies_per_dim, dist_between_particles);
-
-
-	//for (int z_index = 0; z_index < bodies_per_dim; z_index++) {
-	//	for (int y_index = 0; y_index < bodies_per_dim; y_index++) {
-	//		for (int x_index = 0; x_index < bodies_per_dim; x_index++) {
-	//			if (simulation->box->n_solvents == N_SOLVATE_MOLECULES)
-	//				break;
-
-	//			Float3 solvent_center = Float3(base + dist_between_particles * static_cast<float>(x_index), base + dist_between_particles * static_cast<float>(y_index), base + dist_between_particles * static_cast<float>(z_index));
-	//			
-	//			// Randomly offset the particle within 80% of the perfect grid
-	//			solvent_center += (get3Random() - Float3(0.5f)) * 0.8f * dist_between_particles;
-
-	//			if (spaceAvailable(simulation->box, solvent_center)) {
-	//				simulation->box->solvents[simulation->box->n_solvents++] = createSolvent(solvent_center, simulation->dt);
-	//			}
-	//		}
-	//	}
-	//}
-	//simulation->total_particles += simulation->box->n_solvents;
-	//printf("%d solvents added to box\n", simulation->box->n_solvents);
-	//return simulation->box->n_solvents;
-	return 0;
-}
-
 int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;

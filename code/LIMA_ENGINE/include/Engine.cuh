@@ -51,6 +51,7 @@ struct EngineTimings {
 
 struct RunStatus {
 	Float3* most_recent_positions = nullptr;
+	int stepForMostRecentData = 0;
 	int current_step = 0;
 	float current_temperature = 0.f;
 
@@ -97,8 +98,8 @@ private:
 	void verifyEngine();
 
 	// streams every n steps
-	void offloadLoggingData(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
-	void offloadTrajectory(const int steps_to_transfer = STEPS_PER_LOGTRANSFER);
+	void offloadLoggingData(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
+	void offloadTrajectory(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
 	void offloadTrainData();
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call

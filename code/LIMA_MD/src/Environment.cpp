@@ -25,7 +25,7 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 1;
+const int STEPS_PER_RENDER = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -196,9 +196,10 @@ void constexpr Environment::verifySimulationParameters() {	// Not yet implemente
 	//static_assert(BOX_LEN > 3.f, "Box too small");
 	//static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
 
-	static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
-	static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
-	
+	//static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
+	//static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
+
+
 	//auto a = std::roundf(std::abs(BOX_LEN / SolventBlockGrid::node_len)) * SolventBlockGrid::node_len;// -BOX_LEN_NM;
 
 	auto a = static_cast<int>(static_cast<double>(_BOX_LEN_PM) * 1000);
@@ -220,11 +221,14 @@ void Environment::verifyBox() {
 		
 	}
 
+	
+
 	if (simulation->simparams_host.bc_select == NoBC && simulation->boxparams_host.n_solvents != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}
-
-	assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
+	assert(STEPS_PER_THERMOSTAT % simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer == 0);
+	assert(STEPS_PER_THERMOSTAT >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
+	//assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
 	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
 		throw std::runtime_error("Error: Solvent mass is unreasonably large");
@@ -467,7 +471,7 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams) {	
 	if (!display) { return true; }	// Headless or ConsoleOnly
 
-	if (engine->runstatus.current_step - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
+	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
 		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;

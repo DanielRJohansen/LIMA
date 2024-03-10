@@ -20,6 +20,7 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestChargedParticlesEndInCorrectSection(EnvMode envmode, float max_vc = 0.05, float max_gradient = 1e-5) {
 		SimParams simparams{ 20000, 20, true, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;
+		simparams.data_logging_interval = 20;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
 

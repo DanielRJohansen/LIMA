@@ -95,7 +95,7 @@ void Box::moveToDevice() {
 
 	solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
 
-	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, coordarray_circular_queue_n_elements);
 	solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
 
 
@@ -154,7 +154,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
 
 	genericCopyToHost(&box->compounds, MAX_COMPOUNDS);
-	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * STEPS_PER_LOGTRANSFER);
+	genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * 3);
 
 	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
 	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost();
@@ -210,10 +210,12 @@ void Simulation::copyBoxVariables() {
 //	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)
 //{}
 
-DatabuffersDevice::DatabuffersDevice(size_t total_particles_upperbound, int n_compounds, int loggingInterval) {
+DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval) :
+	total_particles_upperbound{ total_particles_upperbound }
+{
 	// Permanent Outputs for energy & trajectory analysis
 	{
-		const size_t n_datapoints = total_particles_upperbound * STEPS_PER_LOGTRANSFER / loggingInterval;
+		const size_t n_datapoints = total_particles_upperbound * nStepsInBuffer;
 		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");

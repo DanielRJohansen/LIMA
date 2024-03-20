@@ -17,8 +17,7 @@ public:
 	Display();
 	~Display();
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
-		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
-	void animate(Trajectory* traj);
+		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
 	bool checkWindowStatus();		// Returns false if the windows should close
 	void terminate();

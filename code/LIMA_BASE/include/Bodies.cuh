@@ -3,9 +3,9 @@
 
 #include "Constants.h"
 #include "LimaTypes.cuh"
+
 #include <vector>
 #include <array>
-
 #include <cuda_fp16.h>
 
 // Hyper-fast objects for kernel, so we turn all safety off here!

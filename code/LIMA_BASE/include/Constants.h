@@ -1,10 +1,12 @@
 #pragma once
 
+#include "UserConstants.h"
+
+
 #include <math.h>
 #include <cstdint>
 #include <limits.h>
 
-#include "UserConstants.h"
 
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
 // sim with no impropers has this effect. It is very wierd, and i fear i have some undefined behavior

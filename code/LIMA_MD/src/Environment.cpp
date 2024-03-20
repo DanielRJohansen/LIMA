@@ -495,35 +495,35 @@ void Environment::renderTrajectory(string trj_path)
 }
 
 void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path) {
-	Trajectory* trj = new Trajectory(trj_path);
-	Trajectory* force_buffer = new Trajectory(waterforce_path);
-	int n_steps = trj->n_steps;
+	//Trajectory* trj = new Trajectory(trj_path);
+	//Trajectory* force_buffer = new Trajectory(waterforce_path);
+	//int n_steps = trj->n_steps;
 
-	printf(" part: %d\n", trj->n_particles);
+	//printf(" part: %d\n", trj->n_particles);
 
 
-	Float3* particle_position = new Float3[n_steps];
-	for (int step = 0; step < n_steps; step++)
-		particle_position[step] = trj->positions[0 + step * trj->n_particles];
-	Float3* forces = force_buffer->positions;
-	
+	//Float3* particle_position = new Float3[n_steps];
+	//for (int step = 0; step < n_steps; step++)
+	//	particle_position[step] = trj->positions[0 + step * trj->n_particles];
+	//Float3* forces = force_buffer->positions;
+	//
 
-	VirtualPathMaker VPM;
-	Float3* vp_path = VPM.makeVirtualPath(particle_position, forces, n_steps);
+	//VirtualPathMaker VPM;
+	//Float3* vp_path = VPM.makeVirtualPath(particle_position, forces, n_steps);
 
-	std::ofstream myfile("D:\\Quantom\\virtrj.csv");
-	for (int step = 0; step < n_steps; step++) {
+	//std::ofstream myfile("D:\\Quantom\\virtrj.csv");
+	//for (int step = 0; step < n_steps; step++) {
 
-		for (int k = 0; k < 3; k++) {
-			myfile << particle_position[step].at(k) << ";";
-		}
-		for (int k = 0; k < 3; k++) {
-			myfile << vp_path[step].at(k) << ";";
-		}
+	//	for (int k = 0; k < 3; k++) {
+	//		myfile << particle_position[step].at(k) << ";";
+	//	}
+	//	for (int k = 0; k < 3; k++) {
+	//		myfile << vp_path[step].at(k) << ";";
+	//	}
 
-		myfile << "\n";
-	}
-	myfile.close();
+	//	myfile << "\n";
+	//}
+	//myfile.close();
 }
 
 

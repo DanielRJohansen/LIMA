@@ -2,21 +2,13 @@
 
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-
-
 #include <math.h>
 #include <iostream>
-
 #include <string>
-#include <fstream>
-#include <sstream>
 #include <limits>
-#include "Constants.h"
-#include <vector>
 
-struct TestType {
-	static int get();
-};
+#include "Constants.h"
+
 
 
 
@@ -430,12 +422,6 @@ struct LimaPosition {
 
 
 
-
-// HOW THE FUCK DO I MAKE THIS WORK??!
-//__host__ __device__ std::string& operator+(std::string& lhs, const Coord rhs) {
-//	return lhs += " " + std::to_string(rhs.x) + " " + std::to_string(rhs.y) + " " + std::to_string(rhs.z);
-//}
-
 struct BoundingBox {
 	BoundingBox(
 		Float3 min = Float3{ std::numeric_limits<float>::max() },
@@ -641,77 +627,79 @@ void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently 
 }
 
 
-struct Trajectory {
-	Trajectory() {}
-	Trajectory(std::string path) {
-		positions = new Float3[max_size];
-		float buffer[3] = {};
-
-		printf("Path: ");
-		std::cout << path << std::endl;
-
-		std::string file_contents = readFileIntoString(path);
-		std::istringstream sstream(file_contents);
-		std::string record;
-
-		int counter = 0;
-
-		int step_cnt = 0;
-		while (std::getline(sstream, record)) {
-			std::istringstream line(record);
-
-			int dim = 0;
-			while (getline(line, record, ';')) {
-				buffer[dim++] = stof(record);
-
-				if (dim == 3) {
-					positions[counter++] = Float3(buffer);
-					dim = 0;
-					//positions[counter - 1].print();
-				}
-			}
-			if (step_cnt == 0) {
-				n_particles = counter;
-			}
-			step_cnt++;
-		}
-
-		particle_type = new int[n_particles];
-		n_steps = step_cnt;
-		printf("Loaded trajectory with %d particles and %d steps\n", n_particles, n_steps);
-	}
-	Trajectory(int size) {
-		positions = new Float3[size];
-	}
-
-	void moveToDevice() {
-		positions = genericMoveToDevice(positions, max_size);
-		particle_type = genericMoveToDevice(particle_type, n_particles);
-		cudaDeviceSynchronize();
-		printf("Success\n");
-	}
-
-
-
-	std::string readFileIntoString(const std::string& path) {
-		auto ss = std::ostringstream{};
-		std::ifstream input_file(path);
-		if (!input_file.is_open()) {
-			std::cout << "Could not open the file - '" << path << "'" << std::endl;
-			throw std::runtime_error("Bad filepath");
-		}
-		ss << input_file.rdbuf();
-		return ss.str();
-	}
-
-	int max_size = 100 * 10000;
-
-	Float3* positions = nullptr;
-	int* particle_type = nullptr;	//0 solvent, 1 compound, 2 virtual
-
-	int n_particles = 0;
-	int n_steps = 0;
-};
+// TODO: Move somewhere else
+//struct Trajectory {
+//	Trajectory() {}
+//	Trajectory(std::string path) {
+//		positions = new Float3[max_size];
+//		float buffer[3] = {};
+//
+//		printf("Path: ");
+//		std::cout << path << std::endl;
+//
+//		std::string file_contents = readFileIntoString(path);
+//		std::istringstream sstream(file_contents);
+//		std::string record;
+//
+//		int counter = 0;
+//
+//		int step_cnt = 0;
+//		while (std::getline(sstream, record)) {
+//			std::istringstream line(record);
+//
+//			int dim = 0;
+//			while (getline(line, record, ';')) {
+//				buffer[dim++] = stof(record);
+//
+//				if (dim == 3) {
+//					positions[counter++] = Float3(buffer);
+//					dim = 0;
+//					//positions[counter - 1].print();
+//				}
+//			}
+//			if (step_cnt == 0) {
+//				n_particles = counter;
+//			}
+//			step_cnt++;
+//		}
+//
+//		particle_type = new int[n_particles];
+//		n_steps = step_cnt;
+//		printf("Loaded trajectory with %d particles and %d steps\n", n_particles, n_steps);
+//	}
+//	Trajectory(int size) {
+//		positions = new Float3[size];
+//	}
+//
+//	void moveToDevice() {
+//		positions = genericMoveToDevice(positions, max_size);
+//		particle_type = genericMoveToDevice(particle_type, n_particles);
+//		cudaDeviceSynchronize();
+//		printf("Success\n");
+//	}
+//
+//
+//
+//	std::string readFileIntoString(const std::string& path) {
+//		/*auto ss = std::ostringstream{};
+//		std::ifstream input_file(path);
+//		if (!input_file.is_open()) {
+//			std::cout << "Could not open the file - '" << path << "'" << std::endl;
+//			throw std::runtime_error("Bad filepath");
+//		}
+//		ss << input_file.rdbuf();
+//		return ss.str();*/
+//		return {};
+//	}
+//
+//	int max_size = 100 * 10000;
+//
+//	Float3* positions = nullptr;
+//	int* particle_type = nullptr;	//0 solvent, 1 compound, 2 virtual
+//
+//	int n_particles = 0;
+//	int n_steps = 0;
+//};
 
 
 

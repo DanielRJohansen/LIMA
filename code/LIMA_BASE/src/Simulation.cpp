@@ -2,7 +2,7 @@
 #include <map>
 #include <functional>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
-
+#include <fstream>
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
 

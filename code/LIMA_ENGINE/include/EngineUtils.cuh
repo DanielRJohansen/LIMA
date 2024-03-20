@@ -1,7 +1,7 @@
 #pragma once
 
 #include<iostream>
-#include <cmath>
+//#include <cmath>
 
 #include "LimaTypes.cuh"
 #include "Constants.h"
@@ -9,6 +9,10 @@
 #include "Forcefield.cuh"
 #include "EngineUtilsWarnings.cuh"
 #include "BoundaryConditionPublic.h"
+
+#include "LimaTypes.cuh"
+#include "Constants.h"
+#include "Bodies.cuh"
 
 
 //#include <cuda.h>
@@ -530,36 +534,6 @@ namespace EngineUtils {
 		}
 		return false;
 	}
-	
-
-
-	//template<typename T>
-	//void __device__ ParallelSum(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
-	//	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
-	//	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
-	//		if ((threadIdx.x + i) < array_len) {
-	//			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
-	//		}
-	//		__syncthreads();
-	//		arrayptr[threadIdx.x] = temp;
-	//		__syncthreads();
-	//	}
-	//}
-
-
-	//__device__ void ParallelSum(float* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
-	//	float temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
-	//	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
-	//		if ((threadIdx.x + i) < array_len) {
-	//			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
-	//		}
-	//		__syncthreads();
-	//		arrayptr[threadIdx.x] = temp;
-	//		__syncthreads();
-	//	}
-	//}
-
-
 
 
 
@@ -608,6 +582,7 @@ namespace DEBUGUTILS {
 	void findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& out);
 }
 
+#include "cuda_runtime.h"
 
 
 // LIMA algorithm Library
@@ -616,4 +591,8 @@ namespace LAL {
 	//	const float nf = static_cast<float>(n);
 	//	return CPPD::ceil(nf * std::log2f(nf) * 2.f);
 	//}
+	// 
+
+
+
 }

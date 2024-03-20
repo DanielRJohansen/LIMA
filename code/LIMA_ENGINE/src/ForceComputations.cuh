@@ -12,25 +12,20 @@ namespace LimaForcecalc {
 
 // ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
 
-__device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
-	// Calculates bond force on both particles					//
-	// Calculates forces as J/mol*M								//
-	// kb [J/(mol*lm^2)]
-	const Float3 difference = pos_a - pos_b;						//	[lm]
-	const float error = difference.len() - bondtype.b0;				//	[lm]
+__device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
+	// Calculates bond force on both particles					
+	// Calculates forces as J/mol*M								
+	const Float3 difference = pos_a - pos_b;						// [lm]
+	const float error = difference.len() - bondtype.b0;				// [lm]
 
 	if constexpr (CALC_POTE) {
 		potE = 0.5f * bondtype.kb * (error * error);				// [J/mol]
 	}
-	const float force_scalar = -bondtype.kb * error;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
+	const float force_scalar = -bondtype.kb * error;				// [J/(mol*lm)] = [kg/(mol*s^2)]
 
-	//const double error_fm = error / PICO_TO_LIMA;
-	//*potE += 0.5 * (double)bondtype->kb * (error_fm * error);				// [J/mol]
-	//const double force_scalar = (double) -bondtype->kb * error_fm;				//	[J/(mol*lm)] = [kg/(mol*s^2)]
-
-	const Float3 dir = difference.norm();								// dif_unit_vec, but shares variable with dif
-	results[0] = dir * force_scalar;							// [kg * lm / (mol*ls^2)] = [lN]
-	results[1] = -dir * force_scalar;						// [kg * lm / (mol*ls^2)] = [lN]
+	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
+	results[0] = dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [lN]
+	results[1] = -dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [lN]
 
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
@@ -44,7 +39,7 @@ __device__ void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, c
 #endif
 }
 
-__device__ void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleBond& angletype, Float3* results, float& potE) {
+__device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleBond& angletype, Float3* results, float& potE) {
 	const Float3 v1 = (pos_left - pos_middle).norm();
 	const Float3 v2 = (pos_right - pos_middle).norm();
 	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
@@ -80,7 +75,7 @@ __device__ void calcAnglebondForces(const Float3& pos_left, const Float3& pos_mi
 
 // From resource: https://nosarthur.github.io/free%20energy%20perturbation/2017/02/01/dihedral-force.html
 // Greatly inspired by OpenMD's CharmmDihedral algorithm
-__device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos_lm, const Float3& pos_rm, const Float3& pos_right, const DihedralBond& dihedral, Float3* results, float& potE) {
+__device__ inline void calcDihedralbondForces(const Float3& pos_left, const Float3& pos_lm, const Float3& pos_rm, const Float3& pos_right, const DihedralBond& dihedral, Float3* results, float& potE) {
 	const Float3 r12 = (pos_lm - pos_left);
 	const Float3 r23 = (pos_rm - pos_lm);
 	const Float3 r34 = (pos_right - pos_rm);
@@ -170,7 +165,7 @@ __device__ void calcDihedralbondForces(const Float3& pos_left, const Float3& pos
 
 // https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
 // Plane described by i,j,k, and l is out of plane, connected to i
-__device__ void calcImproperdihedralbondForces(const Float3& i, const Float3& j, const Float3& k, const Float3& l, const ImproperDihedralBond& improper, Float3* results, float& potE) {
+__device__ inline void calcImproperdihedralbondForces(const Float3& i, const Float3& j, const Float3& k, const Float3& l, const ImproperDihedralBond& improper, Float3* results, float& potE) {
 	const Float3 ij_norm = (j - i).norm();
 	const Float3 ik_norm = (k - i).norm();
 	const Float3 il_norm = (l - i).norm();
@@ -231,15 +226,13 @@ __device__ static const char* calcLJOriginString[] = {
 	"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter"
 };
 
-// This function does not add the 24 scalar, the caller fucntion must do so!
-__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
+// This function does not add the 24 scalar, the caller function must do so!
+	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
+	// Returns force in J/mol*M??
+__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma /*[nm]*/, const float epsilon /*[(kg*nm^2)/(ns^2*mol)]*/,
 	CalcLJOrigin originSelect, /*For debug only*/
 	int type1 = -1, int type2 = -1) {
-	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
-	// input positions in cartesian coordinates [nm]
-	// sigma [nm]
-	// epsilon [J/mol]->[(kg*nm^2)/(ns^2*mol)]
-	// Returns force in J/mol*M		?????????????!?!?//
+
 
 #ifndef ENABLE_LJ
 	return Float3{};
@@ -288,7 +281,7 @@ __device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_s
 
 
 
-__device__ void cudaAtomicAdd(Float3& target, const Float3& add) {
+__device__ inline void cudaAtomicAdd(Float3& target, const Float3& add) {
 	atomicAdd(&target.x, add.x);
 	atomicAdd(&target.y, add.y);
 	atomicAdd(&target.z, add.z);
@@ -297,7 +290,7 @@ __device__ void cudaAtomicAdd(Float3& target, const Float3& add) {
 // ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
 
 // only works if n threads >= n bonds
-__device__ Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
+__device__ inline Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE, int bridgekernel)
 {
 	// First clear the buffer which will store the forces.
@@ -343,7 +336,7 @@ __device__ Float3 computeSinglebondForces(const SingleBond* const singlebonds, c
 }
 
 
-__device__ Float3 computeAnglebondForces(const AngleBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
+__device__ inline Float3 computeAnglebondForces(const AngleBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE)
 {
 	// First clear the buffer which will store the forces.
@@ -390,7 +383,7 @@ __device__ Float3 computeAnglebondForces(const AngleBond* const anglebonds, cons
 }
 
 
-__device__ Float3 computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,
+__device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE)
 {
 	// First clear the buffer which will store the forces.
@@ -443,7 +436,7 @@ __device__ Float3 computeDihedralForces(const DihedralBond* const dihedrals, con
 	return force;
 }
 
-__device__ Float3 computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,
+__device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE)
 {
 	__syncthreads();

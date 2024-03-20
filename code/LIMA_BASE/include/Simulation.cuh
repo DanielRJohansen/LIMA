@@ -17,7 +17,7 @@ const int DEBUGDATAF3_NVARS = 4;
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
-enum SupernaturalForcesSelect{None, HorizontalSqueeze};
+enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField};
 
 struct SimParams {
 	SimParams() {}
@@ -31,7 +31,7 @@ struct SimParams {
 	float dt = 100.f;									// [ls]
 	bool em_variant = false;
 	BoundaryConditionSelect bc_select{ PBC };
-	SupernaturalForcesSelect snf_select{ None };
+	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
 	float box_size = 7.f;								// [nm]
 	bool enable_electrostatics = false;
 
@@ -40,7 +40,7 @@ struct SimParams {
 
 	int data_logging_interval = 5;
 
-	static constexpr std::string defaultPath() { return "sim_params.txt"; };
+	static std::string defaultPath() { return "sim_params.txt"; };
 };
 
 struct SimSignals {

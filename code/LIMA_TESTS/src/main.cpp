@@ -40,14 +40,14 @@ void MakeChargeParticlesSim() {
 	// Create 5 custom particles
 	AtomsSelection atomsSelection{
 		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -1.f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -.2f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -.5f, 10.f}, 20},
 		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -0.f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.2f, 10.f}, 20},
+		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.5f, 10.f}, 20},
 		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 1.f, 10.f}, 20}
 	};
 
 	MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
-	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 10.f);
+	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 20.f);
 
 	simfiles.grofile->printToFile();
 	simfiles.topfile->printToFile();

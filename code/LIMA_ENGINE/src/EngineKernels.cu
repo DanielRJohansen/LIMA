@@ -8,13 +8,14 @@
 #include "SimulationDevice.cuh"
 #include "BoundaryCondition.cuh"
 #include "SupernaturalForces.cuh"
+#include "SolventBlockTransfers.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
 //#include <cuda/pipeline>
 
 #pragma warning(push)
-#pragma warning(disable: E0020)
+#pragma warning(disable:E0020)
 #pragma warning(push)
 #pragma warning(disable: 20054)
 
@@ -51,21 +52,6 @@ __device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const 
 
 // ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
 
-// Must be called with ALL threads in a block
-__device__ Coord getRandomCoord(int lcg_seed) {
-	Coord randcoord;
-	for (int i = 0; i < blockDim.x; i++) {
-		if (threadIdx.x == i) {
-			randcoord = Coord{
-				EngineUtils::genPseudoRandomNum(lcg_seed),
-				EngineUtils::genPseudoRandomNum(lcg_seed),
-				EngineUtils::genPseudoRandomNum(lcg_seed)
-			};
-		}
-		__syncthreads();
-	}
-	return randcoord;
-}
 
 // Two variants of this exists, with and without lut
 __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
@@ -89,7 +75,6 @@ __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_
 			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 			ljorigin,
 			threadIdx.x,neighborparticle_id
-			//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 		);
 	}
 	return force * 24.f;
@@ -236,131 +221,8 @@ __device__ void doBlellochPrefixSum(uint8_t* onehot_remainers, uint8_t* utility)
 	//}
 }
 
-// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
-__device__ void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
-	for (int i = 1; i < n_elements; i++) {
-		if (threadIdx.x == i) {
-			onehot_remainers[i] += onehot_remainers[i - 1];
-			KernelHelpersWarnings::verifyOnehotRemaindersIsValid(onehot_remainers, i);
-		}
-		__syncthreads();
-	}
-}
-
-__device__ uint8_t computePrefixSum(const bool remain, uint8_t* utility_buffer, int n_elements) {
-	utility_buffer[threadIdx.x] = static_cast<uint8_t>(remain);
-	__syncthreads();
-
-	doSequentialPrefixSum(utility_buffer, n_elements);	
-	//doBlellochPrefixSum
-
-	const uint8_t solventindex_new = utility_buffer[threadIdx.x] - 1; // Underflow here doesn't matter, as the underflowing threads wont remain anyways :)
-	return solventindex_new;	
-}
 
 
-
-
-
-
-
-/// <summary></summary>
-/// <param name="solventblock">In shared memory</param>
-/// <param name="transferqueues">In shared memory</param>
-/// <param name="relpos_next">Register</param>
-/// <param name="transfermodules">Global memory</param>
-template <typename BoundaryCondition>
-__device__ void transferOut(const NodeIndex& transfer_dir, const SolventBlock& solventblock_current_local, const int new_blockid, 
-	const Coord& relpos_next, STransferQueue* transferqueues, SolventBlockTransfermodule* transfermodules, const NodeIndex& blockId3d) {
-
-	// Sequential insertion in shared memory
-	for (int i = 0; i < solventblock_current_local.n_solvents; i++) {
-		if (threadIdx.x == i && new_blockid != blockIdx.x) {	// Only handle non-remain solvents
-			const int queue_index = SolventBlockTransfermodule::getQueueIndex(transfer_dir);
-
-			KernelHelpersWarnings::transferoutVerifyQueueIndex(queue_index, transfer_dir);
-
-			const bool insertionSuccess = transferqueues[queue_index].addElement(relpos_next, solventblock_current_local.rel_pos[threadIdx.x], solventblock_current_local.ids[threadIdx.x]);
-			KernelHelpersWarnings::transferoutVerifyInsertion(insertionSuccess);
-		}
-		__syncthreads();
-	}
-
-	// Coaslescing copying to global memory
-	for (int queue_index = 0; queue_index < 6; queue_index++) {
-		const STransferQueue& queue_local = transferqueues[queue_index];
-
-		if (threadIdx.x < queue_local.n_elements) {
-
-			const NodeIndex transferdir_queue = LIMAPOSITIONSYSTEM::getTransferDirection(queue_local.rel_positions[0]);		// Maybe use a utility-coord a precompute by thread0, or simply hardcode...
-			const int blockid_global = EngineUtils::getNewBlockId<BoundaryCondition>(transferdir_queue, blockId3d);
-			KernelHelpersWarnings::assertValidBlockId(blockid_global);
-
-			STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
-
-			queue_global->fastInsert(
-				queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
-				queue_local.ids[threadIdx.x]);
-
-			KernelHelpersWarnings::transferOutDebug(queue_global, queue_local, transferdir_queue, queue_index);
-
-			queue_global->n_elements = queue_local.n_elements;
-
-			// Only set n_elements if we get here, meaning atleast 1 new element. Otherwise it will just remain 0
-			if (threadIdx.x == 0) { queue_global->n_elements = queue_local.n_elements; }
-		}
-	}
-	__syncthreads();
-}
-
-
-/// <summary>
-/// Must be run AFTER transferOut, as it erases all information about the transferring solvents
-/// </summary>
-/// <param name="solventblock_current">Solventblock in shared memory</param>
-/// <param name="solventblock_next">Solventblock belong to cudablock at next step in global memory</param>
-/// <param name="relpos_next"></param>
-/// <param name="utility_buffer">Buffer of min size MAX_SOLVENTS_IN_BLOCK, maybe more for computing prefix sum</param>
-/// <param name="remain_transfermodule">Transfermodule belonging to cudablock</param>
-__device__ void compressRemainers(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
-	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* remain_transfermodule, const bool remain) {
-
-	// Compute prefix sum to find new index of solvent belonging to thread
-	const uint8_t solventindex_new = computePrefixSum(remain, utility_buffer, solventblock_current_local.n_solvents);
-
-
-	if (remain) {
-		// solventindex_new is only valid for those who remain, the rest *might* have an index of -1
-		solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
-		solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
-	}
-
-
-	const int nsolventsinblock_next = __syncthreads_count(remain);
-	if (threadIdx.x == 0) {
-		remain_transfermodule->n_remain = nsolventsinblock_next;
-		solventblock_next_global->n_solvents = nsolventsinblock_next;	// Doesn't matter, since the transfer kernel handles this. Enabled for debugging now..
-	}
-}
-
-template <typename BoundaryCondition>
-__device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
-	const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
-
-	const NodeIndex blockId3d = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
-	const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents 
-		? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next) 
-		: NodeIndex{};
-
-	const int new_blockid = EngineUtils::getNewBlockId<BoundaryCondition>(transfer_dir, blockId3d);
-	const bool remain = (blockIdx.x == new_blockid) && threadIdx.x < solventblock_current_local.n_solvents;
-
-	
-	transferOut<BoundaryCondition>(transfer_dir, solventblock_current_local, new_blockid, relpos_next, transferqueues_local, transfermodules_global, blockId3d);
-
-	SolventBlockTransfermodule* remain_transfermodule = &transfermodules_global[blockIdx.x];
-	compressRemainers(solventblock_current_local, solventblock_next_global, relpos_next, utility_buffer, remain_transfermodule, remain);
-}
 
 
 
@@ -475,7 +337,10 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
 	}
-
+	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
+		const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
+		SupernaturalForces::applyHorizontalChargefield(abspos, force, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
+	}
 
 
 	// -------------------------------------------------------------- Integration & PBC --------------------------------------------------------------- //	
@@ -496,7 +361,6 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		float speed = 0.f;
 		
 		if (threadIdx.x < compound.n_particles) {
-			//force.print('F');
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
@@ -903,8 +767,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	SolventBlock* solventblock_next_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, signals->step + 1);
 
 	if (SolventBlocksCircularQueue::isTransferStep(signals->step)) {
-		//transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, box->transfermodule_array, transferqueues);
-		transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
+		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
 	}
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
@@ -929,7 +792,6 @@ template __global__ void solventForceKernel<NoBoundaryCondition>(SimulationDevic
 template <typename BoundaryCondition>
 __global__ void solventTransferKernel(SimulationDevice* sim) {
 	Box* box = sim->box;
-	SimParams& simparams = *sim->params;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	

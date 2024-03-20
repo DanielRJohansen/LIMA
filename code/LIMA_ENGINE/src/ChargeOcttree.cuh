@@ -9,7 +9,7 @@
 
 
 class SimulationDevice;
-
+struct BoxParams;
 
 
 // Important!
@@ -42,9 +42,9 @@ namespace OcttreeHelpers {
 	}
 	static constexpr size_t getDepthOffset(int depth) {
 		// No offset at depth 1!
-		if (depth == 0)
-			return 0;
-		return (LAL::powi(8, depth) - 1) / 7 - 1;	// -1 to account for the lack of a root node
+		return depth == 0 
+			? 0 
+			: (LAL::powi(8, depth) - 1) / 7 - 1; // -1 to account for the lack of a root node
 	}
 }
 

@@ -4,6 +4,9 @@
 
 #include "Engine.cuh"
 #include "SimulationDevice.cuh"
+#include "ForceComputations.cuh"
+
+
 
 using namespace SCA;
 
@@ -39,7 +42,6 @@ __device__ void ParallelSum(float* arrayPtr, int arrayLen, int stride) {
 __device__ Float3 CalcCoulumbHalfforce(const Float3& diff, float charge) {
 	const float dist = diff.len();	// [nm]
 	const float magnitude = coulumb_constant * charge / (dist * dist);
-	if (dist == 0.f) { printf("Yo why is dist 0"); }
 	return diff.norm() * magnitude * LIMA_TO_NANO;
 }
 
@@ -50,9 +52,9 @@ namespace OcttreeHelpers {
 		return Int3{ id3D.x >> n, id3D.y >> n, id3D.z >> n };
 	}
 
-	__device__ static size_t getAbsParentIndex(const Int3& index_3d, const int n_nodes_per_dim, size_t depth_offset) {
+	/*__device__ static size_t getAbsParentIndex(const Int3& index_3d, const int n_nodes_per_dim, size_t depth_offset) {
 		return GetAbsIndex(index_3d / 2, n_nodes_per_dim / 2, depth_offset / 8);
-	}
+	}*/
 
 	__device__ static void applyPBC(Int3& index3d, int dim) {
 		index3d.x += dim * (index3d.x < 0);
@@ -110,11 +112,6 @@ __global__ void DownwardSweep(SimulationDevice* simdev) {
 	// At leaf level in the forcetree
 	const Int3 forcenodeId3D{ blockIdx.x, blockIdx.y, blockIdx.z};
 	const Float3 forcenodeAbsPos = OcttreeHelpers::getAbsPos(forcenodeId3D, ChargeOctTree::forcetree_leafnodelen);
-	
-
-	//const float forcenodeCharge = tree->chargenodes[OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::force_n_leafnodes_per_dim, forcenodes_depthoffset)];
-	const size_t forcenodeIndex = OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree, simdev->charge_octtree->depthOffsets[ChargeOctTree::depthForcetree]);
-	const float forcenodeCharge = simdev->charge_octtree->chargenodes[forcenodeIndex];
 
 
 	for (int depth = 3; depth < ChargeOctTree::depthForcetree; depth++)
@@ -165,6 +162,8 @@ __global__ void DownwardSweep(SimulationDevice* simdev) {
 
 	// Push the force to the tree
 	if (threadIdx.x == 0) {
+		//const size_t forcenodeIndex = OcttreeHelpers::GetAbsIndex(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree, simdev->charge_octtree->depthOffsets[ChargeOctTree::depthForcetree]);
+
 		const size_t forcenodeIndex = OcttreeHelpers::GetIndexAtDepth(forcenodeId3D, ChargeOctTree::nLeafnodesPerDim_Forcetree);
 		simdev->charge_octtree->halfforceNodes[forcenodeIndex] = forces[0];
 	}
@@ -213,7 +212,6 @@ namespace SCA {
 
 		static const std::array<size_t, ChargeOctTree::depthChargetree+1> depthOffsetsTemp = ChargeOctTree::getDepthOffsets();
 		cudaMalloc(&depthOffsets, sizeof(depthOffsetsTemp));
-		const size_t a = sizeof(depthOffsetsTemp);
 		cudaMemcpy(depthOffsets, depthOffsetsTemp.data(), sizeof(depthOffsetsTemp), cudaMemcpyHostToDevice);
 	}
 	// TODO: Make destructor
@@ -223,14 +221,15 @@ namespace SCA {
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
 		for (int depth = ChargeOctTree::depthChargetree - 1; depth >= 3; depth--) {
-			const int parentnodesPerDim = OcttreeHelpers::getNNodesPerDim(depth);
-			const uint3 blockDims{ 1, parentnodesPerDim, parentnodesPerDim };
+			const uint32_t parentnodesPerDim = OcttreeHelpers::getNNodesPerDim(depth);
+			const uint3 blockDims{ 1u, parentnodesPerDim, parentnodesPerDim };
 			propagateChargesUp << < blockDims, parentnodesPerDim >> > (sim_dev, depth, parentnodesPerDim, OcttreeHelpers::getDepthOffset(depth + 1));
 			//LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
 		}
 
 		{
-			const uint3 gridDims{ ChargeOctTree::nLeafnodesPerDim_Forcetree, ChargeOctTree::nLeafnodesPerDim_Forcetree, ChargeOctTree::nLeafnodesPerDim_Forcetree };
+			const uint32_t dim = static_cast<uint32_t>(ChargeOctTree::nLeafnodesPerDim_Forcetree);
+			const uint3 gridDims{ dim, dim, dim };
 			DownwardSweep << <gridDims, 32 >> > (sim_dev);
 			//LIMA_UTILS::genericErrorCheck("SCA error during propagate down");
 		}	

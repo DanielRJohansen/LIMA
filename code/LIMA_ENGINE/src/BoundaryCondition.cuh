@@ -4,7 +4,7 @@
 
 class NoBoundaryCondition {
 public:
-	__host__ void static applyBC(NodeIndex& origo) {}
+	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
 	__device__ __host__ static void applyBC(LimaPosition& position) {}
 

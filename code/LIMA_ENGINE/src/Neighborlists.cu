@@ -71,8 +71,8 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 
 		// Dont add bonded compounds to list again
 		bool is_bonded_to_query = false;
-		for (int i = 0; i < n_bonded_compounds; i++) {
-			if (query_compound_id == bonded_compound_ids[i]) { 
+		for (int j = 0; j < n_bonded_compounds; j++) {
+			if (query_compound_id == bonded_compound_ids[j]) { 
 				is_bonded_to_query = true;
 				break;
 			}

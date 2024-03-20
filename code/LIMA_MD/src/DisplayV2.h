@@ -64,7 +64,7 @@ private:
 
 	float camera_pitch = 0.f;
 	float camera_yaw = 0.f;
-	float camera_distance = -3.5f;
+	float camera_distance = -3.f;
 	Float3 camera_normal{ 0.f,1.f,0.f };
 
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";

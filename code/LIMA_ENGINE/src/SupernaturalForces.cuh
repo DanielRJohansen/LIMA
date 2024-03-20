@@ -101,4 +101,18 @@ namespace SupernaturalForces {
 			SupernaturalForces::_applyHorizontalSqueeze(*avg_abspos_nm, *avg_force_z, force, mass);
 		__syncthreads();
 	}
+
+	__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
+		LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&posNM);
+		const float distFromMidPlane = posNM.x - BOX_LEN_HALF_NM;
+
+		const float dir = distFromMidPlane / std::abs(distFromMidPlane);
+		const float forceApplied = .00000001f * particleCharge * dir;
+
+		force.x += forceApplied;
+
+		if (distFromMidPlane > 5.f)
+			printf("dist %f charge %f dir %f force %f\n", distFromMidPlane, particleCharge, dir, forceApplied);
+
+	}
 }

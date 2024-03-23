@@ -38,7 +38,17 @@ void Engine::setDeviceConstantMemory() {
 
 
 
+template <typename BondType, int max_bondtype_in_compound>
+__device__ BondType* LoadBonds(char* utility_buffer, BondType* source, int nBondsToLoad) {
+	static_assert(cbkernel_utilitybuffer_size >= sizeof(BondType) * max_bondtype_in_compound, "Utilitybuffer not large enough for bondtype");
+	BondType* bonds = (BondType*)utility_buffer;
 
+	auto block = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(block, bonds, source, sizeof(BondType) * nBondsToLoad);
+	cooperative_groups::wait(block);
+
+	return bonds;
+}
 
 
 
@@ -88,56 +98,18 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	Float3 force{};
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
-	{
-		{
-			__syncthreads();
-			static_assert(cbkernel_utilitybuffer_size >= sizeof(SingleBond) * MAX_SINGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for single bonds");
-			SingleBond* singlebonds = (SingleBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, singlebonds, box->compounds[blockIdx.x].singlebonds, sizeof(SingleBond) * compound.n_singlebonds);
-			cooperative_groups::wait(block);
-
-			force += LimaForcecalc::computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(cbkernel_utilitybuffer_size >= sizeof(AngleBond) * MAX_ANGLEBONDS_IN_COMPOUND, "Utilitybuffer not large enough for angle bonds");
-			AngleBond* anglebonds = (AngleBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, anglebonds, box->compounds[blockIdx.x].anglebonds, sizeof(AngleBond) * compound.n_anglebonds);
-			cooperative_groups::wait(block);
-
-			force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(cbkernel_utilitybuffer_size >= sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for dihedrals");
-			DihedralBond* dihedrals = (DihedralBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, dihedrals, box->compounds[blockIdx.x].dihedrals, sizeof(DihedralBond) * compound.n_dihedrals);
-			cooperative_groups::wait(block);
-
-			force += LimaForcecalc::computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-			__syncthreads();
-		}
-		{
-			__syncthreads();
-			static_assert(cbkernel_utilitybuffer_size >= sizeof(ImproperDihedralBond) * MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND, "Utilitybuffer not large enough for improper dihedrals");
-			ImproperDihedralBond* impropers = (ImproperDihedralBond*)utility_buffer;
-
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, impropers, box->compounds[blockIdx.x].impropers, sizeof(ImproperDihedralBond) * compound.n_improperdihedrals);
-			cooperative_groups::wait(block);
-
-			force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-
-			__syncthreads();
-		}
+	{	
+		SingleBond* singlebonds = LoadBonds<SingleBond, MAX_SINGLEBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].singlebonds, compound.n_singlebonds);
+		force += LimaForcecalc::computeSinglebondForces(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
+			
+		AngleBond* anglebonds = LoadBonds<AngleBond, MAX_ANGLEBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].anglebonds, compound.n_anglebonds);
+		force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+				
+		DihedralBond* dihedrals = LoadBonds<DihedralBond, MAX_DIHEDRALBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].dihedrals, compound.n_dihedrals);
+		force += LimaForcecalc::computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+			
+		ImproperDihedralBond* impropers = LoadBonds<ImproperDihedralBond, MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].impropers, compound.n_improperdihedrals);
+		force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);	
 	}
 
 	// Fetch interims from other kernels

@@ -1,6 +1,7 @@
 #include "BoxBuilder.cuh"
 #include "EngineUtils.cuh"
 #include "Printer.h"
+#include "PhysicsUtils.cuh"
 //#include "BoundaryCondition.cuh"	// TODO: This should be private to engine
 #include <random>
 #include <format>
@@ -151,7 +152,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
-		const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
+		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
 		simulation->box_host->solvents[i].vel_prev = direction * velocity;
 	}
 

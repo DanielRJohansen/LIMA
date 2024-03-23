@@ -22,6 +22,17 @@ namespace LAL {
 		return solventindex_new;
 	}
 
-
+	template<typename T>
+	__device__ inline void distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
+		T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
+		for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
+			if ((threadIdx.x + i) < array_len) {
+				temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
+			}
+			__syncthreads();
+			arrayptr[threadIdx.x] = temp;
+			__syncthreads();
+		}
+	}
 }
 

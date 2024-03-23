@@ -2,7 +2,8 @@
 #include "Printer.h"
 #include "Forcefield.cuh"
 #include "EngineUtils.cuh"
-
+#include "PhysicsUtils.cuh"
+#include "DeviceAlgorithms.cuh"
 #include <algorithm>
 
 using namespace LIMA_Print;
@@ -10,18 +11,7 @@ using namespace LIMA_Print;
 const int THREADS_PER_SOLVENTBLOCK_ANALYZER = 128;
 
 
-template<typename T>
-__device__ inline void distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
-	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
-	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
-		if ((threadIdx.x + i) < array_len) {
-			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
-		}
-		__syncthreads();
-		arrayptr[threadIdx.x] = temp;
-		__syncthreads();
-	}
-}
+
 
 void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceField_NB* const forcefield, const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
@@ -53,14 +43,14 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 	const float potE = potE_buffer[particle_index + compound_offset + step_offset];
 
 	const float speed = vel_buffer[particle_index + compound_offset + step_offset];
-	const float kinE = EngineUtils::calcKineticEnergy(speed, mass);	// remove direction from vel
+	const float kinE = PhysicsUtils::calcKineticEnergy(speed, mass);	// remove direction from vel
 
 	const float totalE = potE + kinE;
 
 	energy[particle_index] = Float3(potE, kinE, totalE);
 	__syncthreads();
 
-	distributedSummation(energy, MAX_COMPOUND_PARTICLES);
+	LAL::distributedSummation(energy, MAX_COMPOUND_PARTICLES);
 	__syncthreads();
 
 	if (particle_index == 0) {
@@ -89,14 +79,14 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 
 
 	const float velocity = vel_buffer[step_offset + compounds_offset + solvent_index];
-	const float kinE = EngineUtils::calcKineticEnergy(velocity, SOLVENT_MASS);	// remove direction from vel
+	const float kinE = PhysicsUtils::calcKineticEnergy(velocity, SOLVENT_MASS);	// remove direction from vel
 	float potE = potE_buffer[compounds_offset + solvent_index + step * boxparams.total_particles_upperbound];
 
 	const float totalE = potE + kinE;
 
 	energy[threadIdx.x] = Float3(potE, kinE, totalE);
 	__syncthreads();
-	distributedSummation(energy, THREADS_PER_SOLVENTBLOCK_ANALYZER);
+	LAL::distributedSummation(energy, THREADS_PER_SOLVENTBLOCK_ANALYZER);
 	if (threadIdx.x == 0) {
 		data_out[(step) * gridDim.y + blockIdx.y] = energy[0];
 	}
@@ -369,7 +359,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
 				const float mass = sim.forcefield->getNBForcefield().particle_parameters[atom_type].mass;
 				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
-				const float kinE = EngineUtils::calcKineticEnergy(vel, mass);
+				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
 				
 				energies.emplace_back(potE);
 				energies.emplace_back(kinE);
@@ -382,7 +372,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 
 			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
 			const float vel = sim.vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
-			const float kinE = EngineUtils::calcKineticEnergy(vel, mass);			
+			const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
 
 			energies.emplace_back(potE);
 			energies.emplace_back(kinE);

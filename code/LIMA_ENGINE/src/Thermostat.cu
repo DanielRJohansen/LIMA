@@ -1,7 +1,7 @@
 #include "Engine.cuh"
 #include "EngineUtils.cuh"
 #include "SimulationDevice.cuh"
-
+#include "PhysicsUtils.cuh"
 #include <algorithm>
 
 
@@ -17,7 +17,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
 			const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);
-			const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
+			const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 
 			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
@@ -28,7 +28,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
 		const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[ATOMTYPE_SOLVENT].mass;
 		const float velocity = simulation->vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
-		const float kinE = EngineUtils::calcKineticEnergy(velocity, mass);
+		const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 
 		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
 		sum_kinE_solvents += static_cast<float>(kinE);
@@ -36,7 +36,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->boxparams_host.n_solvents));
 
 	const long double total_kinE = (sum_kinE_compound + sum_kinE_solvents) / AVOGADROSNUMBER;
-	package.temperature = EngineUtils::kineticEnergyToTemperature(total_kinE, simulation->boxparams_host.total_particles);
+	package.temperature = PhysicsUtils::kineticEnergyToTemperature(total_kinE, simulation->boxparams_host.total_particles);
 
 	return package;
 }

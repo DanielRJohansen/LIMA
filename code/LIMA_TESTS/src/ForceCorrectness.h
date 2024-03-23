@@ -2,7 +2,7 @@
 
 #include "TestUtils.h"
 #include "MDStability.cuh"	//Gives access to the testGenericBox
-
+#include "PhysicsUtils.cuh"
 
 namespace ForceCorrectness {
 	using namespace TestUtils;
@@ -21,7 +21,7 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto temp : particle_temps) {
-			const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 			int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 			SimParams params{};
@@ -69,7 +69,7 @@ namespace ForceCorrectness {
 			// Give the carbon a velocity
 			{
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-				const float vel = EngineUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
 				ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
@@ -82,7 +82,7 @@ namespace ForceCorrectness {
 
 			// Give the solvent a velocty
 			{
-				const float vel = EngineUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
+				const float vel = PhysicsUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
 				env.getSimPtr()->box_host->solvents[0].vel_prev = Float3{ -1, 0, 0 } * vel;
 			}
 

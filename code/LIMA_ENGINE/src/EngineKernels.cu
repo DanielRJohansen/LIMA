@@ -455,7 +455,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 #ifdef ENABLE_ELECTROSTATICS
 	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
 		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
-		LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&abspos);
+		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
 		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
 #endif

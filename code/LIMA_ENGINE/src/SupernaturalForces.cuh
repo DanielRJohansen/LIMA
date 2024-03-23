@@ -103,7 +103,7 @@ namespace SupernaturalForces {
 	}
 
 	__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
-		LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&posNM);
+		PeriodicBoundaryCondition::applyBCNM(posNM);	// TODO: Use generic BC
 		const float distFromMidPlane = posNM.x - BOX_LEN_HALF_NM;
 
 		const float dir = distFromMidPlane / std::abs(distFromMidPlane);

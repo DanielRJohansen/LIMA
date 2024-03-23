@@ -119,7 +119,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
 		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
-			LimaPosition position = LIMAPOSITIONSYSTEM::createLimaPosition(sol_pos);
+			PositionHighRes position{ sol_pos };
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
 				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.bc_select);
@@ -252,12 +252,12 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 	//Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
 {
-	std::vector<LimaPosition> positions;
+	std::vector<PositionHighRes> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
-		positions.push_back(LIMAPOSITIONSYSTEM::createLimaPosition(extern_position));
+		positions.push_back(PositionHighRes(extern_position));
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);

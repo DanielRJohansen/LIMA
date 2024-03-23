@@ -6,7 +6,7 @@ class NoBoundaryCondition {
 public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
-	__device__ __host__ static void applyBC(LimaPosition& position) {}
+	__device__ __host__ static void applyBC(PositionHighRes& position) {}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
@@ -24,7 +24,7 @@ public:
 		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
 	}
 
-	__device__ __host__ static void applyBC(LimaPosition& position) {
+	__device__ __host__ static void applyBC(PositionHighRes& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
 		position.x += BOX_LEN_i * (position.x + offset < 0);

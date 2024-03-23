@@ -51,53 +51,12 @@ namespace CPPD {
 
 namespace LIMAPOSITIONSYSTEM {
 	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
-	template <typename BoundaryCondition>
-	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
-		BoundaryCondition::applyHyperpos(static_index, movable_index);
-	}
 
-	template <typename BoundaryCondition>
-	__host__ static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {
-		BoundaryCondition::applyHyperpos(static_position, movable_position);
-	}
 
-	template <typename BoundaryCondition>
-	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
-		BoundaryCondition::applyHyperposNM(static_particle, movable_particle);
-	}
 
-	template <typename BoundaryCondition>
-	__device__ __host__ static void applyBC(NodeIndex& origo) {
-		BoundaryCondition::applyBC(origo);
-	}
-
-	template <typename BoundaryCondition>
-	__device__ __host__ static void applyBC(SolventCoord& coord) { applyBC<BoundaryCondition>(coord.origo); }
-
-	template <typename BoundaryCondition>
-	__device__ __host__ static void applyBC(LimaPosition& position) {
-		BoundaryCondition::applyBC(position);
-	}
-
-	// LimaPosition in [nm]
-	template <typename BoundaryCondition>
-	__device__ __host__ static void applyBCNM(Float3* current_position) {	// Only changes position if position is outside of box;
-		BoundaryCondition::applyBCNM(*current_position);
-	}
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
 
-	__host__ static LimaPosition createLimaPosition(const NodeIndex& nodeindex) {
-		return LimaPosition{
-			static_cast<int64_t>(nodeindex.x) * BOXGRID_NODE_LEN_i,
-			static_cast<int64_t>(nodeindex.y) * BOXGRID_NODE_LEN_i,
-			static_cast<int64_t>(nodeindex.z) * BOXGRID_NODE_LEN_i
-		};
-	}
-	__host__ static LimaPosition createLimaPosition(const Float3& pos_nm) {
-		const Float3 pos_lm = pos_nm * NANO_TO_LIMA;
-		return LimaPosition{ static_cast<int64_t>(pos_lm.x), static_cast<int64_t>(pos_lm.y), static_cast<int64_t>(pos_lm.z) };
-	}
 
 	
 	template<typename T>
@@ -107,7 +66,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	// Converts to nodeindex, applies PBC
-	__host__ static NodeIndex absolutePositionToNodeIndex(const LimaPosition& position, BoundaryConditionSelect bc, float boxlen_nm) {
+	__host__ static NodeIndex absolutePositionToNodeIndex(const PositionHighRes& position, BoundaryConditionSelect bc, float boxlen_nm) {
 		const int64_t offset = BOXGRID_NODE_LEN_i / 2;
 		/*NodeIndex nodeindex{
 			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
@@ -146,13 +105,13 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	//template <typename BoundaryCondition>
-	static Coord getRelativeCoord(const LimaPosition& absolute_position, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
+	static Coord getRelativeCoord(const PositionHighRes& absolute_position, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
-		LimaPosition hyperpos = absolute_position;
+		PositionHighRes hyperpos = absolute_position;
 		//applyHyperpos<PeriodicBoundaryCondition>(createLimaPosition(nodeindex), hyperpos);
-		BoundaryConditionPublic::applyHyperpos(createLimaPosition(nodeindex), hyperpos, boxlen_nm, bc);
+		BoundaryConditionPublic::applyHyperpos(PositionHighRes{ nodeindex,  BOXGRID_NODE_LEN_i}, hyperpos, boxlen_nm, bc);
 
-		const LimaPosition relpos = hyperpos - createLimaPosition(nodeindex);
+		const PositionHighRes relpos = hyperpos - PositionHighRes{ nodeindex, BOXGRID_NODE_LEN_i };
 
 		if (relpos.largestMagnitudeElement() > BOXGRID_NODE_LEN_i * static_cast<int64_t>(max_node_diff)) {
 			throw std::runtime_error("Tried to place a position that was not correcly assigned a node");
@@ -167,7 +126,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
 		//const NodeIndex nodeindex = absolutePositionToNodeIndex<BoundaryCondition>(position);
 		const NodeIndex nodeindex = absolutePositionToNodeIndex(position, bc, boxlen_nm);	// TEMP
 		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
@@ -183,7 +142,7 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	static CompoundCoords positionCompound(const std::vector<LimaPosition>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
+	static CompoundCoords positionCompound(const std::vector<PositionHighRes>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
 		CompoundCoords compoundcoords{};
 
 		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
@@ -213,7 +172,8 @@ namespace LIMAPOSITIONSYSTEM {
 	template <typename BoundaryCondition>
 	__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
 		NodeIndex temp = other;
-		applyHyperpos<BoundaryCondition>(self, temp);
+		BoundaryCondition::applyHyperpos(self, temp);
+		//applyHyperpos<BoundaryCondition>(self, temp);
 		return temp;
 	}
 
@@ -272,8 +232,8 @@ namespace LIMAPOSITIONSYSTEM {
 	/// Applies PBC to the solvent
 	/// </summary>
 	/// <param name="position">Absolute position of solvent [nm] </param>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
-		LimaPosition hyperpos = position;
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
+		PositionHighRes hyperpos = position;
 		//applyBC<BoundaryCondition>(hyperpos);
 		BoundaryConditionPublic::applyBC(hyperpos, boxlen_nm, bc);
 
@@ -298,8 +258,8 @@ namespace LIMAPOSITIONSYSTEM {
 
 	template <typename BoundaryCondition>
 	__device__ __host__ static float calcHyperDistNM(const Float3* const p1, const Float3* const p2) {
-		Float3 temp = *p2;
-		LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(p1, &temp);
+		Float3 temp = *p2;	
+		BoundaryCondition::applyHyperposNM(p1, &temp);
 		return (*p1 - temp).len();
 	}
 };
@@ -321,7 +281,7 @@ public:
 	template <typename BoundaryCondition>
 	__device__ static void applyBC(CompoundCoords& coords) {
 		if (threadIdx.x != 0) { return; }
-		LIMAPOSITIONSYSTEM::applyBC<BoundaryCondition>(coords.origo);
+		BoundaryCondition::applyBC(coords.origo);
 	}
 
 
@@ -440,7 +400,7 @@ namespace EngineUtils {
 	template <typename BoundaryCondition>
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
-		LIMAPOSITIONSYSTEM::applyBC<BoundaryCondition>(new_nodeindex);
+		BoundaryCondition::applyBC(new_nodeindex);
 		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	}
 

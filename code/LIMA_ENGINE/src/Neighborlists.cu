@@ -170,7 +170,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
 					NodeIndex query_origo = compound_origo + NodeIndex{ x,y,z };
-					LIMAPOSITIONSYSTEM::applyBC<BoundaryCondition>(query_origo);
+					BoundaryCondition::applyBC(query_origo);
 
 					// If the query node is NOT inside the box, which happens in some boundary conditions, we cannot continue, 
 					// since the node wont exists, and thus compounds are not allowed to access it.

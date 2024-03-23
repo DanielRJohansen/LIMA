@@ -151,7 +151,7 @@ __global__ void DownwardSweep(SimulationDevice* simdev) {
 			const float query_chargenode = simdev->charge_octtree->chargenodes[query_index];
 
 			Float3 pos_abs_query = OcttreeHelpers::getAbsPos(query_index3d, nodelenNM);
-			LIMAPOSITIONSYSTEM::applyHyperposNM<PeriodicBoundaryCondition>(&forcenodeAbsPos, &pos_abs_query);
+			PeriodicBoundaryCondition::applyHyperposNM(&forcenodeAbsPos, &pos_abs_query);	// TODO: use generic BC
 
 			forces[threadIdx.x] += CalcCoulumbHalfforce(forcenodeAbsPos - pos_abs_query, query_chargenode);
 		}
@@ -186,7 +186,7 @@ __global__ void CompoundsFetchChargeforce(SimulationDevice* simdev) {
 		return;
 	}
 	Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords->origo, compoundcoords->rel_positions[threadIdx.x]);
-	LIMAPOSITIONSYSTEM::applyBCNM<PeriodicBoundaryCondition>(&abspos);
+	PeriodicBoundaryCondition::applyBCNM(abspos);
 	
 	const Float3 charge_force = simdev->charge_octtree->getForceAtLeaf(abspos, compound->atom_charges[threadIdx.x]);
 	simdev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += charge_force;

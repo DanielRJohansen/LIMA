@@ -4,9 +4,9 @@ class NoBoundaryCondition {
 public:
 	static void applyBC(NodeIndex& origo) {}
 
-	static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position) {}
+	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position) {}
 
-	static void applyBC(LimaPosition& position) {}
+	static void applyBC(PositionHighRes& position) {}
 
 	static void applyBC(Float3& position, float boxlen_nm) {}
 
@@ -23,9 +23,9 @@ public:
 		origo.z -= boxgrid_n_nodes * (origo.z >= boxgrid_n_nodes);
 	}
 
-	static void applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position, float boxlen_nm) {
+	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm) {
 		const int boxlen_i = static_cast<int>(boxlen_nm * NANO_TO_LIMA);
-		const LimaPosition difference = static_position - movable_position;
+		const PositionHighRes difference = static_position - movable_position;
 		movable_position.x += boxlen_i * (difference.x > boxlen_i / 2);
 		movable_position.x -= boxlen_i * (difference.x < -boxlen_i / 2);
 		movable_position.y += boxlen_i * (difference.y > boxlen_i / 2);
@@ -34,7 +34,7 @@ public:
 		movable_position.z -= boxlen_i * (difference.z < -boxlen_i / 2);
 	}
 
-	static void applyBC(LimaPosition& position, float boxlen_nm) {
+	static void applyBC(PositionHighRes& position, float boxlen_nm) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		const int boxlen_i = static_cast<int>(boxlen_nm * NANO_TO_LIMA);
 		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
@@ -80,7 +80,7 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, float boxlen_nm, Bou
 	}
 	}
 }
-void BoundaryConditionPublic::applyBC(LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {
+void BoundaryConditionPublic::applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
 	const int boxgrid_n_nodes = static_cast<int>(std::roundf(boxlen_nm * NANO_TO_LIMA / BOXGRID_NODE_LEN));
 	switch (bc) {
 	case NoBC: {
@@ -107,7 +107,7 @@ void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, Boundar
 	}
 }
 
-void BoundaryConditionPublic::applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
+void BoundaryConditionPublic::applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
 	case NoBC: {
 		NoBoundaryCondition::applyHyperpos(static_position, movable_position);

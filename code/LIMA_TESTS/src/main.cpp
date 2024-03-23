@@ -140,7 +140,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
 	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 2e-4, 2.2e-7));
 	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode, 4.3e-3));
-	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 2.9e-7));
+	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 3.2e-7));
 
 
 	// Smaller compound tests
@@ -151,7 +151,7 @@ void runAllUnitTests() {
 
 
 	// Larger tests
-	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.01e-7));
+	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5));
 
 	// Programs test

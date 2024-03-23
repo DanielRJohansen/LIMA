@@ -400,17 +400,12 @@ struct PositionHighRes {
 		y(static_cast<int64_t>(nodeindex.y) * nodeLen), 
 		z(static_cast<int64_t>(nodeindex.z) * nodeLen) 
 	{}
-	//PositionHighRes(const Float3& abs_pos_nm) :
-	//	x(static_cast<int64_t>(static_cast<double>(abs_pos_nm.x) * NANO_TO_LIMA)),
-	//	y(static_cast<int64_t>(static_cast<double>(abs_pos_nm.y) * NANO_TO_LIMA)),
-	//	z(static_cast<int64_t>(static_cast<double>(abs_pos_nm.z) * NANO_TO_LIMA))
-	//{}
-
 	PositionHighRes(const Float3& abs_pos_nm) :
-		x(static_cast<int64_t>((abs_pos_nm.x)* NANO_TO_LIMA)),
-		y(static_cast<int64_t>((abs_pos_nm.y)* NANO_TO_LIMA)),
-		z(static_cast<int64_t>((abs_pos_nm.z)* NANO_TO_LIMA))
+		x(static_cast<int64_t>(static_cast<double>(abs_pos_nm.x) * NANO_TO_LIMA)),
+		y(static_cast<int64_t>(static_cast<double>(abs_pos_nm.y) * NANO_TO_LIMA)),
+		z(static_cast<int64_t>(static_cast<double>(abs_pos_nm.z) * NANO_TO_LIMA))
 	{}
+
 
 
 	__host__ __device__ void operator += (const int64_t& a) { x += a; y += a; z += a; };	// TODO: Remove?

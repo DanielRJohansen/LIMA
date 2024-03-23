@@ -1,7 +1,5 @@
 #pragma once
 
-#include<iostream>
-//#include <cmath>
 
 #include "LimaTypes.cuh"
 #include "Constants.h"
@@ -14,78 +12,14 @@
 #include "Constants.h"
 #include "Bodies.cuh"
 
+#include "KernelWarnings.cuh"
 
-//#include <cuda.h>
-//#include <device_launch_parameters.h>
-//#include <cuda_runtime_api.h>
-
-//#include <device_functions.h>
-
-//#include "cuda/std/cmath"
-//#include "cuda/std//utility"
-
-namespace CPPD {
-	__device__ __host__ constexpr int32_t ceil(float num) {
-		return (static_cast<float>(static_cast<int32_t>(num)) == num)
-			? static_cast<int32_t>(num)
-			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
-	}
-
-	template <typename T>
-	__device__ __host__ static constexpr T max(const T l, const T r) {
-		return r > l ? r : l;
-	}
-
-	template <typename T>
-	__device__ __host__ static T min(const T l, const T r) {
-		return r < l ? r : l;
-	}
-
-	__device__ __host__ static int32_t abs(const int32_t val) {
-		return val < 0 ? -val : val;
-	}
-}
-
-
-
-
-
-
-namespace LIMALOGSYSTEM {
-
-	// Same as below, but we dont expect to be an even interval
-	static constexpr int64_t getMostRecentDataentryIndex(int64_t step, int loggingInterval) {
-		return step / loggingInterval;
-	}
-
-	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to, int loggingInterval) {
-		return getMostRecentDataentryIndex(to, loggingInterval) - getMostRecentDataentryIndex(from, loggingInterval);
-	}
-
-	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step, int loggingInterval) {
-		if (step % loggingInterval != 0) {
-			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
-			return 0;
-		}
-		assert(step % loggingInterval == 0);
-		return step / loggingInterval;
-	}
-};
+#include<iostream>
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
 
 
 namespace EngineUtils {
-
-
-
-	//// For solvents, compound_id = n_compounds and particle_id = solvent_index
-	//__device__ static constexpr int64_t getLoggingIndexOfParticle(uint32_t step, uint32_t total_particles_upperbound, uint32_t compound_id, uint32_t particle_id_local, int loggingInterval) {
-
-	//	const int64_t steps_since_transfer = (step % STEPS_PER_LOGTRANSFER);
-	//	//const int64_t step_offset = steps_since_transfer * total_particles_upperbound;
-		//const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
-	//	const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-	//	return step_offset + compound_offset + particle_id_local;
-	//}
 
 	template <typename BoundaryCondition>
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
@@ -93,14 +27,6 @@ namespace EngineUtils {
 		BoundaryCondition::applyBC(new_nodeindex);
 		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
 	}
-
-	//__device__ static SolventBlockTransfermodule* getTransfermoduleTargetPtr(SolventBlockTransfermodule* transfermodule_array, int blockId, const NodeIndex& transfer_direction) {
-	//	NodeIndex new_nodeindex = SolventBlocksCircularQueue::get3dIndex(blockId) + transfer_direction;
-	//	LIMAPOSITIONSYSTEM::applyBC(new_nodeindex);
-	//	const int index = SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
-	//	return &transfermodule_array[index];
-	//}
-
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
@@ -122,9 +48,8 @@ namespace EngineUtils {
 
 		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
 
-		//const int64_t index = EngineUtils::getLoggingIndexOfParticle(simsignals.step, box->boxparams.total_particles_upperbound, blockIdx.x, threadIdx.x, simparams.data_logging_interval);
 		const int index = databuffers->GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval);
-		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); //LIMAPOSITIONSYSTEM::getGlobalPosition(compound_coords);
+		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
 
@@ -138,7 +63,6 @@ namespace EngineUtils {
 
 
 		if (solvent_active) {
-			//const int64_t index = EngineUtils::getLoggingIndexOfParticle(step, box->boxparams.total_particles_upperbound, box->boxparams.n_compounds, solventblock.ids[threadIdx.x], loggingInterval);
 			const int index = databuffers->GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval);
 
 
@@ -157,15 +81,6 @@ namespace EngineUtils {
 		}
 	}
 
-
-
-	//// Slow function, never for device
-	//__host__ static float calcDistance(const NodeIndex& o1, const Coord& relpos1, const NodeIndex& o2, const Coord& relpos2) {
-	//	auto pos1 = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(o1, relpos1);
-	//	auto pos2 = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(o2, relpos2);
-	//	return (pos1 - pos2).len();
-	//}
-
 	__device__ static bool constexpr isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
 			constexpr float threshold = 1. / (CUTOFF_LM * CUTOFF_LM);
@@ -178,6 +93,52 @@ namespace EngineUtils {
 
 
 
+
+
+
+
+
+
+
+	template <typename BoundaryCondition>
+	__device__ inline void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* const querycompound,
+		void* output_buffer, Float3& utility_float3, const int n_particles)
+	{
+		if (threadIdx.x == 0) {
+			const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(origo_self, querycompound->origo);
+			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
+
+			// calc Relative LimaPosition Shift from the origo-shift
+			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
+		}
+		//	__syncthreads();
+
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
+		cooperative_groups::wait(block);
+		__syncthreads();
+
+		// Eventually i could make it so i only copy the active particles in the compound
+		if (threadIdx.x < n_particles) {
+			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
+			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
+		}
+		__syncthreads();
+	}
+
+	__device__ inline void getCompoundHyperpositionsAsFloat3Async(const CompoundCoords* const querycompound,
+		void* output_buffer, const int n_particles, const Float3& relshift)
+	{
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
+		cooperative_groups::wait(block);
+
+		// Eventually i could make it so i only copy the active particles in the compound
+		if (threadIdx.x < n_particles) {
+			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
+			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
+		}
+	}
 
 };
 
@@ -220,17 +181,6 @@ namespace DEBUGUTILS {
 	/// <summary>
 	/// Puts the nearest solvent of each solvent in the out vector.
 	/// </summary>
-	void findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& out);
+	//void findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& out);
 }
 
-// LIMA algorithm Library
-namespace LAL {
-	//__device__ constexpr int getBlellochTablesize(int n) {
-	//	const float nf = static_cast<float>(n);
-	//	return CPPD::ceil(nf * std::log2f(nf) * 2.f);
-	//}
-	// 
-
-
-
-}

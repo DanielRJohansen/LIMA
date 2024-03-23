@@ -2,7 +2,6 @@
 
 
 #include "Rasterizer.cuh"
-#include "EngineUtils.cuh"
 #include "Utilities.h"
 
 

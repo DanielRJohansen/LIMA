@@ -3,18 +3,16 @@
 #include <assert.h>  
 
 
-
 #include "Environment.h"
 #include "Printer.h"
 #include "MDFiles.h"
-#include "EngineUtils.cuh"
 #include "CompoundBuilder.h"
 #include "VirtualPathMaker.h"
 #include "DisplayV2.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "ForcefieldMaker.h"
-
+#include "Forcefield.cuh"
 
 using namespace LIMA_Print;
 using std::string;

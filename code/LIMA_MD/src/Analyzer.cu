@@ -1,7 +1,6 @@
 #include "Analyzer.cuh"
 #include "Printer.h"
 #include "Forcefield.cuh"
-#include "EngineUtils.cuh"
 #include "PhysicsUtils.cuh"
 #include "DeviceAlgorithms.cuh"
 #include <algorithm>
@@ -97,7 +96,6 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
-	//const int64_t n_steps = simulation->getStep();
 	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
 	if (n_entryindices < 2) { return Analyzer::AnalyzedPackage(); }

@@ -9,10 +9,8 @@
 #include "BoundaryCondition.cuh"
 #include "SupernaturalForces.cuh"
 #include "SolventBlockTransfers.cuh"
+#include "DeviceAlgorithms.cuh"
 
-
-#include <cooperative_groups.h>
-#include <cooperative_groups/memcpy_async.h>
 //#include <cuda/pipeline>
 
 
@@ -30,7 +28,6 @@ __constant__ ForceField_NB forcefield_device;
 // Include this after, so the .cuh file can see it
 #include "LennardJonesInteractions.cuh"
 
-
 void Engine::setDeviceConstantMemory() {
 	const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield->getNBForcefieldRef(), sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
@@ -38,51 +35,9 @@ void Engine::setDeviceConstantMemory() {
 	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
 }
 
-// ------------------------------------------------------------------------------------------- DEVICE FUNCTIONS -------------------------------------------------------------------------------------------//
 
 
 
-
-
-template <typename BoundaryCondition>
-__device__ void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* const querycompound, 
-	void* output_buffer, Float3& utility_float3, const int n_particles) 
-{
-	if (threadIdx.x == 0) {
-		const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(origo_self, querycompound->origo);
-		KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
-
-		// calc Relative LimaPosition Shift from the origo-shift
-		utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
-	}
-//	__syncthreads();
-
-	auto block = cooperative_groups::this_thread_block();
-	cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
-	cooperative_groups::wait(block);
-	__syncthreads();
-
-	// Eventually i could make it so i only copy the active particles in the compound
-	if (threadIdx.x < n_particles) {
-		const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
-		((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
-	}
-	__syncthreads();
-}
-
-__device__ void getCompoundHyperpositionsAsFloat3Async(const CompoundCoords* const querycompound,
-	void* output_buffer, const int n_particles, const Float3& relshift)
-{
-	auto block = cooperative_groups::this_thread_block();
-	cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
-	cooperative_groups::wait(block);
-
-	// Eventually i could make it so i only copy the active particles in the compound
-	if (threadIdx.x < n_particles) {
-		const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
-		((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
-	}
-}
 
 
 
@@ -389,7 +344,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			if (threadIdx.x < n_particles_neighbor) {
 				atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
 			}
-			getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
+			EngineUtils::getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
 			__syncthreads();
 
 
@@ -433,7 +388,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		__syncthreads();	// Dont load buffer before all are finished with the previous iteration
 		for (uint32_t offset = 0; offset < nsolvents_neighbor; offset += blockDim.x) {
 			const uint32_t solvent_index = offset + threadIdx.x;
-			const int n_elements_this_stride = CPPD::min(nsolvents_neighbor - offset, blockDim.x);
+			const int n_elements_this_stride = LAL::min(nsolvents_neighbor - offset, blockDim.x);
 
 			// Load the positions and add rel shift
 			if (solvent_index < nsolvents_neighbor) {
@@ -538,7 +493,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
 			const CompoundCoords* coordarray_ptr = box->compoundcoordsCircularQueue->getCoordarrayRef(signals->step, neighborcompound_index);
-			getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
+			EngineUtils::getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
 
 
 			// Then load atomtypes of neighboring compound

@@ -1,4 +1,25 @@
+#pragma once
+
 namespace LAL {
+	__device__ __host__ constexpr int32_t ceil(float num) {
+		return (static_cast<float>(static_cast<int32_t>(num)) == num)
+			? static_cast<int32_t>(num)
+			: static_cast<int32_t>(num) + ((num > 0) ? 1 : 0);
+	}
+
+	template <typename T>
+	__device__ __host__ static constexpr T max(const T l, const T r) {
+		return r > l ? r : l;
+	}
+
+	template <typename T>
+	__device__ __host__ static T min(const T l, const T r) {
+		return r < l ? r : l;
+	}
+
+	__device__ __host__ static int32_t abs(const int32_t val) {
+		return val < 0 ? -val : val;
+	}
 
 	// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 	__device__ inline void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {

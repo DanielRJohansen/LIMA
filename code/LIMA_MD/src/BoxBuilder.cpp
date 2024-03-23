@@ -1,8 +1,9 @@
 #include "BoxBuilder.cuh"
-#include "EngineUtils.cuh"
 #include "Printer.h"
 #include "PhysicsUtils.cuh"
-//#include "BoundaryCondition.cuh"	// TODO: This should be private to engine
+#include "Forcefield.cuh"
+#include "LimaPositionSystem.cuh"
+
 #include <random>
 #include <format>
 
@@ -14,10 +15,8 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
-	//simulation->box_host->coordarray_circular_queue = new CompoundCoords[Box::coordarray_circular_queue_n_elements];
 	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
 	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
-	//simulation->box_host->transfermodule_array = new SolventBlockTransfermodule[SolventBlocksCircularQueue::blocks_per_grid];
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 

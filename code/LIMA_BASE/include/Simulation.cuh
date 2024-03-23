@@ -2,11 +2,12 @@
 
 #include "Constants.h"
 #include "Bodies.cuh"
+#include "Forcefield.cuh"
 #include <memory>
 
 
-struct ForceField_NB;
-class Forcefield;
+//struct ForceField_NB;
+//class Forcefield;
 
 enum ColoringMethod { Atomname, Charge };
 
@@ -144,6 +145,27 @@ private:
 	const size_t n_indices;
 	std::vector<T> buffer;
 };
+
+// TODO: Temp, i dont like this being here
+namespace LIMALOGSYSTEM {
+	// Same as below, but we dont expect to be an even interval
+	static constexpr int64_t getMostRecentDataentryIndex(int64_t step, int loggingInterval) {
+		return step / loggingInterval;
+	}
+
+	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to, int loggingInterval) {
+		return getMostRecentDataentryIndex(to, loggingInterval) - getMostRecentDataentryIndex(from, loggingInterval);
+	}
+
+	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step, int loggingInterval) {
+		if (step % loggingInterval != 0) {
+			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
+			return 0;
+		}
+		assert(step % loggingInterval == 0);
+		return step / loggingInterval;
+	}
+}
 
 // This goes on Device
 struct Box {

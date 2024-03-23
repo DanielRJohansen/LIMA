@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "EngineBodies.cuh"
+#include "DeviceAlgorithms.cuh"
 
 namespace SupernaturalForces {
 
@@ -25,8 +26,8 @@ namespace SupernaturalForces {
 		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force, float particle_mass) {
 			const float box_padding = 0.5f;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
-			const float dist_x = CPPD::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.x) - BOX_LEN_HALF_NM + box_padding, 0.f);
-			const float dist_y = CPPD::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.y) - BOX_LEN_HALF_NM + box_padding, 0.f);
+			const float dist_x = LAL::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.x) - BOX_LEN_HALF_NM + box_padding, 0.f);
+			const float dist_y = LAL::max(std::abs(BOX_LEN_HALF_NM - avg_compound_position_nm.y) - BOX_LEN_HALF_NM + box_padding, 0.f);
 
 
 			// Constant force

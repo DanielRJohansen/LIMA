@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<RunSettings>
-    <Catch2AdapterSettings>
-        <ForceListContent>true</ForceListContent>
-    </Catch2AdapterSettings>
-    <Catch2Adapter>
-        <FilenameFilter>^LIMA_UNITTESTS</FilenameFilter>
-    </Catch2Adapter>
-</RunSettings>

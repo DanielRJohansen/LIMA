@@ -62,8 +62,8 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (CALC_POTE) {
-			//potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for 2 particles doing the same calculation
-			potE += 2.f * epsilon * s * (s - 1.f);
+
+			potE += 2.f * epsilon * s * (s - 1.f);	// 2.f instead of 2.f to account for 2 particles doing the same calculation
 		}
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors();
@@ -71,7 +71,6 @@ namespace LJ {
 
 		return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
 	}
-
 #else 
 	__device__ static Float3 calcLJForceOptim(const Float3&, float, float& , float , float , CalcLJOrigin, int, int) {
 		return Float3{};
@@ -193,6 +192,4 @@ namespace LJ {
 		}
 		return force * 24.f;
 	}
-
-
 }

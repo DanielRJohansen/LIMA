@@ -32,26 +32,7 @@ void runAllUnitTests();
 //}
 //}
 
-void MakeChargeParticlesSim() {
-	Environment env("C:/Users/Daniel/git_repo/LIMA_data/ElectrostaticField", EnvMode::Headless, false);
 
-	env.createSimulationFiles(7.f);
-
-	// Create 5 custom particles
-	AtomsSelection atomsSelection{
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -1.f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -.5f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -0.f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.5f, 10.f}, 20},
-		{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 1.f, 10.f}, 20}
-	};
-
-	MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
-	SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 20.f);
-
-	simfiles.grofile->printToFile();
-	simfiles.topfile->printToFile();
-}
 
 
 
@@ -106,7 +87,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);	
 			
 		//MakeChargeParticlesSim();
-		//TestChargedParticlesEndInCorrectSection(envmode);
+		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
 		runAllUnitTests();
 	}
@@ -158,7 +139,9 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
 	ADD_TEST(testman, "ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 
-
+	// Electrostatics
+	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
+	
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

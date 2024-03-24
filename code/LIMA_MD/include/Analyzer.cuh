@@ -55,3 +55,22 @@ private:
 
 	std::unique_ptr<LimaLogger> m_logger;
 };
+
+static float getMean(const std::vector<float>& vec)
+{
+	double sum = 0.;
+	for (auto elem : vec) { sum += static_cast<double>(elem); }
+	return static_cast<float>(sum / static_cast<double>(vec.size()));
+}
+
+static float getStdDev(const std::vector<float>& vec) {
+	if (vec.size() == 0) { return 0.f; }
+
+	const double mean = getMean(vec);
+
+	double variance = 0;
+	for (auto elem : vec) { variance += (elem - mean) * (elem - mean); }
+
+	const double deviation = variance / static_cast<double>(vec.size());
+	return static_cast<float>(std::abs(std::sqrt(deviation)));
+}

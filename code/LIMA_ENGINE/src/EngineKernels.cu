@@ -126,8 +126,9 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
 	}
 	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
-		const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
-		SupernaturalForces::applyHorizontalChargefield(abspos, force, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
+		//const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
+		//SupernaturalForces::applyHorizontalChargefield(abspos, force, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
+		force += box->uniformElectricField.GetForce(box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
 
 

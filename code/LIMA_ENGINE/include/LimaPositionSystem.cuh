@@ -230,6 +230,12 @@ namespace LIMAPOSITIONSYSTEM {
 		BoundaryCondition::applyHyperposNM(p1, &temp);
 		return (*p1 - temp).len();
 	}
+
+	__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue& coords, int step, int compoundIndex, int particleIndex) {
+		return getAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
+	}
+
+
 };
 
 

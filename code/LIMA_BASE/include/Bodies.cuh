@@ -7,7 +7,7 @@
 #include <vector>
 #include <array>
 #include <cuda_fp16.h>
-
+#include <assert.h>
 // Hyper-fast objects for kernel, so we turn all safety off here!
 #pragma warning (push)
 #pragma warning (disable : 26495)
@@ -140,10 +140,18 @@ public:
 		return this_host;
 	}
 
+	__host__ const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
+		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
+		return queue[index0_of_currentstep_coordarray + compound_index];
+	}
+
 	__host__ __device__ CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
 		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
 		return &queue[index0_of_currentstep_coordarray + compound_index];
 	}
+
+
+	// ----- Host Only Functions ----- //
 
 	__host__ void Flush() {
 		for (size_t i = 0; i < queueLen * MAX_COMPOUNDS; i++) {
@@ -152,7 +160,7 @@ public:
 	}
 
 	// Get raw ptr. Try to avoid using
-	__host__ CompoundCoords* data() { return queue; }
+	__host__ CompoundCoords* data() { return queue; }	
 };
 
 
@@ -569,11 +577,19 @@ struct ForceField_NB {
 };
 
 
+class UniformElectricField {
+	Float3 field;	// [GV/m]
 
-
-
-
-
+	public:
+		UniformElectricField() {}
+		__host__ UniformElectricField(Float3 direction, float magnitude) : field(direction.norm() * magnitude * 1e-9) {
+			assert(direction.len() != 0.f);
+		}
+	
+	__device__ Float3 GetForce(float charge /* [C/mol] */) {
+		return field * charge;
+	}
+};
 
 
 #pragma warning (pop)

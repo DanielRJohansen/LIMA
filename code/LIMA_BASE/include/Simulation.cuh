@@ -201,6 +201,9 @@ struct Box {
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
+
+
+	UniformElectricField uniformElectricField;
 };
 
 

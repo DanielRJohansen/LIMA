@@ -45,7 +45,7 @@ public:
         normal,
         compact
     };   
-
+    LimaLogger() {}
     LimaLogger(const LimaLogger&) = delete;
     LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::string& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
     ~LimaLogger();

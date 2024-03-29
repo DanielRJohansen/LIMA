@@ -163,9 +163,7 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
         atom.pos = positions[global_id];
         atom.pos = atom.pos / boxLenNM - 0.5f;    // normalize from -0.5->0.5
 
-        atom.mass = SOLVENT_MASS;                                                         // TEMP
-        //atom.color = getColor(compound->atomLetters[local_id]);
-        //atom.atom_type = RAS_getTypeFromIndex(compound->atom_color_types[local_id]);
+        //atom.mass = SOLVENT_MASS;                                                         // TEMP
         atom.atom_type = RAS_getTypeFromAtomletter(compound->atomLetters[local_id]);
 
         atom.radius = getRadius(atom.atom_type) / boxLenNM;

@@ -54,7 +54,7 @@ public:
 	/// </summary>
 	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
 	/// which ensures all particles are inside the box</param>
-	void createMembrane(LipidsSelection& lipidselection, bool carryout_em = true);
+	//void createMembrane(LipidsSelection& lipidselection, bool carryout_em = true);
 
 	/// <summary>
 	/// Create .gro .top and simparams.txt files in the current directory
@@ -96,6 +96,19 @@ public:
 	//const std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
 	const std::string& getWorkdir() { return work_dir; }
 
+#ifdef __linux__
+	std::chrono::system_clock::time_point time0;
+	std::string main_dir = "/opt/LIMA";
+#else
+	std::chrono::steady_clock::time_point time0;
+
+	// Main folder of the lima package, contains code/lib/resources and more
+	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
+#endif
+
+	const std::string work_dir = "";	// Main dir of the current simulation
+
+
 private:
 	void resetEnvironment();
 
@@ -107,21 +120,20 @@ private:
 	void handleStatus(int64_t step, int64_t n_steps);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display);
 
 	void sayHello();
 
 	EnvMode m_mode;
 	const bool save_output;
 
-	std::unique_ptr<Display> display = nullptr;
+	//std::unique_ptr<Display> display = nullptr;
 	int step_at_last_render = 0;
 	int step_at_last_update = 0;
 
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
 
-	const std::string work_dir = "";	// Main dir of the current simulation
 
 
 	std::unique_ptr<Engine> engine;
@@ -136,16 +148,6 @@ private:
 	std::unique_ptr<BoxImage> boximage;
 
 	Analyzer::AnalyzedPackage postsim_anal_package;
-#ifdef __linux__
-	std::chrono::system_clock::time_point time0;
-	std::string main_dir = "/opt/LIMA";
-#else
-	std::chrono::steady_clock::time_point time0;
-
-	// Main folder of the lima package, contains code/lib/resources and more
-	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
-#endif
-
 
 
 

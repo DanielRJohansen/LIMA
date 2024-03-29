@@ -14,7 +14,7 @@
 
 class Display {
 public:
-	Display();
+	Display(EnvMode);
 	~Display();
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	

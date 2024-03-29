@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "TestUtils.h"
+#include "Programs.h"
 
 namespace TestMembraneBuilder {
 	using namespace TestUtils;
@@ -26,8 +27,7 @@ namespace TestMembraneBuilder {
 		for (const auto& name : LipidSelect::valid_lipids) {
 			lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10});	// 10% of each lipid, except 50% POPC
 		}
-		env.createMembrane(lipidselection, do_em);
-
+		Programs::CreateMembrane(env, lipidselection, do_em, 3.5f);
 
 
 		// Test that the output files match the reference output files

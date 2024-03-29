@@ -6,6 +6,8 @@
 
 
 #include "CommandlineUtils.h"
+#include "Programs.h"
+
 namespace fs = std::filesystem;
 
 struct BuildMembraneSetup{
@@ -27,6 +29,15 @@ struct BuildMembraneSetup{
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;
                 }
             }
+            if (arg== "-centerZ") {
+				if (i + 1 < argc) {
+					membraneCenterZ = std::stof(argv[i + 1]);
+					i++;
+				}
+				else {
+					std::cerr << "-centerZ expected an argument." << std::endl;
+				}
+			}
         }
 	}
 
@@ -34,6 +45,7 @@ struct BuildMembraneSetup{
 
 	fs::path work_dir;
     std::vector<std::pair<std::string, int>> lipids;
+    float membraneCenterZ = 0.0f;
 
 private:
     bool isInteger(const std::string& s) {
@@ -59,7 +71,7 @@ int buildMembrane(int argc, char** argv) {
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(LipidSelect{ lipid.first, lipid.second });
 	}
-	env.createMembrane(lipidselection, true);
+    Programs::CreateMembrane(env, lipidselection, true, setup.membraneCenterZ);
 
 	return 0;
 }

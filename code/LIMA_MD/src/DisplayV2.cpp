@@ -45,8 +45,8 @@ void Display::updateCamera(float pitch, float yaw, float delta_distance) {
     };// .norm();
 }
 
-Display::Display() :
-    logger(LimaLogger::LogMode::compact, EnvMode::Full, "display") 
+Display::Display(EnvMode envmode) :
+    logger(LimaLogger::LogMode::compact, envmode, "display") 
 {    
     int success = initGLFW();
     logger.finishSection("Display initialized");

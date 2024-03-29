@@ -36,7 +36,7 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 	switch (mode)
 	{
 	case EnvMode::Full:
-		display = std::make_unique<Display>();
+		//display = std::make_unique<Display>();
 		[[fallthrough]];
 	case EnvMode::ConsoleOnly:
 		sayHello();
@@ -107,67 +107,6 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
 }
 
-void Environment::createMembrane(LipidsSelection& lipidselection, bool carryout_em) {
-	// Load the files for each lipid
-	for (auto& lipid : lipidselection) {
-		const std::string lipid_path = main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
-		lipid.grofile = std::make_unique<ParsedGroFile>(lipid_path + lipid.lipidname + ".gro");
-		lipid.topfile = MDFiles::loadTopologyFile(lipid_path + lipid.lipidname + ".itp");
-	}
-
-
-	// Insert the x lipids with plenty of distance in a non-pbc box
-	auto monolayerfiles = SimulationBuilder::buildMembrane(lipidselection, simulation->box_host->boxparams.dims);
-
-	// Create simulation and run on the newly created files in the workfolder
-	monolayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.gro"));
-	monolayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/monolayer.top"));
-
-	// Monolayer energy Minimization NoBC
-	{
-		SimParams ip{};
-		ip.bc_select = NoBC;
-		ip.n_steps = carryout_em ? 15000 : 0;
-		ip.snf_select = HorizontalSqueeze;
-		ip.em_variant = true;
-		//CreateSimulation(lfs::pathJoin(work_dir, "/molecule/membrane.gro"), lfs::pathJoin(work_dir, "/molecule/membrane.top"), ip);
-		CreateSimulation(monolayerfiles.first, monolayerfiles.second, ip);
-
-		// Draw each lipid towards the center - no pbc
-		run();
-
-		if (carryout_em)
-			if (!boxbuilder->verifyAllParticlesIsInsideBox(*simulation, 0.06f)) { return; }	// FAIL
-	}
-	
-	const ParsedGroFile monolayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : monolayerfiles.first;
-	//auto em_monolayer_grofile = MDFiles::loadGroFile(work_dir + "/molecule/membrane.gro");
-	
-
-	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-	auto bilayerfiles = SimulationBuilder::makeBilayerFromMonolayer({ monolayer_grofile_em, monolayerfiles.second }, simulation->box_host->boxparams.dims);
-
-	bilayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/bilayer.top"));
-
-	// Run EM for a while - with pbc
-	{
-		SimParams ip{};
-		ip.n_steps = carryout_em ? 3000 : 0;
-		ip.dt = 50.f;
-		ip.bc_select = carryout_em ? PBC : NoBC;	// Cannot insert compounds with PBC, if they are not in box
-		CreateSimulation(bilayerfiles.first, bilayerfiles.second, ip);
-
-		// Draw each lipid towards the center - no pbc
-		run();
-	}
-	const ParsedGroFile bilayer_grofile_em = carryout_em ? writeBoxCoordinatesToFile() : bilayerfiles.first;
-
-	
-	// Save box to .gro and .top file
-	bilayer_grofile_em.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));
-	//bilayerfiles.first.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.gro"));	// TEMP
-	bilayerfiles.second.printToFile(lfs::pathJoin(work_dir, "/molecule/membrane.top"));
-}
 
 void Environment::createSimulationFiles(float boxlen) {
 	ParsedGroFile grofile{};
@@ -297,11 +236,15 @@ void Environment::sayHello() {
 	//printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n\n");
 	//cout << "\033[0m"; // reset text color
 }
-
+#include <optional>
 
 void Environment::run(bool em_variant) {
 	if (!prepareForRun()) { return; }
 
+	std::optional<Display> display;
+	if (m_mode == Full) {
+		display.emplace(m_mode);
+	}
 
 	while (true) {
 		if (engine->runstatus.simulation_finished) { break; }
@@ -314,7 +257,8 @@ void Environment::run(bool em_variant) {
 
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
-		if (!handleDisplay(*compounds, boxparams)) { break; }
+		if (m_mode == Full)
+			if (!handleDisplay(*compounds, boxparams, display.value())) { break; }
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
@@ -466,16 +410,16 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams) {	
-	if (!display) { return true; }	// Headless or ConsoleOnly
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display) {	
+	//if (!display) { return true; }	// Headless or ConsoleOnly
 
 	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
-		display->render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
+		display.render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;
 	}
 
-	const bool displayStillExists = display->checkWindowStatus();
+	const bool displayStillExists = display.checkWindowStatus();
 	return displayStillExists;
 }
 

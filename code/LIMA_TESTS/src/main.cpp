@@ -4,6 +4,7 @@
 #include "MembraneBuilder.h"
 #include "MinorPrograms.h"
 #include "ElectrostaticsTests.h"
+#include "Benchmarks.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -75,7 +76,7 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 	
 
-
+		//Benchmarks::MembraneWithPsome(envmode);
 		
 		/*const fs::path work_dir = simulations_dir + "/test";
 		Environment env{ work_dir.string(), envmode, false };

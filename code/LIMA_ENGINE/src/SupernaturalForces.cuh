@@ -38,7 +38,7 @@ namespace SupernaturalForces {
 			force_y += const_factor;
 
 			// Linear force
-			const float lin_factor = 0.00003f;
+			const float lin_factor = 0.00002f;
 			force_x += dist_x * lin_factor;
 			force_y += dist_y * lin_factor;
 

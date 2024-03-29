@@ -223,7 +223,7 @@ namespace TestUtils {
 		LAL::optional<SimParams> ip = {},
 		bool em_variant = false
 	)
-	{
+	{		
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
 		env->run(em_variant);
 

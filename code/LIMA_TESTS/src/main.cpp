@@ -66,7 +66,11 @@ int main() {
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
-		//loadAndRunBasicSimulation("psome", envmode, 7.6e-5, 1.1e-6);
+
+		/*SimParams params;
+		params.enable_electrostatics = true;
+		params.n_steps = 5000;
+		loadAndRunBasicSimulation("psome", envmode, 7.6e-5, 1.1e-6, {params});*/
 		//doPool50x(EnvMode::Headless);
 	
 

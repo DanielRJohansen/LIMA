@@ -123,9 +123,9 @@ __global__ void DownwardSweep(SimulationDevice* simdev) {
 		const float nodelenNM = BOX_LEN_NM / static_cast<float>(nNodesPerDim);
 
 		// An odd side will always have to break into an extra cube "left", and an even side must break down an extra cube "right"
-		const int x_odd = (currentParentId3D.x % 2) == 1;
-		const int y_odd = (currentParentId3D.y % 2) == 1;
-		const int z_odd = (currentParentId3D.z % 2) == 1;
+		const int x_odd = (currentParentId3D.x & 1);
+		const int y_odd = (currentParentId3D.y & 1);
+		const int z_odd = (currentParentId3D.z & 1);
 
 
 		const size_t depthOffset = simdev->charge_octtree->depthOffsets[depth];
@@ -224,16 +224,16 @@ namespace SCA {
 			const uint32_t parentnodesPerDim = OcttreeHelpers::getNNodesPerDim(depth);
 			const uint3 blockDims{ 1u, parentnodesPerDim, parentnodesPerDim };
 			propagateChargesUp << < blockDims, parentnodesPerDim >> > (sim_dev, depth, parentnodesPerDim, OcttreeHelpers::getDepthOffset(depth + 1));
-			//LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
 		}
+		//LIMA_UTILS::genericErrorCheck("SCA error during propagate up");
 
 		{
 			const uint32_t dim = static_cast<uint32_t>(ChargeOctTree::nLeafnodesPerDim_Forcetree);
 			const uint3 gridDims{ dim, dim, dim };
 			DownwardSweep << <gridDims, 32 >> > (sim_dev);
-			//LIMA_UTILS::genericErrorCheck("SCA error during propagate down");
 		}	
 		
+
 		const auto t1 = std::chrono::high_resolution_clock::now();
 
 

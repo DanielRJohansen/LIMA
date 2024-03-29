@@ -3,7 +3,6 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Simulation.cuh"
-//#include <cufft.h>
 #include <math.h>
 #include "Utilities.h"
 
@@ -50,6 +49,13 @@ namespace OcttreeHelpers {
 
 // Superior coulumb algorithm
 namespace SCA {
+	
+
+	__device__ __host__ inline bool DoRecalc(int step) {
+		const int STEPS_PER_RECALC = 10;
+		return step % STEPS_PER_RECALC == 0;
+	}
+
 	// The distance between nodes at the lowest level will be no greater than this value
 	constexpr float min_grid_spacing = 0.08f;	// [nm]
 

@@ -3,39 +3,52 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
+#include <future>
 
 using namespace Filehandler;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
+
 GroRecord parseGroLine(const std::string& line) {
 	GroRecord record;
 
-	// Parse residue number (5 positions, integer)
-	std::istringstream(line.substr(0, 5)) >> record.residue_number;
+	// Parse residue number (5 positions, integer) directly
+	record.residue_number = std::stoi(line.substr(0, 5));
+
+	// Direct assignment avoiding unnecessary erase-remove idiom
+	// Use std::string::find_first_not_of and find_last_not_of to trim spaces
+	auto trimSpaces = [](const std::string& str) -> std::string {
+		size_t start = str.find_first_not_of(' ');
+		size_t end = str.find_last_not_of(' ');
+		return start == std::string::npos ? "" : str.substr(start, end - start + 1);
+		};
 
 	// Parse residue name (5 characters)
-	record.residue_name = line.substr(5, 5);
-	record.residue_name.erase(std::remove(record.residue_name.begin(), record.residue_name.end(), ' '), record.residue_name.end());
+	record.residue_name = trimSpaces(line.substr(5, 5));
 
 	// Parse atom name (5 characters)
-	record.atom_name = line.substr(10, 5);
-	record.atom_name.erase(std::remove(record.atom_name.begin(), record.atom_name.end(), ' '), record.atom_name.end());
+	record.atom_name = trimSpaces(line.substr(10, 5));
 
-	// Parse atom number (5 positions, integer)
-	std::istringstream(line.substr(15, 5)) >> record.gro_id;
+	// Parse atom number (5 positions, integer) directly
+	record.gro_id = std::stoi(line.substr(15, 5));
 
 	// Parse position (in nm, x y z in 3 columns, each 8 positions with 3 decimal places)
-	std::istringstream(line.substr(20, 8)) >> record.position.x;
-	std::istringstream(line.substr(28, 8)) >> record.position.y;
-	std::istringstream(line.substr(36, 8)) >> record.position.z;
+	// Using std::strtod for direct parsing from substring to double
+	auto parseDouble = [](const std::string& str) -> double {
+		return std::strtod(str.c_str(), nullptr);
+		};
+
+	record.position.x = parseDouble(line.substr(20, 8));
+	record.position.y = parseDouble(line.substr(28, 8));
+	record.position.z = parseDouble(line.substr(36, 8));
 
 	if (line.size() >= 68) {
 		record.velocity = Float3{};
 		// Parse velocity (in nm/ps (or km/s), x y z in 3 columns, each 8 positions with 4 decimal places)
-		std::istringstream(line.substr(44, 8)) >> record.velocity->x;
-		std::istringstream(line.substr(52, 8)) >> record.velocity->y;
-		std::istringstream(line.substr(60, 8)) >> record.velocity->z;
+		record.velocity->x = parseDouble(line.substr(44, 8));
+		record.velocity->y = parseDouble(line.substr(52, 8));
+		record.velocity->z = parseDouble(line.substr(60, 8));
 	}
 
 	return record;
@@ -91,70 +104,60 @@ std::string ParsedTopologyFile::AtomsEntry::composeString() const {
 
 
 
-ParsedGroFile::ParsedGroFile(const fs::path& path) {
-	SimpleParsedFile parsedfile = parseGroFile(path.string(), false);	// This step is slow because we read a stringstream and create strings, we could make the variables directly
-	
-	m_path = path;
+ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
+	assert(path.extension() == ".gro");
 
-	for (const auto& row : parsedfile.rows) {
-		if (row.section == "atoms") {
-			atoms.push_back(parseGroLine(row.words[0]));
+
+
+	std::ifstream file;
+	file.open(path);
+	if (!file.is_open() || file.fail()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+	}
+
+
+
+	int skipCnt = 2;	// First 2 lines are title and atom count
+
+	const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
+
+	// Forward declaring for optimization reasons
+	std::string line{}, word{};
+	while (getline(file, line)) {
+
+		if (skipCnt > 0) {
+			if (skipCnt == 2) {
+				// 1st line is title
+				title = line;
+			}
+			if (skipCnt == 1) {
+				// 2nd line is atom count
+				n_atoms = std::stoi(line);
+				atoms.reserve(n_atoms);
+			}
+
+			skipCnt--;
+			continue;
 		}
-		else if (row.section == "title") {
-			title = row.words[0];
+
+		if (line.length() >= min_chars) {
+			atoms.emplace_back(parseGroLine(line));
 		}
-		else if (row.section == "n_atoms") {
-			n_atoms = stoi(row.words[0]);
-		}
-		else if (row.section == "box_size") {
-			box_size = Float3{ stof(row.words[0]), stof(row.words[1]) ,stof(row.words[2]) };
+		else if (line.size() > 0) {
+			// Second last line, with box size
+			int dim = 0;
+			std::stringstream ss(line);
+			while (std::getline(ss, word, ' ')) {
+				if (!word.empty()) {
+					assert(dim < 3);
+					*box_size.placeAt(dim++) = std::stof(word);
+				}
+			}
 		}
 	}
+
+	assert(atoms.size() == n_atoms);
 }
-//
-//std::unique_ptr<ParsedGroFile> MDFiles::loadGroFile(const Box& box, std::function<Float3(NodeIndex&, Coord&)> getAbsPos) {
-//	//SimpleParsedFile parsedfile = parseGroFile(path.string(), false);	// This step is slow because we read a stringstream and create strings, we could make the variables directly
-//	auto grofile = std::make_unique<ParsedGroFile>();
-//
-//	grofile->title = "Box generated by LIMA MD";
-//	grofile->box_size = box.boxparams.dims;
-//	grofile->n_atoms = box.boxparams.total_particles;
-//
-//	for (int c = 0; c < box.boxparams.n_compounds; c++) {
-//		const CompoundCoords& coordarray = *CoordArrayQueueHelpers::getCoordarrayRef(box.coordarray_circular_queue, 0, c);
-//
-//		for (int i = 0; i < box.compounds[c].n_particles; i++) {
-//			const int residuedue_nr = -1;
-//
-//
-//
-//
-//			//GroRecord{}
-//			//grofile.atoms.push_back()
-//			// 
-//			//coordarray[i]
-//		}
-//			
-//	}
-//	//grofile.atoms.
-//
-//	//for (const auto& row : parsedfile.rows) {
-//	//	if (row.section == "atoms") {
-//	//		grofile.atoms.push_back(parseGroLine(row.words[0]));
-//	//	}
-//	//	else if (row.section == "title") {
-//	//		grofile.title = row.words[0];
-//	//	}
-//	//	else if (row.section == "n_atoms") {
-//	//		grofile.n_atoms = stoi(row.words[0]);
-//	//	}
-//	//	else if (row.section == "box_size") {
-//	//		grofile.box_size = Float3{ stof(row.words[0]), stof(row.words[1]) ,stof(row.words[2]) };
-//	//	}
-//	//}
-//
-//	return grofile;
-//}
 
 enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section};
 
@@ -257,8 +260,12 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 
 	std::string sectionname = "";
 
-	while (getline(file, line)) {
 
+	//std::vector<ParsedTopologyFile> includeTopologies;
+
+	std::vector<std::future<std::unique_ptr<ParsedTopologyFile>>> includeTopologies;
+
+	while (getline(file, line)) {
 
 		if (line.size() == 0) {
 			current_section = no_section;
@@ -266,7 +273,6 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 		}
 
 		if (line[0] == '[') {
-			//current_section = getNextTopologySection(current_section, extractSectionName(line));
 			current_section = getTopolSection(extractSectionName(line));
 			continue;
 		}
@@ -282,7 +288,7 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 			topfile->title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
 		case molecules: {
-			//assert(row.words.size() == 2);
+				// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
 			std::string include_name;
 			iss >> include_name;
 
@@ -292,15 +298,11 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 
 			fs::path include_topol_path = path;
 			include_topol_path.replace_filename("topol_" + include_name + ".itp");
-			//include_topol_path.append("/topol_" + include_name + ".itp");
-			//auto a = path.stem();
-			//const fs::path include_top_file = path.parent_path().append("/topol_" + include_name + ".itp");
-			ParsedTopologyFile* f = loadTopologyFile(include_topol_path).release();
-			topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ include_name, f });
-			//current_chain_id++;	// Assumes all atoms will be in the include topol files, otherwise it breaks
-			//loadTopology(topology, molecule_dir, include_top_file, ignored_atom, current_chain_id, current_unique_residue_cnt);
+			//ParsedTopologyFile* f = loadTopologyFile(include_topol_path).release();
+			//topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ include_name, f });
 
-			//throw std::runtime_error("This is not yet implemented");
+			includeTopologies.emplace_back(std::async(std::launch::async, &MDFiles::loadTopologyFile, include_topol_path));
+
 			break;
 		}
 		case moleculetype:
@@ -366,11 +368,30 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 			break;
 		}
 	}
+
+
+	// Add all include topologies from other threads
+	for (auto& includeTopologyFuture: includeTopologies) {
+		try {
+			std::unique_ptr<ParsedTopologyFile> includeTopology = includeTopologyFuture.get(); // This will block until the future is ready
+
+			if (includeTopology) {
+				topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ includeTopology->m_path.string(), includeTopology.release()});
+			}
+		}
+		catch (const std::exception& e) {
+			std::cerr << "Failed to load included topology file\n\t " << e.what() << std::endl;
+			// Handle the error or fail according to your application's needs
+		}
+	}
+
+
+
 	return topfile;
 }
 
 void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
-	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expectec .gro", path.extension().string())); }
+	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
 
 
 	std::ofstream file(path);

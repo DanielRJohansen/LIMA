@@ -252,7 +252,7 @@ void Engine::deviceMaster() {
 	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 #ifdef ENABLE_ELECTROSTATICS
-	if (simulation->simparams_host.enable_electrostatics)
+	if (simulation->simparams_host.enable_electrostatics && SCA::DoRecalc(simulation->getStep()))
 		timings.electrostatics += SCA::handleElectrostatics(sim_dev, simulation->boxparams_host);
 #endif
 	const auto t0b = std::chrono::high_resolution_clock::now();

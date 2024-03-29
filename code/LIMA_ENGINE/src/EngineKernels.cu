@@ -55,6 +55,15 @@ __device__ BondType* LoadBonds(char* utility_buffer, BondType* source, int nBond
 
 
 
+
+
+
+
+
+
+
+
+
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition>
 __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
@@ -126,8 +135,6 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
 	}
 	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
-		//const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
-		//SupernaturalForces::applyHorizontalChargefield(abspos, force, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 		force += box->uniformElectricField.GetForce(box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
 
@@ -206,8 +213,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ NeighborList neighborlist;		
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_float3;
-	//__shared__ int utility_int;
-	// Buffer to be cast to different datatypes. This is dangerous!
+
+	// Buffer to be cast to different datatypes. UNSAFE!
 	__shared__ char utility_buffer[clj_utilitybuffer_bytes];
 
 	__shared__ ForceField_NB forcefield_shared;
@@ -272,6 +279,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
+
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
 		const int batchsize = 32;
@@ -290,6 +298,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		int batch_index = batchsize;
 		for (int i = 0; i < neighborlist.n_compound_neighbors; i++)
 		{
+			//if (i > 10) break;
 			__syncthreads();
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (batch_index == batchsize) {
@@ -382,7 +391,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	// Electrostatic
 #ifdef ENABLE_ELECTROSTATICS
-	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
+	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(signals->step)) {
 		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
 		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
 		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);

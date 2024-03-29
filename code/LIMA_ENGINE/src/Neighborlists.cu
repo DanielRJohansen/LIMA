@@ -159,6 +159,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			}
 		}
 	}
+
 #ifdef ENABLE_SOLVENTS
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active) 
@@ -201,6 +202,8 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 }
 template __global__ void updateCompoundNlistsKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev);
 template __global__ void updateCompoundNlistsKernel<NoBoundaryCondition>(SimulationDevice* sim_dev);
+
+
 
 const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>

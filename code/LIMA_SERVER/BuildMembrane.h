@@ -71,7 +71,7 @@ int buildMembrane(int argc, char** argv) {
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(LipidSelect{ lipid.first, lipid.second });
 	}
-    Programs::CreateMembrane(env, lipidselection, true, setup.membraneCenterZ);
+    Programs::CreateMembrane(env, lipidselection, true, setup.membraneCenterZ, true);
 
 	return 0;
 }

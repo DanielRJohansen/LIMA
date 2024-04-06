@@ -58,28 +58,30 @@ struct Section {
 	}
 };
 
-struct ParsedTopologyFile {	//.top or .itp
+class ParsedTopologyFile {	//.top or .itp
+public:
+
+	//ParsedTopologyFile(const ParsedTopologyFile&) = delete;
 
 	~ParsedTopologyFile() {
-		for (auto& mol : molecules.entries) {
+	/*	for (auto& mol : molecules.entries) {
 			mol.deletePtr();
-		}
+		}*/
 	}
 
-	static std::string generateLegend(std::vector<std::string> elements);
-
-	static const int width = 10;	// Width of elements in files
-
 	struct MoleculeEntry {
-		std::string name{};
+		MoleculeEntry(const MoleculeEntry& other) : name(other.name) {
+			assert(other.includeTopologyFile != nullptr);
+			includeTopologyFile = std::make_unique<ParsedTopologyFile>(*other.includeTopologyFile);			
+		}
+		MoleculeEntry(const std::string& name, std::unique_ptr<ParsedTopologyFile> topfile) 
+			: name(name), includeTopologyFile(std::move(topfile)) {}
+
+		std::string name{};		
+
 
 		// TODO: We need to be able to recursively write these to files too
-
-		ParsedTopologyFile* include_file = nullptr;	// TODO: Unsafe, fix with unique_ptr, but i dont know how
-		//std::unique_ptr<ParsedTopologyFile> include_files;
-		void deletePtr() {
-			delete include_file;
-		}
+		std::unique_ptr<ParsedTopologyFile> includeTopologyFile;
 	};
 
 	
@@ -107,24 +109,30 @@ struct ParsedTopologyFile {	//.top or .itp
 		std::string composeString() const;
 	};
 
-
-
 	template <size_t N>
 	struct GenericBond {
 		static const int n = N;
-		int atom_indexes[N]{};
+		int atomGroIds[N]{};
 		int funct{};
 
 		std::string composeString() const {
 			std::ostringstream oss;
 
 			for (size_t i = 0; i < N; ++i) {
-				oss << std::setw(width) << std::right << atom_indexes[i];
+				oss << std::setw(width) << std::right << atomGroIds[i];
 			}
 			oss << std::setw(width) << std::right << funct;
 
 			return oss.str();
 		}
+
+		GenericBond<N> MapIds(const std::vector<int>& id_map) const {
+			GenericBond<N> new_bond = *this;
+			for (size_t i = 0; i < N; ++i) {
+				new_bond.atomGroIds[i] = id_map[atomGroIds[i]];
+			}
+			return new_bond;
+		}	
 	};
 
 	using SingleBond = GenericBond<2>;
@@ -135,6 +143,10 @@ struct ParsedTopologyFile {	//.top or .itp
 
 	void printToFile(const std::filesystem::path& path) const;
 	void printToFile() const { printToFile(m_path); };
+
+	// Apply a mapping of resNr and GroID to all entries in this file
+	void MapIds(const std::vector<int>& atomNrMap, const std::vector<int>& resNrMap);
+	ParsedTopologyFile copy() const { return *this; }
 
 	std::string title="";
 	std::filesystem::path m_path;
@@ -149,13 +161,30 @@ struct ParsedTopologyFile {	//.top or .itp
 	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
 	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
 
-	//Float3 box_size{};
+
+
+private:
+	// Private copy constructor, since this should be avoided when possible
+	ParsedTopologyFile& operator=(const ParsedTopologyFile&) = default;
+
+	static std::string generateLegend(std::vector<std::string> elements);
+
+	static const int width = 10;	// Width of elements in files
 };
 
 
 
 namespace MDFiles {
 	namespace fs = std::filesystem;
+
+	struct FilePair {
+		std::unique_ptr<ParsedGroFile> grofile;
+		std::unique_ptr<ParsedTopologyFile> topfile;
+	};
+
+	// Takes the gro and top of "right" and inserts it into left
+	void MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, 
+		ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop);
 
 
 	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);

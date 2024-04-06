@@ -334,31 +334,31 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 		}
 		case bonds: {
 			ParsedTopologyFile::SingleBond singlebond{};
-			iss >> singlebond.atom_indexes[0] >> singlebond.atom_indexes[1] >> singlebond.funct;
+			iss >> singlebond.atomGroIds[0] >> singlebond.atomGroIds[1] >> singlebond.funct;
 			topfile->singlebonds.entries.emplace_back(singlebond);
 			break;
 		}
 		case pairs: {
 			ParsedTopologyFile::Pair pair{};
-			iss >> pair.atom_indexes[0] >> pair.atom_indexes[1] >> pair.funct;
+			iss >> pair.atomGroIds[0] >> pair.atomGroIds[1] >> pair.funct;
 			topfile->pairs.entries.emplace_back(pair);
 			break;
 		}
 		case angles: {
 			ParsedTopologyFile::AngleBond angle{};
-			iss >> angle.atom_indexes[0] >> angle.atom_indexes[1] >> angle.atom_indexes[2] >> angle.funct;
+			iss >> angle.atomGroIds[0] >> angle.atomGroIds[1] >> angle.atomGroIds[2] >> angle.funct;
 			topfile->anglebonds.entries.emplace_back(angle);
 			break; 
 		}
 		case dihedrals: {
 			ParsedTopologyFile::DihedralBond dihedral{};
-			iss >> dihedral.atom_indexes[0] >> dihedral.atom_indexes[1] >> dihedral.atom_indexes[2] >> dihedral.atom_indexes[3] >> dihedral.funct;
+			iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
 			topfile->dihedralbonds.entries.emplace_back(dihedral);
 			break;
 		}
 		case impropers: {
 			ParsedTopologyFile::ImproperDihedralBond improper{};
-			iss >> improper.atom_indexes[0] >> improper.atom_indexes[1] >> improper.atom_indexes[2] >> improper.atom_indexes[3] >> improper.funct;
+			iss >> improper.atomGroIds[0] >> improper.atomGroIds[1] >> improper.atomGroIds[2] >> improper.atomGroIds[3] >> improper.funct;
 			topfile->improperdihedralbonds.entries.emplace_back(improper);
 			break;
 		}
@@ -376,7 +376,9 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 			std::unique_ptr<ParsedTopologyFile> includeTopology = includeTopologyFuture.get(); // This will block until the future is ready
 
 			if (includeTopology) {
-				topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ includeTopology->m_path.string(), includeTopology.release()});
+				//topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ includeTopology->m_path.string(), includeTopology.release()});
+				const std::string name = includeTopology->m_path.string();
+				topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(includeTopology) });
 			}
 		}
 		catch (const std::exception& e) {
@@ -425,6 +427,15 @@ void ParsedGroFile::addEntry(std::string residue_name, std::string atom_name, co
 	n_atoms++;
 }
 
+
+
+
+
+
+
+
+
+
 std::string ParsedTopologyFile::generateLegend(std::vector<std::string> elements)
 {
 	std::ostringstream legend;
@@ -458,6 +469,66 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 	file << dihedralbonds.composeString();
 	file << improperdihedralbonds.composeString();
 }
+
+
+void ParsedTopologyFile::MapIds(const std::vector<int>& atomNrMap, const std::vector<int>& resNrMap) {
+	for (auto& atom : atoms.entries) {
+		atom.nr = atomNrMap[atom.nr];
+		atom.resnr = resNrMap[atom.resnr];
+	}
+	for (auto& singlebond : singlebonds.entries) {
+		singlebond = singlebond.MapIds(atomNrMap);
+	}
+	for (auto& pair : pairs.entries) {
+		pair = pair.MapIds(atomNrMap);
+	}
+	for (auto& anglebond : anglebonds.entries) {
+		anglebond = anglebond.MapIds(atomNrMap);
+	}
+	for (auto& dihedralbond : dihedralbonds.entries) {
+		dihedralbond = dihedralbond.MapIds(atomNrMap);
+	}
+	for (auto& improperdihedralbond : improperdihedralbonds.entries) {
+		improperdihedralbond = improperdihedralbond.MapIds(atomNrMap);
+	}
+
+	for (auto& molecule : molecules.entries) {
+		molecule.includeTopologyFile->MapIds(atomNrMap, resNrMap);
+	}
+}
+
+void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop) {
+	std::vector<int> atomNrMap(rightGro.atoms.back().gro_id+1);
+	std::vector<int> resNrMap(rightGro.atoms.back().residue_number+1);
+
+	// First merge the GRO, and get a mapping to the new IDs
+	for (const auto& atom : rightGro.atoms) {
+		leftGro.addEntry(atom.residue_name, atom.atom_name, atom.position);
+
+		atomNrMap[atom.gro_id] = leftGro.atoms.back().gro_id;
+		resNrMap[atom.residue_number] = leftGro.atoms.back().residue_number;
+	}
+
+	// To merge the top files, we simply need to apply the mappings we created, and add it as an include topology
+	rightTop->MapIds(atomNrMap, resNrMap);
+	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ rightTop->m_path.string(), std::move(rightTop) });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ParsedLffFile::LffSection getLffSection(const std::string& directive) {

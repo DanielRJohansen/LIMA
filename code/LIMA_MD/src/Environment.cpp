@@ -23,7 +23,8 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 100;
+const int STEPS_PER_RENDER = 50;
+const int STEPS_PER_UPDATE = 200;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -387,10 +388,10 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 	}
 
 	const int steps_since_update = step - step_at_last_update;
-	if (steps_since_update >= STEPS_PER_RENDER) {
+	if (steps_since_update >= STEPS_PER_UPDATE) {
 
 		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
+		//const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
 
 		printf("\r\tStep #%06llu", step);
 		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
@@ -400,7 +401,7 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 			engine->timings.cpu_master/ steps_since_update,
 			engine->timings.nlist/ steps_since_update,
 			engine->timings.electrostatics / steps_since_update,
-			remaining_minutes);
+			0);
 
 		step_at_last_update = step;
 		engine->timings.reset();

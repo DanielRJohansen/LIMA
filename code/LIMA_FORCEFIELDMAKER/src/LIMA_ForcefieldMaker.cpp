@@ -3,6 +3,7 @@
 #include "Filehandling.h"
 #include "ForcefieldTypes.h"
 #include "ForcefieldMaker.h"
+#include "MDFiles.h"
 
 
 
@@ -155,23 +156,22 @@ bool getGlobalIDsAndTypenames(const int (&gro_ids)[n], const AtomInfoTable& atom
 	return true;
 }
 
-template <int n>
-bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTable& atominfotable, const int chain_id, std::array<int, n>& global_ids, std::array<string, n>& atomtypes) {
-	for (int i = 0; i < n; i++) {
-		const int gro_id = stoi(words[i]);
+//template <int n>
+//bool getGlobalIDsAndTypenames(const std::vector<string>& words, const AtomInfoTable& atominfotable, const int chain_id, std::array<int, n>& global_ids, std::array<string, n>& atomtypes) {
+//	for (int i = 0; i < n; i++) {
+//		const int gro_id = stoi(words[i]);
+//
+//		if (!atominfotable.exists(chain_id, gro_id)) {
+//			return false;
+//		}
+//		const Atom& atom = atominfotable.getConstRef(chain_id, gro_id);
+//		global_ids[i] = atom.global_id;
+//		atomtypes[i] = atom.atomtype;
+//	}
+//
+//	return true;
+//}
 
-		if (!atominfotable.exists(chain_id, gro_id)) {
-			return false;
-		}
-		const Atom& atom = atominfotable.getConstRef(chain_id, gro_id);
-		global_ids[i] = atom.global_id;
-		atomtypes[i] = atom.atomtype;
-	}
-
-	return true;
-}
-
-#include "MDFiles.h"
 
 void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfile, int& current_chain_id, int& current_unique_residue_cnt) {
 	for (const ParsedTopologyFile::AtomsEntry& atom : topolfile.atoms.entries) {
@@ -201,28 +201,28 @@ void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfi
 	for (const auto& bond : topolfile.singlebonds.entries) {
 		std::array<int, 2> global_ids;
 		std::array<string, 2> atomtypes;
-		if (getGlobalIDsAndTypenames<2>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+		if (getGlobalIDsAndTypenames<2>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes });
 		}
 	}
 	for (const auto& bond : topolfile.anglebonds.entries) {
 		std::array<int, 3> global_ids;
 		std::array<string, 3> atomtypes;
-		if (getGlobalIDsAndTypenames<3>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+		if (getGlobalIDsAndTypenames<3>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
 		}
 	}
 	for (const auto& bond : topolfile.dihedralbonds.entries) {
 		std::array<int, 4> global_ids;
 		std::array<string, 4> atomtypes;
-		if (getGlobalIDsAndTypenames<4>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+		if (getGlobalIDsAndTypenames<4>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
 		}
 	}
 	for (const auto& bond : topolfile.improperdihedralbonds.entries) {
 		std::array<int, 4> global_ids;
 		std::array<string, 4> atomtypes;
-		if (getGlobalIDsAndTypenames<4>(bond.atom_indexes, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+		if (getGlobalIDsAndTypenames<4>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.improperdeihedralbonds.emplace_back(Improperdihedralbondtype{ global_ids, atomtypes });
 		}
 	}
@@ -245,7 +245,7 @@ Topology loadTopology(const std::string& molecule_dir, const ParsedTopologyFile&
 	// Now load all includes (.itp)
 	for (const auto& molecule : topol_file.molecules.entries) {
 		current_chain_id++;
-		includeFileInTopology(topology, *molecule.include_file, current_chain_id, current_unique_residue_cnt);
+		includeFileInTopology(topology, *molecule.includeTopologyFile, current_chain_id, current_unique_residue_cnt);
 	}
 
 	return topology;

@@ -52,7 +52,7 @@ MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile
 	}
 
 	for (const auto& bond : topolfile.singlebonds.entries) {
-		graph.connectNodes(bond.atom_indexes[0], bond.atom_indexes[1]);
+		graph.connectNodes(bond.atomGroIds[0], bond.atomGroIds[1]);
 	}
 
 	return graph;
@@ -164,7 +164,7 @@ template<typename T>
 void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 	for (auto& bond : bonds) {
 		for (int i = 0; i < bond.n; i++) {
-			bond.atom_indexes[i] = map[bond.atom_indexes[i]];
+			bond.atomGroIds[i] = map[bond.atomGroIds[i]];
 		}
 	}	
 }
@@ -199,11 +199,11 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::
 	std::sort(grofile->atoms.begin(), grofile->atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
 
 	std::sort(topfile->atoms.entries.begin(), topfile->atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr < b.nr; });
-	std::sort(topfile->singlebonds.entries.begin(), topfile->singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atom_indexes[0] < b.atom_indexes[0]; });
-	std::sort(topfile->pairs.entries.begin(), topfile->pairs.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
-	std::sort(topfile->anglebonds.entries.begin(), topfile->anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
-	std::sort(topfile->dihedralbonds.entries.begin(), topfile->dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
-	std::sort(topfile->improperdihedralbonds.entries.begin(), topfile->improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atom_indexes[0] < b.atom_indexes[0]; });
+	std::sort(topfile->singlebonds.entries.begin(), topfile->singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atomGroIds[0] < b.atomGroIds[0]; });
+	std::sort(topfile->pairs.entries.begin(), topfile->pairs.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	std::sort(topfile->anglebonds.entries.begin(), topfile->anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	std::sort(topfile->dihedralbonds.entries.begin(), topfile->dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	std::sort(topfile->improperdihedralbonds.entries.begin(), topfile->improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
 
 	grofile->printToFile(gro_path_out);
 	topfile->printToFile(top_path_out);

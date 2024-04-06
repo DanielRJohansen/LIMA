@@ -57,7 +57,7 @@ void overwriteBond(const std::vector<BondType>& bonds, std::vector<BondType>& de
 	for (const BondType& bond : bonds) {
 		dest.emplace_back(bond);
 		for (int i = 0; i < bond.n; i++) {
-			dest.back().atom_indexes[i] += atomnr_offset;
+			dest.back().atomGroIds[i] += atomnr_offset;
 		}
 	}
 }
@@ -140,8 +140,7 @@ using GetNextRandomParticle = SampleSelectionRandomly<AtomsSelection>;
 
 namespace SimulationBuilder{
 
-	Filepair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims) {
-		//auto [inputgrofile, inputtopologyfile] = inputfiles;
+	FilePair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims) {
 
 		validateLipidselection(lipidselection);
 		
@@ -168,13 +167,13 @@ namespace SimulationBuilder{
 		const float dist = molecule_diameter + padding;
 
 
-		ParsedGroFile outputgrofile{};
-		outputgrofile.box_size = box_dims;
-		outputgrofile.title = "Membrane consisting of ";
+		auto outputgrofile = std::make_unique<ParsedGroFile>();
+		outputgrofile->box_size = box_dims;
+		outputgrofile->title = "Membrane consisting of ";
 		for (const auto& lipid : lipidselection) {
-			outputgrofile.title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
+			outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 		}
-		ParsedTopologyFile outputtopologyfile{};
+		auto outputtopologyfile = std::make_unique<ParsedTopologyFile>();
 
 		srand(1238971);
 
@@ -186,7 +185,7 @@ namespace SimulationBuilder{
 				const Float3 center_offset = startpoint + Float3{ static_cast<float>(x), static_cast<float>(y), 0.f } * dist;
 				
 				const float random_rot = genRandomAngle();
-				const int current_atom_nr_offset = outputgrofile.n_atoms;
+				const int current_atom_nr_offset = outputgrofile->n_atoms;
 
 				const LipidSelect& inputlipid = getNextRandomLipid();
 				const auto& inputgrofile = *inputlipid.grofile;
@@ -199,29 +198,29 @@ namespace SimulationBuilder{
 						pos += center_offset;
 						};
 
-					addAtomToFile(outputgrofile, outputtopologyfile, inputgrofile.atoms[relative_atom_nr], inputtopologyfile.atoms.entries[relative_atom_nr],
+					addAtomToFile(*outputgrofile, *outputtopologyfile, inputgrofile.atoms[relative_atom_nr], inputtopologyfile.atoms.entries[relative_atom_nr],
 						current_atom_nr_offset, current_residue_nr_offset, position_transform);
 				}
 
-				overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile.singlebonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile.pairs.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile.anglebonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile.dihedralbonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile.improperdihedralbonds.entries, current_atom_nr_offset);
+				overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile->singlebonds.entries, current_atom_nr_offset);
+				overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile->pairs.entries, current_atom_nr_offset);
+				overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile->anglebonds.entries, current_atom_nr_offset);
+				overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, current_atom_nr_offset);
+				overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, current_atom_nr_offset);
 
 				current_residue_nr_offset++;
 			}
 		}
 
 		
-		return { outputgrofile, outputtopologyfile };
+		return { std::move(outputgrofile), std::move(outputtopologyfile) };
 	}
 
-	Filepair makeBilayerFromMonolayer(const Filepair& inputfiles, Float3 box_dims)
+	FilePair makeBilayerFromMonolayer(const FilePair& inputfiles, Float3 box_dims)
 	{
-		auto [inputgrofile, inputtopologyfile] = inputfiles;
+		//auto [inputgrofile, inputtopologyfile] = inputfiles;
 
-		const float lowest_zpos = std::min_element(inputgrofile.atoms.begin(), inputgrofile.atoms.end(), 
+		const float lowest_zpos = std::min_element(inputfiles.grofile->atoms.begin(), inputfiles.grofile->atoms.end(),
 			[](const GroRecord& a, const GroRecord& b) {return a.position.z < b.position.z;}
 		)->position.z;	//[nm]
 
@@ -233,25 +232,25 @@ namespace SimulationBuilder{
 
 
 		// Copy the existing gro and top file into the output files
-		ParsedGroFile outputgrofile{ inputgrofile };
-		outputgrofile.box_size = box_dims;
-		outputgrofile.title = "Lipid bi-layer consisting of " + inputgrofile.title;
-		ParsedTopologyFile outputtopologyfile{inputtopologyfile};
-		outputtopologyfile.title = "Lipid bi-layer consisting of " + inputtopologyfile.title;
+		auto outputgrofile = std::make_unique<ParsedGroFile>( *inputfiles.grofile );
+		outputgrofile->box_size = box_dims;
+		outputgrofile->title = "Lipid bi-layer consisting of " + inputfiles.grofile->title;
+		auto outputtopologyfile = std::make_unique<ParsedTopologyFile>( inputfiles.topfile->copy());
+		outputtopologyfile->title = "Lipid bi-layer consisting of " + inputfiles.topfile->title;
 
 
 		// Translate all the existing postions, so the tails are where the middle of the membrane should be
 		const float translation_z = (box_dims.z / 2.f + padding_between_layers/2.f) - lowest_zpos;
-		for (auto& atom : outputgrofile.atoms) {
+		for (auto& atom : outputgrofile->atoms) {
 			atom.position.z += translation_z;
 		}
 
-		const float lowest_zpos2 = std::min_element(outputgrofile.atoms.begin(), outputgrofile.atoms.end(),
+		const float lowest_zpos2 = std::min_element(outputgrofile->atoms.begin(), outputgrofile->atoms.end(),
 			[](const GroRecord& a, const GroRecord& b) {return a.position.z < b.position.z; }
 		)->position.z;	//[nm]
 
-		const int atomnr_offset = inputgrofile.n_atoms;
-		const int resnr_offset = inputgrofile.atoms.back().residue_number;
+		const int atomnr_offset = inputfiles.grofile->n_atoms;
+		const int resnr_offset = inputfiles.grofile->atoms.back().residue_number;
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
 			pos.z = -pos.z;	// Mirror atom in xy plane
@@ -261,19 +260,19 @@ namespace SimulationBuilder{
 				printf("Pos z %f\n", pos.z);
 			};
 
-		for (int atom_nr = 0; atom_nr < inputgrofile.n_atoms; atom_nr++) {
-			addAtomToFile(outputgrofile, outputtopologyfile, outputgrofile.atoms[atom_nr], outputtopologyfile.atoms.entries[atom_nr],
+		for (int atom_nr = 0; atom_nr < inputfiles.grofile->n_atoms; atom_nr++) {
+			addAtomToFile(*outputgrofile, *outputtopologyfile, outputgrofile->atoms[atom_nr], outputtopologyfile->atoms.entries[atom_nr],
 				atomnr_offset, resnr_offset, position_transform);
 		}
 
-		overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile.singlebonds.entries, atomnr_offset);
-		overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile.pairs.entries, atomnr_offset);
-		overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile.anglebonds.entries, atomnr_offset);
-		overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile.dihedralbonds.entries, atomnr_offset);
-		overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile.improperdihedralbonds.entries, atomnr_offset);
+		overwriteBond(inputfiles.topfile->singlebonds.entries, outputtopologyfile->singlebonds.entries, atomnr_offset);
+		overwriteBond(inputfiles.topfile->pairs.entries, outputtopologyfile->pairs.entries, atomnr_offset);
+		overwriteBond(inputfiles.topfile->anglebonds.entries, outputtopologyfile->anglebonds.entries, atomnr_offset);
+		overwriteBond(inputfiles.topfile->dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, atomnr_offset);
+		overwriteBond(inputfiles.topfile->improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, atomnr_offset);
 
 
-		return { outputgrofile, outputtopologyfile };
+		return { std::move(outputgrofile), std::move(outputtopologyfile) };
 	}
 }
 

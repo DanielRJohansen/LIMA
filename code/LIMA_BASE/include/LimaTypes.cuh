@@ -271,32 +271,33 @@ struct Float3 {
 };
 
 
-//struct Double3 {
-//	__host__ __device__ Double3() {}
-//	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}
-//	__host__ __device__ Double3(double x, double y, double z) : x(x), y(y), z(z) {}
-//	__host__ __device__ Double3(Float3 a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
-//
-//	__host__ __device__ inline Double3 operator + (const Float3 a) const {
-//		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
-//	}
-//	__host__ __device__ inline Double3 operator + (const Double3 a) const { return Double3(x + a.x, y + a.y, z + a.z); }
-//	__host__ __device__ inline void operator += (const Float3 a) { x += (double)a.x; y += (double)a.y; z += (double)a.z; }
-//	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
-//	__host__ __device__ inline Double3 operator - (const Double3 a) const { return Double3(x - a.x, y - a.y, z - a.z); }
-//
-//	__host__ __device__ inline double len() { return (double)sqrt(x * x + y * y + z * z); }
-//
-//	__host__ __device__ Float3 toFloat3() const {
-//		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
-//	}
-//
-//	__host__ __device__ void print(char c = '_') {
-//		printf("%c %.10f %.10f %.10f\n", c, x, y, z);
-//	}
-//
-//	double x = 0, y = 0, z = 0;
-//};
+struct Double3 {
+	__host__ __device__ Double3() {}
+	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}
+	__host__ __device__ Double3(double x, double y, double z) : x(x), y(y), z(z) {}
+	__host__ __device__ Double3(Float3 a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
+
+	__host__ __device__ inline Double3 operator + (const Float3 a) const {
+		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
+	}
+	__host__ __device__ inline Double3 operator + (const Double3 a) const { return Double3(x + a.x, y + a.y, z + a.z); }
+	__host__ __device__ inline Double3 operator / (const double a) const { return Double3(x / a, y / a, z / a); }
+	__host__ __device__ inline void operator += (const Float3 a) { x += (double)a.x; y += (double)a.y; z += (double)a.z; }
+	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
+	__host__ __device__ inline Double3 operator - (const Double3 a) const { return Double3(x - a.x, y - a.y, z - a.z); }
+
+	__host__ __device__ inline double len() { return (double)sqrt(x * x + y * y + z * z); }
+
+	__host__ __device__ Float3 toFloat3() const {
+		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+	}
+
+	__host__ __device__ void print(char c = '_') {
+		printf("%c %.10f %.10f %.10f\n", c, x, y, z);
+	}
+
+	double x = 0, y = 0, z = 0;
+};
 
 // LIMA Coordinate3
 struct Coord {

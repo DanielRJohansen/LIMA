@@ -28,10 +28,12 @@ struct AtomtypeSelect {
 using AtomsSelection = std::vector<AtomtypeSelect>;
 
 namespace SimulationBuilder {
-	using Filepair = std::pair<ParsedGroFile, ParsedTopologyFile>;
+	using namespace MDFiles;
 
-	Filepair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims);
-	Filepair makeBilayerFromMonolayer(const Filepair& inputfiles, Float3 box_dims);
+
+
+	FilePair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims);
+	FilePair makeBilayerFromMonolayer(const FilePair& inputfiles, Float3 box_dims);
 
 	void DistributeParticlesInBox(ParsedGroFile& grofile, ParsedTopologyFile& topfile, const AtomsSelection& particles,
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);

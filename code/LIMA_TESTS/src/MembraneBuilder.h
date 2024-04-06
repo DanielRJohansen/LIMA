@@ -27,7 +27,7 @@ namespace TestMembraneBuilder {
 		for (const auto& name : LipidSelect::valid_lipids) {
 			lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10});	// 10% of each lipid, except 50% POPC
 		}
-		Programs::CreateMembrane(env, lipidselection, do_em, 3.5f);
+		Programs::CreateMembrane(env, lipidselection, do_em, 3.5f, true);
 
 
 		// Test that the output files match the reference output files

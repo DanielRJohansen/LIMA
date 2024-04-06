@@ -9,16 +9,12 @@ const std::array<std::string, 6> LipidSelect::valid_lipids = { "POPC", "POPE", "
 
 
 void centerMoleculeAroundOrigo(ParsedGroFile& grofile) {
-	if (grofile.n_atoms != grofile.atoms.size()) {
-		throw std::runtime_error(std::format("Mismatch between grofiles n_atoms ({}) and actual number of atoms ({})", grofile.n_atoms, grofile.atoms.size()));
-	}
-
 	Float3 position_sum{};
 	for (const auto& atom : grofile.atoms) {
 		position_sum += atom.position;
 	}
 
-	const Float3 offset = position_sum / static_cast<float>(grofile.n_atoms);
+	const Float3 offset = position_sum / static_cast<float>(grofile.atoms.size());
 	for (auto& atom : grofile.atoms) {
 		atom.position -= offset;
 	}
@@ -78,8 +74,6 @@ void addAtomToFile(ParsedGroFile& outputgrofile, ParsedTopologyFile& outputtopol
 	outputgrofile.atoms.back().residue_number %= 100000; // Residue ids only go to 99999
 	position_transform(outputgrofile.atoms.back().position);
 
-	outputgrofile.n_atoms++;
-
 	outputtopologyfile.atoms.entries.emplace_back(input_atom_top);
 	outputtopologyfile.atoms.entries.back().nr += atom_offset;
 	//outputtopologyfile.atoms.entries.back().nr %= 100000;
@@ -98,7 +92,7 @@ void constexpr validateLipidselection(const LipidsSelection& lipidselection) {
 	}
 
 	for (const auto& lipid : lipidselection) {
-		if (lipid.grofile->n_atoms != lipid.topfile->atoms.entries.size()) {
+		if (lipid.grofile->atoms.size() != lipid.topfile->atoms.entries.size()) {
 			throw std::runtime_error("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.");
 		}
 	}
@@ -185,13 +179,13 @@ namespace SimulationBuilder{
 				const Float3 center_offset = startpoint + Float3{ static_cast<float>(x), static_cast<float>(y), 0.f } * dist;
 				
 				const float random_rot = genRandomAngle();
-				const int current_atom_nr_offset = outputgrofile->n_atoms;
+				const int current_atom_nr_offset = outputgrofile->atoms.size();
 
 				const LipidSelect& inputlipid = getNextRandomLipid();
 				const auto& inputgrofile = *inputlipid.grofile;
 				const auto& inputtopologyfile = *inputlipid.topfile;
 
-				for (int relative_atom_nr = 0; relative_atom_nr < inputgrofile.n_atoms; relative_atom_nr++) {
+				for (int relative_atom_nr = 0; relative_atom_nr < inputgrofile.atoms.size(); relative_atom_nr++) {
 
 					std::function<void(Float3&)> position_transform = [&](Float3& pos) {
 						pos.rotateAroundOrigo({ 0.f, 0.f, random_rot });
@@ -249,7 +243,7 @@ namespace SimulationBuilder{
 			[](const GroRecord& a, const GroRecord& b) {return a.position.z < b.position.z; }
 		)->position.z;	//[nm]
 
-		const int atomnr_offset = inputfiles.grofile->n_atoms;
+		const int atomnr_offset = inputfiles.grofile->atoms.size();
 		const int resnr_offset = inputfiles.grofile->atoms.back().residue_number;
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
@@ -260,7 +254,7 @@ namespace SimulationBuilder{
 				printf("Pos z %f\n", pos.z);
 			};
 
-		for (int atom_nr = 0; atom_nr < inputfiles.grofile->n_atoms; atom_nr++) {
+		for (int atom_nr = 0; atom_nr < inputfiles.grofile->atoms.size(); atom_nr++) {
 			addAtomToFile(*outputgrofile, *outputtopologyfile, outputgrofile->atoms[atom_nr], outputtopologyfile->atoms.entries[atom_nr],
 				atomnr_offset, resnr_offset, position_transform);
 		}

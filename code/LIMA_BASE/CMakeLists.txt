@@ -14,11 +14,20 @@ add_library(LIMA_BASE STATIC
     src/Statistics.cpp
 )
 
-target_include_directories(LIMA_BASE PRIVATE ${CUDA_INCLUDE_DIRS})
+target_include_directories(LIMA_BASE PRIVATE 
+    ${CUDA_INCLUDE_DIRS}
+ #   /../dependencies/cereal
+)
 target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
 )
+
+#target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
+  
 
 if (UNIX)
     target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)
+else()
+    target_compile_options(LIMA_BASE PRIVATE)
 endif()

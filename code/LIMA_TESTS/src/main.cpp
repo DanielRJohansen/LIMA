@@ -5,6 +5,8 @@
 #include "MinorPrograms.h"
 #include "ElectrostaticsTests.h"
 #include "Benchmarks.h"
+#include "FileTests.h"
+
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -87,6 +89,8 @@ int main() {
 		lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
 		env.createMembrane(lipids, true);*/
 
+		FileTests::TestFilesAreCachedAsBinaries(envmode);
+
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
@@ -95,7 +99,7 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

@@ -5,10 +5,10 @@
 #include <filesystem>
 #include "Bodies.cuh"
 #include "Filehandling.h"
-#include "Simulation.cuh"
 
 #include <optional>
-#include <functional>
+
+const bool ENABLE_FILE_CACHING = true;
 
 struct GroRecord {
 	int residue_number{};
@@ -22,12 +22,19 @@ struct GroRecord {
 struct ParsedGroFile {
 	ParsedGroFile() {};
 	ParsedGroFile(const std::filesystem::path& path);
+
+	// Contents inside file
 	std::string title="";
-	int n_atoms{ 0 };
 	std::vector<GroRecord>atoms;
 	Float3 box_size{};
+	// --------------------- // 
 
+	// Meta data not in file
 	std::filesystem::path m_path;
+	std::filesystem::file_time_type lastModificationTimestamp;
+	bool readFromCache = false;
+	// --------------------- // 
+
 
 	void printToFile() const { printToFile(m_path);};
 	void printToFile(const std::filesystem::path& path) const;
@@ -191,9 +198,9 @@ namespace MDFiles {
 
 
 
-	struct TrrFile {
-		static void dumpToFile(const Simulation* sim, const std::string& path);
-	};
+	//struct TrrFile {
+	//	static void dumpToFile(const Simulation* sim, const std::string& path);
+	//};
 
 
 

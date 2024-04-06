@@ -1,4 +1,6 @@
 #include "MDFiles.h"
+#include "Filehandling.h"
+#include "MDFilesSerialization.h"
 
 #include <algorithm>
 #include <format>
@@ -103,60 +105,67 @@ std::string ParsedTopologyFile::AtomsEntry::composeString() const {
 
 
 
-
 ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
-	assert(path.extension() == ".gro");
+	lastModificationTimestamp = fs::last_write_time(path);
 
-
-
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+	if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
+		*this = readFileFromBinaryCache(path);
 	}
+	else {
+		assert(path.extension() == ".gro");
+		if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
-
-
-	int skipCnt = 2;	// First 2 lines are title and atom count
-
-	const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
-
-	// Forward declaring for optimization reasons
-	std::string line{}, word{};
-	while (getline(file, line)) {
-
-		if (skipCnt > 0) {
-			if (skipCnt == 2) {
-				// 1st line is title
-				title = line;
-			}
-			if (skipCnt == 1) {
-				// 2nd line is atom count
-				n_atoms = std::stoi(line);
-				atoms.reserve(n_atoms);
-			}
-
-			skipCnt--;
-			continue;
+		std::ifstream file;
+		file.open(path);
+		if (!file.is_open() || file.fail()) {
+			throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
 		}
 
-		if (line.length() >= min_chars) {
-			atoms.emplace_back(parseGroLine(line));
-		}
-		else if (line.size() > 0) {
-			// Second last line, with box size
-			int dim = 0;
-			std::stringstream ss(line);
-			while (std::getline(ss, word, ' ')) {
-				if (!word.empty()) {
-					assert(dim < 3);
-					*box_size.placeAt(dim++) = std::stof(word);
+
+
+		int skipCnt = 2;	// First 2 lines are title and atom count
+
+		const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
+
+		// Forward declaring for optimization reasons
+		std::string line{}, word{};
+		while (getline(file, line)) {
+
+			if (skipCnt > 0) {
+				if (skipCnt == 2) {
+					// 1st line is title
+					title = line;
+				}
+				if (skipCnt == 1) {
+					// 2nd line is atom count
+					const int nAtoms = std::stoi(line);
+					atoms.reserve(nAtoms);
+				}
+
+				skipCnt--;
+				continue;
+			}
+
+			if (line.length() >= min_chars) {
+				atoms.emplace_back(parseGroLine(line));
+			}
+			else if (line.size() > 0) {
+				// Second last line, with box size
+				int dim = 0;
+				std::stringstream ss(line);
+				while (std::getline(ss, word, ' ')) {
+					if (!word.empty()) {
+						assert(dim < 3);
+						*box_size.placeAt(dim++) = std::stof(word);
+					}
 				}
 			}
 		}
-	}
 
-	assert(atoms.size() == n_atoms);
+
+		// Save a binary cached version of the file to we can read it faster next time
+		writeFileAsBinaryCache(*this);
+	}
 }
 
 enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section};
@@ -403,7 +412,7 @@ void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 
 	// Print the title and number of atoms
 	file << title << "\n";
-	file << n_atoms << "\n";
+	file << atoms.size() << "\n";
 
 	// Iterate over atoms and print them
 	for (const auto& atom : atoms) {
@@ -418,13 +427,12 @@ void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 }
 
 void ParsedGroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
-	if (n_atoms == 0) {
+	if (atoms.size() == 0) {
 		atoms.push_back({ 0, residue_name, atom_name, 0, position, std::nullopt });
 	}
 	else {
 		atoms.push_back({atoms.back().residue_number+1, residue_name, atom_name, atoms.back().gro_id+1, position, std::nullopt});
 	}
-	n_atoms++;
 }
 
 
@@ -546,8 +554,7 @@ ParsedLffFile::LffSection getLffSection(const std::string& directive) {
 
 ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
 	if (path.extension().string() != std::string{ ".lff" }) { throw std::runtime_error(std::format("Expected .lff extension with file {}", path.string())); }
-
-
+	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
 
 	std::ifstream file;

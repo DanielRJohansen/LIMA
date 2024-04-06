@@ -341,7 +341,7 @@ void Environment::postRunEvents() {
 	
 	if (DUMP_TRAJ) {
 		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
-		MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
+		//MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
 	}
 
 	if (POSTSIM_ANAL) {

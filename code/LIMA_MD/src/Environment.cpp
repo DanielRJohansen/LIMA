@@ -63,10 +63,9 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	const auto grofile = std::make_unique<ParsedGroFile>(gro_path);
-	const std::unique_ptr<ParsedTopologyFile> topol_file = MDFiles::loadTopologyFile(topol_path);
-
-	CreateSimulation(*grofile, *topol_file, params);
+	const auto groFile = std::make_unique<ParsedGroFile>(gro_path);
+	const auto topFile = std::make_unique<ParsedTopologyFile>(topol_path);
+	CreateSimulation(*groFile, *topFile, params);
 }
 
 void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTopologyFile& topolfile, const SimParams& params) 

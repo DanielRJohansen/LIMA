@@ -108,8 +108,8 @@ std::string ParsedTopologyFile::AtomsEntry::composeString() const {
 ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
 	lastModificationTimestamp = fs::last_write_time(path);
 
-	if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
-		*this = readFileFromBinaryCache(path);
+	if (UseCachedBinaryFile(path, lastModificationTimestamp)) {
+		*this = readGroFileFromBinaryCache(path);
 	}
 	else {
 		assert(path.extension() == ".gro");
@@ -231,47 +231,41 @@ std::string extractSectionName(const std::string& line) {
 	return "";
 }
 
-bool containsSubString(const std::istringstream& stream, const std::string& query) {
-	std::istringstream issCopy(stream.str()); // Create a copy of the original stream
-	std::string word;
-	while (issCopy >> word) {
-		if (word == query) {
-			return true;
+ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
+{
+	lastModificationTimestamp = fs::last_write_time(path);
+
+	if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
+		readTopFileFromBinaryCache(path, *this);
+
+		// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
+		for (auto& includeTopology : molecules.entries) {
+			assert(includeTopology.includeTopologyFile == nullptr);
+			assert(includeTopology.name != "");
+			includeTopology.includeTopologyFile = std::make_unique<ParsedTopologyFile>(includeTopology.name);
 		}
+
+		return;
 	}
-	return false;
-}
 
 
 
-std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& path) {
 	assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
-
-	std::unique_ptr<ParsedTopologyFile> topfile = std::make_unique<ParsedTopologyFile>();
-
-	topfile->m_path = path;
 
 	const char delimiter = ' ';
 	const std::vector<char> ignores = { ';', '#' };
-
 
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
 		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 	}
-	
-	TopologySection current_section{ title };
+
+	TopologySection current_section{ TopologySection::title };
 	TopologySectionGetter getTopolSection{};
 
-	// Forward declaring for optimization reasons
 	std::string line{}, word{};
-
 	std::string sectionname = "";
-
-
-	//std::vector<ParsedTopologyFile> includeTopologies;
-
 	std::vector<std::future<std::unique_ptr<ParsedTopologyFile>>> includeTopologies;
 
 	while (getline(file, line)) {
@@ -287,17 +281,16 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 		}
 
 		// Check if current line is commented
-		if (firstNonspaceCharIs(line, ';') && current_section != title && current_section != atoms) { continue; }	// Only title-sections + atoms reads the comments
-
+		if (firstNonspaceCharIs(line, ';') && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
 
 		std::istringstream iss(line);
 		switch (current_section)
 		{
-		case title:
-			topfile->title.append(line + "\n");	// +\n because getline implicitly strips it away.
+		case TopologySection::title:
+			title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
-		case molecules: {
-				// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
+		case TopologySection::molecules: {
+			// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
 			std::string include_name;
 			iss >> include_name;
 
@@ -307,68 +300,67 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 
 			fs::path include_topol_path = path;
 			include_topol_path.replace_filename("topol_" + include_name + ".itp");
-			//ParsedTopologyFile* f = loadTopologyFile(include_topol_path).release();
-			//topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ include_name, f });
-
-			includeTopologies.emplace_back(std::async(std::launch::async, &MDFiles::loadTopologyFile, include_topol_path));
-
+			includeTopologies.emplace_back(std::async(std::launch::async,
+				[](const std::filesystem::path& path) -> std::unique_ptr<ParsedTopologyFile> {
+					return std::make_unique<ParsedTopologyFile>(path);
+				}, include_topol_path));
 			break;
 		}
 		case moleculetype:
 		{
 			ParsedTopologyFile::MoleculetypeEntry moleculetype{};
 			iss >> moleculetype.name >> moleculetype.nrexcl;
-			topfile->moleculetypes.entries.emplace_back(moleculetype);
+			moleculetypes.entries.emplace_back(moleculetype);
 			break;
 		}
-		case atoms:
+		case TopologySection::atoms:
 		{
-			if (firstNonspaceCharIs(line, ';') ) {	
-
+			if (firstNonspaceCharIs(line, ';')) {
 				// TODO: Test for residue or lipid_section in the [1] position of the comment instead
-				if (!containsSubString(iss, "type"))// We want any comment that is NOT the legend and the legend always contains "type"
+				if (iss.str().find("type") == std::string::npos) {
 					sectionname = line;
+				}
 			}
 			else {
 				ParsedTopologyFile::AtomsEntry atom;
 				iss >> atom.nr >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
-				topfile->atoms.entries.emplace_back(atom);
+				atoms.entries.emplace_back(atom);
 
 				if (sectionname != "") {
-					topfile->atoms.entries.back().section_name = sectionname;
+					atoms.entries.back().section_name = sectionname;
 					sectionname = "";
 				}
 			}
 			break;
 		}
-		case bonds: {
+		case TopologySection::bonds: {
 			ParsedTopologyFile::SingleBond singlebond{};
 			iss >> singlebond.atomGroIds[0] >> singlebond.atomGroIds[1] >> singlebond.funct;
-			topfile->singlebonds.entries.emplace_back(singlebond);
+			singlebonds.entries.emplace_back(singlebond);
 			break;
 		}
-		case pairs: {
+		case TopologySection::pairs: {
 			ParsedTopologyFile::Pair pair{};
 			iss >> pair.atomGroIds[0] >> pair.atomGroIds[1] >> pair.funct;
-			topfile->pairs.entries.emplace_back(pair);
+			pairs.entries.emplace_back(pair);
 			break;
 		}
-		case angles: {
+		case TopologySection::angles: {
 			ParsedTopologyFile::AngleBond angle{};
 			iss >> angle.atomGroIds[0] >> angle.atomGroIds[1] >> angle.atomGroIds[2] >> angle.funct;
-			topfile->anglebonds.entries.emplace_back(angle);
-			break; 
-		}
-		case dihedrals: {
-			ParsedTopologyFile::DihedralBond dihedral{};
-			iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
-			topfile->dihedralbonds.entries.emplace_back(dihedral);
+			anglebonds.entries.emplace_back(angle);
 			break;
 		}
-		case impropers: {
+		case TopologySection::dihedrals: {
+			ParsedTopologyFile::DihedralBond dihedral{};
+			iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
+			dihedralbonds.entries.emplace_back(dihedral);
+			break;
+		}
+		case TopologySection::impropers: {
 			ParsedTopologyFile::ImproperDihedralBond improper{};
 			iss >> improper.atomGroIds[0] >> improper.atomGroIds[1] >> improper.atomGroIds[2] >> improper.atomGroIds[3] >> improper.funct;
-			topfile->improperdihedralbonds.entries.emplace_back(improper);
+			improperdihedralbonds.entries.emplace_back(improper);
 			break;
 		}
 		default:
@@ -380,14 +372,14 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 
 
 	// Add all include topologies from other threads
-	for (auto& includeTopologyFuture: includeTopologies) {
+	for (auto& includeTopologyFuture : includeTopologies) {
 		try {
 			std::unique_ptr<ParsedTopologyFile> includeTopology = includeTopologyFuture.get(); // This will block until the future is ready
 
 			if (includeTopology) {
 				//topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ includeTopology->m_path.string(), includeTopology.release()});
 				const std::string name = includeTopology->m_path.string();
-				topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(includeTopology) });
+				molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(includeTopology) });
 			}
 		}
 		catch (const std::exception& e) {
@@ -395,10 +387,7 @@ std::unique_ptr<ParsedTopologyFile> MDFiles::loadTopologyFile(const fs::path& pa
 			// Handle the error or fail according to your application's needs
 		}
 	}
-
-
-
-	return topfile;
+	WriteTopFileAsBinaryCache(*this);
 }
 
 void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
@@ -622,5 +611,5 @@ ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
 
 SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
 	grofile = std::make_unique<ParsedGroFile>(workDir / "molecule/conf.gro");
-	topfile = loadTopologyFile(workDir / "molecule/topol.top");
+	topfile = std::make_unique<ParsedTopologyFile>(workDir / "molecule/topol.top");
 }

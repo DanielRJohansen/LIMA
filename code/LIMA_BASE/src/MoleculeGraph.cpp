@@ -171,7 +171,7 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 
 void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, const fs::path& gro_path_out, const fs::path& top_path_out) {
 	auto grofile = std::make_unique<ParsedGroFile>(gro_path_in);
-	auto topfile = MDFiles::loadTopologyFile(top_path_in);
+	auto topfile = std::make_unique<ParsedTopologyFile>(top_path_in);
 
 	const MoleculeGraph molgraph = createGraph(*topfile);
 	std::unique_ptr<Chain> root_chain = getChainTree(molgraph);

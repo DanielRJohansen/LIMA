@@ -12,7 +12,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	for (auto& lipid : lipidselection) {
 		const std::string lipid_path = env.main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
 		lipid.grofile = std::make_unique<ParsedGroFile>(lipid_path + lipid.lipidname + ".gro");
-		lipid.topfile = MDFiles::loadTopologyFile(lipid_path + lipid.lipidname + ".itp");
+		lipid.topfile = std::make_unique<ParsedTopologyFile>(lipid_path + lipid.lipidname + ".itp");
 	}
 
 	BoxBuilder boxbuilder( std::make_unique<LimaLogger>());

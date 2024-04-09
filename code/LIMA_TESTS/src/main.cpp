@@ -89,7 +89,7 @@ int main() {
 		lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
 		env.createMembrane(lipids, true);*/
 
-		FileTests::TestFilesAreCachedAsBinaries(envmode);
+		//FileTests::TestFilesAreCachedAsBinaries(Headless);
 
 
 		//testReorderMoleculeParticles(envmode);
@@ -99,7 +99,7 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -145,12 +145,15 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5));
 
+	// Electrostatics
+	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
+
+
 	// Programs test
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
 	ADD_TEST(testman, "ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
+	ADD_TEST(testman, "TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
 
-	// Electrostatics
-	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 
 	// Meta tests

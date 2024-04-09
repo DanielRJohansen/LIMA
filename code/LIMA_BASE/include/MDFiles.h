@@ -44,7 +44,7 @@ struct ParsedGroFile {
 
 template <typename EntryType>
 struct Section {
-	const std::string title;	// or "directive" in gromacs terms
+	std::string title;	// or "directive" in gromacs terms
 	const std::string legend;
 	std::vector<EntryType> entries;
 
@@ -67,16 +67,8 @@ struct Section {
 
 class ParsedTopologyFile {	//.top or .itp
 public:
-
-	//ParsedTopologyFile(const ParsedTopologyFile&) = delete;
-
-	~ParsedTopologyFile() {
-	/*	for (auto& mol : molecules.entries) {
-			mol.deletePtr();
-		}*/
-	}
-
 	struct MoleculeEntry {
+		MoleculeEntry(){}
 		MoleculeEntry(const MoleculeEntry& other) : name(other.name) {
 			assert(other.includeTopologyFile != nullptr);
 			includeTopologyFile = std::make_unique<ParsedTopologyFile>(*other.includeTopologyFile);			
@@ -88,7 +80,7 @@ public:
 
 
 		// TODO: We need to be able to recursively write these to files too
-		std::unique_ptr<ParsedTopologyFile> includeTopologyFile;
+		std::unique_ptr<ParsedTopologyFile> includeTopologyFile = nullptr;
 	};
 
 	
@@ -124,7 +116,7 @@ public:
 
 		std::string composeString() const {
 			std::ostringstream oss;
-
+			const int width = 10;
 			for (size_t i = 0; i < N; ++i) {
 				oss << std::setw(width) << std::right << atomGroIds[i];
 			}
@@ -148,6 +140,12 @@ public:
 	using DihedralBond = GenericBond<4>;
 	using ImproperDihedralBond = GenericBond<4>;
 
+
+
+
+	ParsedTopologyFile() {}
+	ParsedTopologyFile(const std::filesystem::path& path);
+
 	void printToFile(const std::filesystem::path& path) const;
 	void printToFile() const { printToFile(m_path); };
 
@@ -155,9 +153,8 @@ public:
 	void MapIds(const std::vector<int>& atomNrMap, const std::vector<int>& resNrMap);
 	ParsedTopologyFile copy() const { return *this; }
 
+	// ----------------------- Information kept in the actual files ----------------------- //
 	std::string title="";
-	std::filesystem::path m_path;
-	//MoleculeEntry me;
 	Section<MoleculeEntry> molecules{ "[ molecule ]", generateLegend({}) };
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
@@ -167,7 +164,14 @@ public:
 	Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
 	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
 	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
+	// ------------------------------------------------------------------------------------ //
 
+
+	// ----------------------- Meta data not kept in the file ----------------------- //
+	std::filesystem::path m_path;
+	std::filesystem::file_time_type lastModificationTimestamp;
+	bool readFromCache = false;
+	// ------------------------------------------------------------------------------ //
 
 
 private:
@@ -175,8 +179,6 @@ private:
 	ParsedTopologyFile& operator=(const ParsedTopologyFile&) = default;
 
 	static std::string generateLegend(std::vector<std::string> elements);
-
-	static const int width = 10;	// Width of elements in files
 };
 
 
@@ -194,7 +196,7 @@ namespace MDFiles {
 		ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop);
 
 
-	std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
+	//std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
 
 
 

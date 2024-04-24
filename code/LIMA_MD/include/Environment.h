@@ -9,7 +9,6 @@
 #include "DisplayV2.h"
 
 
-
 class BoxBuilder;
 class Display;
 struct BoxImage;
@@ -18,15 +17,16 @@ class Engine;
 
 
 
+namespace fs = std::filesystem;
 
 
 class Environment
 {
-
 public:
 	Environment() = delete;
 	Environment(const Environment&) = delete;
-	Environment(const std::string& wf, EnvMode mode, bool save_output);
+	Environment(const fs::path& workdir, EnvMode mode, bool save_output);
+
 	~Environment();
 
 	/// <summary>
@@ -94,7 +94,7 @@ public:
 	SolventBlocksCircularQueue* getSolventBlocks();
 	//SolventBlockGrid* getSolventBlocksPrevRef();
 	//const std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
-	const std::string& getWorkdir() { return work_dir; }
+	std::string getWorkdir() { return work_dir.string(); }
 
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;
@@ -106,7 +106,7 @@ public:
 	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
 #endif
 
-	const std::string work_dir = "";	// Main dir of the current simulation
+	const fs::path work_dir = "";	// Main dir of the current simulation
 
 
 private:

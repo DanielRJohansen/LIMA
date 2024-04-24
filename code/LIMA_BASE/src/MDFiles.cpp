@@ -78,14 +78,11 @@ std::string composeGroLine(const GroRecord& record) {
 	return oss.str();
 }
 
-std::string ParsedTopologyFile::MoleculetypeEntry::composeString() const {
-	std::ostringstream oss;
+void ParsedTopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
 	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl;
-	return oss.str();
 }
 
-std::string ParsedTopologyFile::AtomsEntry::composeString() const {
-	std::ostringstream oss;
+void ParsedTopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 	if (section_name) {
 		oss << section_name.value() << "\n";
 	}
@@ -98,14 +95,23 @@ std::string ParsedTopologyFile::AtomsEntry::composeString() const {
 		<< std::setw(10) << cgnr
 		<< std::setw(10) << std::fixed << std::setprecision(2) << charge
 		<< std::setw(10) << std::fixed << std::setprecision(3) << mass;
-	return oss.str();
 }
 
 
 
-
+bool isFloat(const std::string& str) {
+	std::istringstream iss(str);
+	float f;
+	iss >> std::noskipws >> f; // noskipws considers leading/trailing whitespace invalid
+	return iss.eof() && !iss.fail();
+}
 
 ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
+	if (!(path.extension().string() == std::string{ ".gro" }))
+		throw std::runtime_error("Expected .gro extension");
+	if (!fs::exists(path))
+		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+
 	lastModificationTimestamp = fs::last_write_time(path);
 
 	if (UseCachedBinaryFile(path, lastModificationTimestamp)) {
@@ -126,9 +132,9 @@ ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
 		int skipCnt = 2;	// First 2 lines are title and atom count
 
 		const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
-
+		int nAtoms = 0;
 		// Forward declaring for optimization reasons
-		std::string line{}, word{};
+		std::string line{}, word{}, prevLine{};
 		while (getline(file, line)) {
 
 			if (skipCnt > 0) {
@@ -138,7 +144,7 @@ ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
 				}
 				if (skipCnt == 1) {
 					// 2nd line is atom count
-					const int nAtoms = std::stoi(line);
+					nAtoms = std::stoi(line);
 					atoms.reserve(nAtoms);
 				}
 
@@ -146,25 +152,38 @@ ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
 				continue;
 			}
 
-			if (line.length() >= min_chars) {
-				atoms.emplace_back(parseGroLine(line));
+
+			if (prevLine.empty()) {
+				prevLine = line;
+				continue;
 			}
-			else if (line.size() > 0) {
-				// Second last line, with box size
-				int dim = 0;
-				std::stringstream ss(line);
-				while (std::getline(ss, word, ' ')) {
-					if (!word.empty()) {
-						assert(dim < 3);
-						*box_size.placeAt(dim++) = std::stof(word);
-					}
+
+			if (line.empty()) {
+				assert(false);	// I guess this shouldn't happen?
+			}
+			else {
+				if (!(prevLine.length() >= min_chars))
+					int c = 0;
+				assert(prevLine.length() >= min_chars);
+				atoms.emplace_back(parseGroLine(prevLine));
+			}
+			prevLine = line;
+		}
+
+		if (!prevLine.empty()) {
+			int dim = 0;
+			std::stringstream ss(prevLine);
+			while (std::getline(ss, word, ' ')) {
+				if (!word.empty()) {
+					*box_size.placeAt(dim++) = std::stof(word);
 				}
 			}
 		}
 
+		assert(atoms.size() == nAtoms);
 
 		// Save a binary cached version of the file to we can read it faster next time
-		writeFileAsBinaryCache(*this);
+		WriteFileToBinaryCache(*this);
 	}
 }
 
@@ -233,6 +252,11 @@ std::string extractSectionName(const std::string& line) {
 
 ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 {
+	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
+		throw std::runtime_error("Expected .top or .itp extension");
+	if (!fs::exists(path))
+		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+
 	lastModificationTimestamp = fs::last_write_time(path);
 
 	if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
@@ -387,12 +411,12 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 			// Handle the error or fail according to your application's needs
 		}
 	}
-	WriteTopFileAsBinaryCache(*this);
+
+	WriteFileToBinaryCache(*this);
 }
 
 void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
-
 
 	std::ofstream file(path);
 	if (!file.is_open()) {
@@ -413,16 +437,19 @@ void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 	file << box_size.x << " " << box_size.y << " " << box_size.z << "\n";
 
 	file.close();
+
+	// Also cache the file
+	WriteFileToBinaryCache(*this, path);
 }
 
-void ParsedGroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
-	if (atoms.size() == 0) {
-		atoms.push_back({ 0, residue_name, atom_name, 0, position, std::nullopt });
-	}
-	else {
-		atoms.push_back({atoms.back().residue_number+1, residue_name, atom_name, atoms.back().gro_id+1, position, std::nullopt});
-	}
-}
+//void ParsedGroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
+//	if (atoms.size() == 0) {
+//		atoms.push_back({ 0, residue_name, atom_name, 0, position, std::nullopt });
+//	}
+//	else {
+//		atoms.push_back({atoms.back().residue_number+1, residue_name, atom_name, atoms.back().gro_id+1, position, std::nullopt});
+//	}
+//}
 
 
 
@@ -457,7 +484,7 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 
 	//if (!molecules.entries.empty()) { file << molecules.composeString(); }
 	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }
-	
+
 	
 	file << atoms.composeString();
 	file << singlebonds.composeString();
@@ -465,50 +492,58 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 	file << anglebonds.composeString();
 	file << dihedralbonds.composeString();
 	file << improperdihedralbonds.composeString();
+
+
+
+	// Also cache the file
+	WriteFileToBinaryCache(*this, path);
 }
 
 
-void ParsedTopologyFile::MapIds(const std::vector<int>& atomNrMap, const std::vector<int>& resNrMap) {
+void ParsedTopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
+
 	for (auto& atom : atoms.entries) {
-		atom.nr = atomNrMap[atom.nr];
-		atom.resnr = resNrMap[atom.resnr];
+		atom.nr += atomNrIncrement;
+		atom.resnr += resNrIncrement;
 	}
 	for (auto& singlebond : singlebonds.entries) {
-		singlebond = singlebond.MapIds(atomNrMap);
+		singlebond.IncrementIds(atomNrIncrement);
 	}
 	for (auto& pair : pairs.entries) {
-		pair = pair.MapIds(atomNrMap);
+		pair.IncrementIds(atomNrIncrement);
 	}
 	for (auto& anglebond : anglebonds.entries) {
-		anglebond = anglebond.MapIds(atomNrMap);
+		anglebond.IncrementIds(atomNrIncrement);
 	}
 	for (auto& dihedralbond : dihedralbonds.entries) {
-		dihedralbond = dihedralbond.MapIds(atomNrMap);
+		dihedralbond.IncrementIds(atomNrIncrement);
 	}
 	for (auto& improperdihedralbond : improperdihedralbonds.entries) {
-		improperdihedralbond = improperdihedralbond.MapIds(atomNrMap);
+		improperdihedralbond.IncrementIds(atomNrIncrement);
 	}
 
 	for (auto& molecule : molecules.entries) {
-		molecule.includeTopologyFile->MapIds(atomNrMap, resNrMap);
+		molecule.includeTopologyFile->IncrementIds(atomNrIncrement, resNrIncrement);
 	}
 }
 
 void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop) {
-	std::vector<int> atomNrMap(rightGro.atoms.back().gro_id+1);
-	std::vector<int> resNrMap(rightGro.atoms.back().residue_number+1);
+	// Even though these ID's are not unique, we still want to be able to differentiate between them locally
+	const int groIdOffset = rightGro.atoms.back().gro_id;
+	const int resNrOffset = rightGro.atoms.back().residue_number;
+
 
 	// First merge the GRO, and get a mapping to the new IDs
-	for (const auto& atom : rightGro.atoms) {
-		leftGro.addEntry(atom.residue_name, atom.atom_name, atom.position);
-
-		atomNrMap[atom.gro_id] = leftGro.atoms.back().gro_id;
-		resNrMap[atom.residue_number] = leftGro.atoms.back().residue_number;
+	for (const GroRecord& atom : rightGro.atoms) {
+		leftGro.atoms.emplace_back(atom);
+		leftGro.atoms.back().gro_id += groIdOffset;
+		leftGro.atoms.back().residue_number += resNrOffset;
 	}
 
 	// To merge the top files, we simply need to apply the mappings we created, and add it as an include topology
-	rightTop->MapIds(atomNrMap, resNrMap);
-	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ rightTop->m_path.string(), std::move(rightTop) });
+	rightTop->IncrementIds(groIdOffset, resNrOffset);
+	const std::string name = rightTop->m_path.string();
+	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(rightTop) });
 }
 
 

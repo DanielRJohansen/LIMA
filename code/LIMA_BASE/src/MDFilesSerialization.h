@@ -73,13 +73,6 @@ namespace cereal {
 		archive(bond.atomGroIds);
 		archive(bond.funct);
 	}
-	template <class Archive>
-	void serialize(Archive& archive, ParsedTopologyFile::SingleBond& bond) {
-		archive(bond.atomGroIds[0]);
-		archive(bond.atomGroIds[1]);
-		archive(bond.funct);
-	}
-
 
 	template <class Archive>
 	void serialize(Archive& archive, ParsedTopologyFile::MoleculeEntry& molecule) {
@@ -99,27 +92,6 @@ namespace cereal {
 		archive(section.title);
 		archive(section.entries);
 	}
-
-	//template <class Archive, typename EntryType>
-	//void save(Archive& archive, const Section<EntryType>& section) {
-	//	archive(section.title);
-	//	archive(section.entries);
-	//}
-
-
-
-	//template <class Archive>
-	//void load(Archive& archive, Section<ParsedTopologyFile::SingleBond>& section) {
-	//	archive(section.title);
-	//	archive(section.entries);
-	//}
-
-
-	//template <class Archive>
-	//void serialize(Archive& archive, Section<ParsedTopologyFile::SingleBond>& section) {
-	//	archive(section.title);
-	//	//archive(section.entries);
-	//}
 
 } // namespace cereal
 
@@ -143,8 +115,11 @@ ParsedGroFile readGroFileFromBinaryCache(const fs::path& path) {
 	file.readFromCache = true;
 	return std::move(file);
 }
-void writeFileAsBinaryCache(const ParsedGroFile& file) {
-	std::ofstream os(file.m_path.string() + ".bin", std::ios::binary);
+void WriteFileToBinaryCache(const ParsedGroFile& file, std::optional<fs::path> _path = std::nullopt) {
+	const fs::path path = _path.value_or(file.m_path);
+	if (path.empty())
+		throw std::runtime_error("Tried to cache a Gro file with no path");
+	std::ofstream os(path.string() + ".bin", std::ios::binary);
 	if (!os.is_open()) {
 		throw std::runtime_error("Failed to open file for writing");
 	}
@@ -181,8 +156,11 @@ void readTopFileFromBinaryCache(const fs::path& path, ParsedTopologyFile& file) 
 	file.readFromCache = true;
 }
 
-void WriteTopFileAsBinaryCache(const ParsedTopologyFile& file) {
-	std::ofstream os(file.m_path.string() + ".bin", std::ios::binary);
+void WriteFileToBinaryCache(const ParsedTopologyFile& file, std::optional<fs::path> _path = std::nullopt ) {
+	const fs::path path = _path.value_or(file.m_path);
+	if (path.empty())
+		throw std::runtime_error("Tried to cache a Top file with no path");
+	std::ofstream os(path.string() + ".bin", std::ios::binary);
 	if (!os.is_open()) {
 		throw std::runtime_error("Failed to open file for writing");
 	}

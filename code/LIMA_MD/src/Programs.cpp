@@ -22,8 +22,8 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, env.getSimPtr()->box_host->boxparams.dims);
 
 	// Create simulation and run on the newly created files in the workfolder
-	monolayerGro->printToFile(lfs::pathJoin(env.work_dir, "/molecule/monolayer.gro"));
-	monolayerTop->printToFile(lfs::pathJoin(env.work_dir, "/molecule/monolayer.top"));
+	monolayerGro->printToFile(env.work_dir / "molecule/monolayer.gro");
+	monolayerTop->printToFile(env.work_dir / "molecule/monolayer.top");
 
 	// Monolayer energy Minimization NoBC
 	if (carryout_em) {
@@ -44,7 +44,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
 	auto [bilayerGro, bilayerTop] = SimulationBuilder::makeBilayerFromMonolayer({ std::move(monolayerGro), std::move(monolayerTop)}, env.getSimPtr()->box_host->boxparams.dims);
 
-	bilayerTop->printToFile(lfs::pathJoin(env.work_dir, "/molecule/bilayer.top"));
+	bilayerTop->printToFile(env.work_dir / "molecule/bilayer.top");
 
 	// Run EM for a while - with pbc
 	if (carryout_em) {
@@ -75,8 +75,8 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 
 	// Save box to .gro and .top file
 	if (writeFiles) {
-		bilayerGro->printToFile(lfs::pathJoin(env.work_dir, "/molecule/membrane.gro"));
-		bilayerTop->printToFile(lfs::pathJoin(env.work_dir, "/molecule/membrane.top"));
+		bilayerGro->printToFile(env.work_dir / "molecule/membrane.gro");
+		bilayerTop->printToFile(env.work_dir / "molecule/membrane.top");
 	}
 
 	return { std::move(bilayerGro), std::move(bilayerTop) };

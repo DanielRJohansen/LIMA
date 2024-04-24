@@ -6,10 +6,10 @@
 #include <vector>
 #include <iostream>
 #include "LimaTypes.cuh"
-
+#include <filesystem>
 
 #include <memory>
-
+namespace fs = std::filesystem;
 
 namespace LIMA_UTILS {
 
@@ -47,7 +47,7 @@ public:
     };   
     LimaLogger() {}
     LimaLogger(const LimaLogger&) = delete;
-    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::string& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
+    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const fs::path& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
     ~LimaLogger();
 
     void startSection(const std::string& input);

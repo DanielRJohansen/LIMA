@@ -28,7 +28,7 @@ struct SimpleParsedFile {
 namespace Filehandler {
 	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
 
-	static std::string pathJoin(std::string a, std::string b) { return a + "/" + b; }
+	static std::string pathJoin(std::string a, std::string b) { return a + "/" + b; }	// TODO: Remove, use fs::path
 
 	// Dunno if this works for folders too
 	void assertPath(const std::string& path);

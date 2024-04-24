@@ -6,11 +6,11 @@
 using namespace LIMA_Print;
 using std::string;
 
-LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const string& workfolder)
+LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const fs::path& workfolder)
     : logmode(lm)
     , envmode{em}
     , enable_logging(workfolder !="")
-    , log_dir(workfolder + "/logs/")
+    , log_dir((workfolder / "logs/").string())
 {
     if (enable_logging) {
         std::filesystem::create_directories(log_dir);

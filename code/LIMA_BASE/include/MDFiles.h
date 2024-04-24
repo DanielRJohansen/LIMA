@@ -39,7 +39,7 @@ struct ParsedGroFile {
 	void printToFile() const { printToFile(m_path);};
 	void printToFile(const std::filesystem::path& path) const;
 
-	void addEntry(std::string residue_name, std::string atom_name, const Float3& position);
+	//void addEntry(std::string residue_name, std::string atom_name, const Float3& position);
 };
 
 template <typename EntryType>
@@ -53,11 +53,10 @@ struct Section {
 
 		oss << title << '\n';
 
-		//oss << EntryType::legend << "\n";
 		oss << legend << "\n";
 		for (const EntryType& entry : entries) {
-			const std::string s = entry.composeString();
-			oss << s << '\n';
+			entry.composeString(oss);
+			oss << '\n';
 		}
 
 		oss << '\n';
@@ -88,7 +87,7 @@ public:
 		std::string name;
 		int nrexcl{};
 
-		std::string composeString() const;
+		void composeString(std::ostringstream& oss) const;
 	};
 
 	// Variable names are from .itp file
@@ -105,7 +104,7 @@ public:
 		float mass{};
 		//int chain_id{ -1 };
 
-		std::string composeString() const;
+		void composeString(std::ostringstream& oss) const;
 	};
 
 	template <size_t N>
@@ -114,23 +113,20 @@ public:
 		int atomGroIds[N]{};
 		int funct{};
 
-		std::string composeString() const {
-			std::ostringstream oss;
+		void composeString(std::ostringstream& oss) const {
+			//std::ostringstream oss;
 			const int width = 10;
 			for (size_t i = 0; i < N; ++i) {
 				oss << std::setw(width) << std::right << atomGroIds[i];
 			}
 			oss << std::setw(width) << std::right << funct;
-
-			return oss.str();
+			//return oss.str();
 		}
 
-		GenericBond<N> MapIds(const std::vector<int>& id_map) const {
-			GenericBond<N> new_bond = *this;
+		void IncrementIds(const int increment)  {
 			for (size_t i = 0; i < N; ++i) {
-				new_bond.atomGroIds[i] = id_map[atomGroIds[i]];
+				atomGroIds[i] += increment;
 			}
-			return new_bond;
 		}	
 	};
 
@@ -141,16 +137,16 @@ public:
 	using ImproperDihedralBond = GenericBond<4>;
 
 
-
-
-	ParsedTopologyFile() {}
+	// Create an empty file
+	ParsedTopologyFile() {};	
+	// Load a file from path
 	ParsedTopologyFile(const std::filesystem::path& path);
 
 	void printToFile(const std::filesystem::path& path) const;
 	void printToFile() const { printToFile(m_path); };
 
 	// Apply a mapping of resNr and GroID to all entries in this file
-	void MapIds(const std::vector<int>& atomNrMap, const std::vector<int>& resNrMap);
+	void IncrementIds(int atomNrIncrement, int resNrIncrement);
 	ParsedTopologyFile copy() const { return *this; }
 
 	// ----------------------- Information kept in the actual files ----------------------- //
@@ -169,7 +165,7 @@ public:
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	std::filesystem::path m_path;
-	std::filesystem::file_time_type lastModificationTimestamp;
+	std::filesystem::file_time_type lastModificationTimestamp{};
 	bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 

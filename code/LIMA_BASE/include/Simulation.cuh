@@ -4,7 +4,7 @@
 #include "Bodies.cuh"
 #include "Forcefield.cuh"
 #include <memory>
-
+#include <filesystem>
 
 //struct ForceField_NB;
 //class Forcefield;
@@ -26,7 +26,7 @@ struct SimParams {
 	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
 		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
 
-	void dumpToFile(const std::string& filename = "sim_params.txt");
+	void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
 
 	uint64_t n_steps = 1000;
 	float dt = 100.f;									// [ls]

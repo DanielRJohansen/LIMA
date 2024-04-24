@@ -28,10 +28,10 @@ const int STEPS_PER_UPDATE = 200;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
-Environment::Environment(const string& wf, EnvMode mode, bool save_output)
-	: work_dir(wf)
+Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output)
+	: work_dir(workdir)
 	, m_mode(mode)
-	, m_logger{ LimaLogger::compact, m_mode, "environment", wf }
+	, m_logger{ LimaLogger::compact, m_mode, "environment", workdir.string()}	// .string() is temp
 	, save_output(save_output)
 {
 	switch (mode)
@@ -46,7 +46,7 @@ Environment::Environment(const string& wf, EnvMode mode, bool save_output)
 		break;
 	}
 
-	const auto moldir = fs::path(wf) / "molecule";	// TODO: Find a better place for this
+	const auto moldir = fs::path(workdir) / "molecule";	// TODO: Find a better place for this
 	if (!fs::exists(moldir))
 		fs::create_directory(moldir);
 
@@ -73,7 +73,7 @@ void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTop
 	setupEmptySimulation(params);
 
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
-		lfs::pathJoin(work_dir, "molecule"),
+		(work_dir / "molecule").string(),
 		grofile,
 		topolfile,
 		V1,
@@ -83,7 +83,7 @@ void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTop
 		);
 
 	//TODO Find a better place for this
-	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
+	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
 
 	boxbuilder->buildBox(simulation.get(), boximage->box_size);
 
@@ -104,26 +104,28 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	simulation->extraparams = simulation_src.extraparams;
 
 	//TODO Find a better place for this
-	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, lfs::pathJoin(work_dir, "molecule"));
+	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
 }
 
 
 void Environment::createSimulationFiles(float boxlen) {
 	ParsedGroFile grofile{};
+	grofile.m_path = work_dir / "molecule/conf.gro";
 	grofile.box_size = Float3{ boxlen };
-	grofile.printToFile(work_dir + "/molecule/conf.gro");
+	grofile.printToFile();
 
 	ParsedTopologyFile topfile{};
-	topfile.printToFile(work_dir + "/molecule/topol.top");
+	topfile.m_path = work_dir / "molecule/topol.top";
+	topfile.printToFile();
 
 	SimParams simparams{};
-	simparams.dumpToFile(work_dir+"/sim_params.txt");
+	simparams.dumpToFile(work_dir / "sim_params.txt");
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
 	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
 
-	simulation = std::make_unique<Simulation>(simparams, work_dir + "/molecule/", m_mode);
+	simulation = std::make_unique<Simulation>(simparams, (work_dir / "molecule/").string(), m_mode);
 
 	verifySimulationParameters();
 }
@@ -317,10 +319,9 @@ void Environment::postRunEvents() {
 	if (!save_output) { return; }
 
 
-	const std::string out_dir = work_dir + "/Steps_" + std::to_string(simulation->getStep()) + "/";
+	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
 
-	const std::filesystem::path out_path{ out_dir };
-	std::filesystem::create_directories(out_path);
+	std::filesystem::create_directories(out_dir);
 	//std::filesystem::current_path(work_folder);
 	//std::filesystem::create_directories(out_dir);
 
@@ -347,12 +348,12 @@ void Environment::postRunEvents() {
 		Filehandler::dumpToFile(
 			postsim_anal_package.energy_data.data(),
 			postsim_anal_package.energy_data.size(),
-			out_dir + "energy.bin"
+			out_dir.string() + "energy.bin"
 		);
 	}
 
 	if (DUMP_POTE) {
-		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir + "potE.bin");
+		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir.string() + "potE.bin");
 	}
 
 #ifdef USEDEBUGF3

@@ -5,8 +5,10 @@
 #include <fstream>
 #include "Simulation.cuh"
 #include "Forcefield.cuh"
+#include <filesystem>
 
 using std::string;
+namespace fs = std::filesystem;
 
 template <typename T>
 constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
@@ -61,11 +63,11 @@ SimParams::SimParams(const std::string& path) {
 }
 
 
-void SimParams::dumpToFile(const std::string& filename) {
+void SimParams::dumpToFile(const fs::path& filename) {
 	std::ofstream file(filename);
 	if (!file.is_open()) {
 		// Handle the error, e.g., by throwing an exception or logging an error message
-		throw std::runtime_error("Unable to open file: " + filename);
+		throw std::runtime_error("Unable to open file: " + filename.string());
 	}
 
 	file << "n_steps=" << n_steps << "\n";

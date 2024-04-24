@@ -314,14 +314,23 @@ void SimulationBuilder::DistributeParticlesInBox(ParsedGroFile& grofile, ParsedT
 					// If no collision, add the particle to the gro and top file
 					if (!collision) {
 						positionsInThisBlock[relativeParticleIndex] = position;
-						grofile.addEntry("XXX", atomtypeselect.atomtype.atomname, position);
+						const int groId = grofile.atoms.empty() ? 1 : grofile.atoms.back().gro_id + 1;
+						const int resNr = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
+						grofile.atoms.emplace_back(GroRecord{ resNr, "XXX", atomtypeselect.atomtype.atomname, groId, position, std::nullopt });
+
+						//grofile.addEntry("XXX", atomtypeselect.atomtype.atomname, position);
+						//grofile.atoms.emplace(GroRecord{})
 
 						// Add first the basic atomtype, and then correct the IDs after
 						topfile.atoms.entries.emplace_back(atomtypeselect.atomtype);
-						if (topfile.atoms.entries.size() > 1) {
-							topfile.atoms.entries.back().nr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].nr + 1;
-							topfile.atoms.entries.back().resnr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].resnr +1;
-						}
+						topfile.atoms.entries.back().nr = groId;
+						topfile.atoms.entries.back().resnr = resNr;
+
+
+						//if (topfile.atoms.entries.size() > 1) {
+						//	topfile.atoms.entries.back().nr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].nr + 1;
+						//	topfile.atoms.entries.back().resnr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].resnr +1;
+						//}
 						relativeParticleIndex++;
 					}
 				}

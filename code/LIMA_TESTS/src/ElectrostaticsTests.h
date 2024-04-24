@@ -32,10 +32,12 @@ namespace ElectrostaticsTests {
 			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.5f, 10.f}, 15},
 			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 1.f, 10.f},  15}
 		};
-
+		auto a = env.getWorkdir();
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 5.f);
 
+		simfiles.grofile->title = "ElectroStatic Field Test";
+		simfiles.topfile->title = "ElectroStatic Field Test";
 		simfiles.grofile->printToFile();
 		simfiles.topfile->printToFile();
 	}

@@ -75,8 +75,9 @@ public:
 		MoleculeEntry(const std::string& name, std::unique_ptr<ParsedTopologyFile> topfile) 
 			: name(name), includeTopologyFile(std::move(topfile)) {}
 
-		std::string name{};		
+		std::string name{};	// Name of file without extension and path
 
+		void composeString(std::ostringstream& oss) const;
 
 		// TODO: We need to be able to recursively write these to files too
 		std::unique_ptr<ParsedTopologyFile> includeTopologyFile = nullptr;
@@ -114,13 +115,11 @@ public:
 		int funct{};
 
 		void composeString(std::ostringstream& oss) const {
-			//std::ostringstream oss;
 			const int width = 10;
 			for (size_t i = 0; i < N; ++i) {
 				oss << std::setw(width) << std::right << atomGroIds[i];
 			}
 			oss << std::setw(width) << std::right << funct;
-			//return oss.str();
 		}
 
 		void IncrementIds(const int increment)  {
@@ -151,7 +150,7 @@ public:
 
 	// ----------------------- Information kept in the actual files ----------------------- //
 	std::string title="";
-	Section<MoleculeEntry> molecules{ "[ molecule ]", generateLegend({}) };
+	Section<MoleculeEntry> molecules{ "[ molecules ]", generateLegend({}) };
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
 	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };

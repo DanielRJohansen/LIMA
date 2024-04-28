@@ -78,6 +78,10 @@ std::string composeGroLine(const GroRecord& record) {
 	return oss.str();
 }
 
+void ParsedTopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
+	oss << name << "\n";
+}
+
 void ParsedTopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
 	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl;
 }
@@ -482,7 +486,9 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 
 	file << title << "\n\n";
 
-	//if (!molecules.entries.empty()) { file << molecules.composeString(); }
+	// TODO: What i currently use "molecules" for should actually be an "#include" argument..
+
+	if (!molecules.entries.empty()) { file << molecules.composeString(); }
 	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }
 
 	
@@ -542,7 +548,7 @@ void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, Pa
 
 	// To merge the top files, we simply need to apply the mappings we created, and add it as an include topology
 	rightTop->IncrementIds(groIdOffset, resNrOffset);
-	const std::string name = rightTop->m_path.string();
+	const std::string name = rightTop->m_path.stem().string();
 	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(rightTop) });
 }
 

@@ -10,7 +10,7 @@ namespace Benchmarks {
 
 
 	static void MembraneWithPsome(EnvMode envmode) {
-		bool buildFromScratch = false;
+		bool buildFromScratch = true;
 		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
 
 		if (buildFromScratch) {
@@ -31,10 +31,9 @@ namespace Benchmarks {
 			std::unique_ptr<ParsedTopologyFile> psomeTopFile = std::make_unique<ParsedTopologyFile>(work_dir / "molecule/psome.top");
 			MDFiles::MergeFiles(*membraneGrofile, *membraneTopfile, psomeGrofile, std::move(psomeTopFile));
 
-
 			// Now the "membrane" files also has the psome. Print it to file
-			membraneGrofile->printToFile(work_dir / "/molecule/membrane_with_psome.gro");
-			membraneTopfile->printToFile(work_dir / "/molecule/membrane_with_psome.top");
+			membraneGrofile->printToFile(work_dir / "molecule/membrane_with_psome.gro");
+			membraneTopfile->printToFile(work_dir / "molecule/membrane_with_psome.top");
 		}
 
 

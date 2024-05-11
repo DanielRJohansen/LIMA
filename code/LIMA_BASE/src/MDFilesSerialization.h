@@ -77,19 +77,16 @@ namespace cereal {
 	template <class Archive>
 	void serialize(Archive& archive, ParsedTopologyFile::MoleculeEntry& molecule) {
 		archive(molecule.name);
-		// We can't serialize the other molecule recursively, so we only save the path, and then load from that path in the constructor
 	}
 
 	template <class Archive>
 	void serialize(Archive& archive, ParsedTopologyFile::MoleculetypeEntry& moleculetype) {
 		archive(moleculetype.name);
 		archive(moleculetype.nrexcl);
-		// We can't serialize the other molecule recursively, so we only save the path, and then load from that path in the constructor
 	}
 
 	template <class Archive, typename EntryType>
 	void serialize(Archive& archive, Section<EntryType>& section) {
-		archive(section.title);
 		archive(section.entries);
 	}
 
@@ -145,19 +142,19 @@ void readTopFileFromBinaryCache(const fs::path& path, ParsedTopologyFile& file) 
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
-	archive(file.molecules);	// Only write the path of the file
+	archive(file.molecules);	// Only write the name of the file
 	archive(file.moleculetypes);
-	archive(file.atoms);
-	archive(file.singlebonds);
-	archive(file.pairs);
-	archive(file.anglebonds);
-	archive(file.dihedralbonds);
-	archive(file.improperdihedralbonds);
+	archive(file.GetLocalAtoms());
+	archive(file.GetLocalSinglebonds());
+	archive(file.GetLocalPairs());
+	archive(file.GetLocalAnglebonds());
+	archive(file.GetLocalDihedralbonds());
+	archive(file.GetLocalImproperDihedralbonds());
 	file.readFromCache = true;
 }
 
 void WriteFileToBinaryCache(const ParsedTopologyFile& file, std::optional<fs::path> _path = std::nullopt ) {
-	const fs::path path = _path.value_or(file.m_path);
+	const fs::path path = _path.value_or(file.path);
 	if (path.empty())
 		throw std::runtime_error("Tried to cache a Top file with no path");
 	std::ofstream os(path.string() + ".bin", std::ios::binary);
@@ -172,12 +169,12 @@ void WriteFileToBinaryCache(const ParsedTopologyFile& file, std::optional<fs::pa
 	archive(file.title);
 	archive(file.molecules);	// Only write the path of the file
 	archive(file.moleculetypes);
-	archive(file.atoms);
-	archive(file.singlebonds);
-	archive(file.pairs);
-	archive(file.anglebonds);
-	archive(file.dihedralbonds);
-	archive(file.improperdihedralbonds);
+	archive(file.GetLocalAtoms());
+	archive(file.GetLocalSinglebonds());
+	archive(file.GetLocalPairs());
+	archive(file.GetLocalAnglebonds());
+	archive(file.GetLocalDihedralbonds());
+	archive(file.GetLocalImproperDihedralbonds());
 }
 
 // Checks if we have a valid cached binary of the file

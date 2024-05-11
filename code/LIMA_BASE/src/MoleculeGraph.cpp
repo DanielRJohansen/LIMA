@@ -47,11 +47,12 @@ void Chain::sort() {
 MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile) {
 	MoleculeGraph graph;
 
-	for (const auto& atom : topolfile.atoms.entries) {
+	for (const auto& atom : topolfile.GetAtoms()) {
 		graph.addNode(atom.nr, atom.atomname);
 	}
 
-	for (const auto& bond : topolfile.singlebonds.entries) {
+	//for (const auto& bond : topolfile.singlebonds.entries) {
+	for (const auto& bond : topolfile.GetSinglebonds()) {
 		graph.connectNodes(bond.atomGroIds[0], bond.atomGroIds[1]);
 	}
 
@@ -170,41 +171,44 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 }
 
 void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, const fs::path& gro_path_out, const fs::path& top_path_out) {
-	auto grofile = std::make_unique<ParsedGroFile>(gro_path_in);
-	auto topfile = std::make_unique<ParsedTopologyFile>(top_path_in);
+	// TODO fix this again
 
-	const MoleculeGraph molgraph = createGraph(*topfile);
-	std::unique_ptr<Chain> root_chain = getChainTree(molgraph);
 
-	root_chain->sort();
+	//auto grofile = std::make_unique<ParsedGroFile>(gro_path_in);
+	//auto topfile = std::make_unique<ParsedTopologyFile>(top_path_in);
 
-	// dont use index 0 of map
-	const std::vector<int> map = makeParticleReorderMapping(*root_chain);
+	//const MoleculeGraph molgraph = createGraph(*topfile);
+	//std::unique_ptr<Chain> root_chain = getChainTree(molgraph);
 
-	// Overwrite all references to gro_ids in the files
-	for (auto& atom : grofile->atoms) {
-		atom.gro_id = map[atom.gro_id];
-	}
+	//root_chain->sort();
 
-	for (auto& atom : topfile->atoms.entries) {
-		atom.nr = map[atom.nr];
-	}
-	overwriteParticleIds<>(topfile->singlebonds.entries, map);
-	overwriteParticleIds<>(topfile->pairs.entries, map);
-	overwriteParticleIds<>(topfile->anglebonds.entries, map);
-	overwriteParticleIds<>(topfile->dihedralbonds.entries, map);
-	overwriteParticleIds<>(topfile->improperdihedralbonds.entries, map);
+	//// dont use index 0 of map
+	//const std::vector<int> map = makeParticleReorderMapping(*root_chain);
 
-	// Re-sort all entries with the new groids
-	std::sort(grofile->atoms.begin(), grofile->atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
+	//// Overwrite all references to gro_ids in the files
+	//for (auto& atom : grofile->atoms) {
+	//	atom.gro_id = map[atom.gro_id];
+	//}
 
-	std::sort(topfile->atoms.entries.begin(), topfile->atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr < b.nr; });
-	std::sort(topfile->singlebonds.entries.begin(), topfile->singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atomGroIds[0] < b.atomGroIds[0]; });
-	std::sort(topfile->pairs.entries.begin(), topfile->pairs.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
-	std::sort(topfile->anglebonds.entries.begin(), topfile->anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
-	std::sort(topfile->dihedralbonds.entries.begin(), topfile->dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
-	std::sort(topfile->improperdihedralbonds.entries.begin(), topfile->improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	//for (auto& atom : topfile->atoms.entries) {
+	//	atom.nr = map[atom.nr];
+	//}
+	//overwriteParticleIds<>(topfile->singlebonds.entries, map);
+	//overwriteParticleIds<>(topfile->pairs.entries, map);
+	//overwriteParticleIds<>(topfile->anglebonds.entries, map);
+	//overwriteParticleIds<>(topfile->dihedralbonds.entries, map);
+	//overwriteParticleIds<>(topfile->improperdihedralbonds.entries, map);
 
-	grofile->printToFile(gro_path_out);
-	topfile->printToFile(top_path_out);
+	//// Re-sort all entries with the new groids
+	//std::sort(grofile->atoms.begin(), grofile->atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
+
+	//std::sort(topfile->atoms.entries.begin(), topfile->atoms.entries.end(), [](const auto& a, const auto& b) {return a.nr < b.nr; });
+	//std::sort(topfile->singlebonds.entries.begin(), topfile->singlebonds.entries.end(), [](const auto& a, const auto& b) {return a.atomGroIds[0] < b.atomGroIds[0]; });
+	//std::sort(topfile->pairs.entries.begin(), topfile->pairs.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	//std::sort(topfile->anglebonds.entries.begin(), topfile->anglebonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	//std::sort(topfile->dihedralbonds.entries.begin(), topfile->dihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+	//std::sort(topfile->improperdihedralbonds.entries.begin(), topfile->improperdihedralbonds.entries.end(), [](const auto& a, const auto& b) { return a.atomGroIds[0] < b.atomGroIds[0]; });
+
+	//grofile->printToFile(gro_path_out);
+	//topfile->printToFile(top_path_out);
 }

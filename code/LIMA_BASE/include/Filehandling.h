@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <limits>
 
+#include <filesystem>
+
 struct SimpleParsedFile {
 	struct Row {
 		std::string section;
@@ -24,8 +26,10 @@ struct SimpleParsedFile {
 
 
 
-// TODO: Why the fuck can i not make this a namespace???!
+
 namespace Filehandler {
+	namespace fs = std::filesystem;
+
 	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
 
 	static std::string pathJoin(std::string a, std::string b) { return a + "/" + b; }	// TODO: Remove, use fs::path
@@ -59,6 +63,7 @@ namespace Filehandler {
 
 	void createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm);	// creates conf topol and sim_params
 
+	fs::path GetLimaDir();
 
 	// These should be in interface maybe?
 	template <typename T>

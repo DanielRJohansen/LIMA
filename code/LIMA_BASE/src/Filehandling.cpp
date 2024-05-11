@@ -6,10 +6,26 @@
 #include <map>
 #include <array>
 #include <fstream>
-#include <filesystem>
+
 #include <format>
 #include <cctype>
 #include <vector>
+
+
+
+#ifdef __linux__
+#include <unistd.h>
+#else
+#include <windows.h>
+#endif
+
+
+
+
+
+
+namespace fs = std::filesystem;
+
 using std::string, std::vector, std::map, std::stringstream;
 
 
@@ -389,4 +405,29 @@ void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, fl
 		file << contents;
 		file.close();
 	}
+}
+
+fs::path Filehandler::GetLimaDir() {
+	const int maxPathLen = 2048;
+	char executablePath[maxPathLen];
+
+#ifdef __linux__
+	ssize_t count = readlink("/proc/self/exe", executablePath, maxPathLen);
+#else
+	GetModuleFileName(NULL, executablePath, maxPathLen);
+#endif
+
+	// Start from the directory of the executable
+	fs::path execPath(executablePath);
+	fs::path currentPath = execPath.parent_path();
+
+	// Traverse up the directory tree until "LIMA" directory is found or root is reached
+	while (currentPath.has_parent_path()) {
+		if (currentPath.filename() == "LIMA") {
+			return currentPath; // Return the path when "LIMA" is found
+		}
+		currentPath = currentPath.parent_path(); // Move one level up in the directory tree
+	}
+
+	throw std::runtime_error("Could not find LIMA directory");
 }

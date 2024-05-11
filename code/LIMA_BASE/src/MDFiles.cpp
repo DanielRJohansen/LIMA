@@ -79,7 +79,9 @@ std::string composeGroLine(const GroRecord& record) {
 }
 
 void ParsedTopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
-	oss << name << "\n";
+	if (includeTopologyFile->name == "")
+		throw std::runtime_error("Trying to save a topology with an empty include topology name");
+	oss << includeTopologyFile->name;
 }
 
 void ParsedTopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
@@ -99,6 +101,19 @@ void ParsedTopologyFile::AtomsEntry::composeString(std::ostringstream& oss) cons
 		<< std::setw(10) << cgnr
 		<< std::setw(10) << std::fixed << std::setprecision(2) << charge
 		<< std::setw(10) << std::fixed << std::setprecision(3) << mass;
+}
+
+
+void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<ParsedTopologyFile>>& includedFiles, fs::path srcDir) {
+	for (const auto& entry : fs::directory_iterator(srcDir)) {
+		if (entry.is_directory()) {
+			fs::path subDir = entry.path();
+			fs::path itpFile = subDir / (subDir.filename().string() + ".itp");
+			if (fs::exists(itpFile)) {
+				includedFiles.insert({ subDir.filename().string(), {itpFile} });
+			}
+		}
+	}
 }
 
 
@@ -198,47 +213,20 @@ class TopologySectionGetter {
 
 public:
 	TopologySection operator()(const std::string& directive) {
-		if (directive == "molecules") {
-			return molecules;
+		if (directive == "molecules") return molecules;
+		if (directive == "moleculetype") return moleculetype;
+		if (directive == "atoms") return atoms;
+		if (directive == "bonds") return bonds;
+		if (directive == "pairs") return pairs;
+		if (directive == "angles") return angles;
+		if (directive == "dihedrals") {
+			if (++dihedralCount <= 2) return dihedralCount == 1 ? dihedrals : impropers;
+			throw std::runtime_error("Encountered 'dihedral' directive more than 2 times in .itp/.top file");
 		}
-		else if (directive == "moleculetype") {
-			return moleculetype;
-		}
-		else if (directive == "atoms") {
-			return atoms;
-		}
-		else if (directive == "bonds") {
-			return bonds;
-		}
-		else if (directive == "pairs") {
-			return pairs;
-		}
-		else if (directive == "angles") {
-			return angles;
-		}
-		else if (directive == "dihedrals") {
-			dihedralCount++;
-			if (dihedralCount == 1) {
-				return dihedrals;
-			}
-			else if (dihedralCount == 2) {
-				return impropers;
-			}
-			else
-				throw std::runtime_error("Encountered the 'dihedral' directive more than 2 times in the same .itp/.top file");
-		}
-		else if (directive == "position_restraints") {
-			return position_restraints;
-		}
-		else if (directive == "system") {
-			return _system;
-		}
-		else if (directive == "cmap") {
-			return cmap;
-		}
-		else {
-			throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
-		}
+		if (directive == "position_restraints") return position_restraints;
+		if (directive == "system") return _system;
+		if (directive == "cmap") return cmap;
+		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
 	}
 };
 
@@ -254,8 +242,20 @@ std::string extractSectionName(const std::string& line) {
 	return "";
 }
 
-ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
+
+std::string GetCleanFilename(const fs::path& path) {
+	auto filename = path.stem().string();
+	const std::string prefix = "topol_";
+	return filename.starts_with(prefix) ? filename.substr(prefix.length()) : filename;
+}
+ParsedTopologyFile::ParsedTopologyFile() {
+	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
+}
+
+ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
+	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
+
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
@@ -267,11 +267,18 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 		readTopFileFromBinaryCache(path, *this);
 
 		// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
-		for (auto& includeTopology : molecules.entries) {
-			assert(includeTopology.includeTopologyFile == nullptr);
-			assert(includeTopology.name != "");
-			includeTopology.includeTopologyFile = std::make_unique<ParsedTopologyFile>(includeTopology.name);
+		for (auto& molecule : molecules.entries) {
+			assert(molecule.includeTopologyFile == nullptr);
+			assert(molecule.name != "");
+			//includeTopology.includeTopologyFile = std::make_shared<ParsedTopologyFile>(includeTopology.name);
+			// 
+			// 
+			if (includedFiles.count(molecule.name) == 0)
+				includedFiles.emplace(molecule.name, path.parent_path() / ("topol_" + molecule.name + ".itp"));
+			molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
+			//includeTopology.includeTopologyFile = includedFiles.at(includeTopology.name).Get().get();
 		}
+		//LoadAllSubMolecules();
 
 		return;
 	}
@@ -294,7 +301,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 
 	std::string line{}, word{};
 	std::string sectionname = "";
-	std::vector<std::future<std::unique_ptr<ParsedTopologyFile>>> includeTopologies;
+//	std::vector<std::future<std::pair<std::string, std::unique_ptr<ParsedTopologyFile>>>> includeTopologies;	// <name, file>
 
 	while (getline(file, line)) {
 
@@ -326,13 +333,16 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 			if (include_name == "SOL")
 				continue;
 
-			fs::path include_topol_path = path;
-			include_topol_path.replace_filename("topol_" + include_name + ".itp");
-			includeTopologies.emplace_back(std::async(std::launch::async,
-				[](const std::filesystem::path& path) -> std::unique_ptr<ParsedTopologyFile> {
-					return std::make_unique<ParsedTopologyFile>(path);
-				}, include_topol_path));
-			break;
+			
+			if (includedFiles.count(include_name) == 0) {
+				const fs::path include_path = fs::exists(path.parent_path() / (include_name + ".itp"))
+					? path.parent_path() / (include_name + ".itp")
+					: path.parent_path() / ("topol_" + include_name + ".itp");
+				includedFiles.emplace(include_name, include_path);
+				//includedFiles.emplace(include_name, std::make_shared<ParsedTopologyFile>(include_path));
+			}
+
+			molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get());
 		}
 		case moleculetype:
 		{
@@ -398,23 +408,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : m_path(path)
 		}
 	}
 
-
-	// Add all include topologies from other threads
-	for (auto& includeTopologyFuture : includeTopologies) {
-		try {
-			std::unique_ptr<ParsedTopologyFile> includeTopology = includeTopologyFuture.get(); // This will block until the future is ready
-
-			if (includeTopology) {
-				//topfile->molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ includeTopology->m_path.string(), includeTopology.release()});
-				const std::string name = includeTopology->m_path.string();
-				molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(includeTopology) });
-			}
-		}
-		catch (const std::exception& e) {
-			std::cerr << "Failed to load included topology file\n\t " << e.what() << std::endl;
-			// Handle the error or fail according to your application's needs
-		}
-	}
+	//LoadAllSubMolecules();
 
 	WriteFileToBinaryCache(*this);
 }
@@ -506,32 +500,56 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 }
 
 
-void ParsedTopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
+//void ParsedTopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
+//
+//	for (auto& atom : atoms.entries) {
+//		atom.nr += atomNrIncrement;
+//		atom.resnr += resNrIncrement;
+//	}
+//	for (auto& singlebond : singlebonds.entries) {
+//		singlebond.IncrementIds(atomNrIncrement);
+//	}
+//	for (auto& pair : pairs.entries) {
+//		pair.IncrementIds(atomNrIncrement);
+//	}
+//	for (auto& anglebond : anglebonds.entries) {
+//		anglebond.IncrementIds(atomNrIncrement);
+//	}
+//	for (auto& dihedralbond : dihedralbonds.entries) {
+//		dihedralbond.IncrementIds(atomNrIncrement);
+//	}
+//	for (auto& improperdihedralbond : improperdihedralbonds.entries) {
+//		improperdihedralbond.IncrementIds(atomNrIncrement);
+//	}
+//
+//	for (auto& molecule : molecules.entries) {
+//		molecule.includeTopologyFile->IncrementIds(atomNrIncrement, resNrIncrement);
+//	}
+//}
 
-	for (auto& atom : atoms.entries) {
-		atom.nr += atomNrIncrement;
-		atom.resnr += resNrIncrement;
-	}
-	for (auto& singlebond : singlebonds.entries) {
-		singlebond.IncrementIds(atomNrIncrement);
-	}
-	for (auto& pair : pairs.entries) {
-		pair.IncrementIds(atomNrIncrement);
-	}
-	for (auto& anglebond : anglebonds.entries) {
-		anglebond.IncrementIds(atomNrIncrement);
-	}
-	for (auto& dihedralbond : dihedralbonds.entries) {
-		dihedralbond.IncrementIds(atomNrIncrement);
-	}
-	for (auto& improperdihedralbond : improperdihedralbonds.entries) {
-		improperdihedralbond.IncrementIds(atomNrIncrement);
-	}
-
-	for (auto& molecule : molecules.entries) {
-		molecule.includeTopologyFile->IncrementIds(atomNrIncrement, resNrIncrement);
-	}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::AtomsEntry> ParsedTopologyFile::GetAtoms() const {
+	return ParsedTopologyFile::SectionRange<AtomsEntry>(this);
 }
+//ParsedTopologyFile::SectionRange<ParsedTopologyFile::SingleBond> ParsedTopologyFile::GetSinglebonds() {
+//	return ParsedTopologyFile::SectionRange<SingleBond>(this);
+//}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::SingleBond> ParsedTopologyFile::GetSinglebonds() const {
+	return ParsedTopologyFile::SectionRange<SingleBond>(this);
+}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::Pair> ParsedTopologyFile::GetPairs() const {
+	return ParsedTopologyFile::SectionRange<Pair>(this);
+}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::AngleBond> ParsedTopologyFile::GetAnglebonds() const {
+	return ParsedTopologyFile::SectionRange<AngleBond>(this);
+}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::DihedralBond> ParsedTopologyFile::GetDihedralbonds() const {
+	return ParsedTopologyFile::SectionRange<DihedralBond>(this);
+}
+ParsedTopologyFile::SectionRange<ParsedTopologyFile::ImproperDihedralBond> ParsedTopologyFile::GetImproperDihedralbonds() const {
+	return ParsedTopologyFile::SectionRange<ImproperDihedralBond>(this);
+}
+
+
 
 void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop) {
 	// Even though these ID's are not unique, we still want to be able to differentiate between them locally
@@ -546,10 +564,33 @@ void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, Pa
 		leftGro.atoms.back().residue_number += resNrOffset;
 	}
 
-	// To merge the top files, we simply need to apply the mappings we created, and add it as an include topology
-	rightTop->IncrementIds(groIdOffset, resNrOffset);
-	const std::string name = rightTop->m_path.stem().string();
-	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(rightTop) });
+
+
+	//TODONOW fix this
+
+	//// To merge the top files, we simply need to apply the mappings we created, and add it as an include topology
+	//rightTop->IncrementIds(groIdOffset, resNrOffset);
+	//leftTop.atoms.entries.insert(leftTop.atoms.entries.end(), rightTop->atoms.entries.begin(), rightTop->atoms.entries.end());
+	//leftTop.singlebonds.entries.insert(leftTop.singlebonds.entries.end(), rightTop->singlebonds.entries.begin(), rightTop->singlebonds.entries.end());
+	//leftTop.pairs.entries.insert(leftTop.pairs.entries.end(), rightTop->pairs.entries.begin(), rightTop->pairs.entries.end());
+	//// Continue for all other bonds
+	//leftTop.anglebonds.entries.insert(leftTop.anglebonds.entries.end(), rightTop->anglebonds.entries.begin(), rightTop->anglebonds.entries.end());
+	//leftTop.dihedralbonds.entries.insert(leftTop.dihedralbonds.entries.end(), rightTop->dihedralbonds.entries.begin(), rightTop->dihedralbonds.entries.end());
+	//leftTop.improperdihedralbonds.entries.insert(leftTop.improperdihedralbonds.entries.end(), rightTop->improperdihedralbonds.entries.begin(), rightTop->improperdihedralbonds.entries.end());
+	////leftTop.molecules.entries.insert(leftTop.molecules.entries.end(), rightTop->molecules.entries.begin(), rightTop->molecules.entries.end());
+	//for (auto& mol : rightTop->molecules.entries) {
+	//	//leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ mol.name, nullptr });
+	//	// Not ideal that we steal this unique_ptr, but it's the easiest way to do it
+	//	leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ mol.name, std::move(mol.includeTopologyFile) });
+	//}
+
+
+
+
+
+
+	//const std::string name = rightTop->m_path.stem().string();
+	//leftTop.molecules.entries.emplace_back(ParsedTopologyFile::MoleculeEntry{ name, std::move(rightTop) });
 }
 
 

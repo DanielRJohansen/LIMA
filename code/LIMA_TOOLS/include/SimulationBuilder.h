@@ -13,8 +13,8 @@ struct LipidSelect {
 	}
 	const std::string lipidname;
 	const int percentage;
-	std::unique_ptr<ParsedGroFile> grofile;
-	std::unique_ptr<ParsedTopologyFile> topfile;
+	std::shared_ptr<ParsedGroFile> grofile;
+	std::shared_ptr<ParsedTopologyFile> topfile;
 
 	static const std::array<std::string, 6> valid_lipids;	// Defined in .cpp file
 };

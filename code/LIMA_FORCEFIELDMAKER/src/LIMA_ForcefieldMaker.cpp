@@ -174,9 +174,10 @@ bool getGlobalIDsAndTypenames(const int (&gro_ids)[n], const AtomInfoTable& atom
 
 
 void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfile, int& current_chain_id, int& current_unique_residue_cnt) {
-	for (const ParsedTopologyFile::AtomsEntry& atom : topolfile.atoms.entries) {
+	for (const ParsedTopologyFile::AtomsEntry& atom : topolfile.GetAtoms()) {
 		if (current_chain_id == -1) {
 			current_chain_id++;	// Assume there are no include topol files, and we simply read the atoms into chain 0
+			// I dont think current_chain is used more??
 		}
 		const int gro_id = atom.nr;
 
@@ -198,28 +199,36 @@ void includeFileInTopology(Topology& topology, const ParsedTopologyFile& topolfi
 		topology.active_atomtypes.insert(atom.type);
 	}
 
-	for (const auto& bond : topolfile.singlebonds.entries) {
+	//for (const auto& bond : topolfile.singlebonds.entries) {
+	for (const auto& bond : topolfile.GetSinglebonds()) {
 		std::array<int, 2> global_ids;
 		std::array<string, 2> atomtypes;
 		if (getGlobalIDsAndTypenames<2>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.singlebonds.emplace_back(Singlebondtype{ global_ids, atomtypes });
 		}
 	}
-	for (const auto& bond : topolfile.anglebonds.entries) {
+	//for (const auto& bond : topolfile.GetPairs()) {
+	//	std::array<int, 2> global_ids;
+	//	std::array<string, 2> atomtypes;
+	//	if (getGlobalIDsAndTypenames<2>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
+	//		topology.pairs.emplace_back(Singlebondtype{ global_ids, atomtypes });
+	//	}
+	//}
+	for (const auto& bond : topolfile.GetAnglebonds()) {
 		std::array<int, 3> global_ids;
 		std::array<string, 3> atomtypes;
 		if (getGlobalIDsAndTypenames<3>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.anglebonds.emplace_back(Anglebondtype{ global_ids, atomtypes });
 		}
 	}
-	for (const auto& bond : topolfile.dihedralbonds.entries) {
+	for (const auto& bond : topolfile.GetDihedralbonds()) {
 		std::array<int, 4> global_ids;
 		std::array<string, 4> atomtypes;
 		if (getGlobalIDsAndTypenames<4>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
 			topology.dihedralbonds.emplace_back(Dihedralbondtype{ global_ids, atomtypes });
 		}
 	}
-	for (const auto& bond : topolfile.improperdihedralbonds.entries) {
+	for (const auto& bond : topolfile.GetImproperDihedralbonds()) {
 		std::array<int, 4> global_ids;
 		std::array<string, 4> atomtypes;
 		if (getGlobalIDsAndTypenames<4>(bond.atomGroIds, topology.atominfotable, current_chain_id, global_ids, atomtypes)) {
@@ -242,11 +251,12 @@ Topology loadTopology(const std::string& molecule_dir, const ParsedTopologyFile&
 	// First load the top-level topol
 	includeFileInTopology(topology, topol_file, current_chain_id, current_unique_residue_cnt);
 
-	// Now load all includes (.itp)
-	for (const auto& molecule : topol_file.molecules.entries) {
-		current_chain_id++;
-		includeFileInTopology(topology, *molecule.includeTopologyFile, current_chain_id, current_unique_residue_cnt);
-	}
+	//// Now load all includes (.itp)
+	//for (const auto& molecule : topol_file.molecules.entries) {
+	//	current_chain_id++;
+	//	includeFileInTopology(topology, *molecule.includeTopologyFile, current_chain_id, current_unique_residue_cnt);
+	//	//includeFileInTopology(topology, molecule.Get(), current_chain_id, current_unique_residue_cnt);
+	//}
 
 	return topology;
 }

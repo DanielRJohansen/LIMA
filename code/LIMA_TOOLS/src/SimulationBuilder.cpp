@@ -58,13 +58,23 @@ void overwriteBond(const std::vector<BondType>& bonds, std::vector<BondType>& de
 	}
 }
 
+//template <typename BondType>
+//void overwriteBond(ParsedTopologyFile::SectionRange<BondType> bonds, ParsedTopologyFile::SectionRange<BondType> dest, int atomnr_offset) {
+//	for (const auto& bond : bonds) {
+//		dest.add(bond); // Assuming 'add' appropriately adds items to the container
+//		for (int i = 0; i < bond.n; i++) {
+//			auto& last = dest.back(); // Reference to modify the last element
+//			last.atomGroIds[i] += atomnr_offset;
+//		}
+//	}
+//}
 
 
 float genRandomAngle() {
 	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI;
 }
 
-void addAtomToFile(ParsedGroFile& outputgrofile, ParsedTopologyFile& outputtopologyfile, const GroRecord& input_atom_gro, const ParsedTopologyFile::AtomsEntry input_atom_top, int atom_offset, int residue_offset, 
+void addAtomToFile(ParsedGroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
 	std::function<void(Float3&)> position_transform) 
 {
 	outputgrofile.atoms.emplace_back(input_atom_gro);
@@ -74,11 +84,11 @@ void addAtomToFile(ParsedGroFile& outputgrofile, ParsedTopologyFile& outputtopol
 	outputgrofile.atoms.back().residue_number %= 100000; // Residue ids only go to 99999
 	position_transform(outputgrofile.atoms.back().position);
 
-	outputtopologyfile.atoms.entries.emplace_back(input_atom_top);
-	outputtopologyfile.atoms.entries.back().nr += atom_offset;
-	//outputtopologyfile.atoms.entries.back().nr %= 100000;
-	outputtopologyfile.atoms.entries.back().resnr += residue_offset;
-	//outputtopologyfile.atoms.entries.back().resnr %= 100000;
+	//outputtopologyfile.atoms.entries.emplace_back(input_atom_top);
+	//outputtopologyfile.atoms.entries.back().nr += atom_offset;
+	////outputtopologyfile.atoms.entries.back().nr %= 100000;
+	//outputtopologyfile.atoms.entries.back().resnr += residue_offset;
+	////outputtopologyfile.atoms.entries.back().resnr %= 100000;
 }
 
 
@@ -92,7 +102,7 @@ void constexpr validateLipidselection(const LipidsSelection& lipidselection) {
 	}
 
 	for (const auto& lipid : lipidselection) {
-		if (lipid.grofile->atoms.size() != lipid.topfile->atoms.entries.size()) {
+		if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
 			throw std::runtime_error("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.");
 		}
 	}
@@ -168,6 +178,7 @@ namespace SimulationBuilder{
 			outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 		}
 		auto outputtopologyfile = std::make_unique<ParsedTopologyFile>();
+		outputtopologyfile->name = "monolayer";
 
 		srand(1238971);
 
@@ -192,15 +203,19 @@ namespace SimulationBuilder{
 						pos += center_offset;
 						};
 
-					addAtomToFile(*outputgrofile, *outputtopologyfile, inputgrofile.atoms[relative_atom_nr], inputtopologyfile.atoms.entries[relative_atom_nr],
-						current_atom_nr_offset, current_residue_nr_offset, position_transform);
+					addAtomToFile(*outputgrofile, inputgrofile.atoms[relative_atom_nr], current_atom_nr_offset, current_residue_nr_offset, position_transform);
 				}
 
-				overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile->singlebonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile->pairs.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile->anglebonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, current_atom_nr_offset);
-				overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, current_atom_nr_offset);
+				outputtopologyfile->AppendTopology(inputlipid.topfile);
+
+
+				//overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile->singlebonds.entries, current_atom_nr_offset);
+
+				//overwriteBond(inputtopologyfile.GetSinglebonds(), outputtopologyfile->GetSinglebonds(), current_atom_nr_offset);
+				//overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile->pairs.entries, current_atom_nr_offset);
+				//overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile->anglebonds.entries, current_atom_nr_offset);
+				//overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, current_atom_nr_offset);
+				//overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, current_atom_nr_offset);
 
 				current_residue_nr_offset++;
 			}
@@ -255,15 +270,17 @@ namespace SimulationBuilder{
 			};
 
 		for (int atom_nr = 0; atom_nr < inputfiles.grofile->atoms.size(); atom_nr++) {
-			addAtomToFile(*outputgrofile, *outputtopologyfile, outputgrofile->atoms[atom_nr], outputtopologyfile->atoms.entries[atom_nr],
-				atomnr_offset, resnr_offset, position_transform);
+			addAtomToFile(*outputgrofile, outputgrofile->atoms[atom_nr], atomnr_offset, resnr_offset, position_transform);
 		}
 
-		overwriteBond(inputfiles.topfile->singlebonds.entries, outputtopologyfile->singlebonds.entries, atomnr_offset);
-		overwriteBond(inputfiles.topfile->pairs.entries, outputtopologyfile->pairs.entries, atomnr_offset);
-		overwriteBond(inputfiles.topfile->anglebonds.entries, outputtopologyfile->anglebonds.entries, atomnr_offset);
-		overwriteBond(inputfiles.topfile->dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, atomnr_offset);
-		overwriteBond(inputfiles.topfile->improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, atomnr_offset);
+		outputtopologyfile->AppendTopology(inputfiles.topfile);
+
+		//overwriteBond(inputfiles.topfile->GetSinglebonds(), outputtopologyfile->GetSinglebonds(), atomnr_offset);
+		//overwriteBond(inputfiles.topfile->singlebonds.entries, outputtopologyfile->singlebonds.entries, atomnr_offset);
+		//overwriteBond(inputfiles.topfile->pairs.entries, outputtopologyfile->pairs.entries, atomnr_offset);
+		//overwriteBond(inputfiles.topfile->anglebonds.entries, outputtopologyfile->anglebonds.entries, atomnr_offset);
+		//overwriteBond(inputfiles.topfile->dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, atomnr_offset);
+		//overwriteBond(inputfiles.topfile->improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, atomnr_offset);
 
 
 		return { std::move(outputgrofile), std::move(outputtopologyfile) };
@@ -322,9 +339,9 @@ void SimulationBuilder::DistributeParticlesInBox(ParsedGroFile& grofile, ParsedT
 						//grofile.atoms.emplace(GroRecord{})
 
 						// Add first the basic atomtype, and then correct the IDs after
-						topfile.atoms.entries.emplace_back(atomtypeselect.atomtype);
-						topfile.atoms.entries.back().nr = groId;
-						topfile.atoms.entries.back().resnr = resNr;
+						topfile.GetLocalAtoms().emplace_back(atomtypeselect.atomtype);
+						topfile.GetLocalAtoms().back().nr = groId;
+						topfile.GetLocalAtoms().back().resnr = resNr;
 
 
 						//if (topfile.atoms.entries.size() > 1) {

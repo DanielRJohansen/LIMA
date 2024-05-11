@@ -115,7 +115,7 @@ void Environment::createSimulationFiles(float boxlen) {
 	grofile.printToFile();
 
 	ParsedTopologyFile topfile{};
-	topfile.m_path = work_dir / "molecule/topol.top";
+	topfile.path = work_dir / "molecule/topol.top";
 	topfile.printToFile();
 
 	SimParams simparams{};

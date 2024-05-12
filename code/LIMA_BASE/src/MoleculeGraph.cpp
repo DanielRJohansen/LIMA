@@ -47,12 +47,12 @@ void Chain::sort() {
 MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile) {
 	MoleculeGraph graph;
 
-	for (const auto& atom : topolfile.GetAtoms()) {
+	for (const auto& atom : topolfile.GetAllAtoms()) {
 		graph.addNode(atom.nr, atom.atomname);
 	}
 
 	//for (const auto& bond : topolfile.singlebonds.entries) {
-	for (const auto& bond : topolfile.GetSinglebonds()) {
+	for (const auto& bond : topolfile.GetAllSinglebonds()) {
 		graph.connectNodes(bond.atomGroIds[0], bond.atomGroIds[1]);
 	}
 

@@ -43,22 +43,22 @@ namespace TestMembraneBuilder {
 		ParsedTopologyFile newTop{ mol_dir / "monolayer.top" };
 		ParsedTopologyFile refTop{ mol_dir / "monolayer_reference.top" };
 
-		if (newTop.GetAtoms() != refTop.GetAtoms()) {
+		if (newTop.GetAllAtoms() != refTop.GetAllAtoms()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Atom mismatch", envmode == Full };
 		}
-		if (newTop.GetSinglebonds() != refTop.GetSinglebonds()) {
+		if (newTop.GetAllSinglebonds() != refTop.GetAllSinglebonds()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Singlebond mismatch", envmode == Full };
 		}
-		if (newTop.GetPairs() != refTop.GetPairs()) {
+		if (newTop.GetAllPairs() != refTop.GetAllPairs()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Pair mismatch", envmode == Full };
 		}
-		if (newTop.GetAnglebonds() != refTop.GetAnglebonds()) {
+		if (newTop.GetAllAnglebonds() != refTop.GetAllAnglebonds()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Anglebond mismatch", envmode == Full };
 		}
-		if (newTop.GetDihedralbonds() != refTop.GetDihedralbonds()) {
+		if (newTop.GetAllDihedralbonds() != refTop.GetAllDihedralbonds()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Dihedralbond mismatch", envmode == Full };
 		}
-		if (newTop.GetImproperDihedralbonds() != refTop.GetImproperDihedralbonds()) {
+		if (newTop.GetAllImproperDihedralbonds() != refTop.GetAllImproperDihedralbonds()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Improper mismatch", envmode == Full };
 		}
 

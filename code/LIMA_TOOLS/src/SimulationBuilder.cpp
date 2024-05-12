@@ -273,7 +273,10 @@ namespace SimulationBuilder{
 			addAtomToFile(*outputgrofile, outputgrofile->atoms[atom_nr], atomnr_offset, resnr_offset, position_transform);
 		}
 
-		outputtopologyfile->AppendTopology(inputfiles.topfile);
+		for (auto& mol : inputfiles.topfile->molecules.entries) {
+			outputtopologyfile->AppendTopology(mol.includeTopologyFile);
+		}
+		//outputtopologyfile->AppendTopology(inputfiles.topfile);
 
 		//overwriteBond(inputfiles.topfile->GetSinglebonds(), outputtopologyfile->GetSinglebonds(), atomnr_offset);
 		//overwriteBond(inputfiles.topfile->singlebonds.entries, outputtopologyfile->singlebonds.entries, atomnr_offset);

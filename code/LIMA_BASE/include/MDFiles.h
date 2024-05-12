@@ -102,7 +102,6 @@ public:
 		void composeString(std::ostringstream& oss) const;
 
 		std::string name{};	// Name of file without extension and path
-		//ParsedTopologyFile* includeTopologyFile = nullptr;
 		std::shared_ptr<ParsedTopologyFile> includeTopologyFile = nullptr;
 	};
 	
@@ -155,24 +154,11 @@ public:
 
 		bool operator==(const GenericBond<N>&) const = default;
 	};
-
 	struct SingleBond : GenericBond<2> {};
 	struct Pair : GenericBond<2> {};
 	struct AngleBond : GenericBond<3> {};
 	struct DihedralBond : GenericBond<4> {};
 	struct ImproperDihedralBond : GenericBond<4> {};
-
-
-
-
-
-
-	//using SingleBond = GenericBond<2>;
-	//using Pair = GenericBond<2>;
-	//using AngleBond = GenericBond<3>;
-	//using DihedralBond = GenericBond<4>;
-	//using ImproperDihedralBond = GenericBond<4>;
-
 
 	// Create an empty file
 	ParsedTopologyFile();
@@ -183,7 +169,7 @@ public:
 	void printToFile() const { printToFile(path); };
 
 	// Apply a mapping of resNr and GroID to all entries in this file
-	void IncrementIds(int atomNrIncrement, int resNrIncrement);
+	//void IncrementIds(int atomNrIncrement, int resNrIncrement);
 	ParsedTopologyFile copy() const { return *this; }
 
 	void AppendTopology(const std::shared_ptr<ParsedTopologyFile>& other) {
@@ -234,19 +220,14 @@ public:
 
 	template <typename T>
 	Section<T>& GetSection() {
-		if constexpr(std::is_same_v<T, AtomsEntry>) return atoms;
-		else if constexpr(std::is_same_v<T, SingleBond>) return singlebonds;
-		else if constexpr(std::is_same_v<T, Pair>) return pairs;
-		else if constexpr(std::is_same_v<T, AngleBond>) return anglebonds;
-		else if constexpr(std::is_same_v<T, DihedralBond>) return dihedralbonds;
-		else if constexpr(std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
-		else static_assert(std::is_same_v<T, AtomsEntry> ||
-			std::is_same_v<T, SingleBond> ||
-			std::is_same_v<T, Pair> ||
-			std::is_same_v<T, AngleBond> ||
-			std::is_same_v<T, DihedralBond> ||
-			std::is_same_v<T, ImproperDihedralBond>,
-			"Unknown section type");
+		if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
+		else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
+		else if constexpr (std::is_same_v<T, Pair>) return pairs;
+		else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
+		else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
+		else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+		else if constexpr (std::is_same_v<T, MoleculeEntry>) return molecules;
+		else static_assert(std::is_same_v<T, void>, "Unknown section type");
 	}
 
 	template <typename T>
@@ -257,27 +238,21 @@ public:
 		else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 		else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 		else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
-		else static_assert(std::is_same_v<T, AtomsEntry> ||
-			std::is_same_v<T, SingleBond> ||
-			std::is_same_v<T, Pair> ||
-			std::is_same_v<T, AngleBond> ||
-			std::is_same_v<T, DihedralBond> ||
-			std::is_same_v<T, ImproperDihedralBond>,
-			"Unknown section type");
+		else if constexpr (std::is_same_v<T, MoleculeEntry>) return molecules;
+		else static_assert(std::is_same_v<T, void>, "Unknown section type");
 	}
 	// ------------------------------------------------------------------------------------ //
 
 	template<typename T>
 	class SectionRange;
 
-	SectionRange<AtomsEntry> GetAtoms() const;
-	SectionRange<SingleBond> GetSinglebonds() const;
-	SectionRange<Pair> GetPairs() const;
-	SectionRange<AngleBond> GetAnglebonds() const;
-	SectionRange<DihedralBond> GetDihedralbonds() const;
-	SectionRange<ImproperDihedralBond> GetImproperDihedralbonds() const;
-
-	//SectionRange<LazyLoadFile<ParsedTopologyFile>> GetAllMolecules() const;
+	SectionRange<AtomsEntry> GetAllAtoms() const;
+	SectionRange<SingleBond> GetAllSinglebonds() const;
+	SectionRange<Pair> GetAllPairs() const;
+	SectionRange<AngleBond> GetAllAnglebonds() const;
+	SectionRange<DihedralBond> GetAllDihedralbonds() const;
+	SectionRange<ImproperDihedralBond> GetAllImproperDihedralbonds() const;
+	SectionRange<MoleculeEntry> GetAllSubMolecules() const;
 
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
@@ -288,7 +263,6 @@ public:
 	// ------------------------------------------------------------------------------ //
 
 
-	//std::unordered_map<std::string, std::shared_ptr<ParsedTopologyFile>> includedFiles;
 
 private:
 	// Private copy constructor, since this should be avoided when possible
@@ -385,89 +359,6 @@ public:
 	};
 	using Iterator = _Iterator<ParsedTopologyFile*, T>;
 	using ConstIterator = _Iterator<const ParsedTopologyFile*, const T>;
-//	class ConstIterator {
-//	public:
-//		ConstIterator() = default;
-//
-//		explicit ConstIterator(const ParsedTopologyFile* root)
-//			: currentTopology(root) {
-////			topologyStack.push(topology);
-//
-//			//if (topology) 
-//			moveToNextEntry();
-//		}
-//
-//		ConstIterator& operator++() {
-//			moveToNextEntry();
-//			return *this;
-//		}
-//
-//		const T& operator*() const {
-//			return currentTopology->GetSection<T>().entries[elementIndex];
-//		}
-//
-//		bool operator==(const ConstIterator& other) const {
-//			return currentTopology == other.currentTopology &&
-//				elementIndex == other.elementIndex;
-//		}
-//
-//		bool operator!=(const ConstIterator& other) const {
-//			return !(*this == other);
-//		}
-//
-//	private:
-//		//const ParsedTopologyFile* topology = nullptr;
-//		std::stack<std::queue<const ParsedTopologyFile*>> topologyStack;
-//		const ParsedTopologyFile* currentTopology;
-//		int elementIndex = -1;
-//		//int topoIndex = -1;
-//
-//
-//
-//		void moveToNextEntry() {
-//			while (true) {
-//
-//				// If we have no topology file, go to the next
-//				if (currentTopology == nullptr) {
-//					if (topologyStack.empty()) {
-//						*this = ConstIterator();
-//						return;
-//					}
-//					if (topologyStack.top().empty()) {
-//						topologyStack.pop();
-//						continue;
-//					}	
-//					currentTopology = topologyStack.top().front();
-//					topologyStack.top().pop();
-//					elementIndex = -1;
-//				}
-//
-//				// If our current topology has no more elements, add all include files
-//				if (elementIndex + 1 == currentTopology->GetSection<T>().entries.size()) {
-//
-//					if (currentTopology->molecules.entries.size() > 0) {
-//						topologyStack.push({});
-//						for (auto& mol : currentTopology->molecules.entries)
-//							topologyStack.top().push(mol.includeTopologyFile.get());
-//
-//						elementIndex = -1;
-//						currentTopology = topologyStack.top().front();
-//						topologyStack.top().pop();
-//						continue;
-//					}
-//
-//					currentTopology = nullptr;
-//					continue;
-//				}
-//
-//				elementIndex++;
-//				return;
-//			}		
-//		}
-//	};
-
-
-
 
 	explicit SectionRange(ParsedTopologyFile* const topology) : topology(topology) {
 		//topology->LoadAllSubMolecules();

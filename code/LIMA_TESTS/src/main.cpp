@@ -80,7 +80,7 @@ int main() {
 
 		//Benchmarks::MembraneWithPsome(envmode);
 		
-		/*const fs::path work_dir = simulations_dir + "/test";
+	/*	const fs::path work_dir = simulations_dir + "/test";
 		Environment env{ work_dir.string(), envmode, false };
 		env.CreateSimulation(20.f);
 		LipidsSelection lipids;

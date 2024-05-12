@@ -12,7 +12,7 @@ namespace Benchmarks {
 	static void MembraneWithPsome(EnvMode envmode) {
 		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
 
-		bool buildFromScratch = true;
+		bool buildFromScratch = false;
 		if (buildFromScratch) {
 			Environment env{ work_dir.string(), envmode, false };
 			const float boxlen = 20.f;

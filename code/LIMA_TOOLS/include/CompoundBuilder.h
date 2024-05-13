@@ -75,7 +75,19 @@ struct ParticleInfo : public Atom{
 };
 using ParticleInfoTable = std::vector<ParticleInfo>;
 
-struct AtomRef;
+struct AtomRef {
+	AtomRef() = default;
+	AtomRef(const GroRecord* groAtom, const ParsedTopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
+		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId) {}
+	const GroRecord* groAtom = nullptr;
+	const ParsedTopologyFile::AtomsEntry* topAtom = nullptr;
+	int activeLjtypeParameterIndex = -1;
+	int uniqueResId = -1;
+
+	// Only available once the compounds have been created
+	int compoundId = -1;
+	int localIdInCompound = -1;
+};
 
 class CompoundFactory : public Compound {
 public:
@@ -116,7 +128,7 @@ public:
 	int id = -1;	// unique lima id
 
 
-	void AddBond(const std::vector<AtomRef>)
+	//void AddBond(const std::vector<AtomRef>)
 
 	void addBond(const ParticleInfoTable&, const SingleBondFactory&);
 	void addBond(const ParticleInfoTable&, const AngleBondFactory&);
@@ -154,6 +166,7 @@ public:
 		n_compounds = _compound_ids.size();
 	}
 
+	void AddBond(const SingleBondFactory& bond, std::vector<AtomRef> atoms);
 
 	void addBond(ParticleInfoTable&, const SingleBondFactory&);
 	void addBond(ParticleInfoTable&, const AngleBondFactory&);

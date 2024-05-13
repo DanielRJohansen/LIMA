@@ -295,141 +295,152 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 			molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
 			//includeTopology.includeTopologyFile = includedFiles.at(includeTopology.name).Get().get();
 		}
-		//LoadAllSubMolecules();
-
-		return;
 	}
+	else {
 
 
+		assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
 
-	assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
+		const char delimiter = ' ';
+		const std::vector<char> ignores = { ';', '#' };
 
-	const char delimiter = ' ';
-	const std::vector<char> ignores = { ';', '#' };
-
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
-	}
-
-	TopologySection current_section{ TopologySection::title };
-	TopologySectionGetter getTopolSection{};
-
-	std::string line{}, word{};
-	std::string sectionname = "";
-//	std::vector<std::future<std::pair<std::string, std::unique_ptr<ParsedTopologyFile>>>> includeTopologies;	// <name, file>
-
-	while (getline(file, line)) {
-
-		if (line.size() == 0) {
-			current_section = no_section;
-			continue;
+		std::ifstream file;
+		file.open(path);
+		if (!file.is_open() || file.fail()) {
+			throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 		}
 
-		if (line[0] == '[') {
-			current_section = getTopolSection(extractSectionName(line));
-			continue;
-		}
+		TopologySection current_section{ TopologySection::title };
+		TopologySectionGetter getTopolSection{};
 
-		// Check if current line is commented
-		if (firstNonspaceCharIs(line, ';') && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
+		std::string line{}, word{};
+		std::string sectionname = "";
+		//	std::vector<std::future<std::pair<std::string, std::unique_ptr<ParsedTopologyFile>>>> includeTopologies;	// <name, file>
 
-		std::istringstream iss(line);
-		switch (current_section)
-		{
-		case TopologySection::title:
-			title.append(line + "\n");	// +\n because getline implicitly strips it away.
-			break;
-		case TopologySection::molecules: {
-			// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
-			std::string include_name;
-			iss >> include_name;
+		while (getline(file, line)) {
 
-			// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
-			if (include_name == "SOL")
+			if (line.size() == 0) {
+				current_section = no_section;
 				continue;
-
-			
-			if (includedFiles.count(include_name) == 0) {
-				//const fs::path include_path = fs::exists(path.parent_path() / (include_name + ".itp"))
-				//	? path.parent_path() / (include_name + ".itp")
-				//	: path.parent_path() / ("topol_" + include_name + ".itp");
-
-
-				const fs::path includePath = SearchForFile(path.parent_path(), include_name);
-				includedFiles.emplace(include_name, includePath);
 			}
 
-			molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get());
-		}
-		case moleculetype:
-		{
-			ParsedTopologyFile::MoleculetypeEntry moleculetype{};
-			iss >> moleculetype.name >> moleculetype.nrexcl;
-			moleculetypes.entries.emplace_back(moleculetype);
-			break;
-		}
-		case TopologySection::atoms:
-		{
-			if (firstNonspaceCharIs(line, ';')) {
-				// TODO: Test for residue or lipid_section in the [1] position of the comment instead
-				if (iss.str().find("type") == std::string::npos) {
-					sectionname = line;
+			if (line[0] == '[') {
+				current_section = getTopolSection(extractSectionName(line));
+				continue;
+			}
+
+			// Check if current line is commented
+			if (firstNonspaceCharIs(line, ';') && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
+
+			std::istringstream iss(line);
+			switch (current_section)
+			{
+			case TopologySection::title:
+				title.append(line + "\n");	// +\n because getline implicitly strips it away.
+				break;
+			case TopologySection::molecules: {
+				// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
+				std::string include_name;
+				iss >> include_name;
+
+				// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
+				if (include_name == "SOL")
+					continue;
+
+
+				if (includedFiles.count(include_name) == 0) {
+					//const fs::path include_path = fs::exists(path.parent_path() / (include_name + ".itp"))
+					//	? path.parent_path() / (include_name + ".itp")
+					//	: path.parent_path() / ("topol_" + include_name + ".itp");
+
+
+					const fs::path includePath = SearchForFile(path.parent_path(), include_name);
+					includedFiles.emplace(include_name, includePath);
 				}
-			}
-			else {
-				ParsedTopologyFile::AtomsEntry atom;
-				iss >> atom.nr >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
-				atoms.entries.emplace_back(atom);
 
-				if (sectionname != "") {
-					atoms.entries.back().section_name = sectionname;
-					sectionname = "";
-				}
+				molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get());
 			}
-			break;
+			case moleculetype:
+			{
+				ParsedTopologyFile::MoleculetypeEntry moleculetype{};
+				iss >> moleculetype.name >> moleculetype.nrexcl;
+				moleculetypes.entries.emplace_back(moleculetype);
+				break;
+			}
+			case TopologySection::atoms:
+			{
+				if (firstNonspaceCharIs(line, ';')) {
+					// TODO: Test for residue or lipid_section in the [1] position of the comment instead
+					if (iss.str().find("type") == std::string::npos) {
+						sectionname = line;
+					}
+				}
+				else {
+					ParsedTopologyFile::AtomsEntry atom;
+					iss >> atom.nr >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
+					atoms.entries.emplace_back(atom);
+
+					if (sectionname != "") {
+						atoms.entries.back().section_name = sectionname;
+						sectionname = "";
+					}
+				}
+				break;
+			}
+			case TopologySection::bonds: {
+				ParsedTopologyFile::SingleBond singlebond{};
+				iss >> singlebond.atomGroIds[0] >> singlebond.atomGroIds[1] >> singlebond.funct;
+				singlebonds.entries.emplace_back(singlebond);
+				break;
+			}
+			case TopologySection::pairs: {
+				ParsedTopologyFile::Pair pair{};
+				iss >> pair.atomGroIds[0] >> pair.atomGroIds[1] >> pair.funct;
+				pairs.entries.emplace_back(pair);
+				break;
+			}
+			case TopologySection::angles: {
+				ParsedTopologyFile::AngleBond angle{};
+				// TODO: We need some safety check here, that we have enough data to fill all values
+				iss >> angle.atomGroIds[0] >> angle.atomGroIds[1] >> angle.atomGroIds[2] >> angle.funct;
+				anglebonds.entries.emplace_back(angle);
+				break;
+			}
+			case TopologySection::dihedrals: {
+				ParsedTopologyFile::DihedralBond dihedral{};
+				iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
+				dihedralbonds.entries.emplace_back(dihedral);
+				break;
+			}
+			case TopologySection::impropers: {
+				ParsedTopologyFile::ImproperDihedralBond improper{};
+				iss >> improper.atomGroIds[0] >> improper.atomGroIds[1] >> improper.atomGroIds[2] >> improper.atomGroIds[3] >> improper.funct;
+				improperdihedralbonds.entries.emplace_back(improper);
+				break;
+			}
+			default:
+				// Do nothing
+				//throw std::runtime_error("Illegal state");
+				break;
+			}
 		}
-		case TopologySection::bonds: {
-			ParsedTopologyFile::SingleBond singlebond{};
-			iss >> singlebond.atomGroIds[0] >> singlebond.atomGroIds[1] >> singlebond.funct;
-			singlebonds.entries.emplace_back(singlebond);
-			break;
-		}
-		case TopologySection::pairs: {
-			ParsedTopologyFile::Pair pair{};
-			iss >> pair.atomGroIds[0] >> pair.atomGroIds[1] >> pair.funct;
-			pairs.entries.emplace_back(pair);
-			break;
-		}
-		case TopologySection::angles: {
-			ParsedTopologyFile::AngleBond angle{};
-			iss >> angle.atomGroIds[0] >> angle.atomGroIds[1] >> angle.atomGroIds[2] >> angle.funct;
-			anglebonds.entries.emplace_back(angle);
-			break;
-		}
-		case TopologySection::dihedrals: {
-			ParsedTopologyFile::DihedralBond dihedral{};
-			iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
-			dihedralbonds.entries.emplace_back(dihedral);
-			break;
-		}
-		case TopologySection::impropers: {
-			ParsedTopologyFile::ImproperDihedralBond improper{};
-			iss >> improper.atomGroIds[0] >> improper.atomGroIds[1] >> improper.atomGroIds[2] >> improper.atomGroIds[3] >> improper.funct;
-			improperdihedralbonds.entries.emplace_back(improper);
-			break;
-		}
-		default:
-			// Do nothing
-			//throw std::runtime_error("Illegal state");
-			break;
-		}
+		WriteFileToBinaryCache(*this);
 	}
 
-	//LoadAllSubMolecules();
 
-	WriteFileToBinaryCache(*this);
+	// Verify that atoms id's are q sequence starting at 0
+	for (int i = 0; i < atoms.entries.size(); i++) {
+		if (atoms.entries[i].nr != i+1) {
+			throw std::runtime_error("Atoms are not in sequence starting at 1");
+		}
+	}
+	for (const auto& mol : molecules.entries) {
+		for (int i = 0; i < mol.includeTopologyFile->atoms.entries.size(); i++) {
+			if (mol.includeTopologyFile->atoms.entries[i].nr != i+1) {
+				throw std::runtime_error("Atoms are not in sequence starting at 1");
+			}
+		}
+	}
 }
 
 void ParsedGroFile::printToFile(const std::filesystem::path& path) const {

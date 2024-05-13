@@ -40,6 +40,7 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 };
 struct SingleBondFactory : public SingleBond {
 	SingleBondFactory(std::array<uint32_t, 2> ids, float b0, float kb);
+	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond& parameters);
 
 	uint32_t global_atom_indexes[2] = { 0,0 };
 };
@@ -55,6 +56,7 @@ struct AngleBond {
 };
 struct AngleBondFactory : public AngleBond {
 	AngleBondFactory(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
+	AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond& bondparameters);
 
 	uint32_t global_atom_indexes[3] = { 0,0, 0 };
 };
@@ -71,6 +73,7 @@ struct DihedralBond {
 };
 struct DihedralBondFactory : public DihedralBond {
 	DihedralBondFactory(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
+	DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond& bondparameters);
 
 	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };
@@ -88,6 +91,7 @@ struct ImproperDihedralBond {
 };
 struct ImproperDihedralBondFactory : public ImproperDihedralBond {
 	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
+	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond& bondparameters);
 
 	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };

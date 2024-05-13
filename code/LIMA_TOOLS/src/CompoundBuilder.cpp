@@ -964,6 +964,461 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct TopologyFileRef {
+	TopologyFileRef(int offset, const ParsedTopologyFile& topol) : atomsOffset(offset), topology(topol) {}
+	int atomsOffset = 0;
+	const ParsedTopologyFile& topology;
+};
+
+std::vector<TopologyFileRef> PrepareTopologies(const ParsedTopologyFile& topol) {
+	std::vector<TopologyFileRef> topologies;
+	int offset = 0;
+
+	topologies.push_back({ offset, topol });
+	offset += topol.GetLocalAtoms().size();
+	for (const auto& molecule : topol.GetAllSubMolecules()) {
+		topologies.emplace_back(TopologyFileRef{offset, *molecule.includeTopologyFile });
+		offset += molecule.includeTopologyFile->GetLocalAtoms().size();
+	}
+	return topologies;
+}
+
+
+struct AtomRef {
+	AtomRef() = default;
+	AtomRef(const GroRecord* groAtom, const ParsedTopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId) 
+		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId) {}
+	const GroRecord* groAtom = nullptr;
+	const ParsedTopologyFile::AtomsEntry* topAtom = nullptr;
+	int activeLjtypeParameterIndex = -1;
+	int uniqueResId = -1;
+
+	// Only available once the compounds have been created
+	int compoundId = -1;
+	int localIdInCompound = -1;
+};
+std::vector<AtomRef> PrepareAtoms(const std::vector<TopologyFileRef>& topologyFiles, const ParsedGroFile& grofile, LIMAForcefield& forcefield, int nNonsolventAtoms) {
+	std::vector<AtomRef> atomRefs(nNonsolventAtoms);
+	
+	int globalIndex = 0;
+	int uniqueResId = 0;
+	for (const auto& topology : topologyFiles) {
+		bool atomsAddedThisTop = false;
+		for (const auto& atom : topology.topology.GetLocalAtoms()) {
+			atomsAddedThisTop = true;
+			// TODO: Handle ignore atoms (H) somehow?			
+			// TODO: When accessing gro file, first check that it is not a solvent
+			atomRefs[globalIndex] = AtomRef{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(atom.type), uniqueResId };
+
+			if (globalIndex > 0 && atomRefs[globalIndex - 1].topAtom->resnr != atom.resnr) {
+				uniqueResId++;
+			}
+			globalIndex++;		
+		}
+
+		if (atomsAddedThisTop) { uniqueResId++; }
+	}
+
+	// TODO: At this point we still need to load the solvents, they should come now
+
+	return atomRefs;
+}
+
+
+template <typename BondtypeTopology, typename Bondtype, typename BondtypeFactory>
+BondtypeFactory LoadBondsIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, LIMAForcefield& forcefield, const std::vector<AtomRef>& atomRefs)
+{
+	std::array<uint32_t, bondTopol.n> globalIds{};
+	for (int i = 0; i < bondTopol.n; i++) {
+		globalIds[i] = bondTopol.atomGroIds[i] + atomIdOffset - 1;	// -1 because we switch from 1-indexed to 0-indexed here
+		if (globalIds[i] >= atomRefs.size())
+			throw std::runtime_error("Bond refers to atom that has not been loaded");
+	}
+
+	std::array<std::string, bondTopol.n> atomTypenames{};
+	for (int i = 0; i < bondTopol.n; i++) {
+		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
+	}
+
+	const Bondtype& bondparameter = forcefield.GetBondParameters<Bondtype>(atomTypenames); //forcefield.GetSinglebondParameters(atomTypenames);
+	return BondtypeFactory( globalIds, bondparameter.ToStandardBondRepresentation());
+}
+
+Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, LIMAForcefield& forcefield, const std::vector<AtomRef>& atomRefs) {
+	Topology topology;
+
+	for (const auto& topologyFile : topologyFiles) {
+		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {
+			topology.singlebonds.emplace_back(
+				LoadBondsIntoTopology<ParsedTopologyFile::SingleBond, Singlebondtype, SingleBondFactory>(bondTopol, topologyFile.atomsOffset, forcefield, atomRefs));
+		}
+
+		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {
+			topology.anglebonds.emplace_back(
+				LoadBondsIntoTopology<ParsedTopologyFile::AngleBond, Anglebondtype, AngleBondFactory>(bondTopol, topologyFile.atomsOffset, forcefield, atomRefs));
+		}
+
+		for (const auto& bondTopol : topologyFile.topology.GetLocalDihedralbonds()) {
+			topology.dihedralbonds.emplace_back(
+				LoadBondsIntoTopology<ParsedTopologyFile::DihedralBond, Dihedralbondtype, DihedralBondFactory>(bondTopol, topologyFile.atomsOffset, forcefield, atomRefs));
+		}
+
+		for (const auto& bondTopol : topologyFile.topology.GetLocalImproperDihedralbonds()) {
+			topology.improperdihedralbonds.emplace_back(
+				LoadBondsIntoTopology<ParsedTopologyFile::ImproperDihedralBond, Improperdihedralbondtype, ImproperDihedralBondFactory>(bondTopol, topologyFile.atomsOffset, forcefield, atomRefs));
+		}
+	}
+
+	return topology;
+}
+
+
+
+std::vector<std::vector<int>> MapAtomsToSinglebonds(const std::vector<AtomRef>& preparedAtoms, const Topology& topology) {
+	std::vector<std::vector<int>> atomIdToSinglebondsMap(preparedAtoms.size());
+
+
+	for (int i = 0; i < topology.singlebonds.size(); i++) {
+		const auto& bond = topology.singlebonds[i];
+		atomIdToSinglebondsMap[bond.atom_indexes[0]].push_back(i);
+		atomIdToSinglebondsMap[bond.atom_indexes[1]].push_back(i);
+	}
+
+	return atomIdToSinglebondsMap;
+}
+
+
+struct Residue1 {
+	std::vector<int> atomIds;
+};
+
+std::vector<Residue1> MakeResidues(const std::vector<AtomRef>& preparedAtoms, const Topology& topology) {
+	std::vector<Residue1> residues(preparedAtoms.back().uniqueResId+1);
+
+	int currentResidueId = -1;
+
+	for (int i = 0; i < preparedAtoms.size(); i++) {
+		const auto atom = preparedAtoms[i];
+		residues[atom.uniqueResId].atomIds.push_back(i);
+	}
+
+	return residues;
+}	
+
+
+bool areBonded(const Residue1& left, const Residue1& right, const std::vector<AtomRef>& preparedAtoms, const std::vector<std::vector<int>>& atomIdToSinglebondsMap) {
+	//assert(left != right);
+
+	for (auto& atomleft_gid : left.atomIds) {
+		for (auto& atomright_gid : right.atomIds) {
+			const std::vector<int>& atomleft_singlesbonds = atomIdToSinglebondsMap[atomleft_gid];
+			const std::vector<int>& atomright_singlesbonds = atomIdToSinglebondsMap[atomright_gid];
+			
+			// If any singlebond id's match, return true
+			// Check if any singlebond id from left matches any in right
+			if (std::any_of(atomleft_singlesbonds.begin(), atomleft_singlesbonds.end(), [&](int id) {
+				return std::find(atomright_singlesbonds.begin(), atomright_singlesbonds.end(), id) != atomright_singlesbonds.end();
+				})) {
+				return true; // Return true if any singlebond id's match
+			}
+		}
+	}
+	return false;
+}
+
+std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float boxlen_nm, const std::vector<Residue1>& residues, 
+	std::vector<AtomRef>& preparedAtoms, const std::vector<std::vector<int>>& atomIdToSinglebondsMap, BoundaryConditionSelect bc_select)
+{
+	std::vector<CompoundFactory> compounds;
+	int current_residue_id = -1;
+
+	for (int residue_index = 0; residue_index < residues.size(); residue_index++) {
+		const Residue1& residue = residues[residue_index];
+
+		const bool is_bonded_with_previous_residue = residue_index > 0 && areBonded(residues[residue_index - 1], residue, preparedAtoms, atomIdToSinglebondsMap);
+		const bool compound_has_room_for_residue = residue_index > 0 && compounds.back().hasRoomForRes(residue.atomIds.size());
+
+		// If we are either a new molecule, or same molecule but the current compound has no more room, make new compound
+		if (residue_index == 0 || !is_bonded_with_previous_residue || !compound_has_room_for_residue) {
+			if (compounds.size() >= MAX_COMPOUNDS) {
+				throw std::runtime_error(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
+			}
+
+			compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
+
+			if (is_bonded_with_previous_residue) {
+				compounds.back().indicesOfBondconnectedCompounds.push_back(compounds.size() - 2);
+				compounds[compounds.size() - 2].indicesOfBondconnectedCompounds.push_back(compounds.size() - 1);
+			}
+		}
+		
+
+		// Add all atoms of residue to current compound
+		for (int i = 0; i < residue.atomIds.size(); i++) {
+			const int atom_gid = residue.atomIds[i];
+			compounds.back().addParticle(
+				preparedAtoms[atom_gid].groAtom->position,
+				preparedAtoms[atom_gid].activeLjtypeParameterIndex,
+				preparedAtoms[atom_gid].topAtom->type[0],
+				atom_gid,
+				boxlen_nm, 
+				bc_select,
+				preparedAtoms[atom_gid].topAtom->charge
+			);
+
+			preparedAtoms[atom_gid].compoundId = compounds.size() - 1;
+			preparedAtoms[atom_gid].localIdInCompound = compounds.back().n_particles - 1;
+		}
+	}
+
+	return compounds;
+}
+
+
+std::vector<BridgeFactory> CreateBridges(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<AtomRef>& atoms)
+{
+	std::vector<BridgeFactory> compoundBridges;
+
+
+	// First find which ompounds are bonded to other compounds. I assume singlebonds should find all these, 
+	// since angles and dihedrals make no sense if the singlebond is not present, as the distances between the atoms can then be extremely large
+	std::vector<std::unordered_set<int>> compound_to_bondedcompound_table(compounds.size());
+	for (const auto& bond : singlebonds) {
+		const int particle_gid_left = bond.global_atom_indexes[0];
+		const int particle_gid_right = bond.global_atom_indexes[1];
+
+		const int compound_gid_left = atoms[particle_gid_left].compoundId;
+		const int compound_gid_right = atoms[particle_gid_right].compoundId;
+
+		if (compound_gid_left != compound_gid_right) {
+			compound_to_bondedcompound_table[compound_gid_left].insert(compound_gid_right);
+			compound_to_bondedcompound_table[compound_gid_right].insert(compound_gid_left);
+		}
+	}
+
+	// Knowing which compounds are bonded we can create the bridges.
+	for (int compound_id_self = 0; compound_id_self < compound_to_bondedcompound_table.size(); compound_id_self++) {
+		const std::unordered_set<int>& bonded_compounds_set = compound_to_bondedcompound_table[compound_id_self];
+
+		// if a compound is the entire molecule, this set will be empty, and that is alright
+		if (bonded_compounds_set.empty()) {
+			continue;
+		}
+
+		// A compound can not be bonded to itself
+		if (compound_id_self == *std::min_element(bonded_compounds_set.begin(), bonded_compounds_set.end())) {
+			throw std::runtime_error("Something went wrong in the createBridges algorithm");
+		}
+
+
+		// Each compound is only allowed to create a bridge to compounds with a larger id
+		std::vector<int> bridge_compound_ids{ compound_id_self };
+		for (auto compound_id_other : bonded_compounds_set) {
+			if (compound_id_other > compound_id_self) {
+				bridge_compound_ids.push_back(compound_id_other);
+			}
+		}
+
+		// Note that this bridge might contain more compounds than this compound proposes to bridge, as it was made by a compound with a lower id, that is compound does not include!
+		if (!compoundsAreAlreadyConnected(bridge_compound_ids, compoundBridges)) {
+			compoundBridges.push_back(BridgeFactory{ static_cast<int>(compoundBridges.size()), bridge_compound_ids });
+
+		}
+	}
+
+	return compoundBridges;
+}
+
+
+
+
+
+
+
+
+
+template <int n_ids>
+bool SpansTwoCompounds(const uint32_t* bond_globalids, const std::vector<AtomRef>& atoms) {
+	const int compoundid_left = atoms[bond_globalids[0]].compoundId;
+
+	for (int i = 1; i < n_ids; i++) {
+		if (compoundid_left != atoms[bond_globalids[i]].compoundId) {
+			return true;
+		}
+	}
+	return false;
+}
+
+template <int n_ids>
+void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<AtomRef>& atoms, const uint32_t* global_ids) {
+	for (int i = 0; i < n_ids; i++) {
+		auto gid_self = global_ids[i];
+		for (int j = 0; j < n_ids; j++) {
+			auto gid_other = global_ids[j];
+
+			if (gid_self == gid_other) { continue; }
+		
+			const int compoundIndexSelf = atoms[gid_self].compoundId;
+			const int compoundIndexOther = atoms[gid_other].compoundId;
+
+
+			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(compoundIndexSelf, compoundIndexOther);
+			BondedParticlesLUT* lut = bplut_man->get(compoundIndexSelf, compoundIndexOther, true);
+			lut->set(atoms[gid_self].localIdInCompound, atoms[gid_other].localIdInCompound, true);
+		}
+	}
+}
+
+
+template <int n_ids>
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t* particle_global_ids
+//	, std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges
+)
+{
+	std::array<int, 2> compound_ids = getTheTwoDifferentIds<n_ids>(particle_global_ids, particleinfolut);
+
+	//// Check if the compound_id is already associated with bridges
+	//auto it = compoundToBridges.find(compound_ids[0]);
+	//if (it != compoundToBridges.end()) {
+	//	for (BridgeFactory* bridge : it->second) {
+	//		if (bridgeContainsTheseTwoCompounds(*bridge, compound_ids)) {
+	//			return *bridge;
+	//		}
+	//	}
+	//}
+
+
+	// If not found in the lookup or no matching bridge, search through all bridges
+	for (BridgeFactory& bridge : bridges) {
+		if (bridgeContainsTheseTwoCompounds(bridge, compound_ids)) {
+			// Cache the bridge reference for the first compound_id
+//			compoundToBridges[compound_ids[0]].push_back(&bridge);
+			return bridge;
+		}
+	}
+
+	throw std::runtime_error(std::format("Failed to find the bridge ({})", n_ids).c_str());
+}
+
+template <typename BondTypeFactory>
+void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds, const std::vector<AtomRef>& atoms) {
+
+	constexpr int atoms_in_bond = BondTypeFactory::n_atoms;
+
+	for (auto& bond : bonds) {
+
+		if (SpansTwoCompounds<atoms_in_bond>(bond.global_atom_indexes, atoms)) {
+			BridgeFactory& bridge = getBridge<atoms_in_bond>(compound_bridges, bond.global_atom_indexes);
+			bridge.addBond(particleinfotable, bond);
+		}
+		else {
+			const int compound_id = atoms[bond.global_atom_indexes[0]].compoundId;	// Pick compound using first particle in bond
+			//const int compound_id = particleinfotable[bond.global_atom_indexes[0]].compound_index;	// Pick compound using first particle in bond
+			CompoundFactory& compound = compounds.at(compound_id);
+			compound.addBond(particleinfotable, bond);
+		}
+
+		distributeLJIgnores<atoms_in_bond>(bp_lut_manager.get(), particleinfotable, bond.global_atom_indexes);
+	}
+}
+
+void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen_nm, const std::vector<AtomRef>& atoms, BoundaryConditionSelect bc_select, 
+	const std::vector<CompoundFactory>& compounds) 
+{
+	auto bp_lut_manager = std::make_unique<BondedParticlesLUTManager>();
+
+	// First check that we dont have any unrealistic bonds, and warn immediately.
+	for (const auto& bond : topology.singlebonds) {
+		int gid1 = bond.global_atom_indexes[0];
+		int gid2 = bond.global_atom_indexes[1];
+
+		const Float3 pos1 = atoms[gid1].groAtom->position;
+		const Float3 pos2 = atoms[gid2].groAtom->position;
+		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&pos1, &pos2, boxlen_nm, bc_select);
+		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
+		}
+	}
+
+	DistributeBondsToCompoundsAndBridges(topology.singlebonds);
+	//m_logger->print(std::format("Added {} singlebonds to molecule\n", topology.singlebonds.size()));
+	DistributeBondsToCompoundsAndBridges(topology.anglebonds);
+	//m_logger->print(std::format("Added {} anglebonds to molecule\n", topology.anglebonds.size()));
+	DistributeBondsToCompoundsAndBridges(topology.dihedralbonds);
+	//m_logger->print(std::format("Added {} dihedralbonds to molecule\n", topology.dihedralbonds.size()));
+	DistributeBondsToCompoundsAndBridges(topology.improperdihedralbonds);
+	//m_logger->print(std::format("Added {} improper dihedralbonds to molecule\n", topology.improperdihedralbonds.size()));
+
+
+	// While are particle is never bonded to itself, we are not allowed to calc LJ with itself
+	// so we can doubly use this lut to avoid doing that
+
+	for (int com_id = 0; com_id < compounds.size(); com_id++) {
+		auto* lut = bp_lut_manager->get(com_id, com_id);
+		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
+			lut->set(pid, pid, true);
+		}
+	}
+
+	// Finally tell each compound which other compounds they are bonded to for faster lookup of LUTs
+	for (const auto& bridge : compound_bridges) {
+		for (int i = 0; i < bridge.n_compounds; i++) {
+			for (int ii = i + 1; ii < bridge.n_compounds; ii++) {
+				if (bridge.compound_ids[i] == bridge.compound_ids[ii]) {
+					throw std::runtime_error("A bridge contains the same compound twice");
+				}
+				compounds[bridge.compound_ids[i]].addIdOfBondedCompound(bridge.compound_ids[ii]);
+				compounds[bridge.compound_ids[ii]].addIdOfBondedCompound(bridge.compound_ids[i]);
+			}
+		}
+	}
+}
+
+
+
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::string& molecule_dir,
 	//const std::string& gro_name,
@@ -975,6 +1430,27 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	BoundaryConditionSelect bc_select
 ) 
 {
+	// Solvents are not present in top file, so we can't require these to match
+	const int nNonsolventAtoms = topol_file.GetElementCount<ParsedTopologyFile::AtomsEntry>();
+	assert(gro_file.atoms.size() >= nNonsolventAtoms);
+	const std::vector<TopologyFileRef> preparedTopologyFiles = PrepareTopologies(topol_file);
+
+	LIMAForcefield forcefield{};
+
+	std::vector<AtomRef> preparedAtoms = PrepareAtoms(preparedTopologyFiles, gro_file, forcefield, nNonsolventAtoms);
+
+	Topology topology = LoadTopology(preparedTopologyFiles, forcefield, preparedAtoms);
+
+	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
+
+	std::vector<Residue1> residues = MakeResidues(preparedAtoms, topology);
+
+
+	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, residues, preparedAtoms, atomIdToSinglebondsMap, bc_select);
+	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
+
+
+
 	LimaForcefieldBuilder::buildForcefield(molecule_dir, molecule_dir, topol_file, EnvMode::Headless);	// Doesnt actually use .gro now..
 
 	MoleculeBuilder mb{ std::move(logger), bc_select, vl };

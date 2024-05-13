@@ -540,3 +540,155 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 	printFFBonded(lfs::pathJoin(output_dir, "ffbonded.lff"), topology);
 	//logger.finishSection("Prepare Forcefield has finished");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) {
+	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
+
+		//if (row.section == "ATOMS") {
+		//	assert(row.words.size() >= 4);
+
+		//	const string& atomtype = row.words[2];
+		//	const float mass = stof(row.words[3]);		// Should this come from topol too?
+
+		//	forcefield.atomnameToMassMap.insert(std::pair{ atomtype, mass });
+
+		//	//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
+		//	//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
+		//}
+		if (row.section == "pairtypes") {
+			// TODO: Fill out this logic
+		}
+		else if (row.section == "BONDS") {
+			assert(row.words.size() >= 4);
+
+			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
+			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f;		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
+			const float b0 = stof(row.words[3]) * AngToNm;	// A to nm
+
+			singlebondParameters.insert(Singlebondtype(bondedatom_typenames, b0, kb));
+		}
+		else if (row.section == "ANGLES") {
+			assert(row.words.size() >= 5);
+
+			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
+			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
+			const float theta0 = stof(row.words[4]) * degreeToRad;
+
+			anglebondParameters.insert(Anglebondtype(angle_typenames, theta0, ktheta));
+		}
+		else if (row.section == "DIHEDRALS") {
+			assert(row.words.size() >= 7);
+
+			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+			const float kphi = stof(row.words[4]) * kcalToJoule;
+			const int n = stoi(row.words[5]);
+			const float phi0 = stof(row.words[6]) * degreeToRad;
+
+			dihedralbondParameters.insert(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
+		}
+		else if (row.section == "IMPROPER") {
+			assert(row.words.size() >= 7);
+
+			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
+			const float psi0 = stof(row.words[6]) * degreeToRad;
+
+			// TODO: Check that the entry doesn't already exists. Current we sort these bonds, which i am really not very comfortable with, 
+			// as the order here should be quite relevant?
+			improperdihedralbondParameters.insert(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
+		}
+		else if (row.section == "NONBONDED") {
+			assert(row.words.size() >= 4);
+
+			const string& atomtype = row.words[0];
+			const float epsilon = abs(stof(row.words[2]) * kcalToJoule);	// For some fucked reason the eps is *inconsistently* negative...
+			const float sigma = stof(row.words[3]) * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [nm]
+
+			LJParameter entry{ { atomtype }, epsilon, sigma };
+
+			ljParameters.insert(entry);
+
+			//ljParameters.emplace_back(LJParameter({ atomtype }, epsilon, sigma));
+			// Not yet used
+			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma
+			//const float sigma_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma			
+		}
+	}
+}
+
+LIMAForcefield::LIMAForcefield() {
+	bool verbose = false;
+	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
+	// Check if filtered files already exists, if so return
+
+	std::vector<std::string> files = getFiles();
+
+	for (auto& file_path : files) {
+		const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
+		loadFileIntoForcefield(parsedfile);
+	}
+}

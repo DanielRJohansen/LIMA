@@ -20,7 +20,7 @@
 
 
 
-
+#include "Bodies.cuh"
 
 
 #include <map>
@@ -144,15 +144,27 @@ struct BondtypeBase {
 
 
 	virtual void sort() {};
-	virtual void flip() = 0;
+	virtual void flip() {};
 
 	std::array<std::string, n_atoms> bonded_typenames;
 	std::array<int, n_atoms> global_ids;
 };
 
+struct LJParameter : public BondtypeBase<1> {
+	static const int n_atoms = 1;
+
+
+	LJParameter(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {}
+	LJParameter(const std::array<std::string, n_atoms>& typenames, float epsilon, float sigma) : BondtypeBase(typenames), epsilon(epsilon), sigma(sigma) {}
+
+
+	float epsilon;
+	float sigma;
+};
+
 struct Singlebondtype : public BondtypeBase<2>{
 	static const int n_atoms = 2;
-	Singlebondtype(const std::array<std::string, n_atoms>& typenames, float b0, float kb) : BondtypeBase(typenames), b0(b0), kb(kb) {
+	Singlebondtype(const std::array<std::string, n_atoms>& typenames, float b0 = 0.f, float kb = 0.f) : BondtypeBase(typenames), b0(b0), kb(kb) {
 		sort();
 	}
 	Singlebondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
@@ -162,6 +174,9 @@ struct Singlebondtype : public BondtypeBase<2>{
 
 	float b0{};
 	float kb{};
+
+	/*void sort() {};
+	void flip() = 0;*/
 
 	void assignForceVariables(const Singlebondtype& a) {
 		b0 = a.b0;
@@ -176,6 +191,10 @@ struct Singlebondtype : public BondtypeBase<2>{
 			flip();
 		}			
 	}
+
+	SingleBond ToStandardBondRepresentation() const {
+		return SingleBond{ {0,0}, b0, kb};	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
+	}
 };
 
 
@@ -183,7 +202,7 @@ struct Singlebondtype : public BondtypeBase<2>{
 
 struct Anglebondtype : public BondtypeBase<3> {
 	static const int n_atoms = 3;
-	Anglebondtype(const std::array<std::string, n_atoms>& typenames, float t0, float kt)
+	Anglebondtype(const std::array<std::string, n_atoms>& typenames, float t0=0.f, float kt=0.f)
 		: BondtypeBase(typenames), theta0(t0), ktheta(kt) 
 	{
 		sort();
@@ -210,11 +229,14 @@ struct Anglebondtype : public BondtypeBase<3> {
 			flip();
 		}
 	}
+	AngleBond ToStandardBondRepresentation() const {
+		return AngleBond{ {0,0, 0}, theta0, ktheta};	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
+	}
 };
 
 struct Dihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
-	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0, float kphi, int n) 
+	Dihedralbondtype(const std::array<std::string, n_atoms>& typenames, float phi0=0.f, float kphi=0.f, int n=0) 
 		: BondtypeBase(typenames), phi0(phi0), kphi(kphi), n(n) 
 	{
 		if (typenames[0] == "X" && typenames[3] == "X") {
@@ -255,13 +277,16 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 			flip();
 		}
 	}
+	DihedralBond ToStandardBondRepresentation() const {
+		return DihedralBond{ {0,0, 0, 0}, phi0, kphi, static_cast<float>(n)}; // Cast here????????	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
+	}
 };
 
 struct Improperdihedralbondtype : public BondtypeBase<4> {
 	static const int n_atoms = 4;
 	// i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
 	
-	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0, float kpsi)
+	Improperdihedralbondtype(const std::array<std::string, n_atoms>& typenames, float psi0=0.f, float kpsi=0.f)
 		: BondtypeBase(typenames), psi0(psi0), kpsi(kpsi)
 	{
 		sort();
@@ -288,6 +313,9 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 	//TODO: Check with Ali that this is okay?!
 	void sort() override {
 		// Improper dihedrals cannot be sorted, as they are asymmetric
+	}
+	ImproperDihedralBond ToStandardBondRepresentation() const {
+		return ImproperDihedralBond{ {0,0, 0, 0}, psi0, kpsi};	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
 	}
 };
 
@@ -404,6 +432,69 @@ namespace FTHelpers {
 			}
 		}
 		
+
+
+		std::cout << "Failed to match bond types.\n Closest match ";
+		for (auto& name : best_bond->bonded_typenames) {
+			std::cout << name << " ";
+		}
+		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype>) {
+			std::cout << "Dihedral type\n";
+		}
+		else {
+			std::cout << "Improper type\n";
+		}
+		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
+		printf("\nLikeness %f\n", best_likeness);
+		printf("Query typenames: ");
+		for (auto& name : query_type.bonded_typenames) {
+			std::cout << name << " ";
+		}
+		printf("\nQuery gro_ids: ");
+		for (auto& id : query_type.global_ids) {
+			std::cout << std::to_string(id) << " ";
+		}
+		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
+		throw std::runtime_error("\nfindBestMatchInForcefield failed");
+	}
+
+
+	template <typename GenericBondType>
+	static int findBestMatchInForcefield_Index(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, bool first_attempt = true) {
+		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
+
+		float best_likeness = 0;
+		const GenericBondType* best_bond = &forcefield.at(0); // Use pointer to avoid initial copy
+		int bestBondIndex = 0;
+		//for (const GenericBondType& ff_bondtype : forcefield) { // Iterate by reference
+		for (int i = 0; i < forcefield.size(); i++){
+			const GenericBondType& ff_bondtype = forcefield[i];
+			const float likeness = FTHelpers::calcLikeness(query_type, ff_bondtype);
+
+			if (likeness > best_likeness) {
+				best_likeness = likeness;
+				best_bond = &ff_bondtype; // Update pointer to the current best match
+				bestBondIndex = i;
+			}
+		}
+
+		if (best_likeness > 0.01f) {
+			//return *best_bond; // Dereference the pointer to return the object
+			return bestBondIndex;
+		}
+
+
+		// Special case for flipping both types of dihedrals.
+		// Dihedrals needs to be flipped because X C O X and X O C X is both valid
+		// I dont know why we need to flip impropers :(  
+		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype> || std::is_same_v<GenericBondType, Improperdihedralbondtype>) {
+			if (first_attempt) {
+				GenericBondType query_flipped = query_type;
+				query_flipped.flip();
+				return findBestMatchInForcefield_Index(query_flipped, forcefield, false);
+			}
+		}
+
 
 
 		std::cout << "Failed to match bond types.\n Closest match ";

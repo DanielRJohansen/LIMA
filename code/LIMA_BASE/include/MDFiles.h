@@ -262,6 +262,15 @@ public:
 	bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 
+	template <typename T>
+	size_t GetElementCount() const {
+		size_t count = 0;
+		count += GetSection<T>().entries.size();
+		for (auto& mol : GetAllSubMolecules()) {
+			count += mol.includeTopologyFile->GetElementCount<T>();
+		}
+		return count;
+	}
 
 
 private:
@@ -467,5 +476,10 @@ namespace MDFiles {
 		std::unique_ptr<ParsedGroFile> grofile;
 		std::unique_ptr<ParsedTopologyFile> topfile;
 	};
+
+
+
+
+	
 
 }

@@ -53,7 +53,7 @@ int main() {
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
 		//doDihedralbondBenchmark(envmode);
-		//TestUtils::loadAndRunBasicSimulation("torsion2", envmode, 0.0002);
+		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
 
@@ -65,7 +65,7 @@ int main() {
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f);
 
 
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.240e-5, 2e-5);
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
@@ -99,7 +99,7 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

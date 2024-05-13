@@ -75,7 +75,7 @@ struct ParticleInfo : public Atom{
 };
 using ParticleInfoTable = std::vector<ParticleInfo>;
 
-
+struct AtomRef;
 
 class CompoundFactory : public Compound {
 public:
@@ -88,7 +88,8 @@ public:
 		}
 	}
 
-	void addParticle(const Float3& position, int atomtype_id, char atomLetter, int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
+	void addParticle(const Float3& position, int atomtype_id, char atomLetter, 
+		int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
 		if (n_particles >= MAX_COMPOUND_PARTICLES) {
 			throw std::runtime_error("Failed to add particle to compound");
 		}
@@ -115,6 +116,8 @@ public:
 	int id = -1;	// unique lima id
 
 
+	void AddBond(const std::vector<AtomRef>)
+
 	void addBond(const ParticleInfoTable&, const SingleBondFactory&);
 	void addBond(const ParticleInfoTable&, const AngleBondFactory&);
 	void addBond(const ParticleInfoTable&, const DihedralBondFactory&);
@@ -131,6 +134,10 @@ public:
 
 
 	std::vector<int> local_atomtype_to_LATID_map;
+
+
+
+	std::vector<int> indicesOfBondconnectedCompounds;
 };
 
 

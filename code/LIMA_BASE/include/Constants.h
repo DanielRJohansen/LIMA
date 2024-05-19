@@ -138,7 +138,7 @@ const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compound
 const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
 
 // Related to forcefield / constant memory
-const int MAX_ATOM_TYPES = 48;
+const int MAX_ATOM_TYPES = 48;	// TODO: Make some checks we dont go above this in Active NB types
 
 constexpr float MAX_COMPOUND_RADIUS = 1.5f;	// was 1.5
 // -------------------------------------------------------------------------------------------------------------- //

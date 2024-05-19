@@ -47,7 +47,7 @@ namespace ForcefieldMakerTypes {
 using namespace ForcefieldMakerTypes;
 
 
-const float water_mass = 15.999000f + 2.f * 1.008000f;
+const float water_mass = (15.999000f + 2.f * 1.008000f);	// [g]
 //const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
 const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
 const float water_epsilon = 0.1591f * kcalToJoule;
@@ -585,12 +585,39 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 
 
 
+LjParameterDatabase::LjParameterDatabase() {
+	// First add solvent
+	insert(LJParameter{ {"solvent"}, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon} });
+	GetActiveIndex("solvent");
+}
 
 
 
+void LjParameterDatabase::insert(LJParameter element) {
+	if (finished)
+		throw std::runtime_error("Cannot insert after finishing");
+	ljParameters.insert(element);
+}
+int LjParameterDatabase::GetActiveIndex(const std::string& query) {
+	if (finished)
+		throw std::runtime_error("Cannot query for more active types after finishing");
+	if (fastLookup.count(query) != 0)
+		return fastLookup.find(query)->second;
 
+	const LJParameter& parameter = ljParameters.get({ query });
+	// First check of the parameter is already in the active list (since it might be 
+	// lexicographically similar but not identical, we cant expect the fastlookup above to always catch)
+	for (int i = 0; i < activeLjParameters.size(); i++) {
+		if (parameter.bonded_typenames == activeLjParameters[i].bonded_typenames) {
+			fastLookup.insert({ query, i });
+			return i;
+		}
+	}
 
-
+	activeLjParameters.push_back(parameter);
+	fastLookup.insert({ query, activeLjParameters.size() - 1 });
+	return activeLjParameters.size() - 1;
+}
 
 
 
@@ -606,19 +633,21 @@ void LimaForcefieldBuilder::buildForcefield(const std::string& molecule_dir, con
 
 
 void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) {
+	std::unordered_map<std::string, float> atomnameToMassMap;
+
 	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
 
-		//if (row.section == "ATOMS") {
-		//	assert(row.words.size() >= 4);
+		if (row.section == "ATOMS") {
+			assert(row.words.size() >= 4);
 
-		//	const string& atomtype = row.words[2];
-		//	const float mass = stof(row.words[3]);		// Should this come from topol too?
+			const string& atomtype = row.words[2];
+			const float mass = stof(row.words[3]);		// Should this come from topol too?
 
-		//	forcefield.atomnameToMassMap.insert(std::pair{ atomtype, mass });
+			atomnameToMassMap.insert(std::pair{ atomtype, mass });
 
-		//	//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
-		//	//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
-		//}
+			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
+			//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
+		}
 		if (row.section == "pairtypes") {
 			// TODO: Fill out this logic
 		}
@@ -666,13 +695,13 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 
 			const string& atomtype = row.words[0];
 			const float epsilon = abs(stof(row.words[2]) * kcalToJoule);	// For some fucked reason the eps is *inconsistently* negative...
-			const float sigma = stof(row.words[3]) * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [nm]
+			const float sigma = stof(row.words[3]) * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm]
+			const float mass = atomnameToMassMap.at(atomtype) * 1e-3f;		// [g] -> [kg]
 
-			LJParameter entry{ { atomtype }, epsilon, sigma };
+			LJParameter entry{ { atomtype }, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} };
 
 			ljParameters.insert(entry);
 
-			//ljParameters.emplace_back(LJParameter({ atomtype }, epsilon, sigma));
 			// Not yet used
 			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma
 			//const float sigma_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma			

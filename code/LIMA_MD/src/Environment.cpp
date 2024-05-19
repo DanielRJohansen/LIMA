@@ -23,8 +23,8 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 50;
-const int STEPS_PER_UPDATE = 200;
+const int STEPS_PER_RENDER = 10;
+const int STEPS_PER_UPDATE = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -83,7 +83,8 @@ void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTop
 		);
 
 	//TODO Find a better place for this
-	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
+	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
+	simulation->forcefield = boximage->forcefield;
 
 	boxbuilder->buildBox(simulation.get(), boximage->box_size);
 
@@ -103,8 +104,10 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);	// TODO: Fix this again
 	simulation->extraparams = simulation_src.extraparams;
 
+	simulation->forcefield = simulation_src.forcefield;
 	//TODO Find a better place for this
-	simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
+	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
+	// FIX NOW
 }
 
 
@@ -169,7 +172,7 @@ void Environment::verifyBox() {
 	assert(STEPS_PER_THERMOSTAT >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
 	//assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
-	if (std::abs(SOLVENT_MASS - simulation->forcefield->getNBForcefield().particle_parameters[0].mass) > 1e-3f) {
+	if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
 		throw std::runtime_error("Error: Solvent mass is unreasonably large");
 	}
 
@@ -225,7 +228,7 @@ bool Environment::prepareForRun() {
 
 
 void Environment::sayHello() {
-	std::ifstream file(main_dir+"/resources/logo_ascii.txt");
+	std::ifstream file(main_dir+"/resources/logo/logo_ascii.txt");
 	if (!file) {
 		throw std::runtime_error("Failed to open logo file");
 	}
@@ -292,8 +295,11 @@ ParsedGroFile Environment::writeBoxCoordinatesToFile() {
 	}
 
 	for (int i = 0; i < outputfile.atoms.size(); i++) {
-		const int cid = boximage->particleinfotable[i].compound_index;
-		const int pid = boximage->particleinfotable[i].local_id_compound;
+		//const int cid = boximage->particleinfotable[i].compound_index;
+		//const int pid = boximage->particleinfotable[i].local_id_compound;
+
+		const int cid = boximage->particleinfos[i].compoundId;
+		const int pid = boximage->particleinfos[i].localIdInCompound;
 
 		int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->simsignals_host.step-1, simulation->simparams_host.data_logging_interval);
 		const Float3 new_position = simulation->traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
@@ -393,8 +399,11 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		//const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
 
+		// First clear the current line
+		printf("\r\033[K");
+
 		printf("\r\tStep #%06llu", step);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min", 
+		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
 			duration / steps_since_update,
 			engine->timings.compound_kernels / steps_since_update,
 			engine->timings.solvent_kernels / steps_since_update,

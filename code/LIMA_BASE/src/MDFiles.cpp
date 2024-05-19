@@ -428,19 +428,19 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 	}
 
 
-	// Verify that atoms id's are q sequence starting at 0
-	for (int i = 0; i < atoms.entries.size(); i++) {
-		if (atoms.entries[i].nr != i+1) {
-			throw std::runtime_error("Atoms are not in sequence starting at 1");
-		}
-	}
-	for (const auto& mol : molecules.entries) {
-		for (int i = 0; i < mol.includeTopologyFile->atoms.entries.size(); i++) {
-			if (mol.includeTopologyFile->atoms.entries[i].nr != i+1) {
-				throw std::runtime_error("Atoms are not in sequence starting at 1");
-			}
-		}
-	}
+	//// Verify that atoms id's are a sequence starting at 1
+	//for (int i = 0; i < atoms.entries.size(); i++) {
+	//	if (atoms.entries[i].nr != i+1) {
+	//		throw std::runtime_error("Atoms are not in sequence starting at 1");
+	//	}
+	//}
+	//for (const auto& mol : molecules.entries) {
+	//	for (int i = 0; i < mol.includeTopologyFile->atoms.entries.size(); i++) {
+	//		if (mol.includeTopologyFile->atoms.entries[i].nr != i+1) {
+	//			throw std::runtime_error("Atoms are not in sequence starting at 1");
+	//		}
+	//	}
+	//}
 }
 
 void ParsedGroFile::printToFile(const std::filesystem::path& path) const {

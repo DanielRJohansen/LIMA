@@ -103,7 +103,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 	// First set up some stuff needed on device, that is currently on host
 	cudaMalloc(&forcefield_device, sizeof(ForceField_NB));
-	cudaMemcpy(forcefield_device, &simulation->forcefield->getNBForcefieldRef(), sizeof(ForceField_NB), cudaMemcpyHostToDevice);
+	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
 
 	if (simulation->boxparams_host.n_compounds > 0) {
 		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->compounds_host.size());
@@ -336,7 +336,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 				const float potE = sim.potE_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 
 				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
-				const float mass = sim.forcefield->getNBForcefield().particle_parameters[atom_type].mass;
+				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
 				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
 				
@@ -349,7 +349,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 
 			const float potE = sim.potE_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 
-			const float mass = sim.forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
+			const float mass = sim.forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 			const float vel = sim.vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 			const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
 

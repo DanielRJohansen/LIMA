@@ -155,11 +155,10 @@ struct LJParameter : public BondtypeBase<1> {
 
 
 	LJParameter(const std::array<std::string, n_atoms>& typenames) : BondtypeBase(typenames) {}
-	LJParameter(const std::array<std::string, n_atoms>& typenames, float epsilon, float sigma) : BondtypeBase(typenames), epsilon(epsilon), sigma(sigma) {}
+	LJParameter(const std::array<std::string, n_atoms>& typenames, ForceField_NB::ParticleParameters parameters) : BondtypeBase(typenames), parameters(parameters) {}
 
 
-	float epsilon;
-	float sigma;
+	ForceField_NB::ParticleParameters parameters;
 };
 
 struct Singlebondtype : public BondtypeBase<2>{
@@ -172,8 +171,8 @@ struct Singlebondtype : public BondtypeBase<2>{
 		sort();
 	}
 
-	float b0{};
-	float kb{};
+	float b0{};	// [nm]
+	float kb{};	// [J/(mol*nm^2)]
 
 	/*void sort() {};
 	void flip() = 0;*/
@@ -191,9 +190,9 @@ struct Singlebondtype : public BondtypeBase<2>{
 			flip();
 		}			
 	}
-
+	
 	SingleBond ToStandardBondRepresentation() const {
-		return SingleBond{ {0,0}, b0, kb};	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
+		return SingleBond{ {0,0}, b0 * NANO_TO_LIMA, kb / (NANO_TO_LIMA * NANO_TO_LIMA) };	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
 	}
 };
 
@@ -214,7 +213,7 @@ struct Anglebondtype : public BondtypeBase<3> {
 	}
 
 	float theta0{};	// [rad]
-	float ktheta{};
+	float ktheta{}; // [J/mole/rad^2]
 
 	void assignForceVariables(const Anglebondtype& a) {
 		theta0 = a.theta0;
@@ -249,8 +248,8 @@ struct Dihedralbondtype : public BondtypeBase<4> {
 		sort();
 	}
 
-	float phi0{};
-	float kphi{};
+	float phi0{}; // [rad]
+	float kphi{}; // [J/mole]
 	int n{};
 
 	void assignForceVariables(const Dihedralbondtype& a) {

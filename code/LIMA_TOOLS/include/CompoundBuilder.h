@@ -86,7 +86,11 @@ struct AtomRef {
 
 	// Only available once the compounds have been created
 	int compoundId = -1;
-	int localIdInCompound = -1;
+	uint8_t localIdInCompound = -1;
+
+	// Only available once the bridges have been created
+	int bridgeId = -1;
+	uint8_t localIdInBridge = -1;
 };
 
 class CompoundFactory : public Compound {
@@ -128,7 +132,10 @@ public:
 	int id = -1;	// unique lima id
 
 
-	//void AddBond(const std::vector<AtomRef>)
+	void AddBond(const std::vector<AtomRef>&, const SingleBondFactory&);
+	void AddBond(const std::vector<AtomRef>&, const AngleBondFactory&);
+	void AddBond(const std::vector<AtomRef>&, const DihedralBondFactory&);
+	void AddBond(const std::vector<AtomRef>&, const ImproperDihedralBondFactory&);
 
 	void addBond(const ParticleInfoTable&, const SingleBondFactory&);
 	void addBond(const ParticleInfoTable&, const AngleBondFactory&);
@@ -166,7 +173,10 @@ public:
 		n_compounds = _compound_ids.size();
 	}
 
-	void AddBond(const SingleBondFactory& bond, std::vector<AtomRef> atoms);
+	void AddBond(std::vector<AtomRef>&, const SingleBondFactory&);
+	void AddBond(std::vector<AtomRef>&, const AngleBondFactory&);
+	void AddBond(std::vector<AtomRef>&, const DihedralBondFactory&);
+	void AddBond(std::vector<AtomRef>&, const ImproperDihedralBondFactory&);
 
 	void addBond(ParticleInfoTable&, const SingleBondFactory&);
 	void addBond(ParticleInfoTable&, const AngleBondFactory&);
@@ -186,10 +196,12 @@ public:
 private:
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
 	uint8_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+	uint8_t getBridgelocalIdOfParticle(AtomRef& particle_info);
 
 	// Add particle to bridge and augment its particle info with the references to its position in this bridge
 	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge
 	void addParticle(ParticleInfo&);
+	void addParticle(AtomRef&);
 };
 
 // A translation unit between Gro file representation, and LIMA Box representation
@@ -205,7 +217,10 @@ struct BoxImage {
 
 	const float box_size;
 
-	const ParticleInfoTable particleinfotable;
+	//const ParticleInfoTable particleinfotable;
+	const std::vector<AtomRef> particleinfos;
 
 	ParsedGroFile grofile;
+
+	const ForceField_NB forcefield;
 };

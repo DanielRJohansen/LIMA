@@ -91,7 +91,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 		+ std::to_string(simulation->boxparams_host.n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
-	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield->getNBForcefield()};	// Copy
+	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield};	// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.n_steps, uint64_t{ 1 });
@@ -108,7 +108,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 
 int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	const float solvent_mass = simulation->forcefield->getNBForcefield().particle_parameters[ATOMTYPE_SOLVENT].mass;
+	const float solvent_mass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
 
 	for (Float3 sol_pos : solvent_positions) {

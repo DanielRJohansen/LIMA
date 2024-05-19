@@ -70,37 +70,16 @@ class LjParameterDatabase {
 	bool finished = false;
 
 	public:
-		void insert(LJParameter element) {
-			if (finished)
-				throw std::runtime_error("Cannot insert after finishing");
-			ljParameters.insert(element);
-		}
-		int GetActiveIndex(const std::string& query) {
-			if (finished)
-				throw std::runtime_error("Cannot query for more active types after finishing");
-			if (fastLookup.count(query) != 0)
-				return fastLookup.find(query)->second;
-
-			const LJParameter& parameter = ljParameters.get({ query });
-			// First check of the parameter is already in the active list (since it might be 
-			// lexicographically similar but not identical, we cant expect the fastlookup above to always catch)
-			for (int i = 0; i < activeLjParameters.size(); i++) {
-				if (parameter.bonded_typenames == activeLjParameters[i].bonded_typenames) {
-					fastLookup.insert({ query, i });
-					return i;
-				}
-			}
-
-			activeLjParameters.push_back(parameter);
-			fastLookup.insert({ query, activeLjParameters.size() - 1 });
-			return activeLjParameters.size() - 1;
-		}
+		LjParameterDatabase();
+		void insert(LJParameter element);
+		int GetActiveIndex(const std::string& query);
 		std::vector<LJParameter>& GetActiveParameters() {
 			finished = true;			
 			return activeLjParameters;
 		}
 };
 
+// TODO move to the other file, delete this file
 class LIMAForcefield {
 public:
 	LIMAForcefield();
@@ -113,8 +92,12 @@ public:
 	int GetActiveLjParameterIndex(const std::string& query) {
 		return ljParameters.GetActiveIndex(query);
 	}
-	std::vector<LJParameter>& GetActiveLjParameters() {
-		return ljParameters.GetActiveParameters();	// After this, the Get() above should no longer be legal
+	ForceField_NB GetActiveLjParameters() {
+		ForceField_NB forcefield{};
+		const auto& activeParameters = ljParameters.GetActiveParameters();
+		for (int i = 0; i < activeParameters.size(); i++)
+			forcefield.particle_parameters[i] = activeParameters[i].parameters;
+		return forcefield;
 	}
 
 

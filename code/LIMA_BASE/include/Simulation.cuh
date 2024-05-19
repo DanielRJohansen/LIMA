@@ -245,7 +245,8 @@ public:
 	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
-	std::unique_ptr<Forcefield> forcefield;
+	//std::unique_ptr<Forcefield> forcefield;
+	ForceField_NB forcefield;
 };
 
 namespace SimUtils {

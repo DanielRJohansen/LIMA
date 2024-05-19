@@ -15,7 +15,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	long double sum_kinE_compound = 0.;	// [J/mol]
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
-			const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
+			const float mass = simulation->forcefield.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);
 			const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 
@@ -26,7 +26,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
 	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
-		const float mass = simulation->forcefield->getNBForcefieldRef().particle_parameters[ATOMTYPE_SOLVENT].mass;
+		const float mass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 		const float velocity = simulation->vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 		const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 

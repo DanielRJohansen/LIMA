@@ -16,7 +16,6 @@ ${CUDA_INCLUDE_DIRS}
 )
 
 target_link_libraries(LIMA_TOOLS LIMA_BASE)
-target_link_libraries(LIMA_TOOLS LIMA_FORCEFIELDMAKER)
 
 
 if (UNIX)

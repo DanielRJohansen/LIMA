@@ -26,7 +26,6 @@ target_include_directories(LIMA_MD PRIVATE
 target_link_libraries(LIMA_MD LIMA_BASE)
 target_link_libraries(LIMA_MD LIMA_ENGINE)
 target_link_libraries(LIMA_MD LIMA_TOOLS)
-target_link_libraries(LIMA_MD LIMA_FORCEFIELDMAKER)
 if (WIN32)
     target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib)
 endif()

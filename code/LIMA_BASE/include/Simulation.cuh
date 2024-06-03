@@ -2,7 +2,6 @@
 
 #include "Constants.h"
 #include "Bodies.cuh"
-#include "Forcefield.cuh"
 #include <memory>
 #include <filesystem>
 

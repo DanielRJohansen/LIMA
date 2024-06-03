@@ -25,8 +25,7 @@
 
 
 namespace fs = std::filesystem;
-
-using std::string, std::vector, std::map, std::stringstream;
+using std::string;
 
 
 /// <summary>
@@ -35,7 +34,7 @@ using std::string, std::vector, std::map, std::stringstream;
 /// </summary>
 using SetSectionFunction = std::function<bool(const std::vector<string>& row, string& section, int& skipCnt)>;
 
-bool ignoreRow(const vector<char>& ignores, const string& line) {
+bool ignoreRow(const std::vector<char>& ignores, const string& line) {
 	if (line.length() == 0)
 		return true;
 	for (auto& c : ignores) {
@@ -44,29 +43,6 @@ bool ignoreRow(const vector<char>& ignores, const string& line) {
 	}
 	return false;
 }
-
-bool Filehandler::ignoreWord(const vector<string>& ignores, const string& word) {
-	if (word.length() == 0)
-		return true;
-	for (auto& elem : ignores) {
-		if (word == elem)
-			return true;
-	}
-	return false;
-}
-
-void Filehandler::assertPath(const std::string& path) {
-	if (!std::filesystem::exists(path)) {
-		std::cerr << "Could not find path: " << path << "\n";
-		abort();
-	}
-}
-
-bool Filehandler::fileExists(const std::string& path) {
-	return std::filesystem::exists(path);
-}
-
-
 
 void Filehandler::removeWhitespace(std::string& str) {
 	str.erase(std::remove_if(str.begin(), str.end(), 
@@ -81,71 +57,6 @@ bool Filehandler::firstNonspaceCharIs(const std::string& str, char query) {
 
 	return (first_non_space != str.end() && *first_non_space == query);
 }
-
-std::string Filehandler::extractFilename(const std::string& path) {
-	// Find the last occurrence of both forward slash and backslash
-	size_t lastSlashPos = path.find_last_of("/\\");
-
-	// Check if a slash is found
-	if (lastSlashPos != std::string::npos) {
-		// Extract the substring from the last slash to the end of the string
-		return path.substr(lastSlashPos + 1);
-	}
-	else {
-		// If no slash is found, the entire path is the file name
-		return path;
-	}
-}
-
-// Uses ';' and ' ' as delimiters
-vector<vector<string>> Filehandler::readFile(const string path, vector<char> comment_markers, std::vector<string> ignores, int end_at, bool verbose) {
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-        throw std::runtime_error(std::format("Failed to open file {}\n", path).c_str());
-    }
-
-
-
-	vector<vector<string>> rows;
-	int row_cnt = 0;
-	int ignore_cnt = 0;
-
-	// Forward declaring for optimization reasons
-	string line{}, element{}, element_nested{};
-	while (getline(file, line)) {
-		if (ignoreRow(comment_markers, line)) {
-			ignore_cnt++;
-			continue;
-		}
-
-		vector<string> row;
-		stringstream ss(line);
-		while (getline(ss, element, ' ')) {
-			stringstream ss2 = stringstream(element);
-			while (getline(ss2, element_nested, ';')) { 
-
-				if (!ignoreWord(ignores, element_nested)) {
-					row.push_back(element_nested);
-				}
-			}
-		}
-		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
-
-		rows.push_back(std::move(row));
-		row_cnt++;
-
-		if (row_cnt >= end_at)
-			break;
-	}
-
-	if (verbose) {
-		printf("%d rows read. %d rows ignored\n", row_cnt, ignore_cnt);
-	}
-
-	return rows;
-}
-
 
 // Reads "key=value" pairs from a file. Disregards all comments (#)
 std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& path) {
@@ -189,7 +100,7 @@ void replaceTabs(std::string& str) {
 	}
 }
 
-SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectionFunction setSection, vector<char> ignores = {';', '#'}, char delimiter = ' ')
+SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectionFunction setSection, std::vector<char> ignores = {';', '#'}, char delimiter = ' ')
 {
 	std::ifstream file;
 	file.open(path);
@@ -216,8 +127,8 @@ SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectio
 
 		replaceTabs(line);
 
-		vector<string> row;
-		stringstream ss(line);
+		std::vector<string> row;
+		std::stringstream ss(line);
 		while (getline(ss, word, delimiter)) {
 			if (!word.empty()) {
 				if (ignoreRow(ignores, word)) {
@@ -265,99 +176,6 @@ SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose
 	return parseBasicFile(path, verbose, setSectionFn);
 }
 
-SimpleParsedFile Filehandler::parseTopFile(const std::string& path, bool verbose)
-{
-	assert(path.substr(path.length() - 4) == ".top" || path.substr(path.length() - 4) == ".itp");
-
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
-		if (row.size() == 3 && row[0][0] == '[') {
-
-			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
-			if (current_section == "dihedrals" && row[1] == "dihedrals") {	// Workaround for itp files
-				current_section = "improperdihedrals";
-			}
-			else {
-				current_section = row[1];
-			}
-
-			return true;
-		}
-		return false;
-	};
-
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path).c_str());
-	}
-
-	SimpleParsedFile parsedfile;
-
-	string current_section = "none";
-
-	int ignore_cnt = 0;
-
-	int skipCnt = 0;
-
-	// Forward declaring for optimization reasons
-	string line{}, word{};
-	while (getline(file, line)) {
-
-		if (skipCnt > 0) {
-			skipCnt--;
-			continue;
-		}
-
-		replaceTabs(line);
-
-		vector<char> ignores = { ';', '#' };
-		char delimiter = ' ';
-
-		vector<string> row;
-		stringstream ss(line);
-		while (getline(ss, word, delimiter)) {
-			if (!word.empty()) {
-				
-				if (ignoreRow(ignores, word)) {
-					if (word[0] == ';' && current_section == "atoms") {}	// Do nothing, we need these comments to distinct between residues.. i hate these people :(							
-					else break;	// Normal case, just skip the comments
-				}
-				row.push_back(word);
-			}
-
-		}
-
-		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
-
-		const bool new_section = setSectionFn(row, current_section, skipCnt);
-		if (new_section) { continue; }
-
-		parsedfile.rows.push_back({ current_section, row });
-	}
-
-	if (verbose) {
-		std::cout << path;
-		printf("\n\t%zu rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
-	}
-
-	return parsedfile;
-}
-
-SimpleParsedFile Filehandler::parseLffFile(const std::string& path, bool verbose)
-{
-	assert(path.substr(path.length() - 4) == ".lff");
-
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
-		if (row.size() == 2 && row[0][0] == '#') {
-			current_section = row[1];
-			return true;
-		}
-		return false;
-	};
-
-	return parseBasicFile(path, verbose, setSectionFn, {'/'}, ' ');
-}
-
 SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose)
 {
 	assert(path.substr(path.length() - 4) == ".prm");
@@ -382,7 +200,7 @@ SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose
 
 void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm) {
 	const string simparams_path = dir + "/sim_params.txt";
-	if (!Filehandler::fileExists(simparams_path)) {	// TODO: Make this string a default-constant somewhere
+	if (!std::filesystem::exists(simparams_path)) {	// TODO: Make this string a default-constant somewhere
 		const string contents = "";
 		std::ofstream file(simparams_path);
 		file << contents;
@@ -390,7 +208,7 @@ void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, fl
 	}
 
 	const string gro_path = dir + "/conf.gro";
-	if (!Filehandler::fileExists(gro_path)) {	// TODO: Make this string a default-constant somewhere
+	if (!std::filesystem::exists(gro_path)) {	// TODO: Make this string a default-constant somewhere
 		const string boxsize_str = std::to_string(boxsize_nm) + " ";	// add space between dims
 		const string contents = " \n0\n\t\t"+ boxsize_str + boxsize_str + boxsize_str;	// Title, n_atoms, box dimensions
 		std::ofstream file(gro_path);
@@ -399,7 +217,7 @@ void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, fl
 	}
 
 	const string top_path = dir + "/topol.top";
-	if (!Filehandler::fileExists(top_path)) {	// TODO: Make this string a default-constant somewhere
+	if (!std::filesystem::exists(top_path)) {	// TODO: Make this string a default-constant somewhere
 		const string contents = "[ moleculetype ]\n[ atoms ]\n[ bonds ]\n[ angles ]\n[ dihedrals ]\n[dihedrals]\n";
 		std::ofstream file(top_path);
 		file << contents;

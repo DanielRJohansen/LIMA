@@ -1,8 +1,7 @@
 #LIMA_FORCEFIELDMAKER
 
-add_library(LIMA_FORCEFIELDMAKER STATIC
-    src/ForcefieldTypes.cpp
-    src/LIMA_ForcefieldMaker.cpp
+add_library(LIMA_FORCEFIELDMAKER STATIC    
+    "src/Forcefield.cpp"
 )
 
 
@@ -15,8 +14,3 @@ target_include_directories(LIMA_FORCEFIELDMAKER PUBLIC
 
 target_link_libraries(LIMA_FORCEFIELDMAKER LIMA_BASE)
 
-
-# Self-test executable
-add_executable(ffm_self_test src/Main.cpp)
-target_link_libraries(ffm_self_test LIMA_BASE)
-target_link_libraries(ffm_self_test LIMA_FORCEFIELDMAKER)

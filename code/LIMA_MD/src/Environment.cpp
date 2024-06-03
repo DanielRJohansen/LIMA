@@ -11,8 +11,7 @@
 #include "DisplayV2.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
-#include "ForcefieldMaker.h"
-#include "Forcefield.cuh"
+#include "Forcefield.h"
 
 using namespace LIMA_Print;
 using std::string;

@@ -1,9 +1,10 @@
 #include "Analyzer.cuh"
 #include "Printer.h"
-#include "Forcefield.cuh"
 #include "PhysicsUtils.cuh"
 #include "DeviceAlgorithms.cuh"
 #include <algorithm>
+#include "Constants.h"
+#include "Filehandling.h"
 
 using namespace LIMA_Print;
 

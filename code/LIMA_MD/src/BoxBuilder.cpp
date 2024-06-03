@@ -1,7 +1,6 @@
 #include "BoxBuilder.cuh"
 #include "Printer.h"
 #include "PhysicsUtils.cuh"
-#include "Forcefield.cuh"
 #include "LimaPositionSystem.cuh"
 
 #include <random>

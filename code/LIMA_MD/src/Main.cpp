@@ -2,7 +2,7 @@
 
 #include "Environment.h"
 #include "Engine.cuh"
-#include "ForcefieldMaker.h"
+#include "Forcefield.h"
 #include "DisplayV2.h"
 
 int main() {

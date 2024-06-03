@@ -55,10 +55,7 @@ namespace Filehandler {
 		int end_at = std::numeric_limits<int>::max(), bool verbose = false);
 
 	static SimpleParsedFile parseItpFile(const std::string& path, bool verbose=true);
-	SimpleParsedFile parseTopFile(const std::string& path, bool verbose);
-	SimpleParsedFile parseLffFile(const std::string& path, bool verbose);
 	SimpleParsedFile parsePrmFile(const std::string& path, bool verbose);
-	SimpleParsedFile parseGroFile(const std::string& path, bool verbose);
 
 
 	void createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm);	// creates conf topol and sim_params

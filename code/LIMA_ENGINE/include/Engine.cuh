@@ -8,7 +8,6 @@
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
 //#include "SimulationDevice.cuh"
-#include "Forcefield.cuh"
 #include "Utilities.h"
 
 

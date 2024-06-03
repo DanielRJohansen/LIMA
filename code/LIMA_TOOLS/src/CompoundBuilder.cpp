@@ -1224,7 +1224,7 @@ void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, L
 {
 	std::array<uint32_t, bondTopol.n> globalIds{};
 	for (int i = 0; i < bondTopol.n; i++) {
-		globalIds[i] = bondTopol.atomGroIds[i] + atomIdOffset - 1;	// -1 because we switch from 1-indexed to 0-indexed here
+		globalIds[i] = bondTopol.ids[i] + atomIdOffset;
 		if (globalIds[i] >= atomRefs.size())
 			return;
 			//throw std::runtime_error("Bond refers to atom that has not been loaded");
@@ -1284,25 +1284,31 @@ std::vector<std::vector<int>> MapAtomsToSinglebonds(const std::vector<AtomRef>& 
 }
 
 
-struct Residue1 {
+// Usually just a residue, but we sometimes also need to split lipids into smaller groups 
+struct AtomGroup {
 	std::vector<int> atomIds;
 };
 
-std::vector<Residue1> MakeResidues(const std::vector<AtomRef>& preparedAtoms, const Topology& topology) {
-	std::vector<Residue1> residues(preparedAtoms.back().uniqueResId+1);
+std::vector<AtomGroup> GroupAtoms(const std::vector<AtomRef>& preparedAtoms, const Topology& topology) {
+	const int nResidues = preparedAtoms.empty() ? 0 : preparedAtoms.back().uniqueResId + 1;
+	std::vector<AtomGroup> atomGroups;
+	atomGroups.reserve(nResidues);
 
 	int currentResidueId = -1;
 
-	for (int i = 0; i < preparedAtoms.size(); i++) {
-		const auto atom = preparedAtoms[i];
-		residues[atom.uniqueResId].atomIds.push_back(i);
+	for (int particleId = 0; particleId < preparedAtoms.size(); particleId++) {
+		const auto atom = preparedAtoms[particleId];
+		if (atomGroups.empty() || atom.topAtom->section_name.has_value() || atom.uniqueResId != preparedAtoms[particleId-1].uniqueResId)
+			atomGroups.push_back(AtomGroup{});
+		atomGroups.back().atomIds.push_back(particleId);
+		//atomGroups[atom.uniqueResId].atomIds.push_back(particleId);
 	}
 
-	return residues;
+	return atomGroups;
 }	
 
 
-bool areBonded(const Residue1& left, const Residue1& right, const std::vector<AtomRef>& preparedAtoms, const std::vector<std::vector<int>>& atomIdToSinglebondsMap) {
+bool areBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<AtomRef>& preparedAtoms, const std::vector<std::vector<int>>& atomIdToSinglebondsMap) {
 	//assert(left != right);
 
 	for (auto& atomleft_gid : left.atomIds) {
@@ -1330,14 +1336,14 @@ bool areBonded(const Residue1& left, const Residue1& right, const std::vector<At
 	return false;
 }
 
-std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float boxlen_nm, const std::vector<Residue1>& residues, 
+std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float boxlen_nm, const std::vector<AtomGroup>& residues,
 	std::vector<AtomRef>& preparedAtoms, const std::vector<std::vector<int>>& atomIdToSinglebondsMap, BoundaryConditionSelect bc_select)
 {
 	std::vector<CompoundFactory> compounds;
 	int current_residue_id = -1;
 
 	for (int residue_index = 0; residue_index < residues.size(); residue_index++) {
-		const Residue1& residue = residues[residue_index];
+		const AtomGroup& residue = residues[residue_index];
 
 		const bool is_bonded_with_previous_residue = residue_index > 0 && areBonded(residues[residue_index - 1], residue, preparedAtoms, atomIdToSinglebondsMap);
 		const bool compound_has_room_for_residue = residue_index > 0 && compounds.back().hasRoomForRes(residue.atomIds.size());
@@ -1367,7 +1373,7 @@ std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float box
 				atom_gid,
 				boxlen_nm, 
 				bc_select,
-				preparedAtoms[atom_gid].topAtom->charge
+				preparedAtoms[atom_gid].topAtom->charge * elementaryChargeToCoulombPerMole
 			);
 
 			preparedAtoms[atom_gid].compoundId = compounds.size() - 1;
@@ -1647,10 +1653,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
 
-	std::vector<Residue1> residues = MakeResidues(preparedAtoms, topology);
+	std::vector<AtomGroup> atomGroups = GroupAtoms(preparedAtoms, topology);
 
 
-	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, residues, preparedAtoms, atomIdToSinglebondsMap, bc_select);
+	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, bc_select);
 	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
@@ -1674,11 +1680,20 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<Float3> solventPositions = LoadSolventPositions(gro_file);
 
 
-	/*Forcefield ffold(VerbosityLevel::V1, molecule_dir);
-	ForceField_NB nbffold = ffold.getNBForcefield();
-	ForceField_NB nbffnew = forcefield.GetActiveLjParameters();
 
-	bool matchFound = false;*/
+
+
+
+
+
+
+
+
+	//Forcefield ffold(VerbosityLevel::V1, molecule_dir);
+	//ForceField_NB nbffold = ffold.getNBForcefield();
+	//ForceField_NB nbffnew = forcefield.GetActiveLjParameters();
+
+	//bool matchFound = false;
 
 	//for (int i = 0; i < MAX_ATOM_TYPES; i++) {
 	//	matchFound = false; // Reset for each i

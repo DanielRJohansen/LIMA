@@ -59,7 +59,7 @@ namespace cereal {
 	template <class Archive>
 	void serialize(Archive& archive, ParsedTopologyFile::AtomsEntry& atom) {
 		archive(atom.section_name);
-		archive(atom.nr);
+		archive(atom.id);
 		archive(atom.type);
 		archive(atom.resnr);
 		archive(atom.residue);
@@ -70,7 +70,7 @@ namespace cereal {
 	}
 	template <class Archive, size_t N>
 	void serialize(Archive& archive, ParsedTopologyFile::GenericBond<N>& bond) {
-		archive(bond.atomGroIds);
+		archive(bond.ids);
 		archive(bond.funct);
 	}
 

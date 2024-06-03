@@ -48,12 +48,12 @@ MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile
 	MoleculeGraph graph;
 
 	for (const auto& atom : topolfile.GetAllAtoms()) {
-		graph.addNode(atom.nr, atom.atomname);
+		graph.addNode(atom.id, atom.atomname);
 	}
 
 	//for (const auto& bond : topolfile.singlebonds.entries) {
 	for (const auto& bond : topolfile.GetAllSinglebonds()) {
-		graph.connectNodes(bond.atomGroIds[0], bond.atomGroIds[1]);
+		graph.connectNodes(bond.ids[0], bond.ids[1]);
 	}
 
 	return graph;

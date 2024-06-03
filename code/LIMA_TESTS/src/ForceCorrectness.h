@@ -215,7 +215,7 @@ namespace ForceCorrectness {
 		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 5.68e-4, 2.9e-7);
 	}
 
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=3.8e-3, float max_eg=6.037) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=4.3e-3, float max_eg=6.037) {
 		const std::string work_folder = simulations_dir + "Improperbond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";

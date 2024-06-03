@@ -116,7 +116,8 @@ public:
 	struct AtomsEntry {
 		std::optional<std::string> section_name{};// Either a residue or lipid_section
 
-		int nr{};	// Not guaranteed to be unique, atleast not with multiple files!
+		//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
+		int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
 		std::string type{};
 		int resnr{};
 		std::string residue{};
@@ -135,20 +136,21 @@ public:
 	struct GenericBond {
 		virtual ~GenericBond() = default;
 		static const int n = N;
-		int atomGroIds[N]{};
+		//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
+		int ids[N]{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 		int funct{};
 
 		void composeString(std::ostringstream& oss) const {
 			const int width = 10;
 			for (size_t i = 0; i < N; ++i) {
-				oss << std::setw(width) << std::right << atomGroIds[i];
+				oss << std::setw(width) << std::right << ids[i];
 			}
 			oss << std::setw(width) << std::right << funct;
 		}
 
 		void IncrementIds(const int increment)  {
 			for (size_t i = 0; i < N; ++i) {
-				atomGroIds[i] += increment;
+				ids[i] += increment;
 			}
 		}
 

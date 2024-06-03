@@ -93,7 +93,7 @@ void ParsedTopologyFile::AtomsEntry::composeString(std::ostringstream& oss) cons
 		oss << section_name.value() << "\n";
 	}
 	oss << std::right
-		<< std::setw(10) << nr
+		<< std::setw(10) << id
 		<< std::setw(10) << type
 		<< std::setw(10) << resnr
 		<< std::setw(10) << residue
@@ -269,6 +269,15 @@ ParsedTopologyFile::ParsedTopologyFile() {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
 }
 
+template <int n>
+bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int ids[n]) {
+	for (int i = 0; i < n; i++) {
+		if (ids[i] >= groIdToLimaId.size() || groIdToLimaId[ids[i]] == -1)
+			return false;
+	}
+	return true;
+}
+
 ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
@@ -317,10 +326,17 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 		std::string sectionname = "";
 		//	std::vector<std::future<std::pair<std::string, std::unique_ptr<ParsedTopologyFile>>>> includeTopologies;	// <name, file>
 
+		std::vector<int> groIdToLimaId;
+
+
 		while (getline(file, line)) {
 
 			if (line.size() == 0) {
 				current_section = no_section;
+				continue;
+			}
+			// Check if all chars in line is space
+			if (std::all_of(line.begin(), line.end(), isspace)) {
 				continue;
 			}
 
@@ -377,7 +393,13 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 				}
 				else {
 					ParsedTopologyFile::AtomsEntry atom;
-					iss >> atom.nr >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
+					int groId;
+					iss >> groId>> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
+
+					if (groIdToLimaId.size() < groId + 1)
+						groIdToLimaId.resize(groId + 1, -1);
+					groIdToLimaId[groId] = atoms.entries.size();
+					atom.id = groIdToLimaId[groId];
 					atoms.entries.emplace_back(atom);
 
 					if (sectionname != "") {
@@ -389,32 +411,56 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 			}
 			case TopologySection::bonds: {
 				ParsedTopologyFile::SingleBond singlebond{};
-				iss >> singlebond.atomGroIds[0] >> singlebond.atomGroIds[1] >> singlebond.funct;
+				int groIds[2];
+				iss >> groIds[0] >> groIds[1] >> singlebond.funct;
+				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
+					break;
+				for (int i = 0; i < 2; i++) 
+					singlebond.ids[i] = groIdToLimaId[groIds[i]];
 				singlebonds.entries.emplace_back(singlebond);
 				break;
 			}
 			case TopologySection::pairs: {
 				ParsedTopologyFile::Pair pair{};
-				iss >> pair.atomGroIds[0] >> pair.atomGroIds[1] >> pair.funct;
+				int groIds[2];
+				iss >> groIds[0] >> groIds[1] >> pair.funct;
+				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
+					break;
+				for (int i = 0; i < 2; i++)
+					pair.ids[i] = groIdToLimaId.at(groIds[i]);
 				pairs.entries.emplace_back(pair);
 				break;
 			}
 			case TopologySection::angles: {
 				ParsedTopologyFile::AngleBond angle{};
-				// TODO: We need some safety check here, that we have enough data to fill all values
-				iss >> angle.atomGroIds[0] >> angle.atomGroIds[1] >> angle.atomGroIds[2] >> angle.funct;
+				int groIds[3];
+				iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
+				if (!VerifyAllParticlesInBondExists<3>(groIdToLimaId, groIds))
+					break;
+				for (int i = 0; i < 3; i++)					
+					angle.ids[i] = groIdToLimaId.at(groIds[i]);								
 				anglebonds.entries.emplace_back(angle);
 				break;
 			}
 			case TopologySection::dihedrals: {
 				ParsedTopologyFile::DihedralBond dihedral{};
-				iss >> dihedral.atomGroIds[0] >> dihedral.atomGroIds[1] >> dihedral.atomGroIds[2] >> dihedral.atomGroIds[3] >> dihedral.funct;
+				int groIds[4];
+				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
+				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
+					break;
+				for (int i = 0; i < 4; i++)					
+					dihedral.ids[i] = groIdToLimaId.at(groIds[i]);				
 				dihedralbonds.entries.emplace_back(dihedral);
 				break;
 			}
 			case TopologySection::impropers: {
 				ParsedTopologyFile::ImproperDihedralBond improper{};
-				iss >> improper.atomGroIds[0] >> improper.atomGroIds[1] >> improper.atomGroIds[2] >> improper.atomGroIds[3] >> improper.funct;
+				int groIds[4];
+				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
+				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
+					break;
+				for (int i = 0; i < 4; i++)
+					improper.ids[i] = groIdToLimaId.at(groIds[i]);								
 				improperdihedralbonds.entries.emplace_back(improper);
 				break;
 			}

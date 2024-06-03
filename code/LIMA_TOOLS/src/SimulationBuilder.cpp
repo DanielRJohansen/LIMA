@@ -343,7 +343,7 @@ void SimulationBuilder::DistributeParticlesInBox(ParsedGroFile& grofile, ParsedT
 
 						// Add first the basic atomtype, and then correct the IDs after
 						topfile.GetLocalAtoms().emplace_back(atomtypeselect.atomtype);
-						topfile.GetLocalAtoms().back().nr = groId;
+						topfile.GetLocalAtoms().back().id = groId;
 						topfile.GetLocalAtoms().back().resnr = resNr;
 
 

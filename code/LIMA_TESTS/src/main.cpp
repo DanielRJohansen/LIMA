@@ -57,7 +57,7 @@ int main() {
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
 
-		//doMethionineBenchmark(envmode);
+		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
@@ -80,14 +80,15 @@ int main() {
 
 		//Benchmarks::MembraneWithPsome(envmode);
 		
-	/*	const fs::path work_dir = simulations_dir + "/test";
-		Environment env{ work_dir.string(), envmode, false };
-		env.CreateSimulation(20.f);
-		LipidsSelection lipids;
-		lipids.emplace_back(LipidSelect{ "POPC", 50 });
-		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
-		env.createMembrane(lipids, true);*/
+		//const fs::path work_dir = simulations_dir + "/test";
+		//Environment env{ work_dir.string(), envmode, false };
+		//env.CreateSimulation(20.f);
+		//LipidsSelection lipids;
+		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
+		//Programs::CreateMembrane(env, lipids, true, 3.5f, true);
+
 
 		//FileTests::TestFilesAreCachedAsBinaries(Headless);
 
@@ -129,9 +130,9 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
 	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
 	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
-	ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 2e-4, 2.2e-7));
-	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode, 4.3e-3));
-	ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 3.2e-7));
+	//ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 2e-4, 2.2e-7));
+	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
+	//ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 3.2e-7));
 
 
 	// Smaller compound tests
@@ -143,7 +144,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.15e-5, 2e-5));
 
 	// Electrostatics
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));

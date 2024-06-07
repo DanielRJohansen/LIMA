@@ -465,6 +465,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				for (int i = 0; i < 4; i++)
 					improper.ids[i] = groIdToLimaId.at(groIds[i]);								
 				improperdihedralbonds.entries.emplace_back(improper);
+				improperdihedralbonds.entries.back().sourceLine = line;
 				break;
 			}
 			default:

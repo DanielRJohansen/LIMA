@@ -31,45 +31,27 @@ namespace ForcefieldHelpers{
 
 
 	template <typename GenericBondType>
-	static int findBestMatchInForcefield_Index(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield, bool first_attempt = true) {
-		if (forcefield.size() == 0) { throw std::runtime_error("No angletypes in forcefield!"); }
+	static int findBestMatchInForcefield_Index(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield) {
+		if (forcefield.size() == 0) { throw std::runtime_error("No bonds in forcefield!"); }
 
 		float best_likeness = 0;
-		const GenericBondType* best_bond = &forcefield.at(0); // Use pointer to avoid initial copy
 		int bestBondIndex = 0;
-		//for (const GenericBondType& ff_bondtype : forcefield) { // Iterate by reference
 		for (int i = 0; i < forcefield.size(); i++) {
 			const GenericBondType& ff_bondtype = forcefield[i];
 			const float likeness = calcLikeness(query_type, ff_bondtype);
 
 			if (likeness > best_likeness) {
 				best_likeness = likeness;
-				best_bond = &ff_bondtype; // Update pointer to the current best match
 				bestBondIndex = i;
 			}
 		}
 
-		if (best_likeness > 0.01f) {
-			//return *best_bond; // Dereference the pointer to return the object
+		if (best_likeness > 0.05f) {
 			return bestBondIndex;
 		}
 
-
-		// Special case for flipping both types of dihedrals.
-		// Dihedrals needs to be flipped because X C O X and X O C X is both valid
-		// I dont know why we need to flip impropers :(  
-		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype> || std::is_same_v<GenericBondType, Improperdihedralbondtype>) {
-			if (first_attempt) {
-				GenericBondType query_flipped = query_type;
-				query_flipped.flip();
-				return findBestMatchInForcefield_Index(query_flipped, forcefield, false);
-			}
-		}
-
-
-
 		std::cout << "Failed to match bond types.\n Closest match ";
-		for (auto& name : best_bond->bonded_typenames) {
+		for (const auto& name : forcefield[bestBondIndex].bonded_typenames) {
 			std::cout << name << " ";
 		}
 		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype>) {
@@ -78,7 +60,6 @@ namespace ForcefieldHelpers{
 		else {
 			std::cout << "Improper type\n";
 		}
-		// << best_bond.bonded_typenames[0] << "    " << best_bond.bonded_typenames[1];	//TODO: make this generic
 		printf("\nLikeness %f\n", best_likeness);
 		printf("Query typenames: ");
 		for (auto& name : query_type.bonded_typenames) {
@@ -88,7 +69,6 @@ namespace ForcefieldHelpers{
 		for (auto& id : query_type.global_ids) {
 			std::cout << std::to_string(id) << " ";
 		}
-		//std::cout << query_type.bonded_typenames[0] << '\t' << query_type.bonded_typenames[1] << std::endl;
 		throw std::runtime_error("\nfindBestMatchInForcefield failed");
 	}
 
@@ -98,12 +78,12 @@ template <typename GenericBondType>
 class ParameterDatabase {
 public:
 	const GenericBondType& get(const std::array<std::string, GenericBondType::n_atoms>& query) {
-		GenericBondType temp(query);	// TEMP, supply a public sort()
-		const std::string key = MakeKey(temp.bonded_typenames);
+		const std::string key = MakeKey(query);
 		if (fastLookup.count(key) != 0)
 			return parameters[fastLookup.find(key)->second];
 
-		int index = ForcefieldHelpers::findBestMatchInForcefield_Index(temp, parameters);
+		GenericBondType temp(query);	// TEMP, supply a public sort()
+		const int index = ForcefieldHelpers::findBestMatchInForcefield_Index(temp, parameters);
 		fastLookup.insert({ key, index });
 		return parameters[index];
 	}
@@ -119,13 +99,14 @@ private:
 	std::vector<GenericBondType> parameters;
 	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in parameters
 
-
 	std::string MakeKey(const std::array<std::string, GenericBondType::n_atoms>& arr) {
-		std::ostringstream key;
+		std::string key(GenericBondType::n_atoms * 5, ' '); // 5 is the maximum length of a typename
+		
+
 		for (size_t i = 0; i < GenericBondType::n_atoms; ++i) {
-			key << (i ? "|" : "") << arr[i];  // Inline conditional adds separator for all but the first element
+			std::strcpy(&key[i * 5], arr[i].c_str());
 		}
-		return key.str();
+		return key;
 	}
 };
 

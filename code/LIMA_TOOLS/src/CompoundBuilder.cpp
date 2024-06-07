@@ -7,6 +7,92 @@
 
 
 
+
+
+
+
+
+
+
+
+SingleBondFactory::SingleBondFactory(std::array<uint32_t, n_atoms> ids, float b0, float kb) : SingleBond{ {0,0}, b0, kb } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+SingleBondFactory::SingleBondFactory(const std::array<uint32_t, n_atoms>& ids, const SingleBond& parameters) : SingleBond{ parameters } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+
+
+AngleBondFactory::AngleBondFactory(std::array<uint32_t, n_atoms> ids, float theta_0, float k_theta) : AngleBond{ {0,0,0}, theta_0, k_theta } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+AngleBondFactory::AngleBondFactory(std::array<uint32_t, n_atoms> ids, const AngleBond& bondparameters) : AngleBond{ bondparameters } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+
+
+DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, 4> ids, float phi_0, float k_phi, float n) : DihedralBond{ {0,0,0,0}, phi_0, k_phi, n } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, n_atoms> ids, const DihedralBond& bondparameters) : DihedralBond{ bondparameters } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+
+
+ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_atoms> ids, float psi_0, float k_psi) : ImproperDihedralBond{ {0,0,0,0}, psi_0, k_psi } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_atoms> ids, const ImproperDihedralBond& bondparameters) : ImproperDihedralBond{ bondparameters } {
+	for (int i = 0; i < n_atoms; i++) {
+		global_atom_indexes[i] = ids[i];
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 struct Topology {
 	std::vector<SingleBondFactory> singlebonds;
 	std::vector<AngleBondFactory> anglebonds;
@@ -419,7 +505,7 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 				uniqueResId++;
 			}
 
-			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName != atom.residue.substr(0, 3))
+			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0,3))
 				throw std::runtime_error("Atom names do not match between gro and topology file");
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(atom.type), uniqueResId };
 
@@ -467,8 +553,27 @@ void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, L
 	topology.emplace_back(BondtypeFactory(globalIds, bondparameter.ToStandardBondRepresentation()));
 }
 
+void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileRef>& topologyFiles) {
+	int expectedSinglebonds = 0;
+	int expectedAnglebonds = 0;
+	int expectedDihedralbonds = 0;
+	int expectedImproperDihedralbonds = 0;
+	for (const auto& topologyFile : topologyFiles) {
+		expectedSinglebonds += topologyFile.topology.GetLocalSinglebonds().size();
+		expectedAnglebonds += topologyFile.topology.GetLocalAnglebonds().size();
+		expectedDihedralbonds += topologyFile.topology.GetLocalDihedralbonds().size();
+		expectedImproperDihedralbonds += topologyFile.topology.GetLocalImproperDihedralbonds().size();
+	}
+	topology.singlebonds.reserve(expectedSinglebonds);
+	topology.anglebonds.reserve(expectedAnglebonds);
+	topology.dihedralbonds.reserve(expectedDihedralbonds);
+	topology.improperdihedralbonds.reserve(expectedImproperDihedralbonds);
+}
+
 Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, LIMAForcefield& forcefield, const std::vector<ParticleInfo>& atomRefs) {
-	Topology topology;
+	Topology topology;	
+
+	ReserveSpaceForAllBonds(topology, topologyFiles);
 
 	for (const auto& topologyFile : topologyFiles) {
 		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			

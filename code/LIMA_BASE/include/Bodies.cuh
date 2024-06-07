@@ -18,15 +18,8 @@
 
 
 
-//--------------------------- THE FOLLOWING IS FOR HANDLING INTRAMOLECULAR FORCES ---------------------------//
 
-struct NBAtomtype {
-	NBAtomtype(){}
-	NBAtomtype(float m, float s, float e) : mass(m), sigma(s), epsilon(e) {}
-	float mass = 0.f;			// kg / mol
-	float sigma = 0.f;			// nm
-	float epsilon = 0.f;		// J/mol
-};
+// ------------------------------------------------- BondTypes ------------------------------------------------- //
 
 
 struct SingleBond {	// IDS and indexes are used interchangeably here!
@@ -38,12 +31,6 @@ struct SingleBond {	// IDS and indexes are used interchangeably here!
 	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
 };
-struct SingleBondFactory : public SingleBond {
-	SingleBondFactory(std::array<uint32_t, 2> ids, float b0, float kb);
-	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond& parameters);
-
-	uint32_t global_atom_indexes[2] = { 0,0 };
-};
 
 struct AngleBond {
 	AngleBond() {}
@@ -53,12 +40,6 @@ struct AngleBond {
 	float k_theta = 0.f;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
-};
-struct AngleBondFactory : public AngleBond {
-	AngleBondFactory(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
-	AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond& bondparameters);
-
-	uint32_t global_atom_indexes[3] = { 0,0, 0 };
 };
 
 struct DihedralBond {
@@ -70,12 +51,6 @@ struct DihedralBond {
 	half k_phi = 0.f;
 	half n = 0.f;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 	uint8_t atom_indexes[4] = {0,0,0,0};
-};
-struct DihedralBondFactory : public DihedralBond {
-	DihedralBondFactory(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
-	DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond& bondparameters);
-
-	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };
 
 struct ImproperDihedralBond {
@@ -89,14 +64,6 @@ struct ImproperDihedralBond {
 	uint8_t atom_indexes[4] = { 0,0,0,0 };
 	const static int n_atoms = 4;
 };
-struct ImproperDihedralBondFactory : public ImproperDihedralBond {
-	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
-	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond& bondparameters);
-
-	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
-};
-
-
 
 
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //

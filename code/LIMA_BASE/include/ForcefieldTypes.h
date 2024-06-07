@@ -168,22 +168,19 @@ struct Improperdihedralbondtype : public BondtypeBase<4> {
 	{
 		sort();
 	}
-	Improperdihedralbondtype(const std::array<int, n_atoms>& ids, const std::array<std::string, n_atoms>& typenames)
-		: BondtypeBase(ids, typenames) {
-		sort();
-	}
 
 	float psi0{};
 	float kpsi{};
 
 	void flip() {
 		std::swap(bonded_typenames[0], bonded_typenames[3]);
-		std::swap(bonded_typenames[1], bonded_typenames[2]);
+		//std::swap(bonded_typenames[1], bonded_typenames[2]);
 	}
 
 	//TODO: Check with Ali that this is okay?!
 	void sort() override {
 		// Improper dihedrals cannot be sorted, as they are asymmetric
+		flip();	// TODO: I dont know if this needs to happen for all forcefields, but it does for CHARMM
 	}
 	ImproperDihedralBond ToStandardBondRepresentation() const {
 		return ImproperDihedralBond{ {0,0, 0, 0}, psi0, kpsi};	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data

@@ -140,6 +140,8 @@ public:
 		int ids[N]{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 		int funct{};
 
+		std::string sourceLine{};	// used for debugging	TODO: remove
+
 		void composeString(std::ostringstream& oss) const {
 			const int width = 10;
 			for (size_t i = 0; i < N; ++i) {

@@ -387,22 +387,13 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {	// This can be ma
 
 
 
-
-
-
-
-
-
-
-
-
 struct TopologyFileRef {
-	TopologyFileRef(int offset, const ParsedTopologyFile& topol) : atomsOffset(offset), topology(topol) {}
+	TopologyFileRef(int offset, const TopologyFile& topol) : atomsOffset(offset), topology(topol) {}
 	int atomsOffset = 0;
-	const ParsedTopologyFile& topology;
+	const TopologyFile& topology;
 };
 
-std::vector<TopologyFileRef> PrepareTopologies(const ParsedTopologyFile& topol) {
+std::vector<TopologyFileRef> PrepareTopologies(const TopologyFile& topol) {
 	std::vector<TopologyFileRef> topologies;
 	int offset = 0;
 
@@ -417,7 +408,7 @@ std::vector<TopologyFileRef> PrepareTopologies(const ParsedTopologyFile& topol) 
 
 
 
-std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topologyFiles, const ParsedGroFile& grofile, LIMAForcefield& forcefield, int nNonsolventAtoms) {
+std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topologyFiles, const GroFile& grofile, LIMAForcefield& forcefield, int nNonsolventAtoms) {
 	std::vector<ParticleInfo> atomRefs(nNonsolventAtoms);
 	
 	int globalIndex = 0;
@@ -433,6 +424,8 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 				uniqueResId++;
 			}
 
+			if (grofile.atoms[globalIndex].atom_name != atom.atomname || grofile.atoms[globalIndex].residue_name.substr(0, 3) != atom.residue.substr(0,3))
+				throw std::runtime_error("Atom names do not match between gro and topology file");
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(atom.type), uniqueResId };
 
 			
@@ -443,10 +436,11 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 	}
 
 	// TODO: At this point we still need to load the solvents, they should come now
+	assert(globalIndex == atomRefs.size());
 
 	return atomRefs;
 }
-std::vector<Float3> LoadSolventPositions(const ParsedGroFile& grofile) {
+std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
 	std::vector<Float3> solventPositions;// (grofile.atoms.size() - nNonsolventAtoms);
 	solventPositions.reserve(grofile.atoms.size());
 
@@ -469,6 +463,12 @@ void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, L
 			//throw std::runtime_error("Bond refers to atom that has not been loaded");
 	}
 
+	if (globalIds[0] == 197940 && globalIds[1] == 197942)
+		int c = 0;
+
+	if (LIMAPOSITIONSYSTEM::calcHyperDistNM(&atomRefs[globalIds[0]].groAtom->position, &atomRefs[globalIds[1]].groAtom->position, 20.0f, BoundaryConditionSelect::PBC) > .7f)
+		int c = 0;
+
 	std::array<std::string, bondTopol.n> atomTypenames{};
 	for (int i = 0; i < bondTopol.n; i++) {
 		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
@@ -484,22 +484,22 @@ Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, LIMAFor
 
 	for (const auto& topologyFile : topologyFiles) {
 		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			
-			LoadBondIntoTopology<ParsedTopologyFile::SingleBond, Singlebondtype, SingleBondFactory>(
+			LoadBondIntoTopology<TopologyFile::SingleBond, Singlebondtype, SingleBondFactory>(
 				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			
-			LoadBondIntoTopology<ParsedTopologyFile::AngleBond, Anglebondtype, AngleBondFactory>(
+			LoadBondIntoTopology<TopologyFile::AngleBond, Anglebondtype, AngleBondFactory>(
 				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalDihedralbonds()) {			
-			LoadBondIntoTopology<ParsedTopologyFile::DihedralBond, Dihedralbondtype, DihedralBondFactory>(
+			LoadBondIntoTopology<TopologyFile::DihedralBond, Dihedralbondtype, DihedralBondFactory>(
 				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalImproperDihedralbonds()) {
-			LoadBondIntoTopology<ParsedTopologyFile::ImproperDihedralBond, Improperdihedralbondtype, ImproperDihedralBondFactory>(
+			LoadBondIntoTopology<TopologyFile::ImproperDihedralBond, Improperdihedralbondtype, ImproperDihedralBondFactory>(
 				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds);
 		}
 	}
@@ -536,7 +536,7 @@ std::vector<AtomGroup> GroupAtoms(const std::vector<ParticleInfo>& preparedAtoms
 	int currentResidueId = -1;
 
 	for (int particleId = 0; particleId < preparedAtoms.size(); particleId++) {
-		const auto atom = preparedAtoms[particleId];
+		const ParticleInfo& atom = preparedAtoms[particleId];
 		if (atomGroups.empty() || atom.topAtom->section_name.has_value() || atom.uniqueResId != preparedAtoms[particleId-1].uniqueResId)
 			atomGroups.push_back(AtomGroup{});
 		atomGroups.back().atomIds.push_back(particleId);
@@ -555,7 +555,7 @@ bool areBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<
 			const std::vector<int>& atomleft_singlesbonds = atomIdToSinglebondsMap[atomleft_gid];
 			const std::vector<int>& atomright_singlesbonds = atomIdToSinglebondsMap[atomright_gid];
 			
-
+			// Check if any singlebond id from left matches any in right
 			for (int i = 0; i < atomleft_singlesbonds.size(); i++) {
 				for (int j = 0; j < atomright_singlesbonds.size(); j++) {
 					if (atomleft_singlesbonds[i] == atomright_singlesbonds[j]) {
@@ -563,13 +563,6 @@ bool areBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<
 					}
 				}
 			}
-			//// If any singlebond id's match, return true
-			//// Check if any singlebond id from left matches any in right
-			//if (std::any_of(atomleft_singlesbonds.begin(), atomleft_singlesbonds.end(), [&](int id) {
-			//	return std::find(atomright_singlesbonds.begin(), atomright_singlesbonds.end(), id) != atomright_singlesbonds.end();
-			//	})) {
-			//	return true; // Return true if any singlebond id's match
-			//}
 		}
 	}
 	return false;
@@ -801,12 +794,16 @@ void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen
 
 	// First check that we dont have any unrealistic bonds, and warn immediately.
 	for (const auto& bond : topology.singlebonds) {
-		int gid1 = bond.global_atom_indexes[0];
-		int gid2 = bond.global_atom_indexes[1];
+		auto atom1 = atoms[bond.global_atom_indexes[0]];
+		auto atom2 = atoms[bond.global_atom_indexes[1]];
 
-		const Float3 pos1 = atoms[gid1].groAtom->position;
-		const Float3 pos2 = atoms[gid2].groAtom->position;
+		const Float3 pos1 = atom1.groAtom->position;
+		const Float3 pos2 = atom2.groAtom->position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&pos1, &pos2, boxlen_nm, bc_select);
+
+		if (bond.global_atom_indexes[0] == 13200)
+			int c = 0;
+
 		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
 			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
 		}
@@ -871,8 +868,8 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::string& molecule_dir,
 	//const std::string& gro_name,
-	const ParsedGroFile& gro_file,
-	const ParsedTopologyFile& topol_file,
+	const GroFile& gro_file,
+	const TopologyFile& topol_file,
 	VerbosityLevel vl,
 	std::unique_ptr<LimaLogger> logger,
 	bool ignore_hydrogens,
@@ -880,7 +877,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 ) 
 {
 	// Solvents are not present in top file, so we can't require these to match
-	const int nNonsolventAtoms = topol_file.GetElementCount<ParsedTopologyFile::AtomsEntry>();
+	const int nNonsolventAtoms = topol_file.GetElementCount<TopologyFile::AtomsEntry>();
 	assert(gro_file.atoms.size() >= nNonsolventAtoms);
 	const std::vector<TopologyFileRef> preparedTopologyFiles = PrepareTopologies(topol_file);
 
@@ -920,7 +917,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		std::move(solventPositions),
 		gro_file.box_size.x,	// TODO: Find a better way..
 		std::move(preparedAtoms),
-		ParsedGroFile{ gro_file },	// TODO: wierd ass copy here
+		GroFile{ gro_file },	// TODO: wierd ass copy here
 		forcefield.GetActiveLjParameters()
 	);
 

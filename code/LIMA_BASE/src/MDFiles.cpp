@@ -78,17 +78,17 @@ std::string composeGroLine(const GroRecord& record) {
 	return oss.str();
 }
 
-void ParsedTopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
+void TopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
 	if (includeTopologyFile->name == "")
 		throw std::runtime_error("Trying to save a topology with an empty include topology name");
 	oss << includeTopologyFile->name;
 }
 
-void ParsedTopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
+void TopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
 	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl;
 }
 
-void ParsedTopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
+void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 	if (section_name) {
 		oss << section_name.value() << "\n";
 	}
@@ -104,7 +104,7 @@ void ParsedTopologyFile::AtomsEntry::composeString(std::ostringstream& oss) cons
 }
 
 
-void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<ParsedTopologyFile>>& includedFiles, fs::path srcDir) {
+void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<TopologyFile>>& includedFiles, fs::path srcDir) {
 	for (const auto& entry : fs::directory_iterator(srcDir)) {
 		if (entry.is_directory()) {
 			fs::path subDir = entry.path();
@@ -125,7 +125,7 @@ bool isFloat(const std::string& str) {
 	return iss.eof() && !iss.fail();
 }
 
-ParsedGroFile::ParsedGroFile(const fs::path& path) : m_path(path){
+GroFile::GroFile(const fs::path& path) : m_path(path){
 	if (!(path.extension().string() == std::string{ ".gro" }))
 		throw std::runtime_error("Expected .gro extension");
 	if (!fs::exists(path))
@@ -265,7 +265,7 @@ fs::path SearchForFile(fs::path dir, const std::string& filename) {
 	throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", filename, dir.string()));
 }
 
-ParsedTopologyFile::ParsedTopologyFile() {
+TopologyFile::TopologyFile() {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
 }
 
@@ -278,7 +278,7 @@ bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int i
 	return true;
 }
 
-ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
+TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
 
@@ -296,7 +296,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 		for (auto& molecule : molecules.entries) {
 			assert(molecule.includeTopologyFile == nullptr);
 			assert(molecule.name != "");
-			//includeTopology.includeTopologyFile = std::make_shared<ParsedTopologyFile>(includeTopology.name);
+			//includeTopology.includeTopologyFile = std::make_shared<TopologyFile>(includeTopology.name);
 			// 
 			// 
 			if (includedFiles.count(molecule.name) == 0)
@@ -324,7 +324,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 
 		std::string line{}, word{};
 		std::string sectionname = "";
-		//	std::vector<std::future<std::pair<std::string, std::unique_ptr<ParsedTopologyFile>>>> includeTopologies;	// <name, file>
+		//	std::vector<std::future<std::pair<std::string, std::unique_ptr<TopologyFile>>>> includeTopologies;	// <name, file>
 
 		std::vector<int> groIdToLimaId;
 
@@ -378,7 +378,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 			}
 			case moleculetype:
 			{
-				ParsedTopologyFile::MoleculetypeEntry moleculetype{};
+				TopologyFile::MoleculetypeEntry moleculetype{};
 				iss >> moleculetype.name >> moleculetype.nrexcl;
 				moleculetypes.entries.emplace_back(moleculetype);
 				break;
@@ -392,7 +392,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 					}
 				}
 				else {
-					ParsedTopologyFile::AtomsEntry atom;
+					TopologyFile::AtomsEntry atom;
 					int groId;
 					iss >> groId>> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
 
@@ -410,18 +410,22 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 				break;
 			}
 			case TopologySection::bonds: {
-				ParsedTopologyFile::SingleBond singlebond{};
+				TopologyFile::SingleBond singlebond{};
 				int groIds[2];
 				iss >> groIds[0] >> groIds[1] >> singlebond.funct;
 				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
 					break;
 				for (int i = 0; i < 2; i++) 
 					singlebond.ids[i] = groIdToLimaId[groIds[i]];
+				if (singlebond.ids[0] == 1770 && singlebond.ids[1] == 1772) {
+					auto a = name;
+					int c = 0;
+				}
 				singlebonds.entries.emplace_back(singlebond);
 				break;
 			}
 			case TopologySection::pairs: {
-				ParsedTopologyFile::Pair pair{};
+				TopologyFile::Pair pair{};
 				int groIds[2];
 				iss >> groIds[0] >> groIds[1] >> pair.funct;
 				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
@@ -432,7 +436,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 				break;
 			}
 			case TopologySection::angles: {
-				ParsedTopologyFile::AngleBond angle{};
+				TopologyFile::AngleBond angle{};
 				int groIds[3];
 				iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
 				if (!VerifyAllParticlesInBondExists<3>(groIdToLimaId, groIds))
@@ -443,7 +447,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 				break;
 			}
 			case TopologySection::dihedrals: {
-				ParsedTopologyFile::DihedralBond dihedral{};
+				TopologyFile::DihedralBond dihedral{};
 				int groIds[4];
 				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
 				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
@@ -454,7 +458,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 				break;
 			}
 			case TopologySection::impropers: {
-				ParsedTopologyFile::ImproperDihedralBond improper{};
+				TopologyFile::ImproperDihedralBond improper{};
 				int groIds[4];
 				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
 				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
@@ -489,7 +493,7 @@ ParsedTopologyFile::ParsedTopologyFile(const fs::path& path) : path(path), name(
 	//}
 }
 
-void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
+void GroFile::printToFile(const std::filesystem::path& path) const {
 	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
 
 	std::ofstream file(path);
@@ -516,7 +520,7 @@ void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 	WriteFileToBinaryCache(*this, path);
 }
 
-//void ParsedGroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
+//void GroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
 //	if (atoms.size() == 0) {
 //		atoms.push_back({ 0, residue_name, atom_name, 0, position, std::nullopt });
 //	}
@@ -534,7 +538,7 @@ void ParsedGroFile::printToFile(const std::filesystem::path& path) const {
 
 
 
-std::string ParsedTopologyFile::generateLegend(std::vector<std::string> elements)
+std::string TopologyFile::generateLegend(std::vector<std::string> elements)
 {
 	std::ostringstream legend;
 	legend << ';'; // Start with a semicolon
@@ -545,7 +549,7 @@ std::string ParsedTopologyFile::generateLegend(std::vector<std::string> elements
 	return legend.str();
 }
 
-void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
+void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
 	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expectec [.top/.itp]", ext)); }
 
@@ -576,7 +580,7 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 }
 
 
-//void ParsedTopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
+//void TopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
 //
 //	for (auto& atom : atoms.entries) {
 //		atom.nr += atomNrIncrement;
@@ -603,43 +607,44 @@ void ParsedTopologyFile::printToFile(const std::filesystem::path& path) const {
 //	}
 //}
 
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::AtomsEntry> ParsedTopologyFile::GetAllAtoms() const {
-	return ParsedTopologyFile::SectionRange<AtomsEntry>(this);
+TopologyFile::SectionRange<TopologyFile::AtomsEntry> TopologyFile::GetAllAtoms() const {
+	return TopologyFile::SectionRange<AtomsEntry>(this);
 }
-//ParsedTopologyFile::SectionRange<ParsedTopologyFile::SingleBond> ParsedTopologyFile::GetSinglebonds() {
-//	return ParsedTopologyFile::SectionRange<SingleBond>(this);
+//TopologyFile::SectionRange<TopologyFile::SingleBond> TopologyFile::GetSinglebonds() {
+//	return TopologyFile::SectionRange<SingleBond>(this);
 //}
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::SingleBond> ParsedTopologyFile::GetAllSinglebonds() const {
-	return ParsedTopologyFile::SectionRange<SingleBond>(this);
+TopologyFile::SectionRange<TopologyFile::SingleBond> TopologyFile::GetAllSinglebonds() const {
+	return TopologyFile::SectionRange<SingleBond>(this);
 }
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::Pair> ParsedTopologyFile::GetAllPairs() const {
-	return ParsedTopologyFile::SectionRange<Pair>(this);
+TopologyFile::SectionRange<TopologyFile::Pair> TopologyFile::GetAllPairs() const {
+	return TopologyFile::SectionRange<Pair>(this);
 }
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::AngleBond> ParsedTopologyFile::GetAllAnglebonds() const {
-	return ParsedTopologyFile::SectionRange<AngleBond>(this);
+TopologyFile::SectionRange<TopologyFile::AngleBond> TopologyFile::GetAllAnglebonds() const {
+	return TopologyFile::SectionRange<AngleBond>(this);
 }
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::DihedralBond> ParsedTopologyFile::GetAllDihedralbonds() const {
-	return ParsedTopologyFile::SectionRange<DihedralBond>(this);
+TopologyFile::SectionRange<TopologyFile::DihedralBond> TopologyFile::GetAllDihedralbonds() const {
+	return TopologyFile::SectionRange<DihedralBond>(this);
 }
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::ImproperDihedralBond> ParsedTopologyFile::GetAllImproperDihedralbonds() const {
-	return ParsedTopologyFile::SectionRange<ImproperDihedralBond>(this);
+TopologyFile::SectionRange<TopologyFile::ImproperDihedralBond> TopologyFile::GetAllImproperDihedralbonds() const {
+	return TopologyFile::SectionRange<ImproperDihedralBond>(this);
 }
-ParsedTopologyFile::SectionRange<ParsedTopologyFile::MoleculeEntry> ParsedTopologyFile::GetAllSubMolecules() const {
-	return ParsedTopologyFile::SectionRange<MoleculeEntry>(this);
+TopologyFile::SectionRange<TopologyFile::MoleculeEntry> TopologyFile::GetAllSubMolecules() const {
+	return TopologyFile::SectionRange<MoleculeEntry>(this);
 }
 
 
-void MDFiles::MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop) 
+void MDFiles::MergeFiles(GroFile& leftGro, TopologyFile& leftTop, GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop) 
 {
+	int newGroId = leftGro.atoms.back().gro_id + 1;
 	// First merge the GRO, and get a mapping to the new IDs
 	for (const GroRecord& atom : rightGro.atoms) {
 		leftGro.atoms.emplace_back(atom);
+		leftGro.atoms.back().gro_id = newGroId % 100'000;
+		newGroId++;
 	}
 
-
-
 	// To merge the top files, we simply need to add it as an include topology
-	leftTop.AppendTopology(std::move(rightTop));	
+	leftTop.AppendTopology(rightTop);	
 }
 
 
@@ -741,6 +746,6 @@ ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
 }
 
 SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
-	grofile = std::make_unique<ParsedGroFile>(workDir / "molecule/conf.gro");
-	topfile = std::make_unique<ParsedTopologyFile>(workDir / "molecule/topol.top");
+	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");
+	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");
 }

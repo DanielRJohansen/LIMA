@@ -26,11 +26,11 @@ namespace ElectrostaticsTests {
 
 		// Create 5 custom particles
 		AtomsSelection atomsSelection{
-			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -1.f, 10.f}, 15},
-			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -.5f, 10.f}, 15},
-			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, -0.f, 10.f}, 40},
-			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 0.5f, 10.f}, 15},
-			{ParsedTopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "lxx", "lxx", 0, 1.f, 10.f},  15}
+			{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
 		};
 		auto a = env.getWorkdir();
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());

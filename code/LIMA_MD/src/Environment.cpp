@@ -62,12 +62,12 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	const auto groFile = std::make_unique<ParsedGroFile>(gro_path);
-	const auto topFile = std::make_unique<ParsedTopologyFile>(topol_path);
+	const auto groFile = std::make_unique<GroFile>(gro_path);
+	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);
 }
 
-void Environment::CreateSimulation(const ParsedGroFile& grofile, const ParsedTopologyFile& topolfile, const SimParams& params) 
+void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
 	setupEmptySimulation(params);
 
@@ -111,12 +111,12 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 
 
 void Environment::createSimulationFiles(float boxlen) {
-	ParsedGroFile grofile{};
+	GroFile grofile{};
 	grofile.m_path = work_dir / "molecule/conf.gro";
 	grofile.box_size = Float3{ boxlen };
 	grofile.printToFile();
 
-	ParsedTopologyFile topfile{};
+	TopologyFile topfile{};
 	topfile.path = work_dir / "molecule/topol.top";
 	topfile.printToFile();
 
@@ -286,8 +286,8 @@ void Environment::run(bool em_variant) {
 	}
 }
 
-ParsedGroFile Environment::writeBoxCoordinatesToFile() {
-	ParsedGroFile outputfile{ boximage->grofile };
+GroFile Environment::writeBoxCoordinatesToFile() {
+	GroFile outputfile{ boximage->grofile };
 
 	if (simulation->boxparams_host.n_solvents != 0) {
 		throw std::runtime_error("This function is now designed to handle solvents");

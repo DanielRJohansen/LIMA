@@ -41,7 +41,7 @@ public:
 	void CreateSimulation(std::string conf_filename, std::string topol_filename, SimParams);
 
 	// The basic createSim
-	void CreateSimulation(const ParsedGroFile&, const ParsedTopologyFile&, const SimParams&);
+	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);
 
 
 	/// <summary>
@@ -68,7 +68,7 @@ public:
 
 	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
 	// atoms in the input coordinate file.
-	ParsedGroFile writeBoxCoordinatesToFile();
+	GroFile writeBoxCoordinatesToFile();
 
 
 

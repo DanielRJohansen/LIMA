@@ -74,7 +74,7 @@ namespace LimaMoleculeGraph {
 		const std::vector<int>& getNodeIds() const { return nodeids; }
 	};
 
-	MoleculeGraph createGraph(const ParsedTopologyFile& topolfile);
+	MoleculeGraph createGraph(const TopologyFile& topolfile);
 
 	/// <summary>
 	/// Reorders the particles so they are sequential inside of the subchains, and that particles of

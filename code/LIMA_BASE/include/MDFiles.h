@@ -43,9 +43,9 @@ struct GroRecord {
 	std::optional<Float3> velocity{};
 };
 
-struct ParsedGroFile {
-	ParsedGroFile() {};
-	ParsedGroFile(const std::filesystem::path& path);
+struct GroFile {
+	GroFile() {};
+	GroFile(const std::filesystem::path& path);
 
 	// Contents inside file
 	std::string title="";
@@ -88,21 +88,21 @@ struct Section {
 	}
 };
 
-class ParsedTopologyFile {	//.top or .itp
-	std::unordered_map<std::string, LazyLoadFile<ParsedTopologyFile>> includedFiles;
+class TopologyFile {	//.top or .itp
+	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
 
 public:
 	struct MoleculeEntry {
 		MoleculeEntry() {}
 		MoleculeEntry(const std::string& name)
 			: name(name) {}
-		MoleculeEntry(const std::string& name, std::shared_ptr<ParsedTopologyFile> includeTopologyFile)
+		MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile)
 			: name(name), includeTopologyFile(includeTopologyFile) {}
 
 		void composeString(std::ostringstream& oss) const;
 
 		std::string name{};	// Name of file without extension and path
-		std::shared_ptr<ParsedTopologyFile> includeTopologyFile = nullptr;
+		std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
 	};
 	
 	struct MoleculetypeEntry {
@@ -163,20 +163,20 @@ public:
 	struct ImproperDihedralBond : GenericBond<4> {};
 
 	// Create an empty file
-	ParsedTopologyFile();
+	TopologyFile();
 	// Load a file from path
-	ParsedTopologyFile(const std::filesystem::path& path);
+	TopologyFile(const std::filesystem::path& path);
 
 	void printToFile(const std::filesystem::path& path) const;
 	void printToFile() const { printToFile(path); };
 
 	// Apply a mapping of resNr and GroID to all entries in this file
 	//void IncrementIds(int atomNrIncrement, int resNrIncrement);
-	ParsedTopologyFile copy() const { return *this; }
+	TopologyFile copy() const { return *this; }
 
-	void AppendTopology(const std::shared_ptr<ParsedTopologyFile>& other) {
+	void AppendTopology(const std::shared_ptr<TopologyFile>& other) {
 		if (includedFiles.count(other->name) == 0)
-			includedFiles.emplace(other->name, LazyLoadFile<ParsedTopologyFile>(other));
+			includedFiles.emplace(other->name, LazyLoadFile<TopologyFile>(other));
 
 		molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get());
 	}
@@ -268,7 +268,7 @@ public:
 	size_t GetElementCount() const {
 		size_t count = 0;
 		count += GetSection<T>().entries.size();
-		for (auto& mol : GetAllSubMolecules()) {
+		for (const auto& mol : molecules.entries) {
 			count += mol.includeTopologyFile->GetElementCount<T>();
 		}
 		return count;
@@ -277,7 +277,7 @@ public:
 
 private:
 	// Private copy constructor, since this should be avoided when possible
-	ParsedTopologyFile& operator=(const ParsedTopologyFile&) = default;
+	TopologyFile& operator=(const TopologyFile&) = default;
 
 	static std::string generateLegend(std::vector<std::string> elements);
 };
@@ -288,7 +288,7 @@ private:
 
 
 template <typename T>
-class ParsedTopologyFile::SectionRange {
+class TopologyFile::SectionRange {
 public:
 
 
@@ -368,14 +368,14 @@ public:
 			}
 		}
 	};
-	using Iterator = _Iterator<ParsedTopologyFile*, T>;
-	using ConstIterator = _Iterator<const ParsedTopologyFile*, const T>;
+	using Iterator = _Iterator<TopologyFile*, T>;
+	using ConstIterator = _Iterator<const TopologyFile*, const T>;
 
-	explicit SectionRange(ParsedTopologyFile* const topology) : topology(topology) {
+	explicit SectionRange(TopologyFile* const topology) : topology(topology) {
 		//topology->LoadAllSubMolecules();
 	}
 
-	explicit SectionRange(const ParsedTopologyFile* const topology) : topology(const_cast<ParsedTopologyFile*>(topology)) {
+	explicit SectionRange(const TopologyFile* const topology) : topology(const_cast<TopologyFile*>(topology)) {
 		//topology->LoadAllTopologies();
 	}
 
@@ -405,7 +405,7 @@ public:
 
 
 private:
-	ParsedTopologyFile* const topology;
+	TopologyFile* const topology;
 };
 
 
@@ -417,16 +417,16 @@ namespace MDFiles {
 	namespace fs = std::filesystem;
 
 	struct FilePair {
-		std::shared_ptr<ParsedGroFile> grofile;
-		std::shared_ptr<ParsedTopologyFile> topfile;
+		std::shared_ptr<GroFile> grofile;
+		std::shared_ptr<TopologyFile> topfile;
 	};
 
 	// Takes the gro and top of "right" and inserts it into left
-	void MergeFiles(ParsedGroFile& leftGro, ParsedTopologyFile& leftTop, 
-		ParsedGroFile& rightGro, std::unique_ptr<ParsedTopologyFile> rightTop);
+	void MergeFiles(GroFile& leftGro, TopologyFile& leftTop, 
+		GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop);
 
 
-	//std::unique_ptr<ParsedTopologyFile> loadTopologyFile(const fs::path& path);
+	//std::unique_ptr<TopologyFile> loadTopologyFile(const fs::path& path);
 
 
 
@@ -475,8 +475,8 @@ namespace MDFiles {
 	struct SimulationFilesCollection {
 		SimulationFilesCollection() {};
 		SimulationFilesCollection(const fs::path& workDir);
-		std::unique_ptr<ParsedGroFile> grofile;
-		std::unique_ptr<ParsedTopologyFile> topfile;
+		std::unique_ptr<GroFile> grofile;
+		std::unique_ptr<TopologyFile> topfile;
 	};
 
 

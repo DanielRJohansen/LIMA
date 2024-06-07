@@ -40,8 +40,8 @@ namespace TestMembraneBuilder {
 			files.push_back({ "membrane.top", "membrane_reference.top" });				
 		}		
 
-		ParsedTopologyFile newTop{ mol_dir / "monolayer.top" };
-		ParsedTopologyFile refTop{ mol_dir / "monolayer_reference.top" };
+		TopologyFile newTop{ mol_dir / "monolayer.top" };
+		TopologyFile refTop{ mol_dir / "monolayer_reference.top" };
 
 		if (newTop.GetAllAtoms() != refTop.GetAllAtoms()) {
 			return LimaUnittestResult{ LimaUnittestResult::FAIL , "Atom mismatch", envmode == Full };

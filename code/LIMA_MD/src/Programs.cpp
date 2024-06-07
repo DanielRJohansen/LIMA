@@ -11,8 +11,8 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	// Load the files for each lipid
 	for (auto& lipid : lipidselection) {
 		const std::string lipid_path = env.main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
-		lipid.grofile = std::make_unique<ParsedGroFile>(lipid_path + lipid.lipidname + ".gro");
-		lipid.topfile = std::make_unique<ParsedTopologyFile>(lipid_path + lipid.lipidname + ".itp");
+		lipid.grofile = std::make_unique<GroFile>(lipid_path + lipid.lipidname + ".gro");
+		lipid.topfile = std::make_unique<TopologyFile>(lipid_path + lipid.lipidname + ".itp");
 	}
 
 	BoxBuilder boxbuilder( std::make_unique<LimaLogger>());
@@ -82,7 +82,14 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	return { std::move(bilayerGro), std::move(bilayerTop) };
 }
 
-void Programs::SetMoleculeCenter(ParsedGroFile& grofile, Float3 targetCenter) {
+void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
+	
+	// First make sure the molecule is not split due to PBC
+	for (auto& particle : grofile.atoms) {
+		const Float3 center{ 0, 0, 0 };
+		BoundaryConditionPublic::applyHyperposNM(&center, &particle.position, BOX_LEN_NM, BoundaryConditionSelect::PBC);
+	}
+
 	Double3 sum = { 0,0,0 };
 	for (auto& particle : grofile.atoms) 
 		sum += particle.position;

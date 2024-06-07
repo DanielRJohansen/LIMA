@@ -8,7 +8,7 @@
 const std::array<std::string, 6> LipidSelect::valid_lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 
 
-void centerMoleculeAroundOrigo(ParsedGroFile& grofile) {
+void centerMoleculeAroundOrigo(GroFile& grofile) {
 	Float3 position_sum{};
 	for (const auto& atom : grofile.atoms) {
 		position_sum += atom.position;
@@ -20,7 +20,7 @@ void centerMoleculeAroundOrigo(ParsedGroFile& grofile) {
 	}
 }
 
-Float3 calcDimensions(const ParsedGroFile& grofile)
+Float3 calcDimensions(const GroFile& grofile)
 {
 	BoundingBox bb{};
 
@@ -59,7 +59,7 @@ void overwriteBond(const std::vector<BondType>& bonds, std::vector<BondType>& de
 }
 
 //template <typename BondType>
-//void overwriteBond(ParsedTopologyFile::SectionRange<BondType> bonds, ParsedTopologyFile::SectionRange<BondType> dest, int atomnr_offset) {
+//void overwriteBond(TopologyFile::SectionRange<BondType> bonds, TopologyFile::SectionRange<BondType> dest, int atomnr_offset) {
 //	for (const auto& bond : bonds) {
 //		dest.add(bond); // Assuming 'add' appropriately adds items to the container
 //		for (int i = 0; i < bond.n; i++) {
@@ -74,7 +74,7 @@ float genRandomAngle() {
 	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI;
 }
 
-void addAtomToFile(ParsedGroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
+void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
 	std::function<void(Float3&)> position_transform) 
 {
 	outputgrofile.atoms.emplace_back(input_atom_gro);
@@ -171,13 +171,13 @@ namespace SimulationBuilder{
 		const float dist = molecule_diameter + padding;
 
 
-		auto outputgrofile = std::make_unique<ParsedGroFile>();
+		auto outputgrofile = std::make_unique<GroFile>();
 		outputgrofile->box_size = box_dims;
 		outputgrofile->title = "Membrane consisting of ";
 		for (const auto& lipid : lipidselection) {
 			outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 		}
-		auto outputtopologyfile = std::make_unique<ParsedTopologyFile>();
+		auto outputtopologyfile = std::make_unique<TopologyFile>();
 		outputtopologyfile->name = "monolayer";
 
 		srand(1238971);
@@ -241,10 +241,10 @@ namespace SimulationBuilder{
 
 
 		// Copy the existing gro and top file into the output files
-		auto outputgrofile = std::make_unique<ParsedGroFile>( *inputfiles.grofile );
+		auto outputgrofile = std::make_unique<GroFile>( *inputfiles.grofile );
 		outputgrofile->box_size = box_dims;
 		outputgrofile->title = "Lipid bi-layer consisting of " + inputfiles.grofile->title;
-		auto outputtopologyfile = std::make_unique<ParsedTopologyFile>( inputfiles.topfile->copy());
+		auto outputtopologyfile = std::make_unique<TopologyFile>( inputfiles.topfile->copy());
 		outputtopologyfile->title = "Lipid bi-layer consisting of " + inputfiles.topfile->title;
 
 
@@ -290,7 +290,7 @@ namespace SimulationBuilder{
 	}
 }
 
-void SimulationBuilder::DistributeParticlesInBox(ParsedGroFile& grofile, ParsedTopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
+void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
 {
 	const int blocksPerDim = static_cast<int>(std::ceilf(grofile.box_size.x / 2.f));
 	const float blockLen = grofile.box_size.x / static_cast<float>(blocksPerDim);

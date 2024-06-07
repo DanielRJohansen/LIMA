@@ -13,8 +13,8 @@ struct LipidSelect {
 	}
 	const std::string lipidname;
 	const int percentage;
-	std::shared_ptr<ParsedGroFile> grofile;
-	std::shared_ptr<ParsedTopologyFile> topfile;
+	std::shared_ptr<GroFile> grofile;
+	std::shared_ptr<TopologyFile> topfile;
 
 	static const std::array<std::string, 6> valid_lipids;	// Defined in .cpp file
 };
@@ -22,7 +22,7 @@ struct LipidSelect {
 using LipidsSelection = std::vector<LipidSelect>;
 
 struct AtomtypeSelect {
-	const ParsedTopologyFile::AtomsEntry atomtype;
+	const TopologyFile::AtomsEntry atomtype;
 	const float percentage;
 };
 using AtomsSelection = std::vector<AtomtypeSelect>;
@@ -35,7 +35,7 @@ namespace SimulationBuilder {
 	FilePair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims);
 	FilePair makeBilayerFromMonolayer(const FilePair& inputfiles, Float3 box_dims);
 
-	void DistributeParticlesInBox(ParsedGroFile& grofile, ParsedTopologyFile& topfile, const AtomsSelection& particles,
+	void DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles,
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);
 
 };

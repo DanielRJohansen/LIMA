@@ -44,7 +44,7 @@ void Chain::sort() {
 		subchain->sort();
 }
 
-MoleculeGraph LimaMoleculeGraph::createGraph(const ParsedTopologyFile& topolfile) {
+MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile& topolfile) {
 	MoleculeGraph graph;
 
 	for (const auto& atom : topolfile.GetAllAtoms()) {
@@ -174,8 +174,8 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(const fs::
 	// TODO fix this again
 
 
-	//auto grofile = std::make_unique<ParsedGroFile>(gro_path_in);
-	//auto topfile = std::make_unique<ParsedTopologyFile>(top_path_in);
+	//auto grofile = std::make_unique<GroFile>(gro_path_in);
+	//auto topfile = std::make_unique<TopologyFile>(top_path_in);
 
 	//const MoleculeGraph molgraph = createGraph(*topfile);
 	//std::unique_ptr<Chain> root_chain = getChainTree(molgraph);

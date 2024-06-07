@@ -22,8 +22,8 @@ namespace LIMA_MOLECULEBUILD {
 	std::unique_ptr<BoxImage> buildMolecules(
 		//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
 		const std::string& molecule_dir,	// We need access to .lff files aswell
-		const ParsedGroFile& gro_file,
-		const ParsedTopologyFile& top_file,
+		const GroFile& gro_file,
+		const TopologyFile& top_file,
 		VerbosityLevel vl,
 		std::unique_ptr<LimaLogger>,
 		bool ignore_hydrogens,
@@ -39,10 +39,10 @@ namespace LIMA_MOLECULEBUILD {
 
 struct ParticleInfo {
 	ParticleInfo() = default;
-	ParticleInfo(const GroRecord* groAtom, const ParsedTopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
+	ParticleInfo(const GroRecord* groAtom, const TopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
 		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId) {}
 	const GroRecord* groAtom = nullptr;
-	const ParsedTopologyFile::AtomsEntry* topAtom = nullptr;
+	const TopologyFile::AtomsEntry* topAtom = nullptr;
 	int activeLjtypeParameterIndex = -1;
 	int uniqueResId = -1;
 
@@ -170,7 +170,7 @@ struct BoxImage {
 	//const ParticleInfoTable particleinfotable;
 	const std::vector<ParticleInfo> particleinfos;
 
-	ParsedGroFile grofile;
+	GroFile grofile;
 
 	const ForceField_NB forcefield;
 };

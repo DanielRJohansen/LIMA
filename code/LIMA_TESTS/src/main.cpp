@@ -73,7 +73,7 @@ int main() {
 		//SimParams params;
 		////params.enable_electrostatics = true;
 		//params.n_steps = 5000;
-		//loadAndRunBasicSimulation("psome", envmode, 1.5e-4, 1.1e-6, {params});
+		//loadAndRunBasicSimulation("psome", envmode, 1.5e-4, 1.1e-6);
 		// 
 		//doPool50x(EnvMode::Headless);
 	

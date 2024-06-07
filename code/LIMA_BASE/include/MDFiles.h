@@ -36,8 +36,8 @@ private:
 
 struct GroRecord {
 	int residue_number{};
-	std::string residue_name{};
-	std::string atom_name{};
+	std::string residueName{};
+	std::string atomName{};
 	int gro_id{};
 	Float3 position{};
 	std::optional<Float3> velocity{};

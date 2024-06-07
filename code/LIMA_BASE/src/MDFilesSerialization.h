@@ -47,8 +47,8 @@ namespace cereal {
 	template <class Archive>
 	void serialize(Archive& archive, GroRecord& f) {
 		archive(f.residue_number);
-		archive(f.residue_name);
-		archive(f.atom_name);
+		archive(f.residueName);
+		archive(f.atomName);
 		archive(f.gro_id);
 		archive(f.position);
 		archive(f.velocity);

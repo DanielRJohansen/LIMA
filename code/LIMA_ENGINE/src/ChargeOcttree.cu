@@ -2,7 +2,7 @@
 #include "EngineUtils.cuh"
 #include "BoundaryCondition.cuh"
 
-#include "Engine.cuh"
+//#include "Engine.cuh"
 #include "SimulationDevice.cuh"
 #include "ForceComputations.cuh"
 
@@ -23,20 +23,20 @@ __device__ void ParallelSum(T* arrayptr, int array_len) {				// Places the resul
 	}
 }
 
-__device__ void ParallelSum(float* arrayPtr, int arrayLen, int stride) {
-	const int index = threadIdx.x * stride;
-	float temp{};
-	for (int i = 1; i < arrayLen; i *= 2) {			
-		if ((index + i) < arrayLen) {
-			temp = arrayPtr[index] + arrayPtr[index + i];
-		}
-		__syncthreads();
-		if ((index + i) < arrayLen) {
-			arrayPtr[index] = temp;
-		}
-		__syncthreads();
-	}
-}
+//__device__ void ParallelSum(float* arrayPtr, int arrayLen, int stride) {
+//	const int index = threadIdx.x * stride;
+//	float temp{};
+//	for (int i = 1; i < arrayLen; i *= 2) {			
+//		if ((index + i) < arrayLen) {
+//			temp = arrayPtr[index] + arrayPtr[index + i];
+//		}
+//		__syncthreads();
+//		if ((index + i) < arrayLen) {
+//			arrayPtr[index] = temp;
+//		}
+//		__syncthreads();
+//	}
+//}
 
 // diff = self-other
 __device__ Float3 CalcCoulumbHalfforce(const Float3& diff, float charge) {

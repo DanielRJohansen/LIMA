@@ -35,7 +35,7 @@ void runAllUnitTests();
 //}
 //}
 
-
+#include <ostream>
 
 
 
@@ -78,8 +78,11 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 	
 
+		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
 		
+
+
 		//const fs::path work_dir = simulations_dir + "/test";
 		//Environment env{ work_dir.string(), envmode, false };
 		//env.CreateSimulation(20.f);
@@ -96,7 +99,7 @@ int main() {
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.15e-5, 2e-5);	
-			
+		
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 

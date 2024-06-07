@@ -95,7 +95,6 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
-		//const NodeIndex nodeindex = absolutePositionToNodeIndex<BoundaryCondition>(position);
 		const NodeIndex nodeindex = absolutePositionToNodeIndex(position, bc, boxlen_nm);	// TEMP
 		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
 		return std::make_tuple(nodeindex, relpos);

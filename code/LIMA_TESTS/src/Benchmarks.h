@@ -7,7 +7,14 @@ namespace Benchmarks {
 
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
-
+	
+	static void ReadGroFile(EnvMode mode) {
+		assert(ENABLE_FILE_CACHING == false);
+		TestUtils::TimeIt timer(mode);		
+		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
+		GroFile psomeGrofile{ work_dir / "molecule/membrane_with_psome.gro" };
+		printf("N atoms: %d\n", psomeGrofile.atoms.size());
+	}
 
 	static void MembraneWithPsome(EnvMode envmode) {
 		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
@@ -15,7 +22,7 @@ namespace Benchmarks {
 		bool buildFromScratch = true;
 		if (buildFromScratch) {
 			Environment env{ work_dir.string(), envmode, false };
-			const float boxlen = 23.f;
+			const float boxlen = 20.f;
 
 			env.CreateSimulation(boxlen);
 			LipidsSelection lipidselection;
@@ -36,7 +43,7 @@ namespace Benchmarks {
 			membraneGrofile->printToFile(work_dir / "molecule/membrane_with_psome.gro");
 			membraneTopfile->printToFile(work_dir / "molecule/membrane_with_psome.top");
 		}
-
+		return;
 
 		SimParams emparams{ 2000, 20, true, PBC };
 

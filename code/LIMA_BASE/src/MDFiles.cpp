@@ -26,10 +26,10 @@ GroRecord parseGroLine(const std::string& line) {
 		};
 
 	// Parse residue name (5 characters)
-	record.residue_name = trimSpaces(line.substr(5, 5));
+	record.residueName = trimSpaces(line.substr(5, 5));
 
 	// Parse atom name (5 characters)
-	record.atom_name = trimSpaces(line.substr(10, 5));
+	record.atomName = trimSpaces(line.substr(10, 5));
 
 	// Parse atom number (5 positions, integer) directly
 	record.gro_id = std::stoi(line.substr(15, 5));
@@ -60,8 +60,8 @@ std::string composeGroLine(const GroRecord& record) {
 
 	// Format and write each part of the GroRecord
 	oss << std::setw(5) << std::left << record.residue_number
-		<< std::setw(5) << std::left << record.residue_name
-		<< std::setw(5) << std::left << record.atom_name
+		<< std::setw(5) << std::left << record.residueName
+		<< std::setw(5) << std::left << record.atomName
 		<< std::setw(5) << std::right << record.gro_id
 		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.x
 		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.y

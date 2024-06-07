@@ -1,0 +1,45 @@
+//template <int size>
+//class ShortString {
+//	std::array<char, size> data;
+//
+//public:
+//	ShortString() {
+//		data.fill(' ');
+//	}
+//	ShortString(const std::string& str) {
+//		assert(str.size() <= 5);
+//		data.fill(' ');
+//
+//		// Find the first non-space character
+//		std::size_t start = 0;
+//		while (start < str.size() && std::isspace(static_cast<unsigned char>(str[start]))) {
+//			++start;
+//		}
+//
+//		// Copy from the first non-space character
+//		for (std::size_t i = 0; i < size && start + i < str.size(); ++i) {
+//			data[i] = str[start + i];
+//		}
+//	}
+//	char& operator[](size_t index) {
+//		return data[index];
+//	}
+//	char operator[](size_t index) const {
+//		return data[index];
+//	}
+//	bool operator==(const std::string& str) const {
+//		if (str.size() > size) return false;
+//		for (int i = 0; i < str.size(); i++) {
+//			if (data[i] != str[i]) return false;
+//		}
+//	}
+//
+//	friend std::ostream& operator<<(std::ostream& os, const ShortString& ss) {
+//		for (char c : ss.data) {
+//			os << c;
+//		}
+//		return os;
+//	}
+//
+//	std::array<char, size>& Data() { return data; }
+//};

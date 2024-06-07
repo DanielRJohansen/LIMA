@@ -419,7 +419,7 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 				uniqueResId++;
 			}
 
-			if (grofile.atoms[globalIndex].atom_name != atom.atomname || grofile.atoms[globalIndex].residue_name.substr(0, 3) != atom.residue.substr(0,3))
+			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName != atom.residue.substr(0, 3))
 				throw std::runtime_error("Atom names do not match between gro and topology file");
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(atom.type), uniqueResId };
 
@@ -440,7 +440,7 @@ std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
 	solventPositions.reserve(grofile.atoms.size());
 
 	for (const auto& atom : grofile.atoms)
-		if (atom.residue_name == "SOL" && atom.atom_name[0] == 'O')
+		if (atom.residueName == "SOL" && (atom.atomName[0] == 'O'))
 			solventPositions.emplace_back(atom.position);
 	
 	return solventPositions;
@@ -458,12 +458,6 @@ void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, L
 			//throw std::runtime_error("Bond refers to atom that has not been loaded");
 	}
 
-	if (globalIds[0] == 197940 && globalIds[1] == 197942)
-		int c = 0;
-
-	if (LIMAPOSITIONSYSTEM::calcHyperDistNM(&atomRefs[globalIds[0]].groAtom->position, &atomRefs[globalIds[1]].groAtom->position, 20.0f, BoundaryConditionSelect::PBC) > .7f)
-		int c = 0;
-
 	std::array<std::string, bondTopol.n> atomTypenames{};
 	for (int i = 0; i < bondTopol.n; i++) {
 		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
@@ -471,7 +465,6 @@ void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, L
 
 	const Bondtype& bondparameter = forcefield.GetBondParameters<Bondtype>(atomTypenames); //forcefield.GetSinglebondParameters(atomTypenames);
 	topology.emplace_back(BondtypeFactory(globalIds, bondparameter.ToStandardBondRepresentation()));
-	//return BondtypeFactory( globalIds, bondparameter.ToStandardBondRepresentation());
 }
 
 Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, LIMAForcefield& forcefield, const std::vector<ParticleInfo>& atomRefs) {
@@ -795,9 +788,6 @@ void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen
 		const Float3 pos1 = atom1.groAtom->position;
 		const Float3 pos2 = atom2.groAtom->position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&pos1, &pos2, boxlen_nm, bc_select);
-
-		if (bond.global_atom_indexes[0] == 13200)
-			int c = 0;
 
 		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
 			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());

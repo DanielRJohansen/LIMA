@@ -1,11 +1,12 @@
-#include <assert.h>
+#include "Simulation.cuh"
+
 #include <map>
 #include <functional>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
-#include <fstream>
-#include "Simulation.cuh"
 #include <filesystem>
 #include "Filehandling.h"
+#include <fstream>
+
 
 using std::string;
 namespace fs = std::filesystem;
@@ -236,11 +237,6 @@ DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compo
 		cudaMemcpy(traj_buffer, traj_zero.data(), sizeof(Float3) * n_datapoints, cudaMemcpyHostToDevice);
 	}
 	
-
-#ifdef USEDEBUGF3
-	uint64_t bytes_for_debugf3 = sizeof(Float3) * DEBUGDATAF3_NVARS * simulation->total_particles_upperbound * simulation->n_steps;
-	cudaMallocManaged(&simulation->box->debugdataf3, bytes_for_debugf3);
-#endif
 
 	// TRAINING DATA and TEMPRARY OUTPUTS
 	{

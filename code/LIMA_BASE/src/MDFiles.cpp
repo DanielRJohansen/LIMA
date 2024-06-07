@@ -4,8 +4,7 @@
 
 #include <algorithm>
 #include <format>
-#include <fstream>
-#include <future>
+
 
 using namespace Filehandler;
 using namespace MDFiles;
@@ -580,39 +579,9 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 }
 
 
-//void TopologyFile::IncrementIds(int atomNrIncrement, int resNrIncrement) {
-//
-//	for (auto& atom : atoms.entries) {
-//		atom.nr += atomNrIncrement;
-//		atom.resnr += resNrIncrement;
-//	}
-//	for (auto& singlebond : singlebonds.entries) {
-//		singlebond.IncrementIds(atomNrIncrement);
-//	}
-//	for (auto& pair : pairs.entries) {
-//		pair.IncrementIds(atomNrIncrement);
-//	}
-//	for (auto& anglebond : anglebonds.entries) {
-//		anglebond.IncrementIds(atomNrIncrement);
-//	}
-//	for (auto& dihedralbond : dihedralbonds.entries) {
-//		dihedralbond.IncrementIds(atomNrIncrement);
-//	}
-//	for (auto& improperdihedralbond : improperdihedralbonds.entries) {
-//		improperdihedralbond.IncrementIds(atomNrIncrement);
-//	}
-//
-//	for (auto& molecule : molecules.entries) {
-//		molecule.includeTopologyFile->IncrementIds(atomNrIncrement, resNrIncrement);
-//	}
-//}
-
 TopologyFile::SectionRange<TopologyFile::AtomsEntry> TopologyFile::GetAllAtoms() const {
 	return TopologyFile::SectionRange<AtomsEntry>(this);
 }
-//TopologyFile::SectionRange<TopologyFile::SingleBond> TopologyFile::GetSinglebonds() {
-//	return TopologyFile::SectionRange<SingleBond>(this);
-//}
 TopologyFile::SectionRange<TopologyFile::SingleBond> TopologyFile::GetAllSinglebonds() const {
 	return TopologyFile::SectionRange<SingleBond>(this);
 }

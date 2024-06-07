@@ -2,7 +2,6 @@
 #include "Printer.h"
 #include "PhysicsUtils.cuh"
 #include "DeviceAlgorithms.cuh"
-#include <algorithm>
 #include "Constants.h"
 #include "Filehandling.h"
 

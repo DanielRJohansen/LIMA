@@ -1,8 +1,6 @@
 // For generic file utilities, for specialized features use MDFiles.h instead
 #pragma once
 
-
-
 #include <iostream>
 #include <vector>
 #include <string>

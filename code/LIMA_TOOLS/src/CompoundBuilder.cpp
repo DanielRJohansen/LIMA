@@ -1,15 +1,10 @@
 #include "CompoundBuilder.h"
-#include "Printer.h"
 #include "Forcefield.h"
 
 #include <unordered_set>
-#include <algorithm>
 #include <format>
 #include <array>
 
-using namespace LIMA_Print;
-
-namespace lfs = Filehandler;
 
 
 struct Topology {

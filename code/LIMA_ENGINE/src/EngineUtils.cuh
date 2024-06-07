@@ -13,7 +13,6 @@
 
 #include "KernelWarnings.cuh"
 
-#include<iostream>
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
 
@@ -64,19 +63,9 @@ namespace EngineUtils {
 		if (solvent_active) {
 			const int index = databuffers->GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval);
 
-
 			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
 			databuffers->vel_buffer[index] = velocity.len();
-			
-
-#ifdef USEDEBUGF3
-			const auto debug_index = (box->step * box->total_particles_upperbound + box->n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]) * DEBUGDATAF3_NVARS;
-			//box->debugdataf3[debug_index] = Float3(solventblock.ids[threadIdx.x] * 10 + 1.f, solventblock.ids[threadIdx.x] * 10 + 2.f, solventblock.ids[threadIdx.x] * 10 + 3.f);
-			box->debugdataf3[debug_index] = force;
-			box->debugdataf3[debug_index + 1] = velocity;
-			box->debugdataf3[debug_index + 2] = SolventBlockHelpers::extractAbsolutePositionLM(solventblock) / NANO_TO_LIMA;
-#endif
 		}
 	}
 

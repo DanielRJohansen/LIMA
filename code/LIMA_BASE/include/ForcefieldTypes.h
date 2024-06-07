@@ -1,16 +1,18 @@
 #pragma once
 
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <vector>
-#include <array>
-#include <sstream>
-#include <algorithm>
-#include <unordered_map>
-#include <format>
-#include <functional>
+#include "Bodies.cuh"
 #include "Utilities.h"
+
+#include <algorithm>
+#include <array>
+#include <format>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 ///////////////////////////////// READ HERE FIRST /////////////////////////////////
 // ffbonded.itp and ffnonbonden.itp has different atomtypes. 
@@ -20,7 +22,6 @@
 
 
 
-#include "Bodies.cuh"
 
 
 

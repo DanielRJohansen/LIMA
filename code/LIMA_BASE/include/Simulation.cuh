@@ -5,15 +5,10 @@
 #include <memory>
 #include <filesystem>
 
-//struct ForceField_NB;
-//class Forcefield;
 
 enum ColoringMethod { Atomname, Charge };
 
 
-constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
-
-const int DEBUGDATAF3_NVARS = 4;
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
@@ -47,8 +42,6 @@ struct SimSignals {
 	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
 	float thermostat_scalar = 1.f;
-
-	//const SimParams constparams;
 };
 
 struct BoxParams {
@@ -154,15 +147,6 @@ namespace LIMALOGSYSTEM {
 
 	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to, int loggingInterval) {
 		return getMostRecentDataentryIndex(to, loggingInterval) - getMostRecentDataentryIndex(from, loggingInterval);
-	}
-
-	__device__ __host__ static constexpr int64_t getDataentryIndex(int64_t step, int loggingInterval) {
-		if (step % loggingInterval != 0) {
-			//throw std::runtime_error("This step was not expected, there is no equivalent entryindex for it.");	// TODO Maybe then return previous valid entryindex? FIXFIX DANGER
-			return 0;
-		}
-		assert(step % loggingInterval == 0);
-		return step / loggingInterval;
 	}
 }
 

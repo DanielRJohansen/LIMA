@@ -2,14 +2,12 @@
 
 #include "Engine.cuh"
 #include "Utilities.h"
-#include "EngineUtils.cuh"
 #include "Neighborlists.cuh"
 
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
 #include "SimulationDevice.cuh"
-
-#include <algorithm>
+#include "LimaPositionSystem.cuh"
 
 #include "ChargeOcttree.cuh"
 

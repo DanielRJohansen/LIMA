@@ -5,7 +5,6 @@ add_library(LIMA_ENGINE
     src/EngineUtils.cu
     src/Neighborlists.cu 
     src/Thermostat.cu
-    src/BoundaryConditionPublic.cpp
     src/ChargeOcttree.cu
 )
 

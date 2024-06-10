@@ -10,7 +10,7 @@ public:
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
-	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {}
+	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}
 };
 
 class PeriodicBoundaryCondition {
@@ -45,13 +45,13 @@ public:
 		movable_index.z -= BOXGRID_N_NODES * (difference.z < -(BOXGRID_N_NODES / 2));
 	}
 
-	__device__ __host__ static inline void applyHyperposNM(const Float3* static_particle, Float3* movable_particle) {
+	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {
 		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
 		const float boxlenhalf_nm = boxlen_nm / 2.f;
 
 		for (int i = 0; i < 3; i++) {
-			*movable_particle->placeAt(i) += boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) > boxlenhalf_nm);
-			*movable_particle->placeAt(i) -= boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) < -boxlenhalf_nm);
+			movable_particle[i] += boxlen_nm * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
+			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
 		}
 	}
 

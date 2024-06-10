@@ -182,7 +182,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 			float min_dist = std::numeric_limits<float>::infinity();
 			for (int j = 0; j < k; ++j) {
 				//float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&positions[i], &positions[center_indices[j]]);
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &positions[center_indices[j]], boxlen_nm, bc);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], positions[center_indices[j]], boxlen_nm, bc);
 				if (dist < min_dist) {
 					min_dist = dist;
 					labels[i] = j; // Assign this particle to cluster j
@@ -212,7 +212,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 		for (int j = 0; j < k; ++j) {
 			float min_dist = std::numeric_limits<float>::infinity();
 			for (int i = 0; i < n_elems; ++i) {
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &new_centers[j], boxlen_nm, bc);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], new_centers[j], boxlen_nm, bc);
 				if (dist < min_dist) {
 					min_dist = dist;
 					center_indices[j] = i; // Update the center index to this particle
@@ -225,7 +225,7 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 }
 
 
-std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions, int n_particles, const std::array<Float3, CompoundInteractionBoundary::k>& key_positions, 
+std::array<float, CompoundInteractionBoundary::k> clusterRadii(const Float3* const positions, int n_particles, const std::array<Float3, CompoundInteractionBoundary::k>& key_positions, 
 	float boxlen_nm, BoundaryConditionSelect bc) {
 	std::array<float, CompoundInteractionBoundary::k> radii;
 	std::vector<int> labels(n_particles);  // Holds the index of the closest key particle for each particle
@@ -234,7 +234,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 	for (int i = 0; i < n_particles; ++i) {
 		float min_dist = std::numeric_limits<float>::infinity();
 		for (size_t j = 0; j < CompoundInteractionBoundary::k; ++j) {
-			float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &key_positions[j], boxlen_nm, bc);
+			float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], key_positions[j], boxlen_nm, bc);
 			if (dist < min_dist) {
 				min_dist = dist;
 				labels[i] = j;  // Assign this particle to cluster j
@@ -248,7 +248,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 
 		for (int i = 0; i < n_particles; ++i) {
 			if (labels[i] == j) {  // If this particle belongs to the current cluster
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &key_positions[j], boxlen_nm, bc);
+				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], key_positions[j], boxlen_nm, bc);
 				if (dist > max_radius) {
 					max_radius = dist; // Update maximum radius
 				}
@@ -265,9 +265,10 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(Float3* positions
 
 Float3 calcCOM(const Float3* positions, int n_elems, float boxlen_nm, BoundaryConditionSelect bc) {
 	Float3 com{};
+	const Float3& designatedCenterPosition = positions[0];
 	for (int i = 0; i < n_elems; i++) {
 		Float3 pos = positions[i];
-		BoundaryConditionPublic::applyHyperposNM(&positions[i], &pos, boxlen_nm, bc);	// Hyperpos around particle 0, since we dont know key position yet
+		BoundaryConditionPublic::applyHyperposNM(designatedCenterPosition, pos, boxlen_nm, bc);	// Hyperpos around particle 0, since we dont know key position yet 
 		com += pos;
 	}
 	return com / static_cast<float>(n_elems);
@@ -278,8 +279,7 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 	int closest_particle_index = 0;
 	float closest_particle_distance = std::numeric_limits<float>::infinity();
 	for (int i = 0; i < n_elems; i++) {
-		//const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &com);
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&positions[i], &com, boxlen_nm, bc);
+		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], com, boxlen_nm, bc);
 		if (dist < closest_particle_distance) {
 			closest_particle_distance = dist;
 			closest_particle_index = i;
@@ -885,20 +885,6 @@ void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen
 {
 	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridges{};
 
-	// First check that we dont have any unrealistic bonds, and warn immediately.
-	for (const auto& bond : topology.singlebonds) {
-		auto atom1 = atoms[bond.global_atom_indexes[0]];
-		auto atom2 = atoms[bond.global_atom_indexes[1]];
-
-		const Float3 pos1 = atom1.groAtom->position;
-		const Float3 pos2 = atom2.groAtom->position;
-		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(&pos1, &pos2, boxlen_nm, bc_select);
-
-		if (hyper_dist > bond.b0 * LIMA_TO_NANO * 2.f) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
-		}
-	}
-
 	DistributeBondsToCompoundsAndBridges(topology.singlebonds, atoms, compounds, bridges, bpLutManager, compoundToBridges);
 	//m_logger->print(std::format("Added {} singlebonds to molecule\n", topology.singlebonds.size()));
 	DistributeBondsToCompoundsAndBridges(topology.anglebonds, atoms, compounds, bridges, bpLutManager, compoundToBridges);
@@ -954,6 +940,24 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 }
 
 
+bool VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, const std::vector<ParticleInfo> atoms, float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) {
+	// First check that we dont have any unrealistic bonds, and warn immediately.
+	for (const auto& bond : singlebonds) {
+		auto atom1 = atoms[bond.global_atom_indexes[0]];
+		auto atom2 = atoms[bond.global_atom_indexes[1]];
+
+		const Float3 pos1 = atom1.groAtom->position;
+		const Float3 pos2 = atom2.groAtom->position;
+		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
+		const float bondRelaxedDist = bond.b0 * LIMA_TO_NANO;
+		const float allowedScalar = energyMinimizationMode ? 7.f : 1.8f;
+
+		if (hyper_dist > bondRelaxedDist * allowedScalar) {
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
+		}
+	}
+}
+
 
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::string& molecule_dir,
@@ -963,9 +967,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	VerbosityLevel vl,
 	std::unique_ptr<LimaLogger> logger,
 	bool ignore_hydrogens,
-	BoundaryConditionSelect bc_select
+	const SimParams& simparams
 ) 
 {
+	assert(gro_file.box_size.x == BOX_LEN_NM);
 	// Solvents are not present in top file, so we can't require these to match
 	const int nNonsolventAtoms = topol_file.GetElementCount<TopologyFile::AtomsEntry>();
 	assert(gro_file.atoms.size() >= nNonsolventAtoms);
@@ -976,19 +981,21 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<ParticleInfo> preparedAtoms = PrepareAtoms(preparedTopologyFiles, gro_file, forcefield, nNonsolventAtoms);
 
 	Topology topology = LoadTopology(preparedTopologyFiles, forcefield, preparedAtoms);
+	
+	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, simparams.box_size, simparams.bc_select, simparams.em_variant);
 
 	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
 
 	std::vector<AtomGroup> atomGroups = GroupAtoms(preparedAtoms, topology);
 
 
-	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, bc_select);
+	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, simparams.bc_select);
 	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
-	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, bc_select, compounds, bridges, *bpLutManager);
+	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 
-	CalcCompoundMetaInfo(gro_file.box_size.x, compounds, bc_select);
+	CalcCompoundMetaInfo(gro_file.box_size.x, compounds, simparams.bc_select);
 
 
 	auto bridges_compact = std::make_unique<CompoundBridgeBundleCompact>(

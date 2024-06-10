@@ -46,7 +46,7 @@ namespace ForcefieldHelpers{
 			}
 		}
 
-		if (best_likeness > 0.05f) {
+		if (best_likeness > 0.001f) {
 			return bestBondIndex;
 		}
 

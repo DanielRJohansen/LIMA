@@ -8,10 +8,9 @@
 #include "EngineUtils.cuh"
 
 
-namespace LimaForcecalc {
-
-// ------------------------------------------------------------------------------------------- BONDED FORCES -------------------------------------------------------------------------------------------//
-
+namespace LimaForcecalc 
+{
+template <bool energyMinimize>
 __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
 	// Calculates bond force on both particles					
 	// Calculates forces as J/mol*M								
@@ -21,7 +20,15 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	if constexpr (CALC_POTE) {
 		potE = 0.5f * bondtype.kb * (error * error);				// [J/mol]
 	}
-	const float force_scalar = -bondtype.kb * error;				// [J/(mol*lm)] = [kg/(mol*s^2)]
+	float force_scalar = -bondtype.kb * error;				// [J/(mol*lm)] = [kg/(mol*s^2)]
+
+	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
+	// Note that we still get the correct value for potE
+	if constexpr (energyMinimize) {
+		if (error > bondtype.b0 * 2.f) {
+			force_scalar = -bondtype.kb * bondtype.b0 * 2.f;
+		}
+	}
 
 	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
 	results[0] = dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [lN]
@@ -240,6 +247,7 @@ __device__ inline void cudaAtomicAdd(Float3& target, const Float3& add) {
 // ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
 
 // only works if n threads >= n bonds
+template<bool energyMinimization>
 __device__ inline Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE, int bridgekernel)
 {
@@ -257,7 +265,7 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 		if (bond_index < n_singlebonds) {
 			pb = &singlebonds[bond_index];
 
-			LimaForcecalc::calcSinglebondForces(
+			LimaForcecalc::calcSinglebondForces<energyMinimization>(
 				positions[pb->atom_indexes[0]],
 				positions[pb->atom_indexes[1]],
 				*pb,

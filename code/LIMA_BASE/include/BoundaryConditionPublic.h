@@ -13,5 +13,5 @@ namespace BoundaryConditionPublic {
 	void applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect);
 
 	void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm, BoundaryConditionSelect bc);
-	void applyHyperposNM(const Float3* static_particle, Float3* movable_particle, float boxlen_nm, BoundaryConditionSelect);
+	void applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm, BoundaryConditionSelect);
 }

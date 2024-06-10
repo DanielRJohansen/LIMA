@@ -22,12 +22,12 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 template __device__ void getCompoundAbspositions<PeriodicBoundaryCondition>(SimulationDevice& sim_dev, int compound_id, Float3* result);
 
 template <typename BoundaryCondition>
-__device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const posleft, const Float3* const posright) 
+__device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const positionsLeft, const Float3* const positionsRight) 
 {
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
 
-			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &posright[iright]);
+			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], positionsRight[iright]);
 			const float max_dist = UserConstants::CUTOFF_NM + left.radii[ileft] + right.radii[iright];
 
 			if (dist < max_dist)
@@ -39,11 +39,11 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 }
 
 template <typename BoundaryCondition>
-__device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& boundary, const Float3* const posleft, const Float3& point)
+__device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& boundary, const Float3* const positionsLeft, const Float3& point)
 {
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(&posleft[ileft], &point);
+		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], point);
 		const float max_dist = UserConstants::CUTOFF_NM + boundary.radii[ileft];
 
 		if (dist < max_dist)
@@ -78,11 +78,6 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 			}
 		}
 		if (is_bonded_to_query) { continue; }
-
-	/*	auto lut = sim_dev.box->bonded_particles_lut_manager->get(compound_id, query_compound_id);
-		if (lut != nullptr || query_compound_id == nlist.neighborcompound_ids[0]) {
-			printf("WTF is going on here %d %d\n", compound_id, query_compound_id);
-		}*/
 
 		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
 		if (canCompoundsInteract<BoundaryCondition>(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))

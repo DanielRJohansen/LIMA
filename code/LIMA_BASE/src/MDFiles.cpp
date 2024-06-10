@@ -193,7 +193,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 			std::stringstream ss(prevLine);
 			while (std::getline(ss, word, ' ')) {
 				if (!word.empty()) {
-					*box_size.placeAt(dim++) = std::stof(word);
+					box_size[dim++] = std::stof(word);
 				}
 			}
 		}

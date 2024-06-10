@@ -57,6 +57,8 @@ struct Int3 {
 
 struct Coord;
 struct Float3 {
+	float x = 0, y = 0, z = 0;
+
 	__host__ __device__ Float3() {}
 	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
 	__host__ __device__ Float3(float x, float y, float z) : x(x), y(y), z(z) {}
@@ -65,7 +67,7 @@ struct Float3 {
 	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-	__host__ __device__ inline Float3 operator-() const { return Float3(-x, -y, -z); }
+	__host__ __device__ inline Float3 operator - () const { return Float3(-x, -y, -z); }
 	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
 	__host__ __device__ inline Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
 	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
@@ -76,25 +78,36 @@ struct Float3 {
 	__host__ __device__ inline void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ inline void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
 	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
-	
-
-	//__device__ inline Float3 mul_highres(const double d) const {
-	//	return Float3(
-	//		static_cast<float>(static_cast<double>(x) * d),
-	//		static_cast<float>(static_cast<double>(y) * d),
-	//		static_cast<float>(static_cast<double>(z) * d)
-	//	);
-	//}
-	//__device__ inline Float3 add_highres(const Float3 a) const {
-	//	return Float3(
-	//		static_cast<float>(static_cast<double>(x) + static_cast<double>(a.x)),
-	//		static_cast<float>(static_cast<double>(y) + static_cast<double>(a.y)),
-	//		static_cast<float>(static_cast<double>(z) + static_cast<double>(a.z))
-	//	);
-	//}
 
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
+
+
+
+	__host__ __device__ inline float operator[] (int index) const {
+		switch (index) {
+			case 0:
+				return x;
+			case 1:
+				return y;
+			case 2:
+				return z;
+			default:
+				return -404;
+		}
+	}
+
+	__host__ __device__ inline float& operator[] (int index) {
+		switch (index) {
+		default:			// Sadly it is not reasonable to catch this in release
+		case 0:
+			return x;
+		case 1:
+			return y;
+		case 2:
+			return z;
+		}
+	}
 
 	__host__ __device__ Float3 norm_d() const {
 		double l = len_d();
@@ -123,9 +136,6 @@ struct Float3 {
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 
-
-	//__host__ __device__ float getAngleSigned(Float3 a) { return atan2f(this->cross(a).dot(a), this->dot(a)); }
-
 	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
@@ -139,19 +149,6 @@ struct Float3 {
 		val = val < -1.f ? -1.f : val;
 		return acosf(val);
 	}
-
-	//__device__ static float getAngleOfNormVectors(const Float3& v1, const Float3& v2) {
-	///*	const float d = v1.dot(v2);
-	//	const float c = v1.cross(v2).len();
-	//	return atan2(c, d);*/
-
-	//	float cos_theta = v1.dot(v2);
-	//	cos_theta = cos_theta > 1.f ? 1.f : cos_theta;
-	//	cos_theta = cos_theta < -1.f ? -1.f : cos_theta;
-
-	//	const float sin_theta = sqrt(1.f - cos_theta * cos_theta);
-	//	return atan2f(sin_theta, cos_theta);
-	//}
 
 	__host__ __device__ static float getAngle(Float3 a, Float3 middle, Float3 b) {
 		return getAngle(a - middle, b - middle);
@@ -197,51 +194,8 @@ struct Float3 {
 		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.z);
 	}
 
-	// I think the one below is wrong...
-	__host__ __device__ Float3 _rotateAroundOrigin(Float3 pitch_yaw_roll) {	//pitch around x, yaw around z, tilt around y
-		// pitch and yaw is relative to global coordinates. Tilt is relative to body direction
-
-		Float3 v = rodriguesRotatation(*this, Float3(1, 0, 0), pitch_yaw_roll.x);
-
-		// Yaw around z
-		v = rodriguesRotatation(v, Float3(0, 0, 1), pitch_yaw_roll.y);
-
-		return v;
-	}
-	__host__ __device__ Float3 rotateAroundVector(Float3 pitch_yaw_roll, Float3 k) {	// k=normal = z-pointing		
-		Float3 v = rodriguesRotatation(*this, Float3(1, 0, 0), pitch_yaw_roll.x);
-
-		v = rodriguesRotatation(v, Float3(0, 0, 1), pitch_yaw_roll.y);
-		v = rodriguesRotatation(v, k, pitch_yaw_roll.z);
-		return v;
-	}
 	__host__ __device__ static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
-	}
-
-	__host__ __device__ float at(int index) const{
-		switch (index) {
-		case 0:
-			return x;
-		case 1:
-			return y;
-		case 2:
-			return z;
-		default:
-			return -404;
-		}
-	}
-
-	__host__ __device__ float* placeAt(int index) {
-		switch (index) {
-		default:			// Sadly it is not reasonable to catch this in release
-		case 0:
-			return &x;
-		case 1:
-			return &y;
-		case 2:
-			return &z;
-		}
 	}
 
 	__host__ float largestMagnitudeElement() const {
@@ -266,8 +220,12 @@ struct Float3 {
 		return ((p2 - p1).cross(p1 - (*this))).len() / (p2 - p1).len();
 	}
 
+	// Concat to string operation
+	friend std::string& operator<<(std::string& str, const Float3& f) {
+		str = str + std::to_string(f.x) + " " + std::to_string(f.y) + " " + std::to_string(f.z);
+		return str;
+	}
 
-	float x = 0, y = 0, z = 0;
 };
 
 
@@ -416,16 +374,19 @@ struct PositionHighRes {
 	PositionHighRes abs() const { return PositionHighRes{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	int64_t largestMagnitudeElement() const {
-		const PositionHighRes m = this->abs();
 		return std::max(
-			std::max(m.x, m.y),
-			m.z
+			std::max(std::abs(x), std::abs(y)),
+			std::abs(z)
 		);
 	}
 
 	// Returns the position as a Float3 in nm
 	Float3 toFloat3() const { 
-		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } / NANO_TO_LIMA; 
+		return Float3{ 
+			static_cast<double>(x) / NANO_TO_LIMA, 
+			static_cast<double>(y) / NANO_TO_LIMA, 
+			static_cast<double>(z) / NANO_TO_LIMA 
+		};
 	}
 
 	int64_t x = 0, y = 0, z = 0;

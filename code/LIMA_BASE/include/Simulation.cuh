@@ -100,7 +100,8 @@ class ParticleDataBuffer {
 public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, int loggingInterval) 
 		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
-		n_indices(std::max(n_steps/ loggingInterval,1ull)), buffer(n_particles_upperbound* n_indices, T{})
+		n_indices(std::max(n_steps/ loggingInterval,1ull)), buffer(n_particles_upperbound* n_indices, T{}),
+		loggingInterval(loggingInterval)
 	{
 		//buffer.resize(n_particles_upperbound * n_indices);
 		//for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
@@ -131,7 +132,18 @@ public:
 		return buffer[index_offset + firstsolvent_offset + solvent_id];
 	}
 
+	T& GetMostRecentCompoundparticleDatapoint(int compound_id, int particle_id_compound, size_t step) {
+		const size_t entryIndex = step / loggingInterval;		
+		return getCompoundparticleDatapointAtIndex(compound_id, particle_id_compound, entryIndex);
+	}
+
+	T& GetMostRecentSolventparticleDatapointAtIndex(int solvent_id, size_t step) {
+		const size_t entryIndex = step / loggingInterval;
+		return getSolventparticleDatapointAtIndex(solvent_id, entryIndex);
+	}
+
 private:
+	const size_t loggingInterval;
 	const size_t n_particles_upperbound;
 	const size_t n_compounds;
 	const size_t n_indices;

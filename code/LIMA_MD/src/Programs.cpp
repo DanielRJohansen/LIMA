@@ -87,7 +87,7 @@ void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 	// First make sure the molecule is not split due to PBC
 	for (auto& particle : grofile.atoms) {
 		const Float3 center{ 0, 0, 0 };
-		BoundaryConditionPublic::applyHyperposNM(&center, &particle.position, BOX_LEN_NM, BoundaryConditionSelect::PBC);
+		BoundaryConditionPublic::applyHyperposNM(center, particle.position, BOX_LEN_NM, BoundaryConditionSelect::PBC);
 	}
 
 	Double3 sum = { 0,0,0 };
@@ -99,5 +99,28 @@ void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 
 	for (auto& particle : grofile.atoms) {
 		particle.position += diff;
+	}
+}
+
+void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topfile, bool solvate, float boxlen_nm) 
+{
+	SimParams simparams;
+	simparams.box_size = boxlen_nm;
+	simparams.em_variant = true;
+	simparams.n_steps = 2000;
+	simparams.dt = 50.f;	// 0.5 fs
+
+	grofile.box_size = Float3{ boxlen_nm };
+
+	env.CreateSimulation(grofile, topfile, simparams);
+	env.run();
+
+	GroFile EnergyMinimizedGro = env.writeBoxCoordinatesToFile();
+	
+	// Now save the new positions to the original gro file, sans any eventually newly added solvents
+	assert(grofile.atoms.size() <= EnergyMinimizedGro.atoms.size());
+	for (int i = 0; i < grofile.atoms.size(); i++) {
+		assert(grofile.atoms[i].atomName == EnergyMinimizedGro.atoms[i].atomName);	// Sanity check the name is unchanged
+		grofile.atoms[i].position = EnergyMinimizedGro.atoms[i].position;
 	}
 }

@@ -18,11 +18,11 @@ namespace Benchmarks {
 
 	static void MembraneWithPsome(EnvMode envmode) {
 		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
-
+		 
 		bool buildFromScratch = true;
 		if (buildFromScratch) {
 			Environment env{ work_dir.string(), envmode, false };
-			const float boxlen = 20.f;
+			const float boxlen = 23.f;
 
 			env.CreateSimulation(boxlen);
 			LipidsSelection lipidselection;
@@ -34,9 +34,10 @@ namespace Benchmarks {
 
 
 			GroFile psomeGrofile{ work_dir / "molecule/psome.gro" };
-			Programs::SetMoleculeCenter(psomeGrofile, Float3{ boxlen / 2.f, boxlen / 2.f, 15.f });
-
 			auto psomeTopFile = std::make_shared<TopologyFile>(work_dir / "molecule/psome.top");
+			Programs::SetMoleculeCenter(psomeGrofile, Float3{ boxlen / 2.f, boxlen / 2.f, 17.f });
+			Programs::EnergyMinimize(env, psomeGrofile, *psomeTopFile, true, boxlen);
+			
 			MDFiles::MergeFiles(*membraneGrofile, *membraneTopfile, psomeGrofile, psomeTopFile);
 
 			// Now the "membrane" files also has the psome. Print it to file

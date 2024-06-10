@@ -6,7 +6,7 @@ public:
 
 	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position) {}
 
-	static void applyBC(LimaPosition& position) {}
+	static void applyBC(PositionHighRes& position) {}
 
 	static void applyBC(Float3& position, float boxlen_nm) {}
 
@@ -24,7 +24,7 @@ public:
 	}
 
 	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm) {
-		const int boxlen_i = static_cast<int>(boxlen_nm * NANO_TO_LIMA);
+		const int64_t boxlen_i = static_cast<int64_t>(boxlen_nm * NANO_TO_LIMA);
 		const PositionHighRes difference = static_position - movable_position;
 		movable_position.x += boxlen_i * (difference.x > boxlen_i / 2);
 		movable_position.x -= boxlen_i * (difference.x < -boxlen_i / 2);
@@ -36,7 +36,7 @@ public:
 
 	static void applyBC(PositionHighRes& position, float boxlen_nm) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		const int boxlen_i = static_cast<int>(boxlen_nm * NANO_TO_LIMA);
+		const int64_t boxlen_i = static_cast<int64_t>(boxlen_nm * NANO_TO_LIMA);
 		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
 		position.x += boxlen_i * (position.x + offset < 0);
 		position.x -= boxlen_i * (position.x + offset >= boxlen_i);
@@ -55,12 +55,12 @@ public:
 		position.z -= boxlen_nm * (position.z > boxlen_nm);
 	}
 
-	static void applyHyperposNM(const Float3* static_particle, Float3* movable_particle, float boxlen_nm) {
+	static void applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm) {
 		const float boxlenhalf_nm = boxlen_nm / 2.f;
 
 		for (int i = 0; i < 3; i++) {
-			*movable_particle->placeAt(i) += boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) > boxlenhalf_nm);
-			*movable_particle->placeAt(i) -= boxlen_nm * ((static_particle->at(i) - movable_particle->at(i)) < -boxlenhalf_nm);
+			movable_particle[i] += boxlen_nm * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
+			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
 		}
 	}
 };
@@ -80,7 +80,7 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, float boxlen_nm, Bou
 	}
 	}
 }
-void BoundaryConditionPublic::applyBC(LimaPosition& position, float boxlen_nm, BoundaryConditionSelect bc) {
+void BoundaryConditionPublic::applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
 	const int boxgrid_n_nodes = static_cast<int>(std::roundf(boxlen_nm * NANO_TO_LIMA / BOXGRID_NODE_LEN));
 	switch (bc) {
 	case NoBC: {
@@ -107,7 +107,7 @@ void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, Boundar
 	}
 }
 
-void BoundaryConditionPublic::applyHyperpos(const LimaPosition& static_position, LimaPosition& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
+void BoundaryConditionPublic::applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
 	case NoBC: {
 		NoBoundaryCondition::applyHyperpos(static_position, movable_position);
@@ -120,7 +120,7 @@ void BoundaryConditionPublic::applyHyperpos(const LimaPosition& static_position,
 	}
 }
 
-void BoundaryConditionPublic::applyHyperposNM(const Float3* static_position, Float3* movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
+void BoundaryConditionPublic::applyHyperposNM(const Float3& static_position, Float3& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
 	case NoBC: {
 		break;

@@ -27,7 +27,7 @@ namespace LIMA_MOLECULEBUILD {
 		VerbosityLevel vl,
 		std::unique_ptr<LimaLogger>,
 		bool ignore_hydrogens,
-		BoundaryConditionSelect bc_select
+		const SimParams& simparams
 	);
 }
 
@@ -129,7 +129,7 @@ public:
 		Float3 hyperpos = position;
 		if (n_particles > 0) {
 			//LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(&positions[0], &hyperpos);
-			BoundaryConditionPublic::applyHyperposNM(&positions[0], &hyperpos, boxlen_nm, bc);
+			BoundaryConditionPublic::applyHyperposNM(positions[0], hyperpos, boxlen_nm, bc);
 		}
 
 		// Variables only present in factory

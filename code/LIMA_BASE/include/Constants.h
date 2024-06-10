@@ -68,7 +68,7 @@ constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUM
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
 constexpr int _BOX_LEN_PM = UserConstants::boxlen * 1000;
-constexpr float BOX_LEN_NM = static_cast<float>(_BOX_LEN_PM) / 1000.f;
+constexpr float BOX_LEN_NM = UserConstants::boxlen;
 const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
 constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
 constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;

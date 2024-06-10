@@ -78,7 +78,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
 		IGNORE_HYDROGEN,
-		simulation->simparams_host.bc_select
+		simulation->simparams_host
 		);
 
 	//TODO Find a better place for this
@@ -293,22 +293,20 @@ GroFile Environment::writeBoxCoordinatesToFile() {
 		throw std::runtime_error("This function is now designed to handle solvents");
 	}
 
-	for (int i = 0; i < outputfile.atoms.size(); i++) {
-		//const int cid = boximage->particleinfotable[i].compound_index;
-		//const int pid = boximage->particleinfotable[i].local_id_compound;
-
+	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;
-		const int pid = boximage->particleinfos[i].localIdInCompound;
-
-		int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->simsignals_host.step-1, simulation->simparams_host.data_logging_interval);
-		const Float3 new_position = simulation->traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-		
+		const int pid = boximage->particleinfos[i].localIdInCompound;		
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, simulation->simsignals_host.step - 1);		
 		outputfile.atoms[i].position = new_position;
 	}
 
-	// Handle solvents somehow
+	// Handle solvents 
+	const int firstSolventIndex = simulation->boxparams_host.total_particles - simulation->boxparams_host.n_solvents;
+	for (int solventId = 0; solventId < simulation->boxparams_host.n_solvents; solventId++) {
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, simulation->simsignals_host.step - 1);
+		outputfile.atoms[firstSolventIndex + solventId].position = new_position;
+	}
 
-	//outputfile.printToFile(work_dir + "/molecule/" + filename + ".gro");
 	return outputfile;
 }
 

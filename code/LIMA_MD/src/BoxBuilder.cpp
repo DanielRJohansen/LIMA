@@ -218,7 +218,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.dims.x, sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos.at(i) < padding || pos.at(i) > (sim.boxparams_host.dims.x - padding)) {
+				if (pos[i] < padding || pos[i] > (sim.boxparams_host.dims.x - padding)) {
 					m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}

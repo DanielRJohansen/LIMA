@@ -26,8 +26,8 @@ Float3 calcDimensions(const GroFile& grofile)
 
 	for (const auto& atom : grofile.atoms) {
 		for (int dim = 0; dim < 3; dim++) {
-			*bb.min.placeAt(dim) = std::min(bb.min.at(dim), atom.position.at(dim));
-			*bb.max.placeAt(dim) = std::max(bb.max.at(dim), atom.position.at(dim));
+			bb.min[dim] = std::min(bb.min[dim], atom.position[dim]);
+			bb.max[dim] = std::max(bb.max[dim], atom.position[dim]);
 		}		
 	}
 

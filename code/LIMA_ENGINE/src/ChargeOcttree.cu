@@ -151,7 +151,7 @@ __global__ void DownwardSweep(SimulationDevice* simdev) {
 			const float query_chargenode = simdev->charge_octtree->chargenodes[query_index];
 
 			Float3 pos_abs_query = OcttreeHelpers::getAbsPos(query_index3d, nodelenNM);
-			PeriodicBoundaryCondition::applyHyperposNM(&forcenodeAbsPos, &pos_abs_query);	// TODO: use generic BC
+			PeriodicBoundaryCondition::applyHyperposNM(forcenodeAbsPos, pos_abs_query);	// TODO: use generic BC
 
 			forces[threadIdx.x] += CalcCoulumbHalfforce(forcenodeAbsPos - pos_abs_query, query_chargenode);
 		}

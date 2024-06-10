@@ -92,8 +92,8 @@ Float3* VirtualPathMaker::generateAllPositions(Float3 particle_position, Float3 
     float buffer[6];
 
     for (int dim = 0; dim < 3; dim++) {
-        float pos_repellent = static_cast<float>(getRepulsivePosition(force.at(dim)));
-        float pos_attractive = static_cast<float>(getAtttractivePosition(force.at(dim)));
+        float pos_repellent = static_cast<float>(getRepulsivePosition(force[dim]));
+        float pos_attractive = static_cast<float>(getAtttractivePosition(force[dim]));
         buffer[dim * 2 + 0] = pos_repellent;
         buffer[dim * 2 + 1] = pos_attractive;
     }
@@ -106,9 +106,6 @@ Float3* VirtualPathMaker::generateAllPositions(Float3 particle_position, Float3 
             }
         }
     }
-
-    //for (int i = 0; i < 8; i++)
-      //  possible_positions[i].print();
 
     return possible_positions;
 }

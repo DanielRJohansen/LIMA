@@ -12,6 +12,7 @@ add_library(LIMA_BASE STATIC
     src/MDFiles.cpp
     src/TrrFileInterface.cpp
     src/Statistics.cpp
+    src/BoundaryConditionPublic.cpp
 )
 
 target_include_directories(LIMA_BASE PRIVATE 

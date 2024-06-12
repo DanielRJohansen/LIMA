@@ -171,7 +171,7 @@ struct Solvent {
 
 // blocks are notcentered 
 struct SolventBlock {
-	static const int MAX_SOLVENTS_IN_BLOCK = 64;
+	static const int MAX_SOLVENTS_IN_BLOCK = 64 + 32;
 
 	__device__ __host__ SolventBlock() {};
 	__device__ __host__ void loadMeta(const SolventBlock& block) {

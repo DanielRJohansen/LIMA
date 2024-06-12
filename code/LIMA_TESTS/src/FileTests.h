@@ -22,14 +22,14 @@ namespace FileTests {
 
 		// Check grofiles first 
 		{
-			TimeIt time1(envmode, ".gro read");
+			TimeIt time1(".gro read", envmode==Full);
 			GroFile grofile{ work_dir / "molecule/em.gro" };
 			time1.stop();
 			if (!fs::exists(work_dir / "molecule/em.gro.bin")) {
 				return LimaUnittestResult{ LimaUnittestResult::FAIL , "GroFile did not make a bin cached file", envmode == Full };
 			}
 
-			TimeIt time2(envmode, ".bin read");
+			TimeIt time2(".bin read", envmode==Full);
 			GroFile grofileLoadedFromCache{ work_dir / "molecule/em.gro" };
 			time2.stop();
 			if (!grofileLoadedFromCache.readFromCache) {
@@ -49,14 +49,14 @@ namespace FileTests {
 
 		// Check topol files now
 		{
-			TimeIt time1(envmode, ".top read");
+			TimeIt time1(".top read", envmode == Full);
 			TopologyFile topolfile{ work_dir / "molecule/topol.top" };
 			time1.stop();
 			if (!fs::exists(work_dir / "molecule/topol.top.bin")) {
 				return LimaUnittestResult{ LimaUnittestResult::FAIL , "ParsedTopolFile did not make a bin cached file", envmode == Full };
 			}
 
-			TimeIt time2(envmode, ".bin read");
+			TimeIt time2(".bin read", envmode == Full);
 			TopologyFile topolfileLoadedFromCache{ work_dir / "molecule/topol.top" };
 			time2.stop();
 			if (!topolfileLoadedFromCache.readFromCache) {

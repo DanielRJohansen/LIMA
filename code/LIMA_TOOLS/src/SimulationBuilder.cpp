@@ -4,6 +4,8 @@
 #include <functional>
 #include <algorithm>
 #include <random>
+#include "BoundaryConditionPublic.h"
+#include "EngineCore.h"
 
 const std::array<std::string, 6> LipidSelect::valid_lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 
@@ -353,6 +355,195 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						//}
 						relativeParticleIndex++;
 					}
+				}
+			}
+		}
+	}
+}
+
+
+
+
+struct ParticlePlaceholder {
+	Float3 relPos{};	// [nm]
+	bool presentInInputfile = false;	// We need to know the difference between the particles already present, and the ones we just added
+	bool markedForDeletion = false;
+};
+
+
+template<typename T>
+class BoxGrid {
+	std::vector<std::vector<T>> nodes;
+	int nodesPerDim = 0;
+
+public:
+	BoxGrid(int nodesPerDim) : nodesPerDim(nodesPerDim) {
+		nodes.resize(nodesPerDim * nodesPerDim * nodesPerDim);
+	}
+	
+	int GetIndex(NodeIndex nodeindex) {
+		return nodeindex.z * nodesPerDim * nodesPerDim + nodeindex.y * nodesPerDim + nodeindex.x;
+	}
+
+	std::vector<T>& operator[](NodeIndex index3d) {
+		BoundaryConditionPublic::applyBC(index3d, nodesPerDim);
+		return nodes[GetIndex(index3d)];
+	}
+	const std::vector<T>& operator[](NodeIndex index3d) const {
+		BoundaryConditionPublic::applyBC(index3d, nodesPerDim);
+		return nodes[GetIndex(index3d)];
+	}
+};
+
+
+
+void DistributeGrofileparticlesInGrid(BoxGrid<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
+	for (const auto& atom : grofile.atoms) {
+		Float3 absPosHyper = atom.position;
+		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size.x, BoundaryConditionSelect::PBC);
+
+		const NodeIndex nodeindex = NodeIndex{ static_cast<int>(std::floor(absPosHyper.x)), static_cast<int>(std::floor(absPosHyper.y)), static_cast<int>(std::floor(absPosHyper.z)) };
+
+		// Make the positions relative to the nodeIndex
+		const Float3 relPos = absPosHyper - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
+		
+		if (relPos.x < 0.f || relPos.y < 0.f || relPos.z < 0.f || relPos.x >= 1.f || relPos.y >= 1.f || relPos.z >= 1.f) {
+			throw std::runtime_error("DistributeGrofileparticlesInGrid failed: Particle outside of box");
+		}
+		
+
+		boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, true });
+	}
+}
+
+
+void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
+	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
+		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
+	}
+
+	
+	const int nodesPerDim = static_cast<int>(grofile.box_size.x);
+	int nAtomsInput = grofile.atoms.size();
+	BoxGrid<ParticlePlaceholder> boxgrid{ nodesPerDim };
+
+	DistributeGrofileparticlesInGrid(boxgrid, grofile);
+
+	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
+	// but it will be slightly more complex code
+	const int desiredSolventsPerNm3 = 34;	// 33.4 is the density of water at 300K, but in some nodes we may have less solvents due to collisions, so we aim a bit higher
+
+	// First add excessive solvents to all blocks
+	// TODO: Make OMP
+	for (int x = 0; x < nodesPerDim; x++) {
+		// The x-column decides the seed
+		std::mt19937 rng(x);
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+		for (int y = 0; y < nodesPerDim; y++) {
+			for (int z = 0; z < nodesPerDim; z++) {
+				const NodeIndex nodeindex = NodeIndex{ x, y, z };
+				auto& particles = boxgrid[nodeindex];
+				for (int i = 0; i < desiredSolventsPerNm3 + 20; i++) {	// +20 so we can remove any particles that are too close
+					const Float3 relPos = Float3{ dist(rng), dist(rng), dist(rng) };
+					particles.emplace_back(ParticlePlaceholder{ relPos, false });
+				}
+			}
+		}
+	}
+
+
+	const float distanceThreshold = 0.12;	// [nm]
+
+	// Now mark all particles too close to another for deletion, if said particle is the "lower" id/block compared to the other
+	for (int x = 0; x < nodesPerDim; x++) {
+		for (int y = 0; y < nodesPerDim; y++) {
+			for (int z = 0; z < nodesPerDim; z++) {
+				const NodeIndex nodeindex = NodeIndex{ x, y, z };
+				auto& particles = boxgrid[nodeindex];
+				
+				// First search through all particles in this block
+				for (int pid = 0; pid < particles.size(); pid++) {
+					if (particles[pid].presentInInputfile)	// Cant delete any particles we did not place
+						continue;
+
+					for (int otherId = 0; otherId < particles.size(); otherId++) {
+						if (pid == otherId)
+							continue;
+						if (particles[otherId].markedForDeletion)
+							continue;
+
+						if (otherId < pid && !particles[otherId].presentInInputfile)
+							continue;
+
+
+						if ((particles[pid].relPos - particles[otherId].relPos).len() < distanceThreshold) {
+							particles[pid].markedForDeletion = true;
+							break;
+						}
+					}
+				}
+
+				// Now search through all surrounding blocks
+				for (int offsetX = -1; offsetX < 2; offsetX++) {
+					for (int offsetY = -1; offsetY < 2; offsetY++) {
+						for (int offsetZ = -1; offsetZ < 2; offsetZ++) {
+							if (offsetX == 0 && offsetY == 0 && offsetZ == 0)
+								continue;
+
+							NodeIndex otherNodeIndex = NodeIndex{ x + offsetX, y + offsetY, z + offsetZ };
+							BoundaryConditionPublic::applyBC(otherNodeIndex, nodesPerDim);
+
+							const Float3 relPosOffsetOther = Float3{ static_cast<float>(offsetX), static_cast<float>(offsetY), static_cast<float>(offsetZ) };
+
+							for (const auto& queryParticle : boxgrid[otherNodeIndex]) {
+								if (queryParticle.markedForDeletion)
+									continue;
+								const Float3 queryParticlePosition = queryParticle.relPos + relPosOffsetOther;
+
+								for (auto& particle : particles) {
+									if (particle.presentInInputfile || particle.markedForDeletion)
+										continue;
+
+									// If our particle is of the greater nodeindes, then we wont remove it, so we can continue
+									if (!queryParticle.presentInInputfile && boxgrid.GetIndex(otherNodeIndex) < boxgrid.GetIndex(nodeindex))
+										continue;
+
+									if ((particle.relPos - queryParticlePosition).len() < distanceThreshold) {
+										particle.markedForDeletion = true;
+									}
+								}
+							}
+
+						}
+					}
+				}
+
+
+
+			}
+		}
+	}
+	
+	int countTotal = 0;
+	for (int x = 0; x < nodesPerDim; x++) {
+		for (int y = 0; y < nodesPerDim; y++) {
+			for (int z = 0; z < nodesPerDim; z++) {
+				const NodeIndex nodeindex = NodeIndex{ x, y, z };
+				int countBlock = 0;
+				for (const auto& particle : boxgrid[nodeindex]) {
+					if (particle.markedForDeletion || particle.presentInInputfile)
+						continue;
+
+
+					const Float3 absPos = particle.relPos + Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
+					grofile.atoms.push_back(GroRecord{ 1, "SOL", "O", countTotal % 100000, absPos, std::nullopt});
+
+					countTotal++;
+					countBlock++;
+
+					if (countBlock == desiredSolventsPerNm3)
+						break;
 				}
 			}
 		}

@@ -125,8 +125,6 @@ void Environment::createSimulationFiles(float boxlen) {
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
-	//assert(forcefield.forcefield_loaded && "Forcefield was not loaded before creating simulation!");
-
 	simulation = std::make_unique<Simulation>(simparams, (work_dir / "molecule/").string(), m_mode);
 
 	verifySimulationParameters();
@@ -242,7 +240,7 @@ void Environment::sayHello() {
 }
 #include <optional>
 
-void Environment::run(bool em_variant) {
+void Environment::run(bool em_variant, bool doPostRunEvents) {
 	if (!prepareForRun()) { return; }
 
 	std::optional<Display> display;
@@ -250,6 +248,7 @@ void Environment::run(bool em_variant) {
 		display.emplace(m_mode);
 	}
 
+	simulationTimer.emplace(TimeIt{ "Simulation" });
 	while (true) {
 		if (engine->runstatus.simulation_finished) { break; }
 		if (em_variant)
@@ -268,6 +267,7 @@ void Environment::run(bool em_variant) {
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 
 	}
+	simulationTimer->stop();
 
 	// Transfers the remaining traj data and more
 	engine->terminateSimulation();
@@ -281,17 +281,13 @@ void Environment::run(bool em_variant) {
 	m_logger.finishSection("Simulation Finished");
 
 	//if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
-	if (simulation->finished) {
+	if (simulation->finished && doPostRunEvents) {
 		postRunEvents();
 	}
 }
 
 GroFile Environment::writeBoxCoordinatesToFile() {
 	GroFile outputfile{ boximage->grofile };
-
-	if (simulation->boxparams_host.n_solvents != 0) {
-		throw std::runtime_error("This function is now designed to handle solvents");
-	}
 
 	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;
@@ -301,7 +297,7 @@ GroFile Environment::writeBoxCoordinatesToFile() {
 	}
 
 	// Handle solvents 
-	const int firstSolventIndex = simulation->boxparams_host.total_particles - simulation->boxparams_host.n_solvents;
+	const int firstSolventIndex = boximage->total_compound_particles;
 	for (int solventId = 0; solventId < simulation->boxparams_host.n_solvents; solventId++) {
 		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, simulation->simsignals_host.step - 1);
 		outputfile.atoms[firstSolventIndex + solventId].position = new_position;

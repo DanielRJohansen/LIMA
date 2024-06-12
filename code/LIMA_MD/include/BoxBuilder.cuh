@@ -67,7 +67,7 @@ private:
 
 
 	// If molecule is offset, each solvent from .gro file must be aswell
-	Float3 most_recent_offset_applied = Float3(0.f);	
+	Float3 most_recent_offset_applied = Float3(0.f);	//TODO: Remove this constant, it's dangerous
 
 	
 	

@@ -82,7 +82,7 @@ int main() {
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
-		Benchmarks::Psome(envmode);
+		//Benchmarks::Psome(envmode);
 
 
 		//const fs::path work_dir = simulations_dir + "/test";
@@ -105,7 +105,7 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -161,6 +161,9 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
 
 	
+
+	// Performance test
+	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

@@ -283,37 +283,6 @@ namespace TestUtils {
 		};
 		return "";
 	}
-
-
-
-	class TimeIt {
-	public:
-		TimeIt(EnvMode envmode, const std::string& taskName = "Task") 
-			: envmode(envmode), taskName(taskName), start(std::chrono::high_resolution_clock::now()), manuallyStopped(false) {}
-
-		void stop() {
-			if (!manuallyStopped) {
-				end = std::chrono::high_resolution_clock::now();
-				manuallyStopped = true;
-			}
-		}
-
-		~TimeIt() {
-			if (!manuallyStopped) {
-				end = std::chrono::high_resolution_clock::now();
-			}
-			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end.value() - start).count();
-			if (envmode == Full)
-				std::cout << taskName << " took " << elapsed << " milliseconds.\n";
-		}
-
-	private:
-		std::string taskName;
-		std::chrono::time_point<std::chrono::high_resolution_clock> start;
-		std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>> end;
-		bool manuallyStopped;
-		EnvMode envmode;
-	};
 } // namespace TestUtils
 
 

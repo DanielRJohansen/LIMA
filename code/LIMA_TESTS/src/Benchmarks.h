@@ -2,6 +2,7 @@
 
 #include "TestUtils.h"
 #include "Programs.h"
+#include "TimeIt.h"
 
 namespace Benchmarks {
 
@@ -10,7 +11,7 @@ namespace Benchmarks {
 	
 	static void ReadGroFile(EnvMode mode) {
 		assert(ENABLE_FILE_CACHING == false);
-		TestUtils::TimeIt timer(mode);		
+		TimeIt timer("ReadGroFile", true);
 		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
 		GroFile psomeGrofile{ work_dir / "molecule/membrane_with_psome.gro" };
 		printf("N atoms: %d\n", psomeGrofile.atoms.size());
@@ -84,17 +85,22 @@ namespace Benchmarks {
 	}
 
 
-	static void Psome(EnvMode envmode) {
-		const fs::path work_dir = simulations_dir + "/psome2";
+	static LimaUnittestResult Psome(EnvMode envmode) {
+		 if (envmode== Full)
+			 envmode = ConsoleOnly;	// Cant go fast in Full
+
+		const fs::path work_dir = simulations_dir + "/psome";
 		float boxlen = 23.f;
 		Environment env{ work_dir, envmode, false };
 		
 		bool em = false;
 		if (em) {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
+			grofile.box_size = Float3{ boxlen, boxlen, boxlen };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
 			Programs::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
+			SimulationBuilder::SolvateGrofile(grofile);
 			Programs::EnergyMinimize(env, grofile, topfile, true, boxlen);
 
 			SimAnalysis::PlotPotentialEnergyDistribution(*env.getSimPtr(), env.work_dir, { 0,1000, 2000, 3000, 4000 - 1 });
@@ -107,6 +113,13 @@ namespace Benchmarks {
 		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 		const SimParams ip{ work_dir / "sim_params.txt" };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(true);
+		env.run(false, false);
+
+		auto duration = env.simulationTimer->GetTiming();
+		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+		const std::chrono::microseconds allowedTimePerStep{ 3650 };
+
+		LimaUnittestResult::TestStatus status = timePerStep < allowedTimePerStep ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
+		return LimaUnittestResult { status, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode==ConsoleOnly};
 	}
 }

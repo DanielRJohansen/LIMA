@@ -38,4 +38,6 @@ namespace SimulationBuilder {
 	void DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles,
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);
 
+
+	void SolvateGrofile(GroFile& grofile);
 };

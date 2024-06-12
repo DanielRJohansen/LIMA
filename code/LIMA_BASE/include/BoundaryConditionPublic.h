@@ -9,6 +9,7 @@
 
 namespace BoundaryConditionPublic {
 	void applyBC(NodeIndex& nodeindex, float boxlen_nm, BoundaryConditionSelect);
+	void applyBC(NodeIndex& nodeindex, int nNodesPerDim);	// TODO temp, this is not the best way forward	
 	void applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect);
 	void applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect);
 

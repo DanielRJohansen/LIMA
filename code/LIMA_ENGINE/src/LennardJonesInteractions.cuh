@@ -32,16 +32,18 @@ namespace LJ {
 	};
 
 
-	void calcLJForceOptimLogErrors() {
-		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
+	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float dist, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
+		auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 		//if (force.len() > 1.f || pot > 1e+8) {
-		//	//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
-		//	////((*pos1 - *pos0) * force_scalar).print('f');
-		//	//pos0.print('0');
-		//	//pos1.print('1');
-		//	/*printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
-		//		calcLJOriginString[(int)originSelect], sqrt(dist_sq) / NANO_TO_LIMA, ((pos1 - pos0) * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);*/
-		//}
+		const float distNM = dist / NANO_TO_LIMA;
+		if (distNM < 0.05f) {
+			//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
+			////((*pos1 - *pos0) * force_scalar).print('f');
+			//pos0.print('0');
+			//pos1.print('1');
+			printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
+				calcLJOriginString[(int)originSelect], distNM, (diff * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);
+		}
 	}
 
 #ifdef ENABLE_LJ
@@ -62,11 +64,10 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (CALC_POTE) {
-
 			potE += 2.f * epsilon * s * (s - 1.f);	// 2.f instead of 2.f to account for 2 particles doing the same calculation
 		}
 #if defined LIMASAFEMODE
-		calcLJForceOptimLogErrors();
+		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
 
 		return force;	// GN/mol [(kg*nm)/(ns^2*mol)]

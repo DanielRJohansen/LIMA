@@ -7,7 +7,7 @@
 #include "SimulationBuilder.h"
 #include "Bodies.cuh"
 #include "DisplayV2.h"
-
+#include "TimeIt.h"
 
 class BoxBuilder;
 class Display;
@@ -64,18 +64,11 @@ public:
 
 
 	// Run a standard MD sim
-	void run(bool em_variant=false);
+	void run(bool em_variant=false, bool doPostRunEvents=true);
 
 	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
 	// atoms in the input coordinate file.
 	GroFile writeBoxCoordinatesToFile();
-
-
-
-
-	// Return if cannot run
-	bool prepareForRun();
-
 
 	
 	
@@ -108,9 +101,11 @@ public:
 
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
+	std::optional<TimeIt> simulationTimer;
+
 
 private:
-	void resetEnvironment();
+	void resetEnvironment();	// TODO: This shouldn't exist, rather we should just destruct the entire object
 
 	void setupEmptySimulation(const SimParams&);
 	void constexpr verifySimulationParameters();			// Constants before doing anything
@@ -124,12 +119,16 @@ private:
 
 	void sayHello();
 
+	bool prepareForRun();
+
+
 	EnvMode m_mode;
 	const bool save_output;
 
 	//std::unique_ptr<Display> display = nullptr;
 	int step_at_last_render = 0;
 	int step_at_last_update = 0;
+
 
 	std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
@@ -148,7 +147,4 @@ private:
 	std::unique_ptr<BoxImage> boximage;
 
 	Analyzer::AnalyzedPackage postsim_anal_package;
-
-
-
 };

@@ -80,6 +80,10 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, float boxlen_nm, Bou
 	}
 	}
 }
+void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int nNodesPerDim) {
+	PeriodicBoundaryCondition::applyBC(nodeindex, nNodesPerDim);
+}
+
 void BoundaryConditionPublic::applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
 	const int boxgrid_n_nodes = static_cast<int>(std::roundf(boxlen_nm * NANO_TO_LIMA / BOXGRID_NODE_LEN));
 	switch (bc) {

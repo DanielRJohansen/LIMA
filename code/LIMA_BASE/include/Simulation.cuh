@@ -16,7 +16,7 @@ enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField};
 
 struct SimParams {
 	SimParams() {}
-	SimParams(const std::string& path);
+	SimParams(const std::filesystem::path& path);
 	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
 		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
 
@@ -118,6 +118,11 @@ public:
 
 	const T* getBufferAtIndexConst(size_t entryindex) const {
 		return &buffer[n_particles_upperbound * entryindex];
+	}
+
+	const T* GetBufferAtStep(size_t step) const {
+		const size_t entryIndex = step / loggingInterval;
+		return &buffer[n_particles_upperbound * entryIndex];
 	}
 
 	T& getCompoundparticleDatapointAtIndex(int compound_id, int particle_id_compound, size_t entryindex) {

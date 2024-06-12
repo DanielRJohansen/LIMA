@@ -133,7 +133,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	lastModificationTimestamp = fs::last_write_time(path);
 
 	if (UseCachedBinaryFile(path, lastModificationTimestamp)) {
-		*this = readGroFileFromBinaryCache(path);
+		readGroFileFromBinaryCache(path, *this);
 	}
 	else {
 		assert(path.extension() == ".gro");

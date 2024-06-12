@@ -3,7 +3,7 @@
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
 #include "Utilities.h"
-
+#include <filesystem>
 #include <vector>
 #include <string>
 
@@ -73,4 +73,11 @@ static float getStdDev(const std::vector<float>& vec) {
 
 	const double deviation = variance / static_cast<double>(vec.size());
 	return static_cast<float>(std::abs(std::sqrt(deviation)));
+}
+
+
+
+
+namespace SimAnalysis {
+	void PlotPotentialEnergyDistribution(const Simulation& sim, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot);
 }

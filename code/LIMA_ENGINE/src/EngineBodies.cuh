@@ -4,12 +4,9 @@
 
 
 
-
-
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {
 		if (n_nearby_compounds >= max_nearby_compounds) {
-			//throw std::runtime_error("Failed to add compound to CompoundGridNode\n");
 			printf("Failed to add compound to CompoundGridNode\n");
 			return false;
 		}
@@ -31,8 +28,6 @@ struct CompoundGridNode {
 	int n_nearby_compounds = 0;
 };
 
-
-//template <typename NodeType>
 
 // Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
 class CompoundGrid {
@@ -70,9 +65,6 @@ public:
 		return NodeIndex{ x, y, z };
 	}
 };
-
-//class CompoundGrid : public BoxGrid<CompoundGridNode> {};
-
 
 
 

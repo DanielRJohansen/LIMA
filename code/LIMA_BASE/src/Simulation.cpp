@@ -48,8 +48,8 @@ constexpr void overloadParamNumber(std::map<std::string, std::string>& dict, T& 
 	}
 }
 
-SimParams::SimParams(const std::string& path) {
-	auto dict = Filehandler::parseINIFile(path);
+SimParams::SimParams(const fs::path& path) {
+	auto dict = Filehandler::parseINIFile(path.string());
 	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
 	overloadParamNumber(dict, n_steps, "n_steps");
 	overloadParamNumber(dict, box_size, "boxlen");

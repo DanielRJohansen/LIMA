@@ -5,6 +5,8 @@
 #include "Constants.h"
 #include "Filehandling.h"
 
+
+
 using namespace LIMA_Print;
 
 const int THREADS_PER_SOLVENTBLOCK_ANALYZER = 128;
@@ -90,6 +92,57 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 		data_out[(step) * gridDim.y + blockIdx.y] = energy[0];
 	}
 }
+
+
+const int NUM_BINS = 16;
+const int BIN_BASE = 10;
+__device__ int getBinIndex(float value) {
+	int binIndex = (value > 0) ? log10f(value) / log10f(BIN_BASE) : -(log10f(-value) / log10f(BIN_BASE));
+	binIndex += NUM_BINS / 2;  // Center the bins around zero
+	return std::min(std::max(binIndex, 0), NUM_BINS - 1);  // Clamp to valid range
+}
+
+__global__ void potEHistogramKernel(Compound* compounds, int total_particles_upperbound, float* potE_buffer, int* histogramData, int step) {
+	__shared__ int shared_histogram[NUM_BINS];
+
+	const int compound_index = blockIdx.x;   // Unique index for each compound
+	const int particle_index = threadIdx.x;  // Unique index for each particle within a compound
+
+	// Initialize shared histogram to zero
+	if (particle_index < NUM_BINS) {
+		shared_histogram[particle_index] = 0;
+	}
+	__syncthreads();
+	if (particle_index >= compounds[compound_index].n_particles) {
+		return;
+	}
+
+	// Calculate the offsets
+	const int64_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
+	const float potE = potE_buffer[particle_index + compound_offset];
+	// Determine the bin index for the current potential energy
+	int binIndex = getBinIndex(potE);
+
+	// Atomically increment the appropriate bin in the shared histogram
+	atomicAdd(&shared_histogram[binIndex], 1);
+	__syncthreads();
+
+	// First thread writes the shared histogram to the global histogram
+	if (particle_index == 0) {
+		for (int i = 0; i < NUM_BINS; ++i) {
+			if (shared_histogram[i] > 0) {
+				atomicAdd(&histogramData[i], shared_histogram[i]);
+			}
+		}
+	}
+}
+
+
+
+
+
+
+
 
 
 
@@ -361,3 +414,64 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 }
 
+
+
+
+std::vector<int64_t> MakeBinLabels() {
+	std::vector<int64_t> bins;
+
+	int64_t current_bin = 10;
+
+	while (bins.size() < NUM_BINS / 2) {
+		bins.push_back(current_bin);
+		current_bin = (current_bin == 0) ? 10 : current_bin * 10;
+	}
+
+	std::vector<double> negative_bins;
+	current_bin = -10;
+	while (negative_bins.size() < NUM_BINS / 2) {
+		negative_bins.push_back(current_bin);
+		current_bin *= 10;
+	}
+
+	std::reverse(negative_bins.begin(), negative_bins.end());
+	bins.insert(bins.begin(), negative_bins.begin(), negative_bins.end());
+
+	return bins;
+}
+
+void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot) {
+	int* histogramDataDevice;
+	cudaMalloc(&histogramDataDevice, NUM_BINS * sizeof(int));
+		
+	float* energyBufferDevice;	
+	cudaMalloc(&energyBufferDevice, sizeof(float) * simulation.boxparams_host.total_particles_upperbound);
+
+	Compound* compoundsDevice;
+	cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.compounds_host.size());
+	cudaMemcpy(compoundsDevice, simulation.compounds_host.data(), sizeof(Compound) * simulation.compounds_host.size(), cudaMemcpyHostToDevice);
+
+	std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
+	int nPlots = stepsToPlot.size();
+	out_file.write(reinterpret_cast<char*>(&nPlots), sizeof(int));
+	for (int step : stepsToPlot) {
+		cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.boxparams_host.total_particles_upperbound, cudaMemcpyHostToDevice);
+		cudaMemset(histogramDataDevice, 0, NUM_BINS * sizeof(int));
+
+		cudaDeviceSynchronize();
+		potEHistogramKernel << <simulation.boxparams_host.n_compounds, MAX_COMPOUND_PARTICLES >> > (compoundsDevice, simulation.boxparams_host.total_particles_upperbound, energyBufferDevice, histogramDataDevice, step);
+		cudaDeviceSynchronize();
+
+		std::vector<int> histogramDataHost;
+		GenericCopyToHost(histogramDataDevice, histogramDataHost, NUM_BINS);
+
+		std::vector<int64_t> bins = MakeBinLabels();
+		
+		out_file.write(reinterpret_cast<char*>(bins.data()), bins.size() * sizeof(int64_t));
+		out_file.write(reinterpret_cast<char*>(histogramDataHost.data()), histogramDataHost.size() * sizeof(int));
+	}
+	out_file.close();
+
+	cudaFree(energyBufferDevice);
+	cudaFree(compoundsDevice);
+}

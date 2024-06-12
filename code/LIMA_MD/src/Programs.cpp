@@ -107,8 +107,8 @@ void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const Topology
 	SimParams simparams;
 	simparams.box_size = boxlen_nm;
 	simparams.em_variant = true;
-	simparams.n_steps = 2000;
-	simparams.dt = 50.f;	// 0.5 fs
+	simparams.n_steps = 4000;
+	simparams.dt = 10.f;	// 0.5 ls
 
 	grofile.box_size = Float3{ boxlen_nm };
 

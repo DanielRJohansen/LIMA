@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "Constants.h"
 
@@ -581,7 +582,7 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 	return gpu_ptr;
 }
 
-
+// TODO MEMLEAK: this function is not freeing the memory of the original data
 // Assumes data is a ptr to device memory. Will copy what was in data, allocate new memory for data and move the copied data into that
 template<typename T>
 void genericCopyToHost(T** data, uint32_t n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
@@ -591,6 +592,12 @@ void genericCopyToHost(T** data, uint32_t n_elements) {	// Currently uses Malloc
 	cudaMemcpy(data_host, *data, bytesize, cudaMemcpyDeviceToHost);
 
 	*data = data_host;
+}
+
+template<typename T>
+void GenericCopyToHost(T* srcDevice, std::vector<T>& destHost, size_t nElements) {
+	destHost.resize(nElements);
+	cudaMemcpy(destHost.data(), srcDevice, nElements * sizeof(T), cudaMemcpyDeviceToHost);
 }
 
 template<typename T>

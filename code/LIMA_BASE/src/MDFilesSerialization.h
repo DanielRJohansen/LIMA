@@ -93,12 +93,11 @@ namespace cereal {
 } // namespace cereal
 
 
-GroFile readGroFileFromBinaryCache(const fs::path& path) {
+void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
 	std::ifstream is(path.string() + ".bin", std::ios::binary);
 	if (!is.is_open()) {
 		throw std::runtime_error("Failed to open file for reading");
 	}
-	GroFile file;
 
 	cereal::BinaryInputArchive archive(is);
 	uint64_t versionNumberValue;
@@ -110,7 +109,6 @@ GroFile readGroFileFromBinaryCache(const fs::path& path) {
 	archive(file.box_size);
 
 	file.readFromCache = true;
-	return std::move(file);
 }
 void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> _path = std::nullopt) {
 	const fs::path path = _path.value_or(file.m_path);

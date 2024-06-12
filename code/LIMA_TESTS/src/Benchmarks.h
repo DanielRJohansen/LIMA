@@ -83,4 +83,30 @@ namespace Benchmarks {
 		//const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 	}
 
+
+	static void Psome(EnvMode envmode) {
+		const fs::path work_dir = simulations_dir + "/psome2";
+		float boxlen = 23.f;
+		Environment env{ work_dir, envmode, false };
+		
+		bool em = false;
+		if (em) {
+			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
+			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
+
+			Programs::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
+			Programs::EnergyMinimize(env, grofile, topfile, true, boxlen);
+
+			SimAnalysis::PlotPotentialEnergyDistribution(*env.getSimPtr(), env.work_dir, { 0,1000, 2000, 3000, 4000 - 1 });
+
+			GroFile emGro = env.writeBoxCoordinatesToFile();
+			emGro.printToFile(std::string{ "em.gro" });
+		}
+
+		GroFile grofile{ work_dir / "molecule" / "em.gro" };
+		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
+		const SimParams ip{ work_dir / "sim_params.txt" };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run(true);
+	}
 }

@@ -6,15 +6,6 @@
 #include <array>
 
 
-
-
-
-
-
-
-
-
-
 SingleBondFactory::SingleBondFactory(std::array<uint32_t, n_atoms> ids, float b0, float kb) : SingleBond{ {0,0}, b0, kb } {
 	for (int i = 0; i < n_atoms; i++) {
 		global_atom_indexes[i] = ids[i];

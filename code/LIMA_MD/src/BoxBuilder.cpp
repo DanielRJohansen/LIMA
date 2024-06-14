@@ -12,11 +12,11 @@ void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	m_logger->startSection("Building box");
 
 //	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
-	simulation->box_host->boxparams.boxSize = BoxSize{ static_cast<int>(boxsize_nm) };
+	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
-	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation->box_host->boxparams.boxSize);
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 
@@ -122,10 +122,10 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			PositionHighRes position{ sol_pos };
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				position, simulation->box_host->boxparams.boxSize.boxSizeNM_f, simulation->simparams_host.bc_select);
+				position, static_cast<float>(simulation->box_host->boxparams.boxSize), simulation->simparams_host.bc_select);
 
 
-			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
+			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0, simulation->box_host->boxparams.boxSize);
 
 			//const Float3 direction = get3RandomSigned().norm();
 			//const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
@@ -199,7 +199,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 
 		// Clear all of the data
 		delete simulation->box_host->solventblockgrid_circularqueue;
-		simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+		simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation->box_host->boxparams.boxSize);
 
 
 		// Copy the temporary storage back into the queue
@@ -216,10 +216,10 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.boxSize.boxSizeNM_f, sim.simparams_host.bc_select);
+			BoundaryConditionPublic::applyBCNM(pos, (float) sim.boxparams_host.boxSize, sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (sim.boxparams_host.boxSize.boxSizeNM_f - padding)) {
+				if (pos[i] < padding || pos[i] > (static_cast<float>(sim.boxparams_host.boxSize) - padding)) {
 					m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}
@@ -261,8 +261,8 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.boxSize.boxSizeNM_f, simulation.simparams_host.bc_select);
-	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(static_cast<int>(simulation.box_host->boxparams.boxSize.boxSizeNM_f)))) {
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(simulation.box_host->boxparams.boxSize), simulation.simparams_host.bc_select);
+	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(simulation.box_host->boxparams.boxSize))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 

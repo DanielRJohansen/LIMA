@@ -2,7 +2,7 @@
 
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
-
+#include "KernelConstants.cuh"
 
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {

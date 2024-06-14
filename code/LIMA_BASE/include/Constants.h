@@ -17,7 +17,7 @@
 #error These are mutually exclusive
 #endif
 
-#define ENABLE_ELECTROSTATICS
+//#define ENABLE_ELECTROSTATICS
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 

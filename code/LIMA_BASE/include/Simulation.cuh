@@ -45,30 +45,12 @@ struct SimSignals {
 	float thermostat_scalar = 1.f;
 };
 
-struct BoxSize {
-	BoxSize(int boxSizeNM) : 
-		boxSizeNM_i(boxSizeNM),
-		boxSizeNM_f(static_cast<float>(boxSizeNM)),
-		boxSizeLM_f(static_cast<float>(NANO_TO_LIMA_i * boxSizeNM))
-	{}
 
-	BoxSize& operator=(const BoxSize& other) {
-		if (this != &other) {
-			// BoxSizeNM_i is const, so we can't reassign it.
-			// We need to create a new instance instead of assignment.
-			new (this) BoxSize(other);
-		}
-		return *this;
-	}
-
-	const int boxSizeNM_i;
-	const float boxSizeNM_f;
-	const float boxSizeLM_f;
-};
 
 struct BoxParams {
 	//Float3 dims{};	 // [nm]
-	BoxSize boxSize{ 0 };
+	//BoxSize boxSize{ 0 };
+	int boxSize;	// [nm]
 
 	int n_compounds = 0;
 	int n_bridges = 0;

@@ -57,11 +57,13 @@ namespace BoxGrid {
 	const int blocksPerDim = NodesPerDim(static_cast<int>(BOX_LEN_NM));
 
 
-	__device__ __host__ static int Get1dIndex(const NodeIndex& index3d, int boxlenNM) {
-		const int bpd = NodesPerDim(boxlenNM);
+	__device__ __host__ static int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
+		if (boxSizeNM != 7) printf("FAIL!");
+		const int bpd = NodesPerDim(boxSizeNM);
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
 	__device__ __host__ static NodeIndex Get3dIndex(int index1d, int boxlenNM) {
+		if (boxlenNM != 7) printf("FAIL!");
 		const int bpd = NodesPerDim(boxlenNM);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
@@ -94,16 +96,16 @@ public:
 
 	SolventBlocksCircularQueue() {};	// C
 
-	__host__ static SolventBlocksCircularQueue* createQueue() {
+	__host__ static SolventBlocksCircularQueue* createQueue(int boxlenNM) {
 		auto queue = new SolventBlocksCircularQueue();
 		queue->allocateData();
-		queue->initializeBlocks();
+		queue->initializeBlocks(boxlenNM);
 		return queue;
 	}
 
-	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int step) {
+	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int step, int boxSizeNM) {
 		// TODO: Implement safety feature checking and failing if PBC is not met!
-		return getBlockPtr(coord.origo, step)->addSolvent(coord.rel_position, solvent_id);
+		return getBlockPtr(coord.origo, step, boxSizeNM)->addSolvent(coord.rel_position, solvent_id);
 	}
 
 	__host__ void allocateData() {
@@ -114,10 +116,10 @@ public:
 		has_allocated_data = true;
 	}
 
-	__host__ void initializeBlocks() {
+	__host__ void initializeBlocks(int boxlenNM) {
 		for (int step = 0; step < queue_len; step++) {
 			for (int i = 0; i < blocks_per_grid; i++) {
-				getBlockPtr(i, step)->origo = get3dIndex(i);
+				getBlockPtr(i, step)->origo = BoxGrid::Get3dIndex(i, boxlenNM);
 			}
 		}
 	}
@@ -142,7 +144,7 @@ public:
 
 
 	// This function assumes the user has used PBC
-	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int step) {
+	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int step, int boxSizeNm) {
 #if defined LIMASAFEMODE
 		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
@@ -150,7 +152,7 @@ public:
 		}
 #endif
 
-		return getBlockPtr(get1dIndex(index3d), step);
+		return getBlockPtr(BoxGrid::Get1dIndex(index3d, boxSizeNm), step);
 	}
 
 	__device__ __host__ bool static isTransferStep(int step) {
@@ -164,20 +166,6 @@ public:
 	__device__ __host__ SolventBlock* getBlockPtr(const size_t index1d, const size_t step) {
 		const size_t step_offset = (step % queue_len) * blocks_per_grid;
 		return &blocks[index1d + step_offset];
-	}
-
-	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
-		static const int bpd = BoxGrid::blocksPerDim;
-		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
-	}
-	__device__ __host__ static NodeIndex get3dIndex(int index1d) {
-		static const int bpd = BoxGrid::blocksPerDim;
-		auto z = index1d / (bpd * bpd);
-		index1d -= z * bpd * bpd;
-		auto y = index1d / bpd;
-		index1d -= y * bpd;
-		auto x = index1d;
-		return NodeIndex{ x, y, z };
 	}
 };
 

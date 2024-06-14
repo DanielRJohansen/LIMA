@@ -1,6 +1,7 @@
 #pragma once
 
 #include <UserConstants.h>
+#include "KernelConstants.cuh"
 
 class NoBoundaryCondition {
 public:
@@ -22,6 +23,12 @@ public:
 		origo.y -= BoxGrid::blocksPerDim * (origo.y >= BoxGrid::blocksPerDim);
 		origo.z += BoxGrid::blocksPerDim * (origo.z < 0);
 		origo.z -= BoxGrid::blocksPerDim * (origo.z >= BoxGrid::blocksPerDim);
+		//origo.x += boxSize.blocksPerDim * (origo.x < 0);
+		//origo.x -= boxSize.blocksPerDim * (origo.x >= boxSize.blocksPerDim);
+		//origo.y += boxSize.blocksPerDim * (origo.y < 0);
+		//origo.y -= boxSize.blocksPerDim * (origo.y >= boxSize.blocksPerDim);
+		//origo.z += boxSize.blocksPerDim * (origo.z < 0);
+		//origo.z -= boxSize.blocksPerDim * (origo.z >= boxSize.blocksPerDim);
 	}
 
 	__device__ __host__ static void applyBC(PositionHighRes& position) {
@@ -43,6 +50,12 @@ public:
 		movable_index.y -= BoxGrid::blocksPerDim * (difference.y < -(BoxGrid::blocksPerDim / 2));
 		movable_index.z += BoxGrid::blocksPerDim * (difference.z > (BoxGrid::blocksPerDim / 2));
 		movable_index.z -= BoxGrid::blocksPerDim * (difference.z < -(BoxGrid::blocksPerDim / 2));
+		//movable_index.x += boxSize.blocksPerDim * (difference.x > (boxSize.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
+		//movable_index.x -= boxSize.blocksPerDim * (difference.x < -(boxSize.blocksPerDim / 2));
+		//movable_index.y += boxSize.blocksPerDim * (difference.y > (boxSize.blocksPerDim / 2));
+		//movable_index.y -= boxSize.blocksPerDim * (difference.y < -(boxSize.blocksPerDim / 2));
+		//movable_index.z += boxSize.blocksPerDim * (difference.z > (boxSize.blocksPerDim / 2));
+		//movable_index.z -= boxSize.blocksPerDim * (difference.z < -(boxSize.blocksPerDim / 2));
 	}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {

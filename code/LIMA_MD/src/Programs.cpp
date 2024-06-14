@@ -19,7 +19,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
-	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, Float3{ env.getSimPtr()->box_host->boxparams.boxSize.boxSizeNM_f });
+	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
 
 	// Create simulation and run on the newly created files in the workfolder
 	monolayerGro->printToFile(env.work_dir / "molecule/monolayer.gro");
@@ -42,7 +42,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	}
 
 	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-	auto [bilayerGro, bilayerTop] = SimulationBuilder::makeBilayerFromMonolayer({ std::move(monolayerGro), std::move(monolayerTop) }, Float3{ env.getSimPtr()->box_host->boxparams.boxSize.boxSizeNM_f });
+	auto [bilayerGro, bilayerTop] = SimulationBuilder::makeBilayerFromMonolayer({ std::move(monolayerGro), std::move(monolayerTop) }, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
 
 	bilayerTop->printToFile(env.work_dir / "molecule/bilayer.top");
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Bodies.cuh"
-
+#include "BoxGrid.cuh"
 
 
 struct CompoundGridNode {
@@ -32,14 +32,14 @@ struct CompoundGridNode {
 // Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
 class CompoundGrid {
 public:
-	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
+	static const int blocks_total = BoxGrid::blocksPerDim * BoxGrid::blocksPerDim * BoxGrid::blocksPerDim;
 	CompoundGridNode blocks[blocks_total];
 	static const int first_step_prev = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 
 	// This function assumes the user has used PBC
 	__host__ CompoundGridNode* getBlockPtr(const NodeIndex& index3d) {
-		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
+		if (index3d.x >= BoxGrid::blocksPerDim || index3d.y >= BoxGrid::blocksPerDim || index3d.z >= BoxGrid::blocksPerDim
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::runtime_error("Bad 3d index for blockptr\n");
 		}
@@ -52,11 +52,11 @@ public:
 	}
 
 	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
-		static const int bpd = BOXGRID_N_NODES;
+		static const int bpd = BoxGrid::blocksPerDim;
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
 	__device__ static NodeIndex get3dIndex(int index1d) {
-		static const int bpd = BOXGRID_N_NODES;
+		static const int bpd = BoxGrid::blocksPerDim;
 		auto z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
 		auto y = index1d / bpd;

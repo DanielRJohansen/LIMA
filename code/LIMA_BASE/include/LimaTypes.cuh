@@ -56,7 +56,6 @@ struct Int3 {
 
 
 
-struct Coord;
 struct Float3 {
 	float x = 0, y = 0, z = 0;
 
@@ -335,7 +334,7 @@ struct NodeIndex : public Int3 {
 	__host__ int largestMagnitudeElement() const {
 		const Int3 m = this->abs();
 		return std::max(
-			std::max(m.x, m.y), 
+			std::max(m.x, m.y),
 			m.z
 		);
 	}

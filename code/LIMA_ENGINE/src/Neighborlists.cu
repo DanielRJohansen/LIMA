@@ -170,7 +170,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 					// If the query node is NOT inside the box, which happens in some boundary conditions, we cannot continue, 
 					// since the node wont exists, and thus compounds are not allowed to access it.
-					if (!query_origo.isInBox(BOXGRID_N_NODES))
+					if (!query_origo.isInBox(BoxGrid::blocksPerDim))
 						continue;
 
 					const int querynode_id = CompoundGrid::get1dIndex(query_origo);

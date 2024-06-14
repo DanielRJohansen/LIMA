@@ -37,7 +37,7 @@ public:
 	static void applyBC(PositionHighRes& position, float boxlen_nm) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		const int64_t boxlen_i = static_cast<int64_t>(boxlen_nm * NANO_TO_LIMA);
-		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
+		const int64_t offset = BoxGrid::blocksizeLM / 2; // + 1;
 		position.x += boxlen_i * (position.x + offset < 0);
 		position.x -= boxlen_i * (position.x + offset >= boxlen_i);
 		position.y += boxlen_i * (position.y + offset < 0);
@@ -67,15 +67,14 @@ public:
 
 
 
-void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, float boxlen_nm, BoundaryConditionSelect bc) {
-	const int boxgrid_n_nodes = static_cast<int>(std::roundf(boxlen_nm * NANO_TO_LIMA / BOXGRID_NODE_LEN));
+void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int boxlenNM, BoundaryConditionSelect bc) {
 	switch (bc) {
 	case NoBC: {
 		NoBoundaryCondition::applyBC(nodeindex);
 		break;
 	}
 	case PBC: {
-		PeriodicBoundaryCondition::applyBC(nodeindex, boxgrid_n_nodes);
+		PeriodicBoundaryCondition::applyBC(nodeindex, BoxGrid::NodesPerDim(boxlenNM));
 		break;
 	}
 	}
@@ -85,7 +84,6 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int nNodesPerDim) {
 }
 
 void BoundaryConditionPublic::applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
-	const int boxgrid_n_nodes = static_cast<int>(std::roundf(boxlen_nm * NANO_TO_LIMA / BOXGRID_NODE_LEN));
 	switch (bc) {
 	case NoBC: {
 		NoBoundaryCondition::applyBC(position);

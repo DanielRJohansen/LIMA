@@ -7,7 +7,6 @@
 #include "Filehandling.h"
 #include <fstream>
 
-
 using std::string;
 namespace fs = std::filesystem;
 

@@ -11,7 +11,8 @@ using namespace LIMA_Print;
 void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	m_logger->startSection("Building box");
 
-	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+//	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	simulation->box_host->boxparams.boxSize = BoxSize{ static_cast<int>(boxsize_nm) };
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
@@ -121,7 +122,7 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			PositionHighRes position{ sol_pos };
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.bc_select);
+				position, simulation->box_host->boxparams.boxSize.boxSizeNM_f, simulation->simparams_host.bc_select);
 
 
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
@@ -215,10 +216,10 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.dims.x, sim.simparams_host.bc_select);
+			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.boxSize.boxSizeNM_f, sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (sim.boxparams_host.dims.x - padding)) {
+				if (pos[i] < padding || pos[i] > (sim.boxparams_host.boxSize.boxSizeNM_f - padding)) {
 					m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}
@@ -260,8 +261,8 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.bc_select);
-	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BOXGRID_N_NODES)) {
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.boxSize.boxSizeNM_f, simulation.simparams_host.bc_select);
+	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(static_cast<int>(simulation.box_host->boxparams.boxSize.boxSizeNM_f)))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 

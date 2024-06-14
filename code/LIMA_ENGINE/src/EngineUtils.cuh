@@ -10,6 +10,7 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
+#include "BoxGrid.cuh"
 
 #include "KernelWarnings.cuh"
 

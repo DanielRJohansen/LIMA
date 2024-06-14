@@ -35,10 +35,10 @@ void Rasterizer::getAllAtoms(const Float3* positions, const std::vector<Compound
     cudaMemcpy(compounds_dev, compounds.data(), sizeof(Compound) * boxparams.n_compounds, cudaMemcpyHostToDevice);
 
     if (boxparams.n_compounds > 0) {
-        loadCompoundatomsKernel << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (atoms_dev, step, positions_dev, compounds_dev, coloringMethod, boxparams.dims.x);
+        loadCompoundatomsKernel << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (atoms_dev, step, positions_dev, compounds_dev, coloringMethod, boxparams.boxSize.boxSizeNM_f);
     }
     if (boxparams.n_solvents > 0) {
-        loadSolventatomsKernel << < boxparams.n_solvents / 128 + 1, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms_dev, boxparams.dims.x);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
+        loadSolventatomsKernel << < boxparams.n_solvents / 128 + 1, 128 >> > (positions_dev, boxparams.n_compounds, boxparams.n_solvents, atoms_dev, boxparams.boxSize.boxSizeNM_f);   // TODO: This nsol/128 is wrong, if its not a multiple of 128
     }
 }
 

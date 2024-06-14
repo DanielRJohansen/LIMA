@@ -43,6 +43,7 @@ constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
+constexpr int64_t NANO_TO_LIMA_i = static_cast<int64_t>(NANO_TO_LIMA);
 constexpr float LIMA_TO_NANO = 1.f / NANO_TO_LIMA;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
 

@@ -58,7 +58,8 @@ void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get(), boxsize_nm);
-	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	//simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	simulation->box_host->boxparams.boxSize = BoxSize{ static_cast<int>(boxsize_nm) };
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {

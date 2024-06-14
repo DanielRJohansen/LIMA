@@ -72,9 +72,9 @@ std::unique_ptr<Simulation> Engine::takeBackSim() {
 void Engine::verifyEngine() {
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 
-	if (simulation->boxparams_host.dims.x != BOX_LEN_NM) {
+	if (simulation->boxparams_host.boxSize.boxSizeNM_f != BOX_LEN_NM) {
 		//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
-		throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.dims.x)
+		throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize.boxSizeNM_f)
 		+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
 	}
 }

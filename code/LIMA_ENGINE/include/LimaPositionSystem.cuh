@@ -124,7 +124,7 @@ namespace LIMAPOSITIONSYSTEM {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
 			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);	
 		}
-		if (compoundcoords.rel_positions[key_particle_index].maxElement() > BOXGRID_NODE_LEN_i) {
+		if (compoundcoords.rel_positions[key_particle_index].maxElement() > BoxGrid::blocksizeLM) {
 			compoundcoords.rel_positions[key_particle_index].print('k');
 			//printf("%d\n", compoundcoords.rel_positions[key_particle_index].maxElement());
 			throw std::runtime_error("Failed to place compound correctly.");

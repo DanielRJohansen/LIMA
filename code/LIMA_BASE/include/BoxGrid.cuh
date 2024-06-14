@@ -56,12 +56,10 @@ namespace BoxGrid {
 	__device__ __host__ constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
 
 	__device__ __host__ static int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
-		if (boxSizeNM != 7) printf("FAIL!");
 		const int bpd = NodesPerDim(boxSizeNM);
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
 	__device__ __host__ static NodeIndex Get3dIndex(int index1d, int boxlenNM) {
-		if (boxlenNM != 7) printf("FAIL!");
 		const int bpd = NodesPerDim(boxlenNM);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;

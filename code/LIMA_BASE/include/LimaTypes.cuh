@@ -340,8 +340,6 @@ struct NodeIndex : public Int3 {
 	}
 
 	__device__ __host__ bool isInBox(int nodes_per_dim) const {
-		if (nodes_per_dim != 7)
-			printf("fail");
 		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
 			return false;
 		return true;

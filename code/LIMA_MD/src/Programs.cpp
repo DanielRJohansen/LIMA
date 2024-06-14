@@ -87,7 +87,7 @@ void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 	// First make sure the molecule is not split due to PBC
 	for (auto& particle : grofile.atoms) {
 		const Float3 center{ 0, 0, 0 };
-		BoundaryConditionPublic::applyHyperposNM(center, particle.position, BOX_LEN_NM, BoundaryConditionSelect::PBC);
+		BoundaryConditionPublic::applyHyperposNM(center, particle.position, grofile.box_size.x, BoundaryConditionSelect::PBC);
 	}
 
 	Double3 sum = { 0,0,0 };

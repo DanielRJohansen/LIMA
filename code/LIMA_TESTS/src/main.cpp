@@ -105,8 +105,8 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		runAllUnitTests();
-		//Benchmarks::Psome(envmode);
+		//runAllUnitTests();
+		Benchmarks::Psome(envmode);
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -164,7 +164,7 @@ void runAllUnitTests() {
 	
 
 	// Performance test
-	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));
+	ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

@@ -191,12 +191,12 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 	// Do the same for solvents
 	{
 		// Create temporary storage
-		std::vector<SolventBlock> solvents_t0(SolventBlocksCircularQueue::blocks_per_grid);
+		const int blocksInGrid = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+		std::vector<SolventBlock> solvents_t0(blocksInGrid);
 
 
 		//TODO: This is jsut temp:
-		const int solventBlocksGridBytesize =
-			sizeof(SolventBlock) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+		const int solventBlocksGridBytesize = sizeof(SolventBlock) * blocksInGrid;
 
 		// Copy only the current step to temporary storage
 		SolventBlock* src_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);

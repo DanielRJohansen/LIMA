@@ -28,12 +28,13 @@ public:
 	__device__ __host__ static void applyBC(PositionHighRes& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
 		const int64_t offset = BoxGrid::blocksizeLM / 2; // + 1;
-		position.x += BOX_LEN_i * (position.x + offset < 0);
-		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
-		position.y += BOX_LEN_i * (position.y + offset < 0);
-		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
-		position.z += BOX_LEN_i * (position.z + offset < 0);
-		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
+		
+		position.x += boxSize_device.boxSizeLM_i * (position.x + offset < 0);
+		position.x -= boxSize_device.boxSizeLM_i * (position.x + offset >= boxSize_device.boxSizeLM_i);
+		position.y += boxSize_device.boxSizeLM_i * (position.y + offset < 0);
+		position.y -= boxSize_device.boxSizeLM_i * (position.y + offset >= boxSize_device.boxSizeLM_i);
+		position.z += boxSize_device.boxSizeLM_i * (position.z + offset < 0);
+		position.z -= boxSize_device.boxSizeLM_i * (position.z + offset >= boxSize_device.boxSizeLM_i);
 	}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
@@ -46,23 +47,22 @@ public:
 		movable_index.z -= boxSize_device.blocksPerDim * (difference.z < -(boxSize_device.blocksPerDim / 2));
 	}
 
-	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {
-		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
-		const float boxlenhalf_nm = boxlen_nm / 2.f;
+	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {		
+		const float boxlenhalf_nm = boxSize_device.boxSizeNM_f / 2.f;
 
 		for (int i = 0; i < 3; i++) {
-			movable_particle[i] += boxlen_nm * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
-			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
+			movable_particle[i] += boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
+			movable_particle[i] -= boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
 		}
 	}
 
-	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
-		current_position.x += BOX_LEN_NM * (current_position.x < 0.f);
-		current_position.x -= BOX_LEN_NM * (current_position.x > BOX_LEN_NM);
-		current_position.y += BOX_LEN_NM * (current_position.y < 0.f);
-		current_position.y -= BOX_LEN_NM * (current_position.y > BOX_LEN_NM);
-		current_position.z += BOX_LEN_NM * (current_position.z < 0.f);
-		current_position.z -= BOX_LEN_NM * (current_position.z > BOX_LEN_NM);
+	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
+		current_position.x += boxSize_device.boxSizeNM_f * (current_position.x < 0.f);
+		current_position.x -= boxSize_device.boxSizeNM_f * (current_position.x > boxSize_device.boxSizeNM_f);
+		current_position.y += boxSize_device.boxSizeNM_f * (current_position.y < 0.f);
+		current_position.y -= boxSize_device.boxSizeNM_f * (current_position.y > boxSize_device.boxSizeNM_f);
+		current_position.z += boxSize_device.boxSizeNM_f * (current_position.z < 0.f);
+		current_position.z -= boxSize_device.boxSizeNM_f * (current_position.z > boxSize_device.boxSizeNM_f);
 	}
 };
 

@@ -103,11 +103,11 @@ std::unique_ptr<Simulation> Engine::takeBackSim() {
 void Engine::verifyEngine() {
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 
-	if (static_cast<float>(simulation->boxparams_host.boxSize) != BOX_LEN_NM) {
-		//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
-		throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize)
-		+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
-	}
+	//if (static_cast<float>(simulation->boxparams_host.boxSize) != BOX_LEN_NM) {
+	//	//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
+	//	throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize)
+	//	+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
+	//}
 
 	// TODO: We need larger simulations, so switch to uint32_t eventually
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
@@ -307,14 +307,14 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL(solventForceKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
 		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
 			//solventTransferKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
 		}
 	}

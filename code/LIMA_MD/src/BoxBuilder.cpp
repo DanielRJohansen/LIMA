@@ -193,9 +193,14 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 		// Create temporary storage
 		std::vector<SolventBlock> solvents_t0(SolventBlocksCircularQueue::blocks_per_grid);
 
+
+		//TODO: This is jsut temp:
+		const int solventBlocksGridBytesize =
+			sizeof(SolventBlock) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+
 		// Copy only the current step to temporary storage
 		SolventBlock* src_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);
-		memcpy(solvents_t0.data(), src_t0, SolventBlocksCircularQueue::grid_bytesize);
+		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);
 
 		// Clear all of the data
 		delete simulation->box_host->solventblockgrid_circularqueue;
@@ -204,7 +209,7 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 
 		// Copy the temporary storage back into the queue
 		SolventBlock* dest_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, 0);
-		memcpy(dest_t0, solvents_t0.data(), SolventBlocksCircularQueue::grid_bytesize);
+		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);
 	}
 }
 

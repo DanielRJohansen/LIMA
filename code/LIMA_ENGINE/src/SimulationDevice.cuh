@@ -17,7 +17,8 @@ struct SimulationDevice {
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
 	{
 		// Allocate structures for keeping track of solvents and compounds
-		cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
+		//cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
+		compound_grid = CompoundGrid::MallocOnDevice(box_host->boxparams.boxSize);
 		cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
 		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
 
@@ -54,7 +55,7 @@ struct SimulationDevice {
 
 		cudaFree(params);
 
-		cudaFree(compound_grid);
+		CompoundGrid::Free(compound_grid);
 		cudaFree(compound_neighborlists);
 
 		cudaFree(charge_octtree);

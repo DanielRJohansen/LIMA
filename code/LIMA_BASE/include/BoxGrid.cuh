@@ -53,9 +53,7 @@ namespace BoxGrid {
 	static const int blocksizeNM = 1;
 	static const int64_t blocksizeLM = NANO_TO_LIMA_i * blocksizeNM;
 	__device__ __host__ constexpr int NodesPerDim(int boxlenNM) { return boxlenNM / blocksizeNM; }
-
-	const int blocksPerDim = NodesPerDim(static_cast<int>(BOX_LEN_NM));
-
+	__device__ __host__ constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
 
 	__device__ __host__ static int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
 		if (boxSizeNM != 7) printf("FAIL!");
@@ -76,29 +74,24 @@ namespace BoxGrid {
 
 
 class SolventBlocksCircularQueue {
-	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
 
 
 	// Please dont add other non-static vars to this class without checking movetodevice is not broken
 	// {Step,z,y,x}
 	SolventBlock* blocks = nullptr;
+	int blocksInGrid = 0;
 	bool has_allocated_data = false;
 	bool is_on_device = false;
 
 
 public:
-	static const int boxlenNmTemp = (int)BOX_LEN_NM;	// TODO: TEMP!
-	static const int blocks_per_grid = BoxGrid::NodesPerDim(boxlenNmTemp) * BoxGrid::NodesPerDim(boxlenNmTemp) * BoxGrid::NodesPerDim(boxlenNmTemp);
-	static const int grid_bytesize = sizeof(SolventBlock) * blocks_per_grid;
-	static const int blocks_total = blocks_per_grid * queue_len;
-	static const int gridqueue_bytesize = sizeof(SolventBlock) * blocks_total;
-	static const int first_step_prev = queue_len - 1;
+	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
 
 	SolventBlocksCircularQueue() {};	// C
 
 	__host__ static SolventBlocksCircularQueue* createQueue(int boxlenNM) {
 		auto queue = new SolventBlocksCircularQueue();
-		queue->allocateData();
+		queue->allocateData(BoxGrid::NodesPerDim(boxlenNM));
 		queue->initializeBlocks(boxlenNM);
 		return queue;
 	}
@@ -108,17 +101,20 @@ public:
 		return getBlockPtr(coord.origo, step, boxSizeNM)->addSolvent(coord.rel_position, solvent_id);
 	}
 
-	__host__ void allocateData() {
+	__host__ void allocateData(int blocksPerDim) {
 		if (has_allocated_data) {
 			throw std::runtime_error("BoxGridCircularQueue may not allocate data multiple times");
 		}
-		blocks = new SolventBlock[blocks_total]();
+		
+		blocksInGrid = BoxGrid::BlocksTotal(blocksPerDim);
+		const int blocksTotal = blocksInGrid * queue_len;
+		blocks = new SolventBlock[blocksTotal]();
 		has_allocated_data = true;
 	}
 
 	__host__ void initializeBlocks(int boxlenNM) {
 		for (int step = 0; step < queue_len; step++) {
-			for (int i = 0; i < blocks_per_grid; i++) {
+			for (int i = 0; i < blocksInGrid; i++) {
 				getBlockPtr(i, step)->origo = BoxGrid::Get3dIndex(i, boxlenNM);
 			}
 		}
@@ -126,17 +122,20 @@ public:
 
 
 	__host__ SolventBlocksCircularQueue* moveToDevice() {
-		blocks = genericMoveToDevice(blocks, blocks_total);
+		const int blocksTotal = blocksInGrid * queue_len;
+		blocks = genericMoveToDevice(blocks, blocksTotal);
 
 		is_on_device = true;
 		return genericMoveToDevice(this, 1);
 	}
 
-	// Fuck me this seems overcomplicated
-	__host__ SolventBlocksCircularQueue* copyToHost() {
+	// Fuck me this seems overcomplicated. TODO: Redo this function, it is BAD code
+	__host__ SolventBlocksCircularQueue* copyToHost(int boxLenNM) {
 		SolventBlocksCircularQueue* this_host = new SolventBlocksCircularQueue();
-		this_host->allocateData();
-		cudaMemcpy(this_host->blocks, blocks, gridqueue_bytesize, cudaMemcpyDeviceToHost);
+		this_host->allocateData(BoxGrid::NodesPerDim(boxLenNM));
+		const int gridqueueBytesize = 
+			sizeof(SolventBlock) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxLenNM)) * queue_len;
+		cudaMemcpy(this_host->blocks, blocks, gridqueueBytesize, cudaMemcpyDeviceToHost);
 		return this_host;
 	}
 
@@ -164,7 +163,7 @@ public:
 
 	// This function assumes the user has used PBC
 	__device__ __host__ SolventBlock* getBlockPtr(const size_t index1d, const size_t step) {
-		const size_t step_offset = (step % queue_len) * blocks_per_grid;
+		const size_t step_offset = (step % queue_len) * blocksInGrid;
 		return &blocks[index1d + step_offset];
 	}
 };

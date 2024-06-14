@@ -215,7 +215,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 					if (!query_origo.isInBox(boxSize_device.blocksPerDim))
 						continue;
 
-					const int querynode_id = CompoundGrid::get1dIndex(query_origo);
+					const int querynode_id = BoxGrid::Get1dIndex(query_origo, boxSize_device.boxSizeNM_i);
 					const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
 
 
@@ -233,7 +233,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 	// Push the new nlist
 	if (compound_active) {
-		//sim_dev->box->compound_neighborlists[compound_id] = nlist;
 		sim_dev->compound_neighborlists[compound_id] = nlist;
 	}
 }
@@ -246,15 +245,14 @@ const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>
 __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 {
-	const int n_blocks = CompoundGrid::blocks_total;
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
-	const bool block_active = block_id < n_blocks;
+	const bool block_active = block_id < BoxGrid::BlocksTotal(boxSize_device.blocksPerDim);
 	const int n_compounds = sim_dev->box->boxparams.n_compounds;
 
 	CompoundGridNode gridnode;
 
 	const NodeIndex block_origo = block_active
-		? CompoundGrid::get3dIndex(block_id)
+		? BoxGrid::Get3dIndex(block_id, boxSize_device.boxSizeNM_i)
 		: NodeIndex{};
 
 	const Float3 block_abspos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(block_origo);
@@ -317,7 +315,8 @@ void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSel
 
 	//#ifdef ENABLE_SOLVENTS
 	if (boxparams.n_solvents > 0) {
-		const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
+		//const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
+		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
 		LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev);
 		//updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
 	}

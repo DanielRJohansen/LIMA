@@ -108,6 +108,11 @@ void Engine::verifyEngine() {
 		throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize)
 		+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
 	}
+
+	// TODO: We need larger simulations, so switch to uint32_t eventually
+	const int nBlocks = simulation->box_host->boxparams.boxSize;
+	assert(nBlocks* nBlocks* nBlocks < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
+
 }
 
 void Engine::step() {

@@ -26,7 +26,9 @@ namespace ForceCorrectness {
 
 			SimParams params{};
 			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			env.CreateSimulation(conf, topol, params);
+			GroFile grofile{conf};
+			TopologyFile topfile{topol};
+			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
@@ -57,8 +59,8 @@ namespace ForceCorrectness {
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
 		Environment env{ work_folder, envmode, false };
-		SimParams ip{ work_folder + "sim_params.txt"};
-		const float dt = ip.dt;
+		SimParams params{ work_folder + "sim_params.txt"};
+		const float dt = params.dt;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 		std::vector<float> particle_temps{ 400, 800, 1200 };
@@ -72,8 +74,10 @@ namespace ForceCorrectness {
 				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
 				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
-				ip.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-				env.CreateSimulation(conf, topol, ip);
+				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
+				GroFile grofile{conf};
+				TopologyFile topfile{topol};
+				env.CreateSimulation(grofile, topfile, params);
 
 
 				Box* box_host = env.getSimPtr()->box_host.get();
@@ -126,7 +130,9 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto bond_len_error : bond_len_errors) {
-			env.CreateSimulation(conf, topol, params);
+			GroFile grofile{conf};
+			TopologyFile topfile{topol};
+			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
@@ -172,7 +178,9 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			env.CreateSimulation(conf, topol, params);
+			GroFile grofile{conf};
+			TopologyFile topfile{topol};
+			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
@@ -229,7 +237,9 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			env.CreateSimulation(conf, topol, params);
+			GroFile grofile{conf};
+			TopologyFile topfile{topol};
+			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);

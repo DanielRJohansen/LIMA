@@ -33,7 +33,7 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 	if (user_structure)
 	{
 		setup.structure = setup.work_dir + user_structure;
-	}
+	}std::cout << "Top start";
 
 	char* user_topol = getCmdOption(argv, argv + argc, "-topology");
 	if (user_topol)
@@ -72,13 +72,15 @@ int mdrun(int argc, char** argv)
 
 	std::cout << "LIMA is preparing simulation in dir ";
 	MdrunSetup setup = parseProgramArguments(argc, argv);
-	std::cout << setup.work_dir << "\n";
 	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
-	const SimParams ip(SimParams::defaultPath());
-	//std::cout << setup.structure << "\t" << setup.topol << "\n";
-	env->CreateSimulation(setup.structure, setup.topol, ip);
-	env->run();
 
+	const SimParams ip(SimParams::defaultPath());		
+	GroFile grofile{setup.structure};
+	TopologyFile topfile{setup.topol};
+
+	env->CreateSimulation(grofile, topfile, ip);
+	std::cout << "Sim created\n";
+	env->run();
 
 	return 0;
 }

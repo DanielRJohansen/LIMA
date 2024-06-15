@@ -50,6 +50,7 @@ Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output
 		fs::create_directory(moldir);
 
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
+	std::cout << "Env created\n";
 }
 
 Environment::~Environment() {}
@@ -63,7 +64,9 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
+	std::cout << "reading gro";
 	const auto groFile = std::make_unique<GroFile>(gro_path);
+	std::cout << "read gro";
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);
 }

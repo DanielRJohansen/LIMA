@@ -104,6 +104,9 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 
 
 void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<TopologyFile>>& includedFiles, fs::path srcDir) {
+	if (!fs::exists(srcDir) || !fs::is_directory(srcDir)) {
+        throw std::invalid_argument("Source path is not a directory: " + srcDir.string());
+    }
 	for (const auto& entry : fs::directory_iterator(srcDir)) {
 		if (entry.is_directory()) {
 			fs::path subDir = entry.path();
@@ -280,7 +283,6 @@ bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int i
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
-
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
@@ -305,7 +307,6 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 		}
 	}
 	else {
-
 
 		assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
 

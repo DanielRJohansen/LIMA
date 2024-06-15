@@ -61,21 +61,13 @@ fi
 
 ## -- INSTALL LIMA  -- ##
 
-# Prepare the source code
-install_dir="$PWD"  # dir where repository with install files are
-program_dir="/opt/LIMA"
+LIMA_DIR="/opt/LIMA"    # Used by Cmake to save all resource files
+sudo rm -rf $LIMA_DIR
 
-echo "Using $program_dir as install directory"
-sudo rm -rf "$program_dir"
-sudo mkdir "$program_dir"
+BUILD_DIR="$(pwd)/build"
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
 
-# copy everything from installdir to program_dir
-sudo cp -r "$install_dir"/* "$program_dir"/
-sudo chmod -R a+rwx $program_dir
-
-mkdir "$program_dir/build"
-cd "$program_dir/build"
-rm -rf ./*
 cmake ../ 
 if [ $? -ne 0 ]; then
     echo "CMake failed"
@@ -87,42 +79,31 @@ if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1
 fi
-#chmod 777 $userprogram_dir -R
+#rm -rf "$BUILD_DIR"/*
+
 
 echo -e "\n\t LIMA has been installed successfully \n\n\n"
-
 ## -- INSTALL LIMA done  -- ##
 
 
 
 
-
-
-
-
-
-
-
-
 # Run small sim
-cd "$program_dir"
 if [ "$1" != "-notest" ]; then
-    #su -c "./selftest.sh" $SUDO_USER
-    sims_dir=/$HOME/LIMA/simulations
-    echo "Running self test in dir $sims_dir"
+    SIMS_DIR=/$HOME/LIMA/simulations
+    echo "Running self test in dir $SIMS_DIR"
+    mkdir -p "$SIMS_DIR"
 
-    mkdir -p "$sims_dir"
+    # Clone the data repository only if the directory doesn't exist
+    cd /$HOME/Downloads
+    [ ! -d "LIMA_data" ] && git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
 
-    cd /$HOME/LIMA
-    git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
-
-    cp -r ./LIMA_data/* $sims_dir/ #exclude .gitignore
-    #rsync -q -av --exclude '.*' ./LIMA_data/ "$sims_dir/"  # Exclude hidden files/directories
-
-#    chmod 777 /home/$SUDO_USER/LIMA -R
+    cp -r ./LIMA_data/* $SIMS_DIR/ #exclude .gitignore
 
 
-    cd "$sims_dir"/T4Lysozyme
+    cd "$SIMS_DIR/T4Lysozyme"
+    lima makesimparams
+    lima mdrun
     #cd "$sims_dir"/manyt4
 
     #lima mdrun # doesnt work, because this scrip has sudo, and the program must run as normal user

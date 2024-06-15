@@ -23,7 +23,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
 # Only gcc v13 and newer can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
 #find_program(GCC_13_FOUND g++-13)
 #if(GCC_13_FOUND)
-set(CMAKE_CXX_COMPILER g++-13)
+#set(CMAKE_CXX_COMPILER g++-13)
 #endif()
 
 if (UNIX)
@@ -45,3 +45,5 @@ add_subdirectory(code/LIMA_TESTS)
 add_subdirectory(code/LIMA)
 
 
+# Finally copy the resources to the appropriate directory
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION /opt/LIMA/resources)

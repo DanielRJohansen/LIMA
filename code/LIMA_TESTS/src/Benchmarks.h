@@ -49,8 +49,8 @@ namespace Benchmarks {
 
 		SimParams emparams{ 2000, 20, true, PBC };
 
-		const fs::path conf = work_dir / "molecule" / "membrane_with_psome.gro";
-		const fs::path topol = work_dir / "molecule" / "membrane_with_psome.top";
+		const GroFile conf{work_dir / "molecule" / "membrane_with_psome.gro"};
+		const TopologyFile topol{work_dir / "molecule" / "membrane_with_psome.top"};
 		const fs::path simpar = work_dir / "sim_params.txt";
 
 		Environment env{ work_dir, envmode, false};

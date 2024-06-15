@@ -245,7 +245,7 @@ void Environment::run(bool em_variant, bool doPostRunEvents) {
 
 	std::optional<Display> display;
 	if (m_mode == Full) {
-		display.emplace(m_mode);
+		display.emplace(Display{m_mode});
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });

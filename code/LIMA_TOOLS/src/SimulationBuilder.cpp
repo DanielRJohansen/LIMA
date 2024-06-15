@@ -294,7 +294,7 @@ namespace SimulationBuilder{
 
 void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
 {
-	const int blocksPerDim = static_cast<int>(std::ceilf(grofile.box_size.x / 2.f));
+	const int blocksPerDim = static_cast<int>(std::ceil(grofile.box_size.x / 2.f));
 	const float blockLen = grofile.box_size.x / static_cast<float>(blocksPerDim);
 
 	const float usableBlocklen = blockLen - minDistBetweenAnyParticle;

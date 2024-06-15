@@ -73,44 +73,23 @@ sudo mkdir "$program_dir"
 sudo cp -r "$install_dir"/* "$program_dir"/
 sudo chmod -R a+rwx $program_dir
 
-# Build the public "lima" executable
-cd "$program_dir"/build
-cmake "$program_dir/code/LIMA_APP/"
-if [ $? -ne 0 ]; then
-    echo "CMake failed"
-    exit 1
-fi
-sudo make install
-if [ $? -ne 0 ]; then
-    echo "Make failed"
-    exit 1
-fi
-# Make this readable for all users
-#chmod 777 /opt/LIMA -R
-echo -e "\n\tLIMA client have been installed\n\n"
-
-
-# Build LIMA once in ~/LIMA, to ensure everything works
-userprogram_dir="$HOME/LIMA"
-# Make this dir readable and writable for the user and the group, but only readable for others
-mkdir -p "$userprogram_dir"
-cp -r "$install_dir"/* "$userprogram_dir"/
-
-cd "$userprogram_dir/build"
+mkdir "$program_dir/build"
+cd "$program_dir/build"
 rm -rf ./*
 cmake ../ 
 if [ $? -ne 0 ]; then
     echo "CMake failed"
     exit 1
 fi
-make install -j
+make -j
+sudo make install -j
 if [ $? -ne 0 ]; then
     echo "Make failed"
     exit 1
 fi
 #chmod 777 $userprogram_dir -R
 
-echo -e "\n\tAll LIMA applications have been installed\n\n\n"
+echo -e "\n\t LIMA has been installed successfully \n\n\n"
 
 ## -- INSTALL LIMA done  -- ##
 
@@ -123,16 +102,10 @@ echo -e "\n\tAll LIMA applications have been installed\n\n\n"
 
 
 
-# Run Self Test
-# check cuda works
-$userprogram_dir"/build/code/LIMA_ENGINE/engine_self_test"
-if [ $? -ne 0 ]; then
-    echo "engine_self_test failed"
-    exit 1
-fi
+
 
 # Run small sim
-cd "$userprogram_dir"
+cd "$program_dir"
 if [ "$1" != "-notest" ]; then
     #su -c "./selftest.sh" $SUDO_USER
     sims_dir=/$HOME/LIMA/simulations

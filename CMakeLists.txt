@@ -21,10 +21,10 @@ set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gen
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
 
 # Only gcc v13 and newer can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
-find_program(GCC_13_FOUND g++-13)
-if(GCC_13_FOUND)
-    set(CMAKE_CXX_COMPILER g++-13)
-endif()
+#find_program(GCC_13_FOUND g++-13)
+#if(GCC_13_FOUND)
+set(CMAKE_CXX_COMPILER g++-13)
+#endif()
 
 if (UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")

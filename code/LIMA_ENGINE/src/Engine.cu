@@ -111,7 +111,7 @@ void Engine::verifyEngine() {
 
 	// TODO: We need larger simulations, so switch to uint32_t eventually
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
-	assert(nBlocks* nBlocks* nBlocks < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
+	assert(nBlocks* nBlocks* nBlocks < UINT16_MAX && "Neighborlist cannot handle such large gridnode_ids");
 
 }
 

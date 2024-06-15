@@ -1,17 +1,20 @@
-#LIMA_SERVER
+#LIMA
 
 
 # Now compile rest
-add_executable(limaserver
+add_executable(lima
     lima.cpp
 )
 
-target_include_directories(limaserver PRIVATE
+target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}
 )
 
-target_link_libraries(limaserver LIMA_MD)
+target_link_libraries(lima LIMA_MD)
 
 
 #set_target_properties(lima PROPERTIES INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
-install(TARGETS limaserver DESTINATION ${CMAKE_SOURCE_DIR}/applications)
+#install(TARGETS lima DESTINATION ${CMAKE_SOURCE_DIR}/applications)
+
+# Specify the installation target
+install(TARGETS lima DESTINATION /usr/local/bin)

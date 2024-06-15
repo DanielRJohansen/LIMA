@@ -5,7 +5,7 @@
 #include "Constants.h"
 #include "Filehandling.h"
 
-
+#include <algorithm>
 
 using namespace LIMA_Print;
 

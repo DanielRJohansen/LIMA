@@ -312,7 +312,7 @@ public:
 		}
 
 		ReturnReferenceType& operator*()  {
-			return currentTopology->GetSection<T>().entries[elementIndex];
+			return currentTopology->template GetSection<T>().entries[elementIndex];
 		}
 
 		bool operator==(const _Iterator& other) const {
@@ -348,7 +348,7 @@ public:
 				}
 
 				// If our current topology has no more elements, add all include files
-				if (elementIndex + 1 == currentTopology->GetSection<T>().entries.size()) {
+				if (elementIndex + 1 == currentTopology->template GetSection<T>().entries.size()) {
 
 					if (currentTopology->molecules.entries.size() > 0) {
 						topologyStack.push({});

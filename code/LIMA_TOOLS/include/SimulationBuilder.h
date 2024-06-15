@@ -3,7 +3,7 @@
 #pragma once
 
 #include "MDFiles.h"
-
+#include <algorithm>
 
 struct LipidSelect {
 	LipidSelect(std::string lipidname, int percentage) : lipidname(lipidname), percentage(percentage) {

@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <cmath>
+#include <math.h>
 
 std::pair<float, float> Statistics::linearFit(const std::vector<float>& x, const std::vector<float>& y) {
     assert(x.size() == y.size());
@@ -35,8 +36,8 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
 
     for (int i = 0; i < x.size(); i++) {
         float predictedY = slope * x[i] + intercept;
-        explainedVar += std::powf(predictedY - meanY, 2);
-        totalVar += std::powf(y[i] - meanY, 2);
+        explainedVar += std::pow(predictedY - meanY, 2.f);
+        totalVar += std::pow(y[i] - meanY, 2.f);
     }
 
     return explainedVar / totalVar;

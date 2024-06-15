@@ -84,9 +84,9 @@ private:
 
 class Display {
 public:
-		Display(){};
-		void render(const Float3* positions, const std::vector<Compound>& compounds,
-		const BoxParams& boxparams, int64_t step, float temperature) {}
+		Display(EnvMode){};
+		void render(const Float3* positions, const std::vector<Compound>& compounds, 
+		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {}
 		bool checkWindowStatus() {return true;}
 		void terminate() {}
 

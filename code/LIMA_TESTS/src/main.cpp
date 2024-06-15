@@ -82,7 +82,8 @@ int main() {
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
-		
+
+
 
 		//const fs::path work_dir = simulations_dir + "/test";
 		//Environment env{ work_dir.string(), envmode, false };
@@ -104,8 +105,8 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		//runAllUnitTests();
-		Benchmarks::Psome(envmode);
+		runAllUnitTests();
+		//Benchmarks::Psome(envmode);
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

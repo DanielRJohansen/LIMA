@@ -53,7 +53,7 @@ void Engine::handleBoxtemp() {
 	simulation->temperature = temp;	// For display :)
 	runstatus.current_temperature = temp;
 	
-	if constexpr(UserConstants::APPLY_THERMOSTAT) {
+	if constexpr(APPLY_THERMOSTAT) {
 		// So we avoid dividing by 0
 		const float temp_safe = temp == 0.f ? 1 : temp;
 		float temp_scalar = target_temp / temp_safe;

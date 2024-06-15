@@ -1,6 +1,5 @@
 #pragma once
 
-#include <UserConstants.h>
 #include "KernelConstants.cuh"
 
 class NoBoundaryCondition {

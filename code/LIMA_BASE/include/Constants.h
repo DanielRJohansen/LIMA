@@ -1,8 +1,5 @@
 #pragma once
 
-#include "UserConstants.h"
-
-
 #include <math.h>
 #include <cstdint>
 #include <limits.h>
@@ -29,7 +26,12 @@
 constexpr float PI = 3.14159f;
 
 
+
+
+
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
+constexpr float CUTOFF_NM = 1.2f;
+
 const int RAMPUP_STEPS = 0;					// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
@@ -56,7 +58,7 @@ const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr float CUTOFF_LM = UserConstants::CUTOFF_NM * NANO_TO_LIMA;				// fm
+constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
@@ -153,8 +155,8 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
 const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
 constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
+constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
 // -------------------------------------------------------------------------------------------------------------- //
-
 
 // -------------------------------------------- Neighborlist Parameters ----------------------------------------- //
 const int STEPS_PER_NLIST_UPDATE = 5;

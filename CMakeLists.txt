@@ -42,6 +42,6 @@ add_subdirectory(code/LIMA_ENGINE)
 add_subdirectory(code/LIMA_TOOLS)
 add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)
-add_subdirectory(code/LIMA_SERVER)
+add_subdirectory(code/LIMA)
 
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Bodies.cuh"
-
-
+#include "BoxGrid.cuh"
+#include "KernelConstants.cuh"
 
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {
@@ -32,37 +32,39 @@ struct CompoundGridNode {
 // Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
 class CompoundGrid {
 public:
-	static const int blocks_total = BOXGRID_N_NODES * BOXGRID_N_NODES * BOXGRID_N_NODES;
-	CompoundGridNode blocks[blocks_total];
-	static const int first_step_prev = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+	CompoundGridNode* blocks = nullptr;// Always in device mem
 
+	__host__ static CompoundGrid* MallocOnDevice(int boxSizeNM) {		
+		const int blocksTotal = BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM);
+
+		CompoundGrid grid_host;
+		cudaMalloc(&grid_host.blocks, sizeof(CompoundGridNode) * blocksTotal);
+
+		CompoundGrid* grid_dev;
+		cudaMalloc(&grid_dev, sizeof(CompoundGrid));
+		cudaMemcpy(grid_dev, &grid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
+		return grid_dev;
+	}
+
+	__host__ static void Free(CompoundGrid* grid_dev) {
+		CompoundGrid grid_host;
+		cudaMemcpy(&grid_host, grid_dev, sizeof(CompoundGrid), cudaMemcpyDeviceToHost);
+		cudaFree(grid_host.blocks);
+		cudaFree(grid_dev);
+	}
 
 	// This function assumes the user has used PBC
 	__host__ CompoundGridNode* getBlockPtr(const NodeIndex& index3d) {
-		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
+		/*if (index3d.x >= BoxGrid::blocksPerDim || index3d.y >= BoxGrid::blocksPerDim || index3d.z >= BoxGrid::blocksPerDim
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::runtime_error("Bad 3d index for blockptr\n");
-		}
-		return getBlockPtr(get1dIndex(index3d));
+		}*/
+		return getBlockPtr(BoxGrid::Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
 	}
 
 	// This function assumes the user has used PBC
 	__device__ __host__ CompoundGridNode* getBlockPtr(const int index1d) {
 		return &blocks[index1d];
-	}
-
-	__device__ __host__ static int get1dIndex(const NodeIndex& index3d) {
-		static const int bpd = BOXGRID_N_NODES;
-		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
-	}
-	__device__ static NodeIndex get3dIndex(int index1d) {
-		static const int bpd = BOXGRID_N_NODES;
-		auto z = index1d / (bpd * bpd);
-		index1d -= z * bpd * bpd;
-		auto y = index1d / bpd;
-		index1d -= y * bpd;
-		auto x = index1d;
-		return NodeIndex{ x, y, z };
 	}
 };
 
@@ -207,7 +209,7 @@ public:
 	}
 
 	static const int max_gridnodes = 64 + 4;	// Arbitrary value
-	static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
+	//static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
 	uint16_t gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;
 #endif

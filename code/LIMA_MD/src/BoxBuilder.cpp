@@ -11,11 +11,12 @@ using namespace LIMA_Print;
 void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
 	m_logger->startSection("Building box");
 
-	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+//	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 
 	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
 	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
-	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation->box_host->boxparams.boxSize);
 
 	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
 
@@ -121,10 +122,10 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 			PositionHighRes position{ sol_pos };
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				position, simulation->box_host->boxparams.dims.x, simulation->simparams_host.bc_select);
+				position, static_cast<float>(simulation->box_host->boxparams.boxSize), simulation->simparams_host.bc_select);
 
 
-			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0);
+			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0, simulation->box_host->boxparams.boxSize);
 
 			//const Float3 direction = get3RandomSigned().norm();
 			//const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
@@ -190,20 +191,25 @@ void BoxBuilder::copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsr
 	// Do the same for solvents
 	{
 		// Create temporary storage
-		std::vector<SolventBlock> solvents_t0(SolventBlocksCircularQueue::blocks_per_grid);
+		const int blocksInGrid = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+		std::vector<SolventBlock> solvents_t0(blocksInGrid);
+
+
+		//TODO: This is jsut temp:
+		const int solventBlocksGridBytesize = sizeof(SolventBlock) * blocksInGrid;
 
 		// Copy only the current step to temporary storage
 		SolventBlock* src_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);
-		memcpy(solvents_t0.data(), src_t0, SolventBlocksCircularQueue::grid_bytesize);
+		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);
 
 		// Clear all of the data
 		delete simulation->box_host->solventblockgrid_circularqueue;
-		simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue();
+		simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation->box_host->boxparams.boxSize);
 
 
 		// Copy the temporary storage back into the queue
 		SolventBlock* dest_t0 = simulation->box_host->solventblockgrid_circularqueue->getBlockPtr(0, 0);
-		memcpy(dest_t0, solvents_t0.data(), SolventBlocksCircularQueue::grid_bytesize);
+		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);
 	}
 }
 
@@ -215,10 +221,10 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, sim.boxparams_host.dims.x, sim.simparams_host.bc_select);
+			BoundaryConditionPublic::applyBCNM(pos, (float) sim.boxparams_host.boxSize, sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (sim.boxparams_host.dims.x - padding)) {
+				if (pos[i] < padding || pos[i] > (static_cast<float>(sim.boxparams_host.boxSize) - padding)) {
 					m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}
@@ -260,8 +266,8 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, simulation.box_host->boxparams.dims.x, simulation.simparams_host.bc_select);
-	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BOXGRID_N_NODES)) {
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(simulation.box_host->boxparams.boxSize), simulation.simparams_host.bc_select);
+	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(simulation.box_host->boxparams.boxSize))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 

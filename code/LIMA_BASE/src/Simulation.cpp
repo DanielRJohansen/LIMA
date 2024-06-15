@@ -7,7 +7,6 @@
 #include "Filehandling.h"
 #include <fstream>
 
-
 using std::string;
 namespace fs = std::filesystem;
 
@@ -162,7 +161,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	box->compoundcoordsCircularQueue = box->compoundcoordsCircularQueue->copyToHost();
 
 	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
-	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost();
+	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost(box->boxparams.boxSize);
 
 	
 	genericCopyToHost(&box->forcefield, 1);

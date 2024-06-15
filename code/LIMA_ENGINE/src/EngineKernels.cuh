@@ -12,7 +12,7 @@
 #include "DeviceAlgorithms.cuh"
 
 //#include <cuda/pipeline>
-
+#include "KernelConstants.cuh"
 
 #pragma warning(push)
 #pragma warning(disable:E0020)
@@ -21,21 +21,9 @@
 
 #pragma diag_suppress 20054
 
-// ----------------------------------------------------------------------------------- FILE-SPECIFIC FORCEFIELD -------------------------------------------------------------------------------------------//
 
-// TODO?: Pre-calculate a solvent-X paired forcefield, to save ALOT of calc in kernels
-__constant__ ForceField_NB forcefield_device;
-// Include this after, so the .cuh file can see it
+
 #include "LennardJonesInteractions.cuh"
-
-void Engine::setDeviceConstantMemory() {
-	const int forcefield_bytes = sizeof(ForceField_NB);
-	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
-	cudaDeviceSynchronize();
-	LIMA_UTILS::genericErrorCheck("Error while moving forcefield to device\n");
-}
-
-
 
 
 template <typename BondType, int max_bondtype_in_compound>
@@ -360,7 +348,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, SolventBlocksCircularQueue::get3dIndex(solventblock_id));
+		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, BoxGrid::Get3dIndex(solventblock_id, boxSize_device.boxSizeNM_i));
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
 
@@ -429,7 +417,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_float3;
 
 	// Doubles as block_index_3d!
-	const NodeIndex block_origo = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
+	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 
 	Box* box = sim->box;
 	SimParams& simparams = *sim->params;

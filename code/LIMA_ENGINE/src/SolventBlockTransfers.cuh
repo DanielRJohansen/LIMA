@@ -5,6 +5,7 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "KernelConstants.cuh"
 
 namespace SolventBlockTransfers {
 	/// <summary></summary>
@@ -90,7 +91,7 @@ namespace SolventBlockTransfers {
 	__device__ void transferOutAndCompressRemainders(const SolventBlock& solventblock_current_local, SolventBlock* solventblock_next_global,
 		const Coord& relpos_next, uint8_t* utility_buffer, SolventBlockTransfermodule* transfermodules_global, STransferQueue* transferqueues_local) {
 
-		const NodeIndex blockId3d = SolventBlocksCircularQueue::get3dIndex(blockIdx.x);
+		const NodeIndex blockId3d = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 		const NodeIndex transfer_dir = threadIdx.x < solventblock_current_local.n_solvents
 			? LIMAPOSITIONSYSTEM::getTransferDirection(relpos_next)
 			: NodeIndex{};

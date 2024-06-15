@@ -961,7 +961,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 ) 
 {
-	assert(gro_file.box_size.x == BOX_LEN_NM);
 	// Solvents are not present in top file, so we can't require these to match
 	const int nNonsolventAtoms = topol_file.GetElementCount<TopologyFile::AtomsEntry>();
 	assert(gro_file.atoms.size() >= nNonsolventAtoms);

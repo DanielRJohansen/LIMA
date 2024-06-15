@@ -58,7 +58,8 @@ void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get(), boxsize_nm);
-	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	//simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
+	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
@@ -141,7 +142,6 @@ void constexpr Environment::verifySimulationParameters() {	// Not yet implemente
 
 	//auto a = std::roundf(std::abs(BOX_LEN / SolventBlockGrid::node_len)) * SolventBlockGrid::node_len;// -BOX_LEN_NM;
 
-	auto a = static_cast<int>(static_cast<double>(_BOX_LEN_PM) * 1000);
 	// Assert that boxlen is a multiple of nodelen
 	//assert((static_cast<int>(static_cast<double>(_BOX_LEN_PM)*1000) % BOXGRID_NODE_LEN_pico) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
 }

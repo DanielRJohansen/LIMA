@@ -10,8 +10,10 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
+#include "BoxGrid.cuh"
 
 #include "KernelWarnings.cuh"
+#include "KernelConstants.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
@@ -23,7 +25,7 @@ namespace EngineUtils {
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
 		BoundaryCondition::applyBC(new_nodeindex);
-		return SolventBlocksCircularQueue::get1dIndex(new_nodeindex);
+		return BoxGrid::Get1dIndex(new_nodeindex, boxSize_device.boxSizeNM_i);
 	}
 
 	// returns pos_tadd1

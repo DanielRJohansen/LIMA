@@ -13,7 +13,7 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
-
+#include "BoxGrid.cuh"
 
 
 
@@ -35,16 +35,12 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Converts to nodeindex, applies PBC
 	__host__ static NodeIndex absolutePositionToNodeIndex(const PositionHighRes& position, BoundaryConditionSelect bc, float boxlen_nm) {
-		const int64_t offset = BOXGRID_NODE_LEN_i / 2;
-		/*NodeIndex nodeindex{
-			static_cast<int>((position.x + offset) / BOXGRID_NODE_LEN_i),
-			static_cast<int>((position.y + offset) / BOXGRID_NODE_LEN_i),
-			static_cast<int>((position.z + offset) / BOXGRID_NODE_LEN_i)
-		};*/
+		const int64_t offset = BoxGrid::blocksizeLM / 2;
+
 		NodeIndex nodeindex{
-			(int)floor_div(position.x + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i)),
-			(int)floor_div(position.y + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i)),
-			(int)floor_div(position.z + offset, static_cast<int64_t>(BOXGRID_NODE_LEN_i))
+			(int)floor_div(position.x + offset, BoxGrid::blocksizeLM),
+			(int)floor_div(position.y + offset, BoxGrid::blocksizeLM),
+			(int)floor_div(position.z + offset, BoxGrid::blocksizeLM)
 		};
 		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
 
@@ -58,13 +54,13 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <returns>Coord in [lm]</returns>
 	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { 
-		return Coord{ node_index.x, node_index.y, node_index.z } * BOXGRID_NODE_LEN_i; 
+		return Coord{ node_index.x, node_index.y, node_index.z } * static_cast<int32_t>(BoxGrid::blocksizeLM);	// TODO: Unsafe
 	}
 	
 
 	// Returns absolute position of nodeindex [nm]
 	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
-		const float nodelen_nm = BOXGRID_NODE_LEN / NANO_TO_LIMA;
+		const float nodelen_nm = static_cast<float>(BoxGrid::blocksizeLM) / NANO_TO_LIMA;
 		return Float3{ 
 			static_cast<float>(node_index.x) * nodelen_nm,
 			static_cast<float>(node_index.y) * nodelen_nm,
@@ -76,12 +72,12 @@ namespace LIMAPOSITIONSYSTEM {
 	static Coord getRelativeCoord(const PositionHighRes& absolute_position, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
 		PositionHighRes hyperPos = absolute_position;
-		const PositionHighRes nodePos = PositionHighRes{ nodeindex,  BOXGRID_NODE_LEN_i };
+		const PositionHighRes nodePos = PositionHighRes{ nodeindex,  BoxGrid::blocksizeLM };
 		BoundaryConditionPublic::applyHyperpos(nodePos, hyperPos, boxlen_nm, bc);
 
 		const PositionHighRes relpos = hyperPos - nodePos;
 
-		if (relpos.largestMagnitudeElement() > static_cast<int64_t>(max_node_diff) * BOXGRID_NODE_LEN_i) {
+		if (relpos.largestMagnitudeElement() > static_cast<int64_t>(max_node_diff) * BoxGrid::blocksizeLM) {
 			auto absPos = absolute_position.toFloat3();
 			auto hPos = hyperPos.toFloat3();
 			auto nPos = nodePos.toFloat3();
@@ -124,7 +120,7 @@ namespace LIMAPOSITIONSYSTEM {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
 			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);	
 		}
-		if (compoundcoords.rel_positions[key_particle_index].maxElement() > BOXGRID_NODE_LEN_i) {
+		if (compoundcoords.rel_positions[key_particle_index].maxElement() > static_cast<int32_t>(BoxGrid::blocksizeLM)) {
 			compoundcoords.rel_positions[key_particle_index].print('k');
 			//printf("%d\n", compoundcoords.rel_positions[key_particle_index].maxElement());
 			throw std::runtime_error("Failed to place compound correctly.");
@@ -158,9 +154,9 @@ namespace LIMAPOSITIONSYSTEM {
 		//const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
 
 		const NodeIndex shift = NodeIndex{
-			coords.rel_positions[keyparticle_index].x / (BOXGRID_NODE_LEN_i/2),	// /2 so we switch to new index once we are halfway there
-			coords.rel_positions[keyparticle_index].y / (BOXGRID_NODE_LEN_i/2),
-			coords.rel_positions[keyparticle_index].z / (BOXGRID_NODE_LEN_i/2)
+			coords.rel_positions[keyparticle_index].x / (static_cast<int>(BoxGrid::blocksizeLM) / 2),	// /2 so we switch to new index once we are halfway there
+			coords.rel_positions[keyparticle_index].y / (static_cast<int>(BoxGrid::blocksizeLM) / 2),
+			coords.rel_positions[keyparticle_index].z / (static_cast<int>(BoxGrid::blocksizeLM) / 2)
 		};
 		EngineUtilsWarnings::verifyCompoundOrigoshiftDuringIntegrationIsValid(shift, coords.rel_positions[keyparticle_index]);
 		coords.origo += shift;
@@ -191,7 +187,7 @@ namespace LIMAPOSITIONSYSTEM {
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
 	__device__ static NodeIndex getTransferDirection(const Coord& relpos) {
-		const int32_t blocklen_half = BOXGRID_NODE_LEN_i / 2;
+		const int32_t blocklen_half = BoxGrid::blocksizeLM / 2;
 
 		EngineUtilsWarnings::verifyValidRelpos(relpos);
 

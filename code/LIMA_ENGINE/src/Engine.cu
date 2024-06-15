@@ -11,7 +11,7 @@
 
 #include "ChargeOcttree.cuh"
 
-
+#include "EngineKernels.cuh"
 
 
 
@@ -45,10 +45,16 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	//this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
+	BoxSize bs;
+	cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
+
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
+
+	BoxSize bs1;
+	cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
 
 	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
 	m_logger->finishSection("Engine Ready");
@@ -63,6 +69,31 @@ Engine::~Engine() {
 	assert(simulation == nullptr);
 }
 
+
+void Engine::setDeviceConstantMemory() {
+	const int forcefield_bytes = sizeof(ForceField_NB);
+	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
+
+
+	BoxSize boxSize_host;
+	boxSize_host.Set(simulation->boxparams_host.boxSize);
+	cudaMemcpyToSymbol(boxSize_device, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
+	//SetConstantMem(simulation->boxparams_host.boxSize);
+	BoxSize bs;
+	cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
+
+	cudaDeviceSynchronize();
+
+
+	BoxSize bs1;
+	cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+
+	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
+
+
+}
+
+
 std::unique_ptr<Simulation> Engine::takeBackSim() {
 	assert(sim_dev);
 	simulation->box_host = SimUtils::copyToHost(sim_dev->box);
@@ -72,11 +103,16 @@ std::unique_ptr<Simulation> Engine::takeBackSim() {
 void Engine::verifyEngine() {
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 
-	if (simulation->boxparams_host.dims.x != BOX_LEN_NM) {
-		//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
-		throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.dims.x)
-		+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
-	}
+	//if (static_cast<float>(simulation->boxparams_host.boxSize) != BOX_LEN_NM) {
+	//	//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
+	//	throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize)
+	//	+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
+	//}
+
+	// TODO: We need larger simulations, so switch to uint32_t eventually
+	const int nBlocks = simulation->box_host->boxparams.boxSize;
+	assert(nBlocks* nBlocks* nBlocks < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
+
 }
 
 void Engine::step() {
@@ -271,14 +307,14 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL(solventForceKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
 		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
 			//solventTransferKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
 		}
 	}

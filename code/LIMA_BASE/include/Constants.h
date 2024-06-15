@@ -17,7 +17,7 @@
 #error These are mutually exclusive
 #endif
 
-#define ENABLE_ELECTROSTATICS
+//#define ENABLE_ELECTROSTATICS
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
@@ -43,6 +43,7 @@ constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
+constexpr int64_t NANO_TO_LIMA_i = static_cast<int64_t>(NANO_TO_LIMA);
 constexpr float LIMA_TO_NANO = 1.f / NANO_TO_LIMA;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
 
@@ -67,16 +68,6 @@ constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUM
 
 
 // ------------------------------------------------ Box Parameters ---------------------------------------------- //
-constexpr int _BOX_LEN_PM = UserConstants::boxlen * 1000;
-constexpr float BOX_LEN_NM = UserConstants::boxlen;
-const int64_t BOX_LEN_i = static_cast<std::int64_t>(_BOX_LEN_PM) * PICO_TO_LIMA;
-constexpr float BOX_LEN = BOX_LEN_NM * NANO_TO_LIMA;		// Must be > twice the len of largest compound
-constexpr float BOX_LEN_HALF = BOX_LEN / 2.f;
-constexpr float BOX_LEN_HALF_NM = BOX_LEN_NM / 2.f;
-
-constexpr float BOX_LEN_FM = BOX_LEN * LIMA_TO_FEMTO;
-constexpr float BOX_LEN_HALF_FM = BOX_LEN_FM / 2.f;
-
 // -------------------------------------------------------------------------------------------------------------- //
 
 

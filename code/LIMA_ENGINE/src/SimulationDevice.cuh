@@ -5,7 +5,7 @@
 #include "EngineBodies.cuh"
 #include "ChargeOcttree.cuh"
 
-using namespace SCA;
+//using namespace SCA;
 
 /// <summary>
 /// All members of this will only ever exist on device. Immediately after creating this class
@@ -17,9 +17,11 @@ struct SimulationDevice {
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
 	{
 		// Allocate structures for keeping track of solvents and compounds
-		cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
+		//cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
+		compound_grid = CompoundGrid::MallocOnDevice(box_host->boxparams.boxSize);
 		cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
-		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * SolventBlocksCircularQueue::blocks_per_grid);
+		
+		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
 
 		{
 			SimSignals temp{};
@@ -35,9 +37,9 @@ struct SimulationDevice {
 		cudaMallocManaged(&box, sizeof(Box));
 		cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);
 
-		ChargeOctTree charge_octtree_host;
-		cudaMallocManaged(&charge_octtree, sizeof(ChargeOctTree));
-		cudaMemcpy(charge_octtree, &charge_octtree_host, sizeof(ChargeOctTree), cudaMemcpyHostToDevice);
+		//ChargeOctTree charge_octtree_host;
+		//cudaMallocManaged(&charge_octtree, sizeof(ChargeOctTree));
+		//cudaMemcpy(charge_octtree, &charge_octtree_host, sizeof(ChargeOctTree), cudaMemcpyHostToDevice);
 
 		box_host->owns_members = false;
 		box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
@@ -54,10 +56,10 @@ struct SimulationDevice {
 
 		cudaFree(params);
 
-		cudaFree(compound_grid);
+		CompoundGrid::Free(compound_grid);
 		cudaFree(compound_neighborlists);
 
-		cudaFree(charge_octtree);
+		//cudaFree(charge_octtree);
 	}
 
 	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
@@ -74,5 +76,5 @@ struct SimulationDevice {
 	Box* box;
 	DatabuffersDevice* databuffers;
 
-	ChargeOctTree* charge_octtree;
+	//ChargeOctTree* charge_octtree;
 };

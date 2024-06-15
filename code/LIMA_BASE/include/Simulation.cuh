@@ -4,6 +4,7 @@
 #include "Bodies.cuh"
 #include <memory>
 #include <filesystem>
+#include "BoxGrid.cuh"
 
 
 enum ColoringMethod { Atomname, Charge };
@@ -44,8 +45,12 @@ struct SimSignals {
 	float thermostat_scalar = 1.f;
 };
 
+
+
 struct BoxParams {
-	Float3 dims{};	 // [nm]
+	//Float3 dims{};	 // [nm]
+	//BoxSize boxSize{ 0 };
+	int boxSize;	// [nm]
 
 	int n_compounds = 0;
 	int n_bridges = 0;

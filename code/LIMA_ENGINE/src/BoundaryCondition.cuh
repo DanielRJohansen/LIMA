@@ -1,6 +1,7 @@
 #pragma once
 
 #include <UserConstants.h>
+#include "KernelConstants.cuh"
 
 class NoBoundaryCondition {
 public:
@@ -16,52 +17,52 @@ public:
 class PeriodicBoundaryCondition {
 public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {
-		origo.x += BOXGRID_N_NODES * (origo.x < 0);
-		origo.x -= BOXGRID_N_NODES * (origo.x >= BOXGRID_N_NODES);
-		origo.y += BOXGRID_N_NODES * (origo.y < 0);
-		origo.y -= BOXGRID_N_NODES * (origo.y >= BOXGRID_N_NODES);
-		origo.z += BOXGRID_N_NODES * (origo.z < 0);
-		origo.z -= BOXGRID_N_NODES * (origo.z >= BOXGRID_N_NODES);
+		origo.x += boxSize_device.blocksPerDim * (origo.x < 0);
+		origo.x -= boxSize_device.blocksPerDim * (origo.x >= boxSize_device.blocksPerDim);
+		origo.y += boxSize_device.blocksPerDim * (origo.y < 0);
+		origo.y -= boxSize_device.blocksPerDim * (origo.y >= boxSize_device.blocksPerDim);
+		origo.z += boxSize_device.blocksPerDim * (origo.z < 0);
+		origo.z -= boxSize_device.blocksPerDim * (origo.z >= boxSize_device.blocksPerDim);
 	}
 
 	__device__ __host__ static void applyBC(PositionHighRes& position) {
 		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		const int64_t offset = BOXGRID_NODE_LEN_i / 2; // + 1;
-		position.x += BOX_LEN_i * (position.x + offset < 0);
-		position.x -= BOX_LEN_i * (position.x + offset >= BOX_LEN_i);
-		position.y += BOX_LEN_i * (position.y + offset < 0);
-		position.y -= BOX_LEN_i * (position.y + offset >= BOX_LEN_i);
-		position.z += BOX_LEN_i * (position.z + offset < 0);
-		position.z -= BOX_LEN_i * (position.z + offset >= BOX_LEN_i);
+		const int64_t offset = BoxGrid::blocksizeLM / 2; // + 1;
+		
+		position.x += boxSize_device.boxSizeLM_i * (position.x + offset < 0);
+		position.x -= boxSize_device.boxSizeLM_i * (position.x + offset >= boxSize_device.boxSizeLM_i);
+		position.y += boxSize_device.boxSizeLM_i * (position.y + offset < 0);
+		position.y -= boxSize_device.boxSizeLM_i * (position.y + offset >= boxSize_device.boxSizeLM_i);
+		position.z += boxSize_device.boxSizeLM_i * (position.z + offset < 0);
+		position.z -= boxSize_device.boxSizeLM_i * (position.z + offset >= boxSize_device.boxSizeLM_i);
 	}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
-		const NodeIndex difference = static_index - movable_index;
-		movable_index.x += BOXGRID_N_NODES * (difference.x > (BOXGRID_N_NODES / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
-		movable_index.x -= BOXGRID_N_NODES * (difference.x < -(BOXGRID_N_NODES / 2));
-		movable_index.y += BOXGRID_N_NODES * (difference.y > (BOXGRID_N_NODES / 2));
-		movable_index.y -= BOXGRID_N_NODES * (difference.y < -(BOXGRID_N_NODES / 2));
-		movable_index.z += BOXGRID_N_NODES * (difference.z > (BOXGRID_N_NODES / 2));
-		movable_index.z -= BOXGRID_N_NODES * (difference.z < -(BOXGRID_N_NODES / 2));
+		const NodeIndex difference = static_index - movable_index;		
+		movable_index.x += boxSize_device.blocksPerDim * (difference.x > (boxSize_device.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
+		movable_index.x -= boxSize_device.blocksPerDim * (difference.x < -(boxSize_device.blocksPerDim / 2));
+		movable_index.y += boxSize_device.blocksPerDim * (difference.y > (boxSize_device.blocksPerDim / 2));
+		movable_index.y -= boxSize_device.blocksPerDim * (difference.y < -(boxSize_device.blocksPerDim / 2));
+		movable_index.z += boxSize_device.blocksPerDim * (difference.z > (boxSize_device.blocksPerDim / 2));
+		movable_index.z -= boxSize_device.blocksPerDim * (difference.z < -(boxSize_device.blocksPerDim / 2));
 	}
 
-	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {
-		const float boxlen_nm = BOX_LEN / NANO_TO_LIMA;
-		const float boxlenhalf_nm = boxlen_nm / 2.f;
+	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {		
+		const float boxlenhalf_nm = boxSize_device.boxSizeNM_f / 2.f;
 
 		for (int i = 0; i < 3; i++) {
-			movable_particle[i] += boxlen_nm * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
-			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
+			movable_particle[i] += boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
+			movable_particle[i] -= boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
 		}
 	}
 
-	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;
-		current_position.x += BOX_LEN_NM * (current_position.x < 0.f);
-		current_position.x -= BOX_LEN_NM * (current_position.x > BOX_LEN_NM);
-		current_position.y += BOX_LEN_NM * (current_position.y < 0.f);
-		current_position.y -= BOX_LEN_NM * (current_position.y > BOX_LEN_NM);
-		current_position.z += BOX_LEN_NM * (current_position.z < 0.f);
-		current_position.z -= BOX_LEN_NM * (current_position.z > BOX_LEN_NM);
+	__device__ __host__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
+		current_position.x += boxSize_device.boxSizeNM_f * (current_position.x < 0.f);
+		current_position.x -= boxSize_device.boxSizeNM_f * (current_position.x > boxSize_device.boxSizeNM_f);
+		current_position.y += boxSize_device.boxSizeNM_f * (current_position.y < 0.f);
+		current_position.y -= boxSize_device.boxSizeNM_f * (current_position.y > boxSize_device.boxSizeNM_f);
+		current_position.z += boxSize_device.boxSizeNM_f * (current_position.z < 0.f);
+		current_position.z -= boxSize_device.boxSizeNM_f * (current_position.z > boxSize_device.boxSizeNM_f);
 	}
 };
 

@@ -8,10 +8,10 @@
 
 
 namespace BoundaryConditionPublic {
-	void applyBC(NodeIndex& nodeindex, float boxlen_nm, BoundaryConditionSelect);
+	void applyBC(NodeIndex& nodeindex, int boxlenNM, BoundaryConditionSelect);
 	void applyBC(NodeIndex& nodeindex, int nNodesPerDim);	// TODO temp, this is not the best way forward	
 	void applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect);
-	void applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect);
+	void applyBCNM(Float3& pos_nm, float boxlenNM, BoundaryConditionSelect);
 
 	void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm, BoundaryConditionSelect bc);
 	void applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm, BoundaryConditionSelect);

@@ -372,12 +372,12 @@ struct ParticlePlaceholder {
 
 
 template<typename T>
-class BoxGrid {
+class BoxGrid_ {	// TODO: Rename
 	std::vector<std::vector<T>> nodes;
 	int nodesPerDim = 0;
 
 public:
-	BoxGrid(int nodesPerDim) : nodesPerDim(nodesPerDim) {
+	BoxGrid_(int nodesPerDim) : nodesPerDim(nodesPerDim) {
 		nodes.resize(nodesPerDim * nodesPerDim * nodesPerDim);
 	}
 	
@@ -397,7 +397,7 @@ public:
 
 
 
-void DistributeGrofileparticlesInGrid(BoxGrid<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
+void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
 	for (const auto& atom : grofile.atoms) {
 		Float3 absPosHyper = atom.position;
 		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size.x, BoundaryConditionSelect::PBC);
@@ -425,7 +425,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	
 	const int nodesPerDim = static_cast<int>(grofile.box_size.x);
 	int nAtomsInput = grofile.atoms.size();
-	BoxGrid<ParticlePlaceholder> boxgrid{ nodesPerDim };
+	BoxGrid_<ParticlePlaceholder> boxgrid{ nodesPerDim };
 
 	DistributeGrofileparticlesInGrid(boxgrid, grofile);
 

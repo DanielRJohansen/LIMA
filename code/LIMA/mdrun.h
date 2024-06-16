@@ -14,9 +14,6 @@ struct MdrunSetup {
 		structure = work_dir / "molecule/conf.gro";
 		topol = work_dir / "molecule/topol.top";
 		simpar = work_dir / "sim_params.txt";
-		std::cout << "p:" << std::filesystem::current_path().string() << "\n";
-		std::cout << "wd:" << work_dir.string() << "\n"; 
-		std::cout << "set simparams: " << simpar.string() << "\n";
 	}
 
 
@@ -36,7 +33,7 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 	if (user_structure)
 	{
 		setup.structure = setup.work_dir / user_structure;
-	}std::cout << "Top start";
+	}
 
 	char* user_topol = getCmdOption(argv, argv + argc, "-topology");
 	if (user_topol)

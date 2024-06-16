@@ -50,7 +50,6 @@ Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output
 		fs::create_directory(moldir);
 
 	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
-	std::cout << "Env created\n";
 }
 
 Environment::~Environment() {}
@@ -74,7 +73,7 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Sim
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
 	setupEmptySimulation(params);
-
+	std::cout << "Making boximage\n";
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		(work_dir / "molecule").string(),
 		grofile,
@@ -84,7 +83,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		IGNORE_HYDROGEN,
 		simulation->simparams_host
 		);
-
+	std::cout << "done\n";
 	//TODO Find a better place for this
 	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
 	simulation->forcefield = boximage->forcefield;
@@ -395,8 +394,8 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 		// First clear the current line
 		printf("\r\033[K");
 
-		printf("\r\tStep #%06llu", step);
-		printf("\tAvg. step time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
+		printf("\rStep #%06llu", step);
+		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
 			duration / steps_since_update,
 			engine->timings.compound_kernels / steps_since_update,
 			engine->timings.solvent_kernels / steps_since_update,

@@ -79,7 +79,6 @@ int mdrun(int argc, char** argv)
 	TopologyFile topfile{setup.topol};
 
 	env->CreateSimulation(grofile, topfile, ip);
-	std::cout << "Sim created\n";
 	env->run();
 
 	return 0;

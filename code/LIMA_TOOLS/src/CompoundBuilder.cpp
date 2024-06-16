@@ -62,28 +62,6 @@ ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 struct Topology {
 	std::vector<SingleBondFactory> singlebonds;
 	std::vector<AngleBondFactory> anglebonds;
@@ -931,7 +909,7 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 }
 
 
-bool VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, const std::vector<ParticleInfo> atoms, float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) {
+void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, const std::vector<ParticleInfo> atoms, float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) {
 	// First check that we dont have any unrealistic bonds, and warn immediately.
 	for (const auto& bond : singlebonds) {
 		auto atom1 = atoms[bond.global_atom_indexes[0]];
@@ -971,7 +949,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<ParticleInfo> preparedAtoms = PrepareAtoms(preparedTopologyFiles, gro_file, forcefield, nNonsolventAtoms);
 
 	Topology topology = LoadTopology(preparedTopologyFiles, forcefield, preparedAtoms);
-	
+
 	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, simparams.box_size, simparams.bc_select, simparams.em_variant);
 
 	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
@@ -981,7 +959,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, simparams.bc_select);
 	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
-
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 

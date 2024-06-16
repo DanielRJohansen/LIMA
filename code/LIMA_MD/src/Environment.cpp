@@ -63,9 +63,7 @@ void Environment::CreateSimulation(float boxsize_nm) {
 }
 
 void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
-	std::cout << "reading gro";
 	const auto groFile = std::make_unique<GroFile>(gro_path);
-	std::cout << "read gro";
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);
 }
@@ -73,7 +71,6 @@ void Environment::CreateSimulation(string gro_path, string topol_path, const Sim
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
 	setupEmptySimulation(params);
-	std::cout << "Making boximage\n";
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		(work_dir / "molecule").string(),
 		grofile,
@@ -83,7 +80,6 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		IGNORE_HYDROGEN,
 		simulation->simparams_host
 		);
-	std::cout << "done\n";
 	//TODO Find a better place for this
 	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
 	simulation->forcefield = boximage->forcefield;
@@ -247,7 +243,7 @@ void Environment::run(bool em_variant, bool doPostRunEvents) {
 
 	std::optional<Display> display;
 	if (m_mode == Full) {
-		display.emplace(Display{m_mode});
+		display.emplace(m_mode);
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });

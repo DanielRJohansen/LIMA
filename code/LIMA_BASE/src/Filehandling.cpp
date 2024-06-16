@@ -239,7 +239,7 @@ fs::path Filehandler::GetLimaDir() {
 	fs::path currentPath = execPath.parent_path();
 
 	// Traverse up the directory tree until "LIMA" directory is found or root is reached
-	int cnt = 0;
+	int count = 0;
 	while (currentPath.has_parent_path()) {
 		if (currentPath.filename() == "LIMA") {
 			return currentPath; // Return the path when "LIMA" is found

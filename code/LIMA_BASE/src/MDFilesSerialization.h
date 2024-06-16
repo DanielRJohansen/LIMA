@@ -117,7 +117,7 @@ void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> _path =
 		throw std::runtime_error("Tried to cache a Gro file with no path");
 	std::ofstream os(path.string() + ".bin", std::ios::binary);
 	if (!os.is_open()) {
-		throw std::runtime_error("Failed to open file for writing");
+		throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
 	}
 
 	cereal::BinaryOutputArchive archive(os);
@@ -158,7 +158,7 @@ void WriteFileToBinaryCache(const TopologyFile& file, std::optional<fs::path> _p
 		throw std::runtime_error("Tried to cache a Top file with no path");
 	std::ofstream os(path.string() + ".bin", std::ios::binary);
 	if (!os.is_open()) {
-		throw std::runtime_error("Failed to open file for writing");
+		throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
 	}
 
 	cereal::BinaryOutputArchive archive(os);

@@ -44,6 +44,10 @@ add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)
 add_subdirectory(code/LIMA)
 
+if (UNIX)
+	# Copy the resources to the appropriate directory
+	install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION /opt/LIMA/resources)
 
-# Finally copy the resources to the appropriate directory
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION /opt/LIMA/resources)
+	# Add a post-installation step to set the permissions
+	install(CODE "execute_process(COMMAND chmod -R a+rw /opt/LIMA/resources)")
+endif()

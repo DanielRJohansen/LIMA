@@ -6,23 +6,26 @@
 
 #include "Environment.h"
 
-
+namespace fs = std::filesystem;
 struct MdrunSetup {
 
 	MdrunSetup() {
-		work_dir = std::filesystem::current_path().string();
-		structure = work_dir + "/molecule/conf.gro";
-		topol = work_dir + "/molecule/topol.top";
-		simpar = work_dir + "/sim_params.txt";
+		work_dir = std::filesystem::current_path();
+		structure = work_dir / "molecule/conf.gro";
+		topol = work_dir / "molecule/topol.top";
+		simpar = work_dir / "sim_params.txt";
+		std::cout << "p:" << std::filesystem::current_path().string() << "\n";
+		std::cout << "wd:" << work_dir.string() << "\n"; 
+		std::cout << "set simparams: " << simpar.string() << "\n";
 	}
 
 
 	EnvMode envmode = Full;
 
-	std::string work_dir;
-	std::string structure;
-	std::string topol;
-	std::string simpar;
+	fs::path work_dir;
+	fs::path structure;
+	fs::path topol;
+	fs::path simpar;
 };
 
 
@@ -32,19 +35,19 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 	char* user_structure = getCmdOption(argv, argv + argc, "-structure");
 	if (user_structure)
 	{
-		setup.structure = setup.work_dir + user_structure;
+		setup.structure = setup.work_dir / user_structure;
 	}std::cout << "Top start";
 
 	char* user_topol = getCmdOption(argv, argv + argc, "-topology");
 	if (user_topol)
 	{
-		setup.topol = setup.work_dir + user_topol;
+		setup.topol = setup.work_dir / user_topol;
 	}
 
 	char* user_params = getCmdOption(argv, argv + argc, "-simparams");
 	if (user_params)
 	{
-		setup.simpar = setup.work_dir + user_params;
+		setup.simpar = setup.work_dir / user_params;
 	}
 
 	char* user_envmode = getCmdOption(argv, argv + argc, "-envmode");
@@ -69,12 +72,11 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 
 int mdrun(int argc, char** argv) 
 {
-
-	std::cout << "LIMA is preparing simulation in dir ";
+	std::cout << "LIMA is preparing simulation in dir " << std::filesystem::current_path().string() << "\n";
 	MdrunSetup setup = parseProgramArguments(argc, argv);
 	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
 
-	const SimParams ip(SimParams::defaultPath());		
+	const SimParams ip(setup.simpar);		
 	GroFile grofile{setup.structure};
 	TopologyFile topfile{setup.topol};
 

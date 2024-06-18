@@ -1,5 +1,4 @@
 #include "DisplayV2.h"
-//#include "glu"
 
 #ifndef __linux__
 
@@ -221,29 +220,6 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
     //printf("\tRender time: %4d ys  ", (int) duration.count());
 }
 
-
-
-//void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-//    const float delta = PI / 4.f;
-//
-//    if (action == GLFW_PRESS) {
-//        switch (key) {
-//        case GLFW_KEY_UP:
-//            updateCamera(camera_pitch - delta, camera_yaw);
-//            break;
-//        case GLFW_KEY_DOWN:
-//            updateCamera(camera_pitch + delta, camera_yaw);
-//            break;
-//        case GLFW_KEY_LEFT:
-//            updateCamera(camera_pitch, camera_yaw - delta);
-//            break;
-//        case GLFW_KEY_RIGHT:
-//            updateCamera(camera_pitch, camera_yaw + delta);
-//            break;
-//        }
-//    }
-//}
-
 bool Display::checkWindowStatus() {
     glfwPollEvents();
     if (glfwWindowShouldClose(window)) {
@@ -251,26 +227,6 @@ bool Display::checkWindowStatus() {
 
         return false;
     }
-
-
-    //// Listen for arrow keys
-    //const float delta = PI / 4.f;
-    //if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    //    updateCamera(camera_pitch - delta, camera_yaw);
-    //}
-    //if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    //    updateCamera(camera_pitch + delta, camera_yaw);
-    //}
-    //if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    //    updateCamera(camera_pitch, camera_yaw - delta);
-    //}
-    //if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    //    updateCamera(camera_pitch, camera_yaw + delta);
-    //}
-
-
-
-
 
     return true;
 }
@@ -301,4 +257,3 @@ bool Display::initGLFW() {
 }
 
 #endif
-

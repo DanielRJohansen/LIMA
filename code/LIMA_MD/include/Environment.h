@@ -68,7 +68,7 @@ public:
 
 	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
 	// atoms in the input coordinate file.
-	GroFile writeBoxCoordinatesToFile();
+	GroFile writeBoxCoordinatesToFile(const std::string& filename="out");
 
 	
 	
@@ -80,13 +80,11 @@ public:
 	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
-	//const InputSimParams getSimparams();
 	std::unique_ptr<Simulation> getSim();
 	Simulation* getSimPtr();
 	Analyzer::AnalyzedPackage* getAnalyzedPackage();
 	SolventBlocksCircularQueue* getSolventBlocks();
-	//SolventBlockGrid* getSolventBlocksPrevRef();
-	//const std::unique_ptr<SolventBlockGrid> getCurrentSolventblockGrid();
+
 	std::string getWorkdir() { return work_dir.string(); }
 
 #ifdef __linux__

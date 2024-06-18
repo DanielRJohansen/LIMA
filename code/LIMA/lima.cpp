@@ -5,6 +5,7 @@
 #include <cctype>
 #include "Environment.h"
 
+#include "selftest.h"
 #include "MoleculeGraph.h"
 
 #include "CommandlineUtils.h"
@@ -35,10 +36,9 @@ void printHelp() {
 	std::cout << "LIMA - the faster Molecular Dynamics Engine\n";
 	std::cout << "Usage: lima <program> <args>\n";
 	std::cout << "Available programs:\n";
-	std::cout << "  mdrun\n";
-	std::cout << "  buildmembrane\n";
-	//std::cout << "  reordermoleculeparticles\n";
-	std::cout << "  makesimparams\n";
+	std::cout << "\tmdrun\n";
+	std::cout << "\tbuildmembrane\n";
+	std::cout << "\tmakesimparams\n";
 }
 
 
@@ -51,6 +51,7 @@ int main(int argc, char** argv)
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
 		else if (program == "-help" || program =="-h"||program == "help") { printHelp(); }
+		else if (program == "selftest") { SelfTest(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
 		}

@@ -103,23 +103,14 @@ std::unique_ptr<Simulation> Engine::takeBackSim() {
 void Engine::verifyEngine() {
 	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
 
-	//if (static_cast<float>(simulation->boxparams_host.boxSize) != BOX_LEN_NM) {
-	//	//throw std::runtime_error(std::format("This simulations box_size of {} did not match the size the engine is compiled with {}", simulation->boxparams_host.dims.x, BOX_LEN_NM));
-	//	throw std::runtime_error("This simulations box_size of "+ std::to_string(simulation->boxparams_host.boxSize)
-	//	+ "did not match the size the engine is compiled with" + std::to_string(BOX_LEN_NM));
-	//}
-
-	// TODO: We need larger simulations, so switch to uint32_t eventually
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
-	assert(nBlocks* nBlocks* nBlocks < UINT16_MAX && "Neighborlist cannot handle such large gridnode_ids");
-
+	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
 }
 
 void Engine::step() {
 	LIMA_UTILS::genericErrorCheck("Error before step!");
 
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
-	//simulation->incStep();
 	assert(simulation);
 	assert(sim_dev);
 	simulation->simsignals_host.step++;

@@ -22,29 +22,6 @@ public:
 	bool checkWindowStatus();		// Returns false if the windows should close
 	void terminate();
 
-
-	//void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-	//	//const float delta = pi / 4.f;
-
-	//	if (action == GLFW_RELEASE) {
-	//		/*     switch (key) {
-	//			 case GLFW_KEY_UP:
-	//				 updateCamera(camera_pitch - delta, camera_yaw);
-	//				 break;
-	//			 case GLFW_KEY_DOWN:
-	//				 updateCamera(camera_pitch + delta, camera_yaw);
-	//				 break;
-	//			 case GLFW_KEY_LEFT:
-	//				 updateCamera(camera_pitch, camera_yaw - delta);
-	//				 break;
-	//			 case GLFW_KEY_RIGHT:
-	//				 updateCamera(camera_pitch, camera_yaw + delta);
-	//				 break;
-	//			 }*/
-	//	}
-	//};
-
-
 private:
 	LimaLogger logger;
 	Rasterizer rasterizer;

@@ -14,9 +14,7 @@
 #include "Forcefield.h"
 
 using namespace LIMA_Print;
-using std::string;
-using std::cout;
-using std::printf;
+
 namespace lfs = Filehandler;
 namespace fs = std::filesystem;
 
@@ -36,7 +34,6 @@ Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output
 	switch (mode)
 	{
 	case EnvMode::Full:
-		//display = std::make_unique<Display>();
 		[[fallthrough]];
 	case EnvMode::ConsoleOnly:
 		sayHello();
@@ -58,11 +55,10 @@ void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
 	setupEmptySimulation(simparams);
 	boxbuilder->buildBox(simulation.get(), boxsize_nm);
-	//simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
 	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
-void Environment::CreateSimulation(string gro_path, string topol_path, const SimParams params) {
+void Environment::CreateSimulation(std::string gro_path, std::string topol_path, const SimParams params) {
 	const auto groFile = std::make_unique<GroFile>(gro_path);
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);
@@ -81,7 +77,6 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		simulation->simparams_host
 		);
 	//TODO Find a better place for this
-	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
 	simulation->forcefield = boximage->forcefield;
 
 	boxbuilder->buildBox(simulation.get(), boximage->box_size);
@@ -94,18 +89,13 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
-	// If we already have a box, we must have a forcefield too, no?
-
-	//SimParams simparams{ ip };
 	setupEmptySimulation(params);
-	//boxbuilder->copyBoxState(simulation.get(), simulation_src.sim_dev->box, simulation_src.simparams_host, simulation_src.simparams_host.step);	// TODO: Fix this again
-	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);	// TODO: Fix this again
+
+	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);
 	simulation->extraparams = simulation_src.extraparams;
 
 	simulation->forcefield = simulation_src.forcefield;
 	//TODO Find a better place for this
-	//simulation->forcefield = std::make_unique<Forcefield>(m_mode == Headless ? SILENT : V1, (work_dir / "molecule").string());
-	// FIX NOW
 }
 
 
@@ -231,10 +221,7 @@ void Environment::sayHello() {
 	std::string file_contents((std::istreambuf_iterator<char>(file)),
 		std::istreambuf_iterator<char>());
 
-	//cout << "\033[1;32m"; // set text color to green
-	cout << file_contents;
-	//printf(" \t\t<< Welcome to LIMA Molecular Dynamics >>\n\n");
-	//cout << "\033[0m"; // reset text color
+	std::cout << file_contents;
 }
 #include <optional>
 
@@ -278,15 +265,14 @@ void Environment::run(bool em_variant, bool doPostRunEvents) {
 	
 	m_logger.finishSection("Simulation Finished");
 
-	//if (simulation->finished || simulation->sim_dev->params->critical_error_encountered) {
 	if (simulation->finished && doPostRunEvents) {
 		postRunEvents();
 	}
 }
 
-GroFile Environment::writeBoxCoordinatesToFile() {
+GroFile Environment::writeBoxCoordinatesToFile(const std::string& filename) {
 	GroFile outputfile{ boximage->grofile };
-
+	outputfile.m_path = work_dir / "molecule" / (filename + ".gro");
 	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;
 		const int pid = boximage->particleinfos[i].localIdInCompound;		
@@ -308,19 +294,20 @@ GroFile Environment::writeBoxCoordinatesToFile() {
 void Environment::postRunEvents() {
 	if (simulation->getStep() == 0) { return; }
 
+	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
+	std::filesystem::create_directories(out_dir);
+
+	writeBoxCoordinatesToFile().printToFile();
+
 	if (POSTSIM_ANAL) {
 		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));
 		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
 	}
 
+	
+
 	if (!save_output) { return; }
 
-
-	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
-
-	std::filesystem::create_directories(out_dir);
-	//std::filesystem::current_path(work_folder);
-	//std::filesystem::create_directories(out_dir);
 
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
@@ -329,12 +316,6 @@ void Environment::postRunEvents() {
 			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->boxparams_host.n_compounds, "total p upperbound", simulation->boxparams_host.total_particles_upperbound);
 		printH2();
 	}
-
-	//if (simulation->sim_dev->params->critical_error_encountered) {
-	//	Filehandler::dumpToFile(simulation->trainingdata.data(),
-	//		(uint64_t) N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation->boxparams_host.n_compounds * simulation->getStep(),
-	//		out_dir + "sim_traindata.bin");
-	//}
 	
 	if (DUMP_TRAJ) {
 		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
@@ -352,22 +333,6 @@ void Environment::postRunEvents() {
 	if (DUMP_POTE) {
 		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir.string() + "potE.bin");
 	}
-
-
-#ifndef __linux__
-	//if (!simulation->sim_dev->params->critical_error_encountered && 0) {	// Skipping for now
-	//	string data_processing_command = "C:\\Users\\Daniel\\git_repo\\Quantom\\LIMA_services\\x64\\Release\\LIMA_services.exe "
-	//		+ out_dir + " "
-	//		+ std::to_string(simulation->getStep()) + " "
-	//		+ "0" + " "											// do_shuffle
-	//		+ std::to_string(simulation->boxparams_host.n_compounds) + " "
-	//		+ std::to_string(MAX_COMPOUND_PARTICLES)
-	//		;
-
-	//	cout << data_processing_command << "\n\n";
-	//	system(&data_processing_command[0]);
-	//}
-#endif
 
 	simulation->ready_to_run = false;
 
@@ -421,7 +386,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 	return displayStillExists;
 }
 
-void Environment::renderTrajectory(string trj_path)
+void Environment::renderTrajectory(std::string trj_path)
 {
 	/*
 	Trajectory* trj = new Trajectory(trj_path);
@@ -434,7 +399,7 @@ void Environment::renderTrajectory(string trj_path)
 	*/
 }
 
-void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path) {
+void Environment::makeVirtualTrajectory(std::string trj_path, std::string waterforce_path) {
 	//Trajectory* trj = new Trajectory(trj_path);
 	//Trajectory* force_buffer = new Trajectory(waterforce_path);
 	//int n_steps = trj->n_steps;
@@ -465,35 +430,6 @@ void Environment::makeVirtualTrajectory(string trj_path, string waterforce_path)
 	//}
 	//myfile.close();
 }
-
-
-
-//
-//// Todo: move this to the utilities.h file
-//template <typename T>
-//void Environment::dumpToFile(T* data, uint64_t n_datapoints, string file_path_s) {	
-//	char* file_path;
-//	file_path = &file_path_s[0];
-//
-//	const std::string str = std::to_string((long double)sizeof(T) * n_datapoints * 1e-6);
-//	m_logger.print("Writing " + str + "MB to binary file " + file_path + "\n");
-//
-//	FILE* file;
-//
-//#ifndef __linux__
-//	if (!fopen_s(&file, file_path, "wb")) {
-//
-//		assert(sizeof(T));
-//		assert(n_datapoints);
-//
-//		fwrite(data, sizeof(T), n_datapoints, file);
-//		fclose(file);
-//	}
-//#else
-//	file = fopen(file_path, "wb");
-//#endif
-//}
-
 
 
 std::unique_ptr<Simulation> Environment::getSim() {

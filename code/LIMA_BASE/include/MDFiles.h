@@ -65,7 +65,6 @@ struct GroFile {
 	void printToFile(const std::string& name) const {
 		printToFile(m_path.parent_path() / name);
 	}
-	//void addEntry(std::string residue_name, std::string atom_name, const Float3& position);
 };
 
 template <typename EntryType>

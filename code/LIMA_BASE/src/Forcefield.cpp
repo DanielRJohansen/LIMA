@@ -146,8 +146,6 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
 			const float psi0 = stof(row.words[6]) * degreeToRad;
 
-			// TODO: Check that the entry doesn't already exists. Current we sort these bonds, which i am really not very comfortable with, 
-			// as the order here should be quite relevant?
 			improperdihedralbondParameters.insert(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
 		}
 		else if (row.section == "NONBONDED") {

@@ -129,7 +129,6 @@ class LjParameterDatabase {
 		}
 };
 
-// TODO move to the other file, delete this file
 class LIMAForcefield {
 public:
 	LIMAForcefield();

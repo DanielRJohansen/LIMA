@@ -4,7 +4,6 @@
 # in order to access __constant__ memory
 add_library(LIMA_ENGINE
     src/Engine.cu
-    #src/EngineKernels.cu
     src/Thermostat.cu       # TODO: Make .cpp file
     src/ChargeOcttree.cu
 )

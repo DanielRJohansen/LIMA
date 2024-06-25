@@ -6,7 +6,6 @@
 #include "Simulation.cuh"
 
 
-
 struct RenderAtom {	
 	float4 position = Disabled(); // Float4{ FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX };	// {posX, posY, posZ, radius} [nm]
 	float4 color{};					// {r, g, b, a} [0-1]	

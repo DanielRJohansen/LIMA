@@ -52,7 +52,7 @@ Display::Display(EnvMode envmode) :
             // Retrieve the Display instance from the window user pointer
             Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
             if (display) {
-                const float delta = 3.1415 / 4.f;
+                const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
                     display->updateCamera(display->camera_pitch + delta, display->camera_yaw);

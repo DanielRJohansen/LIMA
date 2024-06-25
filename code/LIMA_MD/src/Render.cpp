@@ -379,6 +379,9 @@ void Display::initializePipeline(size_t numAtoms) {
 
 	// Set up the draw atoms pipeline
 	SetupDrawAtomsPipeline(numAtoms, *drawAtomsShaderProgram, renderAtomsBuffer, &renderAtomsBufferCudaResource);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 

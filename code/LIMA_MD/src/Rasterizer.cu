@@ -1,16 +1,12 @@
-//#ifndef __linux__
-
 
 #include "Rasterizer.cuh"
 #include "Utilities.h"
 
-
-#include <algorithm>
-#include <cuda/std/cmath>
-
 __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds, ColoringMethod coloringMethod, float boxLenNM);
 __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms, float boxLenNM, int nCompoundParticles);
 
+const bool drawSolvent = false;
+const bool drawHydrogens = false;
 
 void Rasterizer::initialize(const BoxParams& boxparams, const std::vector<Compound>& compounds) {
     cudaMallocManaged(&positions_dev, sizeof(Float3) * boxparams.total_particles_upperbound);
@@ -82,23 +78,23 @@ __device__ float4 getColor(ATOM_TYPE atom_type) {
     switch (atom_type)
     {
     case ATOM_TYPE::SOL:
-        return float4{0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, 0.0f };
+        return float4{0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, 1.0f };
     case ATOM_TYPE::H:
-        return float4{0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 0.0f };
+        return float4{0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 1.0f };
     case ATOM_TYPE::O:
-        return float4{0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 0.0f };
+        return float4{0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 1.0f };
     case ATOM_TYPE::C:
-        return float4{0x30 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 0.0f };
+        return float4{0x30 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 1.0f };
     case ATOM_TYPE::P:
-        return float4{0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 0.0f };
+        return float4{0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 1.0f };
     case ATOM_TYPE::N:
-        return float4{0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 0.0f };
+        return float4{0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 1.0f };
     case ATOM_TYPE::S:
-        return float4{0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 0.0f };
+        return float4{0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 1.0f };
     case ATOM_TYPE::NONE:
-        return float4{0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 0.0f };
+        return float4{0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 1.0f };
     default:
-        return float4{0.0f, 0.0f, 0.0f, 0.0f };
+        return float4{0.0f, 0.0f, 0.0f, 1.0f };
     }
 }
 
@@ -168,8 +164,12 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
             atom.color = getColor(atomType);
         else if (coloringMethod == ColoringMethod::Charge) {
             const float chargeNormalized = (compound->atom_charges[local_id] + elementaryChargeToCoulombPerMole)  / (elementaryChargeToCoulombPerMole*2.f);
-            atom.color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 0.f };
+            atom.color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 1.f };
         }
+
+        if (atomType == ATOM_TYPE::H && !drawHydrogens) {
+			atom.position.w = 0.f;
+		}
 
         atoms[outputIndex] = atom;
     }
@@ -186,24 +186,9 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
 		RenderAtom atom{};
         const Float3 positionNormalized = positions[particle_index] / boxLenNM - 0.5f;// normalize from -0.5->0.5
         atom.position = float4{ positionNormalized.x, positionNormalized.y, positionNormalized.z, 0.f };
-
-        //atom.pos = positions[particle_index];
-        //atom.pos = atom.pos / boxLenNM - 0.5f;    // normalize from -0.5->0.5
-
-		//atom.atom_type = SOL;
         atom.position.w = getRadius(ATOM_TYPE::SOL) / boxLenNM * 4.f;
-		// Debug
-		//float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
-  //      const float velocity = 1.f;
-  //      const float point1nm = NANO_TO_LIMA * 0.1f;
-		//const float color_scalar = velocity / point1nm * 255.f;
-		//const uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));
-		//atom.color = Int3(color_red, 0, 255 - color_red);
 
-
-
-        //atom.color = Int3(0, 0, 255);
-        atom.color = float4{ 0,0,1, 0 };
+        atom.color = float4{ 0,0,1, drawSolvent };
 
         atoms[outputIndex] = atom;
     }

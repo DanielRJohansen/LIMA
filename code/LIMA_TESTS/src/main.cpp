@@ -87,7 +87,7 @@ int main() {
 
 		//const fs::path work_dir = simulations_dir + "/test";
 		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(30.f);
+		//env.CreateSimulation(25.f);
 		//LipidsSelection lipids;
 		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
 		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
@@ -105,8 +105,8 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
-		runAllUnitTests();
-		//Benchmarks::Psome(envmode);
+		//runAllUnitTests();
+		Benchmarks::Psome(envmode);
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

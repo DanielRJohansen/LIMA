@@ -5,7 +5,7 @@
 #include <gtc/type_ptr.hpp>
 
 
-
+#include <cuda_gl_interop.h>
 
 
 glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
@@ -187,11 +187,6 @@ void SetupDrawBoxPipeline(GLuint& drawBoxShaderProgram) {
 
 
 void Display::DrawBoxOutline() {
-    if (!drawBoxShaderProgram.has_value()) {
-        drawBoxShaderProgram.emplace(0);
-        SetupDrawBoxPipeline(*drawBoxShaderProgram);
-    }
-
     glUseProgram(*drawBoxShaderProgram);
 
     const GLuint mvpLocation = glGetUniformLocation(*drawBoxShaderProgram, "MVP");
@@ -275,9 +270,9 @@ void main() { \n\
 
 
 
-GLuint drawAtomsVBO, drawAtomsSSBO;
+GLuint drawAtomsVBO;
 
-void SetupDrawAtomsPipeline(size_t numAtoms, GLuint& drawAtomsShaderProgram) {
+void SetupDrawAtomsPipeline(size_t numAtoms, GLuint& drawAtomsShaderProgram, std::optional<GLuint>& renderAtomsBuffer, cudaGraphicsResource** renderAtomsBufferCUDA) {
     // Create and compile the vertex shader
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
@@ -306,7 +301,12 @@ void SetupDrawAtomsPipeline(size_t numAtoms, GLuint& drawAtomsShaderProgram) {
     glBindBuffer(GL_ARRAY_BUFFER, drawAtomsVBO);
 
     // Generate SSBOs
-    glGenBuffers(1, &drawAtomsSSBO);
+    renderAtomsBuffer.emplace(0);
+    glGenBuffers(1, &renderAtomsBuffer.value());
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, *renderAtomsBuffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, numAtoms * sizeof(RenderAtom), nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+	cudaGraphicsGLRegisterBuffer(renderAtomsBufferCUDA, *renderAtomsBuffer, cudaGraphicsMapFlagsWriteDiscard);
 
     // Allocate space for the VBO. We assume `sizeof(RenderAtom)` is the size of the data.
     glBufferData(GL_ARRAY_BUFFER, numAtoms * sizeof(RenderAtom), nullptr, GL_DYNAMIC_DRAW);
@@ -327,32 +327,24 @@ void SetupDrawAtomsPipeline(size_t numAtoms, GLuint& drawAtomsShaderProgram) {
 
 
 
-void Display::DrawAtoms(const std::vector<RenderAtom>& atoms) {
+void Display::DrawAtoms(size_t numAtoms) {
     const int numVerticesPerAtom = 12; // Number of vertices to define a disc (30 for the circle + 1 center + 1 to close the loop)
-
-    if (!drawAtomsShaderProgram.has_value()) {
-        drawAtomsShaderProgram.emplace(0);
-        SetupDrawAtomsPipeline(atoms.size() * numVerticesPerAtom, *drawAtomsShaderProgram);
-    }
 
     glUseProgram(*drawAtomsShaderProgram);
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, drawAtomsSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, atoms.size() * sizeof(RenderAtom), atoms.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, drawAtomsSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, *renderAtomsBuffer);
 
     const GLuint mvpLocation = glGetUniformLocation(*drawAtomsShaderProgram, "MVP");
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
 
     const GLuint numAtomsLocation = glGetUniformLocation(*drawAtomsShaderProgram, "numAtoms");
-    glUniform1i(numAtomsLocation, atoms.size());
+    glUniform1i(numAtomsLocation, numAtoms);
 
     const GLuint numVerticesPerAtomLocation = glGetUniformLocation(*drawAtomsShaderProgram, "numVerticesPerAtom");
     glUniform1i(numVerticesPerAtomLocation, numVerticesPerAtom);
 
-    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, atoms.size());
+    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, numAtoms);
 
     glBindVertexArray(0);
     glUseProgram(0);
@@ -377,6 +369,17 @@ void Display::DrawAtoms(const std::vector<RenderAtom>& atoms) {
 
 
 
+void Display::initializePipeline(size_t numAtoms) {
+    drawBoxShaderProgram.emplace(0);
+    drawAtomsShaderProgram.emplace(0);
+
+
+	// Set up the draw box pipeline
+	SetupDrawBoxPipeline(*drawBoxShaderProgram);
+
+	// Set up the draw atoms pipeline
+	SetupDrawAtomsPipeline(numAtoms, *drawAtomsShaderProgram, renderAtomsBuffer, &renderAtomsBufferCudaResource);
+}
 
 
 
@@ -388,7 +391,7 @@ void Display::TerminateGLEW() {
     glDeleteVertexArrays(1, &drawAtomsVBO);
     glDeleteVertexArrays(1, &boxVAO);
     glDeleteVertexArrays(1, &boxVBO);
-    glDeleteVertexArrays(1, &drawAtomsSSBO);
+    glDeleteVertexArrays(1, &renderAtomsBuffer.value());
     
 
     if (drawAtomsShaderProgram.has_value())

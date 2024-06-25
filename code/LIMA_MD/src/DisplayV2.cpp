@@ -92,13 +92,35 @@ Display::~Display() {
 void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    const std::vector<RenderAtom>& renderAtoms = rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod);
+    if (!pipelineInitialized) {
+        initializePipeline(boxparams.total_particles);
+        pipelineInitialized = true;
+	}
+
+
+
+    // Preprocess the renderAtoms
+    
+    // Map buffer object for writing from CUDA
+    RenderAtom* renderAtomsBuffer;
+    cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+    size_t num_bytes = 0;
+	cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+    assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
+
+    rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
+
+    // Release buffer object from CUDA
+    cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    
+
+    
 
     glClear(GL_COLOR_BUFFER_BIT);
 
 
     DrawBoxOutline();
-    DrawAtoms(renderAtoms);
+    DrawAtoms(boxparams.total_particles);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);

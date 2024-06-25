@@ -57,11 +57,11 @@ struct BoxParams {
 	int64_t n_solvents = 0;
 	int64_t total_particles_upperbound = 0;
 	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
+	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
 // Params in simulation host-side only
 struct SimparamsExtra {
-	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
 struct DatabuffersDevice {

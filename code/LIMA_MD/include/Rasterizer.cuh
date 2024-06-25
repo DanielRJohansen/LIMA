@@ -22,22 +22,21 @@ public:
 	Rasterizer() {};
 	~Rasterizer();
 
-	const std::vector<RenderAtom>& render(const Float3* positions,
-		const std::vector<Compound>& compounds, const BoxParams&, int64_t step, Float3 camera_normal, ColoringMethod coloringmethod);
+	void render(const Float3* positions,
+		const std::vector<Compound>& compounds, const BoxParams&, int64_t step, Float3 camera_normal, ColoringMethod coloringmethod, RenderAtom* renderAtoms);
 
 
 private:
 	
 	void getAllAtoms(const Float3* positions, const std::vector<Compound>& compounds, 
-		const BoxParams& boxparams, int64_t step, ColoringMethod coloringMethod);
+		const BoxParams& boxparams, int64_t step, ColoringMethod coloringMethod, RenderAtom* renderAtoms);
 
 
-	RenderAtom* atoms_dev = nullptr;
+	//RenderAtom* atoms_dev = nullptr;
 	Float3* positions_dev = nullptr;
 	Compound* compounds_dev = nullptr;
-	std::vector<RenderAtom> renderAtomsHost;
 
 	bool isInitialized = false;
-	void initialize(const BoxParams& boxparams);
+	void initialize(const BoxParams& boxparams, const std::vector<Compound>& compounds);
 
 };

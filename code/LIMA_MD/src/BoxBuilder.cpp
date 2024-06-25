@@ -36,7 +36,7 @@ void BoxBuilder::addBoxImage(Simulation* simulation, BoxImage& compound_collecti
 		insertCompoundInBox(compound, *simulation);
 	}
 
-	simulation->extraparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
+	simulation->box_host->boxparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
 	simulation->box_host->boxparams.total_particles += compound_collection.total_compound_particles;
 
 

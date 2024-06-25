@@ -247,7 +247,7 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
 
-	if (simulation->extraparams.total_compound_particles > 0) {
+	if (simulation->boxparams_host.total_compound_particles > 0) {
 		std::vector<Float3> host_data(n_datapoints);
 
 		Float3* data_out;

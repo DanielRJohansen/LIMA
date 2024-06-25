@@ -36,11 +36,15 @@ private:
 
 
 	// OpenGL functions
-	void DrawAtoms(const std::vector<RenderAtom>& atoms);
+	void initializePipeline(size_t numAtoms);
+	void DrawAtoms(size_t numAtoms);
 	void DrawBoxOutline();
 	void TerminateGLEW();
 	std::optional<GLuint> drawBoxShaderProgram = std::nullopt;
 	std::optional<GLuint> drawAtomsShaderProgram = std::nullopt;
+	std::optional<GLuint> renderAtomsBuffer = std::nullopt;
+	cudaGraphicsResource* renderAtomsBufferCudaResource;
+	bool pipelineInitialized = false;
 
 
 	float camera_pitch = 0.f;

@@ -262,6 +262,8 @@ struct Compound : public CompoundCompact {
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
+
+	int absoluteIndexOfFirstParticle = 0;
 };
 
 

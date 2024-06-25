@@ -906,6 +906,13 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 		const Float3 com = calcCOM(compound.positions, compound.n_particles, boxlen_nm, bc_select);
 		compound.centerparticle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com, boxlen_nm, bc_select);
 	}
+
+	// Calc absolute ids of particles in compounds 
+	if (compounds.empty()) { return; }
+	compounds[0].absoluteIndexOfFirstParticle = 0;
+	for (int i = 1; i < compounds.size(); i++) {
+		compounds[i].absoluteIndexOfFirstParticle = compounds[i - 1].absoluteIndexOfFirstParticle + compounds[i - 1].n_particles;
+	}
 }
 
 

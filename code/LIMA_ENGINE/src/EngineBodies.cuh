@@ -135,26 +135,6 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class NeighborList {
 public:
 	__device__ __host__ bool addCompound(uint16_t new_id) {
@@ -192,13 +172,13 @@ public:
 
 	// It is guaranteed that the first compoudns are bonded_compounds. How many, that is something the compound
 	// itself keeps track of
-	static_assert(MAX_COMPOUNDS < UINT16_MAX, "Neighborlist cannot handle such large compound ids");
+	static_assert(MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
 	int n_compound_neighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured
-	__device__ __host__ bool addGridnode(uint16_t gridnode_id) {
+	__device__ __host__ bool addGridnode(int gridnode_id) {
 		if (n_gridnodes >= max_gridnodes) {
 			//throw std::runtime_error("No room for more nearby gridnodes"); }
 			printf("No room for more nearby gridnodes");
@@ -209,8 +189,7 @@ public:
 	}
 
 	static const int max_gridnodes = 64 + 4;	// Arbitrary value
-	//static_assert(SolventBlocksCircularQueue::blocks_total < UINT16_MAX, "Neighborlist cannot handle such large gridnode_ids");
-	uint16_t gridnode_ids[max_gridnodes];
+	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;
 #endif
 

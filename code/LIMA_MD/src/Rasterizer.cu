@@ -13,10 +13,10 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
 
 
 void Rasterizer::initialize(const BoxParams& boxparams) {
-    cudaMallocManaged(&atoms_dev, sizeof(RenderAtom) * boxparams.total_particles_upperbound);
+    cudaMallocManaged(&atoms_dev, sizeof(RenderAtom) * boxparams.total_particles);
     cudaMallocManaged(&positions_dev, sizeof(Float3) * boxparams.total_particles_upperbound);
     cudaMallocManaged(&compounds_dev, sizeof(Compound) * boxparams.n_compounds);
-    renderAtomsHost.resize(boxparams.total_particles_upperbound);
+    renderAtomsHost.resize(boxparams.total_particles);
 
 	isInitialized = true;
 }
@@ -49,14 +49,14 @@ const std::vector<RenderAtom>& Rasterizer::render(const Float3* positions, const
     LIMA_UTILS::genericErrorCheck("Error before renderer");
 	getAllAtoms(positions, compounds, boxparams, step, coloringMethod);
 
-    cudaMemcpy(renderAtomsHost.data(), atoms_dev, sizeof(RenderAtom) * boxparams.total_particles_upperbound, cudaMemcpyDeviceToHost);
+    cudaMemcpy(renderAtomsHost.data(), atoms_dev, sizeof(RenderAtom) * boxparams.total_particles, cudaMemcpyDeviceToHost);
 
     std::sort(renderAtomsHost.begin(), renderAtomsHost.end(), [camera_normal](const RenderAtom& a, const RenderAtom& b) {
-        float dotA = a.pos.x * camera_normal.x + a.pos.y * camera_normal.y + a.pos.z * camera_normal.z;
-        float dotB = b.pos.x * camera_normal.x + b.pos.y * camera_normal.y + b.pos.z * camera_normal.z;
+        float dotA = a.position.x * camera_normal.x + a.position.y * camera_normal.y + a.position.z * camera_normal.z;
+        float dotB = b.position.x * camera_normal.x + b.position.y * camera_normal.y + b.position.z * camera_normal.z;
 
         // Compare dot products for sorting
-        return !a.Disabled() && dotA > dotB;
+        return !a.IsDisabled() && dotA > dotB;
         });
 
     LIMA_UTILS::genericErrorCheck("Error after renderer\n");
@@ -78,35 +78,39 @@ __device__ ATOM_TYPE RAS_getTypeFromAtomletter(char atom) {
         return ATOM_TYPE::H;
     case 'P':
         return ATOM_TYPE::P;
+    case 'S':
+        return ATOM_TYPE::S;
     case 'l':
 		return ATOM_TYPE::LIMA_CUSTOM;
     default:
+        printf("Unknown atom type: %c\n", atom);
         return ATOM_TYPE::NONE;
     }
 }
 
-__device__ Int3 getColor(ATOM_TYPE atom_type) {
+__device__ float4 getColor(ATOM_TYPE atom_type) {
     switch (atom_type)
     {
     case ATOM_TYPE::SOL:
-        return Int3(0x03, 0xa9, 0xf4);
+        return float4{0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, 0.0f };
     case ATOM_TYPE::H:
-        return Int3(0xF1, 0xF1, 0xF1);
+        return float4{0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 0.0f };
     case ATOM_TYPE::O:
-        return Int3(0xE0, 0x20, 0x20);
+        return float4{0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 0.0f };
     case ATOM_TYPE::C:
-        return Int3(0x30, 0x10, 0x90);
+        return float4{0x30 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 0.0f };
     case ATOM_TYPE::P:
-        return Int3(0xFC, 0xF7, 0x5E);
+        return float4{0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 0.0f };
     case ATOM_TYPE::N:
-        return Int3(0x2E, 0x8B, 0x57);
+        return float4{0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 0.0f };
+    case ATOM_TYPE::S:
+        return float4{0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 0.0f };
     case ATOM_TYPE::NONE:
-        return Int3(0xF2, 0xE5, 0xD9);     
+        return float4{0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 0.0f };
     default:
-        return Int3(0, 0, 0);
+        return float4{0.0f, 0.0f, 0.0f, 0.0f };
     }
 }
-
 
 //https://en.wikipedia.org/wiki/Van_der_Waals_radius
 __device__ float getRadius(ATOM_TYPE atom_type) {
@@ -124,10 +128,12 @@ __device__ float getRadius(ATOM_TYPE atom_type) {
         return 0.152f * 0.4f;   // Make smaller for visibility
     case ATOM_TYPE::P:
         return 0.18f;
+    case ATOM_TYPE::S:
+        return 0.189f;
     case ATOM_TYPE::LIMA_CUSTOM:
 	    return 0.1f;
     case ATOM_TYPE::NONE:
-        return 1.f;
+        return 3.f;
     default:
         return 1.f;
     }
@@ -154,31 +160,28 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
     const int compound_id = blockIdx.x;
     const int global_id = threadIdx.x + blockIdx.x * blockDim.x;
 
-    //Compound* compound = &box->compounds[compound_id];
+    const int outputIndex = compounds[compound_id].absoluteIndexOfFirstParticle + threadIdx.x;
+
     const Compound* compound = &compounds[compound_id];
     
     if (local_id < compound->n_particles) {
 
         RenderAtom atom{};
-        atom.pos = positions[global_id];
-        atom.pos = atom.pos / boxLenNM - 0.5f;    // normalize from -0.5->0.5
+        const Float3 positionNormalized = positions[global_id] / boxLenNM - 0.5f;// normalize from -0.5->0.5
+        atom.position = float4{ positionNormalized.x, positionNormalized.y, positionNormalized.z, 0.f };        
 
-        //atom.mass = SOLVENT_MASS;                                                         // TEMP
-        atom.atom_type = RAS_getTypeFromAtomletter(compound->atomLetters[local_id]);
+        ATOM_TYPE atomType = RAS_getTypeFromAtomletter(compound->atomLetters[local_id]);
 
-        atom.radius = getRadius(atom.atom_type) / boxLenNM;
+        atom.position.w = getRadius(atomType) / boxLenNM * 4.f;
 
         if (coloringMethod == ColoringMethod::Atomname)
-            atom.color = getColor(atom.atom_type);
+            atom.color = getColor(atomType);
         else if (coloringMethod == ColoringMethod::Charge) {
             const float chargeNormalized = (compound->atom_charges[local_id] + elementaryChargeToCoulombPerMole)  / (elementaryChargeToCoulombPerMole*2.f);
-            atom.color = Int3(255.f * chargeNormalized, 0, 255.f * (1.f - chargeNormalized));
+            atom.color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 0.f };
         }
 
-        atoms[global_id] = atom;
-    }
-    else {
-        atoms[global_id].atom_type = ATOM_TYPE::NONE;
+        atoms[outputIndex] = atom;
     }
 }
 
@@ -190,12 +193,14 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
     if (solvent_index < n_solvents) {
 
 		RenderAtom atom{};
-        atom.pos = positions[particle_index];
-        atom.pos = atom.pos / boxLenNM - 0.5f;    // normalize from -0.5->0.5
+        const Float3 positionNormalized = positions[particle_index] / boxLenNM - 0.5f;// normalize from -0.5->0.5
+        atom.position = float4{ positionNormalized.x, positionNormalized.y, positionNormalized.z, 0.f };
 
-		atom.mass = SOLVENT_MASS;
-		atom.atom_type = SOL;
-        atom.radius = getRadius(atom.atom_type) / boxLenNM;
+        //atom.pos = positions[particle_index];
+        //atom.pos = atom.pos / boxLenNM - 0.5f;    // normalize from -0.5->0.5
+
+		//atom.atom_type = SOL;
+        atom.position.w = getRadius(ATOM_TYPE::SOL) / boxLenNM * 4.f;
 		// Debug
 		//float velocity = (atom.pos - SolventCoord{ solventblock_prev->origo, solventblock_prev->rel_pos[threadIdx.x] }.getAbsolutePositionLM()).len();
   //      const float velocity = 1.f;
@@ -203,7 +208,11 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
 		//const float color_scalar = velocity / point1nm * 255.f;
 		//const uint8_t color_red = static_cast<uint8_t>(cuda::std::__clamp_to_integral<uint8_t, float>(color_scalar));
 		//atom.color = Int3(color_red, 0, 255 - color_red);
-        atom.color = Int3(0, 0, 255);
+
+
+
+        //atom.color = Int3(0, 0, 255);
+        atom.color = float4{ 0,0,1, 0 };
 
         atoms[particle_index] = atom;
     }

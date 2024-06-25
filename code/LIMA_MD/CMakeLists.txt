@@ -1,5 +1,4 @@
 #LIMA_MD
-#find_package(OpenGL REQUIRED)
 
 add_library(LIMA_MD STATIC
     src/Analyzer.cu
@@ -13,8 +12,7 @@ add_library(LIMA_MD STATIC
 )
 
 
-# Set the path to your GLEW installation
-set(GLEW_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/include")
+# Set the path to GLEW installation
 set(GLEW_LIBRARY_DIR "${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/lib/Release/x64")
 set(GLEW_LIBRARIES "${GLEW_LIBRARY_DIR}/glew32s.lib")
 
@@ -35,9 +33,9 @@ target_include_directories(LIMA_MD PRIVATE
 target_link_libraries(LIMA_MD LIMA_BASE)
 target_link_libraries(LIMA_MD LIMA_ENGINE)
 target_link_libraries(LIMA_MD LIMA_TOOLS)
-if (WIN32)
-    target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib)
-endif()
+
+target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib)
+
 target_link_libraries(LIMA_MD ${OPENGL_LIBRARIES})
 
 # Define GLEW_STATIC to indicate that you are using the static version of GLEW

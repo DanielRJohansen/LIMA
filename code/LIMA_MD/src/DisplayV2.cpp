@@ -1,30 +1,11 @@
 #include "DisplayV2.h"
-#include <glfw3.h>
-
-
-#ifndef __linux__
 
 
 
 void Display::updateCamera(float pitch, float yaw, float delta_distance) {
-
-    // Reset previous rotations
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    camera_distance += delta_distance;
-    glTranslatef(0.0f, .0f, camera_distance);  // Move the scene away from the camera    
-    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);  // Rotate around the x-axis
-    
-
-    // Apply rotation for pitch and yaw
-    // Rotate around the x-axis for pitch
-    glRotatef(pitch*rad2deg, 1.0f, 0.0f, 0.0f);
-    // Rotate around the y-axis for yaw
-    glRotatef(yaw*rad2deg, 0.0f, 0.0f, 1.0f);
-    
+    camera_distance += delta_distance;  
     camera_pitch = pitch;
     camera_yaw = yaw;
-
     camera_normal = Float3{
     sin(yaw) * cos(pitch),
     cos(yaw) * cos(pitch),
@@ -100,19 +81,19 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
 
 
     // Preprocess the renderAtoms
-    
-    // Map buffer object for writing from CUDA
-    RenderAtom* renderAtomsBuffer;
-    cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
-    size_t num_bytes = 0;
-	cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-    assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+        assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
 
-    rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
+        rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
 
-    // Release buffer object from CUDA
-    cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
-    
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
 
     
 
@@ -151,7 +132,7 @@ bool Display::initGLFW() {
 
     // Initialize the library
     if (!glfwInit()) {
-        throw std::exception("\nGLFW failed to initialize");
+        throw std::runtime_error("\nGLFW failed to initialize");
     }
 
     // Create a windowed mode window and its OpenGL context
@@ -170,4 +151,3 @@ bool Display::initGLFW() {
     return 1;
 }
 
-#endif

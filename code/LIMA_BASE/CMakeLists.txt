@@ -16,7 +16,7 @@ add_library(LIMA_BASE STATIC
 )
 
 target_include_directories(LIMA_BASE PRIVATE 
-    ${CUDA_INCLUDE_DIRS}
+    ${CUDAToolkit_INCLUDE_DIRS}
  #   /../dependencies/cereal
 )
 target_include_directories(LIMA_BASE PUBLIC

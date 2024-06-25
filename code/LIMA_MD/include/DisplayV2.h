@@ -9,9 +9,8 @@
 #include <string>
 
 #include <GL/glew.h>
-#include <glfw3.h>
+#include <GLFW/glfw3.h>
 
-#ifndef __linux__
 
 
 const float deg2rad = 2.f * PI / 360.f;
@@ -69,22 +68,3 @@ private:
 
 
 };
-
-#else
-
-class Display {
-public:
-		Display(EnvMode){};
-		void render(const Float3* positions, const std::vector<Compound>& compounds, 
-		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {}
-		bool checkWindowStatus() {return true;}
-		void terminate() {}
-
-private:
-	int height=-1;
-};
-
-
-#endif
-
-

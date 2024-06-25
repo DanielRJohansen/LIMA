@@ -11,38 +11,45 @@ add_library(LIMA_MD STATIC
     src/Render.cpp
 )
 
-
-# Set the path to GLEW installation
-set(GLEW_LIBRARY_DIR "${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/lib/Release/x64")
-set(GLEW_LIBRARIES "${GLEW_LIBRARY_DIR}/glew32s.lib")
-
-
 target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CUDA_INCLUDE_DIRS}    
-    ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/include
+)
+target_include_directories(LIMA_MD PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/include
     ${CMAKE_SOURCE_DIR}/code/dependencies/glm/
+    ${GLFW_INCLUDE_DIRS}
 )
-target_include_directories(LIMA_MD PRIVATE
-)
 
 
 
-target_link_libraries(LIMA_MD LIMA_BASE)
-target_link_libraries(LIMA_MD LIMA_ENGINE)
-target_link_libraries(LIMA_MD LIMA_TOOLS)
 
-target_link_libraries(LIMA_MD ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib)
-
-target_link_libraries(LIMA_MD ${OPENGL_LIBRARIES})
 
 # Define GLEW_STATIC to indicate that you are using the static version of GLEW
 target_compile_definitions(LIMA_MD PUBLIC GLEW_STATIC)
 
-# Link GLEW libraries to the executable
-target_link_libraries(LIMA_MD ${GLEW_LIBRARIES})
+if (NOT UNIX)
+    set(GLEW_LIBRARIES "${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/lib/Release/x64/glew32s.lib")
+    set(glfw "${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib")
+endif()
+
+
+
+
+target_link_libraries(LIMA_MD 
+    LIMA_BASE
+    LIMA_ENGINE
+    LIMA_TOOLS
+    glfw
+    ${OPENGL_LIBRARIES}
+    ${GLEW_LIBRARIES}
+)
+
+
+
+
+
+
 
 
 if (UNIX)

@@ -12,7 +12,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/src
 
 target_include_directories(LIMA_TOOLS PUBLIC
 ${CMAKE_CURRENT_SOURCE_DIR}/include
-${CUDA_INCLUDE_DIRS}
+${CUDAToolkit_INCLUDE_DIRS}
 )
 
 target_link_libraries(LIMA_TOOLS LIMA_BASE)

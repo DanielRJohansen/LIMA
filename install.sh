@@ -103,6 +103,7 @@ if [ "$1" != "-notest" ]; then
 
     cd "$SIMS_DIR/T4Lysozyme"
     lima makesimparams
+    sed -i 's/n_steps=[0-9]*/n_steps=50000/' sim_params.txt
     lima mdrun
     #cd "$sims_dir"/manyt4
 

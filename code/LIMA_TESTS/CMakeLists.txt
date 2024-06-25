@@ -17,7 +17,6 @@ add_executable(limatests
 )
 
 target_include_directories(limatests PRIVATE
-    ${CUDA_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 

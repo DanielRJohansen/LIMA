@@ -1,7 +1,7 @@
 #LIMA_DEPENDS
 # Manually compiled dependencies for LIMA
 
-add_library(LIMA_DEPENDS
+add_library(LIMA_DEPENDS STATIC
     glew-2.1.0/src/glew.c
 )
 

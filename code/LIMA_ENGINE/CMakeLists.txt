@@ -2,7 +2,7 @@
 
 # Do NOT add any other .cu files, the engine should be a single compilation unit
 # in order to access __constant__ memory
-add_library(LIMA_ENGINE
+add_library(LIMA_ENGINE STATIC
     src/Engine.cu
     src/Thermostat.cu       # TODO: Make .cpp file
     src/ChargeOcttree.cu

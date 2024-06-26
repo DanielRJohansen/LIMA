@@ -1,6 +1,6 @@
 #LIMA_TOOLS
 
-add_library(LIMA_TOOLS
+add_library(LIMA_TOOLS STATIC
     src/SimulationBuilder.cpp
     src/VirtualPathMaker.cpp
     src/CompoundBuilder.cpp

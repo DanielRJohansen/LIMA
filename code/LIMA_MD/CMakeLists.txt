@@ -14,7 +14,6 @@ add_library(LIMA_MD STATIC
 
 
 if (NOT UNIX)
-    set(GLEW_LIBRARIES "${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/lib/Release/x64/glew32s.lib")
     set(GLFW_LIBRARIES "${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib")
     set(GLFW_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/include")
 else()
@@ -24,7 +23,6 @@ endif()
 
 target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/code/dependencies/glew-2.1.0/include
     ${GLFW_INCLUDE_DIRS}
 )
 target_include_directories(LIMA_MD PRIVATE
@@ -41,9 +39,9 @@ target_link_libraries(LIMA_MD
     LIMA_BASE
     LIMA_ENGINE
     LIMA_TOOLS
+    LIMA_DEPENDS
     ${GLFW_LIBRARIES}
     ${OPENGL_LIBRARIES}
-    ${GLEW_LIBRARIES}
 )
 
 

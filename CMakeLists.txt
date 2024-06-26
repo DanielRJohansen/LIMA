@@ -8,7 +8,7 @@ endif()
 
 set(CMAKE_CUDA_ARCHITECTURES "89" "75" "61")
 
-project(lima LANGUAGES CXX CUDA)
+project(lima LANGUAGES CXX CUDA C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_REQUIRED ON)
@@ -37,7 +37,6 @@ find_package(OpenGL REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 if (UNIX)
-	find_package(GLEW REQUIRED)
 	find_package(glm REQUIRED)
 	find_package(glfw3 REQUIRED)
 endif()
@@ -47,6 +46,7 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/applications")
 
 add_compile_definitions(GLEW_STATIC)
 
+add_subdirectory(code/LIMA_DEPENDS)
 add_subdirectory(code/LIMA_BASE)
 add_subdirectory(code/LIMA_ENGINE)
 add_subdirectory(code/LIMA_TOOLS)

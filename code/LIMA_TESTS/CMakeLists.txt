@@ -11,7 +11,6 @@ set(SOURCE_FILES
     src/main.cpp
 )
 add_executable(limatests
-    #src/main.cpp
     ${SOURCE_FILES}
     ${RESOURCE_FILES}
 )

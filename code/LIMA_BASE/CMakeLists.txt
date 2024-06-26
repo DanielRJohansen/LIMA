@@ -21,7 +21,7 @@ target_include_directories(LIMA_BASE PRIVATE
 target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
-        ${CUDA_INCLUDE_DIRS}
+    ${CUDAToolkit_INCLUDE_DIRS}
 
 )
 

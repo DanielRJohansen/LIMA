@@ -1,6 +1,6 @@
 # Main cmakelist
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
-#cmake_policy(SET CMP0146 NEW) # Set the policy to NEW
+cmake_policy(SET CMP0146 NEW) # Set the policy to NEW
 
 if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
@@ -24,7 +24,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
 # Only gcc v13 and newer can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
 #find_program(GCC_13_FOUND g++-13)
 #if(GCC_13_FOUND)
-#set(CMAKE_CXX_COMPILER g++-13)
+#	set(CMAKE_CXX_COMPILER g++-13)
 #endif()
 
 if (UNIX)
@@ -34,13 +34,12 @@ endif()
 
 
 find_package(OpenGL REQUIRED)
-if (UNIX)
 find_package(CUDAToolkit REQUIRED)
+
+if (UNIX)
 	find_package(GLEW REQUIRED)
 	find_package(glm REQUIRED)
 	find_package(glfw3 REQUIRED)
-else()
-find_package(CUDA REQUIRED)
 endif()
 
 # Set the installation prefix

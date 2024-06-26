@@ -17,4 +17,4 @@ target_link_libraries(lima LIMA_MD)
 #install(TARGETS lima DESTINATION ${CMAKE_SOURCE_DIR}/applications)
 
 # Specify the installation target
-install(TARGETS lima DESTINATION /usr/local/bin)
+install(TARGETS lima DESTINATION /usr/bin)

@@ -16,12 +16,13 @@ add_library(LIMA_BASE STATIC
 )
 
 target_include_directories(LIMA_BASE PRIVATE 
-    ${CUDAToolkit_INCLUDE_DIRS}
  #   /../dependencies/cereal
 )
 target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
+        ${CUDA_INCLUDE_DIRS}
+
 )
 
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )

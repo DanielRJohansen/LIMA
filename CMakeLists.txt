@@ -1,6 +1,6 @@
 # Main cmakelist
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
-cmake_policy(SET CMP0146 NEW) # Set the policy to NEW
+#cmake_policy(SET CMP0146 NEW) # Set the policy to NEW
 
 if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
@@ -32,11 +32,16 @@ if (UNIX)
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 endif()
 
-find_package(CUDAToolkit REQUIRED)
+
 find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(glm REQUIRED)
-find_package(glfw3 REQUIRED)
+if (UNIX)
+find_package(CUDAToolkit REQUIRED)
+	find_package(GLEW REQUIRED)
+	find_package(glm REQUIRED)
+	find_package(glfw3 REQUIRED)
+else()
+find_package(CUDA REQUIRED)
+endif()
 
 # Set the installation prefix
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/applications")

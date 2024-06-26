@@ -1,0 +1,29 @@
+# Maintainer: Daniel <daniel@lima-dynamics.com>
+
+pkgname=lima
+pkgver=1.0
+pkgrel=1
+pkgdesc="The Molecular Dynamics engine for the Generative Era"
+arch=('x86_64')
+url="http://www.lima-dynamics.com"
+license=('LicenseRef-Proprietary')
+depends=('glibc' 'glu' 'bash' 'libglvnd')
+source=("https://github.com/DanielRJohansen/LIMAMD/archive/main.tar.gz")
+sha256sums=('675742ae602e0abbee75338f8253ec8ccf3e5adcf0bb290d9b25d8b4a6c09d7f')
+
+package() {
+    cd "$srcdir/LIMAMD-main"
+
+    # Create the necessary directories
+    install -d "$pkgdir/usr/bin"
+    install -d "$pkgdir/opt/LIMA"
+
+    # Install binary
+    install -Dm755 lima "$pkgdir/usr/bin/lima"
+
+  # Install resources using rsync to preserve permissions
+    rsync -a resources/ "$pkgdir/opt/LIMA/resources/"
+
+    # Install license
+    install -Dm644 license.md "$pkgdir/usr/share/licenses/$pkgname/license.md"
+}

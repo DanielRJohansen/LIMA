@@ -29,7 +29,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 	if (carryout_em) {
 		SimParams ip{};
 		ip.bc_select = NoBC;
-		ip.n_steps = carryout_em ? 15000 : 0;
+		ip.n_steps = carryout_em ? 20000 : 0;
 		ip.snf_select = HorizontalSqueeze;
 		ip.em_variant = true;
 		env.CreateSimulation(*monolayerGro, *monolayerTop, ip);

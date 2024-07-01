@@ -23,6 +23,7 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 			sum_kinE_compound += kinE;
 		}
 	}
+	package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->boxparams_host.total_particles));
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
 	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
@@ -35,16 +36,15 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	}
 	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->boxparams_host.n_solvents));
 
-	const long double total_kinE = (sum_kinE_compound + sum_kinE_solvents) / AVOGADROSNUMBER;
-	package.temperature = PhysicsUtils::kineticEnergyToTemperature(total_kinE, simulation->boxparams_host.total_particles);
-
+	const long double totalKinEnergyAveraged = (sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->boxparams_host.total_particles);
+	package.temperature = PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);
 	return package;
 }
 
 
 
 void Engine::handleBoxtemp() {
-	const float target_temp = 310.f;				// [k]
+	const float target_temp = simulation->simparams_host.em_variant ? 150.f : 310.f;				// [k]
 	const TemperaturPackage temp_package = getBoxTemperature(simulation.get());
 	const float temp = temp_package.temperature;
 

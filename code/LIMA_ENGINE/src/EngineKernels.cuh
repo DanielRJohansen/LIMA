@@ -53,7 +53,7 @@ __device__ BondType* LoadBonds(char* utility_buffer, BondType* source, int nBond
 
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
-template <typename BoundaryCondition>
+template <typename BoundaryCondition, bool energyMinimize>
 __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
@@ -97,11 +97,8 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{	
 		SingleBond* singlebonds = LoadBonds<SingleBond, MAX_SINGLEBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].singlebonds, compound.n_singlebonds);
-		if (simparams.em_variant)
-			force += LimaForcecalc::computeSinglebondForces<true>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
-		else
-			force += LimaForcecalc::computeSinglebondForces<false>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
-			
+		force += LimaForcecalc::computeSinglebondForces<energyMinimize>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
+
 		AngleBond* anglebonds = LoadBonds<AngleBond, MAX_ANGLEBONDS_IN_COMPOUND>(utility_buffer, box->compounds[blockIdx.x].anglebonds, compound.n_anglebonds);
 		force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 				
@@ -155,12 +152,25 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.dt);
 
-			const Float3 vel_scaled = vel_now * signals->thermostat_scalar;
+
+
+			Float3 velScaled;
+			if constexpr (energyMinimize)
+				velScaled = EngineUtils::SlowHighEnergyParticle(vel_now, simparams.dt, mass, signals->thermostat_scalar);
+			else
+				velScaled = vel_now * signals->thermostat_scalar;
+
+
+	/*		Float3 vel_scaled = vel_now * signals->thermostat_scalar;
+
+			if constexpr (energyMinimize) {
+				EngineUtils::SlowHighEnergyParticle(vel_scaled, simparams.dt, mass);
+			}*/
 
 			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
-			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = vel_scaled;
+			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 
-			speed = vel_scaled.len();
+			speed = velScaled.len();
 
 			// Save pos locally, but only push to box as this kernel ends
 			compound_coords->rel_positions[threadIdx.x] = pos_now;
@@ -191,8 +201,10 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		coordarray_next_ptr->loadData(*compound_coords);
 	}
 }
-template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
-template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
 
 
 
@@ -406,7 +418,7 @@ template __global__ void compoundLJKernel<NoBoundaryCondition>(SimulationDevice*
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
-template <typename BoundaryCondition>
+template <typename BoundaryCondition, bool energyMinimize>
 __global__ void solventForceKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
@@ -541,13 +553,16 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
 		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
 
-		solventdata_ref.vel_prev = vel_now * signals->thermostat_scalar;
+		const Float3 velScaled = EngineUtils::ScaleVelocity<energyMinimize>(vel_now, signals->thermostat_scalar, simparams.dt, mass);
+
+		//solventdata_ref.vel_prev = vel_now * signals->thermostat_scalar;
+		solventdata_ref.vel_prev = velScaled;
 		solventdata_ref.force_prev = force;
 
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
 
-		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, signals->step, sim->databuffers, simparams.data_logging_interval);
+		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, velScaled, signals->step, sim->databuffers, simparams.data_logging_interval);
 	}
 
 
@@ -566,8 +581,10 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		}
 	}
 }
-template __global__ void solventForceKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
-template __global__ void solventForceKernel<NoBoundaryCondition>(SimulationDevice* sim);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
+template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
+template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
 
 #undef solvent_index
 #undef solvent_mass

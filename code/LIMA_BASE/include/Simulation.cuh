@@ -226,9 +226,9 @@ public:
 	bool finished = false;
 
 
-	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;
-	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;
-	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// We dont need direction here, so could simply be a float
+	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;// [nm]
+	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;	// [J/mol]
+	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
 
 	std::vector<float> temperature_buffer;
 

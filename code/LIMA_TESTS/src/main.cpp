@@ -100,13 +100,13 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.15e-5, 2e-5);	
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
 		
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 
 		//runAllUnitTests();
-		Benchmarks::Psome(envmode);
+		//Benchmarks::Psome(envmode);
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -150,7 +150,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.15e-5, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5));
 
 	// Electrostatics
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));

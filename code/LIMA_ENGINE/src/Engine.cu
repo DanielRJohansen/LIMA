@@ -131,9 +131,6 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
 			handleBoxtemp();
 		}
-		if (simulation->simparams_host.em_variant) {
-			sim_dev->signals->thermostat_scalar = 0.9995f;	// The current implementation of em is only this, overwriting the velocity scaler to always be 0.5
-		}
 
 		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
 		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
@@ -289,7 +286,7 @@ void Engine::deviceMaster() {
 
 	cudaDeviceSynchronize();
 	if (simulation->boxparams_host.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundBondsAndIntegrationKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//compoundBondsAndIntegrationKernel<BoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
@@ -298,7 +295,7 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (simulation->boxparams_host.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 

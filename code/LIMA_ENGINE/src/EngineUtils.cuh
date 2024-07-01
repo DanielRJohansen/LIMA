@@ -11,6 +11,7 @@
 #include "Constants.h"
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
+#include "PhysicsUtils.cuh"
 
 #include "KernelWarnings.cuh"
 #include "KernelConstants.cuh"
@@ -40,6 +41,32 @@ namespace EngineUtils {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
 	}
+
+	__device__ static Float3 SlowHighEnergyParticle(const Float3& velocityNow, const float dt, const float mass, float thermostatScalar) {
+		const float kineticEnergy = PhysicsUtils::calcKineticEnergy(velocityNow.len(), mass);
+		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergy);
+
+		const float temperatureThreshold = 400.f; // [K]
+
+		if (temperature > temperatureThreshold) {
+			return velocityNow * 0.9995f;
+		}
+		else {
+			return velocityNow * thermostatScalar;
+		}
+
+	}
+
+	template <bool energyMinimize>
+	__device__ Float3 ScaleVelocity(const Float3& velocity, const float thermostatScalar, float dt, float mass) {
+		if constexpr (energyMinimize)
+			return EngineUtils::SlowHighEnergyParticle(velocity, dt, mass, thermostatScalar);
+		else
+			return velocity * thermostatScalar;
+	}
+
+
+
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
 		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, DatabuffersDevice* databuffers, const float speed)

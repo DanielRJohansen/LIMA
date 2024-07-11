@@ -1,3 +1,4 @@
+//#pragma once - this file must NOT be included multiple times
 
 #include "Engine.cuh"
 #include "ForceComputations.cuh"
@@ -13,6 +14,10 @@
 
 //#include <cuda/pipeline>
 #include "KernelConstants.cuh"
+
+
+#include "Electrostatics.cuh"
+
 
 #pragma warning(push)
 #pragma warning(disable:E0020)
@@ -212,7 +217,7 @@ template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, 
 template <typename BoundaryCondition>
 __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
-	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
+	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK]; // [lm]
 	__shared__ NeighborList neighborlist;		
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_float3;
@@ -392,15 +397,23 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-	// Electrostatic
-#ifdef ENABLE_ELECTROSTATICS
-	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(signals->step)) {
-		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
-		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
-		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
-	}
-#endif
+//	// Electrostatic
+//#ifdef ENABLE_ELECTROSTATICS
+//	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(signals->step)) {
+//		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
+//		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
+//		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
+//	}
+//#endif
 
+
+	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
+	if constexpr (ENABLE_ELECTROSTATICS) {
+		if (simparams.enable_electrostatics) {
+			__syncthreads();
+			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
+		}
+	}
 
 
 	// This is the first kernel, so we overwrite
@@ -464,14 +477,14 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
-		const CompoundGridNode* compoundgridnode = sim->compound_grid->getBlockPtr(blockIdx.x);
+		const CompoundGridNode* compoundgridnode = BoxGrid::GetNodePtr(sim->compound_grid, blockIdx.x);
 		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
 		__syncthreads();
 
 
 
 		for (int i = 0; i < utility_int; i++) {
-			const int16_t neighborcompound_index = compoundgridnode->nearby_compound_ids[i];
+			const int16_t neighborcompound_index = compoundgridnode->compoundidsWithinLjCutoff[i];
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 

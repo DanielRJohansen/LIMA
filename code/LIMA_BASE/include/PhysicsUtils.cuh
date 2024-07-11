@@ -26,4 +26,11 @@ namespace PhysicsUtils {
 	__device__ __host__ inline constexpr float kineticEnergyToTemperature(float kineticEnergy /*[J/mol]*/) {
 		return kineticEnergy * (2.0f / 3.0f) / (BOLTZMANNCONSTANT * AVOGADROSNUMBER);
 	}
+
+	__device__ __host__ inline Float3 CalcCoulumbForce(const float myCharge, const float otherCharge, const Float3& diff /*self - other*/) {
+		return diff.norm() * (myCharge * otherCharge) / diff.lenSquared() ;
+	}
+	__device__ __host__ inline constexpr float CalcCoulumbPotential(const float myCharge, const float otherCharge, const float distance) {
+		return (myCharge * otherCharge) / distance;
+	}
 }

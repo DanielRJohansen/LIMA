@@ -28,7 +28,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	
 	template<typename T>
-	T floor_div(T num, T denom) {
+	inline T floor_div(T num, T denom) {
 		static_assert(std::is_integral<T>::value, "floor_div requires integer types");
 		return (num - (num < 0 ? denom - 1 : 0)) / denom;
 	}
@@ -46,6 +46,25 @@ namespace LIMAPOSITIONSYSTEM {
 
 		return nodeindex;
 	}
+
+
+	/// <summary>
+	/// Use with care, will overflow if posLM is > 20 nm. Does NOT apply boundary condition
+	/// </summary>
+	/// <param name="posLM"></param>
+	/// <returns></returns>
+	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posLM) {
+		const float offset = static_cast<float>(BoxGrid::blocksizeLM / 2);
+
+		NodeIndex nodeindex{
+			static_cast<int>(floor((posLM.x + offset) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(floor((posLM.y + offset) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(floor((posLM.z + offset) / static_cast<float>(BoxGrid::blocksizeLM)))
+		};
+
+		return nodeindex;
+	}
+
 
 
 	/// <summary>

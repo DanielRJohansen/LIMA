@@ -100,11 +100,11 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
 		
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
-
+		TestShortrangeElectrostaticsCompoundsOnly(envmode);
 		//runAllUnitTests();
 		//Benchmarks::Psome(envmode);
 	}

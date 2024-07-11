@@ -20,12 +20,10 @@ struct Int3 {
 	__host__ __device__ constexpr Int3() {}
 	__host__ __device__ constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
 
-
 	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ inline Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
 	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
 	__host__ __device__ inline Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
-	__host__ __device__ inline Int3 operator * (const float a) const { return Int3((int)floor((float)x * a), (int)floor((float)y * a), (int)floor((float)z * a)); }
 
 	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ void operator /= (const int a) { x /= a; y /= a; z /= a; }
@@ -33,12 +31,8 @@ struct Int3 {
 	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
-	__device__ __host__ static int max(const int l, const int r) {
-		return r > l ? r : l;
-	}
-
 	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
-	__device__ int maxElement() const { return max(std::abs(x), max(std::abs(y), std::abs(z))); }
+	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
@@ -47,7 +41,6 @@ struct Int3 {
 	}
 
 	std::string toString() const {
-		//return std::format("{} {} {}", x, y, z);
 		return std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
 	}
 
@@ -422,37 +415,8 @@ struct BoundingBox {
 	}
 };
 
-// This struct is agnostic as to which compounds the particles in the table belongs to!!
-template <typename T, int len>
-class FixedSizeMatrix {
-public:
-	__device__ FixedSizeMatrix() {}	// Fast constructor for device
-	__host__ FixedSizeMatrix(T val) {
-		for (int i = 0; i < m_len * m_len; i++) { matrix[i] = val; }
-	}
-	__host__ FixedSizeMatrix(FixedSizeMatrix<T, len>& src) { *this = src; }
-
-	__host__ __device__ T get(int i1, int i2) const { return matrix[i1 + i2 * m_len]; }
-
-	__host__ void set(int i1, int i2, T object) { matrix[i1 + i2 * m_len] = object; }
-
-	__device__ void load(const FixedSizeMatrix<T, len>& src) {
-		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
-			matrix[i] = src.get(i);
-		}
-	}
-
-private:
-	const static int m_len = len;
-	const static int m_size = m_len * m_len;
-	T matrix[m_len * m_len]{};
-
-	// To be used for loading only
-	__device__ T get(int index) const { return matrix[index]; }
-};
-
 template <int len>
-class FixedSizeMatrix<bool,len>{
+class FixedSizeMatrix{
 public:
 	__device__ FixedSizeMatrix() {}
 	__host__ FixedSizeMatrix(bool val) {
@@ -479,7 +443,7 @@ public:
 			matrix[byteIndex] &= ~(1U << bitIndex);
 	}
 
-	__device__ void load(const FixedSizeMatrix<bool, len>& src) {
+	__device__ void load(const FixedSizeMatrix<len>& src) {
 		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
 			matrix[i] = src.matrix[i];
 		}
@@ -491,8 +455,7 @@ private:
 	uint8_t matrix[m_size]{};
 };
 
-//using BondedParticlesLUT = FixedSizeMatrix<bool, MAX_COMPOUND_PARTICLES>;
-using BondedParticlesLUT = FixedSizeMatrix<bool,MAX_COMPOUND_PARTICLES>;
+using BondedParticlesLUT = FixedSizeMatrix<MAX_COMPOUND_PARTICLES>;
 
 class BondedParticlesLUTManager {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
@@ -607,81 +570,6 @@ void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently 
 	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
 }
-
-
-// TODO: Move somewhere else
-//struct Trajectory {
-//	Trajectory() {}
-//	Trajectory(std::string path) {
-//		positions = new Float3[max_size];
-//		float buffer[3] = {};
-//
-//		printf("Path: ");
-//		std::cout << path << std::endl;
-//
-//		std::string file_contents = readFileIntoString(path);
-//		std::istringstream sstream(file_contents);
-//		std::string record;
-//
-//		int counter = 0;
-//
-//		int step_cnt = 0;
-//		while (std::getline(sstream, record)) {
-//			std::istringstream line(record);
-//
-//			int dim = 0;
-//			while (getline(line, record, ';')) {
-//				buffer[dim++] = stof(record);
-//
-//				if (dim == 3) {
-//					positions[counter++] = Float3(buffer);
-//					dim = 0;
-//					//positions[counter - 1].print();
-//				}
-//			}
-//			if (step_cnt == 0) {
-//				n_particles = counter;
-//			}
-//			step_cnt++;
-//		}
-//
-//		particle_type = new int[n_particles];
-//		n_steps = step_cnt;
-//		printf("Loaded trajectory with %d particles and %d steps\n", n_particles, n_steps);
-//	}
-//	Trajectory(int size) {
-//		positions = new Float3[size];
-//	}
-//
-//	void moveToDevice() {
-//		positions = genericMoveToDevice(positions, max_size);
-//		particle_type = genericMoveToDevice(particle_type, n_particles);
-//		cudaDeviceSynchronize();
-//		printf("Success\n");
-//	}
-//
-//
-//
-//	std::string readFileIntoString(const std::string& path) {
-//		/*auto ss = std::ostringstream{};
-//		std::ifstream input_file(path);
-//		if (!input_file.is_open()) {
-//			std::cout << "Could not open the file - '" << path << "'" << std::endl;
-//			throw std::runtime_error("Bad filepath");
-//		}
-//		ss << input_file.rdbuf();
-//		return ss.str();*/
-//		return {};
-//	}
-//
-//	int max_size = 100 * 10000;
-//
-//	Float3* positions = nullptr;
-//	int* particle_type = nullptr;	//0 solvent, 1 compound, 2 virtual
-//
-//	int n_particles = 0;
-//	int n_steps = 0;
-//};
 
 
 

@@ -20,17 +20,11 @@ class SimulationDevice;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 const int lutsize = sizeof(BondedParticlesLUTManager);
-//template <typename BoundaryCondition>
-//__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
-//template <typename BoundaryCondition>
-//__global__ void compoundLJKernel(SimulationDevice* sim);
-//template <typename BoundaryCondition>
-//__global__ void solventForceKernel(SimulationDevice* sim);
-//template <typename BoundaryCondition>
-//__global__ void compoundBridgeKernel(SimulationDevice* sim);
-//template <typename BoundaryCondition>
-//__global__ void solventTransferKernel(SimulationDevice* sim);
+static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
+	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
+static_assert(sizeof(int) * 3 * 3 * 3 * 2 <= cbkernel_utilitybuffer_size,
+	"Not enough space for Electrostatics::DistributeChargesToChargegrid global offsets buffer");
 
 struct EngineTimings {
 	int compound_kernels{};

@@ -242,7 +242,7 @@ struct Compound : public CompoundCompact {
 	// Interims from the bridgekernel to compoundkernel
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 	float potE_interim[MAX_COMPOUND_PARTICLES];
-	Float3 forces_interim[MAX_COMPOUND_PARTICLES];
+	Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];

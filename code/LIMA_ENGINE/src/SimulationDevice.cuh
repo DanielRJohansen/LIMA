@@ -1,5 +1,7 @@
 #pragma once
 
+// TOdo move impl to .cpp file
+
 #include "Bodies.cuh"
 #include "Simulation.cuh"
 #include "EngineBodies.cuh"
@@ -17,8 +19,7 @@ struct SimulationDevice {
 	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
 	{
 		// Allocate structures for keeping track of solvents and compounds
-		//cudaMallocManaged(&compound_grid, sizeof(CompoundGrid));		
-		compound_grid = CompoundGrid::MallocOnDevice(box_host->boxparams.boxSize);
+		compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
 		cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
 		
 		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
@@ -41,6 +42,10 @@ struct SimulationDevice {
 		//cudaMallocManaged(&charge_octtree, sizeof(ChargeOctTree));
 		//cudaMemcpy(charge_octtree, &charge_octtree_host, sizeof(ChargeOctTree), cudaMemcpyHostToDevice);
 
+
+		chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
+
+
 		box_host->owns_members = false;
 		box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
 		box_host.reset();
@@ -56,14 +61,15 @@ struct SimulationDevice {
 
 		cudaFree(params);
 
-		CompoundGrid::Free(compound_grid);
+		cudaFree(compound_grid);
 		cudaFree(compound_neighborlists);
 
 		//cudaFree(charge_octtree);
+		cudaFree(chargeGrid);
 	}
 
 	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
-	CompoundGrid* compound_grid = nullptr;
+	CompoundGridNode* compound_grid = nullptr;
 
 	// Compounds can see which compounds are near them
 	NeighborList* compound_neighborlists = nullptr;
@@ -77,4 +83,7 @@ struct SimulationDevice {
 	DatabuffersDevice* databuffers;
 
 	//ChargeOctTree* charge_octtree;
+	Electrostatics::ChargeNode* chargeGrid = nullptr;
+
+
 };

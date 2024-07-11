@@ -10,65 +10,66 @@ struct CompoundGridNode {
 			printf("Failed to add compound to CompoundGridNode\n");
 			return false;
 		}
-		nearby_compound_ids[n_nearby_compounds++] = compound_id;
+		compoundidsWithinLjCutoff[n_nearby_compounds++] = compound_id;
 		return true;
 	}
 
 	__device__ void loadData(const CompoundGridNode& other) {
 		n_nearby_compounds = other.n_nearby_compounds;
 		for (int i = 0; i < n_nearby_compounds; i++) {
-			nearby_compound_ids[i] = other.nearby_compound_ids[i];
+			compoundidsWithinLjCutoff[i] = other.compoundidsWithinLjCutoff[i];
 		}
 	}
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
+	static_assert(MAX_COMPOUNDS <= INT16_MAX, "CompoundGridNode cannot handle such large compound ids");
 	static const int max_nearby_compounds = 64 + 16;
-	int16_t nearby_compound_ids[max_nearby_compounds]{};	// MAX_COMPOUNDS HARD LIMIT
+	int16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
+	int16_t compoundidsWithinShortRangeESCutoff[max_nearby_compounds]{};
 	int n_nearby_compounds = 0;
 };
 
+namespace Electrostatics {
 
-// Class for signaling compound origo's and quickly searching nearby compounds using a coordinate on the grid
-class CompoundGrid {
-public:
-	CompoundGridNode* blocks = nullptr;// Always in device mem
+	struct ChargeNode {
+		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-	__host__ static CompoundGrid* MallocOnDevice(int boxSizeNM) {		
-		const int blocksTotal = BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM);
+		static const int maxParticlesInNode = 256;
 
-		CompoundGrid grid_host;
-		cudaMalloc(&grid_host.blocks, sizeof(CompoundGridNode) * blocksTotal);
+		//float totalCharge = 0.f;
 
-		CompoundGrid* grid_dev;
-		cudaMalloc(&grid_dev, sizeof(CompoundGrid));
-		cudaMemcpy(grid_dev, &grid_host, sizeof(CompoundGrid), cudaMemcpyHostToDevice);
-		return grid_dev;
-	}
+		int nParticles = 0;
+		Float3 positions[maxParticlesInNode];	// [nm]
+		float charges[maxParticlesInNode];	// This could just be a set of uint8 vals referencing a charge index, as we wont have many different charges
+		int compoundIds[maxParticlesInNode];	// We need to know where the charges belong to..
+		int particleIds[maxParticlesInNode];
+	};
+}
 
-	__host__ static void Free(CompoundGrid* grid_dev) {
-		CompoundGrid grid_host;
-		cudaMemcpy(&grid_host, grid_dev, sizeof(CompoundGrid), cudaMemcpyDeviceToHost);
-		cudaFree(grid_host.blocks);
-		cudaFree(grid_dev);
-	}
+// Extra functions that require access to kernel constants
+namespace BoxGrid {
 
 	// This function assumes the user has used PBC
-	__host__ CompoundGridNode* getBlockPtr(const NodeIndex& index3d) {
+	template <typename NodeType>
+	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) {
 		/*if (index3d.x >= BoxGrid::blocksPerDim || index3d.y >= BoxGrid::blocksPerDim || index3d.z >= BoxGrid::blocksPerDim
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::runtime_error("Bad 3d index for blockptr\n");
 		}*/
-		return getBlockPtr(BoxGrid::Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
+		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
 	}
 
-	// This function assumes the user has used PBC
-	__device__ __host__ CompoundGridNode* getBlockPtr(const int index1d) {
-		return &blocks[index1d];
+	__device__ __host__ static NodeIndex Get3dIndex(int index1d) {
+		const int bpd = NodesPerDim(boxSize_device.boxSizeNM_i);
+		int z = index1d / (bpd * bpd);
+		index1d -= z * bpd * bpd;
+		int y = index1d / bpd;
+		index1d -= y * bpd;
+		int x = index1d;
+		return NodeIndex{ x, y, z };
 	}
 };
-
-
 
 
 

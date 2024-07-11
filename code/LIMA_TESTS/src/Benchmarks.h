@@ -86,8 +86,8 @@ namespace Benchmarks {
 
 
 	static LimaUnittestResult Psome(EnvMode envmode) {
-		 //if (envmode== Full)
-			// envmode = ConsoleOnly;	// Cant go fast in Full
+		 if (envmode== Full)
+			 envmode = ConsoleOnly;	// Cant go fast in Full
 
 		const fs::path work_dir = simulations_dir + "/psome";
 		float boxlen = 23.f;
@@ -120,6 +120,6 @@ namespace Benchmarks {
 		const std::chrono::microseconds allowedTimePerStep{ 3650 };
 
 		LimaUnittestResult::TestStatus status = timePerStep < allowedTimePerStep ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
-		return LimaUnittestResult { status, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode==ConsoleOnly};
+		return LimaUnittestResult { status, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
 }

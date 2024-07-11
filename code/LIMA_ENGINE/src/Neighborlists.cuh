@@ -288,7 +288,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 		}
 	}
 	if (block_active) {
-		CompoundGridNode* gridnode_global = sim_dev->compound_grid->getBlockPtr(block_id);
+		CompoundGridNode* gridnode_global = BoxGrid::GetNodePtr(sim_dev->compound_grid, block_id);
 		gridnode_global->loadData(gridnode);
 	}
 }
@@ -308,7 +308,6 @@ void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSel
 	if (boxparams.n_compounds > 0) {
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
 		LAUNCH_GENERIC_KERNEL(updateCompoundNlistsKernel, n_blocks, threads_in_compoundnlist_kernel, bc_select, sim_dev);
-		//updateCompoundNlistsKernel<BoundaryCondition> << < n_blocks, threads_in_compoundnlist_kernel >> > (sim_dev);	// Must come before any other kernel()
 	}
 
 	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
@@ -318,7 +317,6 @@ void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSel
 		//const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
 		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
 		LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev);
-		//updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
 	}
 	//#endif
 

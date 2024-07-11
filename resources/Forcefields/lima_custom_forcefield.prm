@@ -1,5 +1,6 @@
 
 ATOMS
+MASS  -1  lt1          3.50800 !An atomtype that doesnt interact via LJ
 
 BONDS
 
@@ -23,4 +24,4 @@ cutnb 14.0 ctofnb 12.0 ctonnb 10.0 eps 1.0 e14fac 1.0 wmin 1.5
 !atom  ignored    epsilon      Rmin/2   ignored   eps,1-4       Rmin/2,1-4
 !
 !carbons
-!lt1      0.000000  -0.110000     2.000000 ! ALLOW   PEP POL ARO
+lt1      0.000000  0.000000     2.000000 ! ALLOW   PEP POL ARO     !An atomtype that doesnt interact via LJ

@@ -4,9 +4,12 @@
 #include "LimaTypes.cuh"
 #include "Bodies.cuh"
 
+static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64 + 32;
+
+
 // blocks are notcentered 
 struct SolventBlock {
-	static constexpr int MAX_SOLVENTS_IN_BLOCK = 64 + 32;
+	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE;
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		origo = block.origo; // Not necessary, is given by the blockIdx.x
@@ -54,7 +57,7 @@ namespace BoxGrid {
 	__device__ __host__ constexpr int NodesPerDim(int boxlenNM) { return boxlenNM / blocksizeNM; }
 	__device__ __host__ constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
 
-	__device__ __host__ static int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
+	__device__ __host__ inline int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
 		const int bpd = NodesPerDim(boxSizeNM);
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
@@ -66,6 +69,28 @@ namespace BoxGrid {
 		index1d -= y * bpd;
 		int x = index1d;
 		return NodeIndex{ x, y, z };
+	}
+
+
+
+
+	/// <summary>
+	/// Create a BoxGrid of NodeTyoe. This function assumes the type NodeType does not need to be initialized
+	/// </summary>
+	template <typename NodeType>
+	__host__ static NodeType* MallocOnDevice(int boxSizeNM) {
+		const int blocksTotal = BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM);
+
+		NodeType* grid_dev;
+		cudaMalloc(&grid_dev, sizeof(NodeType) * blocksTotal);
+		cudaMemset(grid_dev, 0, sizeof(NodeType) * blocksTotal);
+		return grid_dev;
+	}
+
+	// This function assumes the user has used PBC
+	template <typename NodeType>
+	__device__ __host__ inline NodeType* GetNodePtr(NodeType* grid, const int index1d) {
+		return &grid[index1d];
 	}
 };
 

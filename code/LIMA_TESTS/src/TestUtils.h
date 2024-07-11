@@ -149,6 +149,14 @@ namespace TestUtils {
 		std::string error_description;		
 	};
 
+#define ASSERT(condition, errorMsg) \
+    do { \
+        if (!(condition)) { \
+            std::string msg = errorMsg; \
+            return LimaUnittestResult{ LimaUnittestResult::FAIL, msg, (envmode) == Full }; \
+        } \
+    } while (0)
+
 	struct LimaUnittest {
 		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test) :
 			name(name),

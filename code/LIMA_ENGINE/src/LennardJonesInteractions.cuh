@@ -6,6 +6,26 @@
 #include "EngineUtils.cuh"
 
 
+
+
+
+
+namespace ShortRangeElectrostatics {
+
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="posA">Relative to it's node</param>
+	/// <param name="posB">Relative to A's node</param>
+	/// <returns></returns>
+	__device__ inline bool withinRange(const Float3& posA, const Float3& posB) {
+		const Int3 nodeDiff = LIMAPOSITIONSYSTEM::PositionToNodeIndex(posA) - LIMAPOSITIONSYSTEM::PositionToNodeIndex(posB);
+
+		return nodeDiff.MaxAbsElement() <= 2;
+	}
+
+} // namespace ShortRangeElectrostatics
+
 namespace LJ {
 	// __constant__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
@@ -83,7 +103,7 @@ namespace LJ {
 
 
 
-	// Two variants of this exists, with and without lut
+	// For intraCompound or bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield)
@@ -110,7 +130,7 @@ namespace LJ {
 		return force * 24.f;
 	}
 
-
+	// For non bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield)
 	{

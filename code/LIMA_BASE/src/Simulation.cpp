@@ -104,7 +104,7 @@ void Box::moveToDevice() {
 
 	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
-	forcefield = genericMoveToDevice(forcefield, 1);
+	//forcefield = genericMoveToDevice(forcefield, 1);
 
 	cudaDeviceSynchronize();
 	is_on_device = true;
@@ -116,7 +116,7 @@ void Box::deleteMembers() {
 		cudaFree(compoundcoordsCircularQueue);
 		cudaFree(solventblockgrid_circularqueue);
 
-		cudaFree(forcefield);
+		//cudaFree(forcefield);
 
 		cudaFree(bridge_bundle);
 		cudaFree(bonded_particles_lut_manager);
@@ -135,7 +135,7 @@ void Box::deleteMembers() {
 		delete[] bonded_particles_lut_manager;
 
 		// TMP, forcefield should maybe come with other members?
-		if (forcefield) { delete forcefield; }
+		//if (forcefield) { delete forcefield; }
 
 		if (boxparams.n_solvents > 0) {
 			delete[] solvents;
@@ -164,7 +164,7 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost(box->boxparams.boxSize);
 
 	
-	genericCopyToHost(&box->forcefield, 1);
+	//genericCopyToHost(&box->forcefield, 1);
 
 	genericCopyToHost(&box->bridge_bundle, 1);
 	genericCopyToHost(&box->bonded_particles_lut_manager, 1);

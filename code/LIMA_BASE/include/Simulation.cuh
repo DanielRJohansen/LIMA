@@ -202,7 +202,7 @@ struct Box {
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
 	// TODO: this should be removed from box, i dont think it is used in the engine kernels
-	ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
+	//ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;

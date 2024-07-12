@@ -23,12 +23,67 @@ namespace ElectrostaticsTests {
 
 
 	static LimaUnittestResult CoulombForceSanityCheck(EnvMode envmode) {
-		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToCoulombPerMole, 1.f*elementaryChargeToCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [GN/mol]
-		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER *1e-9;  // [GN/mol] https://www.omnicalculator.com/physics/coulombs-law
+		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
+		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER / UNIT_TO_LIMA;  // [1/l N / mol] https://www.omnicalculator.com/physics/coulombs-law
 
 		ASSERT(std::abs(1.f - calcedForce / expectedForce) < 0.0001f, std::format("Expected {:.2f} Actual {:.2f}", expectedForce, calcedForce));
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
 	}
+
+
+
+
+
+
+	LimaUnittestResult doPoolBenchmarkES(EnvMode envmode) {
+		const std::string work_folder = simulations_dir + "Pool/";
+		const std::string conf = work_folder + "molecule/conf.gro";
+		const std::string topol = work_folder + "molecule/topol.top";
+		Environment env{ work_folder, envmode, false };
+
+		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
+		float temperature =  400.f;
+		std::vector<float> varcoffs;
+		std::vector<float> energy_gradients;
+
+		const float vel = PhysicsUtils::tempToVelocity(temperature, particle_mass);	// [m/s] <=> [lm/ls]
+
+		SimParams params{};
+		params.n_steps = 2000;
+		params.enable_electrostatics = true;
+		params.data_logging_interval = 1;
+		GroFile grofile{ conf };
+		TopologyFile topfile{ topol };
+			
+		env.CreateSimulation(grofile, topfile, params);
+
+		Box* box_host = env.getSimPtr()->box_host.get();
+		box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+		box_host->compounds[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
+
+		// Disable LJ force
+		ASSERT(box_host->compounds[0].atom_types[0] == 1, "Expected atom type 1");
+		ASSERT(box_host->compounds[1].atom_types[0] == 1, "Expected atom type 1");
+		env.getSimPtr()->forcefield.particle_parameters[1].epsilon = 0.f;
+	
+
+		env.run();
+
+		const auto analytics = env.getAnalyzedPackage();
+		varcoffs.push_back(analytics->variance_coefficient);
+		energy_gradients.push_back(analytics->energy_gradient);
+		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
+		
+
+		const auto result = evaluateTest(varcoffs, 4.f, energy_gradients, 1e-7);
+		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
+
+		return LimaUnittestResult{ status, result.second, envmode == Full };
+	}
+
+
+
+
 
 	/// <summary>
 	/// 
@@ -135,7 +190,7 @@ namespace ElectrostaticsTests {
 			}
 		);
 
-		const int nSteps = 1000;
+		const int nSteps = 20000;
 
 		SimParams simparams{ nSteps, 20, false, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;

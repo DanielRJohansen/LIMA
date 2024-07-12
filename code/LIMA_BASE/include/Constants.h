@@ -40,16 +40,19 @@ constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max a
 
 constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
 
+
 //constexpr float LIMA_SCALE = 1.f;// 1e-6f;			// size of 1 lima unit in nm or ns or whatever
 constexpr float NANO_TO_FEMTO = 1e+6f;				// Allow for quickly changing all units from femto to another
 constexpr float NANO_TO_PICO = 1e+3f;
 constexpr float FEMTO_TO_LIMA = 100.f;		// >>7 to get fm when uint
 constexpr float LIMA_TO_FEMTO = 1.f / FEMTO_TO_LIMA;
 
+
 constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 constexpr int64_t NANO_TO_LIMA_i = static_cast<int64_t>(NANO_TO_LIMA);
 constexpr float LIMA_TO_NANO = 1.f / NANO_TO_LIMA;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
+constexpr double UNIT_TO_LIMA = 1e9 * NANO_TO_LIMA;
 
 static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
@@ -66,7 +69,7 @@ constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
 
-constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER;
+constexpr float elementaryChargeToKiloCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER / 1000.;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

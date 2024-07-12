@@ -136,7 +136,7 @@ namespace Electrostatics {
 
 					if (threadIdx.x < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles) {
 						positionsBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x];
-						positionsBuffer[threadIdx.x] -= NodeIndex(xOff, yOff, zOff).toFloat3();
+						positionsBuffer[threadIdx.x] += NodeIndex(xOff, yOff, zOff).toFloat3();
 
 						chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
 					}
@@ -170,10 +170,10 @@ namespace Electrostatics {
 		if (threadActive) {
 			const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
 			const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
-			//printf("Resulting force %f \n", force.len()/ 1'000'000'000.f);
+			//printf("Resulting force %f \n", force.len());
 
 			simDev->box->compounds[cid].potE_interim[pid] += potE;
-			simDev->box->compounds[cid].forces_interim[pid] += force /100000000.f; 
+			simDev->box->compounds[cid].forces_interim[pid] += force; 
 		}
 
 		__syncthreads();

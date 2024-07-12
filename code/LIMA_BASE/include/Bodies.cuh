@@ -22,7 +22,7 @@
 // ------------------------------------------------- BondTypes ------------------------------------------------- //
 
 
-struct SingleBond {	// IDS and indexes are used interchangeably here!
+struct SingleBond {
 	SingleBond(){}
 	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
 

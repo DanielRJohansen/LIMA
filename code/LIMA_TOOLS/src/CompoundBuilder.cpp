@@ -667,7 +667,7 @@ std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float box
 				atom_gid,
 				boxlen_nm, 
 				bc_select,
-				preparedAtoms[atom_gid].topAtom->charge * elementaryChargeToCoulombPerMole
+				preparedAtoms[atom_gid].topAtom->charge * elementaryChargeToKiloCoulombPerMole
 			);
 
 			preparedAtoms[atom_gid].compoundId = compounds.size() - 1;

@@ -10,6 +10,8 @@
 
 namespace LimaForcecalc 
 {
+
+
 template <bool energyMinimize>
 __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
 	// Calculates bond force on both particles					
@@ -31,8 +33,8 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	}
 
 	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
-	results[0] = dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [lN]
-	results[1] = -dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [lN]
+	results[0] = dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
+	results[1] = -dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
 
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {

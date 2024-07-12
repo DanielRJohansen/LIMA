@@ -91,7 +91,7 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 		+ std::to_string(simulation->boxparams_host.n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
 	// Copy forcefield to sim
-	simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield};	// Copy
+	//simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield};	// Copy
 
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simulation->simparams_host.n_steps, uint64_t{ 1 });

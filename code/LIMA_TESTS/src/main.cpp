@@ -105,7 +105,9 @@ int main() {
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
-		TestShortrangeElectrostaticsCompoundsOnly(envmode);
+		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
+		doPoolBenchmarkES(envmode);
+
 		//Benchmarks::Psome(envmode);
 
 		//runAllUnitTests();

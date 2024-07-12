@@ -163,7 +163,7 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
         if (coloringMethod == ColoringMethod::Atomname)
             atom.color = getColor(atomType);
         else if (coloringMethod == ColoringMethod::Charge) {
-            const float chargeNormalized = (compound->atom_charges[local_id] + elementaryChargeToCoulombPerMole)  / (elementaryChargeToCoulombPerMole*2.f);
+            const float chargeNormalized = (compound->atom_charges[local_id] + elementaryChargeToKiloCoulombPerMole)  / (elementaryChargeToKiloCoulombPerMole *2.f);
             atom.color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 1.f };
         }
 

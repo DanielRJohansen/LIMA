@@ -39,6 +39,8 @@ namespace EngineUtils {
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
+		//if (force.len() > 0.0000001f)
+		//	force.print('f');
 		return vel;
 	}
 

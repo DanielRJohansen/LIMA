@@ -64,8 +64,9 @@ constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
+constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
 
-constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER;	// [C/mol]
+constexpr float elementaryChargeToCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

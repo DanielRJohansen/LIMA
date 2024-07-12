@@ -21,25 +21,26 @@
 namespace ElectrostaticsTests {
 	using namespace TestUtils;
 
+
+	static LimaUnittestResult CoulombForceSanityCheck(EnvMode envmode) {
+		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToCoulombPerMole, 1.f*elementaryChargeToCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [GN/mol]
+		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER *1e-9;  // [GN/mol] https://www.omnicalculator.com/physics/coulombs-law
+
+		ASSERT(std::abs(1.f - calcedForce / expectedForce) < 0.0001f, std::format("Expected {:.2f} Actual {:.2f}", expectedForce, calcedForce));
+		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
+	}
+
 	/// <summary>
 	/// 
 	/// </summary>
 	/// <param name="dirName"></param>
 	/// <param name="boxLen"></param>
 	/// <param name="atomType">For determining LJ params, but also coloring</param>
-	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const std::string& atomType) {
+	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection) {
 		Environment env(simulations_dir + dirName, EnvMode::Headless, false);
 
 		env.createSimulationFiles(boxLen);
 
-		// Create 5 custom particles
-		AtomsSelection atomsSelection{
-			{TopologyFile::AtomsEntry{";residue_X", 0, atomType, 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
-			{TopologyFile::AtomsEntry{";residue_X", 0, atomType, 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
-			{TopologyFile::AtomsEntry{";residue_X", 0, atomType, 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
-			{TopologyFile::AtomsEntry{";residue_X", 0, atomType, 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
-			{TopologyFile::AtomsEntry{";residue_X", 0, atomType, 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
-		};
 		auto a = env.getWorkdir();
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, 5.f);
@@ -51,7 +52,15 @@ namespace ElectrostaticsTests {
 	}
 
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
-		MakeChargeParticlesSim("ElectrostaticField", 7.f, "C");
+		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
+			AtomsSelection{
+				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
+			}
+			);
 
 
 		SimParams simparams{ 5000, 20, true, PBC };
@@ -120,13 +129,18 @@ namespace ElectrostaticsTests {
 	}
 
 	static LimaUnittestResult TestShortrangeElectrostaticsCompoundsOnly(EnvMode envmode) {
-		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 3.f, "lt1");
+		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 3.f,
+			AtomsSelection{
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "XXX", "lxx", 0, 1.f, 10.f}, 100},				
+			}
+		);
 
 		const int nSteps = 1000;
 
-		SimParams simparams{ nSteps, 20, true, PBC };
+		SimParams simparams{ nSteps, 20, false, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;
-		simparams.data_logging_interval = 20;
+		simparams.data_logging_interval = 5;
+		simparams.enable_electrostatics = true;
 		auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);
 
 		env->run();

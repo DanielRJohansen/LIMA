@@ -281,6 +281,7 @@ void Engine::deviceMaster() {
 		if (simulation->simparams_host.enable_electrostatics)
 			Electrostatics::HandleElectrostatics(sim_dev, simulation->boxparams_host);
 
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
 	}
 	const auto t0b = std::chrono::high_resolution_clock::now();
 

@@ -33,9 +33,8 @@ namespace Electrostatics {
 	__device__ inline NodeIndex ConvertAbsolute1dToRelative3d(int index) {
 		NodeIndex nodeIndex;
 
-		index -= 1; // Adjust for the original offset (+1) in the formula
-		nodeIndex.z = index / (3 * 3) - 1;
-		index %= 3 * 3;
+		nodeIndex.z = index / 9 - 1;
+		index = index % 9;
 		nodeIndex.y = index / 3 - 1;
 		nodeIndex.x = index % 3 - 1;
 
@@ -52,7 +51,6 @@ namespace Electrostatics {
 		if (threadIdx.x < 27 * 2) {
 			numParticlesInNodeLocal[threadIdx.x] = 0;
 		}
-		
 		__syncthreads();
 
 
@@ -69,12 +67,6 @@ namespace Electrostatics {
 
 
 			const int localIndex = convertRelative3dIndexToAbsolute1d(relativeLocalIndex);
-			//if (localIndex < 0 || localIndex >= 27) {
-			//	printf("Error: localIndex out of bounds: %d\n", localIndex);
-			//	LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposLM).print('n');
-			//	relposLM.print('r');
-			//	(relposLM * LIMA_TO_NANO).print('p');
-			//}
 			localOffset = atomicAdd(&numParticlesInNodeLocal[localIndex], 1);
 		}
 		__syncthreads();
@@ -82,9 +74,7 @@ namespace Electrostatics {
 		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27];
 		if (threadIdx.x < 27) {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
-			PeriodicBoundaryCondition::applyBC(absIndex3d);
-
-		
+			PeriodicBoundaryCondition::applyBC(absIndex3d);	
 
 			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
 			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
@@ -102,6 +92,7 @@ namespace Electrostatics {
 				relposLM.print('r');
 				(relposLM * LIMA_TO_NANO).print('p');
 			}
+			
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->positions[offset] = relposLM * LIMA_TO_NANO;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->charges[offset] = charge;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->compoundIds[offset] = blockIdx.x;
@@ -125,12 +116,13 @@ namespace Electrostatics {
 
 		const Float3 myPos = threadActive
 			? myNode_GlobalMem->positions[threadIdx.x]
-			: Float3(0, 0, 0);
+			: Float3(42.f);
+
 		const float myCharge = threadActive
 			? myNode_GlobalMem->charges[threadIdx.x]
 			: 0.f;
 
-		Float3 force = 0.f; // Accumulated as [N/mol], converted to GigaN before writing to output
+		Float3 force = 0.f; // Accumulated as [GN/mol], converted to GigaN before writing to output
 		float potE = 0.f; // Accumulated as [J/mol], converted to GigaJ before writing to output
 
 
@@ -148,7 +140,7 @@ namespace Electrostatics {
 
 						chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
 					}
-
+					__syncthreads();
 
 					if (threadActive) {
 						for (int i = 0; i < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles; i++) {
@@ -160,11 +152,12 @@ namespace Electrostatics {
 							const float otherCharge = chargesBuffer[i];
 
 							const Float3 diff = myPos - otherPos;	
+								
 							force += PhysicsUtils::CalcCoulumbForce(myCharge, otherCharge, diff);
-							potE += PhysicsUtils::CalcCoulumbPotential(myCharge, otherCharge, diff.len());
-				/*			force += (myCharge * otherCharge) / diff.lenSquared();
-							potE += (myCharge * otherCharge) / diff.len();*/
-							//printf("force %f \n", force);
+							potE += PhysicsUtils::CalcCoulumbPotential(myCharge, otherCharge, diff.len()) * 0.5f;	// 0.5 because the other particle is also calcing this
+							//printf("pote %f\n", potE);
+
+							//printf("force %f c1 %f c2 %f len %f\n", PhysicsUtils::CalcCoulumbForce(myCharge, otherCharge, diff).len(), myCharge, otherCharge, diff.len());
 						}
 					}
 				}
@@ -177,12 +170,13 @@ namespace Electrostatics {
 		if (threadActive) {
 			const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
 			const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
-			//printf("pid %d cid %d\n", pid, cid);
-			simDev->box->compounds[cid].potE_interim[pid] += potE / 1'000'000'000;
-			simDev->box->compounds[cid].forces_interim[pid] += force / 1'000'000'000; // Convert to GigaN
-			//simDev->box->compounds[0].potE_interim[0] += 42.f;
+			//printf("Resulting force %f \n", force.len()/ 1'000'000'000.f);
+
+			simDev->box->compounds[cid].potE_interim[pid] += potE;
+			simDev->box->compounds[cid].forces_interim[pid] += force /100000000.f; 
 		}
 
+		__syncthreads();
 
 		// Finally reset nParticles before next step
 		if (threadIdx.x == 0)

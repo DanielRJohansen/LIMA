@@ -104,9 +104,11 @@ int main() {
 		
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
+		//CoulombForceSanityCheck(envmode);
 		TestShortrangeElectrostaticsCompoundsOnly(envmode);
-		//runAllUnitTests();
 		//Benchmarks::Psome(envmode);
+
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -153,6 +155,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5));
 
 	// Electrostatics
+	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
 
 

@@ -136,7 +136,7 @@ namespace TestUtils {
 
 			std::cout << " status: " << status_str;
 
-			if (error_description.length() > 30) { std::cout << "\n"; }
+			if (error_description.length() > 35) { std::cout << "\n"; }
 			std::cout << "\t" << error_description << "\n";
 
 

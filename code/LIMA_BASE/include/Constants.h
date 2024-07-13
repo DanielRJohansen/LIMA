@@ -56,6 +56,10 @@ constexpr double UNIT_TO_LIMA = 1e9 * NANO_TO_LIMA;
 
 static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
+constexpr double KILO = 1e3;
+constexpr double NANO = 1e-9;
+
+
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;

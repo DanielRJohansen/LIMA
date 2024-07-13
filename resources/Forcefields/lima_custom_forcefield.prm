@@ -1,6 +1,6 @@
 
 ATOMS
-MASS  -1  lt1          3.50800 !An atomtype that doesnt interact via LJ
+MASS  -1  lt1           12.00800 !An atomtype that doesnt interact via LJ
 
 BONDS
 

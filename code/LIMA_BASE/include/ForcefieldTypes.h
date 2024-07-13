@@ -80,7 +80,7 @@ struct Singlebondtype : public BondtypeBase<2>{
 	}
 	
 	SingleBond ToStandardBondRepresentation() const {
-		return SingleBond{ {0,0}, b0 * NANO_TO_LIMA, kb / (NANO_TO_LIMA * NANO_TO_LIMA) };	// *puke*.. I really need a better solution, than having 3 representations of the same fucking data
+		return SingleBond{ {0,0}, b0 * NANO_TO_LIMA, kb / (NANO_TO_LIMA * NANO_TO_LIMA) };	// TODO: *puke*.. I really need a better solution, than having 3 representations of the same fucking data
 	}
 };
 

@@ -106,11 +106,11 @@ int main() {
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
 		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
-		doPoolBenchmarkES(envmode);
+		//doPoolBenchmarkES(envmode);
 
 		//Benchmarks::Psome(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -158,8 +158,9 @@ void runAllUnitTests() {
 
 	// Electrostatics
 	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
+	ADD_TEST(testman, "TestShortrangeElectrostaticsCompoundsOnly", TestShortrangeElectrostaticsCompoundsOnly(envmode));
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
-
+	
 
 	// Programs test
 	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));

@@ -28,25 +28,26 @@ namespace PhysicsUtils {
 	}
 
 	/// <summary></summary>
-	/// <param name="myCharge">[C/mol]</param>
-	/// <param name="otherCharge">[C/mol]</param>
+	/// <param name="myCharge">[kilo C/mol]</param>
+	/// <param name="otherCharge">[kilo C/mol]</param>
 	/// <param name="diff">[nm]</param>
 	/// <returns>[1/l N/mol]</returns>
 	__device__ __host__ inline Float3 CalcCoulumbForce(const float myCharge, const float otherCharge, const Float3& diff /*self - other*/) 
 	{
-		const float modifiedCoulombConstant = COULOMBCONSTANT * 1e9 * 1e9 / AVOGADROSNUMBER / UNIT_TO_LIMA * 1e6;	// [1/l N/mol nm^2 / (kilo C/mol)^2]
+		const float modifiedCoulombConstant = COULOMBCONSTANT /NANO / NANO / AVOGADROSNUMBER / UNIT_TO_LIMA * KILO * KILO;	// [1/l N/mol nm^2 / (kilo C/mol)^2]
 
 		return diff.norm() * modifiedCoulombConstant * (myCharge * otherCharge) / diff.lenSquared();
 	}
 
 	// <summary></summary>
-	// <param name="myCharge">[C/mol]</param>
-	// <param name="otherCharge">[C/mol]</param>
+	// <param name="myCharge">[kilo C/mol]</param>
+	// <param name="otherCharge">[kilo C/mol]</param>
 	// <param name="distance">[nm]</param>
-	// <returns>[1/l J/mol]</returns>
+	// <returns>[J/mol]</returns>
 	__device__ __host__ inline constexpr float CalcCoulumbPotential(const float myCharge, const float otherCharge, const float distance) 
 	{
-		const float modifiedCoulombConstant = COULOMBCONSTANT * 1e9 / AVOGADROSNUMBER / UNIT_TO_LIMA * 1e6;	// [1/l J/mol * m * nm / (kilo C/mol)^2]
+		// N * m = J
+		const float modifiedCoulombConstant = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol * nm / (kilo C/mol)^2] 
 
 		return modifiedCoulombConstant * (myCharge * otherCharge) / distance;
 	}

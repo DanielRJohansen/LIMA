@@ -107,17 +107,17 @@ namespace SupernaturalForces {
 		__syncthreads();
 	}
 
-	__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
-		PeriodicBoundaryCondition::applyBCNM(posNM);	// TODO: Use generic BC
-		const float distFromMidPlane = posNM.x - (boxSize_device.boxSizeNM_f / 2.f);
+	//__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
+	//	PeriodicBoundaryCondition::applyBCNM(posNM);	// TODO: Use generic BC
+	//	const float distFromMidPlane = posNM.x - (boxSize_device.boxSizeNM_f / 2.f);
 
-		const float dir = distFromMidPlane / std::abs(distFromMidPlane);
-		const float forceApplied = .00000001f * particleCharge * dir;
+	//	const float dir = distFromMidPlane / std::abs(distFromMidPlane);
+	//	const float forceApplied = particleCharge * dir * KILO * KILO * 1000.f;
+	//	printf("Force %f\n", forceApplied);
+	//	force.x += forceApplied;
 
-		force.x += forceApplied;
+	//	if (distFromMidPlane > 5.f)
+	//		printf("dist %f charge %f dir %f force %f\n", distFromMidPlane, particleCharge, dir, forceApplied);
 
-		if (distFromMidPlane > 5.f)
-			printf("dist %f charge %f dir %f force %f\n", distFromMidPlane, particleCharge, dir, forceApplied);
-
-	}
+	//}
 }

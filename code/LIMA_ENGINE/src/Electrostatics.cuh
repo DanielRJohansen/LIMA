@@ -93,7 +93,8 @@ namespace Electrostatics {
 				(relposLM * LIMA_TO_NANO).print('p');
 			}
 			
-			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->positions[offset] = relposLM * LIMA_TO_NANO;
+			const Float3 positionRelativeToNodeNM = relposLM * LIMA_TO_NANO - relativeLocalIndex.toFloat3();
+			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->positions[offset] = positionRelativeToNodeNM;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->charges[offset] = charge;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->compoundIds[offset] = blockIdx.x;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->particleIds[offset] = threadIdx.x;
@@ -170,7 +171,7 @@ namespace Electrostatics {
 		if (threadActive) {
 			const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
 			const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
-			//printf("Resulting force %f \n", force.len());
+			//printf("Resulting force %f potE %f \n", force.len(), potE);
 
 			simDev->box->compounds[cid].potE_interim[pid] += potE;
 			simDev->box->compounds[cid].forces_interim[pid] += force; 

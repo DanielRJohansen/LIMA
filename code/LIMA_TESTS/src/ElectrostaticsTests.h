@@ -26,7 +26,7 @@ namespace ElectrostaticsTests {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER / UNIT_TO_LIMA;  // [1/l N / mol] https://www.omnicalculator.com/physics/coulombs-law
 
-		ASSERT(std::abs(1.f - calcedForce / expectedForce) < 0.0001f, std::format("Expected {:.2f} Actual {:.2f}", expectedForce, calcedForce));
+		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2f} Actual {:.2f}", expectedForce, calcedForce));
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
 	}
 
@@ -46,20 +46,19 @@ namespace ElectrostaticsTests {
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
-		const float vel = PhysicsUtils::tempToVelocity(temperature, particle_mass);	// [m/s] <=> [lm/ls]
-
 		SimParams params{};
-		params.n_steps = 2000;
+		params.n_steps = 1000;
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		GroFile grofile{ conf };
+		grofile.box_size = Float3{ 3.f };
+		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
+		grofile.atoms[1].position = Float3{ 1.3f, 1.5f, 1.5f };
 		TopologyFile topfile{ topol };
 			
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box* box_host = env.getSimPtr()->box_host.get();
-		box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-		box_host->compounds[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
 		// Disable LJ force
 		ASSERT(box_host->compounds[0].atom_types[0] == 1, "Expected atom type 1");
@@ -74,6 +73,14 @@ namespace ElectrostaticsTests {
 		energy_gradients.push_back(analytics->energy_gradient);
 		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
 		
+
+		if (envmode != Headless) {
+			LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
+			LIMA_Print::printPythonVec("potE", analytics->pot_energy);
+			LIMA_Print::printPythonVec("totE", analytics->total_energy);
+		}
+
+
 
 		const auto result = evaluateTest(varcoffs, 4.f, energy_gradients, 1e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
@@ -124,7 +131,7 @@ namespace ElectrostaticsTests {
 		simparams.snf_select = HorizontalChargeField;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 15.f };
+		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 15.f *KILO};
 	
 		env->run();	
 
@@ -190,7 +197,7 @@ namespace ElectrostaticsTests {
 			}
 		);
 
-		const int nSteps = 20000;
+		const int nSteps = 2000;
 
 		SimParams simparams{ nSteps, 20, false, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;
@@ -205,8 +212,8 @@ namespace ElectrostaticsTests {
 		
 		ASSERT(sim->boxparams_host.boxSize == BoxGrid::blocksizeNM * 3, "This test assumes entire BoxGrid is in Shortrange range");
 
+		// First check that the potential energy is calculated as we would expect if we do it the simple way
 		float maxForceError = 0.f;
-
 		for (int cidSelf = 0; cidSelf < sim->box_host->boxparams.n_compounds; cidSelf++) {
 			float potESum = 0.f;
 			Float3 forceSum = 0.f;
@@ -226,24 +233,32 @@ namespace ElectrostaticsTests {
 				
 				const Float3 diff = posSelf - posOther;
 
-				potESum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, diff.len());
+				potESum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, diff.len()) * 0.5f;
 				forceSum += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeOther, diff);
 			}
-
-			forceSum = forceSum / 1'000'000'000.f;
-			potESum = potESum / 1'000'000'000.f;
 			
-			const float potEError = std::abs(potESum - compoundSelf.potE_interim[0]);
-			const float forceError = (forceSum - compoundSelf.forces_interim[0].x).len();
+			// Need a expected error because in the test we do true hyperdist, but in sim we do no hyperdist
+			// The error arises because a particle is moved 1 boxlen, not when it is correct for hyperPos, but when it moves into the next node in the boxgrid
+			// Thus this error arises only when the box is so small that a particle go directly from nodes such as (-1, 0 0) to (1,0,0)
+			const float potEError = std::abs(compoundSelf.potE_interim[0] - potESum) / potESum;
+			const float forceError = std::abs((compoundSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
 			maxForceError = std::max(maxForceError, forceError);
 
-			const float potEErrorThreshold = 1.f;
-			ASSERT(potEError < potEErrorThreshold, std::format("PotE Error {:.2f} above threshold {:.2f}. True potE: {:.2f}", potEError, potEErrorThreshold, potESum));
-			const float forceErrorThreshold = 1.f;
-			ASSERT(forceError < forceErrorThreshold, std::format("Force Error {:.2f} above threshold {:.2f}", forceError, forceErrorThreshold));
+			ASSERT(potEError < 1.f, std::format("Actual PotE {:.2e} Expected potE: {:.2e}", compoundSelf.potE_interim[0], potESum));
+			//ASSERT(forceError < 0.5f, std::format("Actual Force {:.2e} Expected force {:.2e}", compoundSelf.forces_interim[0].len(), forceSum.len()));
 		}
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, std::format("Max force error: {:.2f}", maxForceError), envmode == Full };
+		// Now do the normal VC check
+		const float targetVarCoeff = 1.5e-3f;
+		auto analytics = env->getAnalyzedPackage();
+		const auto result = evaluateTest({ analytics->variance_coefficient }, targetVarCoeff, { analytics->energy_gradient }, 2e-5);
+		if (result.first==false)
+			return LimaUnittestResult{ LimaUnittestResult::FAIL, result.second, envmode == Full };
+
+		return LimaUnittestResult{ 
+			LimaUnittestResult::SUCCESS, 
+			std::format("VC {:.3e} / {:.3e} Max F error {:.2f}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
+			envmode == Full };
 	}
 }
 

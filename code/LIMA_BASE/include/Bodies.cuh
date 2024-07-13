@@ -395,7 +395,7 @@ struct ForceField_NB {
 
 
 class UniformElectricField {
-	Float3 field;	// [GV/m]
+	Float3 field;	// [V/nm]
 
 	public:
 		UniformElectricField() {}
@@ -403,7 +403,8 @@ class UniformElectricField {
 			assert(direction.len() != 0.f);
 		}
 	
-	__device__ Float3 GetForce(float charge /* [C/mol] */) {
+	// TODO fix the units here
+	__device__ Float3 GetForce(float charge /* [kilo C/mol] */) {
 		return field * charge;
 	}
 };

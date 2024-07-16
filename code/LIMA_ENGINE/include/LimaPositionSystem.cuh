@@ -54,12 +54,10 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <param name="posLM"></param>
 	/// <returns></returns>
 	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posLM) {
-		const float offset = static_cast<float>(BoxGrid::blocksizeLM / 2);
-
 		NodeIndex nodeindex{
-			static_cast<int>(floor((posLM.x + offset) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(floor((posLM.y + offset) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(floor((posLM.z + offset) / static_cast<float>(BoxGrid::blocksizeLM)))
+			static_cast<int>(floor((posLM.x) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(floor((posLM.y) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(floor((posLM.z) / static_cast<float>(BoxGrid::blocksizeLM)))
 		};
 
 		return nodeindex;

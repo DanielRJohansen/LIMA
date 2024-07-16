@@ -33,20 +33,6 @@ namespace LIMAPOSITIONSYSTEM {
 		return (num - (num < 0 ? denom - 1 : 0)) / denom;
 	}
 
-	// Converts to nodeindex, applies PBC
-	__host__ static NodeIndex absolutePositionToNodeIndex(const PositionHighRes& position, BoundaryConditionSelect bc, float boxlen_nm) {
-		const int64_t offset = BoxGrid::blocksizeLM / 2;
-
-		NodeIndex nodeindex{
-			(int)floor_div(position.x + offset, BoxGrid::blocksizeLM),
-			(int)floor_div(position.y + offset, BoxGrid::blocksizeLM),
-			(int)floor_div(position.z + offset, BoxGrid::blocksizeLM)
-		};
-		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
-
-		return nodeindex;
-	}
-
 
 	/// <summary>
 	/// Use with care, will overflow if posLM is > 20 nm. Does NOT apply boundary condition
@@ -63,7 +49,15 @@ namespace LIMAPOSITIONSYSTEM {
 		return nodeindex;
 	}
 
+	__device__ __host__ inline NodeIndex PositionToNodeIndexNM(const Float3& posNM) {
+		NodeIndex nodeindex{
+			static_cast<int>(round((posNM.x) / static_cast<float>(BoxGrid::blocksizeNM))),
+			static_cast<int>(round((posNM.y) / static_cast<float>(BoxGrid::blocksizeNM))),
+			static_cast<int>(round((posNM.z) / static_cast<float>(BoxGrid::blocksizeNM)))
+		};
 
+		return nodeindex;
+	}
 
 	/// <summary>
 	/// Converts a nodeindex to a relative position in [lm]. ONLY safe to call with relatively small node indexes. 
@@ -77,7 +71,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// Returns absolute position of nodeindex [nm]
 	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
-		const float nodelen_nm = static_cast<float>(BoxGrid::blocksizeLM) / NANO_TO_LIMA;
+		const float nodelen_nm = static_cast<float>(BoxGrid::blocksizeNM);
 		return Float3{ 
 			static_cast<float>(node_index.x) * nodelen_nm,
 			static_cast<float>(node_index.y) * nodelen_nm,
@@ -85,24 +79,28 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	//template <typename BoundaryCondition>
-	static Coord getRelativeCoord(const PositionHighRes& absolute_position, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
+	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
-		PositionHighRes hyperPos = absolute_position;
-		const PositionHighRes nodePos = PositionHighRes{ nodeindex,  BoxGrid::blocksizeLM };
-		BoundaryConditionPublic::applyHyperpos(nodePos, hyperPos, boxlen_nm, bc);
+		Float3 hyperPos = absPosNM;
+		const Float3 nodePos = nodeIndexToAbsolutePosition(nodeindex);
+		BoundaryConditionPublic::applyHyperposNM(nodePos, hyperPos, boxlen_nm, bc);
 
-		const PositionHighRes relpos = hyperPos - nodePos;
+		const Float3 relpos = hyperPos - nodePos;
 
-		if (relpos.largestMagnitudeElement() > static_cast<int64_t>(max_node_diff) * BoxGrid::blocksizeLM) {
-			auto absPos = absolute_position.toFloat3();
+		if (relpos.largestMagnitudeElement() > static_cast<float>(max_node_diff)*BoxGrid::blocksizeNM) {
+			/*auto absPos = absolute_position.toFloat3();
 			auto hPos = hyperPos.toFloat3();
-			auto nPos = nodePos.toFloat3();
-			throw std::runtime_error("Tried to place a position that was not correcly assigned a node. Pos: " + absPos.toString() + " hyperpos: " + hPos.toString() + " nodePos: " + nPos.toString());
-				//+ "% f % f % f Hyperpos % f % f % f node % f % f % f");
+			auto nPos = nodePos.toFloat3();*/
+			throw std::runtime_error("Tried to place a position that was not correcly assigned a node.");
+			// Pos: " + absPos.toString() + " hyperpos : " + hPos.toString() + " nodePos : " + nPos.toString());
+			//+ "% f % f % f Hyperpos % f % f % f node % f % f % f");
 		}
 
-		return Coord{ static_cast<int32_t>(relpos.x), static_cast<int32_t>(relpos.y), static_cast<int32_t>(relpos.z) };
+		return Coord{ 
+			static_cast<int32_t>(relpos.x * NANO_TO_LIMA), 
+			static_cast<int32_t>(relpos.y * NANO_TO_LIMA), 
+			static_cast<int32_t>(relpos.z * NANO_TO_LIMA) 
+		};
 	}
 
 	// relpos in LM
@@ -110,9 +108,10 @@ namespace LIMAPOSITIONSYSTEM {
 		return relpos.toFloat3() / NANO_TO_LIMA;
 	}
 
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, float boxlen_nm, BoundaryConditionSelect bc) {
+		NodeIndex nodeindex = PositionToNodeIndexNM(position);	// TEMP
+		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
-		const NodeIndex nodeindex = absolutePositionToNodeIndex(position, bc, boxlen_nm);	// TEMP
 		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
 		return std::make_tuple(nodeindex, relpos);
 	}
@@ -126,16 +125,16 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	static CompoundCoords positionCompound(const std::vector<PositionHighRes>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
+	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
 		CompoundCoords compoundcoords{};
 
-		// WARNING: It may become a problem that state and state_prev does not share an origo. That should be fixed..
-		//compoundcoords.origo = absolutePositionToNodeIndex<BoundaryCondition>(positions[key_particle_index]);
-		compoundcoords.origo = absolutePositionToNodeIndex(positions[key_particle_index], bc, boxlen_nm);	//TEMP
+		compoundcoords.origo = PositionToNodeIndexNM(positions[key_particle_index]);
+		BoundaryConditionPublic::applyBC(compoundcoords.origo, boxlen_nm, bc);
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);	
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);
+
 		}
 		if (compoundcoords.rel_positions[key_particle_index].maxElement() > static_cast<int32_t>(BoxGrid::blocksizeLM)) {
 			compoundcoords.rel_positions[key_particle_index].print('k');
@@ -216,13 +215,12 @@ namespace LIMAPOSITIONSYSTEM {
 	/// Applies PBC to the solvent
 	/// </summary>
 	/// <param name="position">Absolute position of solvent [nm] </param>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(const PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
-		PositionHighRes hyperpos = position;
-		BoundaryConditionPublic::applyBC(hyperpos, boxlen_nm, bc);
+	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(Float3 position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
+		BoundaryConditionPublic::applyBCNM(position, boxlen_nm, bc);
 
 
 		NodeIndex nodeindex; Coord relpos;
-		std::tie(nodeindex, relpos) = absolutePositionPlacement(hyperpos, boxlen_nm, bc);
+		std::tie(nodeindex, relpos) = absolutePositionPlacement(position, boxlen_nm, bc);
 
 		SolventCoord solventcoord{ nodeindex, relpos };
 		BoundaryConditionPublic::applyBC(solventcoord.origo, boxlen_nm, bc);

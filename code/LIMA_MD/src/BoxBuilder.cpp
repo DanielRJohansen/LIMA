@@ -119,10 +119,9 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
 		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
-			PositionHighRes position{ sol_pos };
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				position, static_cast<float>(simulation->box_host->boxparams.boxSize), simulation->simparams_host.bc_select);
+				sol_pos, static_cast<float>(simulation->box_host->boxparams.boxSize), simulation->simparams_host.bc_select);
 
 
 			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0, simulation->box_host->boxparams.boxSize);
@@ -249,20 +248,14 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 
 // ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
-	//const float M = SOLVENT_MASS;				// kg/mol
-	//const double T = 313.;	// Kelvin
-	//const double R = 8.3144;					// J/(Kelvin*mol)
-	//const float v_rms = static_cast<float>(sqrt(3 * R * T / M));
-
-	//Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
 {
-	std::vector<PositionHighRes> positions;
+	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
-		positions.push_back(PositionHighRes(extern_position));
+		positions.push_back(extern_position);
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);

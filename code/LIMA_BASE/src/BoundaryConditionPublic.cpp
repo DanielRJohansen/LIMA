@@ -4,10 +4,6 @@ class NoBoundaryCondition {
 public:
 	static void applyBC(NodeIndex& origo) {}
 
-	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position) {}
-
-	static void applyBC(PositionHighRes& position) {}
-
 	static void applyBC(Float3& position, float boxlen_nm) {}
 
 };
@@ -21,29 +17,6 @@ public:
 		origo.y -= boxgrid_n_nodes * (origo.y >= boxgrid_n_nodes);
 		origo.z += boxgrid_n_nodes * (origo.z < 0);
 		origo.z -= boxgrid_n_nodes * (origo.z >= boxgrid_n_nodes);
-	}
-
-	static void applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm) {
-		const int64_t boxlen_i = static_cast<int64_t>(boxlen_nm * NANO_TO_LIMA);
-		const PositionHighRes difference = static_position - movable_position;
-		movable_position.x += boxlen_i * (difference.x > boxlen_i / 2);
-		movable_position.x -= boxlen_i * (difference.x < -boxlen_i / 2);
-		movable_position.y += boxlen_i * (difference.y > boxlen_i / 2);
-		movable_position.y -= boxlen_i * (difference.y < -boxlen_i / 2);
-		movable_position.z += boxlen_i * (difference.z > boxlen_i / 2);
-		movable_position.z -= boxlen_i * (difference.z < -boxlen_i / 2);
-	}
-
-	static void applyBC(PositionHighRes& position, float boxlen_nm) {
-		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		const int64_t boxlen_i = static_cast<int64_t>(boxlen_nm * NANO_TO_LIMA);
-		const int64_t offset = BoxGrid::blocksizeLM / 2; // + 1;
-		position.x += boxlen_i * (position.x + offset < 0);
-		position.x -= boxlen_i * (position.x + offset >= boxlen_i);
-		position.y += boxlen_i * (position.y + offset < 0);
-		position.y -= boxlen_i * (position.y + offset >= boxlen_i);
-		position.z += boxlen_i * (position.z + offset < 0);
-		position.z -= boxlen_i * (position.z + offset >= boxlen_i);
 	}
 
 	static void applyBC(Float3& position, float boxlen_nm) {
@@ -83,19 +56,6 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int nNodesPerDim) {
 	PeriodicBoundaryCondition::applyBC(nodeindex, nNodesPerDim);
 }
 
-void BoundaryConditionPublic::applyBC(PositionHighRes& position, float boxlen_nm, BoundaryConditionSelect bc) {
-	switch (bc) {
-	case NoBC: {
-		NoBoundaryCondition::applyBC(position);
-		break;
-	}
-	case PBC: {
-		PeriodicBoundaryCondition::applyBC(position, boxlen_nm);
-		break;
-	}
-	}
-}
-
 void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
 	case NoBC: {
@@ -104,19 +64,6 @@ void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, Boundar
 	}
 	case PBC: {
 		PeriodicBoundaryCondition::applyBC(pos_nm, boxlen_nm);
-		break;
-	}
-	}
-}
-
-void BoundaryConditionPublic::applyHyperpos(const PositionHighRes& static_position, PositionHighRes& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
-	switch (bc) {
-	case NoBC: {
-		NoBoundaryCondition::applyHyperpos(static_position, movable_position);
-		break;
-	}
-	case PBC: {
-		PeriodicBoundaryCondition::applyHyperpos(static_position, movable_position, boxlen_nm);
 		break;
 	}
 	}

@@ -33,9 +33,9 @@ struct CompoundGridNode {
 namespace Electrostatics {
 
 	struct ChargeNode {
-		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
+		static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-		static const int maxParticlesInNode = 256;
+		//static const int maxParticlesInNode = 256;
 
 		//float totalCharge = 0.f;
 

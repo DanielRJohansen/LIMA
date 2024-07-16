@@ -155,9 +155,6 @@ namespace Electrostatics {
 								
 							force += PhysicsUtils::CalcCoulumbForce(myCharge, otherCharge, diff);
 							potE += PhysicsUtils::CalcCoulumbPotential(myCharge, otherCharge, diff.len()) * 0.5f;	// 0.5 because the other particle is also calcing this
-							//printf("pote %f\n", potE);
-
-							//printf("force %f c1 %f c2 %f len %f\n", PhysicsUtils::CalcCoulumbForce(myCharge, otherCharge, diff).len(), myCharge, otherCharge, diff.len());
 						}
 					}
 				}

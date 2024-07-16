@@ -136,9 +136,8 @@ namespace Electrostatics {
 					PeriodicBoundaryCondition::applyBC(queryNodeindex);
 
 					if (threadIdx.x < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles) {
-						positionsBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x];
-						positionsBuffer[threadIdx.x] += NodeIndex(xOff, yOff, zOff).toFloat3();
-
+						positionsBuffer[threadIdx.x] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(NodeIndex{xOff, yOff, zOff}, BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x]);
+						
 						chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
 					}
 					__syncthreads();

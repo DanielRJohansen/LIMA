@@ -36,6 +36,18 @@ public:
 			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
 		}
 	}
+
+	static void applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm) {
+		const int boxlenHalfNM = boxlen_nm / 2;
+		
+		movableNodeindex.x += BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.x - movableNodeindex.x) > boxlenHalfNM);
+		movableNodeindex.x -= BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.x - movableNodeindex.x) < -boxlenHalfNM);
+		movableNodeindex.y += BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.y - movableNodeindex.y) > boxlenHalfNM);
+		movableNodeindex.y -= BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.y - movableNodeindex.y) < -boxlenHalfNM);
+		movableNodeindex.z += BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.z - movableNodeindex.z) > boxlenHalfNM);
+		movableNodeindex.z -= BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.z - movableNodeindex.z) < -boxlenHalfNM);
+		
+	}
 };
 
 
@@ -76,6 +88,18 @@ void BoundaryConditionPublic::applyHyperposNM(const Float3& static_position, Flo
 	}
 	case PBC: {
 		PeriodicBoundaryCondition::applyHyperposNM(static_position, movable_position, boxlen_nm);
+		break;
+	}
+	}
+}
+
+void BoundaryConditionPublic::applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm, BoundaryConditionSelect bc) {
+	switch (bc) {
+	case NoBC: {
+		break;
+	}
+	case PBC: {
+		PeriodicBoundaryCondition::applyHyperpos(staticNodeindex, movableNodeindex, boxlen_nm);
 		break;
 	}
 	}

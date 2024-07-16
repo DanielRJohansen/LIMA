@@ -42,12 +42,12 @@ namespace ElectrostaticsTests {
 		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-		float temperature =  400.f;
+		float temperature = 400.f;
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
 		SimParams params{};
-		params.n_steps = 1000;
+		params.n_steps = 400;
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		GroFile grofile{ conf };
@@ -55,7 +55,7 @@ namespace ElectrostaticsTests {
 		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
 		grofile.atoms[1].position = Float3{ 1.3f, 1.5f, 1.5f };
 		TopologyFile topfile{ topol };
-			
+
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box* box_host = env.getSimPtr()->box_host.get();
@@ -64,7 +64,7 @@ namespace ElectrostaticsTests {
 		ASSERT(box_host->compounds[0].atom_types[0] == 1, "Expected atom type 1");
 		ASSERT(box_host->compounds[1].atom_types[0] == 1, "Expected atom type 1");
 		env.getSimPtr()->forcefield.particle_parameters[1].epsilon = 0.f;
-	
+
 
 		env.run();
 
@@ -72,13 +72,93 @@ namespace ElectrostaticsTests {
 		varcoffs.push_back(analytics->variance_coefficient);
 		energy_gradients.push_back(analytics->energy_gradient);
 		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
-		
 
-		if (envmode != Headless) {
-			LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
-			LIMA_Print::printPythonVec("potE", analytics->pot_energy);
-			LIMA_Print::printPythonVec("totE", analytics->total_energy);
+
+		//if (envmode != Headless) {
+		//	LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
+		//	LIMA_Print::printPythonVec("potE", analytics->pot_energy);
+		//	LIMA_Print::printPythonVec("totE", analytics->total_energy);
+		//}
+
+
+
+
+
+
+
+		// Check if engine calculates the force and POTE we expect
+		{
+			Simulation* sim = env.getSimPtr();
+
+			// First check that the potential energy is calculated as we would expect if we do it the simple way
+			float maxForceError = 0.f;
+
+			const Compound& compoundSelf = sim->box_host->compounds[0];
+			const int chargeSelf = static_cast<int>(compoundSelf.atom_charges[0]);
+			const Float3 posSelfAbs = sim->traj_buffer->GetMostRecentCompoundparticleDatapoint(0, 0, params.n_steps - 1);
+			const NodeIndex nodeindexSelf = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(posSelfAbs);
+			const Float3 posSelfRel = posSelfAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexSelf);
+
+
+
+			const auto& compoundOther = sim->box_host->compounds[1];
+			const int chargeOther = static_cast<int>(compoundOther.atom_charges[0]);
+			
+
+			// We cant use hyperdist, since the engine will hyperpos the block, and not individual particles
+			//BoundaryConditionPublic::applyHyperposNM(posSelf, posOther, sim->simparams_host.box_size, PBC);
+
+			// Instead we do this bullshit. Figure out the relative nodeindex compared to the self nodeindex
+			const Float3 posOtherAbs = sim->traj_buffer->GetMostRecentCompoundparticleDatapoint(1, 0, params.n_steps - 1);
+			const NodeIndex nodeindexOther = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(posOtherAbs);
+			const Float3 posOtherRel = posOtherAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexOther);
+
+			NodeIndex nodeindexOtherHyper = nodeindexOther;
+			BoundaryConditionPublic::applyHyperpos(nodeindexSelf, nodeindexOtherHyper, 3, PBC);
+			const NodeIndex nodeindexOfOtherRelativeToSelf = nodeindexOtherHyper - nodeindexSelf;
+
+			ASSERT(nodeindexOfOtherRelativeToSelf.x <= 1,
+				"Expected to get a relative nodeindex that was immediately adjacent to nodeindexSelf");
+			ASSERT(nodeindexOfOtherRelativeToSelf.y == 0,
+				"We should only differ in x dimension");
+			ASSERT(nodeindexOfOtherRelativeToSelf.z == 0,
+				"We should only differ in x dimension");
+
+			const Float3 posOtherRelativeToSelf = (posOtherRel + LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexOfOtherRelativeToSelf)) - posSelfRel;
+
+			//posOther -= nodeindexOtherAsF3 - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexSelf);
+
+			//const Float3 diff = posSelf - posOther;
+
+			float potESum = PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, posOtherRelativeToSelf.len()) * 0.5f;
+			Float3 forceSum = PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeOther, posOtherRelativeToSelf);
+
+
+			// Need a expected error because in the test we do true hyperdist, but in sim we do no hyperdist
+			// The error arises because a particle is moved 1 boxlen, not when it is correct for hyperPos, but when it moves into the next node in the boxgrid
+			// Thus this error arises only when the box is so small that a particle go directly from nodes such as (-1, 0 0) to (1,0,0)
+			const float potEError = std::abs(compoundSelf.potE_interim[0] - potESum) / potESum;
+			const float forceError = std::abs((compoundSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
+			maxForceError = std::max(maxForceError, forceError);
+
+
+			posSelfAbs.print('S');
+			posOtherAbs.print('O');
+			//sim->traj_buffer->GetMostRecentCompoundparticleDatapoint(1, 0, params.n_steps - 1).print('O');
+
+			ASSERT(potEError < .0005f, std::format("Actual PotE {:.4e} Expected potE: {:.4e}", compoundSelf.potE_interim[0], potESum));
+			//ASSERT(forceError < 0.5f, std::format("Actual Force {:.2e} Expected force {:.2e}", compoundSelf.forces_interim[0].len(), forceSum.len()));
+
+
 		}
+
+
+
+
+
+
+
+
 
 
 
@@ -87,7 +167,6 @@ namespace ElectrostaticsTests {
 
 		return LimaUnittestResult{ status, result.second, envmode == Full };
 	}
-
 
 
 

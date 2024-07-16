@@ -10,6 +10,8 @@ public:
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}
+
+	__device__ __host__ static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) { return movable_index; }
 };
 
 class PeriodicBoundaryCondition {
@@ -31,6 +33,20 @@ public:
 		movable_index.y -= boxSize_device.blocksPerDim * (difference.y < -(boxSize_device.blocksPerDim / 2));
 		movable_index.z += boxSize_device.blocksPerDim * (difference.z > (boxSize_device.blocksPerDim / 2));
 		movable_index.z -= boxSize_device.blocksPerDim * (difference.z < -(boxSize_device.blocksPerDim / 2));
+	}
+
+	__device__ __host__ static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) {
+		NodeIndex hyperIndex = movable_index;
+
+		const NodeIndex difference = static_index - movable_index;
+		hyperIndex.x += boxSize_device.blocksPerDim * (difference.x > (boxSize_device.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
+		hyperIndex.x -= boxSize_device.blocksPerDim * (difference.x < -(boxSize_device.blocksPerDim / 2));
+		hyperIndex.y += boxSize_device.blocksPerDim * (difference.y > (boxSize_device.blocksPerDim / 2));
+		hyperIndex.y -= boxSize_device.blocksPerDim * (difference.y < -(boxSize_device.blocksPerDim / 2));
+		hyperIndex.z += boxSize_device.blocksPerDim * (difference.z > (boxSize_device.blocksPerDim / 2));
+		hyperIndex.z -= boxSize_device.blocksPerDim * (difference.z < -(boxSize_device.blocksPerDim / 2));
+
+		return hyperIndex;
 	}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {		

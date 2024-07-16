@@ -88,7 +88,7 @@ namespace SupernaturalForces {
 			distributedSummation(utilitybuffer_f3, n_particles);	// Get summed relpos in nm at pos[0]
 			if (threadIdx.x == 0) {
 				utilitybuffer_f3[0] *= 1.f / static_cast<float>(n_particles);	// Get average relpos in nm
-				*avg_abspos_nm = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ utilitybuffer_f3[0] });
+				*avg_abspos_nm = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_origo, Coord{ utilitybuffer_f3[0] });
 			}
 		}
 		__syncthreads();

@@ -316,6 +316,8 @@ struct NodeIndex : public Int3 {
 	__host__ __device__ NodeIndex(const Int3& a) : Int3(a) {}
 
 	//__host__ __device__ int32_t dot(const NodeIndex& a) const { return (x * a.x + y * a.y + z * a.z); }
+
+	// This function does NOT return anything position related, only distance related
 	__host__ __device__ Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}

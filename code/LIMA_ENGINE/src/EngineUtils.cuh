@@ -78,7 +78,7 @@ namespace EngineUtils {
 		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
 
 		const int index = databuffers->GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval);
-		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
+		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
 
@@ -94,7 +94,7 @@ namespace EngineUtils {
 		if (solvent_active) {
 			const int index = databuffers->GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval);
 
-			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
+			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
 			databuffers->potE_buffer[index] = potE;
 			databuffers->vel_buffer[index] = velocity.len();
 		}
@@ -124,7 +124,7 @@ namespace EngineUtils {
 		void* output_buffer, Float3& utility_float3, const int n_particles)
 	{
 		if (threadIdx.x == 0) {
-			const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(origo_self, querycompound->origo);
+			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(origo_self, querycompound->origo);
 			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 			// calc Relative LimaPosition Shift from the origo-shift

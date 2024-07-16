@@ -56,7 +56,7 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = sim_dev.box->compounds[compound_id].interaction_boundary.key_particle_indices[i];
-		const Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
+		const Float3 abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
 		result[i] = abspos;
 	}
 }

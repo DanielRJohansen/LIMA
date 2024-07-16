@@ -246,7 +246,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 
-			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
+			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
 			simulation->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, 0) = particle_abspos;
 		}
 	}

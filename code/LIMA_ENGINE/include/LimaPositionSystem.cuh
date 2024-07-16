@@ -116,9 +116,13 @@ namespace LIMAPOSITIONSYSTEM {
 		return std::make_tuple(nodeindex, relpos);
 	}
 
-	__device__ __host__ static Float3 getAbsolutePositionNM(const NodeIndex& nodeindex, const Coord& coord) {
+	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Coord& coord) {
 		return nodeIndexToAbsolutePosition(nodeindex) + relposToAbsolutePosition(coord);
 	}
+	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Float3& relposNM) {
+		return nodeIndexToAbsolutePosition(nodeindex) + relposNM;
+	}
+
 
 	/// <summary>
 	/// Transfer external coordinates to internal multi-range LIMA coordinates
@@ -151,14 +155,14 @@ namespace LIMAPOSITIONSYSTEM {
 	//	return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
 	//}
 
-	// Get hyper index of "other"
-	template <typename BoundaryCondition>
-	__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
-		NodeIndex temp = other;
-		BoundaryCondition::applyHyperpos(self, temp);
-		//applyHyperpos<BoundaryCondition>(self, temp);
-		return temp;
-	}
+	//// Get hyper index of "other"
+	//template <typename BoundaryCondition>
+	//__device__ __host__ static NodeIndex getHyperNodeIndex(const NodeIndex& self, const NodeIndex& other) {
+	//	NodeIndex temp = other;
+	//	BoundaryCondition::applyHyperpos(self, temp);
+	//	//applyHyperpos<BoundaryCondition>(self, temp);
+	//	return temp;
+	//}
 
 
 	// The following two functions MUST ALWAYS be used together
@@ -242,7 +246,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue& coords, int step, int compoundIndex, int particleIndex) {
-		return getAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
+		return GetAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
 	}
 
 
@@ -276,7 +280,7 @@ public:
 		NodeIndex& nodeindex_left = coordarray_circular_queue->getCoordarrayRef(step, compound_index_left)->origo;
 		NodeIndex& nodeindex_right = coordarray_circular_queue->getCoordarrayRef(step, compound_index_right)->origo;
 
-		const NodeIndex hypernodeindex_right = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(nodeindex_left, nodeindex_right);
+		const NodeIndex hypernodeindex_right = BoundaryCondition::applyHyperpos_Return(nodeindex_left, nodeindex_right);
 		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
 
 		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);

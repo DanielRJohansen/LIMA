@@ -313,7 +313,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
 					const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
 					const CompoundCoords* const querycompound = box->compoundcoordsCircularQueue->getCoordarrayRef(signals->step, query_compound_id);
-					const NodeIndex querycompound_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, querycompound->origo);
+					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, querycompound->origo);
 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
 
 					// calc Relative LimaPosition Shift from the origo-shift
@@ -365,7 +365,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
 		const int solventblock_id = neighborlist.gridnode_ids[i];
-		const NodeIndex solventblock_hyperorigo = LIMAPOSITIONSYSTEM::getHyperNodeIndex<BoundaryCondition>(compound_origo, BoxGrid::Get3dIndex(solventblock_id, boxSize_device.boxSizeNM_i));
+		const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(solventblock_id, boxSize_device.boxSizeNM_i));
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
 

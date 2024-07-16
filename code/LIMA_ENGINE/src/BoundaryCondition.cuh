@@ -6,7 +6,6 @@ class NoBoundaryCondition {
 public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
-	__device__ __host__ static void applyBC(PositionHighRes& position) {}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
@@ -22,18 +21,6 @@ public:
 		origo.y -= boxSize_device.blocksPerDim * (origo.y >= boxSize_device.blocksPerDim);
 		origo.z += boxSize_device.blocksPerDim * (origo.z < 0);
 		origo.z -= boxSize_device.blocksPerDim * (origo.z >= boxSize_device.blocksPerDim);
-	}
-
-	__device__ __host__ static void applyBC(PositionHighRes& position) {
-		// Offset position so we grab onto the correct node - NOT REALLY SURE ABOUT THIS...
-		const int64_t offset = BoxGrid::blocksizeLM / 2; // + 1;
-		
-		position.x += boxSize_device.boxSizeLM_i * (position.x + offset < 0);
-		position.x -= boxSize_device.boxSizeLM_i * (position.x + offset >= boxSize_device.boxSizeLM_i);
-		position.y += boxSize_device.boxSizeLM_i * (position.y + offset < 0);
-		position.y -= boxSize_device.boxSizeLM_i * (position.y + offset >= boxSize_device.boxSizeLM_i);
-		position.z += boxSize_device.boxSizeLM_i * (position.z + offset < 0);
-		position.z -= boxSize_device.boxSizeLM_i * (position.z + offset >= boxSize_device.boxSizeLM_i);
 	}
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {

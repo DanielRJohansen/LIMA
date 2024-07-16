@@ -341,54 +341,6 @@ struct NodeIndex : public Int3 {
 
 
 
-/// <summary>
-/// Absolute position in [lm]
-/// </summary>
-struct PositionHighRes {
-	PositionHighRes() = default;
-	PositionHighRes(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
-	PositionHighRes(const NodeIndex& nodeindex, int32_t nodeLen) : 
-		x(static_cast<int64_t>(nodeindex.x) * nodeLen), 
-		y(static_cast<int64_t>(nodeindex.y) * nodeLen), 
-		z(static_cast<int64_t>(nodeindex.z) * nodeLen) 
-	{}
-	PositionHighRes(const Float3& abs_pos_nm) :
-		x(static_cast<int64_t>(static_cast<double>(abs_pos_nm.x) * NANO_TO_LIMA)),
-		y(static_cast<int64_t>(static_cast<double>(abs_pos_nm.y) * NANO_TO_LIMA)),
-		z(static_cast<int64_t>(static_cast<double>(abs_pos_nm.z) * NANO_TO_LIMA))
-	{}
-
-
-
-	__host__ __device__ void operator += (const int64_t& a) { x += a; y += a; z += a; };	// TODO: Remove?
-	__host__ __device__ void operator -= (const int64_t& a) { x -= a; y -= a; z -= a; };
-	inline PositionHighRes operator - (const PositionHighRes& a) const { return PositionHighRes{ x - a.x, y - a.y, z - a.z }; }
-
-	PositionHighRes abs() const { return PositionHighRes{ std::abs(x), std::abs(y), std::abs(z) }; }
-
-	int64_t largestMagnitudeElement() const {
-		return std::max(
-			std::max(std::abs(x), std::abs(y)),
-			std::abs(z)
-		);
-	}
-
-	// Returns the position as a Float3 in nm
-	Float3 toFloat3() const { 
-		return Float3{ 
-			static_cast<double>(x) / NANO_TO_LIMA, 
-			static_cast<double>(y) / NANO_TO_LIMA, 
-			static_cast<double>(z) / NANO_TO_LIMA 
-		};
-	}
-
-	int64_t x = 0, y = 0, z = 0;
-};
-
-
-
-
-
 
 
 struct BoundingBox {

@@ -106,11 +106,11 @@ int main() {
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
 		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
-		//doPoolBenchmarkES(envmode);
+		doPoolBenchmarkES(envmode);
 
 		//Benchmarks::Psome(envmode);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

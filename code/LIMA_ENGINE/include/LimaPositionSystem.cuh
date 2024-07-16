@@ -41,9 +41,9 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <returns></returns>
 	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posLM) {
 		NodeIndex nodeindex{
-			static_cast<int>(floor((posLM.x) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(floor((posLM.y) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(floor((posLM.z) / static_cast<float>(BoxGrid::blocksizeLM)))
+			static_cast<int>(round((posLM.x) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(round((posLM.y) / static_cast<float>(BoxGrid::blocksizeLM))),
+			static_cast<int>(round((posLM.z) / static_cast<float>(BoxGrid::blocksizeLM)))
 		};
 
 		return nodeindex;
@@ -146,10 +146,10 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 
-	__device__ __host__ static bool canRepresentRelativeDist(const Coord& origo_a, const Coord& origo_b) {
-		const auto diff = origo_a - origo_b;
-		return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
-	}
+	//__device__ __host__ static bool canRepresentRelativeDist(const Coord& origo_a, const Coord& origo_b) {
+	//	const auto diff = origo_a - origo_b;
+	//	return std::abs(diff.x) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.y) < MAX_REPRESENTABLE_DIFF_NM && std::abs(diff.z) < MAX_REPRESENTABLE_DIFF_NM;
+	//}
 
 	// Get hyper index of "other"
 	template <typename BoundaryCondition>

@@ -46,6 +46,8 @@ namespace PhysicsUtils {
 	// <returns>[J/mol]</returns>
 	__device__ __host__ inline constexpr float CalcCoulumbPotential(const float myCharge, const float otherCharge, const float distance) 
 	{
+		return distance * 2.f;
+
 		// N * m = J
 		const float modifiedCoulombConstant = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol * nm / (kilo C/mol)^2] 
 

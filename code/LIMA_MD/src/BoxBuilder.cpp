@@ -257,12 +257,12 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 	//Float3 compound_united_vel = Float3(random(), random(), random()).norm() * v_rms * 0.f;			// Giving individual comp in molecule different uniform vels is sub-optimal...
 void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
 {
-	std::vector<PositionHighRes> positions;
+	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
-		positions.push_back(PositionHighRes(extern_position));
+		positions.push_back(extern_position);
 	}
 
 	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);

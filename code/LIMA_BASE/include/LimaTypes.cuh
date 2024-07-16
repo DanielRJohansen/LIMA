@@ -252,7 +252,7 @@ struct Double3 {
 
 // LIMA Coordinate3
 struct Coord {
-	int32_t x = 0, y = 0, z = 0;
+	int32_t x = 0, y = 0, z = 0;	// [lm]
 
 	__device__ __host__ Coord() {};
 	__device__ __host__ explicit Coord(Float3 pos_abs) {

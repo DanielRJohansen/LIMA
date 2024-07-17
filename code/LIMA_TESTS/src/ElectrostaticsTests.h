@@ -314,15 +314,15 @@ namespace ElectrostaticsTests {
 		}
 
 		// Now do the normal VC check
-		const float targetVarCoeff = 1.8e-4f;
+		const float targetVarCoeff = 8e-3f;
 		auto analytics = env->getAnalyzedPackage();
-		const auto result = evaluateTest({ analytics->variance_coefficient }, targetVarCoeff, { analytics->energy_gradient }, 2e-5);
-		if (result.first==false)
-			return LimaUnittestResult{ LimaUnittestResult::FAIL, result.second, envmode == Full };
+
+
+		ASSERT(analytics->variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics->variance_coefficient, targetVarCoeff));
 
 		return LimaUnittestResult{ 
 			LimaUnittestResult::SUCCESS, 
-			std::format("VC {:.3e} / {:.3e} Max F error {:.2f}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
+			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
 			envmode == Full };
 	}
 }

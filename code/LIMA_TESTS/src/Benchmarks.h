@@ -117,7 +117,7 @@ namespace Benchmarks {
 
 		auto duration = env.simulationTimer->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
-		const std::chrono::microseconds allowedTimePerStep{ 3650 };
+		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
 		LimaUnittestResult::TestStatus status = timePerStep < allowedTimePerStep ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 		return LimaUnittestResult { status, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};

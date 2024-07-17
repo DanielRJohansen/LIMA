@@ -111,7 +111,8 @@ namespace Benchmarks {
 
 		GroFile grofile{ work_dir / "molecule" / "em.gro" };
 		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
-		const SimParams ip{ work_dir / "sim_params.txt" };
+		SimParams ip{ work_dir / "sim_params.txt" };
+		ip.enable_electrostatics = true;
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false, false);
 

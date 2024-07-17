@@ -33,9 +33,9 @@ struct CompoundGridNode {
 namespace Electrostatics {
 
 	struct ChargeNode {
-		static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
+		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-		//static const int maxParticlesInNode = 256;
+		static const int maxParticlesInNode = 264;
 
 		//float totalCharge = 0.f;
 
@@ -45,6 +45,7 @@ namespace Electrostatics {
 		int compoundIds[maxParticlesInNode];	// We need to know where the charges belong to..
 		int particleIds[maxParticlesInNode];
 	};
+	//constexpr int aaa = sizeof(ChargeNode) * 20 * 20 * 20 / 1000000;
 }
 
 // Extra functions that require access to kernel constants

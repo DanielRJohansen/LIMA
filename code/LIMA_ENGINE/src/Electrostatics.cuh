@@ -170,7 +170,7 @@ namespace Electrostatics {
 			//printf("Resulting force %f potE %f \n", force.len(), potE);
 
 			simDev->box->compounds[cid].potE_interim[pid] += potE;
-			simDev->box->compounds[cid].forces_interim[pid] += force; 
+			simDev->box->compounds[cid].forces_interim[pid] += force * 0.1f; 
 		}
 
 		__syncthreads();
@@ -180,11 +180,19 @@ namespace Electrostatics {
 			BoxGrid::GetNodePtr(simDev->chargeGrid, index3D)->nParticles = 0;
 	}
 
-	__host__ static void HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
+	// Returns timing in [ys]
+	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
 	{
+		const auto t0 = std::chrono::high_resolution_clock::now();
+
 		// First handle short range
 		HandleShortrangeElectrostatics<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), ChargeNode::maxParticlesInNode >> > (sim_dev);
-		//HandleShortrangeElectrostatics << <32, 7 >> > (sim_dev);
+
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
+
+
+		const auto t1 = std::chrono::high_resolution_clock::now();
+		return static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 	}
 
 

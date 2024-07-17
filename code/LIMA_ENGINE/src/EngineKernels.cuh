@@ -239,6 +239,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
 	NodeIndex compound_origo{};
+
+	const float particleCharge = simparams.enable_electrostatics	// TODO: this is temporary
+		? static_cast<float>(box->compounds[blockIdx.x].atom_charges[threadIdx.x])
+		: 0.f;
+
 	{
 		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
@@ -301,6 +306,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
 		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
 
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size + sizeof(half) * MAX_COMPOUND_PARTICLES, 
+			"Utilitybuffer not large enough for neighbor charges");
+		half* particleChargesNeighbors = (half*)(&utility_buffer[utilitybuffer_reserved_size + sizeof(BondedParticlesLUT)]);
+
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		__syncthreads();
 		int batch_index = batchsize;
@@ -333,6 +342,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			// Load the current neighbors atomtypes and positions
 			if (threadIdx.x < n_particles_neighbor) {
 				atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
+				particleChargesNeighbors[threadIdx.x] = box->compounds[neighborcompound_id].atom_charges[threadIdx.x];
 			}
 			EngineUtils::getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
 			__syncthreads();
@@ -353,7 +363,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			else {
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared);
+						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared, particleCharge, particleChargesNeighbors);
 				}
 			}
 			batch_index++;
@@ -411,7 +421,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	if constexpr (ENABLE_ELECTROSTATICS) {
 		if (simparams.enable_electrostatics) {
 			__syncthreads();
-			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
+			//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
 		}
 	}
 

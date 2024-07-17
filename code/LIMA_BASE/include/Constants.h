@@ -32,8 +32,6 @@ constexpr float PI = 3.14159f;
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-constexpr float CUTOFF_NM = 1.2f;
-
 const int RAMPUP_STEPS = 0;					// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
@@ -58,7 +56,7 @@ static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create da
 
 constexpr double KILO = 1e3;
 constexpr double NANO = 1e-9;
-
+constexpr double LIMA = NANO / NANO_TO_LIMA;
 
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
@@ -66,8 +64,6 @@ constexpr float AngToNm = 0.1f;
 const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
-
-constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	

@@ -36,6 +36,8 @@ struct SimParams {
 
 	int data_logging_interval = 5;
 
+	float cutoff_nm = 1.2f;
+
 	static std::string defaultPath() { return "sim_params.txt"; };
 };
 

@@ -170,7 +170,7 @@ namespace Electrostatics {
 			//printf("Resulting force %f potE %f \n", force.len(), potE);
 
 			simDev->box->compounds[cid].potE_interim[pid] += potE;
-			simDev->box->compounds[cid].forces_interim[pid] += force * 0.1f; 
+			simDev->box->compounds[cid].forces_interim[pid] += force; 
 		}
 
 		__syncthreads();

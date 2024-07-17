@@ -109,7 +109,7 @@ namespace LJ {
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield)
 	{
 		Float3 force(0.f);
-
+		Float3 electrostaticForce{};
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 
 			// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
@@ -119,37 +119,46 @@ namespace LJ {
 
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {	// TODO: no need to do check for intracompound
+				force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
+					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+					ljorigin,
+					threadIdx.x, neighborparticle_id
+				);
+			}
 
-			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
-				ljorigin,
-				threadIdx.x, neighborparticle_id
-			);
+			//electrostaticForce += PhysicsUtils::CalcCoulumbForce()
+
 		}
 		return force * 24.f;
 	}
 
 	// For non bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield)
+		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, float chargeSelf, const half* const chargeNeighbors)
 	{
 		Float3 force(0.f);
+		Float3 electrostaticForce{};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
+				force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
+					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+					CalcLJOrigin::ComComInter
+					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
+				);
+			}
 
-			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
-				CalcLJOrigin::ComComInter
-				//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
-			);
+			if constexpr (ENABLE_ELECTROSTATICS) {
+				electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+				potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+			}
 		}
-		return force * 24.f;
+		return force * 24.f + electrostaticForce;
 	}
 
 

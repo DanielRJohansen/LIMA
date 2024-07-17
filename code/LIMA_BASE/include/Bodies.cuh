@@ -258,7 +258,7 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-	float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
+	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];

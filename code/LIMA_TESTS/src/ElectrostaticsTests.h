@@ -77,6 +77,7 @@ namespace ElectrostaticsTests {
 			params.n_steps = step;
 			params.enable_electrostatics = true;
 			params.data_logging_interval = 1;
+			params.cutoff_nm = 2.f;
 			GroFile grofile{ conf };
 			grofile.box_size = Float3{ 3.f };
 			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
@@ -263,6 +264,7 @@ namespace ElectrostaticsTests {
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.enable_electrostatics = true;
+		simparams.cutoff_nm = 1.5f;
 		auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);
 
 		env->run();

@@ -183,14 +183,15 @@ public:
 	__device__ __host__ bool addGridnode(int gridnode_id) {
 		if (n_gridnodes >= max_gridnodes) {
 			//throw std::runtime_error("No room for more nearby gridnodes"); }
-			printf("No room for more nearby gridnodes");
+			printf("No room for more nearby gridnodes\n");
 			return false;
 		}
 		gridnode_ids[n_gridnodes++] = gridnode_id;
 		return true;
 	}
 
-	static const int max_gridnodes = 64 + 4;	// Arbitrary value
+	//static const int max_gridnodes = 64 + 4;	// Arbitrary value
+	static const int max_gridnodes = 128;	// Arbitrary value
 	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;
 #endif

@@ -79,14 +79,19 @@ void Engine::setDeviceConstantMemory() {
 	boxSize_host.Set(simulation->boxparams_host.boxSize);
 	cudaMemcpyToSymbol(boxSize_device, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
 	//SetConstantMem(simulation->boxparams_host.boxSize);
-	BoxSize bs;
-	cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
+	//BoxSize bs;
+	//cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
 
-	cudaDeviceSynchronize();
+//	cudaDeviceSynchronize();
 
 
-	BoxSize bs1;
-	cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+	//BoxSize bs1;
+	//cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+
+	cudaMemcpyToSymbol(cutoffNm_device, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
+	const float cutoffLmSquaredReciprocal = 1.f / (simulation->simparams_host.cutoff_nm * NANO_TO_LIMA * simulation->simparams_host.cutoff_nm * NANO_TO_LIMA);
+	cudaMemcpyToSymbol(cutoffLmSquaredReciprocal_device, &cutoffLmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
+
 
 	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
 
@@ -279,7 +284,7 @@ void Engine::deviceMaster() {
 //#endif
 	if constexpr (ENABLE_ELECTROSTATICS) {
 		if (simulation->simparams_host.enable_electrostatics) {
-			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, simulation->boxparams_host);
+			//timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, simulation->boxparams_host);
 		}
 	}
 	const auto t0b = std::chrono::high_resolution_clock::now();

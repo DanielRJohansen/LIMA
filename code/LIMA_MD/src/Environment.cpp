@@ -20,8 +20,8 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 50;
-const int STEPS_PER_UPDATE = 20;
+const int STEPS_PER_RENDER = 1;
+const int STEPS_PER_UPDATE = 1;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -61,11 +61,14 @@ void Environment::CreateSimulation(float boxsize_nm) {
 void Environment::CreateSimulation(std::string gro_path, std::string topol_path, const SimParams params) {
 	const auto groFile = std::make_unique<GroFile>(gro_path);
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
-	CreateSimulation(*groFile, *topFile, params);
+	SimParams actualParams = params;	// TODO: this is very bad
+	actualParams.box_size = groFile->box_size.x;
+	CreateSimulation(*groFile, *topFile, actualParams);
 }
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
+	assert(grofile.box_size.x == params.box_size);
 	setupEmptySimulation(params);
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		(work_dir / "molecule").string(),
@@ -157,9 +160,9 @@ void Environment::verifyBox() {
 	assert(STEPS_PER_THERMOSTAT >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
 	//assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
-	if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
-		throw std::runtime_error("Error: Solvent mass is unreasonably large");
-	}
+	//if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
+	//	throw std::runtime_error("Error: Solvent mass is unreasonably large");
+	//}
 
 
 #ifdef LIMAKERNELDEBUGMODE

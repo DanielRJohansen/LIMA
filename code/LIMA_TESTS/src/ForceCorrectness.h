@@ -3,6 +3,8 @@
 #include "TestUtils.h"
 #include "MDStability.cuh"	//Gives access to the testGenericBox
 #include "PhysicsUtils.cuh"
+#include "format"
+
 
 namespace ForceCorrectness {
 	using namespace TestUtils;
@@ -112,6 +114,124 @@ namespace ForceCorrectness {
 
 		return LimaUnittestResult{status, result.second, envmode == Full };
 	}
+
+
+
+	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
+		const std::string work_folder = simulations_dir + "Singlebond/";
+		const std::string conf = work_folder + "molecule/conf.gro";
+		const std::string topol = work_folder + "molecule/topol.top";
+		const std::string simpar = work_folder + "sim_params.txt";
+		Environment env{ work_folder, envmode, false };
+
+		SimParams params{ simpar };
+		params.n_steps = 1;
+		params.data_logging_interval = 1;
+		const float bondlenErrorNM = 0.02f; //(r-r0) [nm]
+		const float bondlenErrorLM = bondlenErrorNM * NANO_TO_LIMA;
+
+		GroFile grofile{ conf };
+		TopologyFile topfile{ topol };
+		env.CreateSimulation(grofile, topfile, params);
+
+		Box& box_host = *env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA);
+
+
+		// Now figure the expected force and potential
+		const double kB = box_host.compounds[0].singlebonds[0].kb / 2.; // [J/(mol lm^2)]
+		const Float3 dir = (coordarray_ptr[0].rel_positions[1].toFloat3() - coordarray_ptr[0].rel_positions[0].toFloat3()).norm();
+		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
+		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
+
+
+		env.run();
+
+		const auto sim = env.getSim();
+		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
+		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
+		const Float3 actualForce = sim->box_host->compounds[0].forces_prev[0];
+
+
+		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
+		ASSERT(forceError < 0.0001f, std::format("Expected force: {:.2e} {:.2e} {:.2e} Actual force: {:.2e} {:.2e} {:.2e} Error: {:.2e}", 
+			expectedForce.x, expectedForce.y, expectedForce.z, actualForce.x, actualForce.y, actualForce.z, forceError));
+
+		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
+		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
+
+		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full };
+	}
+
+
+	// Test that a singlebond oscillates at the correct frequency
+	LimaUnittestResult SinglebondOscillationTest(EnvMode envmode) {
+		const std::string work_folder = simulations_dir + "Singlebond/";
+		const std::string conf = work_folder + "molecule/conf.gro";
+		const std::string topol = work_folder + "molecule/topol.top";
+		const std::string simpar = work_folder + "sim_params.txt";
+		Environment env{ work_folder, envmode, false };
+
+		const float particle_mass = 12.011000f * 1e-3f;
+
+		SimParams params{ simpar };
+		// Set time to 1000 [fs]
+		params.dt = 100.f;
+		params.n_steps = 1000; 
+		params.data_logging_interval = 1;
+		const float timeElapsed = params.dt * params.n_steps * LIMA_TO_FEMTO; // [fs]
+		float bond_len_error = 0.08f ; //(r-r0) [nm]
+			
+
+		GroFile grofile{ conf };
+		TopologyFile topfile{ topol };
+		env.CreateSimulation(grofile, topfile, params);
+
+		Box& box_host = *env.getSimPtr()->box_host.get();
+		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
+
+
+
+
+		// Now figure out how fast the bond should oscillate
+		const auto atomtypeA = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[0]];
+		const auto atomtypeB = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[1]];
+
+		const double reducedMass = atomtypeA.mass * atomtypeB.mass / (atomtypeA.mass + atomtypeB.mass); // [kg/mol]
+		const double kB = box_host.compounds[0].singlebonds[0].kb / LIMA / LIMA; // [J/(mol m^2)]
+
+		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
+
+
+		env.run();
+
+		const auto sim = env.getSim();
+
+		std::vector<float> bondlenOverTime(params.n_steps);	// [nm]
+		for (int i = 0; i < params.n_steps; i++) {
+			bondlenOverTime[i] = (sim->traj_buffer->getCompoundparticleDatapointAtIndex(0, 0, i) - sim->traj_buffer->getCompoundparticleDatapointAtIndex(0, 1, i)).len();
+		}
+
+		const int nOscillations = SimAnalysis::CountOscillations(bondlenOverTime);
+		const float actualFrequency = static_cast<float>(nOscillations) / timeElapsed; // [1/fs]
+
+		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
+		const float errorThreshold = 1e-2;
+
+		return LimaUnittestResult{ error < errorThreshold ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL, 
+			std::format("Expected frequency: {:.5e} [1/fs], Actual frequency: {:.5e} [1/fs], Error: {}", expectedFrequency, actualFrequency, error),
+			envmode == Full };
+	}
+
+
+
+
+
+
+
+
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.0031) {
 		const std::string work_folder = simulations_dir + "Singlebond/";

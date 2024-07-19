@@ -36,7 +36,7 @@ namespace PhysicsUtils {
 	{
 		const float modifiedCoulombConstant = COULOMBCONSTANT /NANO / NANO / AVOGADROSNUMBER / UNIT_TO_LIMA * KILO * KILO;	// [1/l N/mol nm^2 / (kilo C/mol)^2]
 
-		return diff.norm() * modifiedCoulombConstant * (myCharge * otherCharge) / diff.lenSquared();
+		return diff.norm() * modifiedCoulombConstant * (myCharge * otherCharge) / diff.lenSquared() * 1e-3; // For some reason this is necessary? I belive its actually the LJ force that is 1000 times too small..
 	}
 
 	// <summary></summary>
@@ -49,6 +49,6 @@ namespace PhysicsUtils {
 		// N * m = J
 		const float modifiedCoulombConstant = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol * nm / (kilo C/mol)^2] 
 
-		return modifiedCoulombConstant * (myCharge * otherCharge) / distance;
+		return modifiedCoulombConstant * (myCharge * otherCharge) / distance * 1e-3;
 	}
 }

@@ -50,6 +50,8 @@ int main() {
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
+		//SinglebondForceAndPotentialSanityCheck(envmode);
+		//HydrogenBondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
 		//doDihedralbondBenchmark(envmode);
@@ -134,7 +136,11 @@ void runAllUnitTests() {
 	constexpr auto envmode = EnvMode::Headless;
 
 	
-	// Singled out forces test
+	// Isolated forces sanity checks
+	ADD_TEST(testman, "SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
+	ADD_TEST(testman, "SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+
+	// Stability tests
 	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
 	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));

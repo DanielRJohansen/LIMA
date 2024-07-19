@@ -106,10 +106,12 @@ namespace LJ {
 	// For intraCompound or bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
-		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield)
+		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
+		float chargeSelf, const half* const charges)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
+
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 
 			// If thread's assoc. particle is bonded to the particle in neighborcompound, continue
@@ -127,15 +129,19 @@ namespace LJ {
 				);
 			}
 
-			//electrostaticForce += PhysicsUtils::CalcCoulumbForce()
+			electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
+			potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
 
 		}
-		return force * 24.f;
+		//printf("\nElectrostatic force %f %f %f\n", electrostaticForce.x, electrostaticForce.y, electrostaticForce.z);
+		//printf("ES %f LJ %f \n", electrostaticForce.len(), force.len() * 24.f);
+		return force * 24.f + electrostaticForce;
 	}
 
 	// For non bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, float chargeSelf, const half* const chargeNeighbors)
+		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
+		float chargeSelf, const half* const chargeNeighbors)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -161,8 +167,8 @@ namespace LJ {
 		return force * 24.f + electrostaticForce;
 	}
 
-
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {	// Specific to solvent kernel
+	// Specific to solvent kernel
+	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {
 		Float3 force{};
 
 		for (int i = 0; i < n_elements; i++) {

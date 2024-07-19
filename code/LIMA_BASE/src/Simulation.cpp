@@ -52,6 +52,7 @@ SimParams::SimParams(const fs::path& path) {
 	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
 	overloadParamNumber(dict, n_steps, "n_steps");
 	overloadParamNumber(dict, box_size, "boxlen");
+	overloadParamNumber(dict, data_logging_interval, "data_logging_interval");
 
 	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
 		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }
@@ -76,7 +77,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
 	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
 	file << "boxlen=" << box_size << " # [nm]\n";
-
+	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
 	file.close();
 }
 

@@ -27,7 +27,7 @@ struct SingleBond {
 	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
 
 	float b0 = 0.f;	// [lm]
-	float kb = 0.f;	// [J/(mol*lm^2)]
+	float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
 	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
 	const static int n_atoms = 2;
 };
@@ -36,8 +36,8 @@ struct AngleBond {
 	AngleBond() {}
 	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
 
-	float theta_0 = 0.f;
-	float k_theta = 0.f;
+	float theta_0 = 0.f;	// [rad]
+	float k_theta = 0.f;	// [J/mol/rad]
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
 };

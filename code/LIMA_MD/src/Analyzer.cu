@@ -6,6 +6,7 @@
 #include "Filehandling.h"
 
 #include <algorithm>
+#include <numeric>
 
 using namespace LIMA_Print;
 
@@ -475,3 +476,34 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 	cudaFree(energyBufferDevice);
 	cudaFree(compoundsDevice);
 }
+
+
+
+
+
+
+
+int SimAnalysis::CountOscillations(std::vector<float>& data) {
+	if (data.size() < 2) return 0;
+
+	// Calculate mean value
+	const float mean = std::accumulate(data.begin(), data.end(), 0.0) / data.size();
+
+	int count = 0;
+	bool aboveMean = data[0] > mean;
+
+	for (size_t i = 1; i < data.size(); ++i) {
+		bool currentAboveMean = data[i] > mean;
+		if (!aboveMean && currentAboveMean) {
+			++count;
+		}
+		aboveMean = currentAboveMean;
+	}
+
+	return count;
+}
+
+
+
+
+

@@ -28,7 +28,7 @@ struct SimParams {
 	bool em_variant = false;
 	BoundaryConditionSelect bc_select{ PBC };
 	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
-	float box_size = 7.f;								// [nm]
+	float box_size = 7.f;	// [nm] TODO: wtf is this doing here? SHould only be available in boxparams, from a grofile
 	bool enable_electrostatics = false;
 
 

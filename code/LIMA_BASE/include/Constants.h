@@ -56,6 +56,7 @@ static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create da
 
 constexpr double KILO = 1e3;
 constexpr double NANO = 1e-9;
+constexpr double FEMTO = 1e-15;
 constexpr double LIMA = NANO / NANO_TO_LIMA;
 
 constexpr float kcalToJoule = 4184.f;
@@ -68,8 +69,9 @@ const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some othe
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
+constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
 
-constexpr float elementaryChargeToKiloCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER / 1000.;
+constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / 1000.;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

@@ -80,4 +80,6 @@ static float getStdDev(const std::vector<float>& vec) {
 
 namespace SimAnalysis {
 	void PlotPotentialEnergyDistribution(const Simulation& sim, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot);
+
+	int CountOscillations(std::vector<float>& data);
 }

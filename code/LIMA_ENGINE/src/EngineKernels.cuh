@@ -278,14 +278,19 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		BondedParticlesLUT* bplut_global = box->bonded_particles_lut_manager->get(compound_index, compound_index);
 		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
-
 		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
+
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
+			"Utilitybuffer not large enough for neighbor charges");
+		half* particleChargesCompound = (half*)(&utility_buffer[sizeof(BondedParticlesLUT)]);
+		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
 			force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
-				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared);
+				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
+			particleCharge, particleChargesCompound);
 		}
 
 		__syncthreads();
@@ -357,7 +362,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LJ::CalcLJOrigin::ComComInter, forcefield_shared);
+						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
+						particleCharge, particleChargesNeighbors);
 				}
 			}
 			else {

@@ -387,7 +387,7 @@ struct ForceField_NB {
 	struct ParticleParameters {	//Nonbonded
 		float mass = -1;		//[kg/mol]	or 
 		float sigma = -1;		// []
-		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]
+		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]	// TODO check units here!!!!!
 	};
 
 	ParticleParameters particle_parameters[MAX_ATOM_TYPES];
@@ -395,16 +395,22 @@ struct ForceField_NB {
 
 
 class UniformElectricField {
-	Float3 field;	// [V/nm]
+	Float3 field;	// [mV/limameter]
 
 	public:
 		UniformElectricField() {}
-		__host__ UniformElectricField(Float3 direction, float magnitude) : field(direction.norm() * magnitude * 1e-9) {
+		/// <summary></summary>
+		/// <param name="direction"></param>
+		/// <param name="magnitude">[V/nm]</param>
+		__host__ UniformElectricField(Float3 direction, float magnitude) 
+			: field(direction.norm() * magnitude * KILO * LIMA_TO_NANO) {
 			assert(direction.len() != 0.f);
 		}
 	
-	// TODO fix the units here
-	__device__ Float3 GetForce(float charge /* [kilo C/mol] */) {
+	/// <summary></summary>
+	/// <param name="charge">[kC/mol]</param>
+	/// <returns>[gigaN/mol]</returns>
+	__device__ Float3 GetForce(float charge) {
 		return field * charge;
 	}
 };

@@ -15,6 +15,7 @@ using namespace StressTesting;
 using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
+using namespace VerletintegrationTesting;
 void runAllUnitTests();
 
 //void makeLipids() {
@@ -80,7 +81,7 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 	
 
-
+		TestIntegration(envmode);
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
@@ -112,7 +113,7 @@ int main() {
 
 		//Benchmarks::Psome(envmode);
 
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

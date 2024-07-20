@@ -436,3 +436,54 @@ namespace StressTesting {
 		return true;
 	}
 }
+
+
+namespace VerletintegrationTesting {
+	using namespace TestUtils;
+
+	// Apply a constant force on a particle, and check that the particles achieves the expected kinetic energy
+	LimaUnittestResult TestIntegration(EnvMode envmode) {
+		const std::string work_folder = simulations_dir + "Pool/";
+
+		Environment env{ work_folder, envmode, false };
+
+		SimParams params{};
+		params.n_steps = 1000;
+		params.enable_electrostatics = true;
+		params.data_logging_interval = 1;
+		params.snf_select = HorizontalChargeField;
+
+		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * LIMA; // [s]
+
+		GroFile grofile{ work_folder + "molecule/conf.gro" };
+		TopologyFile topfile{ work_folder + "molecule/topol.top" };
+		grofile.atoms.pop_back();
+		topfile.GetLocalAtoms().pop_back();
+
+		env.CreateSimulation(grofile, topfile, params);
+		const float electricFieldStrength = .5f ; // [V/nm]
+		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, electricFieldStrength };
+
+
+
+		const float particleCharge = static_cast<float>(env.getSimPtr()->box_host->compounds[0].atom_charges[0]) * KILO; // [C/mol]
+		const float particleMass = env.getSimPtr()->forcefield.particle_parameters[1].mass; // [kg/mol]
+
+		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
+		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]
+
+		env.run();
+
+
+
+		const float actualKineticEnergy = env.getAnalyzedPackage()->kin_energy.back();
+
+		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
+
+		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
+
+
+		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
+	}
+
+}

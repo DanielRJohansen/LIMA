@@ -68,10 +68,14 @@ namespace LJ {
 
 #ifdef ENABLE_LJ
 
-	// This function does not add the 24 scalar, the caller function must do so!
-	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
-	// Returns force in J/mol*M??
-	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma /*[nm]*/, const float epsilon /*[(kg*nm^2)/(ns^2*mol)]*/,
+	/// <summary></summary>
+	/// <param name="diff">[lm]</param>
+	/// <param name="dist_sq_reciprocal"></param>
+	/// <param name="potE">[J/mol]</param>
+	/// <param name="sigma">[lm]</param>
+	/// <param name="epsilon">[J/mol]</param>
+	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
+	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
 
@@ -79,18 +83,18 @@ namespace LJ {
 		// Directly from book
 		float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 		s = s * s * s;
-		const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+		const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (CALC_POTE) {
-			potE += 2.f * epsilon * s * (s - 1.f);	// 2.f instead of 2.f to account for 2 particles doing the same calculation
+			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
 
-		return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
+		return force;	// [1/24 1/lima N/mol]
 	}
 #else 
 	__device__ static Float3 calcLJForceOptim(const Float3&, float, float& , float , float , CalcLJOrigin, int, int) {

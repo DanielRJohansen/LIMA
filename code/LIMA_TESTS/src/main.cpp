@@ -65,7 +65,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f);
+		loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
@@ -81,7 +81,7 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 	
 
-		TestIntegration(envmode);
+		//TestIntegration(envmode);
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
@@ -110,6 +110,7 @@ int main() {
 		//CoulombForceSanityCheck(envmode);
 		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
 		//doPoolBenchmarkES(envmode);
+		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
 		//Benchmarks::Psome(envmode);
 
@@ -140,6 +141,7 @@ void runAllUnitTests() {
 	// Isolated forces sanity checks
 	ADD_TEST(testman, "SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST(testman, "SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+	ADD_TEST(testman, "TestIntegration", TestIntegration(envmode));
 
 	// Stability tests
 	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));

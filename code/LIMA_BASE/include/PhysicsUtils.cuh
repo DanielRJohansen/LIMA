@@ -34,9 +34,9 @@ namespace PhysicsUtils {
 	/// <returns>[1/l N/mol]</returns>
 	__device__ __host__ inline Float3 CalcCoulumbForce(const float myCharge, const float otherCharge, const Float3& diff /*self - other*/) 
 	{
-		const float modifiedCoulombConstant = COULOMBCONSTANT /NANO / NANO / AVOGADROSNUMBER / UNIT_TO_LIMA * KILO * KILO;	// [1/l N/mol nm^2 / (kilo C/mol)^2]
+		const float modifiedCoulombConstant = COULOMBCONSTANT /NANO / NANO / AVOGADROSNUMBER * LIMA * KILO * KILO;	// [1/l N/mol nm^2 / (kilo C/mol)^2]
 
-		return diff.norm() * modifiedCoulombConstant * (myCharge * otherCharge) / diff.lenSquared() * 1e-3; // For some reason this is necessary? I belive its actually the LJ force that is 1000 times too small..
+		return diff.norm() * modifiedCoulombConstant * (myCharge * otherCharge) / diff.lenSquared();
 	}
 
 	// <summary></summary>
@@ -49,6 +49,6 @@ namespace PhysicsUtils {
 		// N * m = J
 		const float modifiedCoulombConstant = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol * nm / (kilo C/mol)^2] 
 
-		return modifiedCoulombConstant * (myCharge * otherCharge) / distance * 1e-3;
+		return modifiedCoulombConstant * (myCharge * otherCharge) / distance;
 	}
 }

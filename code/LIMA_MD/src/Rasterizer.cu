@@ -5,7 +5,7 @@
 __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const Float3* positions, const Compound* compounds, ColoringMethod coloringMethod, float boxLenNM);
 __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds, int n_solvents, RenderAtom* atoms, float boxLenNM, int nCompoundParticles);
 
-const bool drawSolvent = false;
+const bool drawSolvent = true;
 const bool drawHydrogens = false;
 
 void Rasterizer::initialize(const BoxParams& boxparams, const std::vector<Compound>& compounds) {

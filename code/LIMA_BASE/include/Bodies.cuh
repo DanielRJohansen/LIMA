@@ -28,7 +28,7 @@ struct SingleBond {
 
 	float b0 = 0.f;	// [lm]
 	float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
-	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
+	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
 	const static int n_atoms = 2;
 };
 
@@ -37,7 +37,7 @@ struct AngleBond {
 	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
 
 	float theta_0 = 0.f;	// [rad]
-	float k_theta = 0.f;	// [J/mol/rad]
+	float k_theta = 0.f;	// [J/mol/rad^2]
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
 };
@@ -386,8 +386,8 @@ struct CompoundBridgeBundleCompact {
 struct ForceField_NB {
 	struct ParticleParameters {	//Nonbonded
 		float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;		// []
-		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]	// TODO check units here!!!!!
+		float sigma = -1;		// [lm]
+		float epsilon = -1;		// [J/mol]
 	};
 
 	ParticleParameters particle_parameters[MAX_ATOM_TYPES];

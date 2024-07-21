@@ -50,7 +50,6 @@ constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 constexpr int64_t NANO_TO_LIMA_i = static_cast<int64_t>(NANO_TO_LIMA);
 constexpr float LIMA_TO_NANO = 1.f / NANO_TO_LIMA;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
-constexpr double UNIT_TO_LIMA = 1e9 * NANO_TO_LIMA;
 
 static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
@@ -72,7 +71,7 @@ constexpr double AVOGADROSNUMBER = 6.02214076e23;
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
 constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
 
-constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / 1000.;
+constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / KILO;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

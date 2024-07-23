@@ -118,6 +118,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	if (threadIdx.x < compound.n_particles) {
 		force += box->compounds[blockIdx.x].forces_interim[threadIdx.x];
 		potE_sum += box->compounds[blockIdx.x].potE_interim[threadIdx.x];
+		//potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
 	}
 	
 
@@ -424,12 +425,12 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 
 	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
-	if constexpr (ENABLE_ELECTROSTATICS) {
-		if (simparams.enable_electrostatics) {
-			__syncthreads();
-			//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
-		}
-	}
+	//if constexpr (ENABLE_ELECTROSTATICS) {
+	//	if (simparams.enable_electrostatics) {
+	//		__syncthreads();
+	//		//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
+	//	}
+	//}
 
 
 	// This is the first kernel, so we overwrite

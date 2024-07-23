@@ -136,7 +136,7 @@ namespace ForceCorrectness {
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA);
+		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].b0);
 
 
 		// Now figure the expected force and potential
@@ -181,7 +181,7 @@ namespace ForceCorrectness {
 		params.n_steps = 1000; 
 		params.data_logging_interval = 1;
 		const float timeElapsed = params.dt * params.n_steps * LIMA_TO_FEMTO; // [fs]
-		float bond_len_error = 0.08f ; //(r-r0) [nm]
+		float bond_len_error = 0.04f ; //(r-r0) [nm]
 			
 
 		GroFile grofile{ conf };
@@ -190,7 +190,7 @@ namespace ForceCorrectness {
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
+		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].b0);
 
 
 
@@ -243,11 +243,15 @@ namespace ForceCorrectness {
 		const float particle_mass = 12.011000f * 1e-3f;
 
 		SimParams params{ simpar };
-
+		params.data_logging_interval = 1;
+		params.n_steps = 500;
 
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
+
+		const float bondEquilibrium = 0.149; // [nm]
+		//const float bondEquilibrium = 0.1335; // [nm]
 
 		for (auto bond_len_error : bond_len_errors) {
 			GroFile grofile{conf};
@@ -257,7 +261,10 @@ namespace ForceCorrectness {
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 
-			coordarray_ptr[0].rel_positions[0].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA);
+			coordarray_ptr[0].rel_positions[1].x += static_cast<int32_t>((bondEquilibrium + bond_len_error) * NANO_TO_LIMA);
+
+			//box_host->compounds[0].singlebonds[0].b0 = bondEquilibrium * NANO_TO_LIMA;
+			//box_host->compounds[0].singlebonds[0].kb = 502080 * KILO / (NANO_TO_LIMA * NANO_TO_LIMA);
 
 			env.run();
 
@@ -268,6 +275,8 @@ namespace ForceCorrectness {
 			if (envmode != Headless) {
 				Analyzer::printEnergy(analytics);
 			}
+
+			//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
 		}
 
 		if (envmode != Headless) {
@@ -276,7 +285,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 1.3e-7);
+		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2.e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full };

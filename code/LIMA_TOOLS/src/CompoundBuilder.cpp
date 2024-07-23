@@ -969,6 +969,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 
+	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
+
 	CalcCompoundMetaInfo(gro_file.box_size.x, compounds, simparams.bc_select);
 
 

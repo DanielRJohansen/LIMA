@@ -62,10 +62,6 @@ struct BoxParams {
 	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
-// Params in simulation host-side only
-struct SimparamsExtra {
-};
-
 struct DatabuffersDevice {
 	DatabuffersDevice(const DatabuffersDevice&) = delete;
 	DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval);
@@ -249,7 +245,6 @@ public:
 	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
 	SimParams simparams_host;
 	BoxParams boxparams_host;	// only available after box_device has been created
-	SimparamsExtra extraparams;	// only available after box_device has been created
 
 	std::vector<Compound> compounds_host;
 	//std::unique_ptr<Forcefield> forcefield;

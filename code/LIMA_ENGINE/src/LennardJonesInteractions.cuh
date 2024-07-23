@@ -133,12 +133,18 @@ namespace LJ {
 				);
 			}
 
-			electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
-			potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+			if constexpr (ENABLE_ELECTROSTATICS) {
+				electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
+				potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+			}
 
+			//printf("ES %f LJ %f  %d %d \n", 
+			//	PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO).len(), 
+			//	force.len() * 24.f, 
+			//	threadIdx.x, neighborparticle_id);
 		}
 		//printf("\nElectrostatic force %f %f %f\n", electrostaticForce.x, electrostaticForce.y, electrostaticForce.z);
-		//printf("ES %f LJ %f \n", electrostaticForce.len(), force.len() * 24.f);
+		//printf("ES %f LJ %f  %d %d \n", electrostaticForce.len(), force.len() * 24.f, threadIdx.x, nei);
 		return force * 24.f + electrostaticForce;
 	}
 

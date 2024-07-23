@@ -403,6 +403,34 @@ public:
 		}
 	}
 
+
+	__host__ void printMatrix(int n) const {
+		// Print column indices
+		std::cout << "     ";  // Space for row indices
+		for (int j = 0; j < n; ++j) { 
+			std::string separator = j + 1 < 10 ? "  " : " ";
+			std::cout << j+1 << separator;
+		}
+		std::cout << '\n';
+
+		// Print separator
+		std::cout << "   +";
+		for (int j = 0; j < n; ++j) {
+			std::cout << "---";
+		}
+		std::cout << '\n';
+
+		// Print rows with row indices
+		for (int i = 0; i < n; ++i) {
+			std::string separator = i + 1 < 10 ? "  | " : " | ";
+			std::cout << i + 1 << separator;  // Row index
+			for (int j = 0; j < n; ++j) {
+				std::cout << (get(i, j) ? 'X' : 'O') << "  ";
+			}
+			std::cout << '\n';
+		}
+	}
+
 private:
 	const static int m_len = len;
 	const static int m_size = (m_len * m_len + 7) / 8; // Ceil division

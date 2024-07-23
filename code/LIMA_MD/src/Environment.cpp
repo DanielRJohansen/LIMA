@@ -95,7 +95,6 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	setupEmptySimulation(params);
 
 	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);
-	simulation->extraparams = simulation_src.extraparams;
 
 	simulation->forcefield = simulation_src.forcefield;
 	//TODO Find a better place for this

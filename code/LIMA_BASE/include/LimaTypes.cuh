@@ -129,6 +129,8 @@ struct Float3 {
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 
+	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
+
 	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
 		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
@@ -191,13 +193,13 @@ struct Float3 {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
 	}
 
-	__host__ float largestMagnitudeElement() const {
-		const Float3 m = this->abs();
+	__device__ __host__ inline float LargestMagnitudeElement() const {
 		return std::max(
-			std::max(m.x, m.y),
-			m.z
+			std::max(std::abs(x), std::abs(y)),
+			std::abs(z)
 		);
 	}
+
 
 	// Not used right now!
 	__host__ __device__ static Float3 centerOfMass(Float3* arr_ptr, uint32_t arr_size) {	// Only run before sim, so we can cast to double without slowing sim

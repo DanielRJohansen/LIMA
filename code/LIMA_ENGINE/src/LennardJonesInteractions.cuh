@@ -156,6 +156,13 @@ namespace LJ {
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 
+		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
+		const Float3 selfRelOffset{
+			std::abs(self_pos.x) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.x) : 0.f,
+			std::abs(self_pos.y) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.y) : 0.f,
+			std::abs(self_pos.z) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.z) : 0.f
+		};
+
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
@@ -170,8 +177,14 @@ namespace LJ {
 			}
 
 			if constexpr (ENABLE_ELECTROSTATICS) {
-				electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-				potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+
+
+
+				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
+				{
+					electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+					potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+				}
 			}
 		}
 		return force * 24.f + electrostaticForce;

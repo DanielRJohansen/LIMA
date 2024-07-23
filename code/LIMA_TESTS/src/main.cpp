@@ -114,9 +114,9 @@ int main() {
 		//doPoolBenchmarkES(envmode);
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
-		Benchmarks::Psome(envmode);
+		//Benchmarks::Psome(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

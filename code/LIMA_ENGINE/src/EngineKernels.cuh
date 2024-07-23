@@ -302,7 +302,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
 		const int batchsize = 32;
-		__shared__ Float3 relshifts[batchsize];
+		__shared__ Float3 relshifts[batchsize];	// [lm]
 		__shared__ int neighbor_n_particles[batchsize];
 		__shared__ CompoundCoords* coords_ptrs[batchsize];
 
@@ -425,12 +425,12 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 
 	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
-	//if constexpr (ENABLE_ELECTROSTATICS) {
-	//	if (simparams.enable_electrostatics) {
-	//		__syncthreads();
-	//		//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
-	//	}
-	//}
+	if constexpr (ENABLE_ELECTROSTATICS) {
+		if (simparams.enable_electrostatics) {
+			__syncthreads();
+			//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
+		}
+	}
 
 
 	// This is the first kernel, so we overwrite

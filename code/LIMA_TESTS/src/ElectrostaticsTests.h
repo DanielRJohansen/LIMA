@@ -64,7 +64,7 @@ namespace ElectrostaticsTests {
 		const std::string topol = work_folder + "molecule/topol.top";
 		Environment env{ work_folder, envmode, false };
 
-		const int nSteps = 400;
+		const int nSteps = 2;
 
 
 		SimParams params{};
@@ -74,8 +74,8 @@ namespace ElectrostaticsTests {
 		params.cutoff_nm = 2.f;
 		GroFile grofile{ conf };
 		grofile.box_size = Float3{ 3.f };
-		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
-		grofile.atoms[1].position = Float3{ 1.3f, 1.5f, 1.5f };
+		grofile.atoms[0].position = Float3{ .6f, 2.4f, 1.5f };
+		grofile.atoms[1].position = Float3{ 2.3f, 1.5f, 1.5f };
 		TopologyFile topfile{ topol };
 
 		env.CreateSimulation(grofile, topfile, params);
@@ -92,19 +92,6 @@ namespace ElectrostaticsTests {
 
 		const auto analytics = env.getAnalyzedPackage();
 		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
-
-
-		//if (envmode != Headless) {
-		//	LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
-		//	LIMA_Print::printPythonVec("potE", analytics->pot_energy);
-		//	LIMA_Print::printPythonVec("totE", analytics->total_energy);
-		//}
-
-
-
-
-
-
 
 		// Check if engine calculates the force and POTE we expect
 		{

@@ -154,6 +154,7 @@ namespace EngineUtils {
 
 		// Eventually i could make it so i only copy the active particles in the compound
 		if (threadIdx.x < n_particles) {
+			static_assert(sizeof(Float3) == sizeof(Coord), "Float3 and Coord must have same size");
 			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
 			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
 		}

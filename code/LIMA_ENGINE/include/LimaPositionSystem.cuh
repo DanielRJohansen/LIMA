@@ -87,7 +87,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 		const Float3 relpos = hyperPos - nodePos;
 
-		if (relpos.largestMagnitudeElement() > static_cast<float>(max_node_diff)*BoxGrid::blocksizeNM) {
+		if (relpos.LargestMagnitudeElement() > static_cast<float>(max_node_diff)*BoxGrid::blocksizeNM) {
 			/*auto absPos = absolute_position.toFloat3();
 			auto hPos = hyperPos.toFloat3();
 			auto nPos = nodePos.toFloat3();*/

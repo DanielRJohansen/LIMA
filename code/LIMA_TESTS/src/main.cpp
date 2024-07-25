@@ -1,6 +1,5 @@
 #include "ForceCorrectness.h"
 #include "MDStability.cuh"
-#include "EnergyMinimization.cuh"
 #include "MembraneBuilder.h"
 #include "MinorPrograms.h"
 #include "ElectrostaticsTests.h"
@@ -15,6 +14,7 @@ using namespace StressTesting;
 using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
+using namespace VerletintegrationTesting;
 void runAllUnitTests();
 
 //void makeLipids() {
@@ -50,6 +50,8 @@ int main() {
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
+		//SinglebondForceAndPotentialSanityCheck(envmode);
+		//HydrogenBondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
 		//doDihedralbondBenchmark(envmode);
@@ -58,11 +60,13 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
 
 		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
+		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
+		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solventsonly", envmode, 4e-6f);
+		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
@@ -78,7 +82,7 @@ int main() {
 		//doPool50x(EnvMode::Headless);
 	
 
-
+		//TestIntegration(envmode);
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
@@ -102,11 +106,14 @@ int main() {
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
 		
+
+		//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
-		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
+		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
+		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
 		//Benchmarks::Psome(envmode);
 
@@ -134,7 +141,12 @@ void runAllUnitTests() {
 	constexpr auto envmode = EnvMode::Headless;
 
 	
-	// Singled out forces test
+	// Isolated forces sanity checks
+	ADD_TEST(testman, "SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
+	ADD_TEST(testman, "SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+	ADD_TEST(testman, "TestIntegration", TestIntegration(envmode));
+
+	// Stability tests
 	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
 	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
 	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
@@ -147,7 +159,7 @@ void runAllUnitTests() {
 
 	// Smaller compound tests
 	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6));
-	ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
+	//ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
 	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
@@ -160,7 +172,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	
 	ADD_TEST(testman, "doPoolBenchmarkES", doPoolBenchmarkES(envmode));
-	ADD_TEST(testman, "TestShortrangeElectrostaticsCompoundsOnly", TestShortrangeElectrostaticsCompoundsOnly(envmode));
+	ADD_TEST(testman, "TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 

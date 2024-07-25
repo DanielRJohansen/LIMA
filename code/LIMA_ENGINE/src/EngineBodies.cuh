@@ -4,6 +4,12 @@
 #include "BoxGrid.cuh"
 #include "KernelConstants.cuh"
 
+// Half the interaction between two distant set of particles
+struct ForceAndPotential {
+	Float3 forcePart;		// [1/C 1/lima N/mol] // force = myCharge * forcePart
+	float potentialPart;	// [1/C J/mol] // potential = myCharge * potential
+};
+
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {
 		if (n_nearby_compounds >= max_nearby_compounds) {
@@ -35,7 +41,7 @@ namespace Electrostatics {
 	struct ChargeNode {
 		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-		static const int maxParticlesInNode = 264;
+		static const int maxParticlesInNode = 256;
 
 		//float totalCharge = 0.f;
 
@@ -61,7 +67,7 @@ namespace BoxGrid {
 		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
 	}
 
-	__device__ __host__ static NodeIndex Get3dIndex(int index1d) {
+	__device__ static NodeIndex Get3dIndex(int index1d) {
 		const int bpd = NodesPerDim(boxSize_device.boxSizeNM_i);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
@@ -183,14 +189,15 @@ public:
 	__device__ __host__ bool addGridnode(int gridnode_id) {
 		if (n_gridnodes >= max_gridnodes) {
 			//throw std::runtime_error("No room for more nearby gridnodes"); }
-			printf("No room for more nearby gridnodes");
+			printf("No room for more nearby gridnodes\n");
 			return false;
 		}
 		gridnode_ids[n_gridnodes++] = gridnode_id;
 		return true;
 	}
 
-	static const int max_gridnodes = 64 + 4;	// Arbitrary value
+	//static const int max_gridnodes = 64 + 4;	// Arbitrary value
+	static const int max_gridnodes = 128;	// Arbitrary value
 	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;
 #endif

@@ -61,14 +61,17 @@ namespace BoxGrid {
 		const int bpd = NodesPerDim(boxSizeNM);
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
-	__device__ __host__ static NodeIndex Get3dIndex(int index1d, int boxlenNM) {
-		const int bpd = NodesPerDim(boxlenNM);
-		int z = index1d / (bpd * bpd);
-		index1d -= z * bpd * bpd;
-		int y = index1d / bpd;
-		index1d -= y * bpd;
+
+	__device__ __host__ inline NodeIndex Get3dIndexWithNNodes(int index1d, int npd) {
+		int z = index1d / (npd * npd);
+		index1d -= z * npd * npd;
+		int y = index1d / npd;
+		index1d -= y * npd;
 		int x = index1d;
 		return NodeIndex{ x, y, z };
+	}
+	__device__ __host__ inline NodeIndex Get3dIndex(int index1d, int boxlenNM) {
+		return Get3dIndexWithNNodes(index1d, NodesPerDim(boxlenNM));
 	}
 
 

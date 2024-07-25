@@ -44,7 +44,8 @@ struct SimulationDevice {
 
 
 		chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
-
+		chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
+		chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
 
 		box_host->owns_members = false;
 		box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
@@ -66,6 +67,8 @@ struct SimulationDevice {
 
 		//cudaFree(charge_octtree);
 		cudaFree(chargeGrid);
+		cudaFree(chargeGridChargeSums);
+		cudaFree(chargeGridOutputForceAndPot);
 	}
 
 	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
@@ -84,6 +87,9 @@ struct SimulationDevice {
 
 	//ChargeOctTree* charge_octtree;
 	Electrostatics::ChargeNode* chargeGrid = nullptr;
+	float* chargeGridChargeSums = nullptr;
 
+	// potE should be divided equally between all the particles in the node
+	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [1/l N/mol], float potE [J/mol]}
 
 };

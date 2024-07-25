@@ -134,7 +134,7 @@ namespace TestUtils {
 				setConsoleTextColorRed();
 			}
 
-			std::cout << " status: " << status_str;
+			std::cout << status_str;
 
 			if (error_description.length() > 35) { std::cout << "\n"; }
 			std::cout << "\t" << error_description << "\n";
@@ -242,8 +242,9 @@ namespace TestUtils {
 
 		if (envmode != Headless) {
 			Analyzer::printEnergy(analytics);
-			LIMA_Print::printMatlabVec("varcoffs", std::vector<float>{ varcoff });
-			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient });
+			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics->pot_energy});
+			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics->kin_energy});
+			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics->total_energy});
 		}
 
 

@@ -81,6 +81,7 @@ namespace EngineUtils {
 		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
 		databuffers->potE_buffer[index] = *potE_sum;
 		databuffers->vel_buffer[index] = speed;
+		databuffers->forceBuffer[index] = force;
 
 		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
@@ -100,9 +101,9 @@ namespace EngineUtils {
 		}
 	}
 
-	__device__ static bool constexpr isOutsideCutoff(const float dist_sq_reciprocal) {
+	__device__ static bool isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
-			constexpr float threshold = 1. / (CUTOFF_LM * CUTOFF_LM);
+			const float threshold = cutoffLmSquaredReciprocal_device;//  1. / (CUTOFF_LM * CUTOFF_LM);
 			if (dist_sq_reciprocal < threshold) {
 				return true;
 			}
@@ -154,6 +155,7 @@ namespace EngineUtils {
 
 		// Eventually i could make it so i only copy the active particles in the compound
 		if (threadIdx.x < n_particles) {
+			static_assert(sizeof(Float3) == sizeof(Coord), "Float3 and Coord must have same size");
 			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
 			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
 		}

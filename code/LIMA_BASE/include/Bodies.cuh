@@ -27,8 +27,8 @@ struct SingleBond {
 	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
 
 	float b0 = 0.f;	// [lm]
-	float kb = 0.f;	// [J/(mol*lm^2)]
-	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund - NOT ABSOLUTE INDEX. Used in global table with compunds start-index
+	float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
 	const static int n_atoms = 2;
 };
 
@@ -36,8 +36,8 @@ struct AngleBond {
 	AngleBond() {}
 	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
 
-	float theta_0 = 0.f;
-	float k_theta = 0.f;
+	float theta_0 = 0.f;	// [rad]
+	float k_theta = 0.f;	// [J/mol/rad^2]
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
 };
@@ -258,7 +258,7 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-	float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
+	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
@@ -386,8 +386,8 @@ struct CompoundBridgeBundleCompact {
 struct ForceField_NB {
 	struct ParticleParameters {	//Nonbonded
 		float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;		// []
-		float epsilon = -1;		// J/mol [kg*nm^2 / s^2]
+		float sigma = -1;		// [lm]
+		float epsilon = -1;		// [J/mol]
 	};
 
 	ParticleParameters particle_parameters[MAX_ATOM_TYPES];
@@ -395,16 +395,22 @@ struct ForceField_NB {
 
 
 class UniformElectricField {
-	Float3 field;	// [V/nm]
+	Float3 field;	// [mV/limameter]
 
 	public:
 		UniformElectricField() {}
-		__host__ UniformElectricField(Float3 direction, float magnitude) : field(direction.norm() * magnitude * 1e-9) {
+		/// <summary></summary>
+		/// <param name="direction"></param>
+		/// <param name="magnitude">[V/nm]</param>
+		__host__ UniformElectricField(Float3 direction, float magnitude) 
+			: field(direction.norm() * magnitude * KILO * LIMA_TO_NANO) {
 			assert(direction.len() != 0.f);
 		}
 	
-	// TODO fix the units here
-	__device__ Float3 GetForce(float charge /* [kilo C/mol] */) {
+	/// <summary></summary>
+	/// <param name="charge">[kC/mol]</param>
+	/// <returns>[gigaN/mol]</returns>
+	__device__ Float3 GetForce(float charge) {
 		return field * charge;
 	}
 };

@@ -957,7 +957,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	Topology topology = LoadTopology(preparedTopologyFiles, forcefield, preparedAtoms);
 
-	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, simparams.box_size, simparams.bc_select, simparams.em_variant);
+	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, gro_file.box_size.x, simparams.bc_select, simparams.em_variant);
 
 	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
 
@@ -968,6 +968,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
+
+	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
 	CalcCompoundMetaInfo(gro_file.box_size.x, compounds, simparams.bc_select);
 

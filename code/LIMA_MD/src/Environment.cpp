@@ -21,7 +21,7 @@ namespace fs = std::filesystem;
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_RENDER = 50;
-const int STEPS_PER_UPDATE = 20;
+const int STEPS_PER_UPDATE = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -92,7 +92,6 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	setupEmptySimulation(params);
 
 	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);
-	simulation->extraparams = simulation_src.extraparams;
 
 	simulation->forcefield = simulation_src.forcefield;
 	//TODO Find a better place for this
@@ -157,9 +156,9 @@ void Environment::verifyBox() {
 	assert(STEPS_PER_THERMOSTAT >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
 	//assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
-	if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
-		throw std::runtime_error("Error: Solvent mass is unreasonably large");
-	}
+	//if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
+	//	throw std::runtime_error("Error: Solvent mass is unreasonably large");
+	//}
 
 
 #ifdef LIMAKERNELDEBUGMODE

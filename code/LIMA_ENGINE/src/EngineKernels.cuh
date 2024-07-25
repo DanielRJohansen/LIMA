@@ -122,6 +122,20 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	
 
 
+	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
+	if constexpr (ENABLE_ELECTROSTATICS) {
+		if (simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
+			NodeIndex nodeindex = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
+			BoundaryCondition::applyBC(nodeindex);
+			const float myCharge = compound_global->atom_charges[threadIdx.x];
+			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());
+			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
+			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
+		}
+	}
+
+
+
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
 	if (simparams.snf_select == HorizontalSqueeze) {
 		const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
@@ -152,6 +166,13 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
+			if (force.len() > 5.f) {
+				printf("Illegally large force");
+				force.print('F');
+				signals->critical_error_encountered = true;
+			}
+
+
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
@@ -164,13 +185,6 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 				velScaled = EngineUtils::SlowHighEnergyParticle(vel_now, simparams.dt, mass, signals->thermostat_scalar);
 			else
 				velScaled = vel_now * signals->thermostat_scalar;
-
-
-	/*		Float3 vel_scaled = vel_now * signals->thermostat_scalar;
-
-			if constexpr (energyMinimize) {
-				EngineUtils::SlowHighEnergyParticle(vel_scaled, simparams.dt, mass);
-			}*/
 
 			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
 			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
@@ -239,6 +253,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__syncthreads();
 	compound.loadData(&box->compounds[blockIdx.x]);
 	NodeIndex compound_origo{};
+
+	const float particleCharge = simparams.enable_electrostatics	// TODO: this is temporary
+		? static_cast<float>(box->compounds[blockIdx.x].atom_charges[threadIdx.x])
+		: 0.f;
+
 	{
 		static_assert(clj_utilitybuffer_bytes >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
@@ -273,14 +292,19 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		BondedParticlesLUT* bplut_global = box->bonded_particles_lut_manager->get(compound_index, compound_index);
 		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
-
 		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
+
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
+			"Utilitybuffer not large enough for neighbor charges");
+		half* particleChargesCompound = (half*)(&utility_buffer[sizeof(BondedParticlesLUT)]);
+		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
 			force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
-				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared);
+				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
+			particleCharge, particleChargesCompound);
 		}
 
 		__syncthreads();
@@ -291,7 +315,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
 		const int batchsize = 32;
-		__shared__ Float3 relshifts[batchsize];
+		__shared__ Float3 relshifts[batchsize];	// [lm]
 		__shared__ int neighbor_n_particles[batchsize];
 		__shared__ CompoundCoords* coords_ptrs[batchsize];
 
@@ -300,6 +324,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size, "Utilitybuffer not large enough for BondedParticlesLUT");
 		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)(&utility_buffer[utilitybuffer_reserved_size]);
+
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + utilitybuffer_reserved_size + sizeof(half) * MAX_COMPOUND_PARTICLES, 
+			"Utilitybuffer not large enough for neighbor charges");
+		half* particleChargesNeighbors = (half*)(&utility_buffer[utilitybuffer_reserved_size + sizeof(BondedParticlesLUT)]);
 
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		__syncthreads();
@@ -333,6 +361,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			// Load the current neighbors atomtypes and positions
 			if (threadIdx.x < n_particles_neighbor) {
 				atomtypes[threadIdx.x] = box->compounds[neighborcompound_id].atom_types[threadIdx.x];
+				particleChargesNeighbors[threadIdx.x] = box->compounds[neighborcompound_id].atom_charges[threadIdx.x];
 			}
 			EngineUtils::getCompoundHyperpositionsAsFloat3Async(coords_ptrs[batch_index], utility_buffer_f3, n_particles_neighbor, relshifts[batch_index]);
 			__syncthreads();
@@ -347,13 +376,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LJ::CalcLJOrigin::ComComInter, forcefield_shared);
+						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
+						particleCharge, particleChargesNeighbors);
 				}
 			}
 			else {
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared);
+						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared, particleCharge, particleChargesNeighbors);
 				}
 			}
 			batch_index++;

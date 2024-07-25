@@ -390,6 +390,9 @@ void Display::initializePipeline(size_t numAtoms) {
 
 
 void Display::TerminateGLEW() {
+    if (!drawAtomsShaderProgram.has_value())
+        return; // Pipeline was never initialized, so nothing to clean up
+
     // Cleanup
     glDeleteVertexArrays(1, &drawAtomsVBO);
     glDeleteVertexArrays(1, &boxVAO);

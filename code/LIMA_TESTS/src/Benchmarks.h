@@ -1,7 +1,5 @@
-
-
-#include "TestUtils.h"
 #include "Programs.h"
+#include "TestUtils.h"
 #include "TimeIt.h"
 
 namespace Benchmarks {
@@ -86,8 +84,8 @@ namespace Benchmarks {
 
 
 	static LimaUnittestResult Psome(EnvMode envmode) {
-		 if (envmode== Full)
-			 envmode = ConsoleOnly;	// Cant go fast in Full
+		 //if (envmode== Full)
+			// envmode = ConsoleOnly;	// Cant go fast in Full
 
 		const fs::path work_dir = simulations_dir + "/psome";
 		float boxlen = 23.f;
@@ -112,6 +110,8 @@ namespace Benchmarks {
 		GroFile grofile{ work_dir / "molecule" / "em.gro" };
 		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 		SimParams ip{ work_dir / "sim_params.txt" };
+		ip.data_logging_interval = 20;
+		ip.dt = 50;
 		ip.enable_electrostatics = true;
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false, false);

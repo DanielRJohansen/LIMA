@@ -53,7 +53,7 @@ namespace LJ {
 
 
 	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float dist, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
-		auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
+		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 		//if (force.len() > 1.f || pot > 1e+8) {
 		const float distNM = dist / NANO_TO_LIMA;
 		if (distNM < 0.05f) {
@@ -68,10 +68,14 @@ namespace LJ {
 
 #ifdef ENABLE_LJ
 
-	// This function does not add the 24 scalar, the caller function must do so!
-	// Calculates LJ force on p0	(attractive to p1. Negative values = repulsion )//
-	// Returns force in J/mol*M??
-	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma /*[nm]*/, const float epsilon /*[(kg*nm^2)/(ns^2*mol)]*/,
+	/// <summary></summary>
+	/// <param name="diff">[lm]</param>
+	/// <param name="dist_sq_reciprocal"></param>
+	/// <param name="potE">[J/mol]</param>
+	/// <param name="sigma">[lm]</param>
+	/// <param name="epsilon">[J/mol]</param>
+	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
+	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
 
@@ -79,18 +83,18 @@ namespace LJ {
 		// Directly from book
 		float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 		s = s * s * s;
-		const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive. Negative, when repulsive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
+		const float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (CALC_POTE) {
-			potE += 2.f * epsilon * s * (s - 1.f);	// 2.f instead of 2.f to account for 2 particles doing the same calculation
+			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
 
-		return force;	// GN/mol [(kg*nm)/(ns^2*mol)]
+		return force;	// [1/24 1/lima N/mol]
 	}
 #else 
 	__device__ static Float3 calcLJForceOptim(const Float3&, float, float& , float , float , CalcLJOrigin, int, int) {
@@ -106,9 +110,11 @@ namespace LJ {
 	// For intraCompound or bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
-		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield)
+		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
+		float chargeSelf, const half* const charges)
 	{
 		Float3 force(0.f);
+		Float3 electrostaticForce{};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 
@@ -119,41 +125,70 @@ namespace LJ {
 
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {	// TODO: no need to do check for intracompound
+				force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
+					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+					ljorigin,
+					threadIdx.x, neighborparticle_id
+				);
+			}
 
-			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
-				ljorigin,
-				threadIdx.x, neighborparticle_id
-			);
+			if constexpr (ENABLE_ELECTROSTATICS) {
+				electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
+				potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+			}
+
+			//printf("ES %f LJ %f  %d %d \n", 
+			//	PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO).len(), 
+			//	force.len() * 24.f, 
+			//	threadIdx.x, neighborparticle_id);
 		}
-		return force * 24.f;
+		//printf("\nElectrostatic force %f %f %f\n", electrostaticForce.x, electrostaticForce.y, electrostaticForce.z);
+		//printf("ES %f LJ %f  %d %d \n", electrostaticForce.len(), force.len() * 24.f, threadIdx.x, nei);
+		return force * 24.f + electrostaticForce;
 	}
 
 	// For non bonded-to compounds
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield)
+		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
+		float chargeSelf, const half* const chargeNeighbors)
 	{
 		Float3 force(0.f);
+		Float3 electrostaticForce{};
+
+		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
+		const Float3 selfRelOffset{
+			std::abs(self_pos.x) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.x) : 0.f,
+			std::abs(self_pos.y) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.y) : 0.f,
+			std::abs(self_pos.z) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.z) : 0.f
+		};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
+				force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
+					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+					CalcLJOrigin::ComComInter
+					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
+				);
+			}
 
-			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
-				CalcLJOrigin::ComComInter
-				//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
-			);
+			if constexpr (ENABLE_ELECTROSTATICS) {
+				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
+				{
+					electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+					potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+				}
+			}
 		}
-		return force * 24.f;
+		return force * 24.f + electrostaticForce;
 	}
 
-
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {	// Specific to solvent kernel
+	// Specific to solvent kernel
+	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {
 		Float3 force{};
 
 		for (int i = 0; i < n_elements; i++) {

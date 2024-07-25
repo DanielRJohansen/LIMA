@@ -325,7 +325,7 @@ public:
 
 	private:
 		std::stack<std::queue<TopolPointerType>> topologyStack;
-		TopolPointerType currentTopology;
+		TopolPointerType currentTopology = nullptr;
 		int elementIndex = -1;
 
 		void moveToNextEntry() {
@@ -408,7 +408,7 @@ public:
 
 
 private:
-	TopologyFile* const topology;
+	TopologyFile* const topology = nullptr;
 };
 
 

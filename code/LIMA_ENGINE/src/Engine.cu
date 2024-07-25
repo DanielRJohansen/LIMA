@@ -71,7 +71,7 @@ Engine::~Engine() {
 
 
 void Engine::setDeviceConstantMemory() {
-	const int forcefield_bytes = sizeof(ForceField_NB);
+	//const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 
 
@@ -79,14 +79,19 @@ void Engine::setDeviceConstantMemory() {
 	boxSize_host.Set(simulation->boxparams_host.boxSize);
 	cudaMemcpyToSymbol(boxSize_device, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
 	//SetConstantMem(simulation->boxparams_host.boxSize);
-	BoxSize bs;
-	cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
+	//BoxSize bs;
+	//cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
 
-	cudaDeviceSynchronize();
+//	cudaDeviceSynchronize();
 
 
-	BoxSize bs1;
-	cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+	//BoxSize bs1;
+	//cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+
+	cudaMemcpyToSymbol(cutoffNm_device, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
+	const float cutoffLmSquaredReciprocal = 1.f / (simulation->simparams_host.cutoff_nm * NANO_TO_LIMA * simulation->simparams_host.cutoff_nm * NANO_TO_LIMA);
+	cudaMemcpyToSymbol(cutoffLmSquaredReciprocal_device, &cutoffLmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
+
 
 	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
 
@@ -184,6 +189,12 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		simulation->vel_buffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->vel_buffer,
 		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		cudaMemcpyDeviceToHost);
+
+	cudaMemcpy(
+		simulation->forceBuffer->getBufferAtIndex(startindex),
+		sim_dev->databuffers->forceBuffer,
+		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 #ifdef GENERATETRAINDATA

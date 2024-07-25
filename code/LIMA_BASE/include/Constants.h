@@ -32,8 +32,6 @@ constexpr float PI = 3.14159f;
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-constexpr float CUTOFF_NM = 1.2f;
-
 const int RAMPUP_STEPS = 0;					// Set to 0 to disable
 constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
 constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
@@ -52,13 +50,14 @@ constexpr float NANO_TO_LIMA = FEMTO_TO_LIMA * NANO_TO_FEMTO;
 constexpr int64_t NANO_TO_LIMA_i = static_cast<int64_t>(NANO_TO_LIMA);
 constexpr float LIMA_TO_NANO = 1.f / NANO_TO_LIMA;
 const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
-constexpr double UNIT_TO_LIMA = 1e9 * NANO_TO_LIMA;
 
 static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
 constexpr double KILO = 1e3;
+constexpr double GIGA = 1e9;
 constexpr double NANO = 1e-9;
-
+constexpr double FEMTO = 1e-15;
+constexpr double LIMA = NANO / NANO_TO_LIMA;
 
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
@@ -67,13 +66,12 @@ const float rminToSigma = powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr float CUTOFF_LM = CUTOFF_NM * NANO_TO_LIMA;				// fm
-
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
+constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
 
-constexpr float elementaryChargeToKiloCoulombPerMole = 1.60217733e-19 * AVOGADROSNUMBER / 1000.;
+constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / KILO;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

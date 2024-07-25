@@ -72,8 +72,8 @@ public:
 
 
 private:
-    LogMode logmode;
-    EnvMode envmode;
+    LogMode logmode{};
+    EnvMode envmode{};
     //std::string logFilePath;
     const std::string log_dir;
     std::ofstream logFile;
@@ -96,7 +96,7 @@ namespace LAL {
     //__device__ __host__ static T max(const T l, const T r) {
     //    return r > l ? r : l;
     //}
-
+    
 
 
     constexpr int powi(int base, int exp) {

@@ -51,11 +51,15 @@ SimParams::SimParams(const fs::path& path) {
 	auto dict = Filehandler::parseINIFile(path.string());
 	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
 	overloadParamNumber(dict, n_steps, "n_steps");
-	overloadParamNumber(dict, box_size, "boxlen");
+	overloadParamNumber(dict, data_logging_interval, "data_logging_interval");
 
 	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
 		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }
 	);
+	overwriteParamNonNumbers<bool>(dict, "enable_electrostatics", enable_electrostatics,
+				[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "enable_electrostatics", value); }
+	);
+
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
 		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC}}, "boundarycondition", value); }
@@ -75,8 +79,8 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
 	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
-	file << "boxlen=" << box_size << " # [nm]\n";
-
+	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
+	file << "enable_electrostatics=" << (enable_electrostatics ? "true" : "false") << "\n";
 	file.close();
 }
 
@@ -228,7 +232,9 @@ DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compo
 		cudaMallocManaged(&potE_buffer, sizeof(*potE_buffer) * n_datapoints);
 		cudaMallocManaged(&traj_buffer, sizeof(*traj_buffer) * n_datapoints);
 		cudaMallocManaged(&vel_buffer, sizeof(*vel_buffer) * n_datapoints);
+		cudaMallocManaged(&forceBuffer, sizeof(*forceBuffer) * n_datapoints);
 
+		//cudaMemset // TODO: switch to memset
 		std::vector<float>potE_zero(n_datapoints, 0);
 		std::vector<Float3>traj_zero(n_datapoints, Float3{});
 
@@ -259,6 +265,7 @@ void DatabuffersDevice::freeMembers() {
 	cudaFree(potE_buffer);
 	cudaFree(traj_buffer);
 	cudaFree(vel_buffer);
+	cudaFree(forceBuffer);
 
 #ifdef GENERATETRAINDATA
 	cudaFree(outdata);

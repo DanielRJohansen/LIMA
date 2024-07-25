@@ -104,7 +104,7 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
 		
 
 		//TestLongrangeEsNoLJ(envmode);
@@ -117,7 +117,7 @@ int main() {
 
 		//Benchmarks::Psome(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

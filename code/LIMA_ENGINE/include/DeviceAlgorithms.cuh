@@ -21,6 +21,10 @@ namespace LAL {
 		return val < 0 ? -val : val;
 	}
 
+	__device__ inline bool IsEven(int a) {
+		return !(a & 1);
+	}
+
 	// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 	__device__ inline void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
 		for (int i = 1; i < n_elements; i++) {

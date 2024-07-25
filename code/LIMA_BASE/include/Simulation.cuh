@@ -88,7 +88,7 @@ struct DatabuffersDevice {
 	float* potE_buffer = nullptr;				// For total energy summation
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
-
+	Float3* forceBuffer = nullptr;				// [1/l N/mol] // For debug only
 	const int total_particles_upperbound;
 #ifdef GENERATETRAINDATA
 	float* outdata = nullptr;					// Temp, for longging values to whatever
@@ -226,6 +226,7 @@ public:
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;// [nm]
 	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;	// [J/mol]
 	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
+	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [1/l N/mol] // For debug only
 
 	std::vector<float> temperature_buffer;
 

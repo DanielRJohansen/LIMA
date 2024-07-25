@@ -4,9 +4,10 @@
 #include "BoxGrid.cuh"
 #include "KernelConstants.cuh"
 
+// Half the interaction between two distant set of particles
 struct ForceAndPotential {
-	Float3 force;
-	float potential;
+	Float3 forcePart;		// [1/C 1/lima N/mol] // force = myCharge * forcePart
+	float potentialPart;	// [1/C J/mol] // potential = myCharge * potential
 };
 
 struct CompoundGridNode {

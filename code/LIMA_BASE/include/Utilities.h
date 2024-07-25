@@ -96,7 +96,7 @@ namespace LAL {
     //__device__ __host__ static T max(const T l, const T r) {
     //    return r > l ? r : l;
     //}
-
+    
 
 
     constexpr int powi(int base, int exp) {

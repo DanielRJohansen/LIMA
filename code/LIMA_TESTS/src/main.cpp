@@ -107,10 +107,12 @@ int main() {
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 3.178e-5, 2e-5);	
 		
+
+		//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
-		//TestShortrangeElectrostaticsCompoundsOnly(envmode);
+		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
@@ -171,7 +173,7 @@ void runAllUnitTests() {
 	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	
 	ADD_TEST(testman, "doPoolBenchmarkES", doPoolBenchmarkES(envmode));
-	ADD_TEST(testman, "TestShortrangeElectrostaticsCompoundsOnly", TestShortrangeElectrostaticsCompoundsOnly(envmode));
+	ADD_TEST(testman, "TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 

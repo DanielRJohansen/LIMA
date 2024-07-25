@@ -191,6 +191,12 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
+	cudaMemcpy(
+		simulation->forceBuffer->getBufferAtIndex(startindex),
+		sim_dev->databuffers->forceBuffer,
+		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		cudaMemcpyDeviceToHost);
+
 #ifdef GENERATETRAINDATA
 	cudaMemcpy(	// THIS IS PROLLY WRONG NOW
 		&simulation->loggingdata[startindex * 10],

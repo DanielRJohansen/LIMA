@@ -27,6 +27,7 @@ namespace ElectrostaticsTests {
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * LIMA;  // [1/l N / mol] https://www.omnicalculator.com/physics/coulombs-law
 
 		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
+		// TODO: add potE to this also
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
 	}
 
@@ -264,12 +265,12 @@ namespace ElectrostaticsTests {
 		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, std::format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
-	static LimaUnittestResult TestShortrangeElectrostaticsCompoundsOnly(EnvMode envmode) {
-		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 3.f,
+	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
+		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
 			AtomsSelection{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "XXX", "lxx", 0, 1.f, 10.f}, 100},				
 			},
-			20.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
+			5.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
 		);
 
 		const int nSteps = 1000;
@@ -279,19 +280,17 @@ namespace ElectrostaticsTests {
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.enable_electrostatics = true;
-		simparams.cutoff_nm = 1.5f;
+		simparams.cutoff_nm = 2.f;
 		auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);
 
 		env->run();
 
 		auto sim = env->getSim();
 
-		//LIMA_Print::printPythonVec("potE", env->getAnalyzedPackage()->pot_energy);
-		//LIMA_Print::printPythonVec("kinE", env->getAnalyzedPackage()->kin_energy);
-		//LIMA_Print::printPythonVec("totE", env->getAnalyzedPackage()->total_energy);
+		//LIMA_Print::plotEnergies(env->getAnalyzedPackage()->pot_energy, env->getAnalyzedPackage()->kin_energy, env->getAnalyzedPackage()->total_energy);
 
 		
-		ASSERT(sim->boxparams_host.boxSize == BoxGrid::blocksizeNM * 3, "This test assumes entire BoxGrid is in Shortrange range");
+		//ASSERT(sim->boxparams_host.boxSize == BoxGrid::blocksizeNM * 3, "This test assumes entire BoxGrid is in Shortrange range");
 
 		// First check that the potential energy is calculated as we would expect if we do it the simple way
 		float maxForceError = 0.f;
@@ -345,6 +344,83 @@ namespace ElectrostaticsTests {
 			LimaUnittestResult::SUCCESS, 
 			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
 			envmode == Full };
+	}
+
+
+	LimaUnittestResult TestLongrangeEsNoLJ(EnvMode envmode) {
+		const std::string work_folder = simulations_dir + "Pool/";
+		Environment env{ work_folder, envmode, false };
+
+		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
+		{
+			SimParams params{};
+			params.n_steps = 1;
+			params.enable_electrostatics = true;
+			params.data_logging_interval = 1;
+			GroFile grofile{ work_folder + "molecule/conf.gro" };
+			grofile.box_size = Float3{ 15.f };
+			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
+			grofile.atoms[1].position = Float3{ 7.f, 1.5f, 1.5f };
+			TopologyFile topfile{ work_folder + "molecule/topol.top" };
+
+
+			env.CreateSimulation(grofile, topfile, params);
+			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.run();
+
+			const Float3 diff = grofile.atoms[0].position - grofile.atoms[1].position;
+			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
+			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff);
+
+			const auto sim = env.getSim();
+			const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
+			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
+			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
+
+			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
+			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
+
+			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
+			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.0001f,
+				std::format("Expected forces to be equal and opposite. P0 {:.1e} {:.1e} {:.1e} P1 {:.1e} {:.1e} {:.1e}",
+				actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));
+		}
+
+
+		// Now check with 2 particles of maximum error from nodeindexes
+		{
+			SimParams params{};
+			params.n_steps = 1;
+			params.enable_electrostatics = true;
+			params.data_logging_interval = 1;
+			GroFile grofile{ work_folder + "molecule/conf.gro" };
+			grofile.box_size = Float3{ 15.f };
+			grofile.atoms[0].position = Float3{ 1.4f, 1.5f, 1.5f };
+			grofile.atoms[1].position = Float3{ 6.6f, 1.5f, 1.5f };
+			TopologyFile topfile{ work_folder + "molecule/topol.top" };
+
+
+			env.CreateSimulation(grofile, topfile, params);
+			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.run();
+			
+			const Float3 diff = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(grofile.atoms[0].position).toFloat3()
+				- LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(grofile.atoms[1].position).toFloat3();
+			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
+			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff);
+
+			const auto sim = env.getSim();
+			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
+			const float forceError = (sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedForce).len() / expectedForce.len();
+
+			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
+			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0).len(), expectedForce.len()));
+		}
+
+
+		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full };
 	}
 }
 

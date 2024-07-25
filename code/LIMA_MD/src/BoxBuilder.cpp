@@ -60,6 +60,7 @@ void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps
 
 	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
 	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<float>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
+	simulation.forceBuffer= std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
 
 #ifndef DONTGETDATA
 	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(simulation.boxparams_host.total_particles_upperbound, simulation.boxparams_host.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);

@@ -127,10 +127,10 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		if (simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
 			NodeIndex nodeindex = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
 			BoundaryCondition::applyBC(nodeindex);
-
+			const float myCharge = compound_global->atom_charges[threadIdx.x];
 			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());
-			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force;
-			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potential;
+			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
+			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
 		}
 	}
 

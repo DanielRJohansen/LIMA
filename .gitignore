@@ -44,3 +44,4 @@ out*
 
 *__pycache__*
 dev/PyTools/Energies.py
+*energy_data.bin

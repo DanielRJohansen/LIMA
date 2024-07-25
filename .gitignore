@@ -43,3 +43,5 @@ build/*
 out*
 
 *__pycache__*
+/dev/energy_data.bin
+/dev/PyTools/Energies.py

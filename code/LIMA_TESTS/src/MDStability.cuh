@@ -42,6 +42,10 @@ namespace TestMDStability {
 			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
 		}		
 
+		//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
+		//LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
+		//LIMA_Print::printPythonVec("totE", analytics->total_energy);
+
 		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 

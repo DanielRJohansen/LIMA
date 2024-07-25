@@ -957,7 +957,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	Topology topology = LoadTopology(preparedTopologyFiles, forcefield, preparedAtoms);
 
-	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, simparams.box_size, simparams.bc_select, simparams.em_variant);
+	VerifyBondsAreStable(topology.singlebonds, preparedAtoms, gro_file.box_size.x, simparams.bc_select, simparams.em_variant);
 
 	std::vector<std::vector<int>> atomIdToSinglebondsMap = MapAtomsToSinglebonds(preparedAtoms, topology);
 

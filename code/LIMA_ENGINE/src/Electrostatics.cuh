@@ -180,13 +180,90 @@ namespace Electrostatics {
 			BoxGrid::GetNodePtr(simDev->chargeGrid, index3D)->nParticles = 0;
 	}
 
+
+
+	__global__ static void SumChargesInGridnode(SimulationDevice* simDev) {
+		__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];
+
+		ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, blockIdx.x);
+		for (int i = threadIdx.x; i < ChargeNode::maxParticlesInNode; i+=blockDim.x) {
+			chargesBuffer[i] = myNode_GlobalMem->nParticles
+				? myNode_GlobalMem->charges[i]
+				: 0.f;
+		}
+		__syncthreads();
+
+		LAL::distributedSummation(chargesBuffer, myNode_GlobalMem->nParticles);
+
+		__syncthreads();
+		if (threadIdx.x == 0) {
+			*BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, blockIdx.x) = chargesBuffer[0];
+		}
+	}
+
+	const int CalcLongrangeElectrostaticForces_nThreads = 64;
+	__global__ static void CalcLongrangeElectrostaticForces(SimulationDevice* simDev) {
+		__shared__ Float3 forceInterims[CalcLongrangeElectrostaticForces_nThreads];	// Each thread accumulates forces from the nodes it has seen
+		__shared__ float potEInterims[CalcLongrangeElectrostaticForces_nThreads];
+		forceInterims[threadIdx.x] = 0.f;
+		potEInterims[threadIdx.x] = 0.f;
+
+		const NodeIndex myNodeindex = BoxGrid::Get3dIndex(blockIdx.x);
+		if (BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles == 0)
+			return;
+		const float myCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, myNodeindex);
+
+
+
+		// For even sized grids, there is 1 node that is equally far away on both sides, thus that nodes forces cancel out. This logic avoids such nodes
+		const int nNodesPerDimRelativeToUs = ((boxSize_device.blocksPerDim-1) / 2)*2;
+		const int nNodesInBoxGridEffective = BoxGrid::BlocksTotal(nNodesPerDimRelativeToUs);
+
+		for (int i = threadIdx.x; i < nNodesInBoxGridEffective; i += blockDim.x) {
+			const NodeIndex queryNodeindexRelative = BoxGrid::Get3dIndexWithNNodes(i, nNodesPerDimRelativeToUs);
+
+			if (queryNodeindexRelative.MaxAbsElement() < 2) // These are shortrange
+				continue;
+
+			NodeIndex queryNodeindexAbsolute = myNodeindex + queryNodeindexRelative;
+			PeriodicBoundaryCondition::applyBC(queryNodeindexAbsolute);
+
+			const Float3 diff = -queryNodeindexRelative.toFloat3() * static_cast<float>(BoxGrid::blocksizeNM); // [nm]
+			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
+
+			forceInterims[threadIdx.x] = PhysicsUtils::CalcCoulumbForce(myCharge, queryCharge, diff);
+			potEInterims[threadIdx.x] = PhysicsUtils::CalcCoulumbPotential(myCharge, queryCharge, diff.len()) * 0.5f;	// 0.5 because the other node is also calcing this
+		}
+
+		__syncthreads();
+		LAL::distributedSummation(forceInterims, CalcLongrangeElectrostaticForces_nThreads);
+		LAL::distributedSummation(potEInterims, CalcLongrangeElectrostaticForces_nThreads);
+		__syncthreads();
+
+		if (threadIdx.x == 0) {
+			// TODO: this potential should be split between all particles in the chargenode, RIIIIIIIIIIIIIIIIGHT?? Josiah??
+			//printf("Force out: %f\n", forceInterims[0].len());
+			const int nParticles = BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles;
+			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->force = forceInterims[0];
+			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->potential = potEInterims[0] / nParticles;
+			BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles = 0;
+		}
+	}
+
+
 	// Returns timing in [ys]
 	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
 	{
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
 		// First handle short range
-		HandleShortrangeElectrostatics<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), ChargeNode::maxParticlesInNode >> > (sim_dev);
+		//HandleShortrangeElectrostatics<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), ChargeNode::maxParticlesInNode >> > (sim_dev);
+
+		static_assert(ChargeNode::maxParticlesInNode %32 == 0, "Chargenode charges size isn't optimal for this kernel");
+		SumChargesInGridnode<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), 32>>>(sim_dev);
+
+
+		CalcLongrangeElectrostaticForces<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), CalcLongrangeElectrostaticForces_nThreads>>>(sim_dev);
 
 		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
 

@@ -4,6 +4,11 @@
 #include "BoxGrid.cuh"
 #include "KernelConstants.cuh"
 
+struct ForceAndPotential {
+	Float3 force;
+	float potential;
+};
+
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {
 		if (n_nearby_compounds >= max_nearby_compounds) {
@@ -35,7 +40,7 @@ namespace Electrostatics {
 	struct ChargeNode {
 		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-		static const int maxParticlesInNode = 264;
+		static const int maxParticlesInNode = 256;
 
 		//float totalCharge = 0.f;
 

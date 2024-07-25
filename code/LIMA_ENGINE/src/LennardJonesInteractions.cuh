@@ -177,9 +177,6 @@ namespace LJ {
 			}
 
 			if constexpr (ENABLE_ELECTROSTATICS) {
-
-
-
 				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
 				{
 					electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);

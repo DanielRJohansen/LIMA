@@ -29,7 +29,7 @@ struct BuildMembraneSetup{
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;
                 }
             }
-            if (arg== "-centerZ") {
+            else if (arg== "-centerZ") {
 				if (i + 1 < argc) {
 					membraneCenterZ = std::stof(argv[i + 1]);
 					i++;
@@ -38,6 +38,15 @@ struct BuildMembraneSetup{
 					std::cerr << "-centerZ expected an argument." << std::endl;
 				}
 			}
+            else if (arg == "boxsize") {
+                if (i+1 < argc) {
+					boxsize = std::stof(argv[i+1]);
+					i++;
+				}
+				else {
+					std::cerr << "boxsize expected an argument." << std::endl;
+				}
+            }
         }
 	}
 
@@ -46,6 +55,7 @@ struct BuildMembraneSetup{
 	fs::path work_dir;
     std::vector<std::pair<std::string, int>> lipids;
     float membraneCenterZ = 0.0f;
+    float boxsize;
 
 private:
     bool isInteger(const std::string& s) {
@@ -66,7 +76,7 @@ int buildMembrane(int argc, char** argv) {
 
 
 
-	env.CreateSimulation(params.box_size);
+	env.CreateSimulation(setup.boxsize);
 	LipidsSelection lipidselection;
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(LipidSelect{ lipid.first, lipid.second });

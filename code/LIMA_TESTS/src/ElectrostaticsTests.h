@@ -145,7 +145,6 @@ namespace ElectrostaticsTests {
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
-		params.box_size = 3.f;
 		GroFile grofile{ conf };
 		grofile.box_size = Float3{ 3.f };
 		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
@@ -286,6 +285,10 @@ namespace ElectrostaticsTests {
 		env->run();
 
 		auto sim = env->getSim();
+
+		//LIMA_Print::printPythonVec("potE", env->getAnalyzedPackage()->pot_energy);
+		//LIMA_Print::printPythonVec("kinE", env->getAnalyzedPackage()->kin_energy);
+		//LIMA_Print::printPythonVec("totE", env->getAnalyzedPackage()->total_energy);
 
 		
 		ASSERT(sim->boxparams_host.boxSize == BoxGrid::blocksizeNM * 3, "This test assumes entire BoxGrid is in Shortrange range");

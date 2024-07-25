@@ -118,9 +118,22 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	if (threadIdx.x < compound.n_particles) {
 		force += box->compounds[blockIdx.x].forces_interim[threadIdx.x];
 		potE_sum += box->compounds[blockIdx.x].potE_interim[threadIdx.x];
-		//potE_sum = box->compounds[blockIdx.x].potE_interim[threadIdx.x];
 	}
 	
+
+
+	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
+	if constexpr (ENABLE_ELECTROSTATICS) {
+		if (simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
+			NodeIndex nodeindex = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
+			BoundaryCondition::applyBC(nodeindex);
+
+			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());
+			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force;
+			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potential;
+		}
+	}
+
 
 
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
@@ -153,6 +166,13 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
+			if (force.len() > 5.f) {
+				printf("Illegally large force");
+				force.print('F');
+				signals->critical_error_encountered = true;
+			}
+
+
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
@@ -165,13 +185,6 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 				velScaled = EngineUtils::SlowHighEnergyParticle(vel_now, simparams.dt, mass, signals->thermostat_scalar);
 			else
 				velScaled = vel_now * signals->thermostat_scalar;
-
-
-	/*		Float3 vel_scaled = vel_now * signals->thermostat_scalar;
-
-			if constexpr (energyMinimize) {
-				EngineUtils::SlowHighEnergyParticle(vel_scaled, simparams.dt, mass);
-			}*/
 
 			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
 			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
@@ -428,7 +441,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	if constexpr (ENABLE_ELECTROSTATICS) {
 		if (simparams.enable_electrostatics) {
 			__syncthreads();
-			//Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
+			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);
 		}
 	}
 

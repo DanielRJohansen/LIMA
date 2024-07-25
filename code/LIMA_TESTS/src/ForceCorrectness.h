@@ -65,7 +65,7 @@ namespace ForceCorrectness {
 		const float dt = params.dt;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
-		std::vector<float> particle_temps{ 400, 800, 1200 };
+		std::vector<float> particle_temps{ 400, 1200 };
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 

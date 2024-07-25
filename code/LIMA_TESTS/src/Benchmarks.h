@@ -112,8 +112,9 @@ namespace Benchmarks {
 		GroFile grofile{ work_dir / "molecule" / "em.gro" };
 		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 		SimParams ip{ work_dir / "sim_params.txt" };
-		ip.data_logging_interval = 50;
-		//ip.enable_electrostatics = true;
+		ip.data_logging_interval = 20;
+		ip.dt = 50;
+		ip.enable_electrostatics = true;
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false, false);
 

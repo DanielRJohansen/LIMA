@@ -61,14 +61,11 @@ void Environment::CreateSimulation(float boxsize_nm) {
 void Environment::CreateSimulation(std::string gro_path, std::string topol_path, const SimParams params) {
 	const auto groFile = std::make_unique<GroFile>(gro_path);
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
-	SimParams actualParams = params;	// TODO: this is very bad
-	actualParams.box_size = groFile->box_size.x;
-	CreateSimulation(*groFile, *topFile, actualParams);
+	CreateSimulation(*groFile, *topFile, params);
 }
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-	assert(grofile.box_size.x == params.box_size);
 	setupEmptySimulation(params);
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		(work_dir / "molecule").string(),

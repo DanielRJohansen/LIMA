@@ -105,7 +105,6 @@ void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topfile, bool solvate, float boxlen_nm) 
 {
 	SimParams simparams;
-	simparams.box_size = boxlen_nm;
 	simparams.em_variant = true;
 	simparams.n_steps = 4000;
 	simparams.dt = 10.f;	// 0.5 ls

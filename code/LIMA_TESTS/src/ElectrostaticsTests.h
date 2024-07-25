@@ -200,7 +200,7 @@ namespace ElectrostaticsTests {
 			);
 
 
-		SimParams simparams{ 5000, 20, true, PBC };
+		SimParams simparams{ 1000, 20, true, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 20;
 		simparams.snf_select = HorizontalChargeField;

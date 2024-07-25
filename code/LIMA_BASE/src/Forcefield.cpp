@@ -153,7 +153,7 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 
 			const string& atomtype = row.words[0];
 			const float epsilon = abs(stof(row.words[2])) * kcalToJoule;	// For some fucked reason the eps is *inconsistently* negative...
-			const float sigma = stof(row.words[3]) * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm] 
+			const float sigma = stof(row.words[3]) * 2.f * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm] 
 			if (!atomnameToMassMap.count(atomtype))
 				throw std::runtime_error(std::format("Failed to find atomtype [{}]", atomtype));
 			const float mass = atomnameToMassMap.at(atomtype) / static_cast<float>(KILO);		// [g/mol] -> [kg/mol]

@@ -173,7 +173,7 @@ void runAllUnitTests() {
 	
 	ADD_TEST(testman, "doPoolBenchmarkES", doPoolBenchmarkES(envmode));
 	ADD_TEST(testman, "TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
-	ADD_TEST(testman, "TestChargedParticlesEndInCorrectSection", TestChargedParticlesVelocityInUniformElectricField(envmode));
+	ADD_TEST(testman, "TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 
 	// Programs test

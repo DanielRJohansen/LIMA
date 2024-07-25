@@ -62,7 +62,7 @@ constexpr double LIMA = NANO / NANO_TO_LIMA;
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;
-const float rminToSigma = powf(2.f, (1.f / 6.f));
+const float rminToSigma = 1.f / powf(2.f, (1.f / 6.f));
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 

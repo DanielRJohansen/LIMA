@@ -31,6 +31,8 @@ if (UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -static-libgcc -static-libstdc++" )
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
+else()
+	set(set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++20 /W4" ))
 endif()
 
 

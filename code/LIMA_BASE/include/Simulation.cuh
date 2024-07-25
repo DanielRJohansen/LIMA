@@ -51,7 +51,7 @@ struct SimSignals {
 struct BoxParams {
 	//Float3 dims{};	 // [nm]
 	//BoxSize boxSize{ 0 };
-	int boxSize;	// [nm]
+	int boxSize=0;	// [nm]
 
 	int n_compounds = 0;
 	int n_bridges = 0;

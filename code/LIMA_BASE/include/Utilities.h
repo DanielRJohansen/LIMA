@@ -72,8 +72,8 @@ public:
 
 
 private:
-    LogMode logmode;
-    EnvMode envmode;
+    LogMode logmode{};
+    EnvMode envmode{};
     //std::string logFilePath;
     const std::string log_dir;
     std::ofstream logFile;

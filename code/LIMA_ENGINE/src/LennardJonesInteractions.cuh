@@ -53,7 +53,7 @@ namespace LJ {
 
 
 	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float dist, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
-		auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
+		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 		//if (force.len() > 1.f || pot > 1e+8) {
 		const float distNM = dist / NANO_TO_LIMA;
 		if (distNM < 0.05f) {

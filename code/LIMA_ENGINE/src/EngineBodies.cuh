@@ -67,7 +67,7 @@ namespace BoxGrid {
 		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
 	}
 
-	__device__ __host__ static NodeIndex Get3dIndex(int index1d) {
+	__device__ static NodeIndex Get3dIndex(int index1d) {
 		const int bpd = NodesPerDim(boxSize_device.boxSizeNM_i);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;

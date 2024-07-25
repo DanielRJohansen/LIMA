@@ -71,7 +71,7 @@ Engine::~Engine() {
 
 
 void Engine::setDeviceConstantMemory() {
-	const int forcefield_bytes = sizeof(ForceField_NB);
+	//const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 
 

@@ -1,7 +1,5 @@
-
-
-#include "TestUtils.h"
 #include "Programs.h"
+#include "TestUtils.h"
 #include "TimeIt.h"
 
 namespace Benchmarks {

@@ -91,7 +91,9 @@ struct Section {
 
 class TopologyFile {	//.top or .itp
 	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
+	friend class IncludeForcefieldFile;
 
+	static const char commentChar = ';';
 public:
 	struct MoleculeEntry {
 		MoleculeEntry() {}
@@ -413,6 +415,50 @@ private:
 
 
 
+// These files are actually also .tip files, and technically works the same way as topologyfiles,
+// but i want to have them more distinct to keep things simpler. Most importantly,
+// i havent allowed for recursive includes
+class IncludeForcefieldFile {
+	IncludeForcefieldFile(const fs::path& path);
+
+	struct AtomType {
+		std::string name{};
+		int atNum{};
+		ForceField_NB::ParticleParameters parameters{};
+		float charge{}; // [kilo C/mol]
+		char ptype{};
+	};
+	
+	struct SinglebondType {
+		std::string bondedType_i;
+		std::string bondedType_j;
+		int func{};
+		SingleBond::Parameters parameters;
+	};
+
+	struct AnglebondType {
+		std::string bondedType_i;
+		std::string bondedType_j;
+		std::string bondedType_k;
+		int func{};
+		AngleBond::Parameters parameters;
+		float ub0;	// No idea what this is
+		float cub;	// No idea what this is
+	};
+
+	struct DihedralbondType {
+		std::array<std::string, 4> bondedTypes; // ijkl
+		int func{};
+		DihedralBond::Parameters parameters;
+	};
+
+	struct ImproperDihedralbondType {
+		std::array<std::string, 4> bondedTypes; // ijkl
+		int func{};
+		ImproperDihedralBond::Parameters parameters;
+	};
+
+};
 
 
 
@@ -427,52 +473,6 @@ namespace MDFiles {
 	// Takes the gro and top of "right" and inserts it into left
 	void MergeFiles(GroFile& leftGro, TopologyFile& leftTop, 
 		GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop);
-
-
-	//std::unique_ptr<TopologyFile> loadTopologyFile(const fs::path& path);
-
-
-
-	//struct TrrFile {
-	//	static void dumpToFile(const Simulation* sim, const std::string& path);
-	//};
-
-
-
-	struct ParsedLffFile {
-		enum LffSection { title, singlebond, anglebond, dihedralbond, improperdihedralbond, no_section };
-
-		ParsedLffFile(const fs::path& path);
-		fs::path path;
-
-		struct Singlebond {
-			std::array<uint32_t,2> global_ids;
-			float b0;
-			float kb;
-		};
-		struct Anglebond {
-			std::array<uint32_t, 3> global_ids;
-			float theta0;
-			float ktheta;
-		};
-		struct Dihedralbond {
-			std::array<uint32_t, 4> global_ids;
-			float phi0;
-			float kphi;
-			float n;
-		};
-		struct Improperdihedralbond {
-			std::array<uint32_t, 4> global_ids;
-			float psi0;
-			float kpsi;
-		};
-
-		Section<Singlebond> singlebonds;
-		Section<Anglebond> anglebonds;
-		Section<Dihedralbond> dihedralbonds;
-		Section<Improperdihedralbond> improperdihedralbonds;
-	};
-
 
 	// Maybe add simparams here too?
 	struct SimulationFilesCollection {

@@ -136,11 +136,11 @@ namespace ForceCorrectness {
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].b0);
+		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
 
 
 		// Now figure the expected force and potential
-		const double kB = box_host.compounds[0].singlebonds[0].kb / 2.; // [J/(mol lm^2)]
+		const double kB = box_host.compounds[0].singlebonds[0].params.kb / 2.; // [J/(mol lm^2)]
 		const Float3 dir = (coordarray_ptr[0].rel_positions[1].toFloat3() - coordarray_ptr[0].rel_positions[0].toFloat3()).norm();
 		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
 		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
@@ -190,7 +190,7 @@ namespace ForceCorrectness {
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].b0);
+		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
 
 
 
@@ -200,7 +200,7 @@ namespace ForceCorrectness {
 		const auto atomtypeB = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[1]];
 
 		const double reducedMass = atomtypeA.mass * atomtypeB.mass / (atomtypeA.mass + atomtypeB.mass); // [kg/mol]
-		const double kB = box_host.compounds[0].singlebonds[0].kb / LIMA / LIMA; // [J/(mol m^2)]
+		const double kB = box_host.compounds[0].singlebonds[0].params.kb / LIMA / LIMA; // [J/(mol m^2)]
 
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
 

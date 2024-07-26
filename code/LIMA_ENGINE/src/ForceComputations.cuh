@@ -13,22 +13,22 @@ namespace LimaForcecalc
 
 
 template <bool energyMinimize>
-__device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond& bondtype, Float3* results, float& potE, bool bridgekernel) {
+__device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel) {
 	// Calculates bond force on both particles					
 	// Calculates forces as J/mol*M								
 	const Float3 difference = pos_a - pos_b;						// [lm]
-	const float error = difference.len() - bondtype.b0;				// [lm]
+	const float error = difference.len() - bondParams.b0;				// [lm]
 
 	if constexpr (CALC_POTE) {
-		potE = 0.5f * bondtype.kb * (error * error);				// [J/mol]
+		potE = 0.5f * bondParams.kb * (error * error);				// [J/mol]
 	}
-	float force_scalar = -bondtype.kb * error;				// [J/(mol*lm)] = [1/lima N/mol]
+	float force_scalar = -bondParams.kb * error;				// [J/(mol*lm)] = [1/lima N/mol]
 
 	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
 	// Note that we still get the correct value for potE
 	if constexpr (energyMinimize) {
-		if (error > bondtype.b0 * 2.f) {
-			force_scalar = -bondtype.kb * bondtype.b0 * 2.f;
+		if (error > bondParams.b0 * 2.f) {
+			force_scalar = -bondParams.kb * bondParams.b0 * 2.f;
 		}
 	}
 
@@ -57,13 +57,13 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	const Float3 inward_force_direction2 = (v2.cross(normal)).norm();
 
 	const float angle = Float3::getAngleOfNormVectors(v1, v2);
-	const float error = angle - angletype.theta_0;				// [rad]
+	const float error = angle - angletype.params.theta_0;				// [rad]
 
 	// Simple implementation
 	if constexpr (CALC_POTE) {
-		potE = angletype.k_theta * error * error * 0.5f;		// Energy [J/mol]0
+		potE = angletype.params.k_theta * error * error * 0.5f;		// Energy [J/mol]0
 	}
-	const float torque = angletype.k_theta * (error);				// Torque [J/(mol*rad)]
+	const float torque = angletype.params.k_theta * (error);				// Torque [J/(mol*rad)]
 
 	// Correct implementation
 	//potE = -angletype.k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
@@ -101,9 +101,10 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 	const float torsion = -atan2(sin_phi, cos_phi);
 
 	if constexpr (CALC_POTE) {
-		potE = __half2float(dihedral.k_phi) * (1. + cos(__half2float(dihedral.n) * torsion - __half2float(dihedral.phi_0)));
+		potE = __half2float(dihedral.params.k_phi) * (1. + cos(__half2float(dihedral.params.n) * torsion - __half2float(dihedral.params.phi_0)));
 	}
-	const float torque = __half2float(dihedral.k_phi) * (__half2float(dihedral.n) * sin(__half2float(dihedral.n) * torsion - __half2float(dihedral.phi_0))) / NANO_TO_LIMA;
+	const float torque = __half2float(dihedral.params.k_phi) * (__half2float(dihedral.params.n) * sin(__half2float(dihedral.params.n) * torsion 
+		- __half2float(dihedral.params.phi_0))) / NANO_TO_LIMA;
 
 
 
@@ -191,12 +192,12 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 		angle = -angle;
 	}
 
-	const float error = angle - improper.psi_0;
+	const float error = angle - improper.params.psi_0;
 
 	if constexpr (CALC_POTE) {
-		potE = 0.5f * improper.k_psi * (error * error);
+		potE = 0.5f * improper.params.k_psi * (error * error);
 	}
-	const float torque = improper.k_psi * (angle - improper.psi_0) * LIMA_TO_NANO;
+	const float torque = improper.params.k_psi * (angle - improper.params.psi_0) * LIMA_TO_NANO;
 
 	// This is the simple way, always right-ish
 	results[3] = plane2_normal * (torque / l.distToLine(j, k));
@@ -270,7 +271,7 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 			LimaForcecalc::calcSinglebondForces<energyMinimization>(
 				positions[pb->atom_indexes[0]],
 				positions[pb->atom_indexes[1]],
-				*pb,
+				pb->params,
 				forces,
 				potential,
 				bridgekernel

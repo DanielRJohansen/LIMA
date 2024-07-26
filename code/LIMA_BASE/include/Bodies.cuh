@@ -23,43 +23,57 @@
 
 
 struct SingleBond {
+	struct Parameters {
+		float b0 = 0.f;	// [lm]
+		float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+	};
+
 	SingleBond(){}
 	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
 
-	float b0 = 0.f;	// [lm]
-	float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+	Parameters params;
 	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
 	const static int n_atoms = 2;
 };
 
 struct AngleBond {
+	struct Parameters {
+		float theta_0 = 0.f;	// [rad]
+		float k_theta = 0.f;	// [J/mol/rad^2]
+	};
+	
 	AngleBond() {}
 	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
 
-	float theta_0 = 0.f;	// [rad]
-	float k_theta = 0.f;	// [J/mol/rad^2]
+	Parameters params;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
 	const static int n_atoms = 3;
 };
 
 struct DihedralBond {
+	struct Parameters {
+		half phi_0;		// [rad]
+		half k_phi;		// [J/mol/rad^2]
+		half n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+	};
 	const static int n_atoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<uint8_t, 4> ids, float phi0, float kphi, float n);
 	
-	half phi_0 = 0.f;
-	half k_phi = 0.f;
-	half n = 0.f;		// n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+	Parameters params;
 	uint8_t atom_indexes[4] = {0,0,0,0};
 };
 
 struct ImproperDihedralBond {
+	struct Parameters {
+		float psi_0 = 0.f;	// [rad]
+		float k_psi = 0.f;	// [J/mol/rad^2]
+	};
+
 	ImproperDihedralBond() {}
 	ImproperDihedralBond(std::array<uint8_t, 4> ids, float psi_0, float k_psi);
 
-	//TODO: make const?
-	float psi_0 = 0.f;
-	float k_psi = 0.f;
+	Parameters params;
 
 	uint8_t atom_indexes[4] = { 0,0,0,0 };
 	const static int n_atoms = 4;

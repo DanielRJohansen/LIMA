@@ -208,11 +208,17 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	}
 }
 
-enum TopologySection {title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section};
+enum TopologySection {
+	// Keywords typically found in topologies
+	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
+	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
+	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes,
+};
+
 
 class TopologySectionGetter {
 	int dihedralCount = 0;
-
+	int dihedraltypesCount = 0;
 public:
 	TopologySection operator()(const std::string& directive) {
 		if (directive == "molecules") return molecules;
@@ -228,6 +234,18 @@ public:
 		if (directive == "position_restraints") return position_restraints;
 		if (directive == "system") return _system;
 		if (directive == "cmap") return cmap;
+
+		if (directive == "atomtypes") return atomtypes;
+		if (directive == "pairtypes") return pairtypes;
+		if (directive == "bondtypes") return bondtypes;
+		if (directive == "constainttypes") return constainttypes;
+		if (directive == "angletypes") return angletypes;
+		if (directive == "dihedraltypes") {
+			if (++dihedraltypesCount <= 2) return dihedraltypesCount == 1 ? dihedraltypes : impropertypes;
+			throw std::runtime_error("Encountered 'dihedraltypes' directive more than 2 times in .itp/ file");
+		}
+		if (directive == "impropertypes") return impropertypes;
+
 		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
 	}
 };
@@ -280,6 +298,27 @@ bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int i
 	return true;
 }
 
+/// <summary></summary>
+/// <param name="line"></param>
+/// <param name="currentSection"></param>
+/// <param name="sectionGetter"></param>
+/// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
+bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
+	if (line.size() == 0) {
+		currentSection = no_section;
+		return true;
+	}
+	else if (std::all_of(line.begin(), line.end(), isspace)) {	// Check if all chars in line is space
+		return true;	// TODO Set to nosection here
+	}
+	else if (line[0] == '[') {
+		currentSection = sectionGetter(extractSectionName(line));
+		return true;
+	}
+	
+	return false; // We did not change section, and should continue parsing the current line
+}
+
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
@@ -297,22 +336,13 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 		for (auto& molecule : molecules.entries) {
 			assert(molecule.includeTopologyFile == nullptr);
 			assert(molecule.name != "");
-			//includeTopology.includeTopologyFile = std::make_shared<TopologyFile>(includeTopology.name);
-			// 
-			// 
+
 			if (includedFiles.count(molecule.name) == 0)
 				includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
 			molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
-			//includeTopology.includeTopologyFile = includedFiles.at(includeTopology.name).Get().get();
 		}
 	}
 	else {
-
-		assert(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp");
-
-		const char delimiter = ' ';
-		const std::vector<char> ignores = { ';', '#' };
-
 		std::ifstream file;
 		file.open(path);
 		if (!file.is_open() || file.fail()) {
@@ -324,29 +354,16 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 		std::string line{}, word{};
 		std::string sectionname = "";
-		//	std::vector<std::future<std::pair<std::string, std::unique_ptr<TopologyFile>>>> includeTopologies;	// <name, file>
-
 		std::vector<int> groIdToLimaId;
 
 
 		while (getline(file, line)) {
-
-			if (line.size() == 0) {
-				current_section = no_section;
-				continue;
-			}
-			// Check if all chars in line is space
-			if (std::all_of(line.begin(), line.end(), isspace)) {
-				continue;
-			}
-
-			if (line[0] == '[') {
-				current_section = getTopolSection(extractSectionName(line));
+			if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
 				continue;
 			}
 
 			// Check if current line is commented
-			if (firstNonspaceCharIs(line, ';') && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
+			if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
 
 			std::istringstream iss(line);
 			switch (current_section)
@@ -365,11 +382,6 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 
 				if (includedFiles.count(include_name) == 0) {
-					//const fs::path include_path = fs::exists(path.parent_path() / (include_name + ".itp"))
-					//	? path.parent_path() / (include_name + ".itp")
-					//	: path.parent_path() / ("topol_" + include_name + ".itp");
-
-
 					const fs::path includePath = SearchForFile(path.parent_path(), include_name);
 					includedFiles.emplace(include_name, includePath);
 				}
@@ -521,17 +533,6 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 	WriteFileToBinaryCache(*this, path);
 }
 
-//void GroFile::addEntry(std::string residue_name, std::string atom_name, const Float3& position) {
-//	if (atoms.size() == 0) {
-//		atoms.push_back({ 0, residue_name, atom_name, 0, position, std::nullopt });
-//	}
-//	else {
-//		atoms.push_back({atoms.back().residue_number+1, residue_name, atom_name, atoms.back().gro_id+1, position, std::nullopt});
-//	}
-//}
-
-
-
 
 
 
@@ -618,40 +619,16 @@ void MDFiles::MergeFiles(GroFile& leftGro, TopologyFile& leftTop, GroFile& right
 	leftTop.AppendTopology(rightTop);	
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-ParsedLffFile::LffSection getLffSection(const std::string& directive) {
-	if (directive == "singlebonds")
-		return ParsedLffFile::singlebond;
-	else if (directive == "anglebonds")
-		return ParsedLffFile::anglebond;
-	else if (directive == "dihedralbonds")
-		return ParsedLffFile::dihedralbond;
-	else if (directive == "improperdihedralbonds")
-		return ParsedLffFile::improperdihedralbond;
-	else
-		return ParsedLffFile::no_section;
+SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
+	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");
+	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");
 }
 
-ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
-	if (path.extension().string() != std::string{ ".lff" }) { throw std::runtime_error(std::format("Expected .lff extension with file {}", path.string())); }
-	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
+
+IncludeForcefieldFile::IncludeForcefieldFile(const fs::path& path) {
+	if (path.extension().string() != ".itp") { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
+	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
 	std::ifstream file;
 	file.open(path);
@@ -659,64 +636,109 @@ ParsedLffFile::ParsedLffFile(const fs::path& path) : path(path) {
 		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 	}
 
-	LffSection current_section{ title };
+	//lastModificationTimestamp = fs::last_write_time(path);
 
-	// Forward declaring for optimization reasons
+	//if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
+	//	readTopFileFromBinaryCache(path, *this);
+
+	//	// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
+	//	for (auto& molecule : molecules.entries) {
+	//		assert(molecule.includeTopologyFile == nullptr);
+	//		assert(molecule.name != "");
+
+	//		if (includedFiles.count(molecule.name) == 0)
+	//			includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
+	//		molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
+	//	}
+	//}
+	//else {
+
+
+	TopologySection current_section{ TopologySection::title };
+	TopologySectionGetter getTopolSection{};
+
 	std::string line{}, word{};
 	std::string sectionname = "";
+	std::vector<int> groIdToLimaId;
+
+
 	while (getline(file, line)) {
-
-		if (line.size() == 0) {
-			current_section = no_section;
-			continue;
-		}
-
-		if (line[0] == '#') {
-			//current_section = getNextTopologySection(current_section, extractSectionName(line));
-			current_section = getLffSection(line.substr(2));
+		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
 			continue;
 		}
 
 		// Check if current line is commented
-		if (firstNonspaceCharIs(line, '/') && current_section != title) { continue; }	// Only title-sections reads the comments
+		if (firstNonspaceCharIs(line, TopologyFile::commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
 
+		if (firstNonspaceCharIs(line, '#')) // Skip ifdef, include etc TODO: this needs to be implemented at some point
+			continue;
 
 		std::istringstream iss(line);
 		switch (current_section)
 		{
-		case singlebond: {
-			ParsedLffFile::Singlebond singlebond{};
-			std::string atomtypes[2];
-			iss >> singlebond.global_ids[0] >> singlebond.global_ids[1] >> atomtypes[0] >> atomtypes[1] >> singlebond.b0 >> singlebond.kb;
-			singlebonds.entries.emplace_back(singlebond);
+		case TopologySection::atomtypes: {
+			AtomType atomtype{};
+			iss >> atomtype.name >> atomtype.atNum 
+				>> atomtype.parameters.mass		// [g]
+				>> atomtype.charge				// [e]
+				>> atomtype.ptype 
+				>> atomtype.parameters.sigma	// [nm]
+				>> atomtype.parameters.epsilon;	// [kJ/mol]
+
+			atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
+
+			atomtype.parameters.mass /= static_cast<float>(KILO);
+			atomtype.parameters.sigma *= NANO_TO_LIMA;
+			atomtype.parameters.epsilon *= KILO;	
+
 			break;
 		}
-		case anglebond: {
-			ParsedLffFile::Anglebond anglebond{};
-			std::string atomtypes[3];
-			iss >> anglebond.global_ids[0] >> anglebond.global_ids[1] >> anglebond.global_ids[2] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> anglebond.theta0 >> anglebond.ktheta;
-			anglebonds.entries.emplace_back(anglebond);
+		case TopologySection::bondtypes: {
+			SinglebondType bondtype{};
+			iss >> bondtype.bondedType_i >> bondtype.bondedType_j >> bondtype.func
+				>> bondtype.parameters.b0	// [nm]
+				>> bondtype.parameters.kb;	// [kJ/mol/nm^2]
+
+			bondtype.parameters.b0 *= NANO_TO_LIMA;
+			bondtype.parameters.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol/lm^2
 			break;
 		}
-		case dihedralbond: {
-			ParsedLffFile::Dihedralbond dihedralbond{};
-			std::string atomtypes[4];
-			iss >> dihedralbond.global_ids[0] >> dihedralbond.global_ids[1] >> dihedralbond.global_ids[2] >> dihedralbond.global_ids[3] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> atomtypes[3] >> dihedralbond.phi0 >> dihedralbond.kphi >> dihedralbond.n;
-			dihedralbonds.entries.emplace_back(dihedralbond);
+		case TopologySection::angletypes: {
+			AnglebondType anglebondtype{};
+			iss >> anglebondtype.bondedType_i >> anglebondtype.bondedType_j >> anglebondtype.bondedType_k
+				>> anglebondtype.parameters.theta_0		// [degrees]
+				>> anglebondtype.parameters.k_theta;	// [kJ/mol/rad^2]
+
+			anglebondtype.parameters.theta_0 *= DEG_TO_RAD;
+			anglebondtype.parameters.k_theta *= KILO; // Convert to kJ/mol/rad^2
 			break;
 		}
-		case improperdihedralbond: {
-			ParsedLffFile::Improperdihedralbond improperdihedralbond{};
-			std::string atomtypes[4];
-			iss >> improperdihedralbond.global_ids[0] >> improperdihedralbond.global_ids[1] >> improperdihedralbond.global_ids[2] >> improperdihedralbond.global_ids[3] >> atomtypes[0] >> atomtypes[1] >> atomtypes[2] >> atomtypes[3] >> improperdihedralbond.psi0 >> improperdihedralbond.kpsi;
-			improperdihedralbonds.entries.emplace_back(improperdihedralbond);
-			break;
+		case TopologySection::dihedraltypes: {
+			DihedralbondType dihedralbondtype{};
+			float phi0;
+			float kphi;
+			float n;
+			iss >> dihedralbondtype.bondedTypes[0] >> dihedralbondtype.bondedTypes[1] >> dihedralbondtype.bondedTypes[2] >> dihedralbondtype.bondedTypes[3]
+				>> phi0	// [degrees]
+				>> kphi	// [kJ/mol]
+				>> n;
+
+			dihedralbondtype.parameters.phi_0 = phi0 * DEG_TO_RAD;
+			dihedralbondtype.parameters.k_phi = kphi * KILO; // Convert to kJ/mol
+			dihedralbondtype.parameters.n = n;
 		}
+		case TopologySection::impropertypes: {
+			ImproperDihedralbondType improperdihedralbondtype{};
+			float psi0;
+			float kpsi;
+			iss >> improperdihedralbondtype.bondedTypes[0] >> improperdihedralbondtype.bondedTypes[1] >> improperdihedralbondtype.bondedTypes[2] >> improperdihedralbondtype.bondedTypes[3]
+				>> psi0		// [degrees]
+				>> kpsi;	// [2 * kJ/mol]
+
+			improperdihedralbondtype.parameters.psi_0 = psi0 * DEG_TO_RAD;
+			improperdihedralbondtype.parameters.k_psi = kpsi * KILO / 2.f; // Convert to kJ/mol TODO: Move the /2 from here to the force calculation to save an op there
+		}
+
 		}
 	}
-}
-
-SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
-	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");
-	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");
 }

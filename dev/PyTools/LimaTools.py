@@ -65,7 +65,7 @@ def plotStuff():
         plt.legend()
         plt.show()
 
-
+        0.6->1.673
 
 def trans(num, target):
     num = num*2/10 / pow(2, (1. / 6.))

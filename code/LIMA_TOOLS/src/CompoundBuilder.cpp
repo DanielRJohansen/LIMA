@@ -270,8 +270,8 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Sing
 			atoms[bond.global_atom_indexes[0]].localIdInCompound,
 			atoms[bond.global_atom_indexes[1]].localIdInCompound
 		},
-		bond.b0,
-		bond.kb
+		bond.params.b0,
+		bond.params.kb
 		);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const AngleBondFactory& bond) {
@@ -284,8 +284,8 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Angl
 			atoms[bond.global_atom_indexes[1]].localIdInCompound,
 			atoms[bond.global_atom_indexes[2]].localIdInCompound
 		},
-		bond.theta_0,
-		bond.k_theta
+		bond.params.theta_0,
+		bond.params.k_theta
 		);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const DihedralBondFactory& bond) {
@@ -299,9 +299,9 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Dihe
 			atoms[bond.global_atom_indexes[2]].localIdInCompound,
 			atoms[bond.global_atom_indexes[3]].localIdInCompound
 		},
-		bond.phi_0,
-		bond.k_phi,
-		bond.n
+		bond.params.phi_0,
+		bond.params.k_phi,
+		bond.params.n
 		);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const ImproperDihedralBondFactory& bond) {
@@ -315,8 +315,8 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Impr
 			atoms[bond.global_atom_indexes[2]].localIdInCompound,
 			atoms[bond.global_atom_indexes[3]].localIdInCompound
 		},
-		bond.psi_0,
-		bond.k_psi
+		bond.params.psi_0,
+		bond.params.k_psi
 		);
 }
 
@@ -340,8 +340,8 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Sing
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[0]]),
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
 		},
-		bond.b0,
-		bond.kb
+		bond.params.b0,
+		bond.params.kb
 	};
 }
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const AngleBondFactory& bond) {
@@ -352,8 +352,8 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Angl
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
 		},		
-		bond.theta_0,
-		bond.k_theta
+		bond.params.theta_0,
+		bond.params.k_theta
 	};
 }
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const DihedralBondFactory& bond) {
@@ -367,9 +367,9 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Dihe
 		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
 		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[3]]),
 		},
-		bond.phi_0,
-		bond.k_phi,
-		bond.n
+		bond.params.phi_0,
+		bond.params.k_phi,
+		bond.params.n
 	};
 }
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const ImproperDihedralBondFactory& bond) {
@@ -381,8 +381,8 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Impr
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
 			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[3]]),
 		},
-		bond.psi_0,
-		bond.k_psi,
+		bond.params.psi_0,
+		bond.params.k_psi,
 	};
 }
 
@@ -925,11 +925,11 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 		const Float3 pos1 = atom1.groAtom->position;
 		const Float3 pos2 = atom2.groAtom->position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
-		const float bondRelaxedDist = bond.b0 * LIMA_TO_NANO;
+		const float bondRelaxedDist = bond.params.b0 * LIMA_TO_NANO;
 		const float allowedScalar = energyMinimizationMode ? 7.f : 1.8f;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.b0 * LIMA_TO_NANO).c_str());
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());
 		}
 	}
 }

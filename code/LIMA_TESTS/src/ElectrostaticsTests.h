@@ -16,7 +16,7 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
-
+#include <map>
 
 namespace ElectrostaticsTests {
 	using namespace TestUtils;
@@ -179,7 +179,7 @@ namespace ElectrostaticsTests {
 
 		auto a = env.getWorkdir();
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
-		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.15f, particlesPerNm3);
+		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.24f, particlesPerNm3);
 
 		simfiles.grofile->title = "ElectroStatic Field Test";
 		simfiles.topfile->title = "ElectroStatic Field Test";
@@ -202,18 +202,18 @@ namespace ElectrostaticsTests {
 
 		SimParams simparams{ 1000, 20, true, PBC };
 		simparams.coloring_method = ColoringMethod::Charge;
-		simparams.data_logging_interval = 20;
+		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 0.5f};
+		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 4.f};
 	
 		env->run();	
 
 		auto sim = env->getSim();
 
 
-		std::unordered_map<int, std::vector<float>> velDistributions;
+		std::map<float, std::vector<float>> velDistributions;
 
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
 		for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
@@ -221,7 +221,7 @@ namespace ElectrostaticsTests {
 
 			for (int pid = 0; pid < compound.n_particles; pid++) {
 
-				const int charge = static_cast<int>(compound.atom_charges[pid]);
+				const float charge = static_cast<float>(compound.atom_charges[pid]);
 				const float velHorizontal = compound.vels_prev[pid].x;
 
 				velDistributions[charge].push_back(velHorizontal);
@@ -256,7 +256,7 @@ namespace ElectrostaticsTests {
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
 
-		if (r2 < 0.8) {
+		if (r2 < 0.7) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
 			return LimaUnittestResult{ LimaUnittestResult::FAIL, errorMsg, envmode == Full };

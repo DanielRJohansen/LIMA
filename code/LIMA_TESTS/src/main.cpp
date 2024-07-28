@@ -104,7 +104,7 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.142e-5, 2e-5);	
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
 
 		//TestLongrangeEsNoLJ(envmode);

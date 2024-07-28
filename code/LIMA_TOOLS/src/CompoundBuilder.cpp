@@ -5,50 +5,25 @@
 #include <format>
 #include <array>
 
-
-SingleBondFactory::SingleBondFactory(std::array<uint32_t, n_atoms> ids, float b0, float kb) : SingleBond{ {0,0}, b0, kb } {
-	for (int i = 0; i < n_atoms; i++) {
+SingleBondFactory::SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond::Parameters& bondparameters) : params{ bondparameters } {
+	for (int i = 0; i < 2; i++) {
 		global_atom_indexes[i] = ids[i];
 	}
 }
-SingleBondFactory::SingleBondFactory(const std::array<uint32_t, n_atoms>& ids, const SingleBond& parameters) : SingleBond{ parameters } {
-	for (int i = 0; i < n_atoms; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-
-
-AngleBondFactory::AngleBondFactory(std::array<uint32_t, n_atoms> ids, float theta_0, float k_theta) : AngleBond{ {0,0,0}, theta_0, k_theta } {
-	for (int i = 0; i < n_atoms; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-AngleBondFactory::AngleBondFactory(std::array<uint32_t, n_atoms> ids, const AngleBond& bondparameters) : AngleBond{ bondparameters } {
-	for (int i = 0; i < n_atoms; i++) {
+AngleBondFactory::AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond::Parameters& bondparameters) : params{bondparameters} {
+	for (int i = 0; i < 3; i++) {
 		global_atom_indexes[i] = ids[i];
 	}
 }
 
-
-DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, 4> ids, float phi_0, float k_phi, float n) : DihedralBond{ {0,0,0,0}, phi_0, k_phi, n } {
-	for (int i = 0; i < n_atoms; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, n_atoms> ids, const DihedralBond& bondparameters) : DihedralBond{ bondparameters } {
-	for (int i = 0; i < n_atoms; i++) {
+DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond::Parameters& bondparameters) : params{ bondparameters } {
+	for (int i = 0; i < 4; i++) {
 		global_atom_indexes[i] = ids[i];
 	}
 }
 
-
-ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_atoms> ids, float psi_0, float k_psi) : ImproperDihedralBond{ {0,0,0,0}, psi_0, k_psi } {
-	for (int i = 0; i < n_atoms; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, n_atoms> ids, const ImproperDihedralBond& bondparameters) : ImproperDihedralBond{ bondparameters } {
-	for (int i = 0; i < n_atoms; i++) {
+ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond::Parameters& bondparameters) : params { bondparameters } {
+	for (int i = 0; i < 4; i++) {
 		global_atom_indexes[i] = ids[i];
 	}
 }
@@ -502,24 +477,27 @@ std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
 }
 
 
-template <typename BondtypeTopology, typename Bondtype, typename BondtypeFactory>
-void LoadBondIntoTopology(const BondtypeTopology& bondTopol, int atomIdOffset, LIMAForcefield& forcefield, const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology)
+template <int n, typename GenericBond, typename BondtypeFactory>
+void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOffset, LIMAForcefield& forcefield,
+	const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology)
 {
-	std::array<uint32_t, bondTopol.n> globalIds{};
-	for (int i = 0; i < bondTopol.n; i++) {
-		globalIds[i] = bondTopol.ids[i] + atomIdOffset;
+	std::array<uint32_t, n> globalIds{};
+	for (int i = 0; i < n; i++) {
+		globalIds[i] = bondIdsRelativeToTopolFile[i] + atomIdOffset;
 		if (globalIds[i] >= atomRefs.size())
 			return;
 			//throw std::runtime_error("Bond refers to atom that has not been loaded");
 	}
 
-	std::array<std::string, bondTopol.n> atomTypenames{};
-	for (int i = 0; i < bondTopol.n; i++) {
+	std::array<std::string, n> atomTypenames{};
+	for (int i = 0; i < n; i++) {
 		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
 	}
 
-	const Bondtype& bondparameter = forcefield.GetBondParameters<Bondtype>(atomTypenames); //forcefield.GetSinglebondParameters(atomTypenames);
-	topology.emplace_back(BondtypeFactory(globalIds, bondparameter.ToStandardBondRepresentation()));
+	SortBondedtypeNames<GenericBond>(atomTypenames);
+
+	const auto& bondparams = forcefield.GetBondParameters<typename GenericBond::Parameters>(atomTypenames);
+	topology.emplace_back(BondtypeFactory{ globalIds, bondparams });
 }
 
 void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileRef>& topologyFiles) {
@@ -546,23 +524,23 @@ Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, LIMAFor
 
 	for (const auto& topologyFile : topologyFiles) {
 		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			
-			LoadBondIntoTopology<TopologyFile::SingleBond, Singlebondtype, SingleBondFactory>(
-				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds);
+			LoadBondIntoTopology<2, SingleBond, SingleBondFactory>(
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			
-			LoadBondIntoTopology<TopologyFile::AngleBond, Anglebondtype, AngleBondFactory>(
-				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds);
+			LoadBondIntoTopology<3, AngleBond, AngleBondFactory>(
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalDihedralbonds()) {			
-			LoadBondIntoTopology<TopologyFile::DihedralBond, Dihedralbondtype, DihedralBondFactory>(
-				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds);
+			LoadBondIntoTopology<4, DihedralBond, DihedralBondFactory>(
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalImproperDihedralbonds()) {
-			LoadBondIntoTopology<TopologyFile::ImproperDihedralBond, Improperdihedralbondtype, ImproperDihedralBondFactory>(
-				bondTopol, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds);
+			LoadBondIntoTopology<4, ImproperDihedralBond, ImproperDihedralBondFactory>(
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds);
 		}
 	}
 

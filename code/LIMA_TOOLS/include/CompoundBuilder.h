@@ -41,31 +41,31 @@ namespace LIMA_MOLECULEBUILD {
 
 // --------------------------------- Bond Factories --------------------------------- //
 
-struct SingleBondFactory : public SingleBond {
-	SingleBondFactory(std::array<uint32_t, 2> ids, float b0, float kb);
-	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond& parameters);
-
+struct SingleBondFactory {
+	static const int n_atoms = 2;
+	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond::Parameters& parameters);
+	SingleBond::Parameters params;
 	uint32_t global_atom_indexes[2] = { 0,0 };
 };
 
-struct AngleBondFactory : public AngleBond {
-	AngleBondFactory(std::array<uint32_t, 3> ids, float theta_0, float k_theta);
-	AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond& bondparameters);
-
+struct AngleBondFactory {
+	static const int n_atoms = 3;
+	AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond::Parameters& bondparameters);
+	AngleBond::Parameters params;
 	uint32_t global_atom_indexes[3] = { 0,0, 0 };
 };
 
-struct DihedralBondFactory : public DihedralBond {
-	DihedralBondFactory(std::array<uint32_t, 4> ids, float phi0, float kphi, float n);
-	DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond& bondparameters);
-
+struct DihedralBondFactory {
+	static const int n_atoms = 4;
+	DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond::Parameters& bondparameters);
+	DihedralBond::Parameters params;
 	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };
 
-struct ImproperDihedralBondFactory : public ImproperDihedralBond {
-	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, float psi_0, float k_psi);
-	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond& bondparameters);
-
+struct ImproperDihedralBondFactory {
+	static const int n_atoms = 4;
+	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond::Parameters& bondparameters);
+	ImproperDihedralBond::Parameters params;
 	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
 };
 

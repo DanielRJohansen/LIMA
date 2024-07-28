@@ -56,37 +56,41 @@ std::vector<std::string> getFiles() {
 
 LjParameterDatabase::LjParameterDatabase() {
 	// First add solvent
-	insert(LJParameter{ {"solvent"}, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon} });
+	//insert(LJParameter{ {"solvent"}, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon} });
+	insert(AtomType{"solvent", 0, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A'} );
 	GetActiveIndex("solvent");	// Make sure solvent always are active
 	assert(GetActiveIndex("solvent") == ATOMTYPE_SOLVENT);
 }
 
 
 
-void LjParameterDatabase::insert(LJParameter element) {
+void LjParameterDatabase::insert(AtomType element) {
 	if (finished)
 		throw std::runtime_error("Cannot insert after finishing");
-	ljParameters.insert(element);
+	atomTypes.insert({ element.name, element });
 }
 int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 	if (finished)
 		throw std::runtime_error("Cannot query for more active types after finishing");
 	if (fastLookup.count(query) != 0)
 		return fastLookup.find(query)->second;
+	if (!atomTypes.contains(query))
+		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
 
-	const LJParameter& parameter = ljParameters.get({ query });
+
+	const AtomType& parameter = atomTypes.at({ query });
 	// First check of the parameter is already in the active list (since it might be 
 	// lexicographically similar but not identical, we cant expect the fastlookup above to always catch)
-	for (int i = 0; i < activeLjParameters.size(); i++) {
-		if (parameter.bonded_typenames == activeLjParameters[i].bonded_typenames) {
+	for (int i = 0; i < activeAtomTypes.size(); i++) {
+		if (parameter.name == activeAtomTypes[i].name) {
 			fastLookup.insert({ query, i });
 			return i;
 		}
 	}
 
-	activeLjParameters.push_back(parameter);
-	fastLookup.insert({ query, activeLjParameters.size() - 1 });
-	return activeLjParameters.size() - 1;
+	activeAtomTypes.push_back(parameter);
+	fastLookup.insert({ query, activeAtomTypes.size() - 1 });
+	return activeAtomTypes.size() - 1;
 }
 
 
@@ -115,10 +119,12 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			assert(row.words.size() >= 4);
 
 			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
-			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f;		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
-			const float b0 = stof(row.words[3]) * AngToNm;	// A to nm
+			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f / (NANO_TO_LIMA* NANO_TO_LIMA);		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
+			const float b0 = stof(row.words[3]) * AngToNm * NANO_TO_LIMA;	// A to nm
 
-			singlebondParameters.insert(Singlebondtype(bondedatom_typenames, b0, kb));
+			auto bond = Singlebondtype(bondedatom_typenames, b0, kb);
+			SortBondedtypeNames<SingleBond>(bond.bonded_typenames);
+			singlebondParameters.insert(bond);
 		}
 		else if (row.section == "ANGLES") {
 			assert(row.words.size() >= 5);
@@ -127,7 +133,9 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
 			const float theta0 = stof(row.words[4]) * degreeToRad;
 
-			anglebondParameters.insert(Anglebondtype(angle_typenames, theta0, ktheta));
+			auto bond = Anglebondtype(angle_typenames, theta0, ktheta);
+			SortBondedtypeNames<AngleBond>(bond.bonded_typenames);
+			anglebondParameters.insert(bond);
 		}
 		else if (row.section == "DIHEDRALS") {
 			assert(row.words.size() >= 7);
@@ -137,7 +145,9 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const int n = stoi(row.words[5]);
 			const float phi0 = stof(row.words[6]) * degreeToRad;
 
-			dihedralbondParameters.insert(Dihedralbondtype(dihedral_typenames, phi0, kphi, n));
+			auto bond = Dihedralbondtype(dihedral_typenames, phi0, kphi, n);
+			SortBondedtypeNames<DihedralBond>(bond.bonded_typenames);
+			dihedralbondParameters.insert(bond);
 		}
 		else if (row.section == "IMPROPER") {
 			assert(row.words.size() >= 7);
@@ -145,23 +155,27 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
 			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
 			const float psi0 = stof(row.words[6]) * degreeToRad;
-
-			improperdihedralbondParameters.insert(Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi));
+			auto bond = Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi);
+			SortBondedtypeNames<ImproperDihedralBond>(bond.bonded_typenames);
+			improperdihedralbondParameters.insert(bond);
 		}
 		else if (row.section == "NONBONDED") {
 			assert(row.words.size() >= 4);
 
-			const string& atomtype = row.words[0];
+			const string& atomTypeName = row.words[0];
 			const float epsilon = abs(stof(row.words[2])) * kcalToJoule;	// For some fucked reason the eps is *inconsistently* negative...
 			const float sigma = stof(row.words[3]) * 2.f * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm] 
 			const float sigmaOld = stof(row.words[3]) / rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm]  // WRONG
-			if (!atomnameToMassMap.count(atomtype))
-				throw std::runtime_error(std::format("Failed to find atomtype [{}]", atomtype));
-			const float mass = atomnameToMassMap.at(atomtype) / static_cast<float>(KILO);		// [g/mol] -> [kg/mol]
+			if (!atomnameToMassMap.count(atomTypeName))
+				throw std::runtime_error(std::format("Failed to find atomtype [{}]", atomTypeName));
+			const float mass = atomnameToMassMap.at(atomTypeName) / static_cast<float>(KILO);		// [g/mol] -> [kg/mol]
 
-			LJParameter entry{ { atomtype }, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} };
+			//LJParameter entry{ { atomtype }, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} };
+			//ljParameters.insert(entry);
 
-			ljParameters.insert(entry);
+			AtomType atomtype{ atomTypeName , 0, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} , 0.f, 'A' };
+			ljParameters.insert(atomtype);
+			
 
 			// Not yet used
 			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma

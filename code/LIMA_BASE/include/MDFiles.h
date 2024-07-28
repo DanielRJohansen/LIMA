@@ -421,42 +421,6 @@ private:
 class IncludeForcefieldFile {
 	IncludeForcefieldFile(const fs::path& path);
 
-	struct AtomType {
-		std::string name{};
-		int atNum{};
-		ForceField_NB::ParticleParameters parameters{};
-		float charge{}; // [kilo C/mol]
-		char ptype{};
-	};
-	
-	struct SinglebondType {
-		std::string bondedType_i;
-		std::string bondedType_j;
-		int func{};
-		SingleBond::Parameters parameters;
-	};
-
-	struct AnglebondType {
-		std::string bondedType_i;
-		std::string bondedType_j;
-		std::string bondedType_k;
-		int func{};
-		AngleBond::Parameters parameters;
-		float ub0;	// No idea what this is
-		float cub;	// No idea what this is
-	};
-
-	struct DihedralbondType {
-		std::array<std::string, 4> bondedTypes; // ijkl
-		int func{};
-		DihedralBond::Parameters parameters;
-	};
-
-	struct ImproperDihedralbondType {
-		std::array<std::string, 4> bondedTypes; // ijkl
-		int func{};
-		ImproperDihedralBond::Parameters parameters;
-	};
 
 };
 

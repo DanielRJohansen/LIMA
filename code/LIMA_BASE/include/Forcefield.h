@@ -112,20 +112,23 @@ private:
 
 
 class LjParameterDatabase {
-	ParameterDatabase<LJParameter> ljParameters;
 
-	std::vector<LJParameter> activeLjParameters;
+	std::map<std::string, AtomType> atomTypes;
+
+	//ParameterDatabase<LJParameter> ljParameters;
+
+	std::vector<AtomType> activeAtomTypes;
 	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in activeParameters
 
 	bool finished = false;
 
 	public:
 		LjParameterDatabase();
-		void insert(LJParameter element);
+		void insert(AtomType element);
 		int GetActiveIndex(const std::string& query);
-		std::vector<LJParameter>& GetActiveParameters() {
+		std::vector<AtomType>& GetActiveParameters() {
 			finished = true;			
-			return activeLjParameters;
+			return activeAtomTypes;
 		}
 };
 
@@ -149,21 +152,23 @@ public:
 
 	template<typename BondParamType>
 	const BondParamType& GetBondParameters(const auto& query) {
-		if constexpr (std::is_same<BondParamType, Singlebondtype>::value) {
-			return singlebondParameters.get(query);
+		if constexpr (std::is_same<BondParamType, SingleBond::Parameters>::value) {
+			return singlebondParameters.get(query).params;
 		}
-		else if constexpr (std::is_same<BondParamType, Anglebondtype>::value ) {
-			return anglebondParameters.get(query);
+		else if constexpr (std::is_same<BondParamType, AngleBond::Parameters>::value ) {
+			return anglebondParameters.get(query).params;
 		}
-		else if constexpr (std::is_same<BondParamType, Dihedralbondtype>::value ) {
-			return dihedralbondParameters.get(query);
+		else if constexpr (std::is_same<BondParamType, DihedralBond::Parameters>::value ) {
+			return dihedralbondParameters.get(query).params;
 		}
-		else if constexpr (std::is_same<BondParamType, Improperdihedralbondtype>::value ) {
-			return improperdihedralbondParameters.get(query);
+		else if constexpr (std::is_same<BondParamType, ImproperDihedralBond::Parameters>::value ) {
+			return improperdihedralbondParameters.get(query).params;
 		}
 		else {
-			static BondParamType dummy; // Fallback to handle unsupported cases
-			return dummy;
+			throw std::runtime_error("Unsupported bond type");
+			//static_assert(false, "Unsupported bond type");
+			//static BondParamType dummy; // Fallback to handle unsupported cases&
+			//return dummy;
 		}
 	}
 

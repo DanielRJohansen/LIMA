@@ -20,7 +20,7 @@ namespace ForcefieldHelpers{
 	template <class DerivedType>
 	static float calcLikeness(DerivedType query_type, const DerivedType& forcefield_type) {
 		float likeness = 1.f;
-		for (int i = 0; i < DerivedType::n_atoms; i++) {
+		for (int i = 0; i < DerivedType::nAtoms; i++) {
 			likeness *= _calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
 		}
 
@@ -54,7 +54,7 @@ namespace ForcefieldHelpers{
 		for (const auto& name : forcefield[bestBondIndex].bonded_typenames) {
 			std::cout << name << " ";
 		}
-		if constexpr (std::is_same_v<GenericBondType, Dihedralbondtype>) {
+		if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
 			std::cout << "Dihedral type\n";
 		}
 		else {
@@ -65,10 +65,10 @@ namespace ForcefieldHelpers{
 		for (auto& name : query_type.bonded_typenames) {
 			std::cout << name << " ";
 		}
-		printf("\nQuery gro_ids: ");
-		for (auto& id : query_type.global_ids) {
-			std::cout << std::to_string(id) << " ";
-		}
+		//printf("\nQuery gro_ids: ");
+		//for (auto& id : query_type.global_ids) {
+		//	std::cout << std::to_string(id) << " ";
+		//}
 		throw std::runtime_error("\nfindBestMatchInForcefield failed");
 	}
 
@@ -77,7 +77,7 @@ namespace ForcefieldHelpers{
 template <typename GenericBondType>
 class ParameterDatabase {
 public:
-	const GenericBondType& get(const std::array<std::string, GenericBondType::n_atoms>& query) {
+	const GenericBondType& get(const std::array<std::string, GenericBondType::nAtoms>& query) {
 		const std::string key = MakeKey(query);
 		if (fastLookup.count(key) != 0)
 			return parameters[fastLookup.find(key)->second];
@@ -99,11 +99,11 @@ private:
 	std::vector<GenericBondType> parameters;
 	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in parameters
 
-	std::string MakeKey(const std::array<std::string, GenericBondType::n_atoms>& arr) {
-		std::string key(GenericBondType::n_atoms * 5, ' '); // 5 is the maximum length of a typename
+	std::string MakeKey(const std::array<std::string, GenericBondType::nAtoms>& arr) {
+		std::string key(GenericBondType::nAtoms * 5, ' '); // 5 is the maximum length of a typename
 		
 
-		for (size_t i = 0; i < GenericBondType::n_atoms; ++i) {
+		for (size_t i = 0; i < GenericBondType::nAtoms; ++i) {
 			std::strcpy(&key[i * 5], arr[i].c_str());
 		}
 		return key;
@@ -112,10 +112,7 @@ private:
 
 
 class LjParameterDatabase {
-
-	std::map<std::string, AtomType> atomTypes;
-
-	//ParameterDatabase<LJParameter> ljParameters;
+	std::unordered_map<std::string, AtomType> atomTypes;
 
 	std::vector<AtomType> activeAtomTypes;
 	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in activeParameters
@@ -174,14 +171,13 @@ public:
 
 
 private:
-	/*ParameterDatabase<LJParameter> ljParameters;
-	std::vector<LJParameter> activeLjParameters;*/
 	LjParameterDatabase ljParameters;
 
-	ParameterDatabase<Singlebondtype> singlebondParameters;
-	ParameterDatabase<Anglebondtype> anglebondParameters;
-	ParameterDatabase<Dihedralbondtype> dihedralbondParameters;
-	ParameterDatabase<Improperdihedralbondtype> improperdihedralbondParameters;
+	ParameterDatabase<SinglebondType> singlebondParameters;
+	ParameterDatabase<AnglebondType> anglebondParameters;
+	ParameterDatabase<DihedralbondType> dihedralbondParameters;
+	ParameterDatabase<ImproperDihedralbondType> improperdihedralbondParameters;
 
 	void loadFileIntoForcefield(const SimpleParsedFile& parsedfile);
+	void LoadFileIntoForcefield(const fs::path& path);
 };

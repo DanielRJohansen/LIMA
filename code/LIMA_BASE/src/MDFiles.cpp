@@ -208,13 +208,6 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	}
 }
 
-enum TopologySection {
-	// Keywords typically found in topologies
-	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
-	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
-	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes,
-};
-
 
 class TopologySectionGetter {
 	int dihedralCount = 0;
@@ -624,121 +617,69 @@ SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
 	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");
 }
 
+GenericItpFile::GenericItpFile(const fs::path& path) {
+	if (path.extension().string() != ".itp") { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
+	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
-//
-//IncludeForcefieldFile::IncludeForcefieldFile(const fs::path& path) {
-//	if (path.extension().string() != ".itp") { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
-//	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
-//
-//	std::ifstream file;
-//	file.open(path);
-//	if (!file.is_open() || file.fail()) {
-//		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
-//	}
-//
-//	//lastModificationTimestamp = fs::last_write_time(path);
-//
-//	//if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
-//	//	readTopFileFromBinaryCache(path, *this);
-//
-//	//	// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
-//	//	for (auto& molecule : molecules.entries) {
-//	//		assert(molecule.includeTopologyFile == nullptr);
-//	//		assert(molecule.name != "");
-//
-//	//		if (includedFiles.count(molecule.name) == 0)
-//	//			includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
-//	//		molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
-//	//	}
-//	//}
-//	//else {
-//
-//
-//	TopologySection current_section{ TopologySection::title };
-//	TopologySectionGetter getTopolSection{};
-//
-//	std::string line{}, word{};
-//	std::string sectionname = "";
-//	std::vector<int> groIdToLimaId;
-//
-//
-//	while (getline(file, line)) {
-//		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
-//			continue;
-//		}
-//
-//		// Check if current line is commented
-//		if (firstNonspaceCharIs(line, TopologyFile::commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
-//
-//		if (firstNonspaceCharIs(line, '#')) // Skip ifdef, include etc TODO: this needs to be implemented at some point
-//			continue;
-//
-//		std::istringstream iss(line);
-//		switch (current_section)
-//		{
-//		case TopologySection::atomtypes: {
-//			AtomType atomtype{};
-//			iss >> atomtype.name >> atomtype.atNum 
-//				>> atomtype.parameters.mass		// [g]
-//				>> atomtype.charge				// [e]
-//				>> atomtype.ptype 
-//				>> atomtype.parameters.sigma	// [nm]
-//				>> atomtype.parameters.epsilon;	// [kJ/mol]
-//
-//			atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
-//
-//			atomtype.parameters.mass /= static_cast<float>(KILO);
-//			atomtype.parameters.sigma *= NANO_TO_LIMA;
-//			atomtype.parameters.epsilon *= KILO;	
-//
-//			break;
-//		}
-//		case TopologySection::bondtypes: {
-//			SinglebondType bondtype{};
-//			iss >> bondtype.bondedType_i >> bondtype.bondedType_j >> bondtype.func
-//				>> bondtype.parameters.b0	// [nm]
-//				>> bondtype.parameters.kb;	// [kJ/mol/nm^2]
-//
-//			bondtype.parameters.b0 *= NANO_TO_LIMA;
-//			bondtype.parameters.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol/lm^2
-//			break;
-//		}
-//		case TopologySection::angletypes: {
-//			AnglebondType anglebondtype{};
-//			iss >> anglebondtype.bondedType_i >> anglebondtype.bondedType_j >> anglebondtype.bondedType_k
-//				>> anglebondtype.parameters.theta_0		// [degrees]
-//				>> anglebondtype.parameters.k_theta;	// [kJ/mol/rad^2]
-//
-//			anglebondtype.parameters.theta_0 *= DEG_TO_RAD;
-//			anglebondtype.parameters.k_theta *= KILO; // Convert to kJ/mol/rad^2
-//			break;
-//		}
-//		case TopologySection::dihedraltypes: {
-//			DihedralbondType dihedralbondtype{};
-//			float phi0;
-//			float kphi;
-//			float n;
-//			iss >> dihedralbondtype.bondedTypes[0] >> dihedralbondtype.bondedTypes[1] >> dihedralbondtype.bondedTypes[2] >> dihedralbondtype.bondedTypes[3]
-//				>> phi0	// [degrees]
-//				>> kphi	// [kJ/mol]
-//				>> n;
-//
-//			dihedralbondtype.parameters.phi_0 = phi0 * DEG_TO_RAD;
-//			dihedralbondtype.parameters.k_phi = kphi * KILO; // Convert to kJ/mol
-//			dihedralbondtype.parameters.n = n;
-//		}
-//		case TopologySection::impropertypes: {
-//			ImproperDihedralbondType improperdihedralbondtype{};
-//			float psi0;
-//			float kpsi;
-//			iss >> improperdihedralbondtype.bondedTypes[0] >> improperdihedralbondtype.bondedTypes[1] >> improperdihedralbondtype.bondedTypes[2] >> improperdihedralbondtype.bondedTypes[3]
-//				>> psi0		// [degrees]
-//				>> kpsi;	// [2 * kJ/mol]
-//
-//			improperdihedralbondtype.parameters.psi_0 = psi0 * DEG_TO_RAD;
-//			improperdihedralbondtype.parameters.k_psi = kpsi * KILO / 2.f; // Convert to kJ/mol TODO: Move the /2 from here to the force calculation to save an op there
-//		}
-//
-//		}
-//	}
-//}
+	std::ifstream file;
+	file.open(path);
+	if (!file.is_open() || file.fail()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
+	}
+
+	//lastModificationTimestamp = fs::last_write_time(path);
+
+	//if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
+	//	readTopFileFromBinaryCache(path, *this);
+
+	//	// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
+	//	for (auto& molecule : molecules.entries) {
+	//		assert(molecule.includeTopologyFile == nullptr);
+	//		assert(molecule.name != "");
+
+	//		if (includedFiles.count(molecule.name) == 0)
+	//			includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
+	//		molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
+	//	}
+	//}
+	//else {
+
+
+	TopologySection current_section{ TopologySection::title };
+	TopologySectionGetter getTopolSection{};
+	bool newSection = true;
+
+	std::string line{}, word{};
+	std::string sectionname = "";
+	std::vector<int> groIdToLimaId;
+
+
+	while (getline(file, line)) {
+		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
+			newSection = true;
+			continue;
+		}
+
+		// Check if current line is commented
+		if (firstNonspaceCharIs(line, TopologyFile::commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
+
+		// Check if this line contains another illegal keyword
+		if (firstNonspaceCharIs(line, '#')) {// Skip ifdef, include etc TODO: this needs to be implemented at some point
+			if (line.find("#include") != std::string::npos) {
+				throw std::runtime_error("This class should never be reading files containing thye #include keyword!");
+			}
+			continue;
+		}
+
+
+		if (newSection) {
+			if (GetSection(current_section).has_value()) {
+				throw std::runtime_error("Found the same section muliple times in the same file");
+			}
+			sections.insert({ current_section, {} });
+			newSection = false;
+		}
+
+		GetSection(current_section)->get().lines.emplace_back(line);	// OPTIM: i prolly should cache this address instead
+	}
+}

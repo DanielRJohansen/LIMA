@@ -91,7 +91,7 @@ struct Section {
 
 class TopologyFile {	//.top or .itp
 	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
-	friend class IncludeForcefieldFile;
+	friend class GenericItpFile;
 
 	static const char commentChar = ';';
 public:
@@ -413,15 +413,37 @@ private:
 	TopologyFile* const topology = nullptr;
 };
 
+enum TopologySection {
+	// Keywords typically found in topologies
+	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
+	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
+	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes,
+};
 
+// .itp files follow a simple ruleset. Here we can read such a file, that is NOT a topology file
+// This class does NOT support recursive includes, so for reading topologies use the one above
+// It is also not very fast, since it stores a lot of data as strings
+class GenericItpFile {
+	struct Section {
+		std::string title;
+		std::vector<std::string> lines;
+	};
 
-// These files are actually also .tip files, and technically works the same way as topologyfiles,
-// but i want to have them more distinct to keep things simpler. Most importantly,
-// i havent allowed for recursive includes
-class IncludeForcefieldFile {
-	IncludeForcefieldFile(const fs::path& path);
+	std::unordered_map<TopologySection, Section> sections;
 
+public:
+	GenericItpFile(const fs::path& path);
 
+	std::optional<std::reference_wrapper<const Section>> GetSection(TopologySection section) const {
+		if (sections.count(section) == 0)
+			return std::nullopt;
+		return std::cref(sections.at(section));
+	}
+	std::optional<std::reference_wrapper<Section>> GetSection(TopologySection section) {
+		if (sections.count(section) == 0)
+			return std::nullopt;
+		return std::ref(sections.at(section));
+	}
 };
 
 

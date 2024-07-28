@@ -56,7 +56,6 @@ std::vector<std::string> getFiles() {
 
 LjParameterDatabase::LjParameterDatabase() {
 	// First add solvent
-	//insert(LJParameter{ {"solvent"}, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon} });
 	insert(AtomType{"solvent", 0, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A'} );
 	GetActiveIndex("solvent");	// Make sure solvent always are active
 	assert(GetActiveIndex("solvent") == ATOMTYPE_SOLVENT);
@@ -67,7 +66,10 @@ LjParameterDatabase::LjParameterDatabase() {
 void LjParameterDatabase::insert(AtomType element) {
 	if (finished)
 		throw std::runtime_error("Cannot insert after finishing");
-	atomTypes.insert({ element.name, element });
+
+	// Only add a type the first time we see it. TODO: We should also do this for all bonded types
+	if (!atomTypes.contains(element.name))
+		atomTypes.insert({ element.name, element });
 }
 int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 	if (finished)
@@ -122,7 +124,9 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f / (NANO_TO_LIMA* NANO_TO_LIMA);		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
 			const float b0 = stof(row.words[3]) * AngToNm * NANO_TO_LIMA;	// A to nm
 
-			auto bond = Singlebondtype(bondedatom_typenames, b0, kb);
+			auto bond = SinglebondType{ bondedatom_typenames, -1,  {b0, kb} };
+
+			//auto bond = Singlebondtype(bondedatom_typenames, b0, kb);
 			SortBondedtypeNames<SingleBond>(bond.bonded_typenames);
 			singlebondParameters.insert(bond);
 		}
@@ -133,7 +137,9 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
 			const float theta0 = stof(row.words[4]) * degreeToRad;
 
-			auto bond = Anglebondtype(angle_typenames, theta0, ktheta);
+			//auto bond = Anglebondtype(angle_typenames, theta0, ktheta);
+			auto bond = AnglebondType{ angle_typenames, -1, {theta0, ktheta}, 0.f, 0.f };
+
 			SortBondedtypeNames<AngleBond>(bond.bonded_typenames);
 			anglebondParameters.insert(bond);
 		}
@@ -145,7 +151,8 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const int n = stoi(row.words[5]);
 			const float phi0 = stof(row.words[6]) * degreeToRad;
 
-			auto bond = Dihedralbondtype(dihedral_typenames, phi0, kphi, n);
+			//auto bond = Dihedralbondtype(dihedral_typenames, phi0, kphi, n);
+			auto bond = DihedralbondType{ dihedral_typenames, -1, {phi0, kphi, n} };
 			SortBondedtypeNames<DihedralBond>(bond.bonded_typenames);
 			dihedralbondParameters.insert(bond);
 		}
@@ -155,7 +162,8 @@ void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) 
 			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
 			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
 			const float psi0 = stof(row.words[6]) * degreeToRad;
-			auto bond = Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi);
+			//auto bond = Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi);
+			auto bond = ImproperDihedralbondType{ improper_dihedral_typenames, -1, {psi0, kpsi} };
 			SortBondedtypeNames<ImproperDihedralBond>(bond.bonded_typenames);
 			improperdihedralbondParameters.insert(bond);
 		}
@@ -195,6 +203,21 @@ LIMAForcefield::LIMAForcefield() {
 		const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
 		loadFileIntoForcefield(parsedfile);
 	}
+
+
+
+#ifdef __linux__
+	const fs::path ff_dir = "/opt/LIMA/resources/Forcefields/charm27.ff";
+#else
+	const fs::path ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charmm27.ff";
+#endif
+
+	//LoadFileIntoForcefield(ff_dir / "ffnonbonded.itp");
+	//LoadFileIntoForcefield(ff_dir / "ffbonded.itp");
+	/*LoadFileIntoForcefield(ff_dir / "ffnanonbonded.itp");
+	LoadFileIntoForcefield(ff_dir / "ffnabonded.itp");
+	LoadFileIntoForcefield(ff_dir / "ions.itp");*/
+
 }
 
 
@@ -232,4 +255,104 @@ float ForcefieldHelpers::_calcLikeness(const string& query_type, const string& f
 			break;
 	}
 	return likeness;
+}
+
+
+
+
+
+void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
+
+	GenericItpFile file{ path };
+
+
+	if (file.GetSection(TopologySection::atomtypes)) {
+		for (const auto& line : file.GetSection(TopologySection::atomtypes)->get().lines) {
+			std::istringstream iss(line);
+
+			AtomType atomtype{};
+			iss >> atomtype.name >> atomtype.atNum
+				>> atomtype.parameters.mass		// [g]
+				>> atomtype.charge				// [e]
+				>> atomtype.ptype
+				>> atomtype.parameters.sigma	// [nm]
+				>> atomtype.parameters.epsilon;	// [kJ/mol]
+
+			atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
+
+			atomtype.parameters.mass /= static_cast<float>(KILO);
+			atomtype.parameters.sigma *= NANO_TO_LIMA;
+			atomtype.parameters.epsilon *= KILO;
+
+			ljParameters.insert(atomtype);
+		}
+	}
+	if (file.GetSection(TopologySection::bondtypes)) {
+		for (const auto& line : file.GetSection(TopologySection::bondtypes)->get().lines) {
+			std::istringstream iss(line);
+
+			SinglebondType bondtype{};
+			iss >> bondtype.bonded_typenames[0] >> bondtype.bonded_typenames[1] >> bondtype.func
+				>> bondtype.params.b0	// [nm]
+				>> bondtype.params.kb;	// [kJ/mol/nm^2]
+
+			bondtype.params.b0 *= NANO_TO_LIMA;
+			bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
+
+			singlebondParameters.insert(bondtype);
+		}
+	}
+	if (file.GetSection(TopologySection::angletypes)) {
+		for (const auto& line : file.GetSection(TopologySection::angletypes)->get().lines) {
+			std::istringstream iss(line);
+
+			AnglebondType anglebondtype{};
+			iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2]
+				>> anglebondtype.params.theta_0		// [degrees]
+				>> anglebondtype.params.k_theta;	// [kJ/mol/rad^2]
+
+			anglebondtype.params.theta_0 *= DEG_TO_RAD;
+			anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
+
+			anglebondParameters.insert(anglebondtype);
+		}
+	}
+	if (file.GetSection(TopologySection::dihedraltypes)) {
+		for (const auto& line : file.GetSection(TopologySection::dihedraltypes)->get().lines) {
+			std::istringstream iss(line);
+
+			DihedralbondType dihedralbondtype{};
+			float phi0;
+			float kphi;
+			float n;
+			iss >> dihedralbondtype.bonded_typenames[0] >> dihedralbondtype.bonded_typenames[1] >> dihedralbondtype.bonded_typenames[2] >> dihedralbondtype.bonded_typenames[3]
+				>> dihedralbondtype.func
+				>> phi0	// [degrees]
+				>> kphi	// [kJ/mol]
+				>> n;
+
+			dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
+			dihedralbondtype.params.k_phi = kphi * KILO; // Convert to J/mol
+			dihedralbondtype.params.n = n;
+
+			dihedralbondParameters.insert(dihedralbondtype);
+		}
+	}
+	if (file.GetSection(TopologySection::impropertypes)) {
+		for (const auto& line : file.GetSection(TopologySection::impropertypes)->get().lines) {
+			std::istringstream iss(line);
+
+			ImproperDihedralbondType improperdihedralbondtype{};
+			float psi0;
+			float kpsi;
+			iss >> improperdihedralbondtype.bonded_typenames[0] >> improperdihedralbondtype.bonded_typenames[1] >> improperdihedralbondtype.bonded_typenames[2] >> improperdihedralbondtype.bonded_typenames[3]
+				>> psi0		// [degrees]
+				>> kpsi;	// [2 * kJ/mol]
+
+			improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
+			improperdihedralbondtype.params.k_psi = kpsi * KILO / 2.f; // Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
+
+			improperdihedralbondParameters.insert(improperdihedralbondtype);
+		}
+	}
 }

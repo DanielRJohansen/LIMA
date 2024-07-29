@@ -61,12 +61,12 @@ namespace TestUtils {
 	}
 
 	// assumes that all the values are positive
-	bool isOutsideAllowedRange(float value, float target, float allowedRangeFromTarget=0.05) {
+	bool isOutsideAllowedRange(float value, float target, float maxError=0.05) {
 		if (isnan(value)) 
 			return true;
 
-		const float error = std::abs(value - target);
-		return error > target * allowedRangeFromTarget;
+		const float error = std::abs(value - target) / target;
+		return error > maxError;
 	}
 
 	bool isAboveVcThreshold(float value, float target) {
@@ -245,6 +245,7 @@ namespace TestUtils {
 			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics->pot_energy});
 			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics->kin_energy});
 			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics->total_energy});
+			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
 		}
 
 

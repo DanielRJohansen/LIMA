@@ -166,11 +166,11 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-			//if (force.len() > 5.f) {
-			//	printf("Illegally large force");
-			//	force.print('F');
-			//	signals->critical_error_encountered = true;
-			//}
+			if (force.len() > 10.f) {
+				printf("Illegally large force");
+				force.print('F');
+				signals->critical_error_encountered = true;
+			}
 
 
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?

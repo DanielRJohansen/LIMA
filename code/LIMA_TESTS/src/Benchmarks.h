@@ -116,6 +116,8 @@ namespace Benchmarks {
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false, false);
 
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+
 		auto duration = env.simulationTimer->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };

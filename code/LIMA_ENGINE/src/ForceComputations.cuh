@@ -61,7 +61,7 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 
 	// Simple implementation
 	if constexpr (CALC_POTE) {
-		potE = angletype.params.k_theta * error * error * 0.5f;		// Energy [J/mol]0
+		potE = angletype.params.k_theta * error * error * 0.5f;		// Energy [J/mol]
 	}
 	const float torque = angletype.params.k_theta * (error);				// Torque [J/(mol*rad)]
 
@@ -84,7 +84,8 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 
 // From resource: https://nosarthur.github.io/free%20energy%20perturbation/2017/02/01/dihedral-force.html
 // Greatly inspired by OpenMD's CharmmDihedral algorithm
-__device__ inline void calcDihedralbondForces(const Float3& pos_left, const Float3& pos_lm, const Float3& pos_rm, const Float3& pos_right, const DihedralBond& dihedral, Float3* results, float& potE) {
+__device__ inline void calcDihedralbondForces(const Float3& pos_left, const Float3& pos_lm, const Float3& pos_rm, const Float3& pos_right, 
+	const DihedralBond& dihedral, Float3* results, float& potE) {
 	const Float3 r12 = (pos_lm - pos_left);
 	const Float3 r23 = (pos_rm - pos_lm);
 	const Float3 r34 = (pos_right - pos_rm);

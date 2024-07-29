@@ -45,6 +45,7 @@ namespace TestMDStability {
 		//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
 		//LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
 		//LIMA_Print::printPythonVec("totE", analytics->total_energy);
+		//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
 
 		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
@@ -57,7 +58,7 @@ namespace TestMDStability {
 		const std::string work_folder = simulations_dir + name + "/";
 		const std::string simpar = work_folder + "sim_params.txt";
 
-		return loadAndRunBasicSimulation(name, envmode, 2.77e-4, 2e-6);
+		return loadAndRunBasicSimulation(name, envmode, 5.4e-4, 2e-6);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

@@ -89,7 +89,6 @@ namespace Electrostatics {
 			if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
 				printf("Error: offset out of bounds: %d. LO %d GO %d\n", offset, localOffset, numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)]);
 				LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposLM).print('n');
-				relposLM.print('r');
 				(relposLM * LIMA_TO_NANO).print('p');
 			}
 			

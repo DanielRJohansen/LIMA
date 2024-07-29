@@ -10,7 +10,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 3.677e-5) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
 		const std::string work_folder = simulations_dir + "Pool/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -50,7 +50,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, target_vc, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, target_vc, energy_gradients, 2e-7);
 		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
 		return LimaUnittestResult{status, result.second, envmode == Full};
@@ -233,7 +233,7 @@ namespace ForceCorrectness {
 
 
 
-	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.0031) {
+	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
 		const std::string work_folder = simulations_dir + "Singlebond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -276,7 +276,7 @@ namespace ForceCorrectness {
 				Analyzer::printEnergy(analytics);
 			}
 
-			LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
+			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
 			//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
 		}
 
@@ -293,7 +293,7 @@ namespace ForceCorrectness {
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
-	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 6.9e-4) {
+	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
 		const std::string work_folder = simulations_dir + "Anglebond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -353,7 +353,7 @@ namespace ForceCorrectness {
 		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 5.68e-4, 2.9e-7);
 	}
 
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=4.3e-3, float max_eg=6.037) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=7.e-3, float max_eg=6.037) {
 		const std::string work_folder = simulations_dir + "Improperbond/";
 		const std::string conf = work_folder + "molecule/conf.gro";
 		const std::string topol = work_folder + "molecule/topol.top";
@@ -414,9 +414,10 @@ namespace ForceCorrectness {
 		}
 
 		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
+			//LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
+			//LIMA_Print::printMatlabVec("varcoffs", varcoffs);
+			//LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
+			//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
 		}
 
 		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, max_eg);

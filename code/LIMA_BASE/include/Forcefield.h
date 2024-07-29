@@ -189,6 +189,5 @@ private:
 	ParameterDatabase<DihedralbondType> dihedralbondParameters;
 	ParameterDatabase<ImproperDihedralbondType> improperdihedralbondParameters;
 
-	void loadFileIntoForcefield(const SimpleParsedFile& parsedfile);
 	void LoadFileIntoForcefield(const fs::path& path);
 };

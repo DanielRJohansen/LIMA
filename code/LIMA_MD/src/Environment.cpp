@@ -20,8 +20,8 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 1;
-const int STEPS_PER_UPDATE = 1;
+const int STEPS_PER_RENDER = 50;
+const int STEPS_PER_UPDATE = 50;
 constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -249,7 +249,6 @@ void Environment::run(bool em_variant, bool doPostRunEvents) {
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
-
 	}
 	simulationTimer->stop();
 

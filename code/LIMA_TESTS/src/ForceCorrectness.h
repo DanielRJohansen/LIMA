@@ -244,14 +244,14 @@ namespace ForceCorrectness {
 
 		SimParams params{ simpar };
 		params.data_logging_interval = 1;
-		params.n_steps = 500;
-
+		params.n_steps = 5000;
+		//params.dt = 50.f;
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
-		const float bondEquilibrium = 0.149; // [nm]
-		//const float bondEquilibrium = 0.1335; // [nm]
+		//const float bondEquilibrium = 0.149; // [nm]
+		const float bondEquilibrium = 0.1335; // [nm]
 
 		for (auto bond_len_error : bond_len_errors) {
 			GroFile grofile{conf};
@@ -276,6 +276,7 @@ namespace ForceCorrectness {
 				Analyzer::printEnergy(analytics);
 			}
 
+			LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
 			//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
 		}
 

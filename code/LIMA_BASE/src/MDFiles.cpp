@@ -231,7 +231,7 @@ public:
 		if (directive == "atomtypes") return atomtypes;
 		if (directive == "pairtypes") return pairtypes;
 		if (directive == "bondtypes") return bondtypes;
-		if (directive == "constainttypes") return constainttypes;
+		if (directive == "constrainttypes") return constainttypes;
 		if (directive == "angletypes") return angletypes;
 		if (directive == "dihedraltypes") {
 			if (++dihedraltypesCount <= 2) return dihedraltypesCount == 1 ? dihedraltypes : impropertypes;

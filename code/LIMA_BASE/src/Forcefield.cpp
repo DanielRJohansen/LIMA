@@ -97,112 +97,112 @@ int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 
 
 
-
-void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) {
-	std::unordered_map<std::string, float> atomnameToMassMap;
-
-	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
-
-		if (row.section == "ATOMS") {
-			assert(row.words.size() >= 4);
-
-			const string& atomtype = row.words[2];
-			const float mass = stof(row.words[3]);		// Should this come from topol too?
-
-			atomnameToMassMap.insert(std::pair{ atomtype, mass });
-
-			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
-			//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
-		}
-		if (row.section == "pairtypes") {
-			// TODO: Fill out this logic
-		}
-		else if (row.section == "BONDS") {
-			assert(row.words.size() >= 4);
-
-			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
-			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f / (NANO_TO_LIMA* NANO_TO_LIMA);		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
-			const float b0 = stof(row.words[3]) * AngToNm * NANO_TO_LIMA;	// A to nm
-
-			auto bond = SinglebondType{ bondedatom_typenames, -1,  {b0, kb} };
-
-			//auto bond = Singlebondtype(bondedatom_typenames, b0, kb);
-			SortBondedtypeNames<SingleBond>(bond.bonded_typenames);
-			singlebondParameters.insert(bond);
-		}
-		else if (row.section == "ANGLES") {
-			assert(row.words.size() >= 5);
-
-			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
-			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
-			const float theta0 = stof(row.words[4]) * degreeToRad;
-
-			//auto bond = Anglebondtype(angle_typenames, theta0, ktheta);
-			auto bond = AnglebondType{ angle_typenames, -1, {theta0, ktheta}, 0.f, 0.f };
-
-			SortBondedtypeNames<AngleBond>(bond.bonded_typenames);
-			anglebondParameters.insert(bond);
-		}
-		else if (row.section == "DIHEDRALS") {
-			assert(row.words.size() >= 7);
-
-			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-			const float kphi = stof(row.words[4]) * kcalToJoule;
-			const int n = stoi(row.words[5]);
-			const float phi0 = stof(row.words[6]) * degreeToRad;
-
-			//auto bond = Dihedralbondtype(dihedral_typenames, phi0, kphi, n);
-			auto bond = DihedralbondType{ dihedral_typenames, -1, {phi0, kphi, n} };
-			SortBondedtypeNames<DihedralBond>(bond.bonded_typenames);
-			dihedralbondParameters.insert(bond);
-		}
-		else if (row.section == "IMPROPER") {
-			assert(row.words.size() >= 7);
-
-			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
-			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
-			const float psi0 = stof(row.words[6]) * degreeToRad;
-			//auto bond = Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi);
-			auto bond = ImproperDihedralbondType{ improper_dihedral_typenames, -1, {psi0, kpsi} };
-			SortBondedtypeNames<ImproperDihedralBond>(bond.bonded_typenames);
-			improperdihedralbondParameters.insert(bond);
-		}
-		else if (row.section == "NONBONDED") {
-			assert(row.words.size() >= 4);
-
-			const string& atomTypeName = row.words[0];
-			const float epsilon = abs(stof(row.words[2])) * kcalToJoule;	// For some fucked reason the eps is *inconsistently* negative...
-			const float sigma = stof(row.words[3]) * 2.f * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm] 
-			const float sigmaOld = stof(row.words[3]) / rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm]  // WRONG
-			if (!atomnameToMassMap.count(atomTypeName))
-				throw std::runtime_error(std::format("Failed to find atomtype [{}]", atomTypeName));
-			const float mass = atomnameToMassMap.at(atomTypeName) / static_cast<float>(KILO);		// [g/mol] -> [kg/mol]
-
-			//LJParameter entry{ { atomtype }, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} };
-			//ljParameters.insert(entry);
-
-			AtomType atomtype{ atomTypeName , 0, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} , 0.f, 'A' };
-			ljParameters.insert(atomtype);
-			
-
-			// Not yet used
-			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma
-			//const float sigma_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma			
-		}
-	}
-}
+//
+//void LIMAForcefield::loadFileIntoForcefield(const SimpleParsedFile& parsedfile) {
+//	std::unordered_map<std::string, float> atomnameToMassMap;
+//
+//	for (const SimpleParsedFile::Row& row : parsedfile.rows) {
+//
+//		if (row.section == "ATOMS") {
+//			assert(row.words.size() >= 4);
+//
+//			const string& atomtype = row.words[2];
+//			const float mass = stof(row.words[3]);		// Should this come from topol too?
+//
+//			atomnameToMassMap.insert(std::pair{ atomtype, mass });
+//
+//			//forcefield.nb_atoms.emplace_back(NB_Atomtype(atomtype, atnum, mass, sigma, epsilon));
+//			//forcefield.atomToTypeMap.insert(std::pair(atomtype, NB_Atomtype(atomtype, atnum, mass, sigma, epsilon)));
+//		}
+//		if (row.section == "pairtypes") {
+//			// TODO: Fill out this logic
+//		}
+//		else if (row.section == "BONDS") {
+//			assert(row.words.size() >= 4);
+//
+//			const std::array<string, 2> bondedatom_typenames{ row.words[0], row.words[1] };
+//			const float kb = stof(row.words[2]) * kcalToJoule / AngToNm / AngToNm * 2.f / (NANO_TO_LIMA* NANO_TO_LIMA);		// * 2 to go from V(bond) = Kb(b - b0)**2 -> V(bond) = 0.5*Kb(b - b0)**2
+//			const float b0 = stof(row.words[3]) * AngToNm * NANO_TO_LIMA;	// A to nm
+//
+//			auto bond = SinglebondType{ bondedatom_typenames, -1,  {b0, kb} };
+//
+//			//auto bond = Singlebondtype(bondedatom_typenames, b0, kb);
+//			SortBondedtypeNames<SingleBond>(bond.bonded_typenames);
+//			singlebondParameters.insert(bond);
+//		}
+//		else if (row.section == "ANGLES") {
+//			assert(row.words.size() >= 5);
+//
+//			const std::array<string, 3> angle_typenames{ row.words[0], row.words[1], row.words[2] };
+//			const float ktheta = stof(row.words[3]) * kcalToJoule * 2.f;	// * 2 to convert Ktheta(Theta - Theta0)**2 -> 0.5*Ktheta(Theta - Theta0)**2
+//			const float theta0 = stof(row.words[4]) * degreeToRad;
+//
+//			//auto bond = Anglebondtype(angle_typenames, theta0, ktheta);
+//			auto bond = AnglebondType{ angle_typenames, -1, {theta0, ktheta}, 0.f, 0.f };
+//
+//			//SortBondedtypeNames<AngleBond>(bond.bonded_typenames);
+//			anglebondParameters.insert(bond);
+//		}
+//		else if (row.section == "DIHEDRALS") {
+//			assert(row.words.size() >= 7);
+//
+//			const std::array<string, 4> dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+//			const float kphi = stof(row.words[4]) * kcalToJoule;
+//			const int n = stoi(row.words[5]);
+//			const float phi0 = stof(row.words[6]) * degreeToRad;
+//
+//			//auto bond = Dihedralbondtype(dihedral_typenames, phi0, kphi, n);
+//			auto bond = DihedralbondType{ dihedral_typenames, -1, {phi0, kphi, n} };
+//			//SortBondedtypeNames<DihedralBond>(bond.bonded_typenames);
+//			dihedralbondParameters.insert(bond);
+//		}
+//		else if (row.section == "IMPROPER") {
+//			assert(row.words.size() >= 7);
+//
+//			const std::array<string, 4> improper_dihedral_typenames{ row.words[0], row.words[1], row.words[2], row.words[3] };
+//			const float kpsi = stof(row.words[4]) * kcalToJoule * 2.f;	// * 2 to convert Kpsi(psi - psi0)**2 -> 0.5*Kpsi(psi - psi0)**2
+//			const float psi0 = stof(row.words[6]) * degreeToRad;
+//			//auto bond = Improperdihedralbondtype(improper_dihedral_typenames, psi0, kpsi);
+//			auto bond = ImproperDihedralbondType{ improper_dihedral_typenames, -1, {psi0, kpsi} };
+//			//SortBondedtypeNames<ImproperDihedralBond>(bond.bonded_typenames);
+//			improperdihedralbondParameters.insert(bond);
+//		}
+//		else if (row.section == "NONBONDED") {
+//			assert(row.words.size() >= 4);
+//
+//			const string& atomTypeName = row.words[0];
+//			const float epsilon = abs(stof(row.words[2])) * kcalToJoule;	// For some fucked reason the eps is *inconsistently* negative...
+//			const float sigma = stof(row.words[3]) * 2.f * rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm] 
+//			const float sigmaOld = stof(row.words[3]) / rminToSigma * AngToNm;	// rmin/2 [A] -> sigma [lm]  // WRONG
+//			if (!atomnameToMassMap.count(atomTypeName))
+//				throw std::runtime_error(std::format("Failed to find atomtype [{}]", atomTypeName));
+//			const float mass = atomnameToMassMap.at(atomTypeName) / static_cast<float>(KILO);		// [g/mol] -> [kg/mol]
+//
+//			//LJParameter entry{ { atomtype }, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} };
+//			//ljParameters.insert(entry);
+//
+//			AtomType atomtype{ atomTypeName , 0, ForceField_NB::ParticleParameters{mass, sigma * NANO_TO_LIMA, epsilon} , 0.f, 'A' };
+//			ljParameters.insert(atomtype);
+//			
+//
+//			// Not yet used
+//			//const float epsilon_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma
+//			//const float sigma_1_4 = stof(row.words[6]) * 2;	 // rmin/2 -> sigma			
+//		}
+//	}
+//}
 
 LIMAForcefield::LIMAForcefield() {
 	bool verbose = false;
 	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
 	// Check if filtered files already exists, if so return
 
-	std::vector<std::string> files = getFiles();
+	//std::vector<std::string> files = getFiles();
 
-	for (auto& file_path : files) {
-		const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
-		loadFileIntoForcefield(parsedfile);
-	}
+	//for (auto& file_path : files) {
+	//	const SimpleParsedFile parsedfile = lfs::parsePrmFile(file_path, verbose);
+	//	loadFileIntoForcefield(parsedfile);
+	//}
 
 
 
@@ -212,8 +212,8 @@ LIMAForcefield::LIMAForcefield() {
 	const fs::path ff_dir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields/charmm27.ff";
 #endif
 
-	//LoadFileIntoForcefield(ff_dir / "ffnonbonded.itp");
-	//LoadFileIntoForcefield(ff_dir / "ffbonded.itp");
+	LoadFileIntoForcefield(ff_dir / "ffnonbonded.itp");
+	LoadFileIntoForcefield(ff_dir / "ffbonded.itp");
 	/*LoadFileIntoForcefield(ff_dir / "ffnanonbonded.itp");
 	LoadFileIntoForcefield(ff_dir / "ffnabonded.itp");
 	LoadFileIntoForcefield(ff_dir / "ions.itp");*/
@@ -299,6 +299,8 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 			bondtype.params.b0 *= NANO_TO_LIMA;
 			bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
 
+			//SortBondedtypeNames<SingleBond>(bondtype.bonded_typenames);
+
 			singlebondParameters.insert(bondtype);
 		}
 	}
@@ -313,6 +315,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 			anglebondtype.params.theta_0 *= DEG_TO_RAD;
 			anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
+			//SortBondedtypeNames<AngleBond>(anglebondtype.bonded_typenames);
 
 			anglebondParameters.insert(anglebondtype);
 		}
@@ -334,6 +337,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 			dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
 			dihedralbondtype.params.k_phi = kphi * KILO; // Convert to J/mol
 			dihedralbondtype.params.n = n;
+			//SortBondedtypeNames<DihedralBond>(dihedralbondtype.bonded_typenames);
 
 			dihedralbondParameters.insert(dihedralbondtype);
 		}
@@ -351,7 +355,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 			improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
 			improperdihedralbondtype.params.k_psi = kpsi * KILO / 2.f; // Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
-
+			//SortBondedtypeNames<ImproperDihedralBond>(improperdihedralbondtype.bonded_typenames);
 			improperdihedralbondParameters.insert(improperdihedralbondtype);
 		}
 	}

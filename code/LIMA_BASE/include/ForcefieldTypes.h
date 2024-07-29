@@ -20,42 +20,44 @@
 //
 
 
-template <typename bond>
-void SortBondedtypeNames(std::array<std::string, bond::n_atoms>& bondedTypeNames) {
-	if constexpr (std::is_same<bond, SingleBond>::value) {
-		if (bondedTypeNames[1] < bondedTypeNames[0]) {
-			swap(bondedTypeNames[0], bondedTypeNames[1]);
-		}
-	}
-	else if constexpr (std::is_same<bond, AngleBond>::value) {
-		if (bondedTypeNames[2] < bondedTypeNames[0]) {
-			swap(bondedTypeNames[0], bondedTypeNames[2]);
-		}
-	}
-	else if constexpr (std::is_same<bond, DihedralBond>::value) {
-		// If out is wrong, flip
-		if (bondedTypeNames[3] < bondedTypeNames[0]) {
-			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
-			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
-		}
-		// If outer is identical, but inner is wrong, flip
-		else if (
-			bondedTypeNames[0] == bondedTypeNames[3] &&
-			bondedTypeNames[2] < bondedTypeNames[1])
-		{
-			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
-			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
-		}
-	}
-	else if constexpr (std::is_same<bond, ImproperDihedralBond>::value) {
-		if (bondedTypeNames[3] < bondedTypeNames[0]) {
-			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
-		}
-	}
-	else {
-		throw std::runtime_error("Illegal bond type");
-	}
-}
+//template <typename bond>
+//void SortBondedtypeNames(std::array<std::string, bond::n_atoms>& bondedTypeNames) {
+//	if constexpr (std::is_same<bond, SingleBond>::value) {
+//		if (bondedTypeNames[1] < bondedTypeNames[0]) {
+//			swap(bondedTypeNames[0], bondedTypeNames[1]);
+//		}
+//	}
+//	else if constexpr (std::is_same<bond, AngleBond>::value) {
+//		if (bondedTypeNames[2] < bondedTypeNames[0]) {
+//			swap(bondedTypeNames[0], bondedTypeNames[2]);
+//		}
+//	}
+//	else if constexpr (std::is_same<bond, DihedralBond>::value) {
+//		// If out is wrong, flip
+//		if (bondedTypeNames[3] < bondedTypeNames[0]) {
+//			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+//			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
+//		}
+//		// If outer is identical, but inner is wrong, flip
+//		else if (
+//			bondedTypeNames[0] == bondedTypeNames[3] &&
+//			bondedTypeNames[2] < bondedTypeNames[1])
+//		{
+//			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+//			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
+//		}
+//	}
+//	else if constexpr (std::is_same<bond, ImproperDihedralBond>::value) {
+//		if (bondedTypeNames[3] < bondedTypeNames[0]) {
+//			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+//		}
+//	}
+//	else {
+//		throw std::runtime_error("Illegal bond type");
+//	}
+//}
+
+
 
 
 struct AtomType {
@@ -95,3 +97,25 @@ struct ImproperDihedralbondType {
 	int func{};
 	ImproperDihedralBond::Parameters params;
 };
+
+template <typename bond>
+void FlipBondedtypeNames(std::array<std::string, bond::nAtoms>& bondedTypeNames) {
+	if constexpr (std::is_same<bond, SinglebondType>::value) {
+		swap(bondedTypeNames[0], bondedTypeNames[1]);
+	}
+	else if constexpr (std::is_same<bond, AnglebondType>::value) {
+		swap(bondedTypeNames[0], bondedTypeNames[2]);
+	}
+	else if constexpr (std::is_same<bond, DihedralbondType>::value) {
+
+		std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+		std::swap(bondedTypeNames[1], bondedTypeNames[2]);
+
+	}
+	else if constexpr (std::is_same<bond, ImproperDihedralbondType>::value) {
+		std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+	}
+	else {
+		throw std::runtime_error("Illegal bond type");
+	}
+}

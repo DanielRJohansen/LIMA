@@ -51,8 +51,8 @@ int main() {
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 
 		//SinglebondForceAndPotentialSanityCheck(envmode);
-		//HydrogenBondOscillationTest(envmode);
-		//doSinglebondBenchmark(envmode);
+		//SinglebondOscillationTest(envmode);
+		doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
 		//doDihedralbondBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
@@ -104,7 +104,7 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
 
 		//TestLongrangeEsNoLJ(envmode);

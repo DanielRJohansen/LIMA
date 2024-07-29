@@ -17,11 +17,11 @@ namespace ForcefieldHelpers{
 	float _calcLikeness(const string& query_type, const string& forcefield_type);
 
 
-	template <class DerivedType>
-	static float calcLikeness(DerivedType query_type, const DerivedType& forcefield_type) {
+	template <class GenericBondType>
+	static float calcLikeness(std::array<std::string, GenericBondType::nAtoms> query, const GenericBondType& forcefield_type) {
 		float likeness = 1.f;
-		for (int i = 0; i < DerivedType::nAtoms; i++) {
-			likeness *= _calcLikeness(query_type.bonded_typenames[i], forcefield_type.bonded_typenames[i]);
+		for (int i = 0; i < GenericBondType::nAtoms; i++) {
+			likeness *= _calcLikeness(query[i], forcefield_type.bonded_typenames[i]);
 		}
 
 		return likeness;
@@ -29,16 +29,17 @@ namespace ForcefieldHelpers{
 
 
 
-
+	// TODONOW QueryTyoe should only be the atomnames, we dont have the other info
 	template <typename GenericBondType>
-	static int findBestMatchInForcefield_Index(const GenericBondType& query_type, const std::vector<GenericBondType>& forcefield) {
+	static int findBestMatchInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query, 
+		const std::vector<GenericBondType>& forcefield) {
 		if (forcefield.size() == 0) { throw std::runtime_error("No bonds in forcefield!"); }
 
 		float best_likeness = 0;
 		int bestBondIndex = 0;
 		for (int i = 0; i < forcefield.size(); i++) {
 			const GenericBondType& ff_bondtype = forcefield[i];
-			const float likeness = calcLikeness(query_type, ff_bondtype);
+			const float likeness = calcLikeness(query, ff_bondtype);
 
 			if (likeness > best_likeness) {
 				best_likeness = likeness;
@@ -62,7 +63,7 @@ namespace ForcefieldHelpers{
 		}
 		printf("\nLikeness %f\n", best_likeness);
 		printf("Query typenames: ");
-		for (auto& name : query_type.bonded_typenames) {
+		for (auto& name : query) {
 			std::cout << name << " ";
 		}
 		//printf("\nQuery gro_ids: ");
@@ -82,20 +83,30 @@ public:
 		if (fastLookup.count(key) != 0)
 			return parameters[fastLookup.find(key)->second];
 
-		GenericBondType temp(query);	// TEMP, supply a public sort()
-		const int index = ForcefieldHelpers::findBestMatchInForcefield_Index(temp, parameters);
+		//GenericBondType temp(query);	// TEMP, supply a public sort()
+		const int index = ForcefieldHelpers::findBestMatchInForcefield_Index(query, parameters);
 		fastLookup.insert({ key, index });
 		return parameters[index];
 	}
 
-	void insert(const GenericBondType& element) {
-		if (fastLookup.count(MakeKey(element.bonded_typenames)) != 0)
-			return;
-		parameters.push_back(element);
-		fastLookup.insert({ MakeKey(element.bonded_typenames), parameters.size()-1});
+
+	// Due to types such as this:
+	// X	CT1	OH1	X	9	0.00	0.58576	3
+	// We cannot sort and have a single definition of each type, as the names in the topol entry at the 'X'
+	// places may be in either order and match here
+	void insert(GenericBondType element) {
+		__insert(element);
+		FlipBondedtypeNames<GenericBondType>(element.bonded_typenames);
+		__insert(element);
 	}
 
 private:
+	void __insert(const GenericBondType& element) {
+		if (fastLookup.count(MakeKey(element.bonded_typenames)) != 0)
+			return;
+		parameters.push_back(element);
+		fastLookup.insert({ MakeKey(element.bonded_typenames), parameters.size() - 1 });
+	}
 	std::vector<GenericBondType> parameters;
 	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in parameters
 

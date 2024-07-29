@@ -494,7 +494,7 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
 	}
 
-	SortBondedtypeNames<GenericBond>(atomTypenames);
+	//SortBondedtypeNames<GenericBond>(atomTypenames);
 
 	const auto& bondparams = forcefield.GetBondParameters<typename GenericBond::Parameters>(atomTypenames);
 	topology.emplace_back(BondtypeFactory{ globalIds, bondparams });

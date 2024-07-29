@@ -5,75 +5,78 @@
 #include "Utilities.h"
 #include "LimaTypes.cuh"
 #include "MDFiles.h"
-#include "ForcefieldTypes.h"
+#include <span>
 
 
 
+/////
+// These are the full representation of what information a AtomType or Bondtype contains.
+// Instances of such bonds are defined more compactly in bodies.cuh
+/////
 
-
-namespace ForcefieldHelpers{
-	using std::string;
-
-	float _calcLikeness(const string& query_type, const string& forcefield_type);
-
-
-	template <class GenericBondType>
-	static float calcLikeness(std::array<std::string, GenericBondType::nAtoms> query, const GenericBondType& forcefield_type) {
-		float likeness = 1.f;
-		for (int i = 0; i < GenericBondType::nAtoms; i++) {
-			likeness *= _calcLikeness(query[i], forcefield_type.bonded_typenames[i]);
-		}
-
-		return likeness;
-	}
-
-
-
-	// TODONOW QueryTyoe should only be the atomnames, we dont have the other info
-	template <typename GenericBondType>
-	static int findBestMatchInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query, 
-		const std::vector<GenericBondType>& forcefield) {
-		if (forcefield.size() == 0) { throw std::runtime_error("No bonds in forcefield!"); }
-
-		float best_likeness = 0;
-		int bestBondIndex = 0;
-		for (int i = 0; i < forcefield.size(); i++) {
-			const GenericBondType& ff_bondtype = forcefield[i];
-			const float likeness = calcLikeness(query, ff_bondtype);
-
-			if (likeness > best_likeness) {
-				best_likeness = likeness;
-				bestBondIndex = i;
-			}
-		}
-
-		if (best_likeness > 0.001f) {
-			return bestBondIndex;
-		}
-
-		std::cout << "Failed to match bond types.\n Closest match ";
-		for (const auto& name : forcefield[bestBondIndex].bonded_typenames) {
-			std::cout << name << " ";
-		}
-		if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
-			std::cout << "Dihedral type\n";
-		}
-		else {
-			std::cout << "Improper type\n";
-		}
-		printf("\nLikeness %f\n", best_likeness);
-		printf("Query typenames: ");
-		for (auto& name : query) {
-			std::cout << name << " ";
-		}
-		//printf("\nQuery gro_ids: ");
-		//for (auto& id : query_type.global_ids) {
-		//	std::cout << std::to_string(id) << " ";
-		//}
-		throw std::runtime_error("\nfindBestMatchInForcefield failed");
-	}
-
+struct AtomType {
+	std::string name{};
+	int atNum{};
+	ForceField_NB::ParticleParameters parameters{};
+	float charge{}; // [kilo C/mol]
+	char ptype{};
 };
+
+struct SinglebondType {
+	static const int nAtoms = 2;
+	std::array<std::string, 2> bonded_typenames; // i,j
+	int func{};
+	SingleBond::Parameters params;
+};
+
+struct AnglebondType {
+	static const int nAtoms = 3;
+	std::array<std::string, 3> bonded_typenames; // i,j,k
+	int func{};
+	AngleBond::Parameters params;
+	float ub0;	// No idea what this is
+	float cub;	// No idea what this is
+};
+
+struct DihedralbondType {
+	static const int nAtoms = 4;
+	std::array<std::string, 4> bonded_typenames; // ijkl
+	int func{};
+	DihedralBond::Parameters params;
+};
+
+struct ImproperDihedralbondType {
+	static const int nAtoms = 4;
+	std::array<std::string, 4> bonded_typenames; // i j k l - https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
+	int func{};
+	ImproperDihedralBond::Parameters params;
+};
+
+template <typename bond>
+void FlipBondedtypeNames(std::array<std::string, bond::nAtoms>& bondedTypeNames) {
+	if constexpr (std::is_same<bond, SinglebondType>::value) {
+		swap(bondedTypeNames[0], bondedTypeNames[1]);
+	}
+	else if constexpr (std::is_same<bond, AnglebondType>::value) {
+		swap(bondedTypeNames[0], bondedTypeNames[2]);
+	}
+	else if constexpr (std::is_same<bond, DihedralbondType>::value) {
+
+		std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+		std::swap(bondedTypeNames[1], bondedTypeNames[2]);
+
+	}
+	else if constexpr (std::is_same<bond, ImproperDihedralbondType>::value) {
+		std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+	}
+	else {
+		throw std::runtime_error("Illegal bond type");
+	}
+}
+
+///-----------------------------------------------------------------------------------///
+
+
 
 template <typename GenericBondType>
 class ParameterDatabase {
@@ -83,8 +86,7 @@ public:
 		if (fastLookup.count(key) != 0)
 			return parameters[fastLookup.find(key)->second];
 
-		//GenericBondType temp(query);	// TEMP, supply a public sort()
-		const int index = ForcefieldHelpers::findBestMatchInForcefield_Index(query, parameters);
+		const int index = findBestMatchInForcefield_Index(query);
 		fastLookup.insert({ key, index });
 		return parameters[index];
 	}
@@ -119,6 +121,8 @@ private:
 		}
 		return key;
 	}
+
+	int findBestMatchInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query);
 };
 
 
@@ -174,9 +178,6 @@ public:
 		}
 		else {
 			throw std::runtime_error("Unsupported bond type");
-			//static_assert(false, "Unsupported bond type");
-			//static BondParamType dummy; // Fallback to handle unsupported cases&
-			//return dummy;
 		}
 	}
 

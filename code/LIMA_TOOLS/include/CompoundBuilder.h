@@ -11,7 +11,6 @@
 #include "Utilities.h"
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
-#include "ForcefieldTypes.h"
 
 #include "MDFiles.h"
 
@@ -46,6 +45,7 @@ struct SingleBondFactory {
 	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond::Parameters& parameters);
 	SingleBond::Parameters params;
 	uint32_t global_atom_indexes[2] = { 0,0 };
+	//std::array<uint32_t, n_atoms> global_atom_indexes;
 };
 
 struct AngleBondFactory {

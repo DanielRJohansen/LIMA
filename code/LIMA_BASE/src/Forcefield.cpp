@@ -1,6 +1,5 @@
 #include <vector>
 
-#include "ForcefieldTypes.h"
 #include "Forcefield.h"
 #include "MDFiles.h"
 
@@ -95,33 +94,40 @@ LIMAForcefield::LIMAForcefield() {
 
 
 
+namespace ForcefieldHelpers {
+	float _calcLikeness(const std::string& query_type, const std::string& forcefield_type) {
 
+		// Edgecase: perfect match
+		if (query_type == forcefield_type) { return 1.f; }
 
+		// Edgecase: wildcard
+		if (forcefield_type == "X") {
+			return 0.9f;
+		}
 
-float ForcefieldHelpers::_calcLikeness(const string& query_type, const string& forcefield_type) {
+		float likeness = 0;
+		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
 
-	// Edgecase: perfect match
-	if (query_type == forcefield_type) { return 1.f; }
-
-	// Edgecase: wildcard
-	if (forcefield_type == "X") {
-		return 0.9f;
+		for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
+			if (query_type[i] == forcefield_type[i])
+				likeness += point_scale;
+			else
+				break;
+		}
+		return likeness;
 	}
 
-	float likeness = 0;
-	float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
 
-	for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
-		if (query_type[i] == forcefield_type[i])
-			likeness += point_scale;
-		else
-			break;
+	static float calcLikeness(std::span<const std::string> query,
+		std::span<const std::string> typeInForcefield) {
+		float likeness = 1.f;
+		for (int i = 0; i < query.size(); i++) {
+			likeness *= _calcLikeness(query[i], typeInForcefield[i]);
+		}
+
+		return likeness;
 	}
-	return likeness;
-}
-
-
-
+};
 
 
 void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
@@ -223,3 +229,48 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 		}
 	}
 }
+
+template <typename GenericBondType>
+int ParameterDatabase<GenericBondType>::findBestMatchInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query) {
+	if (parameters.size() == 0) {
+		throw std::runtime_error("No bonds in forcefield!");
+	}
+
+	float best_likeness = 0;
+	int bestBondIndex = 0;
+	for (size_t i = 0; i < parameters.size(); i++) {
+		const GenericBondType& ff_bondtype = parameters[i];
+		const float likeness = ForcefieldHelpers::calcLikeness(query, parameters[i].bonded_typenames);
+
+		if (likeness > best_likeness) {
+			best_likeness = likeness;
+			bestBondIndex = static_cast<int>(i);
+		}
+	}
+
+	if (best_likeness > 0.001f) {
+		return bestBondIndex;
+	}
+
+	std::cout << "Failed to match bond types.\n Closest match ";
+	for (const auto& name : parameters[bestBondIndex].bonded_typenames) {
+		std::cout << name << " ";
+	}
+	if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
+		std::cout << "Dihedral type\n";
+	}
+	else {
+		std::cout << "Improper type\n";
+	}
+	printf("\nLikeness %f\n", best_likeness);
+	printf("Query typenames: ");
+	for (const auto& name : query) {
+		std::cout << name << " ";
+	}
+
+	throw std::runtime_error("\nfindBestMatchInForcefield failed");
+}
+template class ParameterDatabase<SinglebondType>;
+template class ParameterDatabase<AnglebondType>;
+template class ParameterDatabase<DihedralbondType>;
+template class ParameterDatabase<ImproperDihedralbondType>;

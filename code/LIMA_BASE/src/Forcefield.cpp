@@ -204,7 +204,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 				>> n;
 
 			dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
-			dihedralbondtype.params.k_phi = kphi * KILO; // Convert to J/mol
+			dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol// Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
 			dihedralbondtype.params.n = n;
 
 			dihedralbondParameters.insert(dihedralbondtype);
@@ -215,15 +215,15 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 			std::istringstream iss(line);
 
 			ImproperDihedralbondType improperdihedralbondtype{};
-			float psi0;
-			float kpsi;
+			float psi0;	// [degrees]
+			float kpsi;	// [kJ/mol]
 			iss >> improperdihedralbondtype.bonded_typenames[0] >> improperdihedralbondtype.bonded_typenames[1] >> improperdihedralbondtype.bonded_typenames[2] >> improperdihedralbondtype.bonded_typenames[3]
 				>> improperdihedralbondtype.func
 				>> psi0		// [degrees]
 				>> kpsi;	// [2 * kJ/mol]
 
 			improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
-			improperdihedralbondtype.params.k_psi = kpsi * KILO / 2.f; // Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
+			improperdihedralbondtype.params.k_psi = kpsi * KILO; 
 			//SortBondedtypeNames<ImproperDihedralBond>(improperdihedralbondtype.bonded_typenames);
 			improperdihedralbondParameters.insert(improperdihedralbondtype);
 		}

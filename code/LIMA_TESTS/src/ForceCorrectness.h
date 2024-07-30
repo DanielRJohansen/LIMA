@@ -361,7 +361,9 @@ namespace ForceCorrectness {
 
 		Environment env{ work_folder, envmode, false };
 		SimParams params{ simpar };
-
+		//params.n_steps = 5000;
+		//params.data_logging_interval = 1;
+		//params.dt = 50.f;
 		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
@@ -370,6 +372,11 @@ namespace ForceCorrectness {
 			GroFile grofile{conf};
 			TopologyFile topfile{topol};
 			env.CreateSimulation(grofile, topfile, params);
+
+
+		/*	env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[0]].mass = 100000000.0f;
+			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[1]].mass = 100000000.0f;
+			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[2]].mass = 100000000.0f;*/
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
@@ -410,6 +417,8 @@ namespace ForceCorrectness {
 
 			if (envmode != Headless) {
 				Analyzer::printEnergy(analytics);
+				//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
+
 			}
 		}
 

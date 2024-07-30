@@ -5,35 +5,6 @@
 #include <format>
 #include <array>
 
-SingleBondFactory::SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond::Parameters& bondparameters) : params{ bondparameters } {
-	for (int i = 0; i < 2; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-AngleBondFactory::AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond::Parameters& bondparameters) : params{bondparameters} {
-	for (int i = 0; i < 3; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-
-DihedralBondFactory::DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond::Parameters& bondparameters) : params{ bondparameters } {
-	for (int i = 0; i < 4; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-
-ImproperDihedralBondFactory::ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond::Parameters& bondparameters) : params { bondparameters } {
-	for (int i = 0; i < 4; i++) {
-		global_atom_indexes[i] = ids[i];
-	}
-}
-
-
-
-
-
-
-
 
 
 
@@ -71,8 +42,8 @@ bool bridgeContainsTheseTwoCompounds(const BridgeFactory& bridge, const std::arr
 	for (const int id : compound_ids) {
 		bool found = false;
 
-		for (int i = 0; i < bridge.n_compounds; i++) {
-			if (bridge.compound_ids[i] == id) {
+		for (auto compoundId : bridge.compound_ids) {
+			if (compoundId == id) {
 				found = true;
 				break;
 			}
@@ -236,6 +207,31 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 
 
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
+void CompoundFactory::addParticle(const Float3& position, int atomtype_id, char atomLetter,
+	int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
+	if (n_particles >= MAX_COMPOUND_PARTICLES) {
+		throw std::runtime_error("Failed to add particle to compound");
+	}
+
+	// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
+	Float3 hyperpos = position;
+	if (n_particles > 0) {
+		BoundaryConditionPublic::applyHyperposNM(positions[0], hyperpos, boxlen_nm, bc);
+	}
+
+	// Variables only present in factory
+	positions[n_particles] = hyperpos;
+	global_ids[n_particles] = global_id;
+
+	// Variables present in Compound
+	atom_types[n_particles] = atomtype_id;
+	atomLetters[n_particles] = atomLetter;
+
+	atom_charges[n_particles] = charge;
+
+	n_particles++;
+}
+
 void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const SingleBondFactory& bond) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add singlebond to compound");
@@ -306,15 +302,19 @@ void CompoundFactory::addIdOfBondedCompound(int id) {
 	bonded_compound_ids[n_bonded_compounds++] = id;
 }
 
-
+template <typename BondFactory_type>
+std::array<uint8_t, BondFactory_type::n_atoms> BridgeFactory::ConvertGlobalIdsToCompoundlocalIds (std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond) {
+	std::array<uint8_t, BondFactory_type::n_atoms> localIds;
+	for (int i = 0; i < BondFactory_type::n_atoms; i++) {
+		localIds[i] = getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[i]]);
+	}
+	return localIds;
+}
 
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const SingleBondFactory& bond) {
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add singlebond to bridge"); }
 	singlebonds[n_singlebonds++] = SingleBond{
-		{
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
-		},
+		ConvertGlobalIdsToCompoundlocalIds(particle_info, bond),
 		bond.params.b0,
 		bond.params.kb
 	};
@@ -322,11 +322,7 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Sing
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const AngleBondFactory& bond) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
 	anglebonds[n_anglebonds++] = AngleBond{
-		{
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
-		},		
+		ConvertGlobalIdsToCompoundlocalIds(particle_info, bond),
 		bond.params.theta_0,
 		bond.params.k_theta
 	};
@@ -336,12 +332,7 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Dihe
 		throw std::runtime_error("Failed to add dihedralbond to bridge");
 	}
 	dihedrals[n_dihedrals++] = DihedralBond{
-		{
-		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[0]]),
-		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
-		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
-		getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[3]]),
-		},
+		ConvertGlobalIdsToCompoundlocalIds(particle_info, bond),
 		bond.params.phi_0,
 		bond.params.k_phi,
 		bond.params.n
@@ -350,12 +341,7 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Dihe
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const ImproperDihedralBondFactory& bond) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add improperdihedralbond to bridge"); }
 	impropers[n_improperdihedrals++] = ImproperDihedralBond{
-		{
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[0]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[1]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[2]]),
-			getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[3]]),
-		},
+		ConvertGlobalIdsToCompoundlocalIds(particle_info, bond),
 		bond.params.psi_0,
 		bond.params.k_psi,
 	};
@@ -720,11 +706,11 @@ std::vector<BridgeFactory> CreateBridges(const std::vector<SingleBondFactory>& s
 
 
 template <int n_ids>
-bool SpansTwoCompounds(const uint32_t* bond_globalids, const std::vector<ParticleInfo>& atoms) {
+bool SpansTwoCompounds(const std::array<uint32_t, n_ids> bond_globalids, const std::vector<ParticleInfo>& atoms) {
 	const int compoundid_left = atoms[bond_globalids[0]].compoundId;
 
-	for (int i = 1; i < n_ids; i++) {
-		if (compoundid_left != atoms[bond_globalids[i]].compoundId) {
+	for (auto globalId : bond_globalids) {
+		if (compoundid_left != atoms[globalId].compoundId) {
 			return true;
 		}
 	}
@@ -732,11 +718,9 @@ bool SpansTwoCompounds(const uint32_t* bond_globalids, const std::vector<Particl
 }
 
 template <int n_ids>
-void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<ParticleInfo>& atoms, const uint32_t* global_ids) {
-	for (int i = 0; i < n_ids; i++) {
-		auto gid_self = global_ids[i];
-		for (int j = 0; j < n_ids; j++) {
-			auto gid_other = global_ids[j];
+void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<ParticleInfo>& atoms, const std::array<uint32_t, n_ids>& global_ids) {
+	for (auto gid_self : global_ids) {
+		for (auto gid_other : global_ids) {
 
 			if (gid_self == gid_other) { continue; }
 		
@@ -753,11 +737,11 @@ void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector
 
 // Returns two compound id's of a bond in a bridge. The id's are sorted with lowest first
 template <int N>
-std::array<int, 2> getTheTwoDifferentIds(const uint32_t particle_global_ids[N], const std::vector<ParticleInfo>& atoms) {
+std::array<int, 2> getTheTwoDifferentIds(const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleInfo>& atoms) {
 	std::array<int, 2> compound_ids = { atoms[particle_global_ids[0]].compoundId, -1 };
 
-	for (int i = 1; i < N; i++) {
-		int compoundid_of_particle = atoms[particle_global_ids[i]].compoundId;
+	for (auto globalId : particle_global_ids) {
+		int compoundid_of_particle = atoms[globalId].compoundId;
 		if (compoundid_of_particle != compound_ids[0]) {
 			compound_ids[1] = compoundid_of_particle;
 			break;
@@ -776,7 +760,7 @@ std::array<int, 2> getTheTwoDifferentIds(const uint32_t particle_global_ids[N], 
 }
 
 template <int N>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const uint32_t particle_global_ids[N], const std::vector<ParticleInfo>& atoms,
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleInfo>& atoms,
 	std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges
 )
 {
@@ -914,8 +898,6 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 
 
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
-	const std::string& molecule_dir,
-	//const std::string& gro_name,
 	const GroFile& gro_file,
 	const TopologyFile& topol_file,
 	VerbosityLevel vl,

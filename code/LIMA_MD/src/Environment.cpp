@@ -68,7 +68,6 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 {
 	setupEmptySimulation(params);
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
-		(work_dir / "molecule").string(),
 		grofile,
 		topolfile,
 		V1,

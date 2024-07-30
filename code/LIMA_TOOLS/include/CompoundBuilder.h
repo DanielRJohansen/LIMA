@@ -19,8 +19,6 @@ struct BoxImage;
 namespace LIMA_MOLECULEBUILD {
 
 	std::unique_ptr<BoxImage> buildMolecules(
-		//Forcefield* ff,					// TODO: Can be removed when we dont need to do the stupid color lookup anymore
-		const std::string& molecule_dir,	// We need access to .lff files aswell
 		const GroFile& gro_file,
 		const TopologyFile& top_file,
 		VerbosityLevel vl,
@@ -32,58 +30,22 @@ namespace LIMA_MOLECULEBUILD {
 
 
 
-
-
-
-
-
-
 // --------------------------------- Bond Factories --------------------------------- //
+template <int nAtoms, typename ParamsType>
+struct BondFactory {
+	static const int n_atoms = nAtoms;
+	BondFactory(const std::array<uint32_t, nAtoms>& ids, const ParamsType& parameters) 
+		: params(parameters), global_atom_indexes(ids) {}
 
-struct SingleBondFactory {
-	static const int n_atoms = 2;
-	SingleBondFactory(const std::array<uint32_t, 2>& ids, const SingleBond::Parameters& parameters);
-	SingleBond::Parameters params;
-	uint32_t global_atom_indexes[2] = { 0,0 };
-	//std::array<uint32_t, n_atoms> global_atom_indexes;
-};
-
-struct AngleBondFactory {
-	static const int n_atoms = 3;
-	AngleBondFactory(std::array<uint32_t, 3> ids, const AngleBond::Parameters& bondparameters);
-	AngleBond::Parameters params;
-	uint32_t global_atom_indexes[3] = { 0,0, 0 };
-};
-
-struct DihedralBondFactory {
-	static const int n_atoms = 4;
-	DihedralBondFactory(std::array<uint32_t, 4> ids, const DihedralBond::Parameters& bondparameters);
-	DihedralBond::Parameters params;
-	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
-};
-
-struct ImproperDihedralBondFactory {
-	static const int n_atoms = 4;
-	ImproperDihedralBondFactory(std::array<uint32_t, 4> ids, const ImproperDihedralBond::Parameters& bondparameters);
-	ImproperDihedralBond::Parameters params;
-	uint32_t global_atom_indexes[4] = { 0,0, 0, 0 };
+	ParamsType params;
+	std::array<uint32_t, n_atoms> global_atom_indexes;
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
+using AngleBondFactory = BondFactory<3, AngleBond::Parameters>;
+using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
+using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
 
 
 
@@ -119,32 +81,8 @@ public:
 		}
 	}
 
-	void addParticle(const Float3& position, int atomtype_id, char atomLetter, 
-		int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge) {
-		if (n_particles >= MAX_COMPOUND_PARTICLES) {
-			throw std::runtime_error("Failed to add particle to compound");
-		}
-
-		// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
-		Float3 hyperpos = position;
-		if (n_particles > 0) {
-			//LIMAPOSITIONSYSTEM::applyHyperposNM<BoundaryCondition>(&positions[0], &hyperpos);
-			BoundaryConditionPublic::applyHyperposNM(positions[0], hyperpos, boxlen_nm, bc);
-		}
-
-		// Variables only present in factory
-		positions[n_particles] = hyperpos;
-		global_ids[n_particles] = global_id;
-
-		// Variables present in Compound
-		atom_types[n_particles] = atomtype_id;
-		atomLetters[n_particles] = atomLetter;
-
-		atom_charges[n_particles] = charge;
-
-		n_particles++;
-	}
-	int id = -1;	// unique lima id
+	void addParticle(const Float3& position, int atomtype_id, char atomLetter,
+		int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge);
 
 
 	void AddBond(const std::vector<ParticleInfo>&, const SingleBondFactory&);
@@ -158,13 +96,12 @@ public:
 
 	void addIdOfBondedCompound(int id);
 
+	int id = -1;	// unique lima id
+
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
 	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug
 
-
 	std::vector<int> local_atomtype_to_LATID_map;
-
-
 
 	std::vector<int> indicesOfBondconnectedCompounds;
 };
@@ -205,6 +142,10 @@ private:
 	// Add particle to bridge and augment its particle info with the references to its position in this bridge
 	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge
 	void addParticle(ParticleInfo&);
+
+	template <typename BondFactory_type>
+	std::array<uint8_t, BondFactory_type::n_atoms> ConvertGlobalIdsToCompoundlocalIds(
+		std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond);
 };
 
 // A translation unit between Gro file representation, and LIMA Box representation

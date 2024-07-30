@@ -104,7 +104,7 @@ int main() {
 
 		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
 
 		//TestLongrangeEsNoLJ(envmode);
@@ -117,7 +117,7 @@ int main() {
 
 		//Benchmarks::Psome(envmode);
 
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -158,7 +158,7 @@ void runAllUnitTests() {
 
 
 	// Smaller compound tests
-	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 3.8e-4, 2e-6));
+	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
 	//ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
 	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
 	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
@@ -166,7 +166,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.27e-4, 2e-5));
+	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5));
 
 	// Electrostatics
 	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

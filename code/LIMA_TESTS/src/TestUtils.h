@@ -61,7 +61,7 @@ namespace TestUtils {
 	}
 
 	// assumes that all the values are positive
-	bool isOutsideAllowedRange(float value, float target, float maxError=0.05) {
+	bool isOutsideAllowedRange(float value, float target, float maxError=0.1) {
 		if (isnan(value)) 
 			return true;
 

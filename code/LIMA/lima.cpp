@@ -13,6 +13,7 @@
 
 #include "BuildMembrane.h"
 #include "mdrun.h"
+#include "GetForcefieldParams.h"
 
 namespace fs = std::filesystem;
 
@@ -52,6 +53,7 @@ int main(int argc, char** argv)
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
 		else if (program == "-help" || program =="-h"||program == "help") { printHelp(); }
 		else if (program == "selftest") { SelfTest(); }
+		else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
 		}

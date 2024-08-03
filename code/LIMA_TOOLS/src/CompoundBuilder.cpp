@@ -5,18 +5,7 @@
 #include <format>
 #include <array>
 
-
-
-
-struct Topology {
-	std::vector<SingleBondFactory> singlebonds;
-	std::vector<AngleBondFactory> anglebonds;
-	std::vector<DihedralBondFactory> dihedralbonds;
-	std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
-};
-
-
-
+using namespace LIMA_MOLECULEBUILD;
 
 bool compoundsAreAlreadyConnected(const std::vector<int> compound_ids, const std::vector<BridgeFactory>& compoundbriges) 
 {
@@ -951,7 +940,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		gro_file.box_size.x,	// TODO: Find a better way..
 		std::move(preparedAtoms),
 		GroFile{ gro_file },	// TODO: wierd ass copy here
-		forcefield.GetActiveLjParameters()
+		forcefield.GetActiveLjParameters(), 
+		std::move(topology)
 	);
 
 	return boxImage;

@@ -11,9 +11,7 @@ namespace ForceCorrectness {
 
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
-		const std::string work_folder = simulations_dir + "Pool/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
+		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
@@ -28,8 +26,8 @@ namespace ForceCorrectness {
 
 			SimParams params{};
 			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			GroFile grofile{conf};
-			TopologyFile topfile{topol};
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
@@ -57,11 +55,9 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
-		const std::string work_folder = simulations_dir + "PoolCompSol/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
+		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode, false };
-		SimParams params{ work_folder + "sim_params.txt"};
+		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
@@ -77,8 +73,8 @@ namespace ForceCorrectness {
 				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
 				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-				GroFile grofile{conf};
-				TopologyFile topfile{topol};
+				GroFile grofile{ work_folder / "molecule/conf.gro" };
+				TopologyFile topfile{ work_folder / "molecule/topol.top" };
 				env.CreateSimulation(grofile, topfile, params);
 
 
@@ -118,20 +114,17 @@ namespace ForceCorrectness {
 
 
 	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Singlebond/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode, false };
 
-		SimParams params{ simpar };
+		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
 		const float bondlenErrorNM = 0.02f; //(r-r0) [nm]
 		const float bondlenErrorLM = bondlenErrorNM * NANO_TO_LIMA;
 
-		GroFile grofile{ conf };
-		TopologyFile topfile{ topol };
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
@@ -167,10 +160,10 @@ namespace ForceCorrectness {
 
 	// Test that a singlebond oscillates at the correct frequency
 	LimaUnittestResult SinglebondOscillationTest(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Singlebond/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = simulations_dir / "Singlebond/";
+		const fs::path conf = work_folder / "molecule/conf.gro";
+		const fs::path topol = work_folder / "molecule/topol.top";
+		const fs::path simpar = work_folder / "sim_params.txt";
 		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f * 1e-3f;
@@ -234,15 +227,12 @@ namespace ForceCorrectness {
 
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
-		const std::string work_folder = simulations_dir + "Singlebond/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode, false };
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
-		SimParams params{ simpar };
+		SimParams params{ work_folder / "sim_params.txt" };
 		params.data_logging_interval = 1;
 		params.n_steps = 5000;
 		//params.dt = 50.f;
@@ -254,8 +244,8 @@ namespace ForceCorrectness {
 		const float bondEquilibrium = 0.1335; // [nm]
 
 		for (auto bond_len_error : bond_len_errors) {
-			GroFile grofile{conf};
-			TopologyFile topfile{topol};
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
@@ -294,13 +284,10 @@ namespace ForceCorrectness {
 
 	// Benchmarks anglebonds + singlebonds (for stability)
 	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
-		const std::string work_folder = simulations_dir + "Anglebond/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = simulations_dir / "Anglebond/";
 
 		Environment env{ work_folder, envmode, false};
-		SimParams params{ simpar };
+		SimParams params{ work_folder / "sim_params.txt" };
 
 		const float relaxed_angle = 1.8849f; // [rad]
 		std::vector<float> angle_errors{ 0.5f, 0.7f }; //(t-t0) [rad]
@@ -308,8 +295,8 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			GroFile grofile{conf};
-			TopologyFile topfile{topol};
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
@@ -354,13 +341,10 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.6e-3, float max_eg=6.037) {
-		const std::string work_folder = simulations_dir + "Improperbond/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = simulations_dir / "Improperbond/";
 
 		Environment env{ work_folder, envmode, false };
-		SimParams params{ simpar };
+		SimParams params{ work_folder / "sim_params.txt" };
 		//params.n_steps = 5000;
 		//params.data_logging_interval = 1;
 		//params.dt = 50.f;
@@ -369,8 +353,8 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto angle_error : angle_errors) {
-			GroFile grofile{conf};
-			TopologyFile topfile{topol};
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 
@@ -443,10 +427,9 @@ namespace ForceCorrectness {
 
 namespace StressTesting {
 	bool doPool50x(EnvMode envmode) {
-		const std::string work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
-		const std::string simpar = work_folder + "sim_params.txt";
+		const fs::path work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
 
-		SimParams params{ simpar };
+		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 100;
 
 		auto func = [&]() {
@@ -463,7 +446,7 @@ namespace VerletintegrationTesting {
 
 	// Apply a constant force on a particle, and check that the particles achieves the expected kinetic energy
 	LimaUnittestResult TestIntegration(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Pool/";
+		const fs::path work_folder = simulations_dir / "Pool/";
 
 		Environment env{ work_folder, envmode, false };
 
@@ -475,8 +458,8 @@ namespace VerletintegrationTesting {
 
 		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * LIMA; // [s]
 
-		GroFile grofile{ work_folder + "molecule/conf.gro" };
-		TopologyFile topfile{ work_folder + "molecule/topol.top" };
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 		grofile.atoms.pop_back();
 		topfile.GetLocalAtoms().pop_back();
 

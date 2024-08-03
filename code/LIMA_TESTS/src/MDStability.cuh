@@ -26,8 +26,8 @@ namespace TestMDStability {
 
 		// Do sim
 		//InputSimParams simparams{ 100, 2000 };
-		const std::string work_folder = simulations_dir + folder_name;
-		const std::string simpar_path = work_folder + "/sim_params.txt";
+		const fs::path work_folder = simulations_dir / folder_name;
+		const fs::path simpar_path = work_folder / "sim_params.txt";
 		SimParams params{ simpar_path };
 		auto sim = env->getSim();
 		env->CreateSimulation(*sim, params);
@@ -54,11 +54,7 @@ namespace TestMDStability {
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		const std::string name = "8ResNoSol";
-		const std::string work_folder = simulations_dir + name + "/";
-		const std::string simpar = work_folder + "sim_params.txt";
-
-		return loadAndRunBasicSimulation(name, envmode, 1.36e-3, 2e-5);
+		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.36e-3, 2e-5);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

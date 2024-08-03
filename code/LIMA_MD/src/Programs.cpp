@@ -4,6 +4,7 @@
 #include "SimulationBuilder.h"
 #include "Environment.h"
 #include "BoxBuilder.cuh"
+#include "Forcefield.h"
 
 namespace lfs = Filehandler;
 
@@ -122,4 +123,75 @@ void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const Topology
 		assert(grofile.atoms[i].atomName == EnergyMinimizedGro.atoms[i].atomName);	// Sanity check the name is unchanged
 		grofile.atoms[i].position = EnergyMinimizedGro.atoms[i].position;
 	}
+}
+
+
+
+void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
+	LIMAForcefield forcefield{};
+
+	std::vector<int> ljtypeIndices;
+	for (auto& atom : topfile.GetAllAtoms()) {
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(atom.type));
+	}
+	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
+
+
+
+	// Open csv file for write
+	std::ofstream file;
+	file.open(workdir / "appliedForcefield.itp");
+
+	{
+		file << "[ atoms ]\n";
+		file << "; type mass sigma[nm] epsilon[J/mol] \n";
+		int atomIndex = 0;
+		for (auto atom : topfile.GetAllAtoms()) {
+			const int ljtypeIndex = ljtypeIndices[atomIndex++];
+			file << atom.type << " "
+				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma * LIMA_TO_NANO
+				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilon << "\n";
+		}
+		file << "\n";
+	}
+
+	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false,	SimParams{});
+
+	{
+		file << "[ singlebonds ]\n";
+		file << "; b0[nm] kb[J/(mol*nm^2)]\n";
+		for (const auto& bond : boximage->topology.singlebonds) {
+			file << bond.params.b0 * LIMA_TO_NANO << " " << bond.params.kb / LIMA_TO_NANO / LIMA_TO_NANO << "\n";
+		}
+		file << "\n";
+	}
+
+	{
+		file << "[ anglebonds ]\n";
+		file << "; theta0[rad] ktheta[J/(mol*rad^2)]\n";
+		for (const auto& angle : boximage->topology.anglebonds) {
+			file << angle.params.theta_0 << " " << angle.params.k_theta << "\n";
+		}
+		file << "\n";
+	}
+
+	{
+		file << "[ dihedralbonds ]\n";
+		file << "; phi0[rad] kphi[J/(mol*rad^2) multiplicity]\n";
+		for (const auto& dihedral : boximage->topology.dihedralbonds) {
+			file << static_cast<float>(dihedral.params.phi_0) << " " << static_cast<float>(dihedral.params.k_phi) << " " << static_cast<float>(dihedral.params.n) << "\n";
+		}
+		file << "\n";
+	}
+
+	{
+		file << "[ improperdihedralbonds ]\n";
+		file << "; psi0[rad] kpsi[J/(mol*rad^2)]\n";
+		for (const auto& improper : boximage->topology.improperdihedralbonds) {
+			file << improper.params.psi_0 << " " << improper.params.k_psi << "\n";
+		}
+		file << "\n";
+	}
+
+	file.close();
 }

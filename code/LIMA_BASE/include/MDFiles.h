@@ -121,10 +121,10 @@ public:
 
 		//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
 		int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
-		std::string type{};
+		std::string type{};	// Atom type
 		int resnr{};
 		std::string residue{};
-		std::string atomname{};
+		std::string atomname{};	// TODONOW SHould this be prioritized over type???<?>>?>>?<<?!!!!!!
 		int cgnr{};
 		float charge{};// In elementary charges [e]. Convert to kilo C/mol before using
 		float mass{};

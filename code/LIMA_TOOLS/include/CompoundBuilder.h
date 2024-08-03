@@ -16,17 +16,7 @@
 
 struct BoxImage;
 
-namespace LIMA_MOLECULEBUILD {
 
-	std::unique_ptr<BoxImage> buildMolecules(
-		const GroFile& gro_file,
-		const TopologyFile& top_file,
-		VerbosityLevel vl,
-		std::unique_ptr<LimaLogger>,
-		bool ignore_hydrogens,
-		const SimParams& simparams
-	);
-}
 
 
 
@@ -48,7 +38,25 @@ using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
 
 
+namespace LIMA_MOLECULEBUILD {
+	struct Topology {
+		std::vector<SingleBondFactory> singlebonds;
+		std::vector<AngleBondFactory> anglebonds;
+		std::vector<DihedralBondFactory> dihedralbonds;
+		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+	};
 
+
+
+	std::unique_ptr<BoxImage> buildMolecules(
+		const GroFile& gro_file,
+		const TopologyFile& top_file,
+		VerbosityLevel vl,
+		std::unique_ptr<LimaLogger>,
+		bool ignore_hydrogens,
+		const SimParams& simparams
+	);
+}
 
 
 
@@ -167,4 +175,6 @@ struct BoxImage {
 	GroFile grofile;
 
 	const ForceField_NB forcefield;
+
+	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
 };

@@ -60,9 +60,7 @@ namespace ElectrostaticsTests {
 	// Test that 1 positive charge particle (no LJ potential) is repelled by eachother.
 	// Additionally check that the final force and potential energy is as we would expect if calculate it manually
 	LimaUnittestResult doPoolBenchmarkES(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Pool/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
+		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode, false };
 
 		const int nSteps = 2;
@@ -73,11 +71,11 @@ namespace ElectrostaticsTests {
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
-		GroFile grofile{ conf };
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		grofile.box_size = Float3{ 3.f };
 		grofile.atoms[0].position = Float3{ .6f, 2.4f, 1.5f };
 		grofile.atoms[1].position = Float3{ 2.3f, 1.5f, 1.5f };
-		TopologyFile topfile{ topol };
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 		env.CreateSimulation(grofile, topfile, params);
 
@@ -131,9 +129,7 @@ namespace ElectrostaticsTests {
 
 
 	LimaUnittestResult TestAttractiveParticlesInteractingWithESandLJ(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Pool/";
-		const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string topol = work_folder + "molecule/topol.top";
+		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode, false };
 
 
@@ -146,11 +142,11 @@ namespace ElectrostaticsTests {
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
-		GroFile grofile{ conf };
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		grofile.box_size = Float3{ 3.f };
 		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
 		grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
-		TopologyFile topfile{ topol };
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 
 		env.CreateSimulation(grofile, topfile, params);
@@ -173,7 +169,7 @@ namespace ElectrostaticsTests {
 	}
 
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		Environment env(simulations_dir + dirName, EnvMode::Headless, false);
+		Environment env(simulations_dir / dirName, EnvMode::Headless, false);
 
 		env.createSimulationFiles(boxLen);
 
@@ -348,7 +344,7 @@ namespace ElectrostaticsTests {
 
 
 	LimaUnittestResult TestLongrangeEsNoLJ(EnvMode envmode) {
-		const std::string work_folder = simulations_dir + "Pool/";
+		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode, false };
 
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
@@ -357,11 +353,11 @@ namespace ElectrostaticsTests {
 			params.n_steps = 1;
 			params.enable_electrostatics = true;
 			params.data_logging_interval = 1;
-			GroFile grofile{ work_folder + "molecule/conf.gro" };
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			grofile.box_size = Float3{ 15.f };
 			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
 			grofile.atoms[1].position = Float3{ 7.f, 1.5f, 1.5f };
-			TopologyFile topfile{ work_folder + "molecule/topol.top" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 
 			env.CreateSimulation(grofile, topfile, params);
@@ -394,11 +390,11 @@ namespace ElectrostaticsTests {
 			params.n_steps = 1;
 			params.enable_electrostatics = true;
 			params.data_logging_interval = 1;
-			GroFile grofile{ work_folder + "molecule/conf.gro" };
+			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			grofile.box_size = Float3{ 15.f };
 			grofile.atoms[0].position = Float3{ 1.4f, 1.5f, 1.5f };
 			grofile.atoms[1].position = Float3{ 6.6f, 1.5f, 1.5f };
-			TopologyFile topfile{ work_folder + "molecule/topol.top" };
+			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 
 			env.CreateSimulation(grofile, topfile, params);

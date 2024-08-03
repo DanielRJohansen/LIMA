@@ -9,7 +9,7 @@ namespace FileTests {
 	namespace fs = std::filesystem;
 
 	LimaUnittestResult TestFilesAreCachedAsBinaries(EnvMode envmode) {
-		const fs::path work_dir = simulations_dir + "/filetests";
+		const fs::path work_dir = simulations_dir / "filetests";
 
 		// Remove any file in workdir ending in .itp.bin
 		for (const auto& entry : fs::directory_iterator(work_dir / "molecule")) {

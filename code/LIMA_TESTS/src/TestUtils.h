@@ -21,14 +21,14 @@ namespace TestUtils {
 	//const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
 
 
-	const std::string simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
+	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
-	const std::string simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
+	const fs::path simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
 #endif
 
-	std::string getMostSuitableGroFile(const std::string& workdir) {
-		const std::string em = workdir + "/molecule/em.gro";
-		const std::string conf = workdir + "/molecule/conf.gro";
+	fs::path getMostSuitableGroFile(const fs::path& workdir) {
+		const fs::path em = workdir / "molecule/em.gro";
+		const fs::path conf = workdir / "molecule/conf.gro";
 		if (std::filesystem::exists(em)) {
 			return em;
 		}
@@ -42,11 +42,11 @@ namespace TestUtils {
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<SimParams> simparams, EnvMode envmode) {
 		
-		const std::string work_folder = simulations_dir + foldername;
-		//const std::string conf = work_folder + "molecule/conf.gro";
-		const std::string conf = getMostSuitableGroFile(work_folder);
-		const std::string topol = work_folder + "/molecule/topol.top";
-		const std::string simpar = work_folder + "/sim_params.txt";
+		const fs::path work_folder = simulations_dir / foldername;
+		//const std::string conf = work_folder / "molecule/conf.gro";
+		const fs::path conf = getMostSuitableGroFile(work_folder);
+		const fs::path topol = work_folder / "molecule/topol.top";
+		const fs::path simpar = work_folder / "sim_params.txt";
 
 		auto env = std::make_unique<Environment>(work_folder, envmode, false);
 

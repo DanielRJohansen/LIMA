@@ -117,6 +117,9 @@ int main() {
 
 		//Benchmarks::Psome(envmode);
 
+		
+		//Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "Met/molecule/conf.gro" }, TopologyFile{ TestUtils::simulations_dir / "Met/molecule/topol.top" }, 
+		//	TestUtils::simulations_dir / "Met");
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

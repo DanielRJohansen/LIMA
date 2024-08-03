@@ -10,13 +10,13 @@ namespace Benchmarks {
 	static void ReadGroFile(EnvMode mode) {
 		assert(ENABLE_FILE_CACHING == false);
 		TimeIt timer("ReadGroFile", true);
-		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
+		const fs::path work_dir = simulations_dir / "MembraneAndPsome";
 		GroFile psomeGrofile{ work_dir / "molecule/membrane_with_psome.gro" };
 		printf("N atoms: %d\n", psomeGrofile.atoms.size());
 	}
 
 	static void MembraneWithPsome(EnvMode envmode) {
-		const fs::path work_dir = simulations_dir + "/MembraneAndPsome";
+		const fs::path work_dir = simulations_dir / "MembraneAndPsome";
 		 
 		bool buildFromScratch = true;
 		if (buildFromScratch) {
@@ -87,7 +87,7 @@ namespace Benchmarks {
 		 //if (envmode== Full)
 			// envmode = ConsoleOnly;	// Cant go fast in Full
 
-		const fs::path work_dir = simulations_dir + "/psome";
+		const fs::path work_dir = simulations_dir / "psome";
 		float boxlen = 23.f;
 		Environment env{ work_dir, envmode, false };
 		

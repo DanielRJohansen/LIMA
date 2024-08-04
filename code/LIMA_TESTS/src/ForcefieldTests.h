@@ -185,9 +185,12 @@ void ParseForcefieldFromItp(
 
 LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode) 
 {
-	//Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" }, 
- //    TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
-	//	TestUtils::simulations_dir / "Forcefieldtests");
+    if (envmode != Full) {
+        Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" },
+            TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
+            TestUtils::simulations_dir / "Forcefieldtests");
+	}
+	
 	
 
     std::vector<SingleBond::Parameters> bondparamsGromacs, bondparamsLima;

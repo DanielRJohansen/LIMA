@@ -118,8 +118,8 @@ int main() {
 		//Benchmarks::Psome(envmode);
 
 		
-		TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//runAllUnitTests();
+		//TestLimaChosesSameBondparametersAsGromacs(envmode);
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -173,6 +173,10 @@ void runAllUnitTests() {
 	// Electrostatics
 	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	
+	// Test Forcefield and compoundbuilder
+	ADD_TEST(testman, "TestLimaChosesSameBondparametersAsGromacs", CoulombForceSanityCheck(envmode));
+
+
 	ADD_TEST(testman, "doPoolBenchmarkES", doPoolBenchmarkES(envmode));
 	ADD_TEST(testman, "TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST(testman, "TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));

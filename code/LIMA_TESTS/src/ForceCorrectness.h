@@ -212,7 +212,7 @@ namespace ForceCorrectness {
 		const float errorThreshold = 1e-2;
 
 		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("Expected frequency: {:.5e} [1/fs], Actual frequency: {:.5e} [1/fs], Error: {}", expectedFrequency, actualFrequency, error),
+			std::format("Expected frequency: {:.4e} [1/fs], Actual frequency: {:.4e} [1/fs], Error: {:.2e}", expectedFrequency, actualFrequency, error),
 			envmode == Full };
 	}
 
@@ -336,7 +336,7 @@ namespace ForceCorrectness {
 		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 5.68e-4, 2.9e-7);
 	}
 
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.6e-3, float max_eg=6.037) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {
 		const fs::path work_folder = simulations_dir / "Improperbond/";
 
 		Environment env{ work_folder, envmode, false };

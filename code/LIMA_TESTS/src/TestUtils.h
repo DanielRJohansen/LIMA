@@ -121,21 +121,16 @@ namespace TestUtils {
 
 
 		void printStatus() const {
-			std::string status_str;// = status == SUCCESS ? "Success" : "Failure";
-
 			if (success) {
-				status_str = "Success";
 				setConsoleTextColorGreen();
 			}
 			else {
-				status_str = "Fail"   ;
 				setConsoleTextColorRed();
 			}
 
-			std::cout << status_str;
 
-			if (error_description.length() > 35) { std::cout << "\n"; }
-			std::cout << "\t" << error_description << "\n";
+			if (error_description.length() > 55) { std::cout << "\n\t"; }
+			std::cout << error_description << "\n";
 
 
 			setConsoleTextColorDefault();

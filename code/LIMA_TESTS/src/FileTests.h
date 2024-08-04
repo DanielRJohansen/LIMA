@@ -26,14 +26,14 @@ namespace FileTests {
 			GroFile grofile{ work_dir / "molecule/em.gro" };
 			time1.stop();
 			if (!fs::exists(work_dir / "molecule/em.gro.bin")) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "GroFile did not make a bin cached file", envmode == Full };
+				return LimaUnittestResult{ false , "GroFile did not make a bin cached file", envmode == Full };
 			}
 
 			TimeIt time2(".bin read", envmode==Full);
 			GroFile grofileLoadedFromCache{ work_dir / "molecule/em.gro" };
 			time2.stop();
 			if (!grofileLoadedFromCache.readFromCache) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "GroFile was not read from cached file", envmode == Full };
+				return LimaUnittestResult{ false , "GroFile was not read from cached file", envmode == Full };
 			}
 
 
@@ -42,7 +42,7 @@ namespace FileTests {
 				|| grofile.atoms.size() != grofileLoadedFromCache.atoms.size()
 				|| grofile.atoms.back().position != grofileLoadedFromCache.atoms.back().position
 				) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "Grofile did not match cached grofile", envmode == Full };
+				return LimaUnittestResult{ false , "Grofile did not match cached grofile", envmode == Full };
 			}
 		}
 
@@ -53,14 +53,14 @@ namespace FileTests {
 			TopologyFile topolfile{ work_dir / "molecule/topol.top" };
 			time1.stop();
 			if (!fs::exists(work_dir / "molecule/topol.top.bin")) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "ParsedTopolFile did not make a bin cached file", envmode == Full };
+				return LimaUnittestResult{ false , "ParsedTopolFile did not make a bin cached file", envmode == Full };
 			}
 
 			TimeIt time2(".bin read", envmode == Full);
 			TopologyFile topolfileLoadedFromCache{ work_dir / "molecule/topol.top" };
 			time2.stop();
 			if (!topolfileLoadedFromCache.readFromCache) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "ParsedTopolFile was not read from cached file", envmode == Full };
+				return LimaUnittestResult{ false , "ParsedTopolFile was not read from cached file", envmode == Full };
 			}
 
 			// TODONOW Fix
@@ -70,12 +70,12 @@ namespace FileTests {
 				|| topolfile.molecules.entries.back().includeTopologyFile->atoms.entries.back().atomname != topolfileLoadedFromCache.molecules.entries.back().includeTopologyFile->atoms.entries.back().atomname
 				|| topolfileLoadedFromCache.molecules.entries[0].includeTopologyFile->atoms.entries.back().resnr != 250
 				) {
-				return LimaUnittestResult{ LimaUnittestResult::FAIL , "Topolfile did not match cached topolfile", envmode == Full };
+				return LimaUnittestResult{ false , "Topolfile did not match cached topolfile", envmode == Full };
 			}*/
 		}
 
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS , "No error", envmode == Full };
+		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 }
 

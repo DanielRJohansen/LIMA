@@ -5,7 +5,7 @@
 #include "ElectrostaticsTests.h"
 #include "Benchmarks.h"
 #include "FileTests.h"
-
+#include "ForcefieldTests.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -118,9 +118,8 @@ int main() {
 		//Benchmarks::Psome(envmode);
 
 		
-		//Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "Met/molecule/conf.gro" }, TopologyFile{ TestUtils::simulations_dir / "Met/molecule/topol.top" }, 
-		//	TestUtils::simulations_dir / "Met");
-		runAllUnitTests();
+		TestLimaChosesSameBondparametersAsGromacs(envmode);
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

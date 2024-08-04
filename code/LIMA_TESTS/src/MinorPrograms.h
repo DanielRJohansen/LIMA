@@ -18,14 +18,14 @@ namespace TestMinorPrograms {
 
 		std::string error = compareFilesBitwise(fs::path(to_folder) / "POPC.gro", fs::path(to_folder) / "POPC_reference.gro");
 		if (error != "") {
-			return LimaUnittestResult{ LimaUnittestResult::FAIL , error, envmode == Full };
+			return LimaUnittestResult{ false , error, envmode == Full };
 		}
 		error = compareFilesBitwise(fs::path(to_folder) / "POPC.itp", fs::path(to_folder) / "POPC_reference.itp");
 		if (error != "") {
-			return LimaUnittestResult{ LimaUnittestResult::FAIL , error, envmode == Full };
+			return LimaUnittestResult{ false , error, envmode == Full };
 		}
 
-	return LimaUnittestResult{ LimaUnittestResult::SUCCESS , "No error", envmode == Full };
+	return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 }
 

@@ -53,7 +53,7 @@ const int PICO_TO_LIMA = static_cast<int>(FEMTO_TO_LIMA) * 1000;
 
 static_assert(NANO_TO_LIMA < INT_MAX/4, "LIMA Scale is so small it can create dangerous bugs");
 
-constexpr double KILO = 1e3;
+constexpr float KILO = 1000.f;
 constexpr double GIGA = 1e9;
 constexpr double NANO = 1e-9;
 constexpr double FEMTO = 1e-15;

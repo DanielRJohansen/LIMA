@@ -28,7 +28,7 @@ namespace ElectrostaticsTests {
 
 		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
 		// TODO: add potE to this also
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
+		return LimaUnittestResult{ true, "", envmode == Full};
 	}
 
 
@@ -123,7 +123,7 @@ namespace ElectrostaticsTests {
 		}
 
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
+		return LimaUnittestResult{ true, "", envmode == Full};
 	}
 
 
@@ -165,7 +165,7 @@ namespace ElectrostaticsTests {
 		const float maxVC = 1e-3;
 		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full };
+		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
@@ -243,11 +243,11 @@ namespace ElectrostaticsTests {
 
 		if (slope >= 0.f) {
 			std::string errorMsg = std::format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
-			return LimaUnittestResult{ LimaUnittestResult::FAIL, errorMsg, envmode == Full };
+			return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 		if (std::abs(intercept) > 50.f) {
 			std::string errorMsg = std::format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
-			return LimaUnittestResult{ LimaUnittestResult::FAIL, errorMsg, envmode == Full };
+			return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
@@ -255,10 +255,10 @@ namespace ElectrostaticsTests {
 		if (r2 < 0.7) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
-			return LimaUnittestResult{ LimaUnittestResult::FAIL, errorMsg, envmode == Full };
+			return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, std::format("R2 Value: {:.2f}", r2), envmode == Full};
+		return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -337,7 +337,7 @@ namespace ElectrostaticsTests {
 		ASSERT(analytics->variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics->variance_coefficient, targetVarCoeff));
 
 		return LimaUnittestResult{ 
-			LimaUnittestResult::SUCCESS, 
+			true, 
 			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
 			envmode == Full };
 	}
@@ -416,7 +416,7 @@ namespace ElectrostaticsTests {
 		}
 
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full };
+		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 }
 

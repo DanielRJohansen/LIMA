@@ -424,25 +424,28 @@ enum TopologySection {
 // This class does NOT support recursive includes, so for reading topologies use the one above
 // It is also not very fast, since it stores a lot of data as strings
 class GenericItpFile {
-	struct Section {
-		std::string title;
-		std::vector<std::string> lines;
-	};
+
+	// A section is simply a list of non-comment rows from the file
+	using Section = std::vector<std::string>;
 
 	std::unordered_map<TopologySection, Section> sections;
+	const Section emptySection;  // Default empty section
 
 public:
 	GenericItpFile(const fs::path& path);
 
-	std::optional<std::reference_wrapper<const Section>> GetSection(TopologySection section) const {
-		if (sections.count(section) == 0)
-			return std::nullopt;
-		return std::cref(sections.at(section));
+	const Section& GetSection(TopologySection section) const {
+		auto it = sections.find(section);
+		if (it == sections.end()) {
+			return emptySection;
+		}
+		return it->second;
 	}
-	std::optional<std::reference_wrapper<Section>> GetSection(TopologySection section) {
-		if (sections.count(section) == 0)
-			return std::nullopt;
-		return std::ref(sections.at(section));
+	Section& GetSection(TopologySection section) {
+		if (!sections.contains(section)) {
+			sections.insert({ section, emptySection });
+		}
+		return sections.at(section);
 	}
 };
 

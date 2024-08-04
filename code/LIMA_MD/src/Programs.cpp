@@ -141,6 +141,10 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	// Open csv file for write
 	std::ofstream file;
 	file.open(workdir / "appliedForcefield.itp");
+	if (!file.is_open()) {
+		std::cerr << "Could not open file for writing forcefield parameters\n";
+		return;
+	}
 
 	{
 		file << "[ atoms ]\n";
@@ -155,39 +159,54 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		file << "\n";
 	}
 
-	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false,	SimParams{});
+	SimParams params;
+	params.em_variant = true;
+	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false, params);
+
+	std::vector<std::string> atomNames;
+	for (auto atom : topfile.GetAllAtoms()) {
+		atomNames.emplace_back(atom.type);
+	}
 
 	{
-		file << "[ singlebonds ]\n";
-		file << "; b0[nm] kb[J/(mol*nm^2)]\n";
+		file << "[ bondtypes ]\n";
+		file << "; name_i name_j  b0[nm] kb[J/(mol*nm^2)]\n";
 		for (const auto& bond : boximage->topology.singlebonds) {
+			for (int i = 0; i < bond.n_atoms; i++)
+				file << atomNames[bond.global_atom_indexes[i]] << " ";
 			file << bond.params.b0 * LIMA_TO_NANO << " " << bond.params.kb / LIMA_TO_NANO / LIMA_TO_NANO << "\n";
 		}
 		file << "\n";
 	}
 
 	{
-		file << "[ anglebonds ]\n";
-		file << "; theta0[rad] ktheta[J/(mol*rad^2)]\n";
+		file << "[ angletypes ]\n";
+		file << "; name_i name_j name_k theta0[rad] ktheta[J/(mol*rad^2)]\n";
 		for (const auto& angle : boximage->topology.anglebonds) {
+			for (int i = 0; i < angle.n_atoms; i++)
+				file << atomNames[angle.global_atom_indexes[i]] << " ";
 			file << angle.params.theta_0 << " " << angle.params.k_theta << "\n";
 		}
 		file << "\n";
 	}
 
 	{
-		file << "[ dihedralbonds ]\n";
-		file << "; phi0[rad] kphi[J/(mol*rad^2) multiplicity]\n";
+		file << "[ dihedraltypes ]\n";
+		file << "; name_i name_j name_k name_l phi0[rad] kphi[J/(mol*rad^2)] multiplicity\n";
 		for (const auto& dihedral : boximage->topology.dihedralbonds) {
+			for (int i = 0; i < dihedral.n_atoms; i++)
+				file << atomNames[dihedral.global_atom_indexes[i]] << " ";
 			file << static_cast<float>(dihedral.params.phi_0) << " " << static_cast<float>(dihedral.params.k_phi) << " " << static_cast<float>(dihedral.params.n) << "\n";
 		}
 		file << "\n";
 	}
 
 	{
-		file << "[ improperdihedralbonds ]\n";
-		file << "; psi0[rad] kpsi[J/(mol*rad^2)]\n";
+		file << "[ dihedraltypes ]\n";
+		file << "; name_i name_j name_k name_l psi0[rad] kpsi[J/(mol*rad^2)]\n";
 		for (const auto& improper : boximage->topology.improperdihedralbonds) {
+			for (int i = 0; i < improper.n_atoms; i++)
+				file << atomNames[improper.global_atom_indexes[i]] << " ";
 			file << improper.params.psi_0 << " " << improper.params.k_psi << "\n";
 		}
 		file << "\n";

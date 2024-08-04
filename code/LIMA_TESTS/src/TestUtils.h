@@ -110,10 +110,8 @@ namespace TestUtils {
 	static void setConsoleTextColorDefault() { std::cout << "\033[0m"; }
 
 	struct LimaUnittestResult {
-		enum TestStatus { SUCCESS, FAIL, THROW };
-
-		LimaUnittestResult( TestStatus status, const std::string err, const bool print_now) :
-			status(status),
+		LimaUnittestResult( bool success, const std::string err, const bool print_now) :
+			success(success),
 			error_description(err)
 		{
 			if (print_now) {
@@ -125,7 +123,7 @@ namespace TestUtils {
 		void printStatus() const {
 			std::string status_str;// = status == SUCCESS ? "Success" : "Failure";
 
-			if (status == SUCCESS) {
+			if (success) {
 				status_str = "Success";
 				setConsoleTextColorGreen();
 			}
@@ -143,9 +141,7 @@ namespace TestUtils {
 			setConsoleTextColorDefault();
 		}
 
-		bool success() const { return status == SUCCESS; }
-
-		TestStatus status;		
+		bool success;
 		std::string error_description;		
 	};
 
@@ -153,7 +149,7 @@ namespace TestUtils {
     do { \
         if (!(condition)) { \
             std::string msg = errorMsg; \
-            return LimaUnittestResult{ LimaUnittestResult::FAIL, msg, (envmode) == Full }; \
+            return LimaUnittestResult{ false, msg, (envmode) == Full }; \
         } \
     } while (0)
 
@@ -175,7 +171,7 @@ namespace TestUtils {
 			}
 			catch (const std::runtime_error& ex) {
 				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
-				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ LimaUnittestResult::THROW, err_desc, true });
+				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ false, err_desc, true });
 			}
 		}
 
@@ -189,17 +185,17 @@ namespace TestUtils {
 	public:
 		LimaUnittestManager(){}
 		~LimaUnittestManager() {
-			if (successes == tests.size()) {
+			if (successCount == tests.size()) {
 				setConsoleTextColorGreen();
 			}
 			else {
 				setConsoleTextColorRed();
 			}
 			
-			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successes, tests.size());
+			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successCount, tests.size());
 
 			for (const auto& test : tests) {
-				if (!test->testresult->success()) {
+				if (!test->testresult->success) {
 					test->testresult->printStatus();
 				}
 			}
@@ -210,14 +206,14 @@ namespace TestUtils {
 		void addTest(std::unique_ptr<LimaUnittest> test) {
 			test->execute();
 
-			if (test->testresult->success()) { successes++; }
+			if (test->testresult->success) { successCount++; }
 
 			tests.push_back(std::move(test));
 		}
 
 	private:
 		std::vector<std::unique_ptr<LimaUnittest>> tests;
-		int successes = 0;
+		int successCount = 0;
 	};
 
 
@@ -250,9 +246,8 @@ namespace TestUtils {
 
 
 		const auto result = evaluateTest({ varcoff }, max_vc, {analytics->energy_gradient}, max_gradient);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{ status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	void stressTest(std::function<void()> func, size_t reps) {

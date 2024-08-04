@@ -48,9 +48,8 @@ namespace TestMDStability {
 		//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
 
 		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {

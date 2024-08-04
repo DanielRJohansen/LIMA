@@ -49,9 +49,8 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, target_vc, energy_gradients, 2e-7);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full};
+		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
@@ -106,9 +105,8 @@ namespace ForceCorrectness {
 		}	
 
 		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 2e-7);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 
@@ -154,7 +152,7 @@ namespace ForceCorrectness {
 		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
 		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full };
+		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
 
@@ -213,7 +211,7 @@ namespace ForceCorrectness {
 		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
 		const float errorThreshold = 1e-2;
 
-		return LimaUnittestResult{ error < errorThreshold ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL, 
+		return LimaUnittestResult{ error < errorThreshold ? true : false, 
 			std::format("Expected frequency: {:.5e} [1/fs], Actual frequency: {:.5e} [1/fs], Error: {}", expectedFrequency, actualFrequency, error),
 			envmode == Full };
 	}
@@ -277,9 +275,8 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2.e-7);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
@@ -331,9 +328,8 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 1e-7);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
@@ -414,9 +410,8 @@ namespace ForceCorrectness {
 		}
 
 		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, max_eg);
-		const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
 
-		return LimaUnittestResult{status, result.second, envmode == Full };
+		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 
@@ -486,7 +481,7 @@ namespace VerletintegrationTesting {
 		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
 
 
-		return LimaUnittestResult{ LimaUnittestResult::SUCCESS, "", envmode == Full};
+		return LimaUnittestResult{ true, "", envmode == Full};
 	}
 
 }

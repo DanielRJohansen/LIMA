@@ -50,6 +50,19 @@ struct AngleBond {
 	const static int n_atoms = 3;
 };
 
+struct UreyBradley {
+	struct Parameters {
+		float theta0 = 0.f;	// [rad]
+		float kTheta = 0.f;	// [J/mol/rad^2]
+		float ub0 = 0.f;	// [lm]
+		float kUB = 0.f;	// [J/mol/lm^2]
+	};
+
+	Parameters params;
+	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
+	const static int n_atoms = 3;
+};
+
 struct DihedralBond {
 	struct Parameters {
 		half phi_0;		// [rad]

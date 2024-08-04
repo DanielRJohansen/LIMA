@@ -135,98 +135,90 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 	GenericItpFile file{ path };
 
 
-	if (file.GetSection(TopologySection::atomtypes)) {
-		for (const auto& line : file.GetSection(TopologySection::atomtypes)->get().lines) {
-			std::istringstream iss(line);
+	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
+		std::istringstream iss(line);
 
-			AtomType atomtype{};
-			iss >> atomtype.name >> atomtype.atNum
-				>> atomtype.parameters.mass		// [g]
-				>> atomtype.charge				// [e]
-				>> atomtype.ptype
-				>> atomtype.parameters.sigma	// [nm]
-				>> atomtype.parameters.epsilon;	// [kJ/mol]
+		AtomType atomtype{};
+		iss >> atomtype.name >> atomtype.atNum
+			>> atomtype.parameters.mass		// [g]
+			>> atomtype.charge				// [e]
+			>> atomtype.ptype
+			>> atomtype.parameters.sigma	// [nm]
+			>> atomtype.parameters.epsilon;	// [kJ/mol]
 
-			atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
+		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
 
-			atomtype.parameters.mass /= static_cast<float>(KILO);
-			atomtype.parameters.sigma *= NANO_TO_LIMA;
-			atomtype.parameters.epsilon *= KILO;
+		atomtype.parameters.mass /= static_cast<float>(KILO);
+		atomtype.parameters.sigma *= NANO_TO_LIMA;
+		atomtype.parameters.epsilon *= KILO;
 
-			ljParameters.insert(atomtype);
-		}
+		ljParameters.insert(atomtype);
 	}
-	if (file.GetSection(TopologySection::bondtypes)) {
-		for (const auto& line : file.GetSection(TopologySection::bondtypes)->get().lines) {
-			std::istringstream iss(line);
+	for (const auto& line : file.GetSection(TopologySection::bondtypes)) {
+		std::istringstream iss(line);
 
-			SinglebondType bondtype{};
-			iss >> bondtype.bonded_typenames[0] >> bondtype.bonded_typenames[1] >> bondtype.func
-				>> bondtype.params.b0	// [nm]
-				>> bondtype.params.kb;	// [kJ/mol/nm^2]
+		SinglebondType bondtype{};
+		iss >> bondtype.bonded_typenames[0] >> bondtype.bonded_typenames[1] >> bondtype.func
+			>> bondtype.params.b0	// [nm]
+			>> bondtype.params.kb;	// [kJ/mol/nm^2]
 
-			bondtype.params.b0 *= NANO_TO_LIMA;
-			bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
+		bondtype.params.b0 *= NANO_TO_LIMA;
+		bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
 
-			//SortBondedtypeNames<SingleBond>(bondtype.bonded_typenames);
+		//SortBondedtypeNames<SingleBond>(bondtype.bonded_typenames);
 
-			singlebondParameters.insert(bondtype);
-		}
+		singlebondParameters.insert(bondtype);
 	}
-	if (file.GetSection(TopologySection::angletypes)) {
-		for (const auto& line : file.GetSection(TopologySection::angletypes)->get().lines) {
-			std::istringstream iss(line);
+	// TODO: Gromacs choses UreyBradley instead of harmonic angle potentials. UB includes a 1-3 interaction term for the angle.
+	// We should obviously do the same to receive similar results
+	for (const auto& line : file.GetSection(TopologySection::angletypes)) {
+		std::istringstream iss(line);
 
-			AnglebondType anglebondtype{};
-			iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
-				>> anglebondtype.params.theta_0		// [degrees]
-				>> anglebondtype.params.k_theta;	// [kJ/mol/rad^2]
+		AnglebondType anglebondtype{};
+		iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
+			>> anglebondtype.params.theta_0		// [degrees]
+			>> anglebondtype.params.k_theta;	// [kJ/mol/rad^2]
 
-			anglebondtype.params.theta_0 *= DEG_TO_RAD;
-			anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
-			//SortBondedtypeNames<AngleBond>(anglebondtype.bonded_typenames);
+		anglebondtype.params.theta_0 *= DEG_TO_RAD;
+		anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
+		//SortBondedtypeNames<AngleBond>(anglebondtype.bonded_typenames);
 
-			anglebondParameters.insert(anglebondtype);
-		}
+		anglebondParameters.insert(anglebondtype);
 	}
-	if (file.GetSection(TopologySection::dihedraltypes)) {
-		for (const auto& line : file.GetSection(TopologySection::dihedraltypes)->get().lines) {
-			std::istringstream iss(line);
+	for (const auto& line : file.GetSection(TopologySection::dihedraltypes)) {
+		std::istringstream iss(line);
 
-			DihedralbondType dihedralbondtype{};
-			float phi0;
-			float kphi;
-			float n;
-			iss >> dihedralbondtype.bonded_typenames[0] >> dihedralbondtype.bonded_typenames[1] >> dihedralbondtype.bonded_typenames[2] >> dihedralbondtype.bonded_typenames[3]
-				>> dihedralbondtype.func
-				>> phi0	// [degrees]
-				>> kphi	// [kJ/mol]
-				>> n;
+		DihedralbondType dihedralbondtype{};
+		float phi0;
+		float kphi;
+		float n;
+		iss >> dihedralbondtype.bonded_typenames[0] >> dihedralbondtype.bonded_typenames[1] >> dihedralbondtype.bonded_typenames[2] >> dihedralbondtype.bonded_typenames[3]
+			>> dihedralbondtype.func
+			>> phi0	// [degrees]
+			>> kphi	// [kJ/mol]
+			>> n;
 
-			dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
-			dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol// Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
-			dihedralbondtype.params.n = n;
+		dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
+		dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol// Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
+		dihedralbondtype.params.n = n;
 
-			dihedralbondParameters.insert(dihedralbondtype);
-		}
+		dihedralbondParameters.insert(dihedralbondtype);
 	}
-	if (file.GetSection(TopologySection::impropertypes)) {
-		for (const auto& line : file.GetSection(TopologySection::impropertypes)->get().lines) {
-			std::istringstream iss(line);
+	for (const auto& line : file.GetSection(TopologySection::impropertypes)) {
+		std::istringstream iss(line);
 
-			ImproperDihedralbondType improperdihedralbondtype{};
-			float psi0;	// [degrees]
-			float kpsi;	// [kJ/mol]
-			iss >> improperdihedralbondtype.bonded_typenames[0] >> improperdihedralbondtype.bonded_typenames[1] >> improperdihedralbondtype.bonded_typenames[2] >> improperdihedralbondtype.bonded_typenames[3]
-				>> improperdihedralbondtype.func
-				>> psi0		// [degrees]
-				>> kpsi;	// [2 * kJ/mol]
+		ImproperDihedralbondType improperdihedralbondtype{};
+		float psi0;	// [degrees]
+		float kpsi;	// [kJ/mol]
+		iss >> improperdihedralbondtype.bonded_typenames[0] >> improperdihedralbondtype.bonded_typenames[1] >> improperdihedralbondtype.bonded_typenames[2] >> improperdihedralbondtype.bonded_typenames[3]
+			>> improperdihedralbondtype.func
+			>> psi0		// [degrees]
+			>> kpsi;	// [2 * kJ/mol]
 
-			improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
-			improperdihedralbondtype.params.k_psi = kpsi * KILO; 
-			//SortBondedtypeNames<ImproperDihedralBond>(improperdihedralbondtype.bonded_typenames);
-			improperdihedralbondParameters.insert(improperdihedralbondtype);
-		}
+		improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
+		improperdihedralbondtype.params.k_psi = kpsi * KILO;
+		//SortBondedtypeNames<ImproperDihedralBond>(improperdihedralbondtype.bonded_typenames);
+		improperdihedralbondParameters.insert(improperdihedralbondtype);
 	}
 }
 

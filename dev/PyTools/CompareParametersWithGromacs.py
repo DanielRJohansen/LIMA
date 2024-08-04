@@ -102,8 +102,55 @@ def ParseForcefieldFromItp(file_path: str):
     dihedrals = []
     improper_dihedrals = []
 
+    section = None
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            line = line.strip()
+
+            if line.startswith("[ singlebonds ]"):
+                section = "singlebonds"
+                continue
+            elif line.startswith("[ anglebonds ]"):
+                section = "anglebonds"
+                continue
+            elif line.startswith("[ dihedralbonds ]"):
+                section = "dihedralbonds"
+                continue
+            elif line.startswith("[ improperdihedralbonds ]"):
+                section = "improperdihedralbonds"
+                continue
+            elif line.startswith("["):
+                section = None  # Unknown section
+                continue
+
+            if section == "singlebonds" and not line.startswith(";"):
+                b0, kB = map(float, line.split())
+                bonds.append(Bond(b0, kB))
+            elif section == "anglebonds" and not line.startswith(";"):
+                theta0, kTheta = map(float, line.split())
+                angles.append(Angle(theta0, kTheta))
+            elif section == "dihedralbonds" and not line.startswith(";"):
+                phi0, kPhi, multiplicity = line.split()
+                dihedrals.append(Dihedral(float(phi0), float(kPhi), int(multiplicity)))
+            elif section == "improperdihedralbonds" and not line.startswith(";"):
+                psi0, kPsi = map(float, line.split())
+                improper_dihedrals.append(ImproperDihedral(psi0, kPsi))
 
     return bonds, angles, dihedrals, improper_dihedrals
+
+
+
+
+
+def CompareParameters(dir: str):
+    bondsG, anglesG, dihedralsG, impropersG = parseForcefieldFromTpr("tpr_content.txt")
+    bondsL, anglesL, dihedralsL, impropersL = ParseForcefieldFromItp("appliedForcefield.itp")
+
+    compare_bonds(bondsL, bondsG)
+    compare_angles(anglesL, anglesG)
+    compare_dihedrals(dihedralsL, dihedralsG)
+    compare_improper_dihedrals(impropersL, impropersG)
 
 
 def CompareAllSubdirs():
@@ -117,16 +164,11 @@ def CompareAllSubdirs():
         # First get bondparameters chosen by GROMACS
         subprocess.run(['gmx', 'grompp', '-f', 'sim.mdp', '-c', 'molecule/conf.gro', '-p', 'molecule/topol.top', '-o', 'output.tpr'], check=True)
         subprocess.run(['gmx', 'dump', '-s', 'output.tpr', '>', 'tpr_content.txt'], shell=True, check=True)
-        bondsG, anglesG, dihedralsG, impropersG = parseForcefieldFromTpr("tpr_content.txt")
 
         # Now get bondparameters from LIMA
         subprocess.run(['lima', 'getforcefieldparams'])
-        bondsL, anglesL, dihedralsL, impropersL = ParseForcefieldFromItp("appliedForcefield.itp")
 
-        compare_bonds(bondsL, bondsG)
-        compare_angles(anglesL, anglesG)
-        compare_dihedrals(dihedralsL, dihedralsG)
-        compare_improper_dihedrals(impropersL, impropersG)
+        CompareParameters(os.getcwd())
 
         os.chdir('..')
 

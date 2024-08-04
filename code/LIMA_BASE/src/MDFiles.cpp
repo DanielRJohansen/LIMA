@@ -673,13 +673,13 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 
 		if (newSection) {
-			if (GetSection(current_section).has_value()) {
+			if (!GetSection(current_section).empty()) {
 				throw std::runtime_error("Found the same section muliple times in the same file");
 			}
 			sections.insert({ current_section, {} });
 			newSection = false;
 		}
 
-		GetSection(current_section)->get().lines.emplace_back(line);	// OPTIM: i prolly should cache this address instead
+		GetSection(current_section).emplace_back(line);	// OPTIM: i prolly should cache this address instead
 	}
 }

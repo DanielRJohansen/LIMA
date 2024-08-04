@@ -79,7 +79,7 @@ namespace Benchmarks {
 		//}
 
 		//const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
-		//const auto status = result.first == true ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
+		//const auto status = result.first == true ? true : false;
 	}
 
 
@@ -122,7 +122,6 @@ namespace Benchmarks {
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		LimaUnittestResult::TestStatus status = timePerStep < allowedTimePerStep ? LimaUnittestResult::SUCCESS : LimaUnittestResult::FAIL;
-		return LimaUnittestResult { status, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
 }

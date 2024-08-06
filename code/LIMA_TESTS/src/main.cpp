@@ -95,11 +95,32 @@ int main() {
 		//LipidsSelection lipids;
 		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
 		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });
-		//Programs::CreateMembrane(env, lipids, true, 3.5f, true);
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });		//Programs::CreateMembrane(env, lipids, true, 3.5f, true);
 
 
 		//FileTests::TestFilesAreCachedAsBinaries(Headless);
+
+
+
+
+		std::vector<Float3> points({ Float3{-3, -3, -3}, Float3{-3.2, -3.1, -3.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
+		std::vector<Float3> points2({ Float3{0, -2, -2}, Float3{3.2, 3.1, 4.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
+
+		ConvexHull container(points);
+		ConvexHull container2(points2);
+		ConvexHull intersect = LAL::FindIntersectionConvexhullFrom2Convexhulls(container, container2);
+		int a = 0;
+		
+
+
+
+	/*	std::vector<Float3> points({ Float3{-3, -3, -3}, Float3{3.2, -3.1, -3.3}, Float3{1, 1, 4} });
+		AOBB bb(points);
+		int a = 0;*/
+		//ConvexHull ch({ Float3{-3, -3, -3}, Float3{3.2, -3.1, -3.3}, Float3{1, 1, 4} });
+		//int a = 0;
+
+
 
 
 		//testReorderMoleculeParticles(envmode);
@@ -119,7 +140,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

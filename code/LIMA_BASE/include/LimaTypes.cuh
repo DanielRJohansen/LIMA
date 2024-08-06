@@ -10,7 +10,7 @@
 
 #include "Constants.h"
 
-
+#include <array>
 
 
 enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM};
@@ -75,7 +75,10 @@ struct Float3 {
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
-
+	float* begin() { return &x; }
+	const float* begin() const { return &x; }
+	float* end() { return &x + 3; }
+	const float* end() const { return &x + 3; }
 
 	__host__ __device__ inline float operator[] (int index) const {
 		switch (index) {
@@ -568,3 +571,40 @@ enum VerbosityLevel {
 };
 
 enum EnvMode { Full, ConsoleOnly, Headless };
+
+
+struct Plane {
+	Float3 normal;
+	std::array<Float3, 3> vertices;
+	double_t distFromOrigo;
+
+	Float3 intersectionPoint(Float3 p1, Float3 p2) const {
+		//Return the intersection point of a line passing two points and this plane
+		return p1 + (p2 - p1) * (-distance(p1) / normal.dot(p2 - p1));
+	};
+	void invert() { normal *= -1.f; }
+	double_t distance(Float3 point) const { return normal.dot(point) + distFromOrigo; }
+};
+
+class ConvexHull {
+	std::vector<Float3> vertices;
+	std::vector<Plane> facets;
+	
+public:
+	ConvexHull() {}
+	ConvexHull(const std::vector<Float3>& points);
+
+	Float3 CenterOfMass() const {
+		Float3 sum{};
+		for (const Float3& v : vertices) {
+			sum += v;
+		}
+		return sum / static_cast<float>(vertices.size());
+	}
+
+	const std::vector<Plane>& GetFacets() const { return facets; }
+	const std::vector<Float3>& GetVertices() const { return vertices; }
+
+	void Add(const Float3& point);
+	void Add(const Plane& plane);
+};

@@ -22,7 +22,7 @@ target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
     ${CUDAToolkit_INCLUDE_DIRS}
-
+    ${CMAKE_SOURCE_DIR}/code/dependencies/
 )
 
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )

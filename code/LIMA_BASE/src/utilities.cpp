@@ -84,3 +84,57 @@ void LimaLogger::clearLine() {
     std::cout << "\033[2K\r" << std::flush;
     clear_next = false;
 }
+
+
+
+/// <summary>
+/// Implementation of SutherlandHodgman algorithm to find the intersection of two convex hulls
+/// https://github.com/Alamot/code-snippets/blob/master/graphics/SutherlandHodgman/Linux/SutherlandHodgman.cpp
+/// </summary>
+/// <param name="ch1"></param>
+/// <param name="ch2"></param>
+/// <returns></returns>
+ConvexHull LAL::FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2) {
+    float D1, D2 = 0;
+    ConvexHull polygon = ConvexHull(ch1);
+    const float EPSILON = 0.00001f;
+
+    const auto& clippingPlanes = ch2.GetFacets();
+
+    for (unsigned int c = 0; c < clippingPlanes.size(); c++) 
+    {
+        ConvexHull clippedPolygon{};
+
+        std::vector<Float3> points = polygon.GetVertices();
+        for (unsigned int i = 0; i < points.size() - 1; i++) {
+            D1 = clippingPlanes[c].distance(points[i]);
+            D2 = clippingPlanes[c].distance(points[i + 1]);
+            if ((D1 <= 0) && (D2 <= 0))
+            {
+                //clippedPolygon.add(points[i + 1]);
+                clippedPolygon.Add(points[i + 1]);
+            }
+            else if ((D1 > 0) && ((D2 > -EPSILON) && (D2 < EPSILON)))
+            {
+                //clippedPolygon.add(points[i + 1]);
+                clippedPolygon.Add(points[i + 1]);
+
+            }
+            else if (((D1 > -EPSILON) && (D1 < EPSILON)) && (D2 > 0))
+            {
+                continue;
+            }
+            else if ((D1 <= 0) && (D2 > 0))
+            {
+                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+            }
+            else if ((D1 > 0) && (D2 <= 0))
+            {                
+                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                clippedPolygon.Add(points[i + 1]);
+            }
+        }
+        polygon = clippedPolygon; // keep on working with the new polygon
+    }
+    return polygon;
+}

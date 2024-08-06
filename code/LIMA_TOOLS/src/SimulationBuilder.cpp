@@ -49,29 +49,6 @@ float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) 
 }
 
 
-
-template <typename BondType>
-void overwriteBond(const std::vector<BondType>& bonds, std::vector<BondType>& dest, int atomnr_offset) {
-	for (const BondType& bond : bonds) {
-		dest.emplace_back(bond);
-		for (int i = 0; i < bond.n; i++) {
-			dest.back().atomGroIds[i] += atomnr_offset;
-		}
-	}
-}
-
-//template <typename BondType>
-//void overwriteBond(TopologyFile::SectionRange<BondType> bonds, TopologyFile::SectionRange<BondType> dest, int atomnr_offset) {
-//	for (const auto& bond : bonds) {
-//		dest.add(bond); // Assuming 'add' appropriately adds items to the container
-//		for (int i = 0; i < bond.n; i++) {
-//			auto& last = dest.back(); // Reference to modify the last element
-//			last.atomGroIds[i] += atomnr_offset;
-//		}
-//	}
-//}
-
-
 float genRandomAngle() {
 	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI;
 }
@@ -85,12 +62,19 @@ void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int 
 	outputgrofile.atoms.back().residue_number += residue_offset;
 	outputgrofile.atoms.back().residue_number %= 100000; // Residue ids only go to 99999
 	position_transform(outputgrofile.atoms.back().position);
+}
 
-	//outputtopologyfile.atoms.entries.emplace_back(input_atom_top);
-	//outputtopologyfile.atoms.entries.back().nr += atom_offset;
-	////outputtopologyfile.atoms.entries.back().nr %= 100000;
-	//outputtopologyfile.atoms.entries.back().resnr += residue_offset;
-	////outputtopologyfile.atoms.entries.back().resnr %= 100000;
+void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgrofile, std::function<void(Float3&)> position_transform, 
+	TopologyFile& outputTopologyFile, const std::shared_ptr<TopologyFile>& inputTopology)
+{
+	int atomsOffset = outputgrofile.atoms.size();
+	int residuenrOffset = outputgrofile.atoms.empty() ? 0 : outputgrofile.atoms.back().residue_number;
+
+	for (const auto& atom : inputgrofile.atoms) {
+		addAtomToFile(outputgrofile, atom, atomsOffset, residuenrOffset, position_transform);
+	}
+
+	outputTopologyFile.AppendTopology(inputTopology);
 }
 
 
@@ -184,42 +168,21 @@ namespace SimulationBuilder{
 
 		srand(1238971);
 
-		int current_residue_nr_offset = 0;
 		GetNextRandomLipid getNextRandomLipid{ lipidselection };
 
 		for (int x = -lipids_per_dim.x / 2; x <= lipids_per_dim.x / 2; x++) {
-			for (int y = -lipids_per_dim.y / 2; y <= lipids_per_dim.y / 2; y++) {
-				const Float3 center_offset = startpoint + Float3{ static_cast<float>(x), static_cast<float>(y), 0.f } * dist;
-				
-				const float random_rot = genRandomAngle();
-				const int current_atom_nr_offset = outputgrofile->atoms.size();
+			for (int y = -lipids_per_dim.y / 2; y <= lipids_per_dim.y / 2; y++) {				
 
 				const LipidSelect& inputlipid = getNextRandomLipid();
-				const auto& inputgrofile = *inputlipid.grofile;
-				const auto& inputtopologyfile = *inputlipid.topfile;
 
-				for (int relative_atom_nr = 0; relative_atom_nr < inputgrofile.atoms.size(); relative_atom_nr++) {
+				const Float3 center_offset = startpoint + Float3{ static_cast<float>(x), static_cast<float>(y), 0.f } *dist;
+				std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+					pos.rotateAroundOrigo({ 0.f, 0.f, genRandomAngle() });
+					pos += center_offset;
+					};
 
-					std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-						pos.rotateAroundOrigo({ 0.f, 0.f, random_rot });
-						pos += center_offset;
-						};
-
-					addAtomToFile(*outputgrofile, inputgrofile.atoms[relative_atom_nr], current_atom_nr_offset, current_residue_nr_offset, position_transform);
-				}
-
-				outputtopologyfile->AppendTopology(inputlipid.topfile);
-
-
-				//overwriteBond(inputtopologyfile.singlebonds.entries, outputtopologyfile->singlebonds.entries, current_atom_nr_offset);
-
-				//overwriteBond(inputtopologyfile.GetSinglebonds(), outputtopologyfile->GetSinglebonds(), current_atom_nr_offset);
-				//overwriteBond(inputtopologyfile.pairs.entries, outputtopologyfile->pairs.entries, current_atom_nr_offset);
-				//overwriteBond(inputtopologyfile.anglebonds.entries, outputtopologyfile->anglebonds.entries, current_atom_nr_offset);
-				//overwriteBond(inputtopologyfile.dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, current_atom_nr_offset);
-				//overwriteBond(inputtopologyfile.improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, current_atom_nr_offset);
-
-				current_residue_nr_offset++;
+				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
+					*outputtopologyfile, inputlipid.topfile);
 			}
 		}
 
@@ -373,6 +336,7 @@ struct ParticlePlaceholder {
 	bool markedForDeletion = false;
 };
 
+// TODO: remove this temp class
 
 template<typename T>
 class BoxGrid_ {	// TODO: Rename
@@ -550,5 +514,27 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 				}
 			}
 		}
+	}
+}
+
+void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert) 
+{
+	std::srand(123123123);
+
+	for (int i = 0; i < nMoleculesToInsert; i++) {
+		Float3 randomTranslation = Float3{
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x - targetGrofile.box_size.x/2.f,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.y - targetGrofile.box_size.y/2.f,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.z - targetGrofile.box_size.z/2.f
+		};
+		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
+
+		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+			pos.rotateAroundOrigo(randomRotation);
+			pos += randomTranslation;
+			};
+
+		AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
 	}
 }

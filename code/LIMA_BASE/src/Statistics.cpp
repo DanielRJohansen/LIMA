@@ -42,3 +42,11 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
 
     return explainedVar / totalVar;
 }
+
+Float3 Statistics::Mean(const std::vector<Float3>& values) {
+	Float3 sum = { 0, 0, 0 };
+	for (auto val : values) {
+		sum += val;
+	}
+	return sum / values.size();
+}

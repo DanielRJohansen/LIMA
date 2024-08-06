@@ -164,4 +164,10 @@ namespace LAL {
         bool hasValue() const { return _hasValue; }
 
     };    
+
+
+
+    ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2);
+
+
 }

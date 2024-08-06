@@ -40,4 +40,7 @@ namespace SimulationBuilder {
 
 
 	void SolvateGrofile(GroFile& grofile);
+
+	void InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert);
 };

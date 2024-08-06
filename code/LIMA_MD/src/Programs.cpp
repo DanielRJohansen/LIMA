@@ -214,3 +214,32 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 	file.close();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void MoveMoleculesUntillNoOverlap(GroFile& grofile, const TopologyFile& topfile) {
+
+}
+
+
+void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
+
+	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
+		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
+		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
+		10);
+
+
+
+}

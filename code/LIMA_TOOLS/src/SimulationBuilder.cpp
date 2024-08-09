@@ -7,6 +7,8 @@
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
 
+#include "Statistics.h"
+
 const std::array<std::string, 6> LipidSelect::valid_lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 
 
@@ -522,6 +524,12 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 {
 	std::srand(123123123);
 
+	Float3 moleculeCenter{};
+	for (const auto& atom : submolGro.atoms) {
+		moleculeCenter += atom.position;
+	}
+	moleculeCenter *= 1.f/static_cast<float>(submolGro.atoms.size());
+
 	for (int i = 0; i < nMoleculesToInsert; i++) {
 		Float3 randomTranslation = Float3{
 			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x - targetGrofile.box_size.x/2.f,
@@ -531,8 +539,9 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			pos.rotateAroundOrigo(randomRotation);
-			pos += randomTranslation;
+			//pos.rotateAroundOrigo(randomRotation);
+			//pos += randomTranslation - moleculeCenter;
+			pos -= moleculeCenter;
 			};
 
 		AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);

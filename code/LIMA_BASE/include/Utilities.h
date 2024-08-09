@@ -167,7 +167,7 @@ namespace LAL {
 
 
 
-    ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2);
+    //ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2);
 
 
 }

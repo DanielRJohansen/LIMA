@@ -7,7 +7,7 @@
 #include <string>
 #include <limits>
 #include <vector>
-
+#include <span>
 #include "Constants.h"
 
 #include <array>
@@ -573,10 +573,17 @@ enum VerbosityLevel {
 enum EnvMode { Full, ConsoleOnly, Headless };
 
 
+struct Tri {
+	std::array<Float3, 3> vertices;
+	//Float3 normal;
+};
+//static_assert(sizeof(Tri) % 16 == 0);
+
 struct Plane {
 	Float3 normal;
 	std::array<Float3, 3> vertices;
 	double_t distFromOrigo;
+	char _[8];
 
 	Float3 intersectionPoint(Float3 p1, Float3 p2) const {
 		//Return the intersection point of a line passing two points and this plane
@@ -585,12 +592,18 @@ struct Plane {
 	void invert() { normal *= -1.f; }
 	double_t distance(Float3 point) const { return normal.dot(point) + distFromOrigo; }
 };
+static_assert(sizeof(Plane) % 16 == 0);
 
+template <int maxFacets>
 class ConvexHull {
-	std::vector<Float3> vertices;
-	std::vector<Plane> facets;
-	
+	std::array<Float3, maxFacets*2> vertices;	// [nm]
+	std::array<Plane, maxFacets> facets;
+
+
 public:
+	int numFacets = 0;
+	int numVertices = 0;
+
 	ConvexHull() {}
 	ConvexHull(const std::vector<Float3>& points);
 
@@ -602,9 +615,42 @@ public:
 		return sum / static_cast<float>(vertices.size());
 	}
 
-	const std::vector<Plane>& GetFacets() const { return facets; }
-	const std::vector<Float3>& GetVertices() const { return vertices; }
+	const std::span<const Plane>& GetFacets() const { return { facets.begin(), facets.begin() + numFacets }; }
+	const std::span<const Float3>& GetVertices() const { 
+		return { vertices.begin(), vertices.begin() + numVertices };}
 
-	void Add(const Float3& point);
-	void Add(const Plane& plane);
+	void Add(const Float3& vertex) {
+		if (numVertices >= maxFacets*2) {
+			throw std::runtime_error("Too many vertices in ConvexHull");
+		}
+
+		if (std::count(vertices.begin(), vertices.begin()+numVertices, vertex) == 0) {
+			vertices[numVertices++] = vertex;
+		}
+	}
+	void Add(const Plane& plane) {
+		if (numFacets >= maxFacets) {
+			throw std::runtime_error("Too many facets in ConvexHull");
+		}
+		facets[numFacets++] = plane;
+		for (const auto& v : plane.vertices) {
+			Add(v);
+		}
+	}
 };
+
+template <int maxFacets, int maxParticles>
+struct MoleculeContainer {
+	std::array<Float3, maxParticles> particlePositions; // [nm]
+	int nParticles = 0;
+	ConvexHull<maxFacets> convexHull;
+
+	void AddParticle(const Float3& particle) {
+		if (nParticles >= maxParticles) {
+			throw std::runtime_error("Too many particles in MoleculeContainer");
+		}
+		particlePositions[nParticles++] = particle;
+	}
+};
+
+using MoleculeContainerSmall = MoleculeContainer<64, 256>;	// should be 32 after triangle culling

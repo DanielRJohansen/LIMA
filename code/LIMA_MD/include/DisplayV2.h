@@ -23,6 +23,12 @@ public:
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
+
+	
+
+	void Render(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM);
+
+
 	bool checkWindowStatus();		// Returns false if the windows should close
 
 private:
@@ -38,9 +44,11 @@ private:
 	void initializePipeline(size_t numAtoms);
 	void DrawAtoms(size_t numAtoms);
 	void DrawBoxOutline();
+	void DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM);
 	void TerminateGLEW();
 	std::optional<GLuint> drawBoxShaderProgram = std::nullopt;
 	std::optional<GLuint> drawAtomsShaderProgram = std::nullopt;
+	//std::optional<GLuint> drawMoleculeContainersProgram = std::nullopt;
 	std::optional<GLuint> renderAtomsBuffer = std::nullopt;
 	cudaGraphicsResource* renderAtomsBufferCudaResource;
 	bool pipelineInitialized = false;
@@ -63,8 +71,4 @@ private:
 	const int screenWidth = 1400;
 
 	const int screensize[2] = {3840, 2160};
-
-
-
-
 };

@@ -101,16 +101,30 @@ int main() {
 		//FileTests::TestFilesAreCachedAsBinaries(Headless);
 
 
-
-
-		std::vector<Float3> points({ Float3{-3, -3, -3}, Float3{-3.2, -3.1, -3.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
-		std::vector<Float3> points2({ Float3{0, -2, -2}, Float3{3.2, 3.1, 4.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
-
-		ConvexHull container(points);
-		ConvexHull container2(points2);
-		ConvexHull intersect = LAL::FindIntersectionConvexhullFrom2Convexhulls(container, container2);
-		int a = 0;
 		
+		GroFile grofile;
+		grofile.box_size = Float3{ 3.f };
+		TopologyFile topfile;
+		Programs::MakeLipidVesicle(grofile, topfile);
+
+		//std::vector<Float3> points({ Float3{-3, -3, -3}, Float3{-3.2, -3.1, -3.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
+		//std::vector<Float3> points2({ Float3{0, -2, -2}, Float3{3.2, 3.1, 4.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
+
+		//ConvexHull container(points);
+		//ConvexHull container2(points2);
+		//ConvexHull intersect = LAL::FindIntersectionConvexhullFrom2Convexhulls(container, container2);
+
+
+		//Display display{ envmode };
+
+		//while (1)
+		//	display.Render({ container, container2}, 8.f);
+
+		//int a = 0;
+		
+
+
+
 
 
 

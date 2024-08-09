@@ -238,8 +238,40 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
 		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
 		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
-		10);
+		grofile.box_size.x);
 
+	std::vector<MoleculeContainerSmall> moleculeContainers;
+
+	for (const auto& molecule : topfile.GetAllSubMolecules()) {
+		moleculeContainers.push_back({});
+		
+;		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
+			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position);
+
+			//BoundaryConditionPublic::applyBCNM(particlePositions.back(), grofile.box_size.x, PBC);
+		}
+		/*BoundaryConditionPublic::applyBCNM(moleculeContainers.back().particlePositions[0], grofile.box_size.x, PBC);
+		for (int i = 1; i < moleculeContainers.back().particlePositions.size(); i++) {
+			BoundaryConditionPublic::applyHyperposNM(moleculeContainers.back().particlePositions[0], moleculeContainers.back().particlePositions[i], grofile.box_size.x, PBC);
+		}*/
+
+
+		
+		std::cout<< (molecule.name) << "\n";
+
+		std::vector<Float3> positions{ moleculeContainers.back().particlePositions.begin(), moleculeContainers.back().particlePositions.end() };
+		moleculeContainers.back().convexHull = {positions};
+		
+		break;
+
+	}
+
+	Display d(Full);
+
+	while (true) {
+		d.checkWindowStatus();
+		d.Render(moleculeContainers, grofile.box_size.x);
+	}
 
 
 }

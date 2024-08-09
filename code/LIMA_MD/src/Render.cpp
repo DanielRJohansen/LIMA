@@ -8,6 +8,9 @@
 #include <cuda_gl_interop.h>
 
 
+
+// ------------------------------------------------------------- Render functions used during sim ------------------------------------------------------------- //
+
 glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
     // Set up the perspective projection
     double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
@@ -57,7 +60,51 @@ void checkCompileErrors(GLuint shader, std::string type) {
 
 
 
-
+//GLuint CompileShader(GLenum type, const char* source) {
+//    GLuint shader = glCreateShader(type);
+//    glShaderSource(shader, 1, &source, nullptr);
+//    glCompileShader(shader);
+//
+//    // Error checking
+//    GLint success;
+//    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+//    if (!success) {
+//        // Retrieve and print the error message
+//        char infoLog[512];
+//        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+//        std::string shaderType = (type == GL_VERTEX_SHADER) ? "VERTEX" : "FRAGMENT";
+//        throw std::runtime_error(shaderType + " SHADER COMPILATION FAILED:\n" + infoLog);
+//    }
+//    return shader;
+//}
+//
+//GLuint CreateShaderProgram() {
+//    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, vertexShaderSource);
+//    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
+//
+//    // Link shaders into a program
+//    GLuint shaderProgram = glCreateProgram();
+//    glAttachShader(shaderProgram, vertexShader);
+//    glAttachShader(shaderProgram, fragmentShader);
+//    glLinkProgram(shaderProgram);
+//
+//    // Error checking
+//    GLint success;
+//    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+//    if (!success) {
+//        // Retrieve and print the error message
+//        char infoLog[512];
+//        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+//        throw std::runtime_error("SHADER PROGRAM LINKING FAILED:\n" + infoLog);
+//    }
+//
+//    // Cleanup shaders as they're linked now
+//    glDeleteShader(vertexShader);
+//    glDeleteShader(fragmentShader);
+//
+//    return shaderProgram;
+//}
+//
 
 
 
@@ -368,17 +415,135 @@ void Display::DrawAtoms(size_t numAtoms) {
 
 
 
+const char* hullVertexShaderSource = R"(
+#version 430 core
+layout(location = 0) in vec4 inPosition;
+//layout(location = 1) in vec3 inNormal;
+//
+//struct Tri {
+//    vec3 vertices[3];
+//    vec3 normal;
+//};
+//layout(std140, binding = 0) uniform TriBuffer {
+//    Tri tris[];
+//};
+
+uniform mat4 MVP;
+
+//out vec3 fragNormal;
+
+void main() {
+    // Assume you want to access the first triangle
+    //Tri tri = tris[0];
+    //
+    //vec3 v0 = tri.vertices[0];
+    //vec3 normal = tri.normal;
+    //
+    //// Process with the normal and vertices
+    //gl_Position = MVP * vec4(v0, 1.0);
+
+
+    gl_Position = MVP * vec4(inPosition.xyz, 1.0);
+    //fragNormal = inNormal;
+}
+)";
+
+const char* hullFragmentShaderSource = R"(
+#version 430 core
+//in vec3 fragNormal;
+//out vec4 FragColor;
+//uniform vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+//uniform vec3 objectColor = vec3(0.4, 0.6, 0.8);
+
+out vec4 color;
+
+void main() {
+    //float brightness = max(dot(normalize(fragNormal), lightDir), 0.0);
+    //vec3 diffuse = brightness * objectColor;
+    //FragColor = vec4(diffuse, 1.0);
+	//FragColor = vec4(objectColor, 1.0);
+    color = vec4(1,0,0,1);
+}
+)";
+
+GLuint trisVAO, trisVBO, trisShaderProgram;
+
+void SetupDrawTrisPipeline() {
+    // Create and compile the vertex shader
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &hullVertexShaderSource, nullptr);
+    glCompileShader(vertexShader);
+    checkCompileErrors(vertexShader, "VERTEX");
+
+    // Create and compile the fragment shader
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &hullFragmentShaderSource, nullptr);
+    glCompileShader(fragmentShader);
+    checkCompileErrors(fragmentShader, "FRAGMENT");
+
+    // Link shaders into a shader program
+    trisShaderProgram = glCreateProgram();
+    glAttachShader(trisShaderProgram, vertexShader);
+    glAttachShader(trisShaderProgram, fragmentShader);
+    glLinkProgram(trisShaderProgram);
+    checkCompileErrors(trisShaderProgram, "PROGRAM");
+
+    // Clean up shaders as they are linked now
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    // Generate and bind VAO
+    glGenVertexArrays(1, &trisVAO);
+    glBindVertexArray(trisVAO);
+
+    // Generate and bind VBO
+    glGenBuffers(1, &trisVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
+
+    // Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Float3), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    //// Normal attribute
+    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Float3), (void*)offsetof(Tri, normal));
+    //glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);  // Unbind VAO
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void Display::initializePipeline(size_t numAtoms) {
     drawBoxShaderProgram.emplace(0);
     drawAtomsShaderProgram.emplace(0);
-
+    //drawMoleculeContainersProgram.emplace(0);
 
 	// Set up the draw box pipeline
 	SetupDrawBoxPipeline(*drawBoxShaderProgram);
 
 	// Set up the draw atoms pipeline
 	SetupDrawAtomsPipeline(numAtoms, *drawAtomsShaderProgram, renderAtomsBuffer, &renderAtomsBufferCudaResource);
+
+
+    //SetupDrawTrisPipeline(*drawMoleculeContainersProgram);
+    SetupDrawTrisPipeline();
+    
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -405,3 +570,154 @@ void Display::TerminateGLEW() {
     if (drawBoxShaderProgram.has_value())
         glDeleteProgram(*drawBoxShaderProgram);
 }
+
+
+
+
+
+
+
+
+// ------------------------------ Render functions for various other tasks, less focus on performance ------------------------------ //
+
+//void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+//    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+//
+//    //glBegin(GL_LINES);
+//    //glColor3f(1.0f, 0, 0); // Set edge color to red
+//
+//    //for (const auto& molecule : molecules) {
+//    //    const std::vector<Plane>& facets = molecule.convexHull.GetFacets();
+//
+//    //    for (const Plane& facet : facets) {
+//    //        // Render edges of the triangular facet
+//    //        for (size_t i = 0; i < 3; ++i) {
+//    //            const Float3& v1 = facet.vertices[i] / boxlenNM - 0.5f;
+//    //            const Float3& v2 = facet.vertices[(i + 1) % 3] / boxlenNM - 0.5f;
+//
+//    //            // Transform vertices using MVP matrix
+//    //            glm::vec4 v1Transformed = MVP * glm::vec4(v1.x, v1.y, v1.z, 1.0f);
+//    //            glm::vec4 v2Transformed = MVP * glm::vec4(v2.x, v2.y, v2.z, 1.0f);
+//
+//    //            glVertex3f(v1Transformed.x / v1Transformed.w, v1Transformed.y / v1Transformed.w, v1Transformed.z / v1Transformed.w);
+//    //            glVertex3f(v2Transformed.x / v2Transformed.w, v2Transformed.y / v2Transformed.w, v2Transformed.z / v2Transformed.w);
+//    //        }
+//    //    }
+//    //}
+//    //glEnd();
+//
+//
+//    glBegin(GL_TRIANGLES);
+//    srand(42); // Set random seed to ensure consistent color
+//    for (const auto& molecule : molecules) {
+//        const auto& facets = molecule.convexHull.GetFacets();
+//
+//        for (const Plane& facet : facets) {
+//            // Generate a random color with 10% transparency
+//            glColor4f(static_cast<float>(rand()) / RAND_MAX,
+//                static_cast<float>(rand()) / RAND_MAX,
+//                static_cast<float>(rand()) / RAND_MAX,
+//                1);
+//
+//            for (size_t i = 0; i < 3; ++i) {
+//                const Float3& v = facet.vertices[i] / boxlenNM - 0.5f;
+//
+//                // Transform vertex using MVP matrix
+//                glm::vec4 vTransformed = MVP * glm::vec4(v.x, v.y, v.z, 1.0f);
+//
+//                glVertex3f(vTransformed.x / vTransformed.w, vTransformed.y / vTransformed.w, vTransformed.z / vTransformed.w);
+//            }
+//        }
+//    }
+//    glEnd();
+//
+//
+//
+//
+//
+//    glBegin(GL_TRIANGLES);
+//    for (const auto& molecule : molecules) {
+//        for (const auto& pos : molecule.particlePositions) {
+//            glm::vec4 atomPos = glm::vec4(pos.x / boxlenNM - 0.5f, pos.y / boxlenNM - 0.5f, pos.z / boxlenNM - 0.5f, 1.0f);
+//            glm::vec4 transformedPos = MVP * atomPos;
+//
+//            // Draw the disc as a series of triangles
+//            const int numVerticesPerAtom = 16;
+//            const float pi = 3.14159265359f;
+//
+//            for (int i = 0; i < numVerticesPerAtom; ++i) {
+//                float angle1 = 2.0f * pi * i / numVerticesPerAtom;
+//                float angle2 = 2.0f * pi * (i + 1) / numVerticesPerAtom;
+//
+//                const float scale = 0.01f;
+//
+//                glm::vec4 offset1 = glm::vec4(cos(angle1) * scale, sin(angle1) * scale, 0.0f, 0.0f);
+//                glm::vec4 offset2 = glm::vec4(cos(angle2) * scale, sin(angle2) * scale, 0.0f, 0.0f);
+//
+//                glm::vec4 v1 = transformedPos + offset1;
+//                glm::vec4 v2 = transformedPos + offset2;
+//
+//
+//                // Calculate light intensity based on angle
+//                float light1 = (sin(angle1) + 1.0f) / 2.0f;
+//                float light2 = (sin(angle2) + 1.0f) / 2.0f;
+//
+//                // Set color with varying intensity
+//                glColor3f(1.0f * light1, 1.0f * light1, 0.0f * light1);
+//                glVertex3f(transformedPos.x / transformedPos.w, transformedPos.y / transformedPos.w, transformedPos.z / transformedPos.w);
+//
+//                glColor3f(1.0f * light1, 1.0f * light1, 0.0f * light1);
+//                glVertex3f(v1.x / v1.w, v1.y / v1.w, v1.z / v1.w);
+//
+//                glColor3f(1.0f * light2, 1.0f * light2, 0.0f * light2);
+//                glVertex3f(v2.x / v2.w, v2.y / v2.w, v2.z / v2.w);
+//            }
+//        }
+//    }
+//    glEnd();
+//
+//}
+
+
+
+
+
+
+
+void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+
+    for (const auto& molecule : molecules) {
+
+        std::vector<Tri> tris(molecule.convexHull.numFacets);
+        for (size_t i = 0; i < molecule.convexHull.numFacets; ++i) {
+			const Plane& facet = molecule.convexHull.GetFacets()[i];
+			Tri& tri = tris[i];
+
+			for (size_t j = 0; j < 3; ++j) {
+				const Float3& v = facet.vertices[j] / boxlenNM - 0.5f;
+				tri.vertices[j] = v;
+			}
+//            tri.normal = facet.normal;
+		}
+
+        glUseProgram(trisShaderProgram);
+        glBindVertexArray(trisVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
+
+        // Upload the tris data to the GPU
+        glBufferData(GL_ARRAY_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
+
+        // Set the MVP matrix uniform
+        
+        GLuint mvpLocation = glGetUniformLocation(trisShaderProgram, "MVP");
+        glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
+
+        // Draw the triangles
+        glDrawArrays(GL_TRIANGLES, 0, tris.size() * 3);
+
+        glBindVertexArray(0);  // Unbind VAO
+        glUseProgram(0);  // Unbind shader program
+    }
+}
+

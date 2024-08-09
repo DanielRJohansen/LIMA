@@ -95,8 +95,6 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
         cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
     }
 
-    
-
     glClear(GL_COLOR_BUFFER_BIT);
 
 
@@ -114,6 +112,26 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
     //printf("\tRender time: %4d ys  ", (int) duration.count());
 }
+
+
+void Display::Render(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+    if (!pipelineInitialized) {
+        initializePipeline(1);
+        pipelineInitialized = true;
+    }
+
+
+    glClear(GL_COLOR_BUFFER_BIT);
+
+
+    DrawBoxOutline();
+
+    DrawMoleculeContainers(molecules, boxlenNM);
+
+    // Swap front and back buffers
+    glfwSwapBuffers(window);
+}
+
 
 bool Display::checkWindowStatus() {
     glfwPollEvents();

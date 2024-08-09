@@ -389,7 +389,7 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {	// This can be ma
 
 struct TopologyFileRef {
 	TopologyFileRef(int offset, const TopologyFile& topol) : atomsOffset(offset), topology(topol) {}
-	int atomsOffset = 0;
+	int atomsOffset = 0;	// TODO this logic is being moved into the topology file
 	const TopologyFile& topology;
 };
 

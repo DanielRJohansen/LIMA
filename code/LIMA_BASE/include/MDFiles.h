@@ -97,13 +97,23 @@ class TopologyFile {	//.top or .itp
 public:
 	struct MoleculeEntry {
 		MoleculeEntry() {}
-		MoleculeEntry(const std::string& name)
-			: name(name) {}
-		MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile)
-			: name(name), includeTopologyFile(includeTopologyFile) {}
+		MoleculeEntry(const std::string& name, int globalIndexOfFirstParticle=0)
+			: name(name), globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
+		MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile, 
+			int globalIndexOfFirstParticle)
+			: name(name), includeTopologyFile(includeTopologyFile), 
+			globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
 
 		void composeString(std::ostringstream& oss) const;
 
+		int GlobalIndexOfFinalParticle() const {
+			if (includeTopologyFile == nullptr)
+				throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile is nullptr");
+			if (includeTopologyFile->atoms.entries.empty())
+				throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile has no atoms");
+			return globalIndexOfFirstParticle + includeTopologyFile->atoms.entries.size() - 1;
+		}
+		int globalIndexOfFirstParticle = 0; // Determined for each molecule when loading the file
 		std::string name{};	// Name of file without extension and path
 		std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
 	};
@@ -183,7 +193,9 @@ public:
 		if (includedFiles.count(other->name) == 0)
 			includedFiles.emplace(other->name, LazyLoadFile<TopologyFile>(other));
 
-		molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get());
+		const int globalIndexOfFirstParticle = molecules.entries.empty()
+			? 0 : molecules.entries.back().GlobalIndexOfFinalParticle()+1;
+		molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get(), globalIndexOfFirstParticle);
 	}
 
 

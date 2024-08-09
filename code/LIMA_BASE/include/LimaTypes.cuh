@@ -575,7 +575,7 @@ enum EnvMode { Full, ConsoleOnly, Headless };
 
 struct Tri {
 	std::array<Float3, 3> vertices;
-	//Float3 normal;
+	Float3 normal;
 };
 //static_assert(sizeof(Tri) % 16 == 0);
 

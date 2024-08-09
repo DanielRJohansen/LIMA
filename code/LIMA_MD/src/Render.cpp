@@ -417,56 +417,64 @@ void Display::DrawAtoms(size_t numAtoms) {
 
 const char* hullVertexShaderSource = R"(
 #version 430 core
-layout(location = 0) in vec4 inPosition;
-//layout(location = 1) in vec3 inNormal;
-//
-//struct Tri {
-//    vec3 vertices[3];
-//    vec3 normal;
-//};
-//layout(std140, binding = 0) uniform TriBuffer {
-//    Tri tris[];
-//};
+
+struct Tri {
+    float data[12]; // DONT CHANGE, it's OpenGL being annoying with offsets
+    // vec3[3] vertices;
+    // vec3 normal
+};
+
+layout(std430, binding = 0) buffer TriBuffer {
+    Tri tris[];
+};
 
 uniform mat4 MVP;
+out vec3 fragColor;
 
-//out vec3 fragNormal;
+
+uniform vec3 lightDir = vec3(0.0, 0.0, -1.0); // Light coming from directly above
+
 
 void main() {
-    // Assume you want to access the first triangle
-    //Tri tri = tris[0];
-    //
-    //vec3 v0 = tri.vertices[0];
-    //vec3 normal = tri.normal;
-    //
-    //// Process with the normal and vertices
-    //gl_Position = MVP * vec4(v0, 1.0);
+    uint triIndex = gl_VertexID / 3;
+    uint vertexIndex = gl_VertexID % 3;
+
+    vec3 position = vec3(tris[triIndex].data[vertexIndex * 3], tris[triIndex].data[vertexIndex * 3 + 1], tris[triIndex].data[vertexIndex * 3 + 2]);
+    gl_Position = MVP * vec4(position, 1.0);
 
 
-    gl_Position = MVP * vec4(inPosition.xyz, 1.0);
-    //fragNormal = inNormal;
+    vec3 triNormal = vec3(tris[triIndex].data[3*3+0], tris[triIndex].data[3*3+1], tris[triIndex].data[3*3+2]);
+   
+    // Simulate area light by blending the normal with the light direction
+    float brightness = clamp(
+        dot(-triNormal, lightDir) * 0.5f + 0.5f, 
+        0.1f,
+        1.f);
+
+
+    // Generate a pseudo-random color based on the triangle index
+    fragColor = brightness * vec3(
+        fract(float(triIndex+1) * 0.6180339887498949), // Golden ratio conjugate
+        fract(float(triIndex+1) * 0.7548776662466927), // Another irrational number
+        fract(float(triIndex+1) * 0.514229)           // Fibonacci number
+    );
 }
 )";
 
 const char* hullFragmentShaderSource = R"(
 #version 430 core
-//in vec3 fragNormal;
-//out vec4 FragColor;
-//uniform vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-//uniform vec3 objectColor = vec3(0.4, 0.6, 0.8);
 
+in vec3 fragColor;
 out vec4 color;
 
 void main() {
-    //float brightness = max(dot(normalize(fragNormal), lightDir), 0.0);
-    //vec3 diffuse = brightness * objectColor;
-    //FragColor = vec4(diffuse, 1.0);
-	//FragColor = vec4(objectColor, 1.0);
-    color = vec4(1,0,0,1);
+    color = vec4(fragColor, 1.0);
 }
 )";
 
-GLuint trisVAO, trisVBO, trisShaderProgram;
+
+
+GLuint trisVAO, trisSSBO, trisShaderProgram;
 
 void SetupDrawTrisPipeline() {
     // Create and compile the vertex shader
@@ -495,18 +503,6 @@ void SetupDrawTrisPipeline() {
     // Generate and bind VAO
     glGenVertexArrays(1, &trisVAO);
     glBindVertexArray(trisVAO);
-
-    // Generate and bind VBO
-    glGenBuffers(1, &trisVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
-
-    // Position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Float3), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    //// Normal attribute
-    //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Float3), (void*)offsetof(Tri, normal));
-    //glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);  // Unbind VAO
 }
@@ -546,6 +542,7 @@ void Display::initializePipeline(size_t numAtoms) {
     
 
     glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
@@ -580,112 +577,11 @@ void Display::TerminateGLEW() {
 
 // ------------------------------ Render functions for various other tasks, less focus on performance ------------------------------ //
 
-//void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
-//    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-//
-//    //glBegin(GL_LINES);
-//    //glColor3f(1.0f, 0, 0); // Set edge color to red
-//
-//    //for (const auto& molecule : molecules) {
-//    //    const std::vector<Plane>& facets = molecule.convexHull.GetFacets();
-//
-//    //    for (const Plane& facet : facets) {
-//    //        // Render edges of the triangular facet
-//    //        for (size_t i = 0; i < 3; ++i) {
-//    //            const Float3& v1 = facet.vertices[i] / boxlenNM - 0.5f;
-//    //            const Float3& v2 = facet.vertices[(i + 1) % 3] / boxlenNM - 0.5f;
-//
-//    //            // Transform vertices using MVP matrix
-//    //            glm::vec4 v1Transformed = MVP * glm::vec4(v1.x, v1.y, v1.z, 1.0f);
-//    //            glm::vec4 v2Transformed = MVP * glm::vec4(v2.x, v2.y, v2.z, 1.0f);
-//
-//    //            glVertex3f(v1Transformed.x / v1Transformed.w, v1Transformed.y / v1Transformed.w, v1Transformed.z / v1Transformed.w);
-//    //            glVertex3f(v2Transformed.x / v2Transformed.w, v2Transformed.y / v2Transformed.w, v2Transformed.z / v2Transformed.w);
-//    //        }
-//    //    }
-//    //}
-//    //glEnd();
-//
-//
-//    glBegin(GL_TRIANGLES);
-//    srand(42); // Set random seed to ensure consistent color
-//    for (const auto& molecule : molecules) {
-//        const auto& facets = molecule.convexHull.GetFacets();
-//
-//        for (const Plane& facet : facets) {
-//            // Generate a random color with 10% transparency
-//            glColor4f(static_cast<float>(rand()) / RAND_MAX,
-//                static_cast<float>(rand()) / RAND_MAX,
-//                static_cast<float>(rand()) / RAND_MAX,
-//                1);
-//
-//            for (size_t i = 0; i < 3; ++i) {
-//                const Float3& v = facet.vertices[i] / boxlenNM - 0.5f;
-//
-//                // Transform vertex using MVP matrix
-//                glm::vec4 vTransformed = MVP * glm::vec4(v.x, v.y, v.z, 1.0f);
-//
-//                glVertex3f(vTransformed.x / vTransformed.w, vTransformed.y / vTransformed.w, vTransformed.z / vTransformed.w);
-//            }
-//        }
-//    }
-//    glEnd();
-//
-//
-//
-//
-//
-//    glBegin(GL_TRIANGLES);
-//    for (const auto& molecule : molecules) {
-//        for (const auto& pos : molecule.particlePositions) {
-//            glm::vec4 atomPos = glm::vec4(pos.x / boxlenNM - 0.5f, pos.y / boxlenNM - 0.5f, pos.z / boxlenNM - 0.5f, 1.0f);
-//            glm::vec4 transformedPos = MVP * atomPos;
-//
-//            // Draw the disc as a series of triangles
-//            const int numVerticesPerAtom = 16;
-//            const float pi = 3.14159265359f;
-//
-//            for (int i = 0; i < numVerticesPerAtom; ++i) {
-//                float angle1 = 2.0f * pi * i / numVerticesPerAtom;
-//                float angle2 = 2.0f * pi * (i + 1) / numVerticesPerAtom;
-//
-//                const float scale = 0.01f;
-//
-//                glm::vec4 offset1 = glm::vec4(cos(angle1) * scale, sin(angle1) * scale, 0.0f, 0.0f);
-//                glm::vec4 offset2 = glm::vec4(cos(angle2) * scale, sin(angle2) * scale, 0.0f, 0.0f);
-//
-//                glm::vec4 v1 = transformedPos + offset1;
-//                glm::vec4 v2 = transformedPos + offset2;
-//
-//
-//                // Calculate light intensity based on angle
-//                float light1 = (sin(angle1) + 1.0f) / 2.0f;
-//                float light2 = (sin(angle2) + 1.0f) / 2.0f;
-//
-//                // Set color with varying intensity
-//                glColor3f(1.0f * light1, 1.0f * light1, 0.0f * light1);
-//                glVertex3f(transformedPos.x / transformedPos.w, transformedPos.y / transformedPos.w, transformedPos.z / transformedPos.w);
-//
-//                glColor3f(1.0f * light1, 1.0f * light1, 0.0f * light1);
-//                glVertex3f(v1.x / v1.w, v1.y / v1.w, v1.z / v1.w);
-//
-//                glColor3f(1.0f * light2, 1.0f * light2, 0.0f * light2);
-//                glVertex3f(v2.x / v2.w, v2.y / v2.w, v2.z / v2.w);
-//            }
-//        }
-//    }
-//    glEnd();
-//
-//}
-
-
-
-
-
-
 
 void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+
+
 
     for (const auto& molecule : molecules) {
 
@@ -698,12 +594,36 @@ void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& 
 				const Float3& v = facet.vertices[j] / boxlenNM - 0.5f;
 				tri.vertices[j] = v;
 			}
-//            tri.normal = facet.normal;
+            tri.normal = facet.normal;
 		}
 
+        //std::vector<Tri> tris(2);
+        //tris[0].vertices[0] = { 0, 0, 0 };
+        //tris[0].vertices[1] = { 0.5f, 0.f, 0.f };
+        //tris[0].vertices[2] = { 0.f, 0.5f, 0.f };
+        //tris[0].normal = { 0, 0, -1 };
+        //tris[1].vertices[0] = { 0., 0., 0.5 };
+        //tris[1].vertices[1] = { 0.5f, 0.f, .5f };
+        //tris[1].vertices[2] = { 0.f, 0.5f, .5f };
+        //tris[1].normal = { 0, 0, -1 };
+
+        GLuint trisSSBO;
+        glGenBuffers(1, &trisSSBO);
+        //glBindBuffer(GL_SHADER_STORAGE_BUFFER, trisSSBO);
+        //glBufferData(GL_SHADER_STORAGE_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
+        
+
         glUseProgram(trisShaderProgram);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, trisSSBO);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, trisSSBO);  // Binding index 0 matches the shader
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+
+
         glBindVertexArray(trisVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
+        //glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
 
         // Upload the tris data to the GPU
         glBufferData(GL_ARRAY_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
@@ -718,6 +638,8 @@ void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& 
 
         glBindVertexArray(0);  // Unbind VAO
         glUseProgram(0);  // Unbind shader program
+
+        glDeleteBuffers(1, &trisSSBO);
     }
 }
 

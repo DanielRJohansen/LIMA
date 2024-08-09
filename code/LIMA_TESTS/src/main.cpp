@@ -103,7 +103,7 @@ int main() {
 
 		
 		GroFile grofile;
-		grofile.box_size = Float3{ 3.f };
+		grofile.box_size = Float3{ 2.f };
 		TopologyFile topfile;
 		Programs::MakeLipidVesicle(grofile, topfile);
 

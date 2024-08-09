@@ -260,6 +260,33 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 		std::cout<< (molecule.name) << "\n";
 
 		std::vector<Float3> positions{ moleculeContainers.back().particlePositions.begin(), moleculeContainers.back().particlePositions.end() };
+
+		for (auto& pos : positions) {
+			pos += Float3{ grofile.box_size.x / 2.f };
+		}
+
+
+	//	std::vector<Float3> positions{
+	//{-0.4, -0.4, -0.4},  // Vertex 1
+	//{ 0.4, -0.4, -0.4},  // Vertex 2
+	//{ 0.4,  0.4, -0.4},  // Vertex 3
+	//{-0.4,  0.4, -0.4},  // Vertex 4
+	//{-0.4, -0.4,  0.4},  // Vertex 5
+	//{ 0.4, -0.4,  0.4},  // Vertex 6
+	//{ 0.4,  0.4,  0.4},  // Vertex 7
+	//{-0.4,  0.4,  0.4}   // Vertex 8
+	//	};
+	//	std::vector<Float3> positions{
+	//{ 0.0,  0.0, -0.0},  // Vertex 1
+	//{ 0.4,  0.0,  0.0},  // Vertex 2
+	//{ 0.0, -0.4,  0.0},  // Vertex 3
+	//{ 0.0,  0.0,  0.4}   // Vertex 4
+	//	};
+
+		//for (auto& pos : positions) {
+		//	pos += Float3{ grofile.box_size.x / 2.f };
+		//}
+
 		moleculeContainers.back().convexHull = {positions};
 		
 		break;

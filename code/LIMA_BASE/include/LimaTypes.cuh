@@ -640,9 +640,11 @@ public:
 };
 
 template <int maxFacets, int maxParticles>
-struct MoleculeContainer {
+class MoleculeContainer {
 	std::array<Float3, maxParticles> particlePositions; // [nm]
 	int nParticles = 0;
+
+public:
 	ConvexHull<maxFacets> convexHull;
 
 	void AddParticle(const Float3& particle) {
@@ -650,6 +652,9 @@ struct MoleculeContainer {
 			throw std::runtime_error("Too many particles in MoleculeContainer");
 		}
 		particlePositions[nParticles++] = particle;
+	}
+	std::span<Float3> GetParticles() {
+		return { particlePositions.begin(), particlePositions.begin() + nParticles };
 	}
 };
 

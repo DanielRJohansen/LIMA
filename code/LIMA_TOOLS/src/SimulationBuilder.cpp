@@ -532,16 +532,16 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 
 	for (int i = 0; i < nMoleculesToInsert; i++) {
 		Float3 randomTranslation = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x - targetGrofile.box_size.x/2.f,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.y - targetGrofile.box_size.y/2.f,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.z - targetGrofile.box_size.z/2.f
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.y,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.z
 		};
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			//pos.rotateAroundOrigo(randomRotation);
-			//pos += randomTranslation - moleculeCenter;
 			pos -= moleculeCenter;
+			pos.rotateAroundOrigo(randomRotation);
+			pos += randomTranslation;
 			};
 
 		AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);

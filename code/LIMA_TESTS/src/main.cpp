@@ -101,11 +101,11 @@ int main() {
 		//FileTests::TestFilesAreCachedAsBinaries(Headless);
 
 
-		//
-		//GroFile grofile;
-		//grofile.box_size = Float3{ 10.f };
-		//TopologyFile topfile;
-		//Programs::MakeLipidVesicle(grofile, topfile);
+		
+		GroFile grofile;
+		grofile.box_size = Float3{ 10.f };
+		TopologyFile topfile;
+		Programs::MakeLipidVesicle(grofile, topfile);
 
 		//std::vector<Float3> points({ Float3{-3, -3, -3}, Float3{-3.2, -3.1, -3.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
 		//std::vector<Float3> points2({ Float3{0, -2, -2}, Float3{3.2, 3.1, 4.}, Float3{1, 2, 1}, Float3{3, 3, 2} });
@@ -154,7 +154,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

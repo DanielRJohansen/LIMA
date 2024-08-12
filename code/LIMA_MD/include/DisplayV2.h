@@ -15,6 +15,8 @@
 
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
+class DrawBoxOutlineShader;
+class DrawTrianglesShader;
 
 class Display {
 public:
@@ -40,10 +42,13 @@ private:
 
 
 
+	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader = nullptr;
+	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader = nullptr;
+	
 	// OpenGL functions
 	void initializePipeline(size_t numAtoms);
 	void DrawAtoms(size_t numAtoms);
-	void DrawBoxOutline();
+	//void DrawBoxOutline();
 	void DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM);
 	void TerminateGLEW();
 	std::optional<GLuint> drawBoxShaderProgram = std::nullopt;

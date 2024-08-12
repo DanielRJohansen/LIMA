@@ -7,11 +7,11 @@
 
 #include <cuda_gl_interop.h>
 
-
+#include <GLShader.h>
 
 // ------------------------------------------------------------- Render functions used during sim ------------------------------------------------------------- //
 
-glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
+static glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
     // Set up the perspective projection
     double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
     double fovY = 45.0;
@@ -56,205 +56,6 @@ void checkCompileErrors(GLuint shader, std::string type) {
         }
     }
 }
-
-
-
-
-//GLuint CompileShader(GLenum type, const char* source) {
-//    GLuint shader = glCreateShader(type);
-//    glShaderSource(shader, 1, &source, nullptr);
-//    glCompileShader(shader);
-//
-//    // Error checking
-//    GLint success;
-//    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-//    if (!success) {
-//        // Retrieve and print the error message
-//        char infoLog[512];
-//        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-//        std::string shaderType = (type == GL_VERTEX_SHADER) ? "VERTEX" : "FRAGMENT";
-//        throw std::runtime_error(shaderType + " SHADER COMPILATION FAILED:\n" + infoLog);
-//    }
-//    return shader;
-//}
-//
-//GLuint CreateShaderProgram() {
-//    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, vertexShaderSource);
-//    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
-//
-//    // Link shaders into a program
-//    GLuint shaderProgram = glCreateProgram();
-//    glAttachShader(shaderProgram, vertexShader);
-//    glAttachShader(shaderProgram, fragmentShader);
-//    glLinkProgram(shaderProgram);
-//
-//    // Error checking
-//    GLint success;
-//    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-//    if (!success) {
-//        // Retrieve and print the error message
-//        char infoLog[512];
-//        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
-//        throw std::runtime_error("SHADER PROGRAM LINKING FAILED:\n" + infoLog);
-//    }
-//
-//    // Cleanup shaders as they're linked now
-//    glDeleteShader(vertexShader);
-//    glDeleteShader(fragmentShader);
-//
-//    return shaderProgram;
-//}
-//
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const char* box_vertexShaderSource = " \
-#version 430 core \n\
-layout(location = 0) in vec3 aPos; \n\
-layout(location = 1) in vec3 aColor; \n\
- \n\
-out vec3 vertexColor; \n\
- \n\
-uniform mat4 MVP; // Model,View,Perspective \n\
- \n\
-void main() { \n\
-    gl_Position = MVP * vec4(aPos, 1.0); \n\
-    vertexColor = aColor; \n\
-} \n\
-";
-
-const char* box_fragmentShaderSource = " \
-#version 430 core \n\
-in vec3 vertexColor; \n\
-out vec4 FragColor; \n\
- \n\
-void main() { \n\
-    FragColor = vec4(vertexColor, 1.0); \n\
-} \n\
-";
-
-GLuint boxVAO, boxVBO, boxEBO;
-
-void SetupDrawBoxPipeline(GLuint& drawBoxShaderProgram) {
-    // Compile and link box shaders
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &box_vertexShaderSource, nullptr);
-    glCompileShader(vertexShader);
-    checkCompileErrors(vertexShader, "VERTEX");
-    
-
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &box_fragmentShaderSource, nullptr);
-    glCompileShader(fragmentShader);
-    checkCompileErrors(fragmentShader, "FRAGMENT");
-
-    drawBoxShaderProgram = glCreateProgram();
-    glAttachShader(drawBoxShaderProgram, vertexShader);
-    glAttachShader(drawBoxShaderProgram, fragmentShader);
-    glLinkProgram(drawBoxShaderProgram);
-    checkCompileErrors(drawBoxShaderProgram, "PROGRAM");
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    // Box vertices and colors
-    float boxVertices[] = {
-        // positions          // colors
-        -0.5f, -0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-         0.5f, -0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-         0.5f,  0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-        -0.5f,  0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-        -0.5f, -0.5f,  0.5f,  0.4f, 0.4f, 0.4f,
-         0.5f, -0.5f,  0.5f,  0.4f, 0.4f, 0.4f,
-         0.5f,  0.5f,  0.5f,  0.8f, 0.4f, 0.4f,
-        -0.5f,  0.5f,  0.5f,  0.8f, 0.4f, 0.4f,
-    };
-
-    unsigned int boxIndices[] = {
-        // bottom
-        0, 1,
-        1, 2,
-        2, 3,
-        3, 0,
-        // top
-        4, 5,
-        5, 6,
-        6, 7,
-        7, 4,
-        // sides
-        0, 4,
-        1, 5,
-        2, 6,
-        3, 7
-    };
-
-    const GLsizei numVAOs = 1;
-    const GLsizei numVBOs = 1;
-    const GLsizei numEBOs = 1;
-
-    const GLint positionAttributeIndex = 0;
-    const GLint colorAttributeIndex = 1;
-    const GLint positionComponentCount = 3;
-    const GLint colorComponentCount = 3;
-    const GLsizei stride = (positionComponentCount + colorComponentCount) * sizeof(float);
-    const void* positionOffset = (void*)0;
-    const void* colorOffset = (void*)(positionComponentCount * sizeof(float));
-
-    glGenVertexArrays(numVAOs, &boxVAO);
-    glGenBuffers(numVBOs, &boxVBO);
-    glGenBuffers(numEBOs, &boxEBO);
-
-    glBindVertexArray(boxVAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, boxVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(boxVertices), boxVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, boxEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(boxIndices), boxIndices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(positionAttributeIndex, positionComponentCount, GL_FLOAT, GL_FALSE, stride, positionOffset);
-    glEnableVertexAttribArray(positionAttributeIndex);
-    glVertexAttribPointer(colorAttributeIndex, colorComponentCount, GL_FLOAT, GL_FALSE, stride, colorOffset);
-    glEnableVertexAttribArray(colorAttributeIndex);
-
-    glBindVertexArray(0);
-}
-
-
-void Display::DrawBoxOutline() {
-    glUseProgram(*drawBoxShaderProgram);
-
-    const GLuint mvpLocation = glGetUniformLocation(*drawBoxShaderProgram, "MVP");
-    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
-
-    const GLsizei boxIndexCount = 24;
-    glBindVertexArray(boxVAO);
-    glDrawElements(GL_LINES, boxIndexCount, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
-
-    glUseProgram(0);
-}
-
-
-
-
-
-
-
-
 
 
 
@@ -415,130 +216,16 @@ void Display::DrawAtoms(size_t numAtoms) {
 
 
 
-const char* hullVertexShaderSource = R"(
-#version 430 core
-
-struct Tri {
-    float data[12]; // DONT CHANGE, it's OpenGL being annoying with offsets
-    // vec3[3] vertices;
-    // vec3 normal
-};
-
-layout(std430, binding = 0) buffer TriBuffer {
-    Tri tris[];
-};
-
-uniform mat4 MVP;
-out vec3 fragColor;
-
-
-uniform vec3 lightDir = vec3(0.0, 0.0, -1.0); // Light coming from directly above
-
-
-void main() {
-    uint triIndex = gl_VertexID / 3;
-    uint vertexIndex = gl_VertexID % 3;
-
-    vec3 position = vec3(tris[triIndex].data[vertexIndex * 3], tris[triIndex].data[vertexIndex * 3 + 1], tris[triIndex].data[vertexIndex * 3 + 2]);
-    gl_Position = MVP * vec4(position, 1.0);
-
-
-    vec3 triNormal = vec3(tris[triIndex].data[3*3+0], tris[triIndex].data[3*3+1], tris[triIndex].data[3*3+2]);
-   
-    // Simulate area light by blending the normal with the light direction
-    float brightness = clamp(
-        dot(-triNormal, lightDir) * 0.5f + 0.5f, 
-        0.1f,
-        1.f);
-
-
-    // Generate a pseudo-random color based on the triangle index
-    fragColor = brightness * vec3(
-        fract(float(triIndex+1) * 0.6180339887498949), // Golden ratio conjugate
-        fract(float(triIndex+1) * 0.7548776662466927), // Another irrational number
-        fract(float(triIndex+1) * 0.514229)           // Fibonacci number
-    );
-}
-)";
-
-const char* hullFragmentShaderSource = R"(
-#version 430 core
-
-in vec3 fragColor;
-out vec4 color;
-
-void main() {
-    color = vec4(fragColor, 1.0);
-}
-)";
-
-
-
-GLuint trisVAO, trisSSBO, trisShaderProgram;
-
-void SetupDrawTrisPipeline() {
-    // Create and compile the vertex shader
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &hullVertexShaderSource, nullptr);
-    glCompileShader(vertexShader);
-    checkCompileErrors(vertexShader, "VERTEX");
-
-    // Create and compile the fragment shader
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &hullFragmentShaderSource, nullptr);
-    glCompileShader(fragmentShader);
-    checkCompileErrors(fragmentShader, "FRAGMENT");
-
-    // Link shaders into a shader program
-    trisShaderProgram = glCreateProgram();
-    glAttachShader(trisShaderProgram, vertexShader);
-    glAttachShader(trisShaderProgram, fragmentShader);
-    glLinkProgram(trisShaderProgram);
-    checkCompileErrors(trisShaderProgram, "PROGRAM");
-
-    // Clean up shaders as they are linked now
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    // Generate and bind VAO
-    glGenVertexArrays(1, &trisVAO);
-    glBindVertexArray(trisVAO);
-
-    glBindVertexArray(0);  // Unbind VAO
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
 
 
 void Display::initializePipeline(size_t numAtoms) {
-    drawBoxShaderProgram.emplace(0);
     drawAtomsShaderProgram.emplace(0);
-    //drawMoleculeContainersProgram.emplace(0);
-
-	// Set up the draw box pipeline
-	SetupDrawBoxPipeline(*drawBoxShaderProgram);
 
 	// Set up the draw atoms pipeline
 	SetupDrawAtomsPipeline(numAtoms, *drawAtomsShaderProgram, renderAtomsBuffer, &renderAtomsBufferCudaResource);
-
-
-    //SetupDrawTrisPipeline(*drawMoleculeContainersProgram);
-    SetupDrawTrisPipeline();
     
 
     glEnable(GL_BLEND);
@@ -557,8 +244,6 @@ void Display::TerminateGLEW() {
 
     // Cleanup
     glDeleteVertexArrays(1, &drawAtomsVBO);
-    glDeleteVertexArrays(1, &boxVAO);
-    glDeleteVertexArrays(1, &boxVBO);
     glDeleteVertexArrays(1, &renderAtomsBuffer.value());
     
 
@@ -573,73 +258,4 @@ void Display::TerminateGLEW() {
 
 
 
-
-
-// ------------------------------ Render functions for various other tasks, less focus on performance ------------------------------ //
-
-
-void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
-    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-
-
-
-    for (const auto& molecule : molecules) {
-
-        std::vector<Tri> tris(molecule.convexHull.numFacets);
-        for (size_t i = 0; i < molecule.convexHull.numFacets; ++i) {
-			const Plane& facet = molecule.convexHull.GetFacets()[i];
-			Tri& tri = tris[i];
-
-			for (size_t j = 0; j < 3; ++j) {
-				const Float3& v = facet.vertices[j] / boxlenNM - 0.5f;
-				tri.vertices[j] = v;
-			}
-            tri.normal = facet.normal;
-		}
-
-        //std::vector<Tri> tris(2);
-        //tris[0].vertices[0] = { 0, 0, 0 };
-        //tris[0].vertices[1] = { 0.5f, 0.f, 0.f };
-        //tris[0].vertices[2] = { 0.f, 0.5f, 0.f };
-        //tris[0].normal = { 0, 0, -1 };
-        //tris[1].vertices[0] = { 0., 0., 0.5 };
-        //tris[1].vertices[1] = { 0.5f, 0.f, .5f };
-        //tris[1].vertices[2] = { 0.f, 0.5f, .5f };
-        //tris[1].normal = { 0, 0, -1 };
-
-        GLuint trisSSBO;
-        glGenBuffers(1, &trisSSBO);
-        //glBindBuffer(GL_SHADER_STORAGE_BUFFER, trisSSBO);
-        //glBufferData(GL_SHADER_STORAGE_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
-        
-
-        glUseProgram(trisShaderProgram);
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, trisSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, trisSSBO);  // Binding index 0 matches the shader
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-
-
-        glBindVertexArray(trisVAO);
-        //glBindBuffer(GL_ARRAY_BUFFER, trisVBO);
-
-        // Upload the tris data to the GPU
-        glBufferData(GL_ARRAY_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
-
-        // Set the MVP matrix uniform
-        
-        GLuint mvpLocation = glGetUniformLocation(trisShaderProgram, "MVP");
-        glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
-
-        // Draw the triangles
-        glDrawArrays(GL_TRIANGLES, 0, tris.size() * 3);
-
-        glBindVertexArray(0);  // Unbind VAO
-        glUseProgram(0);  // Unbind shader program
-
-        glDeleteBuffers(1, &trisSSBO);
-    }
-}
 

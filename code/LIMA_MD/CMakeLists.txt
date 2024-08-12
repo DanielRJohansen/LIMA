@@ -9,7 +9,7 @@ add_library(LIMA_MD STATIC
     src/Rasterizer.cu
     src/Programs.cpp
     src/Render.cpp
-)
+ "src/Shaders.h")
 
 
 
@@ -54,5 +54,5 @@ endif()
 
 
 # Self-test executable
-add_executable(md_self_test src/Main.cpp)
+add_executable(md_self_test src/Main.cpp "src/Shaders.h")
 target_link_libraries(md_self_test LIMA_MD)

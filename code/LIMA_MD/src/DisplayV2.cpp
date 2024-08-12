@@ -1,5 +1,31 @@
 #include "DisplayV2.h"
+#include "Shaders.h"    
 
+
+
+static glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
+    // Set up the perspective projection
+    double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
+    double fovY = 45.0;
+    double nearPlane = 0.1;
+    double farPlane = 10.0;
+    double fH = tan(fovY / 360.0 * 3.141592653589793) * nearPlane;
+    double fW = fH * aspectRatio;
+
+    glm::mat4 projection = glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
+
+    // Set up the view matrix
+    glm::mat4 view = glm::mat4(1.0f);
+    view = glm::translate(view, glm::vec3(0.0f, 0.0f, camera_distance));
+    view = glm::rotate(view, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));  // Fixed rotation around x-axis
+    view = glm::rotate(view, glm::radians(camera_pitch), glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
+    view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 0.0f, 1.0f));  // Rotation around z-axis for yaw (y-axis in GLM's coordinate system)
+
+    // Model matrix (identity in this case)
+    glm::mat4 model = glm::mat4(1.0f);
+
+    return projection * view * model;
+}
 
 
 void Display::updateCamera(float pitch, float yaw, float delta_distance) {
@@ -77,7 +103,8 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
         initializePipeline(boxparams.total_particles);
         pipelineInitialized = true;
 	}
-
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 
     // Preprocess the renderAtoms
@@ -98,7 +125,9 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
     glClear(GL_COLOR_BUFFER_BIT);
 
 
-    DrawBoxOutline();
+    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+    drawBoxOutlineShader->Draw(MVP);
+
     DrawAtoms(boxparams.total_particles);
 
     // Swap front and back buffers
@@ -114,7 +143,41 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
 }
 
 
+
+
+
+
+
+void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+
+    for (const auto& molecule : molecules) {
+        std::vector<Tri> tris(molecule.convexHull.numFacets);
+        for (size_t i = 0; i < molecule.convexHull.numFacets; ++i) {
+            const Plane& facet = molecule.convexHull.GetFacets()[i];
+            Tri& tri = tris[i];
+
+            for (size_t j = 0; j < 3; ++j) {
+                const Float3& v = facet.vertices[j] / boxlenNM - 0.5f;
+                tri.vertices[j] = v;
+            }
+            tri.normal = facet.normal;
+        }
+
+        drawTrianglesShader->Draw(MVP, tris, DrawTrianglesShader::EDGES);
+    }
+}
+
+
+
+
 void Display::Render(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawTrianglesShader)
+        drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
+
     if (!pipelineInitialized) {
         initializePipeline(1);
         pipelineInitialized = true;
@@ -124,7 +187,8 @@ void Display::Render(const std::vector<MoleculeContainerSmall>& molecules, float
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
-    DrawBoxOutline();
+    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+    drawBoxOutlineShader->Draw(MVP);
 
     DrawMoleculeContainers(molecules, boxlenNM);
 

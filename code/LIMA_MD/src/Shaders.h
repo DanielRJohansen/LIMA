@@ -109,9 +109,10 @@ class DrawTrianglesShader : public Shader {
     };
 
     uniform mat4 MVP;
-    out vec3 fragColor;
+    out vec4 fragColor;
 
-    uniform vec3 lightDir = vec3(0.0, 0.0, -1.0); // Light coming from directly above
+    const vec3 lightDir = vec3(0.0, 0.0, -1.0); // Light coming from directly above
+    const float colorAlpha = 0.5f;
 
     uniform vec3 boxSize;    
     uniform int drawMode; // 0 = FACES, 1 = EDGES
@@ -162,10 +163,10 @@ class DrawTrianglesShader : public Shader {
             1.f);
         
         if (drawMode == 1) { // For EDGES mode, color the edges red  			
-			fragColor = vec3(1.0, 0.0, 0.0);
+			fragColor = vec4(.8, 0.8, 0.8, colorAlpha);
 		}
         else { // Generate a pseudo-random color based on the triangle index        
-            fragColor = brightness * GenerateRandomColor(triIndex);
+            fragColor = vec4(brightness * GenerateRandomColor(triIndex), colorAlpha);
         }
     }
 )";
@@ -174,11 +175,11 @@ class DrawTrianglesShader : public Shader {
     static constexpr const char* hullFragmentShaderSource = R"(
     #version 430 core
 
-    in vec3 fragColor;
+    in vec4 fragColor;
     out vec4 color;
 
     void main() {
-        color = vec4(fragColor, 1.0);
+        color = fragColor;
     }
 )";
 
@@ -268,7 +269,7 @@ class DrawAtomsShader : public Shader {
         if (gl_VertexID == 0) { 
             gl_Position = MVP * vec4(atomPos.xyz, 1.0); 
         } 
-        vertexColor = atoms[gl_InstanceID].color * light; 
+        vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w); 
     } 
     )";
 

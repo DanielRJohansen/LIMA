@@ -2,13 +2,6 @@
 
 #include "LimaTypes.cuh"
 
-
-struct Tri {
-	std::array<Float3, 3> vertices;
-	Float3 normal;
-};
-static_assert(sizeof(Tri) % 16 == 0);
-
 struct Facet {
 	std::array<Float3, 3> vertices;
 	Float3 normal;
@@ -24,16 +17,12 @@ struct Facet {
 };
 static_assert(sizeof(Facet) % 16 == 0);
 
-template <int maxFacets>
 class ConvexHull {
-	std::array<Float3, maxFacets * 2> vertices;	// [nm] Only used to determine CoM
-	std::array<Facet, maxFacets> facets;
+	std::vector<Float3> vertices;	// [nm] Only used to determine CoM
+	std::vector<Facet> facets;
 
 
 public:
-	int numFacets = 0;
-	int numVertices = 0;
-
 	ConvexHull() {}
 	ConvexHull(const std::vector<Float3>& points);
 
@@ -42,55 +31,45 @@ public:
 		for (const Float3& v : vertices) {
 			sum += v;
 		}
-		return sum / static_cast<float>(vertices.size());
+		return sum / static_cast<float>(vertices.size() * 3);
 	}
 
-	const std::span<const Facet>& GetFacets() const { return { facets.begin(), facets.begin() + numFacets }; }
-	const std::span<const Float3>& GetVertices() const {
-		return { vertices.begin(), vertices.begin() + numVertices };
-	}
+	const std::vector<Facet>& GetFacets() const { return facets; }
+	const std::vector<Float3>& GetVertices() const { return vertices; }
 
 	void Add(const Float3& vertex) {
-		if (numVertices >= maxFacets * 2) {
-			throw std::runtime_error("Too many vertices in ConvexHull");
-		}
-
-		if (std::count(vertices.begin(), vertices.begin() + numVertices, vertex) == 0) {
-			vertices[numVertices++] = vertex;
+		if (std::count(vertices.begin(), vertices.end(), vertex) == 0) {
+			vertices.emplace_back(vertex);
 		}
 	}
 	void Add(const Facet& plane) {
-		if (numFacets >= maxFacets) {
-			throw std::runtime_error("Too many facets in ConvexHull");
-		}
-		facets[numFacets++] = plane;
+
+		facets.emplace_back(plane);
 		for (const auto& v : plane.vertices) {
 			Add(v);
 		}
 	}
 };
 
-template <int maxFacets, int maxParticles>
-class MoleculeContainer {
-	std::array<Float3, maxParticles> particlePositions; // [nm]
+class MoleculeHullFactory {
+	std::vector<Float3> particlePositions; // [nm]
+	std::vector<char> atomLetters;
 
 public:
-	int nParticles = 0;
 
-	ConvexHull<maxFacets> convexHull;
+	ConvexHull convexHull;
 
-	void AddParticle(const Float3& particle) {
-		if (nParticles >= maxParticles) {
-			throw std::runtime_error("Too many particles in MoleculeContainer");
-		}
-		particlePositions[nParticles++] = particle;
+	void AddParticle(const Float3& particle, char atomType) {
+		particlePositions.emplace_back(particle);
+		atomLetters.emplace_back(atomType);
 	}
-	const std::span<const Float3>& GetParticles() const {
-		return { particlePositions.begin(), particlePositions.begin() + nParticles };
+	const std::vector<Float3>& GetParticles() const {
+		return particlePositions;
+	}
+	const std::vector<char>& GetAtomLetters() const {
+		return atomLetters;
 	}
 };
-
-using MoleculeContainerSmall = MoleculeContainer<64, 256>;	// should be 32 after triangle culling
 
 
 struct MoleculeHull {
@@ -113,7 +92,7 @@ struct MoleculeHullCollection
 	int nParticles = 0;
 	int nMoleculeHulls = 0;
 
-	MoleculeHullCollection(const std::vector<MoleculeContainerSmall>& moleculeHullFactories, Float3 boxsize);
+	MoleculeHullCollection(const std::vector<MoleculeHullFactory>& moleculeHullFactories, Float3 boxsize);
 };
 
 

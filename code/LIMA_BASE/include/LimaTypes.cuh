@@ -13,7 +13,6 @@
 #include <array>
 
 
-enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM};
 
 
 struct Int3 {
@@ -573,7 +572,11 @@ enum VerbosityLevel {
 enum EnvMode { Full, ConsoleOnly, Headless };
 
 struct RenderAtom {
-	float4 position = Disabled(); // {posX, posY, posZ, radius} [nm]
+
+	__device__ __host__ RenderAtom() {}
+	RenderAtom(Float3 positionNM, Float3 boxSize, char atomLetter);
+
+	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }

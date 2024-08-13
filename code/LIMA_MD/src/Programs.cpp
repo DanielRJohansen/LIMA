@@ -241,14 +241,14 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
 		grofile.box_size.x);
 
-	std::vector<MoleculeContainerSmall> moleculeContainers;
+	std::vector<MoleculeHullFactory> moleculeContainers;
 
 	for (const auto& molecule : topfile.GetAllSubMolecules()) {
 		moleculeContainers.push_back({});
 	
 
 		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
-			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position);
+			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
 		}
 		
 				

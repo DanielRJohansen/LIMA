@@ -1,0 +1,2 @@
+LIMA uses a subset of QHull, which we compile with a custom CMakeLists.txt
+LIMA has NOT modified any code inside the src directory, but it has removed anything not required for its purposes.

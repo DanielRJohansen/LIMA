@@ -869,6 +869,9 @@ public :
             assert(unique_ridges_.empty());
             for (size_type const n : newfacets_) {
                 facet & facet_ = facets_[n];
+
+                if (!check_local_convexity(facet_, n))
+                    int a = 0;
                 assert(check_local_convexity(facet_, n));
                 rank(partition(facet_), n);
             }

@@ -4,44 +4,149 @@
 #include <quickhull/quickhull.hpp>
 #include <numeric>
 
+#include <libqhullcpp/Qhull.h>
+#include <libqhullcpp/QhullFacetList.h>
+#include <libqhullcpp/QhullVertexSet.h>
+
+//ConvexHull::ConvexHull(const std::vector<Float3>& points) {
+//    constexpr size_t dim = 3;
+//    constexpr float eps = std::numeric_limits<float>::epsilon();
+//
+//    quick_hull<std::vector<Float3>::const_iterator> qh{ dim, eps };
+//
+//    qh.add_points(std::cbegin(points), std::cend(points));
+//
+//
+//    auto initial_simplex = qh.get_affine_basis();
+//    if (initial_simplex.size() < dim + 1) {
+//        throw std::runtime_error("Degenerated input set in ConvexHull algo");
+//    }
+//
+//    qh.create_initial_simplex(std::cbegin(initial_simplex), std::prev(std::cend(initial_simplex)));
+//    qh.create_convex_hull();
+//    //if (!qh.check()) {
+//    //    throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
+//    //}
+//
+//
+//    for (const auto& f : qh.facets_) {
+//        Facet facet;
+//        facet.vertices[0] = *f.vertices_[0];
+//        facet.vertices[1] = *f.vertices_[1];
+//        facet.vertices[2] = *f.vertices_[2];
+//
+//        facet.distFromOrigo = f.D;
+//
+//        facet.normal = Float3{ f.normal_[0], f.normal_[1], f.normal_[2] };
+//
+//        Add(facet);
+//    }
+//
+//    if (vertices.size() != 2 + facets.size() / 2) {
+//        throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
+//    }
+//}
+
+Facet ConvertFacet(const orgQhull::QhullFacet& f) {
+	Facet facet;
+	facet.vertices[0].x = f.vertices()[0].point().coordinates()[0];
+	facet.vertices[0].y = f.vertices()[0].point().coordinates()[1];
+	facet.vertices[0].z = f.vertices()[0].point().coordinates()[2];
+
+	facet.vertices[1].x = f.vertices()[1].point().coordinates()[0];
+	facet.vertices[1].y = f.vertices()[1].point().coordinates()[1];
+	facet.vertices[1].z = f.vertices()[1].point().coordinates()[2];
+
+	facet.vertices[2].x = f.vertices()[2].point().coordinates()[0];
+	facet.vertices[2].y = f.vertices()[2].point().coordinates()[1];
+	facet.vertices[2].z = f.vertices()[2].point().coordinates()[2];
+
+    facet.normal = Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
+
+	return facet;
+}
+
+
 ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     constexpr size_t dim = 3;
     constexpr float eps = std::numeric_limits<float>::epsilon();
 
-    quick_hull<std::vector<Float3>::const_iterator> qh{ dim, eps };
 
-    qh.add_points(std::cbegin(points), std::cend(points));
+    std::vector<double3> pointsDouble(points.size());
+    for (int i = 0; i < points.size(); i++) {
+		pointsDouble[i] = { points[i].x, points[i].y, points[i].z };
+	}
 
-
-    auto initial_simplex = qh.get_affine_basis();
-    if (initial_simplex.size() < dim + 1) {
-        throw std::runtime_error("Degenerated input set in ConvexHull algo");
-    }
-
-    qh.create_initial_simplex(std::cbegin(initial_simplex), std::prev(std::cend(initial_simplex)));
-    qh.create_convex_hull();
-    //if (!qh.check()) {
-    //    throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
-    //}
+    orgQhull::Qhull qhull{};
+    qhull.runQhull("", 3, points.size(), (double*)pointsDouble.data(), "Qt");
 
 
-    for (const auto& f : qh.facets_) {
-        Facet facet;
-        facet.vertices[0] = *f.vertices_[0];
-        facet.vertices[1] = *f.vertices_[1];
-        facet.vertices[2] = *f.vertices_[2];
-
-        facet.distFromOrigo = f.D;
-
-        facet.normal = Float3{ f.normal_[0], f.normal_[1], f.normal_[2] };
-
-        Add(facet);
+    for (const auto& f : qhull.facetList()) {
+        Add(ConvertFacet(f));
     }
 
     if (vertices.size() != 2 + facets.size() / 2) {
         throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
     }
 }
+
+
+
+
+// TODO: Move to a GeometryUtils file
+std::vector<Float3> GenerateSpherePoints(const Float3& origo, float radius, int numPoints) {
+    std::vector<Float3> points;
+    points.reserve(numPoints);
+
+    const float goldenRatio = (1.0f + std::sqrt(5.0f)) / 2.0f;
+    const float angleIncrement = 2.0f * PI * goldenRatio;
+
+    for (int i = 0; i < numPoints; ++i) {
+        float t = static_cast<float>(i) / static_cast<float>(numPoints - 1);
+        float inclination = std::acos(1.0f - 2.0f * t);
+        float azimuth = angleIncrement * i;
+
+        float x = radius * std::sin(inclination) * std::cos(azimuth);
+        float y = radius * std::sin(inclination) * std::sin(azimuth);
+        float z = radius * std::cos(inclination);
+
+        points.push_back({ origo.x + x, origo.y + y, origo.z + z });
+    }
+
+    return points;
+}
+
+
+void MoleculeHullFactory::CreateConvexHull() {
+    convexHull = ConvexHull(particlePositions);
+
+
+
+    ConvexHull closelyFittingHull{ particlePositions };
+
+    std::vector<Float3> hullVerticesPadded;
+    for (const Float3& v : closelyFittingHull.GetVertices()) {
+        const std::vector<Float3> spherePoints = GenerateSpherePoints(v, .1f, 16);
+
+        hullVerticesPadded.insert(hullVerticesPadded.end(), spherePoints.begin(), spherePoints.end());
+    }
+
+
+    float min = 99999.f;
+    for(int i = 0; i < hullVerticesPadded.size(); i++) {
+		for (int j = i+1; j < hullVerticesPadded.size(); j++) {
+			float dist = (hullVerticesPadded[i] - hullVerticesPadded[j]).len();
+			if (dist < min) {
+				min = dist;
+			}
+		}
+	}
+
+
+    convexHull = ConvexHull(hullVerticesPadded);
+    
+}
+
 
 
 MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFactory>& molecules, Float3 boxSize) {

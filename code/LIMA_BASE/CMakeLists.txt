@@ -29,6 +29,11 @@ target_include_directories(LIMA_BASE PUBLIC
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
   
 
+target_link_libraries(LIMA_BASE 
+    LIMA_DEPENDS
+)
+
+
 if (UNIX)
     target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)
 else()

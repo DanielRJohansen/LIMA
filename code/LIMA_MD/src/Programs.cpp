@@ -251,12 +251,7 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
 		}
 		
-				
-
-		std::vector<Float3> positions{ moleculeContainers.back().GetParticles().begin(), moleculeContainers.back().GetParticles().end()};
-
-
-		moleculeContainers.back().convexHull = {positions};
+		moleculeContainers.back().CreateConvexHull();
 	}
 
 	Display d(Full);

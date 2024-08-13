@@ -261,9 +261,11 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 
 	Display d(Full);
 
+	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+
 	while (true) {
 		d.checkWindowStatus();
-		d.Render(moleculeContainers, grofile.box_size.x);
+		d.Render(mhCol, grofile.box_size);
 	}
 
 

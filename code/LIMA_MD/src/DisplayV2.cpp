@@ -1,7 +1,12 @@
 #include "DisplayV2.h"
 #include "Shaders.h"    
 
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 
+
+const float deg2rad = 2.f * PI / 360.f;
+const float rad2deg = 1.f / deg2rad;
 
 static glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight) {
     // Set up the perspective projection
@@ -52,6 +57,9 @@ Display::Display(EnvMode envmode) :
         std::cerr << "Failed to initialize GLEW" << std::endl;
     }
 
+    glEnable(GL_DEPTH_TEST);
+
+
     glfwSetWindowUserPointer(window, this);
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -90,21 +98,18 @@ Display::Display(EnvMode envmode) :
 }
 
 Display::~Display() {
-    TerminateGLEW();
     glfwTerminate();
-    TerminateGLEW();
 }
 
 
 void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (!pipelineInitialized) {
-        initializePipeline(boxparams.total_particles);
-        pipelineInitialized = true;
-	}
     if (!drawBoxOutlineShader)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsShader)
+		drawAtomsShader = std::make_unique<DrawAtomsShader>(boxparams.total_particles, &renderAtomsBufferCudaResource);
 
 
     // Preprocess the renderAtoms
@@ -122,23 +127,26 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
         cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
     }
 
-    glClear(GL_COLOR_BUFFER_BIT);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     drawBoxOutlineShader->Draw(MVP);
 
-    DrawAtoms(boxparams.total_particles);
+    drawAtomsShader->Draw(MVP, boxparams.total_particles);
 
     // Swap front and back buffers
     glfwSwapBuffers(window);
-
 
     std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, step, temperature);
     glfwSetWindowTitle(window, window_text.c_str());
 
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
+
+
     //printf("\tRender time: %4d ys  ", (int) duration.count());
 }
 
@@ -148,49 +156,44 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
 
 
 
-void Display::DrawMoleculeContainers(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
-    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-
-    for (const auto& molecule : molecules) {
-        std::vector<Tri> tris(molecule.convexHull.numFacets);
-        for (size_t i = 0; i < molecule.convexHull.numFacets; ++i) {
-            const Plane& facet = molecule.convexHull.GetFacets()[i];
-            Tri& tri = tris[i];
-
-            for (size_t j = 0; j < 3; ++j) {
-                const Float3& v = facet.vertices[j] / boxlenNM - 0.5f;
-                tri.vertices[j] = v;
-            }
-            tri.normal = facet.normal;
-        }
-
-        drawTrianglesShader->Draw(MVP, tris, DrawTrianglesShader::EDGES);
-    }
-}
 
 
 
-
-void Display::Render(const std::vector<MoleculeContainerSmall>& molecules, float boxlenNM) {
+void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize) {
     if (!drawBoxOutlineShader)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
     if (!drawTrianglesShader)
         drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
-    if (!pipelineInitialized) {
-        initializePipeline(1);
-        pipelineInitialized = true;
-    }
-
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(molCollection.nParticles, &renderAtomsBufferCudaResource);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     drawBoxOutlineShader->Draw(MVP);
 
-    DrawMoleculeContainers(molecules, boxlenNM);
+    
+
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+        assert(num_bytes == molCollection.nParticles * sizeof(RenderAtom));
+
+        cudaMemcpy(renderAtomsBuffer, molCollection.particles, sizeof(RenderAtom) * molCollection.nParticles, cudaMemcpyDeviceToDevice);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+
+    drawAtomsShader->Draw(MVP, molCollection.nParticles);
+
+    drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, DrawTrianglesShader::EDGES, boxSize);
+
 
     // Swap front and back buffers
     glfwSwapBuffers(window);

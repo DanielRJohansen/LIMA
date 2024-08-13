@@ -8,7 +8,7 @@ add_library(LIMA_MD STATIC
     src/Interface.cpp
     src/Rasterizer.cu
     src/Programs.cpp
-    src/Render.cpp
+    
  "src/Shaders.h")
 
 

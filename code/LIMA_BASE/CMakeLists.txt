@@ -13,6 +13,7 @@ add_library(LIMA_BASE STATIC
     src/TrrFileInterface.cpp
     src/Statistics.cpp
     src/BoundaryConditionPublic.cpp
+    src/MoleculeHull.cpp
 )
 
 target_include_directories(LIMA_BASE PRIVATE 

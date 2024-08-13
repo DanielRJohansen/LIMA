@@ -1,5 +1,7 @@
 // No pragma, once include in Display.cpp
 #include <GL/glew.h>
+
+#include "MoleculeHull.cuh"
 #include "GLShader.h"
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
@@ -72,6 +74,12 @@ public:
         glBindVertexArray(0);
     }
 
+    ~DrawBoxOutlineShader() {
+		glDeleteVertexArrays(1, &VAO);
+		glDeleteBuffers(1, &VBO);
+		glDeleteBuffers(1, &EBO);
+	}
+
     void Draw(const glm::mat4 MVP) {
         use();
 
@@ -88,21 +96,24 @@ class DrawTrianglesShader : public Shader {
     static constexpr const char* hullVertexShaderSource = R"(
     #version 430 core
 
-    struct Tri {
-        float data[12]; // DONT CHANGE, it's OpenGL being annoying with offsets
+    struct Facet {
+        float data[16]; // DONT CHANGE, it's OpenGL being annoying with offsets
         // vec3[3] vertices;
         // vec3 normal
+        // double distFromOrigo
+        // char[8] paddingBytes
     };
 
     layout(std430, binding = 0) buffer TriBuffer {
-        Tri tris[];
+        Facet facets[];
     };
 
     uniform mat4 MVP;
     out vec3 fragColor;
 
     uniform vec3 lightDir = vec3(0.0, 0.0, -1.0); // Light coming from directly above
-    
+
+    uniform vec3 boxSize;    
     uniform int drawMode; // 0 = FACES, 1 = EDGES
     
 
@@ -131,17 +142,18 @@ class DrawTrianglesShader : public Shader {
         
 
         // First set position     
-        vec3 position = vec3(tris[triIndex].data[vertexIndex * 3], 
-                             tris[triIndex].data[vertexIndex * 3 + 1], 
-                             tris[triIndex].data[vertexIndex * 3 + 2]);
+        vec3 position = vec3(facets[triIndex].data[vertexIndex * 3], 
+                             facets[triIndex].data[vertexIndex * 3 + 1], 
+                             facets[triIndex].data[vertexIndex * 3 + 2]) / boxSize - vec3(0.5f,0.5f,0.5f);
         gl_Position = MVP * vec4(position, 1.0);
 
 
 
         // Now set color
-        vec3 triNormal = vec3(tris[triIndex].data[3*3+0], 
-                        tris[triIndex].data[3*3+1], 
-                        tris[triIndex].data[3*3+2]);
+        vec3 triNormal = vec3(
+                        facets[triIndex].data[3*3+0], 
+                        facets[triIndex].data[3*3+1], 
+                        facets[triIndex].data[3*3+2]);
 
         // Simulate area light by blending the normal with the light direction
         float brightness = clamp(
@@ -170,7 +182,8 @@ class DrawTrianglesShader : public Shader {
     }
 )";
 
-    GLuint VAO, SSBO;
+    GLuint VAO;
+    SSBO facetsBuffer{};
 
 public:
     enum DrawMode {
@@ -182,40 +195,39 @@ public:
         // Generate and bind VAO
         glGenVertexArrays(1, &VAO);
         glBindVertexArray(VAO);
-
-        // Generate SSBO (Shader Storage Buffer Object)
-        glGenBuffers(1, &SSBO);
-
         glBindVertexArray(0);  // Unbind VAO
     }
 
     ~DrawTrianglesShader() {
         glDeleteVertexArrays(1, &VAO);
-        glDeleteBuffers(1, &SSBO);
     }
 
-    void Draw(const glm::mat4& MVP, const std::vector<Tri>& tris, DrawMode mode) {
+    void Draw(const glm::mat4& MVP, const Facet* facets_cudaMem, int numFacets, DrawMode mode, Float3 boxSize) {
         use(); // Use the shader program
 
-        // Update SSBO with new triangle data
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, tris.size() * sizeof(Tri), tris.data(), GL_DYNAMIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, SSBO);  // Binding index 0 matches the shader
+        // Update SSBO with CUDA device memory
+        facetsBuffer.Bind(0);
+        facetsBuffer.SetData_FromCuda(facets_cudaMem, numFacets * sizeof(Facet));
+
+        // Map the buffer and copy from CUDA device memory
+        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        cudaMemcpy(ptr, facets_cudaMem, numFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        // Unbind the buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-        // Set the MVP matrix uniform
+        SetUniformFloat3("boxSize", boxSize);
         SetUniformMat4("MVP", MVP);
-
-        // Set the draw mode uniform
         SetUniformI("drawMode", mode == FACES ? 0 : 1);
 
         // Draw the triangles based on the selected mode
         glBindVertexArray(VAO);
         if (mode == FACES) {
-            glDrawArrays(GL_TRIANGLES, 0, tris.size() * 3);
+            glDrawArrays(GL_TRIANGLES, 0, numFacets * 3);
         }
         else if (mode == EDGES) {
-            glDrawArrays(GL_LINES, 0, tris.size() * 6); // Each triangle has 3 edges, each edge has 2 vertices
+            glDrawArrays(GL_LINES, 0, numFacets * 6); // Each triangle has 3 edges, each edge has 2 vertices
         }
         glBindVertexArray(0);
         glUseProgram(0);  // Unbind shader program
@@ -272,7 +284,64 @@ class DrawAtomsShader : public Shader {
     )";
 
     GLuint VBO;
+    SSBO renderAtomsBuffer{};
+    const int numAtoms;
+public:
+    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCUDA) : 
+        Shader(vertexShaderSource, fragmentShaderSource),
+        numAtoms(numAtoms)
+    {
 
-    public
-        DrawAtomsShader(int numAtoms)
+    // Generate and bind VBO
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+    // Allocate the renderAtomsbuffer, and register it with CUDA
+    renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
+    cudaGraphicsGLRegisterBuffer(renderAtomsBufferCUDA, renderAtomsBuffer.GetID(), cudaGraphicsMapFlagsWriteDiscard);
+
+    // Allocate space for the VBO. We assume `sizeof(RenderAtom)` is the size of the data.
+    glBufferData(GL_ARRAY_BUFFER, numAtoms * sizeof(RenderAtom), nullptr, GL_DYNAMIC_DRAW);
+
+    // Enable and set up position attribute
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(RenderAtom), (void*)offsetof(RenderAtom, position));
+
+    // Enable and set up color attribute
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(RenderAtom), (void*)offsetof(RenderAtom, color));
+
+    // Unbind VAO and VBO to prevent unintended modifications
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    ~DrawAtomsShader() {
+		glDeleteBuffers(1, &VBO);
+	}
+    // This functions needs no renderAtoms input, as the class is initialized with a reference to the buffer where
+    // CUDA will place the input data
+    void Draw(const glm::mat4& MVP, int nAtoms) {
+
+        if (nAtoms != numAtoms) {
+			throw std::runtime_error("Number of atoms in DrawAtomsShader::Draw does not match the number of atoms in the constructor. \n\
+                This is likely due to the Renderer being tasked with both rendering compounds and moleculeHulls in the same instance");
+		}
+
+        use();
+
+        renderAtomsBuffer.Bind(0);
+
+        SetUniformMat4("MVP", MVP);
+        SetUniformI("numAtoms", numAtoms);
+
+        const int numVerticesPerAtom = 12;
+		SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
+        
+        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, numAtoms);
+
+        glBindVertexArray(0);
+        glUseProgram(0);
+    }
+
 };

@@ -38,9 +38,9 @@ public:
     //    glUniform2f(glGetUniformLocation(programID, name.c_str()), value.x, value.y);
     //}
 
-    //void setUniform(const std::string& name, const glm::vec3& value) {
-    //    glUniform3f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z);
-    //}
+    void SetUniformFloat3(const std::string& name, const Float3& value) {
+        glUniform3f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z);
+    }
 
     //void setUniform(const std::string& name, const glm::vec4& value) {
     //    glUniform4f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z, value.w);
@@ -93,5 +93,76 @@ private:
         glDeleteShader(fragmentShader);
 
         return program;
+    }
+};
+
+
+
+class SSBO {
+private:
+    GLuint bufferID;
+    size_t currentSize;
+
+public:
+    SSBO() : currentSize(0) {
+        glGenBuffers(1, &bufferID);
+    }
+
+    ~SSBO() {
+        glDeleteBuffers(1, &bufferID);
+    }
+
+    void Bind(GLuint bindingIndex) const {
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bindingIndex, bufferID);
+    }
+
+    void Unbind() const {
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    void Resize(size_t byteSize) {
+        if (byteSize == currentSize) {
+			return;
+		}
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, bufferID);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, byteSize, nullptr, GL_DYNAMIC_DRAW);
+		currentSize = byteSize;
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	}
+
+    void SetData_FromCuda(const void* data, size_t byteSize) {
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bufferID);
+        if (byteSize > currentSize) {
+            // Allocate new memory if the required size exceeds the current size.
+            // glBufferData will automatically free the old memory if reallocating.
+            glBufferData(GL_SHADER_STORAGE_BUFFER, byteSize, nullptr, GL_DYNAMIC_DRAW);
+            currentSize = byteSize;
+        }
+        // Map buffer and copy data from CPU/GPU memory
+        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        cudaMemcpy(ptr, data, byteSize, cudaMemcpyDeviceToHost);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    // Method to set data from a std::vector on the host
+    template <typename T>
+    void SetData(const std::vector<T>& dataVector) {
+        size_t dataSize = dataVector.size() * sizeof(T);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bufferID);
+        if (dataSize > currentSize) {
+            // Allocate new memory if the required size exceeds the current size.
+            glBufferData(GL_SHADER_STORAGE_BUFFER, dataSize, nullptr, GL_DYNAMIC_DRAW);
+            currentSize = dataSize;
+        }
+        // Map buffer and copy data from the host vector
+        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        memcpy(ptr, dataVector.data(), dataSize);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    GLuint GetID() const {
+        return bufferID;
     }
 };

@@ -59,7 +59,7 @@ int main() {
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
 
-		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
+		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6);
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);

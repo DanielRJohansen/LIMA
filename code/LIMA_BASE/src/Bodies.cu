@@ -15,7 +15,8 @@ AngleBond::AngleBond(std::array<uint8_t, n_atoms> ids, float theta_0, float k_th
 
 
 DihedralBond::DihedralBond(std::array<uint8_t, 4> ids, float phi_0, float k_phi, float n) 
-	: params{static_cast<half>(phi_0), static_cast<half>(k_phi), static_cast<half>(n)} {
+	//: params{static_cast<half>(phi_0), static_cast<half>(k_phi), static_cast<half>(n)} {
+	: params{ phi_0, k_phi, n } {
 	for (int i = 0; i < n_atoms; i++) {
 		atom_indexes[i] = ids[i];
 	}

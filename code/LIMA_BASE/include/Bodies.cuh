@@ -26,6 +26,8 @@ struct SingleBond {
 	struct Parameters {
 		float b0 = 0.f;	// [lm]
 		float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+
+		bool HasZeroParam() const { return kb == 0.f; }
 	};
 
 	SingleBond(){}
@@ -40,6 +42,8 @@ struct AngleBond {
 	struct Parameters {
 		float theta_0 = 0.f;	// [rad]
 		float k_theta = 0.f;	// [J/mol/rad^2]
+
+		bool HasZeroParam() const { return k_theta == 0.f; }
 	};
 	
 	AngleBond() {}
@@ -56,6 +60,8 @@ struct UreyBradley {
 		float kTheta = 0.f;	// [J/mol/rad^2]
 		float ub0 = 0.f;	// [lm]
 		float kUB = 0.f;	// [J/mol/lm^2]
+
+		bool HasZeroParam() const { return kTheta == 0.f; }
 	};
 
 	Parameters params;
@@ -65,9 +71,11 @@ struct UreyBradley {
 
 struct DihedralBond {
 	struct Parameters {
-		half phi_0;		// [rad]
-		half k_phi;		// [J/mol/rad^2]
-		half n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+		float phi_0;		// [rad]
+		float k_phi;		// [J/mol/rad^2]
+		float n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+
+		bool HasZeroParam() const { return k_phi == 0.f; }
 	};
 	const static int n_atoms = 4;
 	DihedralBond() {}
@@ -81,6 +89,8 @@ struct ImproperDihedralBond {
 	struct Parameters {
 		float psi_0 = 0.f;	// [rad]
 		float k_psi = 0.f;	// [J/mol/rad^2]
+
+		bool HasZeroParam() const { return k_psi == 0.f; }
 	};
 
 	ImproperDihedralBond() {}

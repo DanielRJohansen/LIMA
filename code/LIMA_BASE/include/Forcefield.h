@@ -181,6 +181,23 @@ public:
 		}
 	}
 
+	//// Used to determine if we can exlude the bond from simulations
+	//template <typename BondParamType>
+	//const bool BondHasZeroParameter(const auto& query) {
+	//	if constexpr (std::is_same<BondParamType, SingleBond::Parameters>::value) {
+	//		return singlebondParameters.get(query).params.kb == 0;
+	//	}
+	//	else if constexpr (std::is_same<BondParamType, AngleBond::Parameters>::value) {
+	//		return anglebondParameters.get(query).params.k_theta == 0;
+	//	}
+	//	else if constexpr (std::is_same<BondParamType, DihedralBond::Parameters>::value) {
+	//		return dihedralbondParameters.get(query).params.k_phi == 0;
+	//	}
+	//	else if constexpr (std::is_same<BondParamType, ImproperDihedralBond::Parameters>::value) {
+	//		return improperdihedralbondParameters.get(query).params.k_psi == 0;
+	//	}		
+	//	throw std::runtime_error("Unsupported bond type");
+	//}
 
 private:
 	LjParameterDatabase ljParameters;

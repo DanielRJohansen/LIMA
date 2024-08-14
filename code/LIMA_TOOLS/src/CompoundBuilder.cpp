@@ -471,7 +471,13 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 
 	//SortBondedtypeNames<GenericBond>(atomTypenames);
 
+	// TODO: This is the correct place to make this check, but we cant implement it here untill we do a graph-based search for LJ ignores,
+	// since the bonds here are currently used for that
+	//if (forcefield.BondHasZeroParameter<typename GenericBond::Parameters>(atomTypenames))
+	//	return;
+
 	const auto& bondparams = forcefield.GetBondParameters<typename GenericBond::Parameters>(atomTypenames);
+
 	topology.emplace_back(BondtypeFactory{ globalIds, bondparams });
 }
 
@@ -785,6 +791,14 @@ void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bo
 	constexpr int atoms_in_bond = BondTypeFactory::n_atoms;
 
 	for (const BondTypeFactory& bond : bonds) {
+		
+		DistributeLJIgnores<atoms_in_bond>(&bpLutManager, particleinfotable, bond.global_atom_indexes);
+
+		// TODO Remove this once we switch to a graph based LJignores search
+		if (bond.params.HasZeroParam())
+			continue;
+		//
+
 
 		if (SpansTwoCompounds<atoms_in_bond>(bond.global_atom_indexes, particleinfotable)) {
 			BridgeFactory& bridge = getBridge<atoms_in_bond>(bridges, bond.global_atom_indexes, particleinfotable, compoundToBridges);
@@ -796,7 +810,6 @@ void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bo
 			compound.AddBond(particleinfotable, bond);
 		}
 
-		DistributeLJIgnores<atoms_in_bond>(&bpLutManager, particleinfotable, bond.global_atom_indexes);
 	}
 }
 
@@ -926,7 +939,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	auto bridges_compact = std::make_unique<CompoundBridgeBundleCompact>(
 		std::vector<CompoundBridge>(bridges.begin(), bridges.end())
 	);
-
 
 
 	const std::vector<Float3> solventPositions = LoadSolventPositions(gro_file);

@@ -101,13 +101,17 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 	const float sin_phi = C.dot(B) * (rCinv * rBinv);
 	const float torsion = -atan2(sin_phi, cos_phi);
 
+	//if constexpr (CALC_POTE) {
+	//	potE = __half2float(dihedral.params.k_phi) * (1. + cos(__half2float(dihedral.params.n) * torsion - __half2float(dihedral.params.phi_0)));
+	//}
+	//const float torque = __half2float(dihedral.params.k_phi) * (__half2float(dihedral.params.n) * sin(__half2float(dihedral.params.n) * torsion 
+	//	- __half2float(dihedral.params.phi_0))) / NANO_TO_LIMA;
+
 	if constexpr (CALC_POTE) {
-		potE = __half2float(dihedral.params.k_phi) * (1. + cos(__half2float(dihedral.params.n) * torsion - __half2float(dihedral.params.phi_0)));
+		potE = dihedral.params.k_phi * (1. + cos(dihedral.params.n * torsion - dihedral.params.phi_0));
 	}
-	const float torque = __half2float(dihedral.params.k_phi) * (__half2float(dihedral.params.n) * sin(__half2float(dihedral.params.n) * torsion 
-		- __half2float(dihedral.params.phi_0))) / NANO_TO_LIMA;
-
-
+	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion
+		- dihedral.params.phi_0)) / NANO_TO_LIMA;
 
 	B = B * rBinv;
 	Float3 f1, f2, f3;
@@ -372,12 +376,6 @@ __device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedra
 			);
 
 
-			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
-				for (int i = 0; i < db->n_atoms; i++) {
-					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
-					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
-				}
-			}
 		}
 
 		for (int i = 0; i < blockDim.x; i++) {
@@ -394,6 +392,10 @@ __device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedra
 	*potE += potentials_interim[threadIdx.x];
 	const Float3 force = forces_interim[threadIdx.x];
 	__syncthreads();
+
+	//if (threadIdx.x == 0 )
+	//	for (int i = 0; i < blockDim.x; i++) 
+	//		printf("%f\n", potentials_interim[i]);
 
 	return force;
 }

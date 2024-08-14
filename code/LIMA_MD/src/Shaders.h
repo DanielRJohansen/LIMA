@@ -166,7 +166,7 @@ class DrawTrianglesShader : public Shader {
 			fragColor = vec4(.8, 0.8, 0.8, colorAlpha);
 		}
         else { // Generate a pseudo-random color based on the triangle index        
-            fragColor = vec4(brightness * GenerateRandomColor(triIndex), colorAlpha);
+            fragColor = vec4(brightness * GenerateRandomColor(triIndex), 1.f);
         }
     }
 )";

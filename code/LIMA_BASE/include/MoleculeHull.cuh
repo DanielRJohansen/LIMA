@@ -5,17 +5,17 @@
 struct Facet {
 	std::array<Float3, 3> vertices;
 	Float3 normal;
-	//double_t distFromOrigo;
-	char __[8];
+	float D; // distance from origo along the normal, so it can be negative
+	char __[4];
 
 	char _[8];
 
-	//Float3 intersectionPoint(Float3 p1, Float3 p2) const {
-	//	//Return the intersection point of a line passing two points and this plane
-	//	return p1 + (p2 - p1) * (-distance(p1) / normal.dot(p2 - p1));
-	//};
+	Float3 intersectionPoint(Float3 p1, Float3 p2) const {
+		//Return the intersection point of a line passing two points and this plane
+		return p1 + (p2 - p1) * (-distance(p1) / normal.dot(p2 - p1));
+	};
 	void invert() { normal *= -1.f; }
-	//double_t distance(Float3 point) const { return normal.dot(point) + distFromOrigo; }
+	float distance(Float3 point) const { return normal.dot(point) + D; }
 };
 static_assert(sizeof(Facet) % 16 == 0);
 
@@ -102,7 +102,14 @@ struct MoleculeHullCollection
 
 
 
-
+/// <summary>
+/// Implementation of SutherlandHodgman algorithm to find the intersection of two convex hulls
+/// https://github.com/Alamot/code-snippets/blob/master/graphics/SutherlandHodgman/Linux/SutherlandHodgman.cpp
+/// </summary>
+/// <param name="ch1"></param>
+/// <param name="ch2"></param>
+/// <returns></returns>
+ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2);
 
 
 

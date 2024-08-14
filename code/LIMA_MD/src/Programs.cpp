@@ -229,7 +229,14 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 
 
-void MoveMoleculesUntillNoOverlap(GroFile& grofile, const TopologyFile& topfile) {
+void MoveMoleculesUntillNoOverlap(const std::vector<MoleculeHullFactory>& moleculeContainers) {
+
+	for (int i = 0; i < moleculeContainers.size(); i++) {
+		for (int j = i + 1; j < moleculeContainers.size(); j++) {
+			ConvexHull intersect = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull);
+			int a = 0;
+		}
+	}
 
 }
 
@@ -257,6 +264,10 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	Display d(Full);
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+
+
+	MoveMoleculesUntillNoOverlap(moleculeContainers);
+
 
 	while (true) {
 		d.checkWindowStatus();

@@ -193,7 +193,7 @@ void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize
 
     drawAtomsShader->Draw(MVP, molCollection.nParticles);
 
-    drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, DrawTrianglesShader::EDGES, boxSize);
+    drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, DrawTrianglesShader::FACES, boxSize);
 
 
     // Swap front and back buffers

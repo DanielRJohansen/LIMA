@@ -8,44 +8,6 @@
 #include <libqhullcpp/QhullFacetList.h>
 #include <libqhullcpp/QhullVertexSet.h>
 
-//ConvexHull::ConvexHull(const std::vector<Float3>& points) {
-//    constexpr size_t dim = 3;
-//    constexpr float eps = std::numeric_limits<float>::epsilon();
-//
-//    quick_hull<std::vector<Float3>::const_iterator> qh{ dim, eps };
-//
-//    qh.add_points(std::cbegin(points), std::cend(points));
-//
-//
-//    auto initial_simplex = qh.get_affine_basis();
-//    if (initial_simplex.size() < dim + 1) {
-//        throw std::runtime_error("Degenerated input set in ConvexHull algo");
-//    }
-//
-//    qh.create_initial_simplex(std::cbegin(initial_simplex), std::prev(std::cend(initial_simplex)));
-//    qh.create_convex_hull();
-//    //if (!qh.check()) {
-//    //    throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
-//    //}
-//
-//
-//    for (const auto& f : qh.facets_) {
-//        Facet facet;
-//        facet.vertices[0] = *f.vertices_[0];
-//        facet.vertices[1] = *f.vertices_[1];
-//        facet.vertices[2] = *f.vertices_[2];
-//
-//        facet.distFromOrigo = f.D;
-//
-//        facet.normal = Float3{ f.normal_[0], f.normal_[1], f.normal_[2] };
-//
-//        Add(facet);
-//    }
-//
-//    if (vertices.size() != 2 + facets.size() / 2) {
-//        throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
-//    }
-//}
 
 Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 	Facet facet;
@@ -61,7 +23,9 @@ Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 	facet.vertices[2].y = f.vertices()[2].point().coordinates()[1];
 	facet.vertices[2].z = f.vertices()[2].point().coordinates()[2];
 
-    facet.normal = Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
+    facet.normal = -Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
+    
+    facet.D = facet.normal.dot(facet.vertices[0]);
 
 	return facet;
 }
@@ -70,6 +34,8 @@ Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     constexpr size_t dim = 3;
     constexpr float eps = std::numeric_limits<float>::epsilon();
+
+
 
 
     std::vector<double3> pointsDouble(points.size());
@@ -189,4 +155,53 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
     cudaMemcpy(particles, particlesHost.data(), sizeof(RenderAtom) * particlesHost.size(), cudaMemcpyHostToDevice);
     cudaMalloc(&moleculeHulls, sizeof(MoleculeHull) * moleculehullsHost.size());
     cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
+}
+
+
+
+
+
+ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2) {
+    float D1, D2 = 0;
+    ConvexHull polygon = ConvexHull(ch1);
+    const float EPSILON = 0.00001f;
+
+    const auto& clippingPlanes = ch2.GetFacets();
+
+    for (unsigned int c = 0; c < clippingPlanes.size(); c++) 
+    {
+        ConvexHull clippedPolygon{};
+
+        std::vector<Float3> points = polygon.GetVertices();
+        for (unsigned int i = 0; i < points.size() - 1; i++) {
+            D1 = clippingPlanes[c].distance(points[i]);
+            D2 = clippingPlanes[c].distance(points[i + 1]);
+            if ((D1 <= 0) && (D2 <= 0))
+            {
+                //clippedPolygon.add(points[i + 1]);
+                clippedPolygon.Add(points[i + 1]);
+            }
+            else if ((D1 > 0) && ((D2 > -EPSILON) && (D2 < EPSILON)))
+            {
+                //clippedPolygon.add(points[i + 1]);
+                clippedPolygon.Add(points[i + 1]);
+
+            }
+            else if (((D1 > -EPSILON) && (D1 < EPSILON)) && (D2 > 0))
+            {
+                continue;
+            }
+            else if ((D1 <= 0) && (D2 > 0))
+            {
+                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+            }
+            else if ((D1 > 0) && (D2 <= 0))
+            {                
+                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                clippedPolygon.Add(points[i + 1]);
+            }
+        }
+        polygon = clippedPolygon; // keep on working with the new polygon
+    }
+    return polygon;
 }

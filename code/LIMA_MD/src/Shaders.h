@@ -100,8 +100,8 @@ class DrawTrianglesShader : public Shader {
         float data[16]; // DONT CHANGE, it's OpenGL being annoying with offsets
         // vec3[3] vertices;
         // vec3 normal
-        // double distFromOrigo
-        // char[8] paddingBytes
+        // float distFromOrigo
+        // char[12] paddingBytes
     };
 
     layout(std430, binding = 0) buffer TriBuffer {
@@ -116,7 +116,6 @@ class DrawTrianglesShader : public Shader {
 
     uniform vec3 boxSize;    
     uniform int drawMode; // 0 = FACES, 1 = EDGES
-    
 
     vec3 GenerateRandomColor(uint triIndex) {
 		return vec3(
@@ -236,6 +235,106 @@ public:
 };
 
 
+class DrawNormalsShader : public Shader {
+    static constexpr const char* hullVertexShaderSource = R"(
+    #version 430 core
+
+    struct Facet {
+        float data[16]; // DONT CHANGE, it's OpenGL being annoying with offsets
+        // vec3[3] vertices;
+        // vec3 normal
+        // float distFromOrigo
+        // char[12] paddingBytes
+    };
+
+    layout(std430, binding = 0) buffer TriBuffer {
+        Facet facets[];
+    };
+
+    uniform mat4 MVP;
+    out vec4 fragColor;
+
+    uniform vec3 boxSize;
+
+    vec3 GetFacetCenter(uint triIndex) {
+		return (
+            vec3(facets[triIndex].data[0], facets[triIndex].data[1], facets[triIndex].data[2])
+            + vec3(facets[triIndex].data[3], facets[triIndex].data[4], facets[triIndex].data[5])
+            + vec3(facets[triIndex].data[6], facets[triIndex].data[7], facets[triIndex].data[8])
+		) / vec3(3.0f);
+	}
+
+    void main() {
+        uint triIndex = gl_VertexID / 2; // Each normal is drawn with two vertices
+        bool isTip = (gl_VertexID % 2 == 1); // Even index is base, odd index is tip
+        
+
+
+    
+        vec3 position = GetFacetCenter(triIndex) / boxSize - vec3(0.5f, 0.5f, 0.5f);
+
+        vec3 triNormal = vec3(facets[triIndex].data[3*3+0], 
+                              facets[triIndex].data[3*3+1], 
+                              facets[triIndex].data[3*3+2]);
+
+        if (isTip) {
+            position += triNormal * 0.02; // Move the tip 10% of the normal length away from the base
+        }
+
+        gl_Position = MVP * vec4(position, 1.0);
+
+        // Set color based on the normal, could be replaced with a more advanced coloring
+        fragColor = vec4(1,0,0,1);
+    }
+)";
+
+
+    static constexpr const char* hullFragmentShaderSource = R"(
+    #version 430 core
+
+    in vec4 fragColor;
+    out vec4 color;
+
+    void main() {
+        color = fragColor;
+    }
+)";
+
+    GLuint VAO;
+    SSBO facetsBuffer{};
+
+public:
+    DrawNormalsShader() : Shader(hullVertexShaderSource, hullFragmentShaderSource) {
+        glGenVertexArrays(1, &VAO);
+        glBindVertexArray(VAO);
+        glBindVertexArray(0);
+    }
+
+    ~DrawNormalsShader() {
+        glDeleteVertexArrays(1, &VAO);
+    }
+
+    void Draw(const glm::mat4& MVP, const Facet* facets_cudaMem, int numFacets, Float3 boxSize) {
+        use();
+
+        facetsBuffer.Bind(0);
+        facetsBuffer.SetData_FromCuda(facets_cudaMem, numFacets * sizeof(Facet));
+
+        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        cudaMemcpy(ptr, facets_cudaMem, numFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        SetUniformFloat3("boxSize", boxSize);
+        SetUniformMat4("MVP", MVP);
+
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_LINES, 0, numFacets * 2); // Each normal is drawn with 2 vertices
+        glBindVertexArray(0);
+        glUseProgram(0);
+    }
+};
 
 
 class DrawAtomsShader : public Shader {

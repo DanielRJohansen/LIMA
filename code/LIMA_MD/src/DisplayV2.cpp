@@ -175,8 +175,6 @@ void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     drawBoxOutlineShader->Draw(MVP);
 
-    
-
     {
         // Map buffer object for writing from CUDA
         RenderAtom* renderAtomsBuffer;
@@ -194,6 +192,60 @@ void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize
     drawAtomsShader->Draw(MVP, molCollection.nParticles);
 
     drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, DrawTrianglesShader::FACES, boxSize);
+
+
+    // Swap front and back buffers
+    glfwSwapBuffers(window);
+}
+
+
+void Display::Render(const std::vector<Facet>& facets, const std::vector<Float3>& points, Float3 boxSize) {
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawTrianglesShader)
+        drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
+
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(points.size(), &renderAtomsBufferCudaResource);
+
+    if (!drawNormalsShader)
+        drawNormalsShader = std::make_unique<DrawNormalsShader>();
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+    drawBoxOutlineShader->Draw(MVP);
+
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+        assert(num_bytes == points.size() * sizeof(RenderAtom));
+
+
+        std::vector<RenderAtom> renderAtoms(points.size());
+        for (int i = 0; i < points.size(); i++) {
+            renderAtoms[i] = RenderAtom{ points[i], boxSize, 'H' };
+		}
+
+        cudaMemcpy(renderAtomsBuffer, renderAtoms.data(), sizeof(RenderAtom) * points.size(), cudaMemcpyHostToDevice);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+
+    drawAtomsShader->Draw(MVP, points.size());
+
+
+    Facet* facetsDev;
+    cudaMalloc(&facetsDev, sizeof(Facet) * facets.size());
+    cudaMemcpy(facetsDev, facets.data(), sizeof(Facet) * facets.size(), cudaMemcpyHostToDevice);
+    drawTrianglesShader->Draw(MVP, facetsDev, facets.size(), DrawTrianglesShader::FACES, boxSize);
+    drawNormalsShader->Draw(MVP, facetsDev, facets.size(), boxSize);
+    cudaFree(facetsDev);
 
 
     // Swap front and back buffers

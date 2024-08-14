@@ -23,7 +23,7 @@ Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 	facet.vertices[2].y = f.vertices()[2].point().coordinates()[1];
 	facet.vertices[2].z = f.vertices()[2].point().coordinates()[2];
 
-    facet.normal = -Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
+    facet.normal = Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
     
     facet.D = facet.normal.dot(facet.vertices[0]);
 
@@ -160,31 +160,38 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
 
 
 
-
-ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2) {
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2, std::function<void(const std::vector<Facet>&, const std::vector<Float3>&)> callBack) {
     float D1, D2 = 0;
-    ConvexHull polygon = ConvexHull(ch1);
+    //ConvexHull polygon = ConvexHull(ch1);
+    std::vector<Float3> polygonVertices = ch1.GetVertices();
     const float EPSILON = 0.00001f;
 
     const auto& clippingPlanes = ch2.GetFacets();
 
-    for (unsigned int c = 0; c < clippingPlanes.size(); c++) 
-    {
-        ConvexHull clippedPolygon{};
 
-        std::vector<Float3> points = polygon.GetVertices();
-        for (unsigned int i = 0; i < points.size() - 1; i++) {
+
+    for (int c = 0; c < clippingPlanes.size(); c++) 
+    {
+        //ConvexHull clippedPolygon{};
+        std::vector<Float3> clippedPolygonVertices;
+
+
+        std::vector<Float3> points = polygonVertices;
+        for (int i = 0; i < static_cast<int>(points.size()) - 1; i++) {
+
+
+
             D1 = clippingPlanes[c].distance(points[i]);
             D2 = clippingPlanes[c].distance(points[i + 1]);
             if ((D1 <= 0) && (D2 <= 0))
             {
-                //clippedPolygon.add(points[i + 1]);
-                clippedPolygon.Add(points[i + 1]);
+                //clippedPolygon.Add(points[i + 1]);
+                clippedPolygonVertices.push_back(points[i + 1]);
             }
             else if ((D1 > 0) && ((D2 > -EPSILON) && (D2 < EPSILON)))
             {
-                //clippedPolygon.add(points[i + 1]);
-                clippedPolygon.Add(points[i + 1]);
+                clippedPolygonVertices.push_back(points[i + 1]);
+                //clippedPolygon.Add(points[i + 1]);
 
             }
             else if (((D1 > -EPSILON) && (D1 < EPSILON)) && (D2 > 0))
@@ -193,15 +200,28 @@ ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, con
             }
             else if ((D1 <= 0) && (D2 > 0))
             {
-                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                clippedPolygonVertices.push_back(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                //clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
             }
             else if ((D1 > 0) && (D2 <= 0))
-            {                
-                clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
-                clippedPolygon.Add(points[i + 1]);
+            {     
+                clippedPolygonVertices.push_back(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                clippedPolygonVertices.push_back(points[i + 1]);
+                //clippedPolygon.Add(clippingPlanes[c].intersectionPoint(points[i], points[i + 1]));
+                //clippedPolygon.Add(points[i + 1]);
             }
         }
-        polygon = clippedPolygon; // keep on working with the new polygon
+        //polygon = clippedPolygon; // keep on working with the new polygon
+        if (clippedPolygonVertices.size() > 0)
+            clippedPolygonVertices.push_back(clippedPolygonVertices[0]);//close the polygon
+        polygonVertices = clippedPolygonVertices;
+
+        //callBack(clippingPlanes, points);
+
+        if (clippedPolygonVertices.empty())
+            callBack({ clippingPlanes[c] }, points);
+
+
     }
-    return polygon;
+    return polygonVertices;
 }

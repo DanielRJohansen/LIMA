@@ -541,7 +541,8 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
 			pos -= moleculeCenter;
 			pos.rotateAroundOrigo(randomRotation);
-			pos += randomTranslation;
+			//pos += randomTranslation;
+			pos += Float3{ targetGrofile.box_size.x / 2.f };
 			};
 
 		AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);

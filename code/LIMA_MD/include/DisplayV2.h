@@ -14,6 +14,8 @@
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
 class DrawAtomsShader;
+class DrawNormalsShader;
+
 class GLFWwindow;
 
 class Display {
@@ -25,6 +27,8 @@ public:
 
 	void Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
+	// This is meant as a debugging tool
+	void Render(const std::vector<Facet>& facets, const std::vector<Float3>& points, Float3 boxSize);
 
 	bool checkWindowStatus();		// Returns false if the windows should close
 
@@ -40,6 +44,7 @@ private:
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader = nullptr;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader = nullptr;
 	std::unique_ptr<DrawAtomsShader> drawAtomsShader = nullptr;
+	std::unique_ptr<DrawNormalsShader> drawNormalsShader = nullptr;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource;
 

@@ -231,13 +231,36 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 void MoveMoleculesUntillNoOverlap(const std::vector<MoleculeHullFactory>& moleculeContainers) {
 
+	std::vector<ConvexHull> intersectingHulls;
+
+	Display d{ Full };
+
 	for (int i = 0; i < moleculeContainers.size(); i++) {
 		for (int j = i + 1; j < moleculeContainers.size(); j++) {
-			ConvexHull intersect = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull);
+
+			auto renderLambda = [&d](const std::vector<Facet>& facets, const std::vector<Float3>& points) {
+				while (true) {
+					d.checkWindowStatus();
+					d.Render(facets, points, Float3{ 5.f });
+				}
+				};
+
+			std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull,
+			renderLambda);
+
+			if (intersectingPolygonVertices.size() >= 4) {
+			//	intersectingHulls.push_back(intersect);
+			}
+			else if (intersectingPolygonVertices.size() == 0) {
+				// Do nothing, the CH's did not intersect
+			}
+			else {
+				throw std::runtime_error("This is not a valid hull, something went wrong");
+			};
 			int a = 0;
 		}
 	}
-
+	int a = 0;
 }
 
 
@@ -246,7 +269,7 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
 		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
 		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
-		grofile.box_size.x);
+		2);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
 

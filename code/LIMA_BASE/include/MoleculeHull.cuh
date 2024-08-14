@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LimaTypes.cuh"
+#include <functional>
 
 struct Facet {
 	std::array<Float3, 3> vertices;
@@ -23,6 +24,11 @@ class ConvexHull {
 	std::vector<Float3> vertices;	// [nm] Only used to determine CoM
 	std::vector<Facet> facets;
 
+	void Add(const Float3& vertex) {
+		if (std::count(vertices.begin(), vertices.end(), vertex) == 0) {
+			vertices.emplace_back(vertex);
+		}
+	}
 
 public:
 	ConvexHull() {}
@@ -39,11 +45,6 @@ public:
 	const std::vector<Facet>& GetFacets() const { return facets; }
 	const std::vector<Float3>& GetVertices() const { return vertices; }
 
-	void Add(const Float3& vertex) {
-		if (std::count(vertices.begin(), vertices.end(), vertex) == 0) {
-			vertices.emplace_back(vertex);
-		}
-	}
 	void Add(const Facet& plane) {
 
 		facets.emplace_back(plane);
@@ -109,7 +110,9 @@ struct MoleculeHullCollection
 /// <param name="ch1"></param>
 /// <param name="ch2"></param>
 /// <returns></returns>
-ConvexHull FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2);
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2,
+	std::function<void(const std::vector<Facet>&, const std::vector<Float3>&)> callback
+);
 
 
 

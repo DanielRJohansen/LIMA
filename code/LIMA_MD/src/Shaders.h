@@ -116,6 +116,7 @@ class DrawTrianglesShader : public Shader {
 
     uniform vec3 boxSize;    
     uniform int drawMode; // 0 = FACES, 1 = EDGES
+    uniform vec4 predecidedColor = vec4(-1.,-1.,-1.,-1.);  
 
     vec3 GenerateRandomColor(uint triIndex) {
 		return vec3(
@@ -167,6 +168,10 @@ class DrawTrianglesShader : public Shader {
         else { // Generate a pseudo-random color based on the triangle index        
             fragColor = vec4(brightness * GenerateRandomColor(triIndex), 1.f);
         }
+        
+        if (predecidedColor.x != -1) {
+			fragColor = predecidedColor;
+		}
     }
 )";
 
@@ -186,10 +191,7 @@ class DrawTrianglesShader : public Shader {
     SSBO facetsBuffer{};
 
 public:
-    enum DrawMode {
-        FACES=0,
-        EDGES=1
-    };
+
 
     DrawTrianglesShader() : Shader(hullVertexShaderSource, hullFragmentShaderSource) {
         // Generate and bind VAO
@@ -202,7 +204,9 @@ public:
         glDeleteVertexArrays(1, &VAO);
     }
 
-    void Draw(const glm::mat4& MVP, const Facet* facets_cudaMem, int numFacets, DrawMode mode, Float3 boxSize) {
+    void Draw(const glm::mat4& MVP, const Facet* facets_cudaMem, int numFacets, 
+        FacetDrawMode mode, Float3 boxSize, std::optional<float4> color=std::nullopt)
+    {
         use(); // Use the shader program
 
         // Update SSBO with CUDA device memory
@@ -220,6 +224,9 @@ public:
         SetUniformFloat3("boxSize", boxSize);
         SetUniformMat4("MVP", MVP);
         SetUniformI("drawMode", mode == FACES ? 0 : 1);
+        if (color.has_value()) {
+			SetUniformFloat4("predecidedColor", color.value());
+		}
 
         // Draw the triangles based on the selected mode
         glBindVertexArray(VAO);
@@ -385,8 +392,9 @@ class DrawAtomsShader : public Shader {
 
     GLuint VBO;
     SSBO renderAtomsBuffer{};
-    const int numAtoms;
 public:
+    const int numAtoms;
+
     DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCUDA) : 
         Shader(vertexShaderSource, fragmentShaderSource),
         numAtoms(numAtoms)
@@ -423,7 +431,9 @@ public:
     // CUDA will place the input data
     void Draw(const glm::mat4& MVP, int nAtoms) {
 
-        if (nAtoms != numAtoms) {
+        // If we call this shader multiple times it doesnt matter if the following times has less atoms, but we currently have
+        // not implemented to ability to increase the buffer size
+        if (nAtoms > numAtoms) {
 			throw std::runtime_error("Number of atoms in DrawAtomsShader::Draw does not match the number of atoms in the constructor. \n\
                 This is likely due to the Renderer being tasked with both rendering compounds and moleculeHulls in the same instance");
 		}

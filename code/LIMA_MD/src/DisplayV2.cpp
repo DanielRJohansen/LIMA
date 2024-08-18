@@ -88,6 +88,9 @@ Display::Display(EnvMode envmode) :
                 case GLFW_KEY_PAGE_DOWN:
 					display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
 					break;
+                case GLFW_KEY_N:
+					display->debugValue = 1;
+					break;
                 }                              
             }
         }
@@ -191,7 +194,7 @@ void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize
 
     drawAtomsShader->Draw(MVP, molCollection.nParticles);
 
-    drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, DrawTrianglesShader::FACES, boxSize);
+    drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::FACES, boxSize);
 
 
     // Swap front and back buffers
@@ -199,36 +202,42 @@ void Display::Render(const MoleculeHullCollection& molCollection, Float3 boxSize
 }
 
 
-void Display::Render(const std::vector<Facet>& facets, const std::vector<Float3>& points, Float3 boxSize) {
+void Display::Render(const std::vector<Facet>& facets, std::optional<Float3> facetsColor, bool drawFacetNormals, FacetDrawMode drawMode,
+    const std::vector<Float3>& points, std::optional<Float3> pointsColor
+    , Float3 boxSize, bool flushGLBuffer, bool swapGLBuffers) 
+{
     if (!drawBoxOutlineShader)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
     if (!drawTrianglesShader)
         drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
-    if (!drawAtomsShader)
+    if (!drawAtomsShader || drawAtomsShader->numAtoms < points.size())
         drawAtomsShader = std::make_unique<DrawAtomsShader>(points.size(), &renderAtomsBufferCudaResource);
 
     if (!drawNormalsShader)
         drawNormalsShader = std::make_unique<DrawNormalsShader>();
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (flushGLBuffer)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     drawBoxOutlineShader->Draw(MVP);
 
-    {
+    if (points.size()) {
         // Map buffer object for writing from CUDA
         RenderAtom* renderAtomsBuffer;
         cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
         size_t num_bytes = 0;
         cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-        assert(num_bytes == points.size() * sizeof(RenderAtom));
+        assert(num_bytes >= points.size() * sizeof(RenderAtom));
 
 
         std::vector<RenderAtom> renderAtoms(points.size());
         for (int i = 0; i < points.size(); i++) {
-            renderAtoms[i] = RenderAtom{ points[i], boxSize, 'H' };
+            renderAtoms[i] = RenderAtom{ points[i], boxSize, 'O' };
+            if (pointsColor.has_value())
+                renderAtoms[i].color = pointsColor.value().Tofloat4(1.f);
 		}
 
         cudaMemcpy(renderAtomsBuffer, renderAtoms.data(), sizeof(RenderAtom) * points.size(), cudaMemcpyHostToDevice);
@@ -243,13 +252,15 @@ void Display::Render(const std::vector<Facet>& facets, const std::vector<Float3>
     Facet* facetsDev;
     cudaMalloc(&facetsDev, sizeof(Facet) * facets.size());
     cudaMemcpy(facetsDev, facets.data(), sizeof(Facet) * facets.size(), cudaMemcpyHostToDevice);
-    drawTrianglesShader->Draw(MVP, facetsDev, facets.size(), DrawTrianglesShader::FACES, boxSize);
-    drawNormalsShader->Draw(MVP, facetsDev, facets.size(), boxSize);
+    drawTrianglesShader->Draw(MVP, facetsDev, facets.size(), drawMode, boxSize);
+    if (drawFacetNormals)
+        drawNormalsShader->Draw(MVP, facetsDev, facets.size(), boxSize);
     cudaFree(facetsDev);
 
 
     // Swap front and back buffers
-    glfwSwapBuffers(window);
+    if (swapGLBuffers)
+        glfwSwapBuffers(window);
 }
 
 

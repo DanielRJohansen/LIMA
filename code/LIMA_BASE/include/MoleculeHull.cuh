@@ -3,6 +3,12 @@
 #include "LimaTypes.cuh"
 #include <functional>
 
+
+enum FacetDrawMode {
+	FACES = 0,
+	EDGES = 1
+};
+
 struct Facet {
 	std::array<Float3, 3> vertices;
 	Float3 normal;
@@ -16,7 +22,7 @@ struct Facet {
 		return p1 + (p2 - p1) * (-distance(p1) / normal.dot(p2 - p1));
 	};
 	void invert() { normal *= -1.f; }
-	float distance(Float3 point) const { return normal.dot(point) + D; }
+	float distance(Float3 point) const { return normal.dot(point) - D; }
 };
 static_assert(sizeof(Facet) % 16 == 0);
 
@@ -111,7 +117,7 @@ struct MoleculeHullCollection
 /// <param name="ch2"></param>
 /// <returns></returns>
 std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2,
-	std::function<void(const std::vector<Facet>&, const std::vector<Float3>&)> callback
+	std::function<bool(const std::vector<Facet>&, const std::vector<Float3>&, bool)> callback
 );
 
 

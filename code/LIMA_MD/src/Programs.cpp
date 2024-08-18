@@ -225,28 +225,126 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 
 
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2, Float3 boxsize) {
+
+	Display d{ Full };
+
+
+	std::vector<std::array<Float3, 3>> clippedFacets;
+	for (const auto& facet : ch2.GetFacets()) {
+		clippedFacets.push_back(facet.vertices);
+	}
+
+	for (const auto& clippingFacet : ch1.GetFacets()) {
+
+		std::vector<std::array<Float3, 3>> newFacets;
+
+		std::vector<Float3> sameVertices;
+		std::vector<Float3> movedVertices;
+		std::vector<Float3> removedVertices;
+
+
+
+		for (const auto& queryFacet : clippedFacets) {
+
+			bool vertexIsInsideFacet[] = {
+				//clippingFacet.distance()
+				(queryFacet[0] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0,
+				(queryFacet[1] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0,
+				(queryFacet[2] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0
+			};
+
+			if (!vertexIsInsideFacet[0] && !vertexIsInsideFacet[1] && !vertexIsInsideFacet[2]) {
+				// Entire facet is outside the clipping plane
+				continue;
+				removedVertices.push_back(queryFacet[0]);
+				removedVertices.push_back(queryFacet[1]);
+				removedVertices.push_back(queryFacet[2]);
+			}
+
+
+			std::array<Float3, 3> clippedFacet;
+
+			for (int vertexIndex = 0; vertexIndex < 3; vertexIndex++) {
+				if (vertexIsInsideFacet[vertexIndex]) {
+					clippedFacet[vertexIndex] = queryFacet[vertexIndex];
+					sameVertices.push_back(queryFacet[vertexIndex]);
+				}
+				else if (vertexIsInsideFacet[(vertexIndex + 1) % 3]) {
+					clippedFacet[vertexIndex] = clippingFacet.intersectionPoint(queryFacet[vertexIndex], queryFacet[(vertexIndex + 1) % 3]);
+					movedVertices.push_back(clippingFacet.intersectionPoint(queryFacet[vertexIndex], queryFacet[(vertexIndex + 1) % 3]));
+				}
+				else {
+					clippedFacet[vertexIndex] = clippingFacet.intersectionPoint(queryFacet[vertexIndex], queryFacet[(vertexIndex + 2) % 3]);
+					movedVertices.push_back(clippingFacet.intersectionPoint(queryFacet[vertexIndex], queryFacet[(vertexIndex + 2) % 3]));
+				}
+			}
+
+			newFacets.push_back(clippedFacet);
+		}
+
+
+
+		Facet clippingPlane = clippingFacet;
+		//Float3 centroid = (clippingFacet.vertices[0] + clippingFacet.vertices[1] + clippingFacet.vertices[2]) / 3.0f;
+		//for (auto& vertex : clippingPlane.vertices) {
+		//	Float3 direction = vertex - centroid; // Vector from centroid to vertex
+		//	vertex = centroid + (direction * 1.f); // Move the vertex outwards
+		//}
+
+
+		std::vector<Float3> allPoints = sameVertices;
+		allPoints.insert(allPoints.end(), movedVertices.begin(), movedVertices.end());
+
+		Float3 centroidApproximation = BoundingBox(allPoints).Center();
+
+
+		while (true) {
+			d.checkWindowStatus();
+			d.Render({}, std::nullopt, true, FACES, sameVertices, Float3{ 1, 1,1 }, boxsize, true, false);
+			d.Render({}, std::nullopt, true, FACES, removedVertices, Float3{ 1, 0, 0 }, boxsize, false, false);
+			d.Render({}, std::nullopt, true, FACES, { centroidApproximation }, Float3{0, 0, 1}, boxsize, false, false);
+
+			d.Render(ch1.GetFacets(), std::nullopt, false, EDGES, {}, std::nullopt, boxsize, false, false);
+			d.Render(ch2.GetFacets(), std::nullopt, false, EDGES, {}, std::nullopt, boxsize, false, false);
+
+			d.Render({ clippingPlane }, std::nullopt, true, FACES, movedVertices, Float3{ 0, 1, 0 }, boxsize, false, true);
+			if (d.debugValue == 1) {
+				d.debugValue = 0;
+				break;
+			}
+		}
+
+
+		clippedFacets = newFacets;
+
+
+	}
+
+	std::vector<Float3> vertices;
+	for (const auto& facet : clippedFacets) {
+		for (const auto& vertex : facet) {
+			vertices.push_back(vertex);
+		}
+	}
+	return vertices;
+}
 
 
 
 
-void MoveMoleculesUntillNoOverlap(const std::vector<MoleculeHullFactory>& moleculeContainers) {
+
+void MoveMoleculesUntillNoOverlap(const std::vector<MoleculeHullFactory>& moleculeContainers, Float3 boxSize) {
 
 	std::vector<ConvexHull> intersectingHulls;
 
-	Display d{ Full };
 
 	for (int i = 0; i < moleculeContainers.size(); i++) {
 		for (int j = i + 1; j < moleculeContainers.size(); j++) {
 
-			auto renderLambda = [&d](const std::vector<Facet>& facets, const std::vector<Float3>& points) {
-				while (true) {
-					d.checkWindowStatus();
-					d.Render(facets, points, Float3{ 5.f });
-				}
-				};
+			std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull, boxSize);
 
-			std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull,
-			renderLambda);
+
 
 			if (intersectingPolygonVertices.size() >= 4) {
 			//	intersectingHulls.push_back(intersect);
@@ -284,18 +382,18 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 		moleculeContainers.back().CreateConvexHull();
 	}
 
-	Display d(Full);
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
 
-	MoveMoleculesUntillNoOverlap(moleculeContainers);
+	MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
 
+	//Display d(Full);
 
-	while (true) {
-		d.checkWindowStatus();
-		d.Render(mhCol, grofile.box_size);
-	}
+	//while (true) {
+	//	d.checkWindowStatus();
+	//	d.Render(mhCol, grofile.box_size);
+	//}
 
 
 }

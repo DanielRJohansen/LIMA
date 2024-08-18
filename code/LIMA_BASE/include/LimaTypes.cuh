@@ -74,6 +74,9 @@ struct Float3 {
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
+	float3 Tofloat3() const { return float3{ x, y, z }; }
+	float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+
 	float* begin() { return &x; }
 	const float* begin() const { return &x; }
 	float* end() { return &x + 3; }
@@ -355,8 +358,13 @@ struct BoundingBox {
 		Float3 max = Float3{ std::numeric_limits<float>::lowest() }) 
 		: min(min), max(max) {}
 
+	BoundingBox(const std::vector<Float3>& points);
 
 	Float3 min, max;
+
+	Float3 Center() const {
+		return (min + max) * 0.5f;
+	}
 
 	bool intersects(BoundingBox b) {
 		return

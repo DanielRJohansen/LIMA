@@ -42,9 +42,9 @@ public:
         glUniform3f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z);
     }
 
-    //void setUniform(const std::string& name, const glm::vec4& value) {
-    //    glUniform4f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z, value.w);
-    //}
+    void SetUniformFloat4(const std::string& name, const float4& value) {
+        glUniform4f(glGetUniformLocation(programID, name.c_str()), value.x, value.y, value.z, value.w);
+    }
 
     void SetUniformMat4(const std::string& name, const glm::mat4& mat) {
         glUniformMatrix4fv(glGetUniformLocation(programID, name.c_str()), 1, GL_FALSE, glm::value_ptr(mat));

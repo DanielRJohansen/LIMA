@@ -28,9 +28,13 @@ public:
 	void Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
 	// This is meant as a debugging tool
-	void Render(const std::vector<Facet>& facets, const std::vector<Float3>& points, Float3 boxSize);
+	void Render(const std::vector<Facet>& facets, std::optional<Float3> facetsColor, bool drawFacetNormals, FacetDrawMode,
+		const std::vector<Float3>& points, std::optional<Float3> pointsColor,
+		Float3 boxSize, bool flushGLBuffer, bool swapGLBuffers);
 
 	bool checkWindowStatus();		// Returns false if the windows should close
+
+	int debugValue = 0;
 
 private:
 	LimaLogger logger;

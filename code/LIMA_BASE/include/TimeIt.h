@@ -24,18 +24,26 @@ public:
 		return GetTiming();
 	}
 
-	long long elapsedMilliseconds() const {
+	std::chrono::milliseconds elapsed() const {
 		auto currentTime = std::chrono::high_resolution_clock::now();
-		return std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - start).count();
+		return std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - start);
 	}
 
 	~TimeIt() {
 		if (!manuallyStopped) {
 			end = std::chrono::high_resolution_clock::now();
+		}		
+
+		if (printUponDestruction) {
+			auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+			if (elapsed < std::chrono::milliseconds(2)) {
+				std::cout << taskName << " took " << elapsed.count() << " microseconds.\n";
+			}
+			else {
+				std::cout << taskName << " took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds.\n";
+			}
 		}
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-		if (printUponDestruction)
-			std::cout << taskName << " took " << elapsed << " milliseconds.\n";
 	}
 
 private:

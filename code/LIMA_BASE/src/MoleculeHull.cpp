@@ -8,7 +8,6 @@
 #include <libqhullcpp/QhullFacetList.h>
 #include <libqhullcpp/QhullVertexSet.h>
 
-
 Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 	Facet facet;
 	facet.vertices[0].x = f.vertices()[0].point().coordinates()[0];
@@ -103,7 +102,7 @@ void ConvexHull::CullSmallTriangles() {
             (vertices[facet.verticesIds[2]] - vertices[facet.verticesIds[0]]).len());
 
         // Face is tiny. Delete V1 and and V2. V0 is moved to the center of the facet. V1 and V2 points to V0
-        if (maxEdgeLen < 0.3f) {
+        if (maxEdgeLen < 0.2f) {
             facetMarkedForDeletion[facetId] = true;
 
             vertices[facet.verticesIds[0]] = (vertices[facet.verticesIds[0]] + vertices[facet.verticesIds[1]] + vertices[facet.verticesIds[2]]) / 3.f;
@@ -118,7 +117,7 @@ void ConvexHull::CullSmallTriangles() {
             int v1 = facet.verticesIds[i];
             int v2 = facet.verticesIds[(i + 1) % 3];
 
-            if ((vertices[v1] - vertices[v2]).len() < 0.3f) {
+            if ((vertices[v1] - vertices[v2]).len() < 0.1f) {
                 facetMarkedForDeletion[facetId] = true;
                 vertices[v1] = (vertices[v1] + vertices[v2]) / 2.f;
                 vertexMapping.Add(v2, v1);
@@ -190,8 +189,6 @@ ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     }
 
     //for (int i = 0; i < 2; i++)
-        CullSmallTriangles();
-
 }
 
 
@@ -220,35 +217,58 @@ std::vector<Float3> GenerateSpherePoints(const Float3& origo, float radius, int 
     return points;
 }
 
-
+#include "TimeIt.h"
 void MoleculeHullFactory::CreateConvexHull() {
-    convexHull = ConvexHull(particlePositions);
+    TimeIt timer{"CH", true};
+
+ //   convexHull = ConvexHull(particlePositions);
+
+ //   ConvexHull closelyFittingHull{ particlePositions };
+
+ //   std::vector<Float3> hullVerticesPadded;
+ //   for (const Float3& v : closelyFittingHull.GetVertices()) {
+ //       const std::vector<Float3> spherePoints = GenerateSpherePoints(v, .1f, 16);
+
+ //       hullVerticesPadded.insert(hullVerticesPadded.end(), spherePoints.begin(), spherePoints.end());
+ //   }
 
 
+ //   float min = 99999.f;
+ //   for(int i = 0; i < hullVerticesPadded.size(); i++) {
+	//	for (int j = i+1; j < hullVerticesPadded.size(); j++) {
+	//		float dist = (hullVerticesPadded[i] - hullVerticesPadded[j]).len();
+	//		if (dist < min) {
+	//			min = dist;
+	//		}
+	//	}
+	//}
+ //   convexHull = ConvexHull(hullVerticesPadded);
+ //   
 
-    ConvexHull closelyFittingHull{ particlePositions };
+	//convexHull.CullSmallTriangles();
 
-    std::vector<Float3> hullVerticesPadded;
-    for (const Float3& v : closelyFittingHull.GetVertices()) {
-        const std::vector<Float3> spherePoints = GenerateSpherePoints(v, .1f, 16);
-
-        hullVerticesPadded.insert(hullVerticesPadded.end(), spherePoints.begin(), spherePoints.end());
+    // To ensure the atoms are covered including their VDW dist, we pad them first
+    std::vector<Float3> paddedPoints;
+    for (const Float3& p : particlePositions) {
+        const std::vector<Float3> spherePoints = GenerateSpherePoints(p, .1f, 16);
+        paddedPoints.insert(paddedPoints.end(), spherePoints.begin(), spherePoints.end());
     }
+    ConvexHull paddedCH{ paddedPoints };
+    paddedCH.CullSmallTriangles();
 
 
-    float min = 99999.f;
-    for(int i = 0; i < hullVerticesPadded.size(); i++) {
-		for (int j = i+1; j < hullVerticesPadded.size(); j++) {
-			float dist = (hullVerticesPadded[i] - hullVerticesPadded[j]).len();
-			if (dist < min) {
-				min = dist;
-			}
+    std::vector<Float3> uniquePrunedHullVertices;
+    for (const auto& facet : paddedCH.GetFacets()) {
+        for (int i = 0; i < 3; i++) {
+
+            if (std::count(uniquePrunedHullVertices.begin(), uniquePrunedHullVertices.end(), facet.vertices[i]) == 0)
+                uniquePrunedHullVertices.emplace_back(facet.vertices[i]);
 		}
 	}
 
+    convexHull = ConvexHull(std::vector<Float3>(uniquePrunedHullVertices.begin(), uniquePrunedHullVertices.end()));
 
-    convexHull = ConvexHull(hullVerticesPadded);
-    
+    int a = 0;
 }
 
 

@@ -296,28 +296,26 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 		std::vector<Float3> allPoints = sameVertices;
 		allPoints.insert(allPoints.end(), movedVertices.begin(), movedVertices.end());
 
-		Float3 centroidApproximation = BoundingBox(allPoints).Center();
+		//Float3 centroidApproximation = BoundingBox(allPoints).Center();
+		Float3 centroidApproximation = Statistics::CalculateMinimaxPoint(allPoints);
+
 
 		TimeIt timer{};
-		while (true) {
-			d.checkWindowStatus();
-			d.Render({}, std::nullopt, true, FACES, sameVertices, Float3{ 1, 1,1 }, boxsize, true, false);
-			d.Render({}, std::nullopt, true, FACES, removedVertices, Float3{ 1, 0, 0 }, boxsize, false, false);
-			d.Render({}, std::nullopt, true, FACES, { centroidApproximation }, Float3{0, 0, 1}, boxsize, false, false);
 
-			d.Render(ch1.GetFacets(), std::nullopt, false, EDGES, {}, std::nullopt, boxsize, false, false);
-			d.Render(ch2.GetFacets(), std::nullopt, false, EDGES, {}, std::nullopt, boxsize, false, false);
+		std::vector<FacetTask> facetTasks{
+			{ ch1.GetFacets(), std::nullopt, false, EDGES },
+			{ ch2.GetFacets(), std::nullopt, false, EDGES },
+			{ {clippingPlane}, std::nullopt, true, FACES }
+		};
 
-			d.Render({ clippingPlane }, std::nullopt, true, FACES, movedVertices, Float3{ 0, 1, 0 }, boxsize, false, true);
-			if (d.debugValue == 1) {
-				d.debugValue = 0;
-				break;
-			}
-	/*		if (timer.elapsedMilliseconds() > 100) {
-				break;
-			}*/
-		}
+		std::vector<PointsTask> pointsTasks{
+			{ sameVertices, Float3{ 1, 1,1 } },
+			{ movedVertices, Float3{ 0, 1, 0 } },
+			{ removedVertices, Float3{ 1, 0, 0 } },
+			{ {centroidApproximation}, Float3{0, 0, 1} }
+		};
 
+		d.RenderLoop(facetTasks, pointsTasks, boxsize, std::chrono::milliseconds(100));
 
 		clippedFacets = newFacets;
 	}
@@ -385,13 +383,10 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	Display d(Full);
 
-	while (true) {
-		d.checkWindowStatus();
-		d.Render(mhCol, grofile.box_size);
-	}
-
+	//Display d(Full);
+	//d.RenderLoop(mhCol, grofile.box_size);
+	
 
 	MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
 

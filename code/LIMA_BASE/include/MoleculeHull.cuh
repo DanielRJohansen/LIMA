@@ -53,11 +53,12 @@ class ConvexHull {
 		throw std::runtime_error("Vertex not found");
 	}
 
-	void CullSmallTriangles();
 
 public:
 	ConvexHull() {}
 	ConvexHull(const std::vector<Float3>& points);
+
+	void CullSmallTriangles();
 
 	Float3 CenterOfMass() const {
 		Float3 sum{};

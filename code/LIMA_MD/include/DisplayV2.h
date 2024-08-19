@@ -18,6 +18,31 @@ class DrawNormalsShader;
 
 class GLFWwindow;
 
+class FPS {
+	std::array<std::chrono::high_resolution_clock::time_point, 20> prevTimepoints;
+	int head = 0;
+public:
+	FPS();
+	void NewFrame();
+	int GetFps() const;
+};
+
+
+struct FacetTask {
+	std::vector<Facet> facets;
+	std::optional<Float3> facetsColor;
+	bool drawFacetNormals;
+	FacetDrawMode facetDrawMode;
+};
+
+struct PointsTask {
+	std::vector<Float3> points;
+	std::optional<Float3> pointsColor;
+};
+
+
+
+
 class Display {
 public:
 	Display(EnvMode);
@@ -25,12 +50,11 @@ public:
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
-	void Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
+	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
 	// This is meant as a debugging tool
-	void Render(const std::vector<Facet>& facets, std::optional<Float3> facetsColor, bool drawFacetNormals, FacetDrawMode,
-		const std::vector<Float3>& points, std::optional<Float3> pointsColor,
-		Float3 boxSize, bool flushGLBuffer, bool swapGLBuffers);
+	void RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsTask>& pointsTasks, 
+		Float3 boxSize,	std::optional<std::chrono::milliseconds> duration);
 
 	bool checkWindowStatus();		// Returns false if the windows should close
 
@@ -42,6 +66,17 @@ private:
 	bool initGLFW();
 
 	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
+
+
+	// Interfacing
+	bool isDragging = false;
+	double lastX = 0.0, lastY = 0.0;
+	void OnMouseMove(double xpos, double ypos);
+	void OnMouseButton(int button, int action, int mods);
+	void OnMouseScroll(double xoffset, double yoffset);
+
+	FPS fps{};
+
 
 
 

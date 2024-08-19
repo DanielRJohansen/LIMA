@@ -13,5 +13,5 @@ namespace Statistics {
 
     float calculateR2(const std::vector<float>& x, const std::vector<float>& y, float slope, float intercept);
 
-
+    Float3 CalculateMinimaxPoint(const std::span<Float3>& data);
 }

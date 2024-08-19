@@ -26,15 +26,34 @@ struct Facet {
 };
 static_assert(sizeof(Facet) % 16 == 0);
 
+
+struct Facet2 {
+	std::array<int,3> verticesIds;
+	Float3 normal;
+};
+
 class ConvexHull {
 	std::vector<Float3> vertices;	// [nm] Only used to determine CoM
-	std::vector<Facet> facets;
+	//std::vector<Facet> facets;
+
+	std::vector<Facet2> facets;
 
 	void Add(const Float3& vertex) {
 		if (std::count(vertices.begin(), vertices.end(), vertex) == 0) {
 			vertices.emplace_back(vertex);
 		}
 	}
+
+	int getIndex(const Float3& vertex) const {
+		for (int i = 0; i < vertices.size(); i++) {
+			if (vertices[i] == vertex) {
+				return i;
+			}
+		}
+		throw std::runtime_error("Vertex not found");
+	}
+
+	void CullSmallTriangles();
 
 public:
 	ConvexHull() {}
@@ -48,15 +67,38 @@ public:
 		return sum / static_cast<float>(vertices.size() * 3);
 	}
 
-	const std::vector<Facet>& GetFacets() const { return facets; }
+	//const std::vector<Facet>& GetFacets() const { return facets; }
+	const std::vector<Facet> GetFacets() const { 
+		std::vector<Facet> facets2;
+		for (const auto& f : facets) {
+			Facet newFacet;
+			for (int i = 0; i < 3; i++) {
+				newFacet.vertices[i] = vertices[f.verticesIds[i]];
+			}
+			newFacet.normal = f.normal;
+			newFacet.D = newFacet.normal.dot(newFacet.vertices[0]);
+			facets2.emplace_back(newFacet);
+		}
+		return facets2;
+	}
+
+
 	const std::vector<Float3>& GetVertices() const { return vertices; }
 
 	void Add(const Facet& plane) {
 
-		facets.emplace_back(plane);
-		for (const auto& v : plane.vertices) {
-			Add(v);
+		Facet2 newFacet;
+		for (int i = 0; i < 3; i++) {
+			Add(plane.vertices[i]);
+			newFacet.verticesIds[i] = getIndex(plane.vertices[i]);
 		}
+		newFacet.normal = plane.normal;
+
+		facets.emplace_back(newFacet);
+		//facets.emplace_back(plane);
+	/*	for (const auto& v : plane.vertices) {
+			Add(v);
+		}*/
 	}
 };
 

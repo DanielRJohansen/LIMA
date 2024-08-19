@@ -24,6 +24,11 @@ public:
 		return GetTiming();
 	}
 
+	long long elapsedMilliseconds() const {
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		return std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - start).count();
+	}
+
 	~TimeIt() {
 		if (!manuallyStopped) {
 			end = std::chrono::high_resolution_clock::now();

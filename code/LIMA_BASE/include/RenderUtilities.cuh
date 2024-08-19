@@ -42,7 +42,7 @@ namespace RenderUtilities {
         case ATOM_TYPE::O:
             return float4{ 0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 1.0f };
         case ATOM_TYPE::C:
-            return float4{ 0x30 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 1.0f };
+            return float4{ 0x20 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 1.0f };
         case ATOM_TYPE::P:
             return float4{ 0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 1.0f };
         case ATOM_TYPE::N:

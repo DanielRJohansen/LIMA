@@ -105,6 +105,42 @@ Display::~Display() {
     glfwTerminate();
 }
 
+struct Circle {
+    float2 center;
+    float radius;
+    float4 color; 
+};
+
+// Function to draw circles
+void DrawBackgroundCircles() {
+    Float3 baseColor{ 0x0e / 255.f, 0x1e / 255.f, 0x42 / 255.f };
+    baseColor = baseColor * 0.89f;
+    float2 center{ -1.f, 0.9f };
+
+
+    glDisable(GL_DEPTH_TEST);  // Disable depth testing
+    for (int i = 0; i < 5; i++) {
+        Float3 color = baseColor * static_cast<float>(i) / 5.f;
+        float4 colorf4 = color.Tofloat4(1.f);
+        const float radius = 2.9f - 0.5f * static_cast<float>(i);
+        glColor4f(colorf4.x, colorf4.y, colorf4.z, colorf4.w); // Set color
+
+        glBegin(GL_TRIANGLE_FAN); // Use GL_TRIANGLE_FAN for circle drawing
+        glVertex2f(center.x, center.y); // Center vertex
+
+        int numSegments = 100; // Adjust for smoothness
+        for (int i = 0; i <= numSegments; ++i) {
+            float angle = 2.0f * PI * i / numSegments;
+            float x = radius * cosf(angle) + center.x;
+            float y = radius * sinf(angle) + center.y;
+            glVertex2f(x, y);
+        }
+
+        glEnd();
+    }
+    glEnable(GL_DEPTH_TEST);  // Disable depth testing
+}
+
 
 void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -134,6 +170,8 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+
+    //DrawBackgroundCircles();
 
     const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
     drawBoxOutlineShader->Draw(MVP);

@@ -25,11 +25,145 @@ Facet ConvertFacet(const orgQhull::QhullFacet& f) {
 
     facet.normal = Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
     
+
+    const Float3 expectedNormal = (facet.vertices[1] - facet.vertices[0]).cross(facet.vertices[2] - facet.vertices[0]).norm();
+    if (expectedNormal.dot(facet.normal) < 0.f) {
+        std::swap(facet.vertices[1], facet.vertices[2]);
+    }
+
+
     facet.D = facet.normal.dot(facet.vertices[0]);
 
 	return facet;
 }
 
+
+
+class VertexMapping {
+    std::vector<int> map;
+
+public:
+    VertexMapping(int nVertices) : map(nVertices) {
+        for (int i = 0; i < nVertices; i++) {
+            map[i] = i;
+        }
+    }
+
+    void Add(int from, int to) {
+        map[from] = to;
+    }
+
+    int Get(int from) {
+        int prev = from;
+        while (true) {
+            if (map[prev] == prev) {
+                return prev;
+            }
+            prev = map[prev];
+        }
+    }  
+
+    bool MapsToSelf(int from) {
+        return map[from] == from;
+    }
+};
+
+
+void ConvexHull::CullSmallTriangles() {
+
+
+    for (auto& facet : facets) {
+        Float3 expecetedNormal = (vertices[facet.verticesIds[1]] - vertices[facet.verticesIds[0]]).cross(vertices[facet.verticesIds[2]] - vertices[facet.verticesIds[0]]).norm();
+        if (expecetedNormal.dot(facet.normal) < .9f) {
+			throw std::runtime_error("A facet's normal changed too much during optimization");
+		}
+    }
+
+    std::vector<bool> facetMarkedForDeletion(facets.size(), false);
+    VertexMapping vertexMapping(vertices.size());
+
+
+    for (int facetId = 0; facetId < facets.size(); facetId++) {
+        Facet2& facet = facets[facetId];
+
+        // If > 0 of the facets vertices are moved, we update the facet, but do no further work
+        //if (vertexMarkedForDeletion[facet.verticesIds[0]] || vertexMarkedForDeletion[facet.verticesIds[1]] || vertexMarkedForDeletion[facet.verticesIds[2]]) 
+        if (!vertexMapping.MapsToSelf(facet.verticesIds[0]) || !vertexMapping.MapsToSelf(facet.verticesIds[1]) || !vertexMapping.MapsToSelf(facet.verticesIds[2]))            
+        {
+            facet.verticesIds[0] = vertexMapping.Get(facet.verticesIds[0]);
+            facet.verticesIds[1] = vertexMapping.Get(facet.verticesIds[1]);
+            facet.verticesIds[2] = vertexMapping.Get(facet.verticesIds[2]);
+            continue;
+        }
+
+
+	    const float maxEdgeLen = std::max(std::max(
+            (vertices[facet.verticesIds[0]] - vertices[facet.verticesIds[1]]).len(), 
+            (vertices[facet.verticesIds[1]] - vertices[facet.verticesIds[2]]).len()), 
+            (vertices[facet.verticesIds[2]] - vertices[facet.verticesIds[0]]).len());
+
+        // Face is tiny. Delete V1 and and V2. V0 is moved to the center of the facet. V1 and V2 points to V0
+        if (maxEdgeLen < 0.3f) {
+            facetMarkedForDeletion[facetId] = true;
+
+            vertices[facet.verticesIds[0]] = (vertices[facet.verticesIds[0]] + vertices[facet.verticesIds[1]] + vertices[facet.verticesIds[2]]) / 3.f;
+            
+            vertexMapping.Add(facet.verticesIds[1], facet.verticesIds[0]);
+            vertexMapping.Add(facet.verticesIds[2], facet.verticesIds[0]);
+
+            continue;
+		}
+
+        for (int i = 0; i < 3; i++) {
+            int v1 = facet.verticesIds[i];
+            int v2 = facet.verticesIds[(i + 1) % 3];
+
+            if ((vertices[v1] - vertices[v2]).len() < 0.3f) {
+                facetMarkedForDeletion[facetId] = true;
+                vertices[v1] = (vertices[v1] + vertices[v2]) / 2.f;
+                vertexMapping.Add(v2, v1);
+                break;
+            }
+        }
+
+
+	}
+
+
+    // Finally go through all facets again and update the vertices
+    for (auto& facet : facets) {
+        facet.verticesIds[0] = vertexMapping.Get(facet.verticesIds[0]);
+        facet.verticesIds[1] = vertexMapping.Get(facet.verticesIds[1]);
+        facet.verticesIds[2] = vertexMapping.Get(facet.verticesIds[2]);
+
+        Float3 newNormal = (vertices[facet.verticesIds[1]] - vertices[facet.verticesIds[0]]).cross(vertices[facet.verticesIds[2]] - vertices[facet.verticesIds[0]]).norm();
+        if (newNormal.dot(facet.normal) < 0.f) {
+            //throw std::runtime_error("A facet's normal changed too much during optimization");
+        }
+        facet.normal = newNormal;
+    }
+
+
+
+
+
+
+    std::vector<Facet2> compressedFacets;
+    for (int i = 0; i < facets.size(); i++) {
+        if (!facetMarkedForDeletion[i]) {
+            compressedFacets.push_back(facets[i]);          
+        }
+    }
+
+
+    facets = compressedFacets;
+}
+
+
+
+
+// TODO: If we receive a set of points from the same molecule as we have seen here before, just with a new rotation and translation, 
+// we should be able to reuse the old convex hull, simply by applying the old rotation+translation as used before
 
 ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     constexpr size_t dim = 3;
@@ -54,6 +188,10 @@ ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     if (vertices.size() != 2 + facets.size() / 2) {
         throw std::runtime_error("ConvexHull algo failed - resulted structure is not convex (generally due to precision errors)");
     }
+
+    //for (int i = 0; i < 2; i++)
+        CullSmallTriangles();
+
 }
 
 

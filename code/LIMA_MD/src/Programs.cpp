@@ -298,7 +298,7 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 
 		Float3 centroidApproximation = BoundingBox(allPoints).Center();
 
-
+		TimeIt timer{};
 		while (true) {
 			d.checkWindowStatus();
 			d.Render({}, std::nullopt, true, FACES, sameVertices, Float3{ 1, 1,1 }, boxsize, true, false);
@@ -313,12 +313,13 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 				d.debugValue = 0;
 				break;
 			}
+	/*		if (timer.elapsedMilliseconds() > 100) {
+				break;
+			}*/
 		}
 
 
 		clippedFacets = newFacets;
-
-
 	}
 
 	std::vector<Float3> vertices;
@@ -373,7 +374,6 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 
 	for (const auto& molecule : topfile.GetAllSubMolecules()) {
 		moleculeContainers.push_back({});
-	
 
 		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
 			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
@@ -385,15 +385,17 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
+	Display d(Full);
+
+	while (true) {
+		d.checkWindowStatus();
+		d.Render(mhCol, grofile.box_size);
+	}
+
 
 	MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
 
-	//Display d(Full);
 
-	//while (true) {
-	//	d.checkWindowStatus();
-	//	d.Render(mhCol, grofile.box_size);
-	//}
 
 
 }

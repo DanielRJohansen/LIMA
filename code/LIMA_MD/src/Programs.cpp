@@ -7,6 +7,11 @@
 #include "Forcefield.h"
 #include "Statistics.h"
 
+#include <glm.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <gtx/rotate_vector.hpp>
+#undef GLM_ENABLE_EXPERIMENTAL
+
 namespace lfs = Filehandler;
 
 MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& lipidselection, bool carryout_em, float centerCoordinate, bool writeFiles) {
@@ -219,21 +224,17 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 
 
-
-
-
-
-
-
-std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2, Float3 boxsize, Display& d) {
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1, MoleculeHull& mh2, Facet* facets) {
 
 	std::vector<std::array<Float3, 3>> clippedFacets;
-	for (const auto& facet : ch2.GetFacets()) {
-		clippedFacets.push_back(facet.vertices);
+	for (int facetId = mh2.indexOfFirstFacetInBuffer; facetId < mh2.indexOfFirstFacetInBuffer + mh2.nFacets; facetId++) {
+		clippedFacets.push_back(facets[facetId].vertices);
 	}
 
-	for (const auto& clippingFacet : ch1.GetFacets()) {
 
+	for (int clippingFacetId = mh1.indexOfFirstFacetInBuffer; clippingFacetId < mh1.indexOfFirstFacetInBuffer + mh1.nFacets; clippingFacetId++) {
+	//for (const auto& clippingFacet : ch1.GetSelfcontainedFacets()) {
+		const auto clippingFacet = facets[clippingFacetId];
 		std::vector<std::array<Float3, 3>> newFacets;
 
 		std::vector<Float3> sameVertices;
@@ -280,32 +281,6 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 			newFacets.push_back(clippedFacet);
 		}
 
-
-
-
-		std::vector<Float3> allPoints = sameVertices;
-		allPoints.insert(allPoints.end(), movedVertices.begin(), movedVertices.end());
-
-		Float3 centroidApproximation = Statistics::CalculateMinimaxPoint(allPoints);
-
-
-		TimeIt timer{};
-
-		std::vector<FacetTask> facetTasks{
-			{ ch1.GetFacets(), std::nullopt, false, EDGES },
-			{ ch2.GetFacets(), std::nullopt, false, EDGES },
-			{ {clippingFacet}, std::nullopt, true, FACES }
-		};
-
-		std::vector<PointsTask> pointsTasks{
-			{ sameVertices, Float3{ 1, 1,1 } },
-			{ movedVertices, Float3{ 0, 1, 0 } },
-			{ removedVertices, Float3{ 1, 0, 0 } },
-			{ {centroidApproximation}, Float3{0, 0, 1} }
-		};
-
-		d.RenderLoop(facetTasks, pointsTasks, boxsize, std::chrono::milliseconds(10));
-
 		clippedFacets = newFacets;
 	}
 
@@ -318,10 +293,9 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 	return vertices;
 }
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm.hpp>
-#include <gtx/rotate_vector.hpp>
-#undef GLM_ENABLE_EXPERIMENTAL
+
+
+
 
 glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
 	const glm::vec3& forceApplicationPoint,
@@ -353,40 +327,43 @@ glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
 }
 
 
+void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
+	Display d(Full);
+
+	d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
+
+	Facet* facets = new Facet[mhCol.nFacets];
+	RenderAtom* atoms = new RenderAtom[mhCol.nParticles];
+	MoleculeHull* moleculeHulls = new MoleculeHull[mhCol.nMoleculeHulls];
 
 
-void MoveMoleculesUntillNoOverlap(std::vector<MoleculeHullFactory>& moleculeContainers, Float3 boxSize) {
+	cudaMemcpy(facets, mhCol.facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
+	cudaMemcpy(atoms, mhCol.particles, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyDeviceToHost);
+	cudaMemcpy(moleculeHulls, mhCol.moleculeHulls, mhCol.nMoleculeHulls * sizeof(MoleculeHull), cudaMemcpyDeviceToHost);
 
-	std::vector<ConvexHull> intersectingHulls;
 
-	bool finished = false;
-
-	Display d{ Full };
-
-	while (!finished) {
+	while (true) {
 
 		bool anyIntersecting = false;
 
-		for (int i = 0; i < moleculeContainers.size(); i++) {
-			const Float3 leftCenter = Statistics::CalculateMinimaxPoint(moleculeContainers[i].convexHull.GetVertices());
-
-			for (int j = i + 1; j < moleculeContainers.size(); j++) {
-				const Float3 rightCenter = Statistics::CalculateMinimaxPoint(moleculeContainers[j].convexHull.GetVertices());
+		for (int i = 0; i < mhCol.nMoleculeHulls; i++) {
+			const Float3 leftCenter = Statistics::CalculateMinimaxPoint(moleculeHulls[i].GetFacetVertices(facets));
+			const float leftRadius = LAL::LargestDiff(leftCenter, moleculeHulls[i].GetFacetVertices(facets));
 
 
-				std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull, boxSize, d);
+			for (int j = i + 1; j < mhCol.nMoleculeHulls; j++) {
+				const Float3 rightCenter = Statistics::CalculateMinimaxPoint(moleculeHulls[j].GetFacetVertices(facets));
+				const float rightRadius = LAL::LargestDiff(rightCenter, moleculeHulls[j].GetFacetVertices(facets));
 
-				
+				if ( (leftCenter - rightCenter).len() > leftRadius + rightRadius)
+					continue;
 
-
+				std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeHulls[i], moleculeHulls[j], facets);
 
 				if (intersectingPolygonVertices.size() >= 4) {
-					Float3 intersectionCenter = Statistics::CalculateMinimaxPoint(intersectingPolygonVertices);
+					Float3 intersectionCenter = Statistics::CalculateMinimaxPoint(intersectingPolygonVertices);					
 
-					float depth = 0.f;
-					for (const auto& vertex : intersectingPolygonVertices) {
-						depth = std::max(depth, (vertex - intersectionCenter).len());
-					}
+					const float depth = LAL::LargestDiff(intersectionCenter, intersectingPolygonVertices);
 
 					if (depth < 0.01f)
 						continue;
@@ -394,28 +371,42 @@ void MoveMoleculesUntillNoOverlap(std::vector<MoleculeHullFactory>& moleculeCont
 
 					anyIntersecting = true;
 
-					const glm::mat4 leftTransformMatrix = computeTransformationMatrix(leftCenter.ToVec3(), intersectionCenter.ToVec3(), (leftCenter - rightCenter).norm().ToVec3(), depth * 0.1f);
-					const glm::mat4 rightTransformMatrix = computeTransformationMatrix(rightCenter.ToVec3(), intersectionCenter.ToVec3(), (rightCenter - leftCenter).norm().ToVec3(), depth * 0.1f);
+					const glm::mat4 leftTransformMatrix = computeTransformationMatrix(leftCenter.ToVec3(), intersectionCenter.ToVec3(), (leftCenter - rightCenter).norm().ToVec3(), depth * 0.05f);
+					const glm::mat4 rightTransformMatrix = computeTransformationMatrix(rightCenter.ToVec3(), intersectionCenter.ToVec3(), (rightCenter - leftCenter).norm().ToVec3(), depth * 0.05f);
 
-
-					moleculeContainers[i].ApplyTransformation(leftTransformMatrix);
-					moleculeContainers[j].ApplyTransformation(rightTransformMatrix);
+					moleculeHulls[i].ApplyTransformation(leftTransformMatrix, facets, atoms, boxSize);
+					moleculeHulls[j].ApplyTransformation(rightTransformMatrix, facets, atoms, boxSize);
 
 				}
 				else if (intersectingPolygonVertices.size() == 0) {
 					// Do nothing, the CH's did not intersect
 				}
 				else {
-					throw std::runtime_error("This is not a valid hull, something went wrong");
+					// I believe this is the edge case where faces of 2 CH overlap precisely
+					//throw std::runtime_error("This is not a valid hull, something went wrong");
 				};
 			}
 		}
 
-		//d.RenderLoop()
+		cudaMemcpy(mhCol.facets, facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyHostToDevice);
+		cudaMemcpy(mhCol.particles, atoms, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyHostToDevice);
+
+		d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
+
 		if (!anyIntersecting)
 			break;
 	}
+
+
+	d.RenderLoop(mhCol, boxSize, std::nullopt);
+
+
 }
+
+
+
+
+
 
 
 void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
@@ -423,7 +414,7 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
 		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
 		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
-		2);
+		100);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
 
@@ -441,13 +432,11 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
 
-	//Display d(Full);
-	//d.RenderLoop(mhCol, grofile.box_size);
+
 	
 
-	MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
-
-
+	//MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
+	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
 
 
 }

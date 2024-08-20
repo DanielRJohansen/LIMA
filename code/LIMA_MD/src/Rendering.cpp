@@ -86,18 +86,17 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
 
 
 
-void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize) {
+void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, std::optional<std::chrono::milliseconds> duration) {
     if (!drawBoxOutlineShader)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
     if (!drawTrianglesShader)
         drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
-    if (!drawAtomsShader)
+    if (!drawAtomsShader || drawAtomsShader->numAtomsReservedInRenderatomsBuffer < molCollection.nParticles)
         drawAtomsShader = std::make_unique<DrawAtomsShader>(molCollection.nParticles, &renderAtomsBufferCudaResource);
 
-
-
+    TimeIt timer{};
 
     while (true) {
 
@@ -109,6 +108,8 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
             break;
         }
 
+        if (duration.has_value() && timer.elapsed() > duration)
+            break;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -121,7 +122,7 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
             cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
             size_t num_bytes = 0;
             cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-            assert(num_bytes == molCollection.nParticles * sizeof(RenderAtom));
+            assert(num_bytes >= molCollection.nParticles * sizeof(RenderAtom));
 
             cudaMemcpy(renderAtomsBuffer, molCollection.particles, sizeof(RenderAtom) * molCollection.nParticles, cudaMemcpyDeviceToDevice);
 
@@ -131,7 +132,7 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
 
         drawAtomsShader->Draw(MVP, molCollection.nParticles);
 
-        drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::FACES, boxSize);
+        drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
 
 
         // Swap front and back buffers
@@ -179,7 +180,7 @@ void Display::RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsT
     for (const auto& task : pointsTasks)
 		maxPoints = std::max(maxPoints, (int)task.points.size());
 
-    if (!drawAtomsShader || drawAtomsShader->numAtoms < maxPoints)
+    if (!drawAtomsShader || drawAtomsShader->numAtomsReservedInRenderatomsBuffer < maxPoints)
         drawAtomsShader = std::make_unique<DrawAtomsShader>(maxPoints, &renderAtomsBufferCudaResource);
 
     if (!drawNormalsShader)

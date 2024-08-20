@@ -23,6 +23,8 @@ struct Facet {
 	};
 	void invert() { normal *= -1.f; }
 	float distance(Float3 point) const { return normal.dot(point) - D; }
+
+	void ApplyTransformation(const glm::mat4& mat);
 };
 static_assert(sizeof(Facet) % 16 == 0);
 
@@ -67,7 +69,7 @@ public:
 	}
 
 	//const std::vector<Facet>& GetFacets() const { return facets; }
-	const std::vector<Facet> GetFacets() const { 
+	const std::vector<Facet> GetSelfcontainedFacets() const { 
 		std::vector<Facet> facets2;
 		for (const auto& f : facets) {
 			Facet newFacet;
@@ -80,6 +82,8 @@ public:
 		}
 		return facets2;
 	}
+
+	const std::vector<Facet2>& GetFacets() const { return facets; }
 
 
 	const std::vector<Float3>& GetVertices() const { return vertices; }
@@ -129,6 +133,22 @@ struct MoleculeHull {
 	int nFacets = -1;
 	int indexOfFirstParticleInBuffer = -1;
 	int nParticles = -1;
+
+	// Temp SLOW function, only for dev
+	std::vector<Float3> GetFacetVertices(const Facet* facetsInCollection) const {
+		std::vector<Float3> vertices;
+		for (int i = 0; i < nFacets; i++) {
+			const Facet& f = facetsInCollection[indexOfFirstFacetInBuffer + i];
+			vertices.emplace_back(f.vertices[0]);
+			vertices.emplace_back(f.vertices[1]);
+			vertices.emplace_back(f.vertices[2]);
+		}
+		return vertices;
+	}
+
+	void ApplyTransformation(const glm::mat4& transformationMatrix, Facet* const facetsInCollection, 
+		RenderAtom* const particlesInCollection, Float3 boxSize);
+
 };
 
 // A collection that stays on ho st, but the buffers are on device

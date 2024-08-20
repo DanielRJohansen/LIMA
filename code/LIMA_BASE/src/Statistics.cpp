@@ -57,12 +57,13 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
     // Initial guess for the new point as the centroid
     Float3 currentPoint = Mean(points);
 
+    float prevVelocity = std::numeric_limits<float>::max();
 
-    while (true) {
+    const int maxIterations = 5;
+    for (int i = 0; i < maxIterations; i++) {
         Float3 downGradient = { 0, 0, 0 };
         float maxDist = 0.0f;
         float secondMaxDist = 0.0f;
-        float prevVelocity = std::numeric_limits<float>::max();
 
         for (const auto& point : points) {
             float dist = (currentPoint-point).len();
@@ -73,7 +74,7 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
             }
         }
 
-        const float velocity = std::min((maxDist - secondMaxDist) / 2.f, prevVelocity);
+        const float velocity = std::min((maxDist - secondMaxDist) / 2.f, prevVelocity * 0.9f);
         prevVelocity = velocity;
 
         currentPoint = currentPoint + downGradient * velocity;

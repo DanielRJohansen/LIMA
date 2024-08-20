@@ -50,7 +50,7 @@ public:
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
-	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize);
+	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, std::optional<std::chrono::milliseconds> duration);
 
 	// This is meant as a debugging tool
 	void RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsTask>& pointsTasks, 

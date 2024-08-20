@@ -393,11 +393,11 @@ class DrawAtomsShader : public Shader {
     GLuint VBO;
     SSBO renderAtomsBuffer{};
 public:
-    const int numAtoms;
+    const int numAtomsReservedInRenderatomsBuffer;
 
     DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCUDA) : 
         Shader(vertexShaderSource, fragmentShaderSource),
-        numAtoms(numAtoms)
+        numAtomsReservedInRenderatomsBuffer(numAtoms)
     {
 
     // Generate and bind VBO
@@ -433,7 +433,7 @@ public:
 
         // If we call this shader multiple times it doesnt matter if the following times has less atoms, but we currently have
         // not implemented to ability to increase the buffer size
-        if (nAtoms > numAtoms) {
+        if (nAtoms > numAtomsReservedInRenderatomsBuffer) {
 			throw std::runtime_error("Number of atoms in DrawAtomsShader::Draw does not match the number of atoms in the constructor. \n\
                 This is likely due to the Renderer being tasked with both rendering compounds and moleculeHulls in the same instance");
 		}
@@ -443,12 +443,12 @@ public:
         renderAtomsBuffer.Bind(0);
 
         SetUniformMat4("MVP", MVP);
-        SetUniformI("numAtoms", numAtoms);
+        SetUniformI("numAtoms", nAtoms);
 
         const int numVerticesPerAtom = 12;
 		SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
         
-        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, numAtoms);
+        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, nAtoms);
 
         glBindVertexArray(0);
         glUseProgram(0);

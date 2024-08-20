@@ -222,7 +222,7 @@ void MoleculeHullFactory::CreateConvexHull() {
 
 
     std::vector<Float3> uniquePrunedHullVertices;
-    for (const auto& facet : paddedCH.GetFacets()) {
+    for (const auto& facet : paddedCH.GetSelfcontainedFacets()) {
         for (int i = 0; i < 3; i++) {
             if (std::count(uniquePrunedHullVertices.begin(), uniquePrunedHullVertices.end(), facet.vertices[i]) == 0)
                 uniquePrunedHullVertices.emplace_back(facet.vertices[i]);
@@ -235,6 +235,15 @@ void MoleculeHullFactory::CreateConvexHull() {
 }
 
 
+
+void Facet::ApplyTransformation(const glm::mat4& transformationMatrix) {
+	for (int i = 0; i < 3; i++) {
+		const glm::vec4 transformedVertex = transformationMatrix * glm::vec4{ vertices[i].x, vertices[i].y, vertices[i].z, 1.f };
+		vertices[i] = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z };
+	}
+	normal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]).norm();
+    D = normal.dot(vertices[0]);
+}
 
 void ConvexHull::ApplyTransformation(const glm::mat4& transformationMatrix) {
     for (Float3& v : vertices) {
@@ -257,7 +266,23 @@ void MoleculeHullFactory::ApplyTransformation(const glm::mat4& transformationMat
 }
 
 
+void MoleculeHull::ApplyTransformation(const glm::mat4& transformationMatrix, Facet* const facetsInCollection, RenderAtom* const particlesInCollection, Float3 boxSize) {
+    for (int facetId = indexOfFirstFacetInBuffer; facetId < indexOfFirstFacetInBuffer + nFacets; facetId++) {
+		facetsInCollection[facetId].ApplyTransformation(transformationMatrix);
+	}
 
+    for (int particleId = indexOfFirstParticleInBuffer; particleId < indexOfFirstParticleInBuffer + nParticles; particleId++) {
+        const Float3 screenNormalizedPosition = Float3{ particlesInCollection[particleId].position.x, particlesInCollection[particleId].position.y, particlesInCollection[particleId].position.z };
+        const Float3 unNormalizedPosition = (screenNormalizedPosition + 0.5f) * boxSize;
+
+        const glm::vec4 transformedVertex = transformationMatrix * glm::vec4{ unNormalizedPosition.x, unNormalizedPosition.y, unNormalizedPosition.z, 1.f };
+
+        Float3 normalizedTransformedPosition = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z} / boxSize - 0.5f;
+
+        particlesInCollection[particleId].position = normalizedTransformedPosition.Tofloat4(particlesInCollection[particleId].position.w);
+    }
+
+}
 
 
 
@@ -293,21 +318,19 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
 
     for (int i = 0; i < molecules.size(); i++) {
         for (int j = 0; j < molecules[i].convexHull.GetFacets().size(); j++) {
-            facetsHost[hullFacetcountPrefixsum[i] + j] = molecules[i].convexHull.GetFacets()[j];
+            facetsHost[hullFacetcountPrefixsum[i] + j] = molecules[i].convexHull.GetSelfcontainedFacets()[j];
         }
         for (int j = 0; j < molecules[i].GetParticles().size(); j++) {
             particlesHost[hullParticlecountPrefixsum[i] + j] = RenderAtom{ molecules[i].GetParticles()[j] , boxSize, molecules[i].GetAtomLetters()[j] };
 		}
     }
 
-    //cudaMalloc(&facets, sizeof(Facet) * facetsHost.size());
-    //cudaMemcpy(facets, facetsHost.data(), sizeof(Facet) * facetsHost.size(), cudaMemcpyHostToDevice);
-    //cudaMalloc(&particles, sizeof(RenderAtom) * particlesHost.size());
-    //cudaMemcpy(particles, particlesHost.data(), sizeof(RenderAtom) * particlesHost.size(), cudaMemcpyHostToDevice);
-    //cudaMalloc(&moleculeHulls, sizeof(MoleculeHull) * moleculehullsHost.size());
-    //cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
-
-    //facets = new F
+    cudaMalloc(&facets, sizeof(Facet) * facetsHost.size());
+    cudaMemcpy(facets, facetsHost.data(), sizeof(Facet) * facetsHost.size(), cudaMemcpyHostToDevice);
+    cudaMalloc(&particles, sizeof(RenderAtom) * particlesHost.size());
+    cudaMemcpy(particles, particlesHost.data(), sizeof(RenderAtom) * particlesHost.size(), cudaMemcpyHostToDevice);
+    cudaMalloc(&moleculeHulls, sizeof(MoleculeHull) * moleculehullsHost.size());
+    cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
 }
 
 

@@ -225,10 +225,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 
 
-std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2, Float3 boxsize) {
-
-	Display d{ Full };
-
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull& ch1, const ConvexHull& ch2, Float3 boxsize, Display& d) {
 
 	std::vector<std::array<Float3, 3>> clippedFacets;
 	for (const auto& facet : ch2.GetFacets()) {
@@ -285,18 +282,10 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 
 
 
-		Facet clippingPlane = clippingFacet;
-		//Float3 centroid = (clippingFacet.vertices[0] + clippingFacet.vertices[1] + clippingFacet.vertices[2]) / 3.0f;
-		//for (auto& vertex : clippingPlane.vertices) {
-		//	Float3 direction = vertex - centroid; // Vector from centroid to vertex
-		//	vertex = centroid + (direction * 1.f); // Move the vertex outwards
-		//}
-
 
 		std::vector<Float3> allPoints = sameVertices;
 		allPoints.insert(allPoints.end(), movedVertices.begin(), movedVertices.end());
 
-		//Float3 centroidApproximation = BoundingBox(allPoints).Center();
 		Float3 centroidApproximation = Statistics::CalculateMinimaxPoint(allPoints);
 
 
@@ -305,7 +294,7 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 		std::vector<FacetTask> facetTasks{
 			{ ch1.GetFacets(), std::nullopt, false, EDGES },
 			{ ch2.GetFacets(), std::nullopt, false, EDGES },
-			{ {clippingPlane}, std::nullopt, true, FACES }
+			{ {clippingFacet}, std::nullopt, true, FACES }
 		};
 
 		std::vector<PointsTask> pointsTasks{
@@ -315,7 +304,7 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 			{ {centroidApproximation}, Float3{0, 0, 1} }
 		};
 
-		d.RenderLoop(facetTasks, pointsTasks, boxsize, std::chrono::milliseconds(100));
+		d.RenderLoop(facetTasks, pointsTasks, boxsize, std::chrono::milliseconds(10));
 
 		clippedFacets = newFacets;
 	}
@@ -329,35 +318,103 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(const ConvexHull&
 	return vertices;
 }
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm.hpp>
+#include <gtx/rotate_vector.hpp>
+#undef GLM_ENABLE_EXPERIMENTAL
+
+glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
+	const glm::vec3& forceApplicationPoint,
+	const glm::vec3& forceDirection,
+	float forceMagnitude) {
+
+
+	// Step 2: Compute the torque axis (cross product between the force direction and the vector from pivot to application point)
+	glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
+	torqueAxis = glm::normalize(torqueAxis);
+
+	// Step 3: Determine the rotation angle based on the force magnitude
+	float rotationAngle = forceMagnitude;  // Scale this based on your needs
+
+	// Step 4: Create the rotation matrix
+	glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, torqueAxis);
+
+	// Step 5: Create the translation matrix to move the object to and from the pivot point
+	glm::mat4 translationMatrixToPivot = glm::translate(glm::mat4(1.0f), -rotationPivotPoint);
+	glm::mat4 translationMatrixBack = glm::translate(glm::mat4(1.0f), rotationPivotPoint);
+
+	// Step 6: Compute translation caused by the force
+	glm::vec3 translationVector = forceMagnitude * forceDirection;
+	glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), translationVector);
+	// Step 7: Combine the matrices to get the final transformation matrix
+	glm::mat4 transformationMatrix = translationMatrix * translationMatrixBack * rotationMatrix * translationMatrixToPivot;
+
+	return transformationMatrix;
+}
 
 
 
 
-void MoveMoleculesUntillNoOverlap(const std::vector<MoleculeHullFactory>& moleculeContainers, Float3 boxSize) {
+void MoveMoleculesUntillNoOverlap(std::vector<MoleculeHullFactory>& moleculeContainers, Float3 boxSize) {
 
 	std::vector<ConvexHull> intersectingHulls;
 
+	bool finished = false;
 
-	for (int i = 0; i < moleculeContainers.size(); i++) {
-		for (int j = i + 1; j < moleculeContainers.size(); j++) {
+	Display d{ Full };
 
-			std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull, boxSize);
+	while (!finished) {
+
+		bool anyIntersecting = false;
+
+		for (int i = 0; i < moleculeContainers.size(); i++) {
+			const Float3 leftCenter = Statistics::CalculateMinimaxPoint(moleculeContainers[i].convexHull.GetVertices());
+
+			for (int j = i + 1; j < moleculeContainers.size(); j++) {
+				const Float3 rightCenter = Statistics::CalculateMinimaxPoint(moleculeContainers[j].convexHull.GetVertices());
+
+
+				std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeContainers[i].convexHull, moleculeContainers[j].convexHull, boxSize, d);
+
+				
 
 
 
-			if (intersectingPolygonVertices.size() >= 4) {
-			//	intersectingHulls.push_back(intersect);
+				if (intersectingPolygonVertices.size() >= 4) {
+					Float3 intersectionCenter = Statistics::CalculateMinimaxPoint(intersectingPolygonVertices);
+
+					float depth = 0.f;
+					for (const auto& vertex : intersectingPolygonVertices) {
+						depth = std::max(depth, (vertex - intersectionCenter).len());
+					}
+
+					if (depth < 0.01f)
+						continue;
+
+
+					anyIntersecting = true;
+
+					const glm::mat4 leftTransformMatrix = computeTransformationMatrix(leftCenter.ToVec3(), intersectionCenter.ToVec3(), (leftCenter - rightCenter).norm().ToVec3(), depth * 0.1f);
+					const glm::mat4 rightTransformMatrix = computeTransformationMatrix(rightCenter.ToVec3(), intersectionCenter.ToVec3(), (rightCenter - leftCenter).norm().ToVec3(), depth * 0.1f);
+
+
+					moleculeContainers[i].ApplyTransformation(leftTransformMatrix);
+					moleculeContainers[j].ApplyTransformation(rightTransformMatrix);
+
+				}
+				else if (intersectingPolygonVertices.size() == 0) {
+					// Do nothing, the CH's did not intersect
+				}
+				else {
+					throw std::runtime_error("This is not a valid hull, something went wrong");
+				};
 			}
-			else if (intersectingPolygonVertices.size() == 0) {
-				// Do nothing, the CH's did not intersect
-			}
-			else {
-				throw std::runtime_error("This is not a valid hull, something went wrong");
-			};
-			int a = 0;
 		}
+
+		//d.RenderLoop()
+		if (!anyIntersecting)
+			break;
 	}
-	int a = 0;
 }
 
 

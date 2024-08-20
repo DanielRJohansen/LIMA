@@ -8,32 +8,21 @@
 #include <libqhullcpp/QhullFacetList.h>
 #include <libqhullcpp/QhullVertexSet.h>
 
-Facet ConvertFacet(const orgQhull::QhullFacet& f) {
-	Facet facet;
-	facet.vertices[0].x = f.vertices()[0].point().coordinates()[0];
-	facet.vertices[0].y = f.vertices()[0].point().coordinates()[1];
-	facet.vertices[0].z = f.vertices()[0].point().coordinates()[2];
+std::array<Float3,3> ConvertFacet(const orgQhull::QhullFacet& f) {
+    std::array<Float3,3> vertices;
 
-	facet.vertices[1].x = f.vertices()[1].point().coordinates()[0];
-	facet.vertices[1].y = f.vertices()[1].point().coordinates()[1];
-	facet.vertices[1].z = f.vertices()[1].point().coordinates()[2];
+    vertices[0] = { f.vertices()[0].point().coordinates()[0], f.vertices()[0].point().coordinates()[1], f.vertices()[0].point().coordinates()[2] };
+    vertices[1] = { f.vertices()[1].point().coordinates()[0], f.vertices()[1].point().coordinates()[1], f.vertices()[1].point().coordinates()[2] };
+    vertices[2] = { f.vertices()[2].point().coordinates()[0], f.vertices()[2].point().coordinates()[1], f.vertices()[2].point().coordinates()[2] };
 
-	facet.vertices[2].x = f.vertices()[2].point().coordinates()[0];
-	facet.vertices[2].y = f.vertices()[2].point().coordinates()[1];
-	facet.vertices[2].z = f.vertices()[2].point().coordinates()[2];
+    const Float3 normal{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
 
-    facet.normal = Float3{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
-    
-
-    const Float3 expectedNormal = (facet.vertices[1] - facet.vertices[0]).cross(facet.vertices[2] - facet.vertices[0]).norm();
-    if (expectedNormal.dot(facet.normal) < 0.f) {
-        std::swap(facet.vertices[1], facet.vertices[2]);
+    const Float3 expectedNormal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]).norm();
+    if (expectedNormal.dot(normal) < 0.f) {
+        std::swap(vertices[1], vertices[2]);
     }
 
-
-    facet.D = facet.normal.dot(facet.vertices[0]);
-
-	return facet;
+    return vertices;
 }
 
 
@@ -221,31 +210,6 @@ std::vector<Float3> GenerateSpherePoints(const Float3& origo, float radius, int 
 void MoleculeHullFactory::CreateConvexHull() {
     TimeIt timer{"CH", true};
 
- //   convexHull = ConvexHull(particlePositions);
-
- //   ConvexHull closelyFittingHull{ particlePositions };
-
- //   std::vector<Float3> hullVerticesPadded;
- //   for (const Float3& v : closelyFittingHull.GetVertices()) {
- //       const std::vector<Float3> spherePoints = GenerateSpherePoints(v, .1f, 16);
-
- //       hullVerticesPadded.insert(hullVerticesPadded.end(), spherePoints.begin(), spherePoints.end());
- //   }
-
-
- //   float min = 99999.f;
- //   for(int i = 0; i < hullVerticesPadded.size(); i++) {
-	//	for (int j = i+1; j < hullVerticesPadded.size(); j++) {
-	//		float dist = (hullVerticesPadded[i] - hullVerticesPadded[j]).len();
-	//		if (dist < min) {
-	//			min = dist;
-	//		}
-	//	}
-	//}
- //   convexHull = ConvexHull(hullVerticesPadded);
- //   
-
-	//convexHull.CullSmallTriangles();
 
     // To ensure the atoms are covered including their VDW dist, we pad them first
     std::vector<Float3> paddedPoints;
@@ -260,7 +224,6 @@ void MoleculeHullFactory::CreateConvexHull() {
     std::vector<Float3> uniquePrunedHullVertices;
     for (const auto& facet : paddedCH.GetFacets()) {
         for (int i = 0; i < 3; i++) {
-
             if (std::count(uniquePrunedHullVertices.begin(), uniquePrunedHullVertices.end(), facet.vertices[i]) == 0)
                 uniquePrunedHullVertices.emplace_back(facet.vertices[i]);
 		}
@@ -270,6 +233,36 @@ void MoleculeHullFactory::CreateConvexHull() {
 
     int a = 0;
 }
+
+
+
+void ConvexHull::ApplyTransformation(const glm::mat4& transformationMatrix) {
+    for (Float3& v : vertices) {
+        const glm::vec4 transformedVertex = transformationMatrix * glm::vec4{ v.x, v.y, v.z, 1.f };
+		v = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z };
+	}
+    
+	for (Facet2& f : facets) {
+		f.normal = (vertices[f.verticesIds[1]] - vertices[f.verticesIds[0]]).cross(vertices[f.verticesIds[2]] - vertices[f.verticesIds[0]]).norm();
+	}
+}
+    
+
+void MoleculeHullFactory::ApplyTransformation(const glm::mat4& transformationMatrix) {
+	for (Float3& v : particlePositions) {
+		const glm::vec4 transformedVertex = transformationMatrix * glm::vec4{ v.x, v.y, v.z, 1.f };
+		v = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z };
+	}
+	convexHull.ApplyTransformation(transformationMatrix);
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -307,12 +300,14 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
 		}
     }
 
-    cudaMalloc(&facets, sizeof(Facet) * facetsHost.size());
-    cudaMemcpy(facets, facetsHost.data(), sizeof(Facet) * facetsHost.size(), cudaMemcpyHostToDevice);
-    cudaMalloc(&particles, sizeof(RenderAtom) * particlesHost.size());
-    cudaMemcpy(particles, particlesHost.data(), sizeof(RenderAtom) * particlesHost.size(), cudaMemcpyHostToDevice);
-    cudaMalloc(&moleculeHulls, sizeof(MoleculeHull) * moleculehullsHost.size());
-    cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
+    //cudaMalloc(&facets, sizeof(Facet) * facetsHost.size());
+    //cudaMemcpy(facets, facetsHost.data(), sizeof(Facet) * facetsHost.size(), cudaMemcpyHostToDevice);
+    //cudaMalloc(&particles, sizeof(RenderAtom) * particlesHost.size());
+    //cudaMemcpy(particles, particlesHost.data(), sizeof(RenderAtom) * particlesHost.size(), cudaMemcpyHostToDevice);
+    //cudaMalloc(&moleculeHulls, sizeof(MoleculeHull) * moleculehullsHost.size());
+    //cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
+
+    //facets = new F
 }
 
 

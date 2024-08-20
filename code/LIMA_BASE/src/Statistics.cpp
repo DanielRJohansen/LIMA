@@ -43,7 +43,7 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
     return explainedVar / totalVar;
 }
 
-Float3 Statistics::Mean(const std::span<Float3>& values) {
+Float3 Statistics::Mean(const std::span<const Float3>& values) {
 	Float3 sum = { 0, 0, 0 };
 	for (auto val : values) {
 		sum += val;
@@ -51,7 +51,7 @@ Float3 Statistics::Mean(const std::span<Float3>& values) {
 	return sum / values.size();
 }
 
-Float3 Statistics::CalculateMinimaxPoint(const std::span<Float3>& points) {
+Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) {
     float epsilon = 1e-4;
 
     // Initial guess for the new point as the centroid

@@ -12,7 +12,7 @@
 
 #include <array>
 
-
+#include <glm.hpp>
 
 
 struct Int3 {
@@ -76,6 +76,7 @@ struct Float3 {
 
 	float3 Tofloat3() const { return float3{ x, y, z }; }
 	float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+	glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
 
 	float* begin() { return &x; }
 	const float* begin() const { return &x; }

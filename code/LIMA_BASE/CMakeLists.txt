@@ -24,11 +24,12 @@ target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
     ${CUDAToolkit_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/code/dependencies/
+    ${CMAKE_SOURCE_DIR}/code/dependencies/glm/
+
 )
 
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
   
-
 target_link_libraries(LIMA_BASE 
     LIMA_DEPENDS
 )

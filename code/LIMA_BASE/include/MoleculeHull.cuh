@@ -33,9 +33,7 @@ struct Facet2 {
 };
 
 class ConvexHull {
-	std::vector<Float3> vertices;	// [nm] Only used to determine CoM
-	//std::vector<Facet> facets;
-
+	std::vector<Float3> vertices;	// [nm]
 	std::vector<Facet2> facets;
 
 	void Add(const Float3& vertex) {
@@ -86,21 +84,19 @@ public:
 
 	const std::vector<Float3>& GetVertices() const { return vertices; }
 
-	void Add(const Facet& plane) {
+	void Add(const std::array<Float3, 3>& vertices) {
 
 		Facet2 newFacet;
 		for (int i = 0; i < 3; i++) {
-			Add(plane.vertices[i]);
-			newFacet.verticesIds[i] = getIndex(plane.vertices[i]);
+			Add(vertices[i]);
+			newFacet.verticesIds[i] = getIndex(vertices[i]);
 		}
-		newFacet.normal = plane.normal;
+		newFacet.normal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[0]).norm();
 
 		facets.emplace_back(newFacet);
-		//facets.emplace_back(plane);
-	/*	for (const auto& v : plane.vertices) {
-			Add(v);
-		}*/
 	}
+
+	void ApplyTransformation(const glm::mat4& transformationMatrix);
 };
 
 class MoleculeHullFactory {
@@ -110,6 +106,9 @@ class MoleculeHullFactory {
 public:
 
 	ConvexHull convexHull;
+
+
+	void ApplyTransformation(const glm::mat4& transformationMatrix);
 
 	void CreateConvexHull();
 	void AddParticle(const Float3& particle, char atomType) {

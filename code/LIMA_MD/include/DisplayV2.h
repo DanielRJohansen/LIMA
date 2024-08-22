@@ -50,11 +50,12 @@ public:
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
-	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, std::optional<std::chrono::milliseconds> duration);
+	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, 
+		std::optional<std::chrono::milliseconds> duration = std::nullopt);
 
 	// This is meant as a debugging tool
 	void RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsTask>& pointsTasks, 
-		Float3 boxSize,	std::optional<std::chrono::milliseconds> duration);
+		Float3 boxSize,	std::optional<std::chrono::milliseconds> duration=std::nullopt);
 
 	bool checkWindowStatus();		// Returns false if the windows should close
 

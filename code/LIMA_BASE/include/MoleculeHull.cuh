@@ -146,6 +146,14 @@ struct MoleculeHull {
 		return vertices;
 	}
 
+	std::vector<Facet> GetFacets(const Facet* facetsInCollection) const {
+		std::vector<Facet> facets;
+		for (int i = 0; i < nFacets; i++) {
+			facets.emplace_back(facetsInCollection[indexOfFirstFacetInBuffer + i]);
+		}
+		return facets;
+	}
+
 	void ApplyTransformation(const glm::mat4& transformationMatrix, Facet* const facetsInCollection, 
 		RenderAtom* const particlesInCollection, Float3 boxSize);
 

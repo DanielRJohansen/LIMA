@@ -221,10 +221,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	file.close();
 }
 
-
-
-
-std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1, MoleculeHull& mh2, Facet* facets) {
+std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1, MoleculeHull& mh2, Facet* facets, Float3 boxSize, Display& d) {
 
 	std::vector<std::array<Float3, 3>> clippedFacets;
 	for (int facetId = mh2.indexOfFirstFacetInBuffer; facetId < mh2.indexOfFirstFacetInBuffer + mh2.nFacets; facetId++) {
@@ -233,7 +230,6 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1
 
 
 	for (int clippingFacetId = mh1.indexOfFirstFacetInBuffer; clippingFacetId < mh1.indexOfFirstFacetInBuffer + mh1.nFacets; clippingFacetId++) {
-	//for (const auto& clippingFacet : ch1.GetSelfcontainedFacets()) {
 		const auto clippingFacet = facets[clippingFacetId];
 		std::vector<std::array<Float3, 3>> newFacets;
 
@@ -246,7 +242,6 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1
 		for (const auto& queryFacet : clippedFacets) {
 
 			bool vertexIsInsideFacet[] = {
-				//clippingFacet.distance()
 				(queryFacet[0] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0,
 				(queryFacet[1] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0,
 				(queryFacet[2] - clippingFacet.vertices[0]).dot(clippingFacet.normal) <= 0
@@ -254,10 +249,11 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1
 
 			if (!vertexIsInsideFacet[0] && !vertexIsInsideFacet[1] && !vertexIsInsideFacet[2]) {
 				// Entire facet is outside the clipping plane
-				continue;
 				removedVertices.push_back(queryFacet[0]);
 				removedVertices.push_back(queryFacet[1]);
 				removedVertices.push_back(queryFacet[2]);
+				continue;
+
 			}
 
 
@@ -281,9 +277,34 @@ std::vector<Float3> FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull& mh1
 			newFacets.push_back(clippedFacet);
 		}
 
+
+
+
+
+		//std::vector<Float3> allPoints = sameVertices;
+		//allPoints.insert(allPoints.end(), movedVertices.begin(), movedVertices.end());
+		//Float3 centroidApproximation = Statistics::CalculateMinimaxPoint(allPoints);
+		//std::vector<FacetTask> facetTasks{
+		//	{ mh1.GetFacets(facets), std::nullopt, false, EDGES },
+		//	{ mh2.GetFacets(facets), std::nullopt, false, EDGES },
+		//	{ {clippingFacet}, std::nullopt, true, FACES }
+		//};
+
+		//std::vector<PointsTask> pointsTasks{
+		//	{ sameVertices, Float3{ 1, 1,1 } },
+		//	{ movedVertices, Float3{ 0, 1, 0 } },
+		//	{ removedVertices, Float3{ 1, 0, 0 } },
+		//	{ {centroidApproximation}, Float3{0, 0, 1} }
+		//};
+
+		//if (cnt<1)
+		//	d.RenderLoop(facetTasks, pointsTasks, boxSize, std::chrono::milliseconds(100));
+		//else
+		//	d.RenderLoop(facetTasks, pointsTasks, boxSize, std::chrono::milliseconds(10));
+
+
 		clippedFacets = newFacets;
 	}
-
 	std::vector<Float3> vertices;
 	for (const auto& facet : clippedFacets) {
 		for (const auto& vertex : facet) {
@@ -330,7 +351,8 @@ glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
 void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
 	Display d(Full);
 
-	d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
+	//d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
+	d.RenderLoop(mhCol, boxSize);
 
 	Facet* facets = new Facet[mhCol.nFacets];
 	RenderAtom* atoms = new RenderAtom[mhCol.nParticles];
@@ -358,7 +380,7 @@ void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize)
 				if ( (leftCenter - rightCenter).len() > leftRadius + rightRadius)
 					continue;
 
-				std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeHulls[i], moleculeHulls[j], facets);
+				std::vector<Float3> intersectingPolygonVertices = FindIntersectionConvexhullFrom2Convexhulls(moleculeHulls[i], moleculeHulls[j], facets, boxSize, d);
 
 				if (intersectingPolygonVertices.size() >= 4) {
 					Float3 intersectionCenter = Statistics::CalculateMinimaxPoint(intersectingPolygonVertices);					
@@ -414,7 +436,7 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
 		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
 		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
-		100);
+		120);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
 
@@ -431,11 +453,6 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-
-
-	
-
-	//MoveMoleculesUntillNoOverlap(moleculeContainers, grofile.box_size);
 	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
 
 

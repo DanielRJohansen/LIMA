@@ -1,4 +1,10 @@
 #include "DisplayV2.h"
+#include "Shaders.h"    
+
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+
+
 
 
 
@@ -25,6 +31,10 @@ Display::Display(EnvMode envmode) :
     if (glewInit() != GLEW_OK) {
         std::cerr << "Failed to initialize GLEW" << std::endl;
     }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glfwSetWindowUserPointer(window, this);
 
@@ -53,67 +63,86 @@ Display::Display(EnvMode envmode) :
                 case GLFW_KEY_PAGE_DOWN:
 					display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
 					break;
+                case GLFW_KEY_N:
+					display->debugValue = 1;
+					break;
                 }                              
             }
         }
-        };
-
+    };
     glfwSetKeyCallback(window, keyCallback);
+
+
+    glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
+        Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+        if (display) {
+            display->OnMouseMove(xpos, ypos);
+        }
+        });
+
+    glfwSetMouseButtonCallback(window, [](GLFWwindow* window, int button, int action, int mods) {
+        Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+        if (display) {
+            display->OnMouseButton(button, action, mods);
+        }
+        });
+
+    glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset) {
+        Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+        if (display) {
+            display->OnMouseScroll(xoffset, yoffset);
+        }
+        });
+
 
     logger.finishSection("Display initialized");
 }
 
 Display::~Display() {
-    TerminateGLEW();
     glfwTerminate();
-    TerminateGLEW();
 }
 
 
-void Display::render(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
-    auto start = std::chrono::high_resolution_clock::now();
-
-    if (!pipelineInitialized) {
-        initializePipeline(boxparams.total_particles);
-        pipelineInitialized = true;
-	}
 
 
+void Display::OnMouseMove(double xpos, double ypos) {
+    if (isDragging) {
+        float xOffset = static_cast<float>(xpos - lastX);
+        float yOffset = static_cast<float>(lastY - ypos); // Reversed since y-coordinates go from bottom to top
 
-    // Preprocess the renderAtoms
-    {
-        // Map buffer object for writing from CUDA
-        RenderAtom* renderAtomsBuffer;
-        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
-        size_t num_bytes = 0;
-        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-        assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
+        const float sensitivity = 0.001f; // Adjust sensitivity as needed
+        xOffset *= sensitivity;
+        yOffset *= sensitivity;
 
-        rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
+        camera_yaw += xOffset;
+        camera_pitch -= yOffset;
 
-        // Release buffer object from CUDA
-        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+        updateCamera(camera_pitch, camera_yaw);
     }
 
-    
-
-    glClear(GL_COLOR_BUFFER_BIT);
-
-
-    DrawBoxOutline();
-    DrawAtoms(boxparams.total_particles);
-
-    // Swap front and back buffers
-    glfwSwapBuffers(window);
-
-
-    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, step, temperature);
-    glfwSetWindowTitle(window, window_text.c_str());
-
-    auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-    //printf("\tRender time: %4d ys  ", (int) duration.count());
+    lastX = xpos;
+    lastY = ypos;
 }
+
+void Display::OnMouseButton(int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            isDragging = true;
+            glfwGetCursorPos(window, &lastX, &lastY);
+        }
+        else if (action == GLFW_RELEASE) {
+            isDragging = false;
+        }
+    }
+}
+
+void Display::OnMouseScroll(double xoffset, double yoffset) {
+	camera_distance += yoffset * 0.1f;
+}
+
+
+
+
 
 bool Display::checkWindowStatus() {
     glfwPollEvents();
@@ -149,5 +178,39 @@ bool Display::initGLFW() {
     // Make the window's context current
     glfwMakeContextCurrent(window);
     return 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+    // Constructor initializes the start time and the frame counter
+FPS::FPS() {
+    auto now = std::chrono::high_resolution_clock::now();
+    for (auto& timepoint : prevTimepoints) {
+		timepoint = now;
+	}
+}
+
+    // Call this function when a new frame is rendered
+void FPS::NewFrame() {
+	using namespace std::chrono;
+    head = (head + 1) % prevTimepoints.size();
+	prevTimepoints[head] = high_resolution_clock::now();
+}
+
+// Returns the current FPS value
+int FPS::GetFps() const {
+	const int back = (head + 1) % prevTimepoints.size();
+    const auto elapsed = duration_cast<std::chrono::nanoseconds>(prevTimepoints[head] - prevTimepoints[back]);
+    const auto avgFrameTime = elapsed / prevTimepoints.size();
+    return static_cast<int>(1e9 / avgFrameTime.count());
 }
 

@@ -162,6 +162,7 @@ namespace LAL {
         }
 
         bool hasValue() const { return _hasValue; }
-
     };    
+
+    float LargestDiff(const Float3 queryPoint, const std::vector<Float3>& points);
 }

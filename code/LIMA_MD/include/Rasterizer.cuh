@@ -6,13 +6,7 @@
 #include "Simulation.cuh"
 #include <limits>
 
-struct RenderAtom {	
-	float4 position = Disabled(); // {posX, posY, posZ, radius} [nm]
-	float4 color{};					// {r, g, b, a} [0-1]	
 
-	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
-	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
-};
 static_assert(sizeof(RenderAtom) == 32, "RenderAtom size is not 32 bytes, and thus risc being packed wrongly for GLSL");
 
 

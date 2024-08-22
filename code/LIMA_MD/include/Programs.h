@@ -7,8 +7,8 @@ class Environment;
 namespace Programs {
 	
 
-	MDFiles::FilePair CreateMembrane(
-		Environment& env, LipidsSelection& lipidselection, bool carryout_em, float centerCoordinate, bool writeFiles);
+	MDFiles::FilePair CreateMembrane(Environment&, LipidsSelection&, bool doEM, 
+		float centerCoordinate, bool writeFiles);
 
 	void SetMoleculeCenter(GroFile& grofile, Float3 targetCenter);
 
@@ -16,5 +16,7 @@ namespace Programs {
 	void EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topFile, bool solvate, float boxlenNM);
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
+
+	void MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile);
 
 } // namespace Programs

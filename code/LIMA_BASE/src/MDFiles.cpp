@@ -379,7 +379,10 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 					includedFiles.emplace(include_name, includePath);
 				}
 
-				molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get());
+				const int globalIndexOfFirstParticle = molecules.entries.empty() 
+					? 0
+					: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
+				molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get(), globalIndexOfFirstParticle);
 			}
 			case moleculetype:
 			{

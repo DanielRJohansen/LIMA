@@ -42,3 +42,48 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
 
     return explainedVar / totalVar;
 }
+
+Float3 Statistics::Mean(const std::span<const Float3>& values) {
+	Float3 sum = { 0, 0, 0 };
+	for (auto val : values) {
+		sum += val;
+	}
+	return sum / values.size();
+}
+
+Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) {
+    float epsilon = 1e-4;
+
+    // Initial guess for the new point as the centroid
+    Float3 currentPoint = Mean(points);
+
+    float prevVelocity = std::numeric_limits<float>::max();
+
+    const int maxIterations = 5;
+    for (int i = 0; i < maxIterations; i++) {
+        Float3 downGradient = { 0, 0, 0 };
+        float maxDist = 0.0f;
+        float secondMaxDist = 0.0f;
+
+        for (const auto& point : points) {
+            float dist = (currentPoint-point).len();
+            if (dist > maxDist) {
+                secondMaxDist = maxDist;
+                maxDist = dist;
+                downGradient = (point - currentPoint);
+            }
+        }
+
+        const float velocity = std::min((maxDist - secondMaxDist) / 2.f, prevVelocity * 0.9f);
+        prevVelocity = velocity;
+
+        currentPoint = currentPoint + downGradient * velocity;
+
+
+        if (velocity < epsilon) {
+            break;
+        }
+    }
+
+    return currentPoint;
+}

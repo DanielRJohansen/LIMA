@@ -7,13 +7,12 @@
 #include <string>
 #include <limits>
 #include <vector>
-
+#include <span>
 #include "Constants.h"
 
+#include <array>
 
-
-
-enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM};
+#include <glm.hpp>
 
 
 struct Int3 {
@@ -75,7 +74,14 @@ struct Float3 {
 	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
+	float3 Tofloat3() const { return float3{ x, y, z }; }
+	float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+	glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
 
+	float* begin() { return &x; }
+	const float* begin() const { return &x; }
+	float* end() { return &x + 3; }
+	const float* end() const { return &x + 3; }
 
 	__host__ __device__ inline float operator[] (int index) const {
 		switch (index) {
@@ -353,8 +359,13 @@ struct BoundingBox {
 		Float3 max = Float3{ std::numeric_limits<float>::lowest() }) 
 		: min(min), max(max) {}
 
+	BoundingBox(const std::vector<Float3>& points);
 
 	Float3 min, max;
+
+	Float3 Center() const {
+		return (min + max) * 0.5f;
+	}
 
 	bool intersects(BoundingBox b) {
 		return
@@ -568,3 +579,15 @@ enum VerbosityLevel {
 };
 
 enum EnvMode { Full, ConsoleOnly, Headless };
+
+struct RenderAtom {
+
+	__device__ __host__ RenderAtom() {}
+	RenderAtom(Float3 positionNM, Float3 boxSize, char atomLetter);
+
+	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
+	float4 color{};					// {r, g, b, a} [0-1]	
+
+	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
+	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
+};

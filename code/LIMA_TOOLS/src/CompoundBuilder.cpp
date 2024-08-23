@@ -227,8 +227,8 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Sing
 	}
 	singlebonds[n_singlebonds++] = SingleBond(
 		{
-			atoms[bond.global_atom_indexes[0]].localIdInCompound,
-			atoms[bond.global_atom_indexes[1]].localIdInCompound
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[0]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[1]].localIdInCompound)
 		},
 		bond.params.b0,
 		bond.params.kb
@@ -240,9 +240,9 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Angl
 	}
 	anglebonds[n_anglebonds++] = AngleBond(
 		{
-			atoms[bond.global_atom_indexes[0]].localIdInCompound,
-			atoms[bond.global_atom_indexes[1]].localIdInCompound,
-			atoms[bond.global_atom_indexes[2]].localIdInCompound
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[0]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[1]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[2]].localIdInCompound)
 		},
 		bond.params.theta_0,
 		bond.params.k_theta
@@ -254,10 +254,10 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Dihe
 	}
 	dihedrals[n_dihedrals++] = DihedralBond(
 		{
-			atoms[bond.global_atom_indexes[0]].localIdInCompound,
-			atoms[bond.global_atom_indexes[1]].localIdInCompound,
-			atoms[bond.global_atom_indexes[2]].localIdInCompound,
-			atoms[bond.global_atom_indexes[3]].localIdInCompound
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[0]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[1]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[2]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[3]].localIdInCompound)
 		},
 		bond.params.phi_0,
 		bond.params.k_phi,
@@ -270,10 +270,10 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Impr
 	}
 	impropers[n_improperdihedrals++] = ImproperDihedralBond(
 		{
-			atoms[bond.global_atom_indexes[0]].localIdInCompound,
-			atoms[bond.global_atom_indexes[1]].localIdInCompound,
-			atoms[bond.global_atom_indexes[2]].localIdInCompound,
-			atoms[bond.global_atom_indexes[3]].localIdInCompound
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[0]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[1]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[2]].localIdInCompound),
+			static_cast<uint8_t>(atoms[bond.global_atom_indexes[3]].localIdInCompound)
 		},
 		bond.params.psi_0,
 		bond.params.k_psi
@@ -292,9 +292,9 @@ void CompoundFactory::addIdOfBondedCompound(int id) {
 }
 
 template <typename BondFactory_type>
-std::array<uint8_t, BondFactory_type::n_atoms> BridgeFactory::ConvertGlobalIdsToCompoundlocalIds (std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond) {
-	std::array<uint8_t, BondFactory_type::n_atoms> localIds;
-	for (int i = 0; i < BondFactory_type::n_atoms; i++) {
+std::array<uint8_t, BondFactory_type::nAtoms> BridgeFactory::ConvertGlobalIdsToCompoundlocalIds (std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond) {
+	std::array<uint8_t, BondFactory_type::nAtoms> localIds;
+	for (int i = 0; i < BondFactory_type::nAtoms; i++) {
 		localIds[i] = getBridgelocalIdOfParticle(particle_info[bond.global_atom_indexes[i]]);
 	}
 	return localIds;
@@ -349,8 +349,7 @@ uint8_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 		throw std::runtime_error(std::format("Cannot add particle to this bridge ({}) as it already has another bridge ({})", bridge_id, particle_info.bridgeId).c_str());
 	}
 
-	// Particle already has a local id in the bridge
-	if (particle_info.localIdInBridge == 255) {	// This limits the amount of particles in a bridge
+	if (particle_info.localIdInBridge == -1) {	// This limits the amount of particles in a bridge
 		addParticle(particle_info);
 	}
 
@@ -476,9 +475,12 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 	//if (forcefield.BondHasZeroParameter<typename GenericBond::Parameters>(atomTypenames))
 	//	return;
 
-	const auto& bondparams = forcefield.GetBondParameters<typename GenericBond::Parameters>(atomTypenames);
+	auto bondParams = forcefield.GetBondParameters<GenericBond>(atomTypenames);
 
-	topology.emplace_back(BondtypeFactory{ globalIds, bondparams });
+	for (const auto& param : bondParams)
+		topology.emplace_back(BondtypeFactory{ globalIds, param});
+
+	//topology.emplace_back(BondtypeFactory{ globalIds, bondparams });
 }
 
 void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileRef>& topologyFiles) {
@@ -788,7 +790,7 @@ template <typename BondTypeFactory>
 void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds, std::vector<ParticleInfo>& particleinfotable, std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges,
 	BondedParticlesLUTManager& bpLutManager, std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges) {
 	
-	constexpr int atoms_in_bond = BondTypeFactory::n_atoms;
+	constexpr int atoms_in_bond = BondTypeFactory::nAtoms;
 
 	for (const BondTypeFactory& bond : bonds) {
 		

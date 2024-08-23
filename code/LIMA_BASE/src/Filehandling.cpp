@@ -210,7 +210,7 @@ void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, fl
 	const string gro_path = dir + "/conf.gro";
 	if (!std::filesystem::exists(gro_path)) {	// TODO: Make this string a default-constant somewhere
 		const string boxsize_str = std::to_string(boxsize_nm) + " ";	// add space between dims
-		const string contents = " \n0\n\t\t"+ boxsize_str + boxsize_str + boxsize_str;	// Title, n_atoms, box dimensions
+		const string contents = " \n0\n\t\t"+ boxsize_str + boxsize_str + boxsize_str;	// Title, nAtoms, box dimensions
 		std::ofstream file(gro_path);
 		file << contents;
 		file.close();

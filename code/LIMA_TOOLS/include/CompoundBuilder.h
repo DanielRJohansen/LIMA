@@ -23,12 +23,12 @@ struct BoxImage;
 // --------------------------------- Bond Factories --------------------------------- //
 template <int nAtoms, typename ParamsType>
 struct BondFactory {
-	static const int n_atoms = nAtoms;
+	static const int nAtoms = nAtoms;
 	BondFactory(const std::array<uint32_t, nAtoms>& ids, const ParamsType& parameters) 
 		: params(parameters), global_atom_indexes(ids) {}
 
 	ParamsType params;
-	std::array<uint32_t, n_atoms> global_atom_indexes;
+	std::array<uint32_t, nAtoms> global_atom_indexes;
 };
 
 
@@ -61,6 +61,8 @@ namespace LIMA_MOLECULEBUILD {
 
 
 struct ParticleInfo {
+
+
 	ParticleInfo() = default;
 	ParticleInfo(const GroRecord* groAtom, const TopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
 		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId) {}
@@ -71,11 +73,11 @@ struct ParticleInfo {
 
 	// Only available once the compounds have been created
 	int compoundId = -1;
-	uint8_t localIdInCompound = -1;
+	int localIdInCompound = -1;
 
 	// Only available once the bridges have been created
 	int bridgeId = -1;
-	uint8_t localIdInBridge = -1;
+	int localIdInBridge = -1;
 };
 
 class CompoundFactory : public Compound {
@@ -152,7 +154,7 @@ private:
 	void addParticle(ParticleInfo&);
 
 	template <typename BondFactory_type>
-	std::array<uint8_t, BondFactory_type::n_atoms> ConvertGlobalIdsToCompoundlocalIds(
+	std::array<uint8_t, BondFactory_type::nAtoms> ConvertGlobalIdsToCompoundlocalIds(
 		std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond);
 };
 

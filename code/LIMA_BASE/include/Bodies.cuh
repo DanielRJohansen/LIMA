@@ -27,6 +27,7 @@ struct SingleBond {
 		float b0 = 0.f;	// [lm]
 		float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
 
+		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return kb == 0.f; }
 	};
 
@@ -35,7 +36,7 @@ struct SingleBond {
 
 	Parameters params;
 	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
-	const static int n_atoms = 2;
+	const static int nAtoms = 2;
 };
 
 struct AngleBond {
@@ -43,6 +44,7 @@ struct AngleBond {
 		float theta_0 = 0.f;	// [rad]
 		float k_theta = 0.f;	// [J/mol/rad^2]
 
+		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return k_theta == 0.f; }
 	};
 	
@@ -51,7 +53,7 @@ struct AngleBond {
 
 	Parameters params;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
-	const static int n_atoms = 3;
+	const static int nAtoms = 3;
 };
 
 struct UreyBradley {
@@ -61,12 +63,13 @@ struct UreyBradley {
 		float ub0 = 0.f;	// [lm]
 		float kUB = 0.f;	// [J/mol/lm^2]
 
+		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return kTheta == 0.f; }
 	};
 
 	Parameters params;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
-	const static int n_atoms = 3;
+	const static int nAtoms = 3;
 };
 
 struct DihedralBond {
@@ -75,9 +78,10 @@ struct DihedralBond {
 		float k_phi;		// [J/mol/rad^2]
 		float n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 
+		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return k_phi == 0.f; }
 	};
-	const static int n_atoms = 4;
+	const static int nAtoms = 4;
 	DihedralBond() {}
 	DihedralBond(std::array<uint8_t, 4> ids, float phi0, float kphi, float n);
 	
@@ -90,6 +94,7 @@ struct ImproperDihedralBond {
 		float psi_0 = 0.f;	// [rad]
 		float k_psi = 0.f;	// [J/mol/rad^2]
 
+		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return k_psi == 0.f; }
 	};
 
@@ -99,7 +104,7 @@ struct ImproperDihedralBond {
 	Parameters params;
 
 	uint8_t atom_indexes[4] = { 0,0,0,0 };
-	const static int n_atoms = 4;
+	const static int nAtoms = 4;
 };
 
 
@@ -355,8 +360,7 @@ struct CompoundBridge {
 
 	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
 	uint8_t n_compounds;
-
-	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE];
+	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE] = { UINT16_MAX,UINT16_MAX,UINT16_MAX,UINT16_MAX };
 
 
 	// -------------- Device functions ------------- //

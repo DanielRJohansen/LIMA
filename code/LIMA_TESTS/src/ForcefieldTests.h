@@ -159,8 +159,11 @@ void ParseForcefieldFromItp(
             >> kPhi
             >> n;
         dihedralparams.phi_0 = phi0;
-        dihedralparams.k_phi = kPhi;
+        dihedralparams.k_phi = kPhi * 2.f; // once we moved the /2 from Forcefield.cpp to the forcecalculations, we must also undo this
         dihedralparams.n = n;
+
+        if (kPhi == 0) // Todo: maybe this should not be here
+            continue;
 
         dihedrals.emplace_back(dihedralparams);
         atomnamesDihedralbonds.emplace_back(atomNames);
@@ -173,14 +176,19 @@ void ParseForcefieldFromItp(
         iss >> atomNames[0] >> atomNames[1] >> atomNames[2] >> atomNames[3]
             >> improperDihedralparams.psi_0
             >> improperDihedralparams.k_psi;
+
+        if (improperDihedralparams.k_psi == 0) // Todo: maybe this should not be here
+            continue;
+
         improperDihedrals.emplace_back(improperDihedralparams);
+        atomnamesImproperDihedralbonds.emplace_back(atomNames);
     }
 }
 
 
 LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode) 
 {
-    if (envmode != Full || true) {
+    if (envmode != Full) {
         Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" },
             TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
             TestUtils::simulations_dir / "Forcefieldtests");
@@ -211,60 +219,38 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
 
 
 
-    //TopologyFile top{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" };
-    //int index= 0;
-    //for (auto dih : top.GetAllDihedralbonds()) {
-    //    for (int i = 0; i < 4; i++) {
-    //        float k = dihedralparamsLima[index].k_phi;
-    //        float phi = dihedralparamsLima[index].phi_0;
-    //        float n = dihedralparamsLima[index].n;
-    //        if (dih.ids[i] != dihIds[index][i]) {
-    //            printf("%f %f %f\n", k, phi, n);
-    //            int c = 0;
-    //    }
-    //    }
-    //    index++;
-    //}
-
-
-
-
-
-
-
-
     const float maxError = 0.01;
 
- //   ASSERT(bondparamsGromacs.size() == bondparamsLima.size(), "Singlebond parameters size mismatch");
- //   ASSERT(bondparamsGromacs.size() == atomnamesSinglebonds.size(), "Singlebond names and params size mismatch");
- //   for (int i = 0; i < bondparamsGromacs.size(); i++) {
- //       const auto g = bondparamsGromacs[i];
- //       const auto l = bondparamsLima[i];
+    ASSERT(bondparamsGromacs.size() == bondparamsLima.size(), "Singlebond parameters size mismatch");
+    ASSERT(bondparamsGromacs.size() == atomnamesSinglebonds.size(), "Singlebond names and params size mismatch");
+    for (int i = 0; i < bondparamsGromacs.size(); i++) {
+        const auto g = bondparamsGromacs[i];
+        const auto l = bondparamsLima[i];
 
- //       const std::string errMsg = std::format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
- //           i, atomnamesSinglebonds[i][0], atomnamesSinglebonds[i][1], g.b0, g.kb, l.b0, l.kb);
+        const std::string errMsg = std::format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
+            i, atomnamesSinglebonds[i][0], atomnamesSinglebonds[i][1], g.b0, g.kb, l.b0, l.kb);
 
- //       ASSERT(std::abs(l.b0 - g.b0) < 0.001f && std::abs((l.kb - g.kb)/std::max(g.kb, 1.f)) < maxError, errMsg);
- //   }
- //   if (envmode == Full) {
- //       printf("%d Singlebond parameters verified\n", bondparamsGromacs.size());
- //   }
+        ASSERT(std::abs(l.b0 - g.b0) < 0.001f && std::abs((l.kb - g.kb)/std::max(g.kb, 1.f)) < maxError, errMsg);
+    }
+    if (envmode == Full) {
+        printf("%d Singlebond parameters verified\n", bondparamsGromacs.size());
+    }
 
 
- //   ASSERT(angleparamsGromacs.size() == angleparamsLima.size(), "Anglebond parameters size mismatch");
- //   ASSERT(angleparamsGromacs.size() == atomnamesAnglebonds.size(), "Anglebond names and params size mismatch");
- //   for (int i = 0; i < angleparamsGromacs.size(); i++) {
-	//	const auto g = angleparamsGromacs[i];
-	//	const auto l = angleparamsLima[i];
+    ASSERT(angleparamsGromacs.size() == angleparamsLima.size(), "Anglebond parameters size mismatch");
+    ASSERT(angleparamsGromacs.size() == atomnamesAnglebonds.size(), "Anglebond names and params size mismatch");
+    for (int i = 0; i < angleparamsGromacs.size(); i++) {
+		const auto g = angleparamsGromacs[i];
+		const auto l = angleparamsLima[i];
 
-	//	const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
-	//		i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, l.theta_0, l.k_theta);
+		const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
+			i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, l.theta_0, l.k_theta);
 
-	//	ASSERT(std::abs(l.theta_0 - g.theta0) < 0.001f && std::abs((l.k_theta - g.kTheta) / std::max(g.kTheta, 1.f)) < maxError, errMsg);
-	//}
- //   if (envmode == Full) {
-	//	printf("%d Anglebond parameters verified\n", angleparamsGromacs.size());
-	//}
+		ASSERT(std::abs(l.theta_0 - g.theta0) < 0.001f && std::abs((l.k_theta - g.kTheta) / std::max(g.kTheta, 1.f)) < maxError, errMsg);
+	}
+    if (envmode == Full) {
+		printf("%d Anglebond parameters verified\n", angleparamsGromacs.size());
+	}
 
 
     ASSERT(dihedralparamsGromacs.size() == dihedralparamsLima.size(), "Dihedralbond parameters size mismatch");
@@ -285,6 +271,21 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
         printf("%d Dihedralbond parameters verified\n", dihedralparamsGromacs.size());
     }
 
+
+    ASSERT(improperDihedralparamsGromacs.size() == improperDihedralparamsLima.size(), "ImproperDihedralbond parameters size mismatch");
+    ASSERT(improperDihedralparamsGromacs.size() == atomnamesImproperDihedralbonds.size(), "ImproperDihedralbond names and params size mismatch");
+    for (int i = 0; i < improperDihedralparamsGromacs.size(); i++) {
+        const auto g = improperDihedralparamsGromacs[i];
+        const auto l = improperDihedralparamsLima[i];
+
+        const std::string errMsg = std::format("ImproperDihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
+			i, atomnamesImproperDihedralbonds[i][0], atomnamesImproperDihedralbonds[i][1], atomnamesImproperDihedralbonds[i][2], atomnamesImproperDihedralbonds[i][3], g.psi_0, g.k_psi, l.psi_0, l.k_psi);
+
+        ASSERT(std::abs(l.psi_0 - g.psi_0) < 0.001f && std::abs((l.k_psi - g.k_psi) / std::max(g.k_psi, 1.f)) < maxError, errMsg);
+	}
+    if (envmode == Full) {
+		printf("%d ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
+	}
 
     return LimaUnittestResult{ true, "", envmode == Full };
 }

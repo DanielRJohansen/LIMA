@@ -332,7 +332,7 @@ __device__ inline Float3 computeAnglebondForces(const AngleBond* const anglebond
 
 		for (int i = 0; i < blockDim.x; i++) {
 			if (threadIdx.x == i && ab != nullptr) {
-				for (int i = 0; i < ab->n_atoms; i++) {
+				for (int i = 0; i < ab->nAtoms; i++) {
 					forces_interim[ab->atom_indexes[i]] += forces[i];
 					potentials_interim[ab->atom_indexes[i]] += potential / 3.f;
 				}
@@ -431,7 +431,7 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 			);
 
 			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
-				for (int i = 0; i < db->n_atoms; i++) {
+				for (int i = 0; i < db->nAtoms; i++) {
 					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
 					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
 				}
@@ -441,7 +441,7 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) {
 			for (int i = 0; i < blockDim.x; i++) {
 				if (threadIdx.x == i && db != nullptr) {
-					for (int i = 0; i < db->n_atoms; i++) {
+					for (int i = 0; i < db->nAtoms; i++) {
 						forces_interim[db->atom_indexes[i]] += forces[i];
 						potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
 					}

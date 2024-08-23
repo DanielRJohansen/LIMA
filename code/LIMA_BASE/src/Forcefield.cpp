@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <format>
+#include <tuple>
 
 using std::string;
 namespace lfs = Filehandler;
@@ -21,15 +22,31 @@ const float water_epsilon = 0.1591f * kcalToJoule;
 
 
 
+class LjParameterDatabase {
+	std::unordered_map<std::string, AtomType> atomTypes;
+
+	std::vector<AtomType> activeAtomTypes;
+	std::unordered_map<std::string, int> fastLookup;	// Map a query to an index in activeParameters
+
+	bool finished = false;
+
+public:
+	LjParameterDatabase();
+	void insert(AtomType element);
+	int GetActiveIndex(const std::string& query);
+	std::vector<AtomType>& GetActiveParameters() {
+		finished = true;
+		return activeAtomTypes;
+	}
+};
+
+
 LjParameterDatabase::LjParameterDatabase() {
 	// First add solvent
 	insert(AtomType{"solvent", 0, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A'} ); // TODO: Stop doing this, read from the proper file
 	GetActiveIndex("solvent");	// Make sure solvent always are active
 	assert(GetActiveIndex("solvent") == ATOMTYPE_SOLVENT);
 }
-
-
-
 void LjParameterDatabase::insert(AtomType element) {
 	if (finished)
 		throw std::runtime_error("Cannot insert after finishing");
@@ -63,9 +80,201 @@ int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+template <typename GenericBondType>
+class ParameterDatabase {
+public:
+	const std::vector<typename GenericBondType::Parameters>& get(const std::array<std::string, GenericBondType::nAtoms>& query) {
+		const std::string key = MakeKey(query);
+
+		if (fastLookup.count(key) == 0) {
+			const std::vector<int> indices = findBestMatchesInForcefield_Index(query);
+			std::vector<typename GenericBondType::Parameters> bondparams;
+			for (const auto& index : indices) {
+				bondparams.push_back(parameters[index].params);
+			}
+
+			fastLookup.insert({ key, bondparams });
+		}
+
+		return fastLookup.find(key)->second;
+	}
+
+	// Due to types such as this:
+	// X	CT1	OH1	X	9	0.00	0.58576	3
+	// We cannot sort and have a single definition of each type, as the names in the topol entry at the 'X'
+	// places may be in either order and match here
+	void insert(const GenericBondType& element) {
+		__insert(element);
+		GenericBondType flippedBond = element;
+		FlipBondedtypeNames<GenericBondType>(flippedBond.bonded_typenames);
+		if (flippedBond.bonded_typenames != element.bonded_typenames)
+			__insert(flippedBond);
+	}
+
+private:
+
+	template <typename bond>
+	void FlipBondedtypeNames(std::array<std::string, bond::nAtoms>& bondedTypeNames) {
+		if constexpr (std::is_same<bond, SinglebondType>::value) {
+			swap(bondedTypeNames[0], bondedTypeNames[1]);
+		}
+		else if constexpr (std::is_same<bond, AnglebondType>::value) {
+			swap(bondedTypeNames[0], bondedTypeNames[2]);
+		}
+		else if constexpr (std::is_same<bond, DihedralbondType>::value) {
+
+			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
+
+		}
+		else if constexpr (std::is_same<bond, ImproperDihedralbondType>::value) {
+			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
+		}
+		else {
+			throw std::runtime_error("Illegal bond type");
+		}
+	}
+
+	void __insert(const GenericBondType& element) {
+
+		if (locked) {
+			throw std::runtime_error("Cannot add to database after it has been locked");
+		}
+		for (const auto& param : parameters) {
+			if (param.bonded_typenames == element.bonded_typenames && param.params == element.params) {
+				// I think this will be a problem, either because we include multiple files for the forcefiel, either 
+				// custom or there are duplicates in the ffnabonded.itp, or it may just be a problem with the forcefield itself
+				throw std::runtime_error("Duplicate bond type found in forcefield");
+			}
+		}
+		parameters.push_back(element);
+	}
+	std::vector<GenericBondType> parameters;
+	std::unordered_map<std::string, std::vector<typename GenericBondType::Parameters>> fastLookup;	// Map a query to an index in parameters
+
+	bool locked = false; // Once this is true, we may no longer add to the database
+
+	std::string MakeKey(const std::array<std::string, GenericBondType::nAtoms>& arr) {
+		std::string key(GenericBondType::nAtoms * 5, ' '); // 5 is the maximum length of a typename
+
+
+		for (size_t i = 0; i < GenericBondType::nAtoms; ++i) {
+			std::strcpy(&key[i * 5], arr[i].c_str());
+		}
+		return key;
+	}
+
+
+	// Returns {isMatch, wildcardCoint}, so 0 is perfect match, 3 in a dihedral, is a poor match
+	std::tuple<bool, int> DetermineMatchDegree(const std::span<const std::string>& query, const std::span<const std::string>& typeInForcefield) {
+		int wildcardCount = 0;
+		const auto wildcard = "X";
+
+		for (int i = 0; i < query.size(); i++) {
+			if (query[i] == typeInForcefield[i]) {
+				continue;
+			}
+			else if (typeInForcefield[i] == wildcard) {
+				wildcardCount++;
+				continue;
+			}
+			return { false, 0 };
+		}
+		return { true, wildcardCount };
+	}
+
+	std::vector<int> findBestMatchesInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query) {
+		if (parameters.size() == 0) {
+			throw std::runtime_error("No bonds in forcefield!");
+		}
+
+		//int bestBondIndex = 0;
+		std::vector<int> bestBondIndices{};	// Can be multiple bonds, if they are equally good matches
+		int lowestWildcardDegree = INT_MAX;
+
+
+		for (size_t i = 0; i < parameters.size(); i++) {
+			auto [isMatch, wildcardDegree] = DetermineMatchDegree(query, parameters[i].bonded_typenames);
+
+			if (isMatch) {
+				if (wildcardDegree < lowestWildcardDegree) {
+					lowestWildcardDegree = wildcardDegree;
+					bestBondIndices.clear();
+					bestBondIndices.push_back(i);
+				}
+				else if (wildcardDegree == lowestWildcardDegree) {
+					bestBondIndices.push_back(i);
+				}
+			}
+		}
+
+		if (!bestBondIndices.empty())
+			return bestBondIndices;
+
+
+		if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
+			std::cout << "Dihedral type\n";
+		}
+		else if constexpr (std::is_same_v<GenericBondType, ImproperDihedralbondType>) {
+			std::cout << "Improper type\n";
+		}
+		printf("Query typenames: ");
+		for (const auto& name : query) {
+			std::cout << name << " ";
+		}
+
+		throw std::runtime_error("\nfindBestMatchInForcefield failed");
+	}
+};
+template class ParameterDatabase<SinglebondType>;
+template class ParameterDatabase<AnglebondType>;
+template class ParameterDatabase<DihedralbondType>;
+template class ParameterDatabase<ImproperDihedralbondType>;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 LIMAForcefield::LIMAForcefield() {
 	bool verbose = false;
 	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
+
+
+	ljParameters = std::make_unique<LjParameterDatabase>();
+	singlebondParameters = std::make_unique<ParameterDatabase<SinglebondType>>();
+	anglebondParameters = std::make_unique<ParameterDatabase<AnglebondType>>();
+	dihedralbondParameters = std::make_unique<ParameterDatabase<DihedralbondType>>();
+	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
+
+
 
 #ifdef __linux__
 	const fs::path ff_dir = "/opt/LIMA/resources/Forcefields/charm27.ff";
@@ -81,6 +290,19 @@ LIMAForcefield::LIMAForcefield() {
 	LoadFileIntoForcefield(ff_dir / "ions.itp");*/
 
 }
+LIMAForcefield::~LIMAForcefield() {}
+
+
+int LIMAForcefield::GetActiveLjParameterIndex(const std::string& query) {
+	return ljParameters->GetActiveIndex(query);
+}
+ForceField_NB LIMAForcefield::GetActiveLjParameters() {
+	ForceField_NB forcefield{};
+	const auto& activeParameters = ljParameters->GetActiveParameters();
+	for (int i = 0; i < activeParameters.size(); i++)
+		forcefield.particle_parameters[i] = activeParameters[i].parameters;
+	return forcefield;
+}
 
 
 
@@ -89,45 +311,6 @@ LIMAForcefield::LIMAForcefield() {
 
 
 
-
-
-
-
-
-namespace ForcefieldHelpers {
-	float _calcLikeness(const std::string& query_type, const std::string& forcefield_type) {
-
-		// Edgecase: perfect match
-		if (query_type == forcefield_type) { return 1.f; }
-
-		// Edgecase: wildcard
-		if (forcefield_type == "X") {
-			return 0.9f;
-		}
-
-		float likeness = 0;
-		float point_scale = 1.f / std::max(query_type.length(), forcefield_type.length());
-
-		for (size_t i = 0; i < std::min(query_type.length(), forcefield_type.length()); i++) {
-			if (query_type[i] == forcefield_type[i])
-				likeness += point_scale;
-			else
-				break;
-		}
-		return likeness;
-	}
-
-
-	static float calcLikeness(std::span<const std::string> query,
-		std::span<const std::string> typeInForcefield) {
-		float likeness = 1.f;
-		for (int i = 0; i < query.size(); i++) {
-			likeness *= _calcLikeness(query[i], typeInForcefield[i]);
-		}
-
-		return likeness;
-	}
-};
 
 
 void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
@@ -152,7 +335,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 		atomtype.parameters.sigma *= NANO_TO_LIMA;
 		atomtype.parameters.epsilon *= KILO;
 
-		ljParameters.insert(atomtype);
+		ljParameters->insert(atomtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::bondtypes)) {
 		std::istringstream iss(line);
@@ -165,9 +348,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 		bondtype.params.b0 *= NANO_TO_LIMA;
 		bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
 
-		//SortBondedtypeNames<SingleBond>(bondtype.bonded_typenames);
-
-		singlebondParameters.insert(bondtype);
+		singlebondParameters->insert(bondtype);
 	}
 	// TODO: Gromacs choses UreyBradley instead of harmonic angle potentials. UB includes a 1-3 interaction term for the angle.
 	// We should obviously do the same to receive similar results
@@ -181,9 +362,8 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 		anglebondtype.params.theta_0 *= DEG_TO_RAD;
 		anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
-		//SortBondedtypeNames<AngleBond>(anglebondtype.bonded_typenames);
 
-		anglebondParameters.insert(anglebondtype);
+		anglebondParameters->insert(anglebondtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::dihedraltypes)) {
 		std::istringstream iss(line);
@@ -202,7 +382,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 		dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol// Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
 		dihedralbondtype.params.n = n;
 
-		dihedralbondParameters.insert(dihedralbondtype);
+		dihedralbondParameters->insert(dihedralbondtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::impropertypes)) {
 		std::istringstream iss(line);
@@ -217,52 +397,52 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 		improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
 		improperdihedralbondtype.params.k_psi = kpsi * KILO;
-		//SortBondedtypeNames<ImproperDihedralBond>(improperdihedralbondtype.bonded_typenames);
-		improperdihedralbondParameters.insert(improperdihedralbondtype);
+
+		improperdihedralbondParameters->insert(improperdihedralbondtype);
 	}
 }
 
-template <typename GenericBondType>
-int ParameterDatabase<GenericBondType>::findBestMatchInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query) {
-	if (parameters.size() == 0) {
-		throw std::runtime_error("No bonds in forcefield!");
+template<typename GenericBond>
+const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondParameters(const auto& query) {
+	if constexpr (std::is_same<GenericBond, SingleBond>::value) {
+		return singlebondParameters->get(query);
 	}
-
-	float best_likeness = 0;
-	int bestBondIndex = 0;
-	for (size_t i = 0; i < parameters.size(); i++) {
-		const GenericBondType& ff_bondtype = parameters[i];
-		const float likeness = ForcefieldHelpers::calcLikeness(query, parameters[i].bonded_typenames);
-
-		if (likeness > best_likeness) {
-			best_likeness = likeness;
-			bestBondIndex = static_cast<int>(i);
-		}
+	else if constexpr (std::is_same<GenericBond, AngleBond>::value) {
+		return anglebondParameters->get(query);
 	}
-
-	if (best_likeness > 0.001f) {
-		return bestBondIndex;
+	else if constexpr (std::is_same<GenericBond, DihedralBond>::value) {
+		return dihedralbondParameters->get(query);
 	}
-
-	std::cout << "Failed to match bond types.\n Closest match ";
-	for (const auto& name : parameters[bestBondIndex].bonded_typenames) {
-		std::cout << name << " ";
-	}
-	if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
-		std::cout << "Dihedral type\n";
+	else if constexpr (std::is_same<GenericBond, ImproperDihedralBond>::value) {
+		return improperdihedralbondParameters->get(query);
 	}
 	else {
-		std::cout << "Improper type\n";
+		throw std::runtime_error("Unsupported bond type");
 	}
-	printf("\nLikeness %f\n", best_likeness);
-	printf("Query typenames: ");
-	for (const auto& name : query) {
-		std::cout << name << " ";
-	}
-
-	throw std::runtime_error("\nfindBestMatchInForcefield failed");
 }
-template class ParameterDatabase<SinglebondType>;
-template class ParameterDatabase<AnglebondType>;
-template class ParameterDatabase<DihedralbondType>;
-template class ParameterDatabase<ImproperDihedralbondType>;
+template const std::vector<SingleBond::Parameters>& LIMAForcefield::GetBondParameters<SingleBond>(const std::array<std::string, SingleBond::nAtoms>&);
+template const std::vector<AngleBond::Parameters>& LIMAForcefield::GetBondParameters<AngleBond>(const std::array<std::string, AngleBond::nAtoms>&);
+template const std::vector<DihedralBond::Parameters>& LIMAForcefield::GetBondParameters<DihedralBond>(const std::array<std::string, DihedralBond::nAtoms>&);
+template const std::vector<ImproperDihedralBond::Parameters>& LIMAForcefield::GetBondParameters<ImproperDihedralBond>(const std::array<std::string, ImproperDihedralBond::nAtoms>&);
+
+
+
+
+//// Used to determine if we can exlude the bond from simulations
+//template <typename BondParamType>
+//const bool BondHasZeroParameter(const auto& query) {
+//	if constexpr (std::is_same<BondParamType, SingleBond::Parameters>::value) {
+//		return singlebondParameters.get(query).params.kb == 0;
+//	}
+//	else if constexpr (std::is_same<BondParamType, AngleBond::Parameters>::value) {
+//		return anglebondParameters.get(query).params.k_theta == 0;
+//	}
+//	else if constexpr (std::is_same<BondParamType, DihedralBond::Parameters>::value) {
+//		return dihedralbondParameters.get(query).params.k_phi == 0;
+//	}
+//	else if constexpr (std::is_same<BondParamType, ImproperDihedralBond::Parameters>::value) {
+//		return improperdihedralbondParameters.get(query).params.k_psi == 0;
+//	}		
+//	throw std::runtime_error("Unsupported bond type");
+
+	//}

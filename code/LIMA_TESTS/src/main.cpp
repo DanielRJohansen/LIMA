@@ -70,7 +70,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 9.16e-5, 2.9e-7);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 
@@ -102,10 +102,10 @@ int main() {
 
 
 		
-		GroFile grofile;
-		grofile.box_size = Float3{ 10.f };
-		TopologyFile topfile;
-		Programs::MakeLipidVesicle(grofile, topfile);
+		//GroFile grofile;
+		//grofile.box_size = Float3{ 10.f };
+		//TopologyFile topfile;
+		//Programs::MakeLipidVesicle(grofile, topfile);
 
 
 
@@ -132,7 +132,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -147,7 +147,7 @@ int main() {
 	return 0;
 }
 
-#define ADD_TEST(testman, description, execution_function) \
+#define ADD_TEST(description, execution_function) \
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
 // Runs all unit tests with the fastest/crucial ones first
@@ -157,50 +157,46 @@ void runAllUnitTests() {
 
 	
 	// Isolated forces sanity checks
-	ADD_TEST(testman, "SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
-	ADD_TEST(testman, "SinglebondOscillationTest", SinglebondOscillationTest(envmode));
-	ADD_TEST(testman, "TestIntegration", TestIntegration(envmode));
+	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
+	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+	ADD_TEST("TestIntegration", TestIntegration(envmode));
 
 	// Stability tests
-	ADD_TEST(testman, "doPoolBenchmark", doPoolBenchmark(envmode));
-	ADD_TEST(testman, "doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
-	ADD_TEST(testman, "doSinglebondBenchmark", doSinglebondBenchmark(envmode));
-	ADD_TEST(testman, "doAnglebondBenchmark", doAnglebondBenchmark(envmode));
-	ADD_TEST(testman, "doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
-	//ADD_TEST(testman, "Dihedral_exaggerated", TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 2e-4, 2.2e-7));
-	ADD_TEST(testman, "doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
-	//ADD_TEST(testman, "Improper_exaggerated_scaled-up", TestUtils::loadAndRunBasicSimulation("Improperbond2", envmode, 7e-5, 3.2e-7));
+	ADD_TEST("doPoolBenchmark", doPoolBenchmark(envmode));
+	ADD_TEST("doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
+	ADD_TEST("doSinglebondBenchmark", doSinglebondBenchmark(envmode));
+	ADD_TEST("doAnglebondBenchmark", doAnglebondBenchmark(envmode));
+	ADD_TEST("doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
+	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 
 	// Smaller compound tests
-	ADD_TEST(testman, "doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
-	//ADD_TEST(testman, "doPhenylalanineBenchmark", TestUtils::loadAndRunBasicSimulation("Phe", envmode, 3.77e-4f, 8e-8f););
-	ADD_TEST(testman, "TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
-	ADD_TEST(testman, "doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
+	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
+	ADD_TEST("TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
+	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 
 	// Larger tests
-	ADD_TEST(testman, "SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST(testman, "T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5));
 
 	// Electrostatics
-	ADD_TEST(testman, "CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
+	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	
 	// Test Forcefield and compoundbuilder
-	ADD_TEST(testman, "TestLimaChosesSameBondparametersAsGromacs", CoulombForceSanityCheck(envmode));
+	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", CoulombForceSanityCheck(envmode));
 
 
-	ADD_TEST(testman, "doPoolBenchmarkES", doPoolBenchmarkES(envmode));
-	ADD_TEST(testman, "TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
-	ADD_TEST(testman, "TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
+	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
+	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
+	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 
 	// Programs test
-	ADD_TEST(testman, "BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
-	ADD_TEST(testman, "ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
-	ADD_TEST(testman, "TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
-
-	
+	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
+	ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
+	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
+	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Performance test
 	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));

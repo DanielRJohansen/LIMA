@@ -97,6 +97,8 @@ public:
 	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
 #endif
 
+	const fs::path mainDir = Filehandler::GetLimaDir();
+
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;

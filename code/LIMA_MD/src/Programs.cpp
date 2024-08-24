@@ -431,12 +431,18 @@ void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize)
 
 
 
-void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile) {
+void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection) {
+	for (auto& lipid : lipidsSelection) {
+		
+		const fs::path lipid_path = Filehandler::GetLimaDir() / ("resources/Lipids/" + lipid.lipidname);
+		lipid.grofile = std::make_unique<GroFile>(lipid_path / (lipid.lipidname + ".gro"));
+		lipid.topfile = std::make_unique<TopologyFile>(lipid_path / (lipid.lipidname + ".itp"));
+	}
 
-	SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile,
-		GroFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.gro" },
-		std::make_shared<TopologyFile>(TopologyFile{ Filehandler::GetLimaDir() / "resources/lipids/POPC/POPC.itp" }),
-		120);
+	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
+		lipidsSelection,
+		80, 6.f, grofile.box_size * 0.5f
+	);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
 

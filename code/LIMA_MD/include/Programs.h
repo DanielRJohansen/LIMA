@@ -17,6 +17,5 @@ namespace Programs {
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 
-	void MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile);
-
+	void MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection);
 } // namespace Programs

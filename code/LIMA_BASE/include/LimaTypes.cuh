@@ -187,6 +187,7 @@ struct Float3 {
 		return std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
 	}
 
+	// TODO: This is now proven wrong, and should be replaced, by a dedicated grometry namespace, using rotationmatrices instead
 	__host__ __device__ void rotateAroundOrigo(Float3 pitch_yaw_roll) {	//pitch around x, yaw around z, tilt around y
 		// pitch and yaw is relative to global coordinates. 
 

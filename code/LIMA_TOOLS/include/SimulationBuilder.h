@@ -48,4 +48,13 @@ namespace SimulationBuilder {
 	/// </summary>
 	void InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert);
+	
+	void InsertSubmoleculesOnSphere(
+		GroFile& targetGrofile,
+		TopologyFile& targetTopol,
+		LipidsSelection,
+		int nMoleculesToInsert,
+		float sphereRadius,
+		const Float3& sphereCenter
+	);
 };

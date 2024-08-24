@@ -86,8 +86,7 @@ __global__ void loadCompoundatomsKernel(RenderAtom* atoms, const int step, const
 
         ATOM_TYPE atomType = RAS_getTypeFromAtomletter(compound->atomLetters[local_id]);
 
-        atom.position.w = getRadius(atomType) / boxLenNM * 4.f;
-
+        atom.position.w = getRadius(atomType) / boxLenNM;
         if (coloringMethod == ColoringMethod::Atomname)
             atom.color = getColor(atomType);
         else if (coloringMethod == ColoringMethod::Charge) {
@@ -114,7 +113,7 @@ __global__ void loadSolventatomsKernel(const Float3* positions, int n_compounds,
 		RenderAtom atom{};
         const Float3 positionNormalized = positions[particle_index] / boxLenNM - 0.5f;// normalize from -0.5->0.5
         atom.position = float4{ positionNormalized.x, positionNormalized.y, positionNormalized.z, 0.f };
-        atom.position.w = getRadius(ATOM_TYPE::SOL) / boxLenNM * 4.f;
+        atom.position.w = getRadius(ATOM_TYPE::SOL) / boxLenNM;
 
         atom.color = float4{ 0,0,1, drawSolvent };
 

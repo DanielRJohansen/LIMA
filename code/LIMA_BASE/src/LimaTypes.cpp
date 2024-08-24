@@ -4,7 +4,8 @@
 
 RenderAtom::RenderAtom(Float3 pos, Float3 boxSize, char atomLetter) {
 	const Float3 posNorm = pos / boxSize - 0.5f;
-	position = float4{ posNorm.x, posNorm.y, posNorm.z, RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(atomLetter)) };
+	const float radiusNorm = RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(atomLetter)) / boxSize.x;
+	position = float4{ posNorm.x, posNorm.y, posNorm.z, radiusNorm };
 	color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(atomLetter));
 }
 

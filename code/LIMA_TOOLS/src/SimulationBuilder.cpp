@@ -52,7 +52,7 @@ float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) 
 
 
 float genRandomAngle() {
-	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI;
+	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI - PI;
 }
 
 void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
@@ -243,15 +243,6 @@ namespace SimulationBuilder{
 		for (auto& mol : inputfiles.topfile->molecules.entries) {
 			outputtopologyfile->AppendTopology(mol.includeTopologyFile);
 		}
-		//outputtopologyfile->AppendTopology(inputfiles.topfile);
-
-		//overwriteBond(inputfiles.topfile->GetSinglebonds(), outputtopologyfile->GetSinglebonds(), atomnr_offset);
-		//overwriteBond(inputfiles.topfile->singlebonds.entries, outputtopologyfile->singlebonds.entries, atomnr_offset);
-		//overwriteBond(inputfiles.topfile->pairs.entries, outputtopologyfile->pairs.entries, atomnr_offset);
-		//overwriteBond(inputfiles.topfile->anglebonds.entries, outputtopologyfile->anglebonds.entries, atomnr_offset);
-		//overwriteBond(inputfiles.topfile->dihedralbonds.entries, outputtopologyfile->dihedralbonds.entries, atomnr_offset);
-		//overwriteBond(inputfiles.topfile->improperdihedralbonds.entries, outputtopologyfile->improperdihedralbonds.entries, atomnr_offset);
-
 
 		return { std::move(outputgrofile), std::move(outputtopologyfile) };
 	}
@@ -545,5 +536,95 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 			};
 
 		AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
+	}
+}
+
+void SimulationBuilder::InsertSubmoleculesOnSphere(
+	GroFile& targetGrofile,
+	TopologyFile& targetTopol,
+	LipidsSelection lipidselection,
+	int nMoleculesToInsert,
+	float sphereRadius,
+	const Float3& sphereCenter
+)
+{
+	std::srand(123123123);
+
+	for (auto& lipid : lipidselection) {
+		centerMoleculeAroundOrigo(*lipid.grofile);
+	}
+
+
+	GetNextRandomLipid genNextRandomLipid{ lipidselection };
+
+
+	// Use Fibonacci lattice to evenly distribute points on a sphere
+	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f; // Golden ratio
+
+	for (int i = 0; i < nMoleculesToInsert; i++) {
+		float z = 1.0f - (2.0f * i) / static_cast<float>(nMoleculesToInsert - 1); // z-coordinate
+		float radius = std::sqrt(1.0f - z * z); // radius for current z slice
+
+		float theta = 2.0f * PI * i / phi; // angle in xy-plane
+
+		Float3 translationToPointOnSphere = Float3{
+			sphereRadius * radius * cos(theta),
+			sphereRadius * radius * sin(theta),
+			sphereRadius * z
+		} + sphereCenter;
+
+		// Calculate the outward normal vector at this point on the sphere
+		Float3 outwardNormal = Float3{
+			radius * cos(theta),
+			radius * sin(theta),
+			z
+		};
+		outwardNormal.norm(); // Ensure the normal vector is a unit vector
+
+		// Determine the rotation needed to align the molecule's up direction (0, 0, 1) with the outward normal
+		Float3 currentUp = Float3{ 0.0f, 0.0f, 1.0f };
+		
+		Float3 rotationAxis;
+		float rotationAngle;
+
+		if (std::abs(outwardNormal.z - (-1.0f)) < 1e-6) { // Directly downward (antiparallel case)
+			// Rotate 180 degrees around x-axis or y-axis if vectors are opposite
+			rotationAxis = Float3{ 1.0f, 0.0f, 0.0f };
+			rotationAngle = PI;
+		}
+		else {
+			rotationAxis = currentUp.cross(outwardNormal);
+			if (rotationAxis.len() < 1e-3) {
+				rotationAxis = Float3{ 1.0f, 0.0f, 0.0f }; // Any perpendicular vector if they're parallel
+			}
+
+			rotationAxis = rotationAxis.norm();
+			rotationAngle = std::acos(currentUp.dot(outwardNormal)); // Angle between current up and outward normal
+		}
+		//Float3 rotationNoise = Float3{ genRandomAngle(), genRandomAngle(), genRandomAngle() } / 2.f;
+		//rotationAxis = (rotationAxis + rotationNoise).norm();
+
+		Float3 translationNoise = Float3{
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5
+		};
+
+
+
+		const LipidSelect& lipid = genNextRandomLipid();
+
+		const float selfRotAngle = genRandomAngle();
+		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+			pos = Float3::rodriguesRotatation(pos, Float3{0,0,1}, selfRotAngle); // Randomly rotate the molecule along its own axis
+
+			pos = Float3::rodriguesRotatation(pos, rotationAxis, rotationAngle); // Rotate around the calculated axis by the angl
+
+			pos += translationToPointOnSphere;
+			
+			pos += translationNoise;
+			};
+
+		AddGroAndTopToGroAndTopfile(targetGrofile, *lipid.grofile, position_transform, targetTopol, lipid.topfile);
 	}
 }

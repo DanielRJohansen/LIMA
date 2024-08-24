@@ -56,6 +56,7 @@ namespace Filehandler {
 
 	void createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm);	// creates conf topol and sim_params
 
+	// Return the top level LIMA dir
 	fs::path GetLimaDir();
 
 	// These should be in interface maybe?

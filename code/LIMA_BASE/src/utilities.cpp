@@ -85,11 +85,11 @@ void LimaLogger::clearLine() {
     clear_next = false;
 }
 
-float LAL::LargestDiff(const Float3 queryPoint, const std::vector<Float3>& points) {
-	float maxDiff = 0.f;
-    for (const Float3& p : points) {
-        maxDiff = std::max(maxDiff, (p - queryPoint).len()); // OPTIM: compute lenSq, and only len for the index with smallest lenSq
-    }
-
-	return maxDiff;
-}
+//float LAL::LargestDiff(const Float3 queryPoint, const std::span<Float3>& points) {
+//	float maxDiff = 0.f;
+//    for (const Float3& p : points) {
+//        maxDiff = std::max(maxDiff, (p - queryPoint).len()); // OPTIM: compute lenSq, and only len for the index with smallest lenSq
+//    }
+//
+//	return maxDiff;
+//}

@@ -6,6 +6,7 @@ add_library(LIMA_ENGINE STATIC
     src/Engine.cu
     src/Thermostat.cu       # TODO: Make .cpp file
     src/ChargeOcttree.cu
+    src/ConvexHullEngine.cu
 )
 
 target_include_directories(LIMA_ENGINE PRIVATE

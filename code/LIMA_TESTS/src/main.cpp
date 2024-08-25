@@ -102,10 +102,10 @@ int main() {
 
 
 		
-		GroFile grofile;
-		grofile.box_size = Float3{ 15.f };
+	/*	GroFile grofile;
+		grofile.box_size = Float3{ 5.f };
 		TopologyFile topfile;
-		Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} });
+		Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} });*/
 
 
 
@@ -132,7 +132,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

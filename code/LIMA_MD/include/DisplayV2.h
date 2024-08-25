@@ -86,8 +86,7 @@ private:
 	std::unique_ptr<DrawAtomsShader> drawAtomsShader = nullptr;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader = nullptr;
 
-	cudaGraphicsResource* renderAtomsBufferCudaResource;
-
+	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 
 	float camera_pitch = 0.f;
 	float camera_yaw = 0.f;

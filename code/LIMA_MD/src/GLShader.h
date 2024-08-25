@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Utilities.h"
+
 #include <glm.hpp>
 #include <GL/glew.h>
 #include <gtc/matrix_transform.hpp>
@@ -96,8 +98,6 @@ private:
     }
 };
 
-
-
 class SSBO {
 private:
     GLuint bufferID;
@@ -143,6 +143,8 @@ public:
         cudaMemcpy(ptr, data, byteSize, cudaMemcpyDeviceToHost);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        LIMA_UTILS::genericErrorCheck("SetData_FromCuda");
     }
 
     // Method to set data from a std::vector on the host

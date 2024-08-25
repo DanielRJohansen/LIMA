@@ -25,6 +25,7 @@ namespace LAL {
 		return !(a & 1);
 	}
 
+	// TODO These functions are NOT what their names elude they are, fix that
 	// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 	__device__ inline void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
 		for (int i = 1; i < n_elements; i++) {
@@ -47,6 +48,38 @@ namespace LAL {
 		return solventindex_new;
 	}
 
+	template <typename T> 
+	__device__ void ExclusiveScan(T* data, int nElements) {
+		const int tid = threadIdx.x;
+
+		// Up-sweep phase (reduce)
+		for (int stride = 1; stride < nElements; stride *= 2) {
+			int index = (tid + 1) * stride * 2 - 1;
+			if (index < nElements) {
+				data[index] += data[index - stride];
+			}
+			__syncthreads();
+		}
+
+		// Clear the last element for exclusive scan
+		if (tid == 0) {
+			data[nElements - 1] = 0;
+		}
+		__syncthreads();
+
+		// Down-sweep phase
+		for (int stride = nElements / 2; stride > 0; stride /= 2) {
+			int index = (tid + 1) * stride * 2 - 1;
+			if (index < nElements) {
+				T temp = data[index - stride];
+				data[index - stride] = data[index];
+				data[index] += temp;
+			}
+			__syncthreads();
+		}
+	}
+	
+
 	template<typename T>
 	__device__ inline void distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
 		T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
@@ -59,5 +92,37 @@ namespace LAL {
 			__syncthreads();
 		}
 	}
+
+	__device__ inline void Sort(float* data, int nElements) {
+		// Assuming that data is already in shared memory.
+		int tid = threadIdx.x;
+
+		for (int k = 2; k <= nElements; k <<= 1) {
+			for (int j = k >> 1; j > 0; j >>= 1) {
+				int ixj = tid ^ j;
+				if (ixj > tid) {
+					if ((tid & k) == 0) {
+						if (data[tid] > data[ixj]) {
+							// Swap data[tid] and data[ixj]
+							float temp = data[tid];
+							data[tid] = data[ixj];
+							data[ixj] = temp;
+						}
+					}
+					else {
+						if (data[tid] < data[ixj]) {
+							// Swap data[tid] and data[ixj]
+							float temp = data[tid];
+							data[tid] = data[ixj];
+							data[ixj] = temp;
+						}
+					}
+				}
+				__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+			}
+		}
+	}
+
+
 }
 

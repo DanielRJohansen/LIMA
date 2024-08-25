@@ -117,10 +117,12 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
         drawBoxOutlineShader->Draw(MVP);
 
         {
+
             // Map buffer object for writing from CUDA
             RenderAtom* renderAtomsBuffer;
             cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
             size_t num_bytes = 0;
+
             cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
             assert(num_bytes >= molCollection.nParticles * sizeof(RenderAtom));
 
@@ -142,6 +144,7 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
         std::string windowText = window_title + "    FPS: " + std::to_string(fps.GetFps());
         glfwSetWindowTitle(window, windowText.c_str());
     }
+    LIMA_UTILS::genericErrorCheck("RenderloopExit");
 }
 
 

@@ -88,6 +88,8 @@ static std::unique_ptr<LimaLogger> makeLimaloggerBareboned(const std::string& na
     return std::make_unique<LimaLogger>(LimaLogger::LogMode::compact, EnvMode::Headless, name);
 }
 #include <cmath>
+#include <concepts>
+#include <ranges>
 // Lima Algorithm Library
 namespace LAL {
 
@@ -164,5 +166,15 @@ namespace LAL {
         bool hasValue() const { return _hasValue; }
     };    
 
-    float LargestDiff(const Float3 queryPoint, const std::vector<Float3>& points);
+
+    //float LargestDiff(const Float3 queryPoint, const std::span<Float3>& points);
+
+    template <std::ranges::range ContainerType>
+    float LargestDiff(const Float3 queryPoint, const ContainerType& points) {
+        float maxDiff = 0.f;
+        for (const Float3& p : points) {
+            maxDiff = std::max(maxDiff, (p - queryPoint).len()); // Compute lenSq if optimizing
+        }
+        return maxDiff;
+    }
 }

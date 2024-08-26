@@ -3,6 +3,7 @@
 #include "SimulationBuilder.h"
 
 class Environment;
+class MoleculeHullCollection;
 
 namespace Programs {
 	
@@ -17,5 +18,7 @@ namespace Programs {
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 
-	void MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection);
+	MoleculeHullCollection MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection);
+
+	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 } // namespace Programs

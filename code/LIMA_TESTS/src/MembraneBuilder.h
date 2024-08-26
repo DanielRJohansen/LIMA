@@ -64,4 +64,55 @@ namespace TestMembraneBuilder {
 
 		return LimaUnittestResult{ true , "No error", envmode == Full};
 	}
+
+	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {
+		GroFile grofile;
+		grofile.box_size = Float3{ 5.f };
+		TopologyFile topfile;
+		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} });
+
+		const bool overwriteData = false;
+
+		// Compare before relaxation
+		{
+			std::vector<Facet> facets;
+			GenericCopyToHost(mhCol.facets, facets, mhCol.nFacets);
+
+			std::vector<Float3> vertices(mhCol.nFacets * 3);
+			for (int i = 0; i < mhCol.nFacets; i++) {
+				for (int j = 0; j < 3; j++) {
+					vertices[i * 3 + j] = facets[i].vertices[j];
+				}
+			}
+
+			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::simulations_dir / fs::path{ "etc" } / "buildvesicle.bin", 0.01, overwriteData))
+				return LimaUnittestResult{ false , "Before relaxation mismatch", envmode == Full };
+		}
+
+
+		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		
+		// Compare after relaxation
+		{
+			std::vector<Facet> facets;
+			GenericCopyToHost(mhCol.facets, facets, mhCol.nFacets);
+
+			std::vector<Float3> vertices(mhCol.nFacets * 3);
+			for (int i = 0; i < mhCol.nFacets; i++) {
+				for (int j = 0; j < 3; j++) {
+					vertices[i * 3 + j] = facets[i].vertices[j];
+				}
+			}
+			
+			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::simulations_dir / fs::path{ "etc" } / "relaxedvesicle.bin", 0.01, overwriteData))
+				return LimaUnittestResult{ false , "After relaxation mismatch", envmode == Full };
+		}
+
+		if (overwriteData)
+			return LimaUnittestResult{false, "Overwriting data", envmode == Full};
+
+
+
+		return LimaUnittestResult{ true , "No error", envmode == Full };
+	}
 }

@@ -271,6 +271,9 @@ void MoleculeHull::ApplyTransformation(const glm::mat4& transformationMatrix, Fa
 		facetsInCollection[facetId].ApplyTransformation(transformationMatrix);
 	}
 
+    const glm::vec4 transformedCenter = transformationMatrix * glm::vec4{ center.x, center.y, center.z, 1.f };
+    center = Float3{ transformedCenter.x, transformedCenter.y, transformedCenter.z };
+
     for (int particleId = indexOfFirstParticleInBuffer; particleId < indexOfFirstParticleInBuffer + nParticles; particleId++) {
         const Float3 screenNormalizedPosition = Float3{ particlesInCollection[particleId].position.x, particlesInCollection[particleId].position.y, particlesInCollection[particleId].position.z };
         const Float3 unNormalizedPosition = (screenNormalizedPosition + 0.5f) * boxSize;
@@ -289,7 +292,8 @@ void MoleculeHull::ApplyTransformation(const glm::mat4& transformationMatrix, Fa
 
 
 
-
+#include "Statistics.h"
+#include "Utilities.h"
 
 MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFactory>& molecules, Float3 boxSize) {
     
@@ -306,7 +310,16 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
 
     std::vector<MoleculeHull> moleculehullsHost(molecules.size());
     for (int i = 0; i < molecules.size(); i++) {
-        moleculehullsHost[i] = MoleculeHull{ hullFacetcountPrefixsum[i], (int)molecules[i].convexHull.GetFacets().size(), hullParticlecountPrefixsum[i], (int)molecules[i].GetParticles().size() };
+        const Float3 center = Statistics::CalculateMinimaxPoint(molecules[i].convexHull.GetVertices());
+        const float radius = LAL::LargestDiff(center, molecules[i].convexHull.GetVertices());
+        moleculehullsHost[i] = MoleculeHull{ // Todo, just make a contructor taking the factory as input
+            hullFacetcountPrefixsum[i], 
+            static_cast<int>(molecules[i].convexHull.GetFacets().size()), 
+            hullParticlecountPrefixsum[i], 
+            static_cast<int>(molecules[i].GetParticles().size()),
+            center, 
+            radius
+        };
 	}
 
     nFacets = hullFacetcountPrefixsum.back() + molecules.back().convexHull.GetFacets().size();

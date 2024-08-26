@@ -224,7 +224,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 }
 
 
-void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
+void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
 	Display d(Full);
 
 
@@ -234,16 +234,15 @@ void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize)
 
 	ConvexHullEngine chEngine{};
 
-
-	while (true) {
-
+	//while (true) {
+	for (int i = 0; i < 100; i++) {
 		chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize);
 
-		d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
+		d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(50));
 	}
+	TimeIt::PrintTaskStats("FindIntersect");
 
-
-	d.RenderLoop(mhCol, boxSize, std::nullopt);
+	d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(100));
 
 
 }
@@ -254,7 +253,7 @@ void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize)
 
 
 
-void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection) {
+MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection) {
 	for (auto& lipid : lipidsSelection) {
 		
 		const fs::path lipid_path = Filehandler::GetLimaDir() / ("resources/Lipids/" + lipid.lipidname);
@@ -264,7 +263,7 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsS
 
 	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
 		lipidsSelection,
-		3, .2f, grofile.box_size * 0.5f
+		3, .5f, grofile.box_size * 0.5f
 	);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
@@ -282,7 +281,5 @@ void Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsS
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
-
-
+	return mhCol;
 }

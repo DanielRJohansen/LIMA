@@ -84,6 +84,48 @@ namespace Filehandler {
 		//file = fopen(file_path, "wb");
 #endif
 	}
+
+	template <typename T>
+	std::vector<T> ReadBinaryFileIntoVector(const fs::path& path) {
+		if (!fs::exists(path)) {
+			throw std::runtime_error("File does not exist: " + path.string());
+		}
+
+		std::ifstream file(path, std::ios::binary | std::ios::ate);
+			if (!file) {
+				throw std::runtime_error("Failed to open file: " + path.string());
+			}
+
+		std::streamsize size = file.tellg();
+			if (size % sizeof(T) != 0) {
+				throw std::runtime_error("File size is not a multiple of type size.");
+			}
+
+		file.seekg(0, std::ios::beg);
+		std::vector<T> buffer(size / sizeof(T));
+
+		if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+			throw std::runtime_error("Error reading file: " + path.string());
+		}
+
+		return buffer;
+	}
+
+	template <typename T>
+	void WriteVectorToBinaryFile(const fs::path& path, const std::vector<T>& vec) {
+		if (path.empty())
+			throw std::runtime_error("Empty path");
+
+		std::ofstream file(path, std::ios::binary);
+		if (!file) {
+			throw std::runtime_error("Failed to open file: " + path.string());
+		}
+
+		file.write(reinterpret_cast<const char*>(vec.data()), vec.size() * sizeof(T));
+		if (!file) {
+			throw std::runtime_error("Error writing to file: " + path.string());
+		}
+	}
 };
 
 

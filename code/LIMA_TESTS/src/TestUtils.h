@@ -74,6 +74,26 @@ namespace TestUtils {
 	}
 
 
+	bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
+		if (overwriteFile) {
+			Filehandler::WriteVectorToBinaryFile(path, vec);
+			return true;
+		}
+
+		const std::vector<Float3> fileVec = Filehandler::ReadBinaryFileIntoVector<Float3>(path);
+		if (vec.size() != fileVec.size()) {
+			return false;
+		}
+		
+		for (size_t i = 0; i < vec.size(); i++) {
+			if ((vec[i] - fileVec[i]).len() > errorThreshold) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
 	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float target_vc, std::vector<float> energy_gradients, float max_energygradient_abs)

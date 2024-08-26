@@ -7,8 +7,16 @@
 #include <gtx/rotate_vector.hpp>
 #undef GLM_ENABLE_EXPERIMENTAL
 
-const int maxFacetsInCH = 128;
+#include <thrust/device_vector.h>
+#include <thrust/transform.h>
+#include <thrust/functional.h>
 
+
+#include "DeviceAlgorithms.cuh"
+#include "Utilities.h"
+
+const int maxFacetsInCH = 128;
+const int maxCollisionsPerMH = 8;
 
 struct Overlap {
 	bool isOverlapping = false;
@@ -16,12 +24,8 @@ struct Overlap {
 	float depth{};
 };
 
-struct Tri {
-	Float3 vertices[3];
-};
 
 struct TriList {
-	//Tri tris[maxFacetsInCH];
 	Float3 triVertices[maxFacetsInCH * 3];
 	int nTris = 0;
 
@@ -36,94 +40,30 @@ struct TriList {
 	}	
 };
 
-Float3 MeanPoint(const TriList& triList) {
-	Float3 sum{};
-	for (int i = 0; i < triList.nTris; i++) {
-		for (int j = 0; j < 3; j++) {
-			sum += triList.triVertices[i*3+j];
+__device__ void FindMaxDepth(const Float3& queryPoint, const Float3* const points, int nPoints, float& result) {
+	float localMaxDepth = 0.f;
+	for (int vertexIndex = threadIdx.x; vertexIndex < nPoints; vertexIndex += blockDim.x) {
+		const auto& point = points[vertexIndex];
+		const float dist = (queryPoint - point).len();
+		if (dist > localMaxDepth) {
+			localMaxDepth = dist;
 		}
 	}
-	return sum / (triList.nTris * 3);
+	for (int i = 0; i < blockDim.x; i++) {
+		if (i == threadIdx.x) {
+			if (localMaxDepth > result)
+				result = localMaxDepth;
+		}
+		__syncthreads();
+	}
 }
 
 
-Float3 CalculateMinimaxPoint(const Float3* const triVertices, int nVertices) {
-	float epsilon = 1e-4;
-
-	// Initial guess for the new point as the centroid
-	//Float3 currentPoint = MeanPoint(triList);
-	Float3 currentPoint = triVertices[0];
-
-	float prevVelocity = std::numeric_limits<float>::max();
-
-	const int maxIterations = 5;
-	for (int i = 0; i < maxIterations; i++) {
-		Float3 downGradient = { 0, 0, 0 };
-		float maxDist = 0.0f;
-		float secondMaxDist = 0.0f;
-
-		for (int vertexIndex = 0; vertexIndex < nVertices; vertexIndex++) {
-
-			const auto& point = triVertices[vertexIndex];
-
-			float dist = (currentPoint - point).len();
-			if (dist > maxDist) {
-				secondMaxDist = maxDist;
-				maxDist = dist;
-				downGradient = (point - currentPoint);
-			}
-			else if (dist > secondMaxDist) {
-				secondMaxDist = dist;
-			}
-
-		}
-
-		const float velocity = std::min((maxDist - secondMaxDist) / 2.f, prevVelocity * 0.9f);
-		prevVelocity = velocity;
-
-		currentPoint += downGradient.norm() * velocity;
-
-
-		//if (velocity < epsilon) {
-		//	break;
-		//}
-	}
-
-	return currentPoint;
-}
-
-// Input is in global memory
-__global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerticesBuffer, const int* const nVerticesBuffer, Overlap* overlapsBuffer) {
-	__shared__ float prevVelocity;
-	__shared__ int nVertices;
-
-	__shared__ Float3 sharedDownGradient; // Shared memory to store gradient direction
-	__shared__ float sharedMaxDist;        // Shared memory to store maximum distance
-	__shared__ float sharedSecondMaxDist;  // Shared memory to store second maximum distance
-
-	__shared__ Overlap overlap;
-
-
-	// First figure out if there is any work to do
+__device__ void FindMinimaxPoint(Float3& sharedDownGradient, float& sharedMaxDist, float& sharedSecondMaxDist, const Float3* const points, const int nPoints, Float3& sharedMinimaxPoint, float& sharedPrevVelocity) {
 	if (threadIdx.x == 0) {
-		nVertices = nVerticesBuffer[blockIdx.x];
-		if (nVertices < 4)
-			overlapsBuffer[blockIdx.x].isOverlapping = false;
+		sharedMinimaxPoint = points[0];
+		sharedPrevVelocity = FLT_MAX;
 	}
-	__syncthreads();
-	if (nVertices < 4)
-		return;
-
-
-	const float epsilon = 1e-4;
-	const Float3* const triVertices = &(triVerticesBuffer[blockIdx.x * maxFacetsInCH * 3]);
-
-	if (threadIdx.x == 0) {
-		overlap.intersectionCenter = triVertices[0];
-		overlap.depth = 0.0f;
-		prevVelocity = FLT_MAX;
-	}
-	__syncthreads();
 
 	const int maxIterations = 5;
 	for (int i = 0; i < maxIterations; i++) {
@@ -141,14 +81,14 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 		float localSecondMaxDist = 0.0f;
 
 		// Each thread processes a subset of the triangleVertices
-		for (int vertexIndex = threadIdx.x; vertexIndex < nVertices; vertexIndex += blockDim.x) {
-			const auto& point = triVertices[vertexIndex];
-			const float dist = (overlap.intersectionCenter - point).len();
+		for (int vertexIndex = threadIdx.x; vertexIndex < nPoints; vertexIndex += blockDim.x) {
+			const auto& point = points[vertexIndex];
+			const float dist = (sharedMinimaxPoint - point).len();
 
 			if (dist > localMaxDist) {
 				localSecondMaxDist = localMaxDist;
 				localMaxDist = dist;
-				localDownGradient = (point - overlap.intersectionCenter);
+				localDownGradient = (point - sharedMinimaxPoint);
 			}
 			else if (dist > localSecondMaxDist) {
 				localSecondMaxDist = dist;
@@ -183,40 +123,75 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 
 		if (threadIdx.x == 0) {
 			// Calculate velocity
-			float velocity = std::min((sharedMaxDist - sharedSecondMaxDist) / 2.0f, prevVelocity * 0.9f);
-			prevVelocity = velocity;
+			float velocity = std::min((sharedMaxDist) / 2.0f, sharedPrevVelocity * 0.9f);
+			sharedPrevVelocity = velocity;
 
 			// Normalize the gradient
 			sharedDownGradient = sharedDownGradient;
-			overlap.intersectionCenter += sharedDownGradient.norm() * velocity;
+			sharedMinimaxPoint += sharedDownGradient.norm() * velocity;
 		}
 		__syncthreads();
 	}
+}
 
 
-	float localMaxDepth = 0.f;
-	for (int vertexIndex = threadIdx.x; vertexIndex < nVertices; vertexIndex += blockDim.x) {
-		const auto& point = triVertices[vertexIndex];
-		const float dist = (overlap.intersectionCenter - point).len();
-		if (dist > localMaxDepth) {
-			localMaxDepth = dist;
-		}
+__global__ void ResetCollisionCounters(MoleculeHull* hullsBuffer, int nMolecules) {
+	const int mhIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	if (mhIndex < nMolecules)
+		hullsBuffer[mhIndex].nCollisions = 0;
+}
+
+
+// Input is in global memory
+__global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerticesBuffer, const int* const nVerticesBuffer, Overlap* overlapsBuffer, 
+	MoleculeHull* hullsBuffer, Float3* pivotPoints, Float3* forceApplicationPoints, Float3* forceDirections, float* forceMagnitudes)
+{
+	__shared__ float prevVelocity;
+	__shared__ int nVertices;
+
+	__shared__ Float3 sharedDownGradient; // Shared memory to store gradient direction
+	__shared__ float sharedMaxDist;        // Shared memory to store maximum distance
+	__shared__ float sharedSecondMaxDist;  // Shared memory to store second maximum distance
+
+	__shared__ Overlap overlap;
+
+
+	// First figure out if there is any work to do
+	if (threadIdx.x == 0) {
+		nVertices = nVerticesBuffer[blockIdx.x];
+		if (nVertices < 4)
+			overlapsBuffer[blockIdx.x].isOverlapping = false;
 	}
-	for (int i = 0; i < blockDim.x; i++) {
-		if (i == threadIdx.x) {
-			if (localMaxDepth > overlap.depth)
-				overlap.depth = localMaxDepth;
-		}
-		__syncthreads();
+	__syncthreads();
+	if (nVertices < 4)
+		return;
+
+
+	const float epsilon = 1e-4;
+	const Float3* const triVertices = &(triVerticesBuffer[blockIdx.x * maxFacetsInCH * 3]);
+
+	if (threadIdx.x == 0) {
+		overlap.intersectionCenter = triVertices[0];
+		overlap.depth = 0.0f;
+		prevVelocity = FLT_MAX;
 	}
 	__syncthreads();
 	
+	FindMinimaxPoint(sharedDownGradient, sharedMaxDist, sharedSecondMaxDist, triVertices, nVertices, overlap.intersectionCenter, prevVelocity);
+
+	FindMaxDepth(overlap.intersectionCenter, triVertices, nVertices, overlap.depth);
+
 	if (threadIdx.x == 0) {
 		overlap.isOverlapping = true;
 		overlapsBuffer[blockIdx.x] = overlap;
-	}
-	__syncthreads();
 
+		const float magnitudeScalar = 0.003f;
+
+		const int collisionId = hullsBuffer[blockIdx.x].nCollisions-1; // -1 Because the previous kernel did the "++" 
+
+		forceApplicationPoints[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.intersectionCenter;
+		forceMagnitudes[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.depth * magnitudeScalar;
+	}
 }
 
 float LargestDiff(Float3 queryPoint, TriList triList) {
@@ -235,46 +210,34 @@ float LargestDiff(Float3 queryPoint, TriList triList) {
 	return largestDiff;
 }
 
-__device__ void LargestDiffDev(Float3 queryPoint, TriList triList, float* result) {
-	float largestDiffLocal = 0.f;
 
-	for (int vertexId = threadIdx.x; vertexId < triList.nTris * 3; vertexId += blockDim.x) {
-		const float diff = (queryPoint - triList.triVertices[vertexId]).len();
-		if (diff > largestDiffLocal) {
-			largestDiffLocal = diff;
-		}
-	}
 
-	for (int i = 0; i < blockDim.x; i++) {
-		if (i == threadIdx.x)
-			if (largestDiffLocal > *result)
-				*result = largestDiffLocal;
-		__syncthreads();
-	}
-}
-
-#include "DeviceAlgorithms.cuh"
-#include "Utilities.h"
 const int nThreadsInFindIntersectionKernel = 32;
-__global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBuffer, Facet* facets, Float3 boxSize, int targetHull, Float3* verticesOutBuffer, int* nVerticesOutBuffer) {
+__global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBuffer, const Facet* const facets, Float3 boxSize, int targetHull, 
+	Float3* verticesOutBuffer, int* nVerticesOutBuffer, Float3* pivotPoints, Float3* forceDirections) {
 	__shared__ TriList clippedFacets;
-	//__shared__ TriList newClippedFacets;
 	__shared__ Facet currentClippingFacet;
 	__shared__ int prefixSumBuffer[nThreadsInFindIntersectionKernel];
 
-	if (targetHull == blockIdx.x)
+	if (targetHull == blockIdx.x) {
+		if (threadIdx.x == 0)
+			nVerticesOutBuffer[blockIdx.x] = 0;
 		return;
+	}
+		
 
 	MoleculeHull mh1 = hullsBuffer[blockIdx.x];
 	MoleculeHull mh2 = hullsBuffer[targetHull];
 
+	if ((mh1.center - mh2.center).len() > mh1.radius + mh2.radius)
+		return;
+
 	// First initialize the facets which vertices we are clipping
 	for (int facetIdOffset = threadIdx.x; facetIdOffset < mh2.nFacets; facetIdOffset += blockDim.x) {
 		const int facetId = mh2.indexOfFirstFacetInBuffer + facetIdOffset;
-		Tri tri{ facets[facetId].vertices[0], facets[facetId].vertices[1], facets[facetId].vertices[2] };
 
 		for (int vertexId = 0; vertexId < 3; vertexId++) 
-			clippedFacets.triVertices[facetIdOffset * 3 + vertexId] = tri.vertices[vertexId];
+			clippedFacets.triVertices[facetIdOffset * 3 + vertexId] = facets[facetId].vertices[vertexId];
 	}
 	if (threadIdx.x == 0) {
 		clippedFacets.nTris = mh2.nFacets;
@@ -285,19 +248,13 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 
 
 	for (int clippingFacetId = mh1.indexOfFirstFacetInBuffer; clippingFacetId < mh1.indexOfFirstFacetInBuffer + mh1.nFacets; clippingFacetId++) {
-	//for (int clippingFacetIdOffset = 0; clippingFacetIdOffset < mh1.nFacets; clippingFacetIdOffset += blockDim.x) {
-
 		if (threadIdx.x == 0) {
-			//newClippedFacets.nTris = 0;
 			currentClippingFacet = facets[clippingFacetId];
 		}
 		__syncthreads();
 
-
-
 		Float3 clippedFacetsToBeAdded[8][3];
 		int nClippedFacetsToBeAdded = 0;
-
 
 		for (int facetId = threadIdx.x; facetId < clippedFacets.nTris; facetId += blockDim.x) {
 			const Float3 queryFacet[3] = { clippedFacets.triVertices[facetId * 3 + 0], clippedFacets.triVertices[facetId * 3 + 1], clippedFacets.triVertices[facetId * 3 + 2] };
@@ -329,7 +286,6 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 
 			if (nClippedFacetsToBeAdded == 8)
 				printf("Too many facets to be added\n");
-			//newClippedFacets.Add({ clippedFacet[0], clippedFacet[1], clippedFacet[2] });
 			clippedFacetsToBeAdded[nClippedFacetsToBeAdded][0] = clippedFacet[0];
 			clippedFacetsToBeAdded[nClippedFacetsToBeAdded][1] = clippedFacet[1];
 			clippedFacetsToBeAdded[nClippedFacetsToBeAdded][2] = clippedFacet[2];
@@ -343,17 +299,22 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 		__syncthreads();
 
 		for (int i = 0; i < nClippedFacetsToBeAdded; i++) {
-			//clippedFacets.tris[prefixSumBuffer[threadIdx.x] + i] = { clippedFacetsToBeAdded[i][0], clippedFacetsToBeAdded[i][1], clippedFacetsToBeAdded[i][2] };
 			clippedFacets.triVertices[(prefixSumBuffer[threadIdx.x] + i) * 3 + 0] = clippedFacetsToBeAdded[i][0];
 			clippedFacets.triVertices[(prefixSumBuffer[threadIdx.x] + i) * 3 + 1] = clippedFacetsToBeAdded[i][1];
 			clippedFacets.triVertices[(prefixSumBuffer[threadIdx.x] + i) * 3 + 2] = clippedFacetsToBeAdded[i][2];
 		}
 		if (threadIdx.x == blockDim.x - 1) {
 			clippedFacets.nTris = prefixSumBuffer[threadIdx.x] + nClippedFacetsToBeAdded;
-
 		}
 		__syncthreads();
 	}
+
+	if (threadIdx.x == 0)
+		nVerticesOutBuffer[blockIdx.x] = clippedFacets.nTris * 3;
+
+	// If we dont have a proper overlap, we can exit now
+	if (clippedFacets.nTris < 2)
+		return;
 
 	for (int vertexIndex = threadIdx.x; vertexIndex < clippedFacets.nTris * 3; vertexIndex += blockDim.x) {
 		const int moleculeOffset = blockIdx.x * maxFacetsInCH * 3;
@@ -361,7 +322,9 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 		verticesOutBuffer[outputIndex] = clippedFacets.triVertices[vertexIndex];
 	}
 	if (threadIdx.x == 0) {
-		nVerticesOutBuffer[blockIdx.x] = clippedFacets.nTris * 3;
+		pivotPoints[blockIdx.x * maxCollisionsPerMH + mh1.nCollisions] = mh1.center;
+		forceDirections[blockIdx.x * maxCollisionsPerMH + mh1.nCollisions] = (mh1.center - mh2.center).norm();
+		hullsBuffer[blockIdx.x].nCollisions++;
 	}
 }
 
@@ -395,12 +358,46 @@ glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
 	return transformationMatrix;
 }
 
+
+// Define a functor for the transformation matrix computation
+struct ComputeTransformationMatrix
+{
+	__host__ __device__
+		glm::mat4 operator()(const glm::vec3& rotationPivotPoint, const glm::vec3& forceApplicationPoint, const glm::vec3& forceDirection, float forceMagnitude)
+	{
+		// Step 2: Compute the torque axis
+		glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
+		torqueAxis = glm::normalize(torqueAxis);
+
+		// Step 3: Determine the rotation angle
+		float rotationAngle = forceMagnitude;
+
+		// Step 4: Create the rotation matrix
+		glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, torqueAxis);
+
+		// Step 5: Create translation matrices
+		glm::mat4 translationMatrixToPivot = glm::translate(glm::mat4(1.0f), -rotationPivotPoint);
+		glm::mat4 translationMatrixBack = glm::translate(glm::mat4(1.0f), rotationPivotPoint);
+
+		// Step 6: Compute translation caused by the force
+		glm::vec3 translationVector = forceMagnitude * forceDirection;
+		glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), translationVector);
+
+		// Step 7: Combine the matrices
+		glm::mat4 transformationMatrix = translationMatrix * translationMatrixBack * rotationMatrix * translationMatrixToPivot;
+
+		return transformationMatrix;
+	}
+};
+
+
+
 #include "TimeIt.h"
 #include<span>
 
 void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) 
 {
-	TimeIt timer{ "FindIntersect", true };
+	TimeIt timer{ "FindIntersect", false };
 
 	Facet* facets = new Facet[mhCol.nFacets];
 	RenderAtom* atoms = new RenderAtom[mhCol.nParticles];
@@ -420,61 +417,87 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 
 	Overlap* overlaps = new Overlap[mhCol.nMoleculeHulls];
 
+
+
+
+
+	// Setup buffers for computing transforms. These are filled when a MH finds a collision
+	Float3* pivotPoints, *forceApplicationPoints, *forceDirections;
+	float* forceMagnitudes;
+	cudaMalloc(&pivotPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
+	cudaMalloc(&forceApplicationPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
+	cudaMalloc(&forceDirections, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
+	cudaMalloc(&forceMagnitudes, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float));
+
+
+	Float3* pivotPointsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
+	Float3* forceApplicationPointsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
+	Float3* forceDirectionsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
+	float* forceMagnitudesHost = new float[mhCol.nMoleculeHulls * maxCollisionsPerMH];
+
 	while (true) {
 
 		bool anyIntersecting = false;
 
 		for (int j = 0; j < mhCol.nMoleculeHulls; j++) {
-			const Float3 rightCenter = Statistics::CalculateMinimaxPoint(moleculeHulls[j].GetFacetVertices(facets));
-			const float rightRadius = LAL::LargestDiff(rightCenter, moleculeHulls[j].GetFacetVertices(facets) );
 
+			ResetCollisionCounters<< <(mhCol.nMoleculeHulls + 64 -1)/ 64, 64 >> > (mhCol.moleculeHulls, mhCol.nMoleculeHulls);
 
-
-			FindIntersectionConvexhullFrom2Convexhulls << <mhCol.nMoleculeHulls, nThreadsInFindIntersectionKernel >> > (mhCol.moleculeHulls, mhCol.facets, boxSize, j, verticesOutDev, nVerticesOutDev);
+			FindIntersectionConvexhullFrom2Convexhulls << <mhCol.nMoleculeHulls, nThreadsInFindIntersectionKernel >> > (mhCol.moleculeHulls, mhCol.facets, boxSize, j, 
+				verticesOutDev, nVerticesOutDev, pivotPoints, forceDirections);
 			LIMA_UTILS::genericErrorCheck("FindIntersectionConvexhullFrom2Convexhulls");
 			cudaDeviceSynchronize();
 
-			CalculateIntersectionCenterAndDepth<<<mhCol.nMoleculeHulls, 32>>>(verticesOutDev, nVerticesOutDev, overlapDev);
+			CalculateIntersectionCenterAndDepth<<<mhCol.nMoleculeHulls, 32>>>(
+				verticesOutDev, nVerticesOutDev, overlapDev, mhCol.moleculeHulls, pivotPoints, forceApplicationPoints, forceDirections, forceMagnitudes
+				);
 			LIMA_UTILS::genericErrorCheck("CalculateIntersectionCenterAndDepth");
 
 			// Now move the outputBuffers to host and compute Overlap
 
 			cudaMemcpy(overlaps, overlapDev, mhCol.nMoleculeHulls * sizeof(Overlap), cudaMemcpyDeviceToHost);
 
+			cudaMemcpy(pivotPointsHost, pivotPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
+			cudaMemcpy(forceApplicationPointsHost, forceApplicationPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
+			cudaMemcpy(forceDirectionsHost, forceDirections, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
+			cudaMemcpy(forceMagnitudesHost, forceMagnitudes, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float), cudaMemcpyDeviceToHost);
+
+
+
+
+
+
+
+
 
 			for (int i = 0; i < mhCol.nMoleculeHulls; i++) {
-
 				Overlap devOverlap = overlaps[i];
 				if (!devOverlap.isOverlapping)
 					continue;
 
-				const Float3 leftCenter = Statistics::CalculateMinimaxPoint(moleculeHulls[i].GetFacetVertices(facets));
-				const float leftRadius = LAL::LargestDiff(leftCenter, moleculeHulls[i].GetFacetVertices(facets));
-
 				if (i == j)
-					continue;	
+					continue;
 
+				const Float3 pivotPoint = pivotPointsHost[i * maxCollisionsPerMH + 0]; // Same as moleculeCenter
+				const Float3 forceApplicationPoint = forceApplicationPointsHost[i * maxCollisionsPerMH + 0]; // center of intersect
+				const float forceMagnitude = forceMagnitudesHost[i * maxCollisionsPerMH + 0] * 2.f;	// 
+				const Float3 forceDirection = forceDirectionsHost[i * maxCollisionsPerMH + 0];
 
 				anyIntersecting = true;
 
-				const glm::mat4 leftTransformMatrix = computeTransformationMatrix(leftCenter.ToVec3(), devOverlap.intersectionCenter.ToVec3(), (leftCenter - rightCenter).norm().ToVec3(), devOverlap.depth * 0.05f);
-				const glm::mat4 rightTransformMatrix = computeTransformationMatrix(rightCenter.ToVec3(), devOverlap.intersectionCenter.ToVec3(), (rightCenter - leftCenter).norm().ToVec3(), devOverlap.depth * 0.05f);
+				const glm::mat4 leftTransformMatrix = computeTransformationMatrix(pivotPoint.ToVec3(), forceApplicationPoint.ToVec3(), forceDirection.ToVec3(), forceMagnitude);
 
 				moleculeHulls[i].ApplyTransformation(leftTransformMatrix, facets, atoms, boxSize);
-				moleculeHulls[j].ApplyTransformation(rightTransformMatrix, facets, atoms, boxSize);
 
 				cudaMemcpy(mhCol.facets, facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyHostToDevice);
 				cudaMemcpy(mhCol.particles, atoms, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyHostToDevice);
+				cudaMemcpy(mhCol.moleculeHulls, moleculeHulls, mhCol.nMoleculeHulls * sizeof(MoleculeHull), cudaMemcpyHostToDevice);	// Only needed as long as we need to move center from host to device
 
 			}
 
 		}
 
-		cudaFree(verticesOutDev);
-		cudaFree(nVerticesOutDev);
-		cudaFree(overlapDev);
 
-		delete[] overlaps;
 
 		//}
 		//cudaMemcpy(mhCol.facets, facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyHostToDevice);
@@ -482,5 +505,23 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 		break;
 	}
 
+	cudaFree(verticesOutDev);
+	cudaFree(nVerticesOutDev);
+	cudaFree(overlapDev);
+
+	delete[] overlaps;
+
+	cudaFree(pivotPoints);
+	cudaFree(forceApplicationPoints);
+	cudaFree(forceDirections);
+	cudaFree(forceMagnitudes);
+
+
+	delete[] pivotPointsHost;
+	delete[] forceApplicationPointsHost;
+	delete[] forceDirectionsHost;
+	delete[] forceMagnitudesHost;
+
+	LIMA_UTILS::genericErrorCheck("Algo Exit");
 
 }

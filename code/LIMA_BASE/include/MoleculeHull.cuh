@@ -134,6 +134,11 @@ struct MoleculeHull {
 	int indexOfFirstParticleInBuffer = -1;
 	int nParticles = -1;
 
+	Float3 center; // [nm] minimax point
+	float radius; // [nm] distance from center to furthest point
+
+	int nCollisions = 0;
+
 	// Temp SLOW function, only for dev
 	std::vector<Float3> GetFacetVertices(const Facet* facetsInCollection) const {
 		std::vector<Float3> vertices;

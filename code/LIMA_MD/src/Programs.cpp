@@ -17,15 +17,8 @@
 namespace lfs = Filehandler;
 
 MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& lipidselection, bool carryout_em, float centerCoordinate, bool writeFiles) {
-	// Load the files for each lipid
-	for (auto& lipid : lipidselection) {
-		const std::string lipid_path = env.main_dir + "/resources/Lipids/" + lipid.lipidname + "/";
-		lipid.grofile = std::make_unique<GroFile>(lipid_path + lipid.lipidname + ".gro");
-		lipid.topfile = std::make_unique<TopologyFile>(lipid_path + lipid.lipidname + ".itp");
-	}
 
 	BoxBuilder boxbuilder( std::make_unique<LimaLogger>());
-
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
 	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
@@ -254,12 +247,6 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 
 
 MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection) {
-	for (auto& lipid : lipidsSelection) {
-		
-		const fs::path lipid_path = Filehandler::GetLimaDir() / ("resources/Lipids/" + lipid.lipidname);
-		lipid.grofile = std::make_unique<GroFile>(lipid_path / (lipid.lipidname + ".gro"));
-		lipid.topfile = std::make_unique<TopologyFile>(lipid_path / (lipid.lipidname + ".itp"));
-	}
 
 	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
 		lipidsSelection,

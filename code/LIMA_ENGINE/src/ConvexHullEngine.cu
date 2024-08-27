@@ -10,10 +10,13 @@
 #include <thrust/device_vector.h>
 #include <thrust/transform.h>
 #include <thrust/functional.h>
-
+#include <thrust/tuple.h>
 
 #include "DeviceAlgorithms.cuh"
 #include "Utilities.h"
+
+#include "TimeIt.h"
+#include<span>
 
 const int maxFacetsInCH = 128;
 const int maxCollisionsPerMH = 8;
@@ -135,13 +138,6 @@ __device__ void FindMinimaxPoint(Float3& sharedDownGradient, float& sharedMaxDis
 }
 
 
-__global__ void ResetCollisionCounters(MoleculeHull* hullsBuffer, int nMolecules) {
-	const int mhIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	if (mhIndex < nMolecules)
-		hullsBuffer[mhIndex].nCollisions = 0;
-}
-
-
 // Input is in global memory
 __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerticesBuffer, const int* const nVerticesBuffer, Overlap* overlapsBuffer, 
 	MoleculeHull* hullsBuffer, Float3* pivotPoints, Float3* forceApplicationPoints, Float3* forceDirections, float* forceMagnitudes)
@@ -185,29 +181,13 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 		overlap.isOverlapping = true;
 		overlapsBuffer[blockIdx.x] = overlap;
 
-		const float magnitudeScalar = 0.003f;
+		const float magnitudeScalar = 0.006f;
 
 		const int collisionId = hullsBuffer[blockIdx.x].nCollisions-1; // -1 Because the previous kernel did the "++" 
 
 		forceApplicationPoints[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.intersectionCenter;
 		forceMagnitudes[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.depth * magnitudeScalar;
 	}
-}
-
-float LargestDiff(Float3 queryPoint, TriList triList) {
-	float largestDiff = 0.f;
-
-	for (int triIndex = 0; triIndex < triList.nTris; triIndex++) {
-		for (int vertexIndex = 0; vertexIndex < 3; vertexIndex++) {
-			const auto& point = triList.triVertices[triIndex*3+vertexIndex];
-			const float diff = (queryPoint - point).len();
-			if (diff > largestDiff) {
-				largestDiff = diff;
-			}
-		}
-	}
-
-	return largestDiff;
 }
 
 
@@ -329,42 +309,81 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 }
 
 
-glm::mat4 computeTransformationMatrix(const glm::vec3& rotationPivotPoint,
-	const glm::vec3& forceApplicationPoint,
-	const glm::vec3& forceDirection,
-	float forceMagnitude) {
 
 
-	// Step 2: Compute the torque axis (cross product between the force direction and the vector from pivot to application point)
-	glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
-	torqueAxis = glm::normalize(torqueAxis);
+__global__ void ApplyTransformations(MoleculeHull* moleculeHulls, Facet* facetsBuffer, RenderAtom* renderatomsBuffer, const glm::mat4* const transformMatrices, Float3 boxSize) {
+	__shared__ glm::mat4 transformMatrix;
+	__shared__ MoleculeHull moleculeHull;
 
-	// Step 3: Determine the rotation angle based on the force magnitude
-	float rotationAngle = forceMagnitude;  // Scale this based on your needs
 
-	// Step 4: Create the rotation matrix
-	glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, torqueAxis);
 
-	// Step 5: Create the translation matrix to move the object to and from the pivot point
-	glm::mat4 translationMatrixToPivot = glm::translate(glm::mat4(1.0f), -rotationPivotPoint);
-	glm::mat4 translationMatrixBack = glm::translate(glm::mat4(1.0f), rotationPivotPoint);
+	if (threadIdx.x == 0)
+		moleculeHull = moleculeHulls[blockIdx.x];
+	__syncthreads();
 
-	// Step 6: Compute translation caused by the force
-	glm::vec3 translationVector = forceMagnitude * forceDirection;
-	glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), translationVector);
-	// Step 7: Combine the matrices to get the final transformation matrix
-	glm::mat4 transformationMatrix = translationMatrix * translationMatrixBack * rotationMatrix * translationMatrixToPivot;
 
-	return transformationMatrix;
+	for (int collisionId = 0; collisionId < moleculeHull.nCollisions; collisionId++) {
+
+		const int matrixIndex = blockIdx.x * maxCollisionsPerMH + collisionId;
+
+		if (threadIdx.x < 16)
+			reinterpret_cast<float*>(&transformMatrix)[threadIdx.x] = reinterpret_cast<const float*>(&transformMatrices[matrixIndex])[threadIdx.x];
+
+
+
+
+		for (int facetIdOffset = threadIdx.x; facetIdOffset < moleculeHull.nFacets; facetIdOffset += blockDim.x) {
+			const int facetId = moleculeHull.indexOfFirstFacetInBuffer + facetIdOffset;
+
+			Facet facet = facetsBuffer[facetId];
+
+			for (int i = 0; i < 3; i++) {
+				const glm::vec4 transformedVertex = transformMatrix * glm::vec4{ facet.vertices[i].x, facet.vertices[i].y, facet.vertices[i].z, 1.f };
+				facet.vertices[i] = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z };
+			}
+
+			facet.normal = (facet.vertices[1] - facet.vertices[0]).cross(facet.vertices[2] - facet.vertices[0]).norm();
+			facet.D = facet.normal.dot(facet.vertices[0]);
+
+			facetsBuffer[facetId] = facet;
+		}
+
+
+
+
+		if (threadIdx.x == 0) {
+			const glm::vec4 transformedCenter = transformMatrix * moleculeHull.center.ToVec4(1.f);
+			moleculeHulls[blockIdx.x].center = Float3{ transformedCenter.x, transformedCenter.y, transformedCenter.z };
+		}
+
+		for (int particleId = moleculeHull.indexOfFirstParticleInBuffer; particleId < moleculeHull.indexOfFirstParticleInBuffer + moleculeHull.nParticles; particleId++) {
+			const Float3 screenNormalizedPosition = Float3{ renderatomsBuffer[particleId].position.x, renderatomsBuffer[particleId].position.y, renderatomsBuffer[particleId].position.z };
+			const Float3 unNormalizedPosition = (screenNormalizedPosition + 0.5f) * boxSize;
+
+			const glm::vec4 transformedVertex = transformMatrix * glm::vec4{ unNormalizedPosition.x, unNormalizedPosition.y, unNormalizedPosition.z, 1.f };
+
+			Float3 normalizedTransformedPosition = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z } / boxSize - 0.5f;
+
+			renderatomsBuffer[particleId].position = normalizedTransformedPosition.Tofloat4(renderatomsBuffer[particleId].position.w);
+		}	
+	}
+
+
+	if (threadIdx.x == 0)
+		moleculeHulls[blockIdx.x].nCollisions = 0;
 }
-
 
 // Define a functor for the transformation matrix computation
 struct ComputeTransformationMatrix
 {
 	__host__ __device__
-		glm::mat4 operator()(const glm::vec3& rotationPivotPoint, const glm::vec3& forceApplicationPoint, const glm::vec3& forceDirection, float forceMagnitude)
+		glm::mat4 operator()(const thrust::tuple<glm::vec3, glm::vec3, glm::vec3, float>& t) const
 	{
+		glm::vec3 rotationPivotPoint = thrust::get<0>(t);
+		glm::vec3 forceApplicationPoint = thrust::get<1>(t);
+		glm::vec3 forceDirection = thrust::get<2>(t);
+		float forceMagnitude = thrust::get<3>(t);
+
 		// Step 2: Compute the torque axis
 		glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
 		torqueAxis = glm::normalize(torqueAxis);
@@ -392,8 +411,7 @@ struct ComputeTransformationMatrix
 
 
 
-#include "TimeIt.h"
-#include<span>
+
 
 void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) 
 {
@@ -415,7 +433,6 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	cudaMalloc(&nVerticesOutDev, mhCol.nMoleculeHulls * sizeof(int));
 	cudaMalloc(&overlapDev, mhCol.nMoleculeHulls * sizeof(Overlap));
 
-	Overlap* overlaps = new Overlap[mhCol.nMoleculeHulls];
 
 
 
@@ -424,16 +441,20 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	// Setup buffers for computing transforms. These are filled when a MH finds a collision
 	Float3* pivotPoints, *forceApplicationPoints, *forceDirections;
 	float* forceMagnitudes;
+	glm::mat4* transformMatrices;
+
 	cudaMalloc(&pivotPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
 	cudaMalloc(&forceApplicationPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
 	cudaMalloc(&forceDirections, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3));
 	cudaMalloc(&forceMagnitudes, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float));
+	cudaMalloc(&transformMatrices, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(glm::mat4));
 
 
-	Float3* pivotPointsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
-	Float3* forceApplicationPointsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
-	Float3* forceDirectionsHost = new Float3[mhCol.nMoleculeHulls * maxCollisionsPerMH];
-	float* forceMagnitudesHost = new float[mhCol.nMoleculeHulls * maxCollisionsPerMH];
+	thrust::device_ptr<glm::vec3> rotationPivotPointsPtr(reinterpret_cast<glm::vec3*>(pivotPoints));
+	thrust::device_ptr<glm::vec3> forceApplicationPointsPtr(reinterpret_cast<glm::vec3*>(forceApplicationPoints));
+	thrust::device_ptr<glm::vec3> forceDirectionsPtr(reinterpret_cast<glm::vec3*>(forceDirections));
+	thrust::device_ptr<float> forceMagnitudesPtr(forceMagnitudes);
+	thrust::device_ptr<glm::mat4> transformationMatricesPtr(transformMatrices);
 
 	while (true) {
 
@@ -441,7 +462,7 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 
 		for (int j = 0; j < mhCol.nMoleculeHulls; j++) {
 
-			ResetCollisionCounters<< <(mhCol.nMoleculeHulls + 64 -1)/ 64, 64 >> > (mhCol.moleculeHulls, mhCol.nMoleculeHulls);
+			//ResetCollisionCounters<< <(mhCol.nMoleculeHulls + 64 -1)/ 64, 64 >> > (mhCol.moleculeHulls, mhCol.nMoleculeHulls);
 
 			FindIntersectionConvexhullFrom2Convexhulls << <mhCol.nMoleculeHulls, nThreadsInFindIntersectionKernel >> > (mhCol.moleculeHulls, mhCol.facets, boxSize, j, 
 				verticesOutDev, nVerticesOutDev, pivotPoints, forceDirections);
@@ -453,55 +474,23 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 				);
 			LIMA_UTILS::genericErrorCheck("CalculateIntersectionCenterAndDepth");
 
-			// Now move the outputBuffers to host and compute Overlap
-
-			cudaMemcpy(overlaps, overlapDev, mhCol.nMoleculeHulls * sizeof(Overlap), cudaMemcpyDeviceToHost);
-
-			cudaMemcpy(pivotPointsHost, pivotPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
-			cudaMemcpy(forceApplicationPointsHost, forceApplicationPoints, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
-			cudaMemcpy(forceDirectionsHost, forceDirections, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(Float3), cudaMemcpyDeviceToHost);
-			cudaMemcpy(forceMagnitudesHost, forceMagnitudes, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float), cudaMemcpyDeviceToHost);
-
-
-
-
-
-
-
-
-
-			for (int i = 0; i < mhCol.nMoleculeHulls; i++) {
-				Overlap devOverlap = overlaps[i];
-				if (!devOverlap.isOverlapping)
-					continue;
-
-				if (i == j)
-					continue;
-
-				const Float3 pivotPoint = pivotPointsHost[i * maxCollisionsPerMH + 0]; // Same as moleculeCenter
-				const Float3 forceApplicationPoint = forceApplicationPointsHost[i * maxCollisionsPerMH + 0]; // center of intersect
-				const float forceMagnitude = forceMagnitudesHost[i * maxCollisionsPerMH + 0] * 2.f;	// 
-				const Float3 forceDirection = forceDirectionsHost[i * maxCollisionsPerMH + 0];
-
-				anyIntersecting = true;
-
-				const glm::mat4 leftTransformMatrix = computeTransformationMatrix(pivotPoint.ToVec3(), forceApplicationPoint.ToVec3(), forceDirection.ToVec3(), forceMagnitude);
-
-				moleculeHulls[i].ApplyTransformation(leftTransformMatrix, facets, atoms, boxSize);
-
-				cudaMemcpy(mhCol.facets, facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyHostToDevice);
-				cudaMemcpy(mhCol.particles, atoms, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyHostToDevice);
-				cudaMemcpy(mhCol.moleculeHulls, moleculeHulls, mhCol.nMoleculeHulls * sizeof(MoleculeHull), cudaMemcpyHostToDevice);	// Only needed as long as we need to move center from host to device
-
-			}
-
 		}
 
+		// Apply the transformation using thrust::transform
+		const int totalElements = mhCol.nMoleculeHulls * maxCollisionsPerMH;
+		thrust::transform(
+			thrust::make_zip_iterator(thrust::make_tuple(rotationPivotPointsPtr, forceApplicationPointsPtr, forceDirectionsPtr, forceMagnitudesPtr)),
+			thrust::make_zip_iterator(thrust::make_tuple(rotationPivotPointsPtr + totalElements, forceApplicationPointsPtr + totalElements, forceDirectionsPtr + totalElements, forceMagnitudesPtr + totalElements)),
+			transformationMatricesPtr,
+			ComputeTransformationMatrix()
+		);
+		LIMA_UTILS::genericErrorCheck("Thrust error: ");
 
+		cudaDeviceSynchronize();
 
-		//}
-		//cudaMemcpy(mhCol.facets, facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyHostToDevice);
-		//cudaMemcpy(mhCol.particles, atoms, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyHostToDevice);
+		ApplyTransformations << <mhCol.nMoleculeHulls, 32 >> > (mhCol.moleculeHulls, mhCol.facets, mhCol.particles, transformMatrices, boxSize);
+		LIMA_UTILS::genericErrorCheck("Apply transform: ");
+
 		break;
 	}
 
@@ -509,18 +498,11 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	cudaFree(nVerticesOutDev);
 	cudaFree(overlapDev);
 
-	delete[] overlaps;
 
 	cudaFree(pivotPoints);
 	cudaFree(forceApplicationPoints);
 	cudaFree(forceDirections);
 	cudaFree(forceMagnitudes);
-
-
-	delete[] pivotPointsHost;
-	delete[] forceApplicationPointsHost;
-	delete[] forceDirectionsHost;
-	delete[] forceMagnitudesHost;
 
 	LIMA_UTILS::genericErrorCheck("Algo Exit");
 

@@ -1,5 +1,6 @@
 #include "MoleculeHull.cuh"
 #include "RenderUtilities.cuh"
+#include "MDFiles.h"
 
 #include <quickhull/quickhull.hpp>
 #include <numeric>
@@ -346,4 +347,20 @@ MoleculeHullCollection::MoleculeHullCollection(const std::vector<MoleculeHullFac
     cudaMemcpy(moleculeHulls, moleculehullsHost.data(), sizeof(MoleculeHull) * moleculehullsHost.size(), cudaMemcpyHostToDevice);
 }
 
+MoleculeHullCollection::~MoleculeHullCollection() {
+    cudaFree(facets);
+    cudaFree(particles);
+    cudaFree(moleculeHulls);
+}
 
+void MoleculeHullCollection::WritePositionsToGrofile(GroFile& grofile) {
+    if (nParticles != grofile.atoms.size())
+        throw ("GroFile does not seem to belong to this MoleculeHullCollection");
+
+    std::vector<RenderAtom> renderatoms(nParticles);
+    cudaMemcpy(renderatoms.data(), particles, sizeof(RenderAtom) * nParticles, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < nParticles; i++) {
+        grofile.atoms[i].position = Float3{ renderatoms[i].position.x, renderatoms[i].position.y, renderatoms[i].position.z };
+	}
+}

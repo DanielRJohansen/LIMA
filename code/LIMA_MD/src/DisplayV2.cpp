@@ -66,6 +66,15 @@ Display::Display(EnvMode envmode) :
                 case GLFW_KEY_N:
 					display->debugValue = 1;
 					break;
+                case GLFW_KEY_P:
+                    display->pause = !display->pause;
+                    break;
+                case GLFW_KEY_1:
+                    display->renderAtoms = !display->renderAtoms;
+                    break;
+                case GLFW_KEY_2:
+                    display->renderFacets = !display->renderFacets;
+					break;
                 }                              
             }
         }

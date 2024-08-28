@@ -75,7 +75,11 @@ private:
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
-
+	
+	bool pause = false;
+	bool renderAtoms = true;
+	bool renderFacets = true;
+	bool renderFacetsNormals = false;
 	FPS fps{};
 
 

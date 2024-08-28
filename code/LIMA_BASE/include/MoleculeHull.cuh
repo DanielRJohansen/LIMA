@@ -3,6 +3,7 @@
 #include "LimaTypes.cuh"
 #include <functional>
 
+class GroFile;
 
 enum FacetDrawMode {
 	FACES = 0,
@@ -19,10 +20,11 @@ struct Facet {
 
 	__device__ __host__ Float3 intersectionPoint(Float3 p1, Float3 p2) const {
 		//Return the intersection point of a line passing two points and this plane
-		return p1 + (p2 - p1) * (-distance(p1) / normal.dot(p2 - p1));
+		return p1 + (p2 - p1) * (-signedDistance(p1) / normal.dot(p2 - p1));
 	};
 	void invert() { normal *= -1.f; }
-	__device__ __host__ float distance(Float3 point) const { return normal.dot(point) - D; }
+
+	__device__ __host__ float signedDistance(Float3 point) const { return normal.dot(point) - D; }
 
 	void ApplyTransformation(const glm::mat4& mat);
 };
@@ -178,6 +180,8 @@ struct MoleculeHullCollection
 	int nMoleculeHulls = 0;
 
 	MoleculeHullCollection(const std::vector<MoleculeHullFactory>& moleculeHullFactories, Float3 boxsize);
+	~MoleculeHullCollection();
+	void WritePositionsToGrofile(GroFile& grofile);
 };
 
 

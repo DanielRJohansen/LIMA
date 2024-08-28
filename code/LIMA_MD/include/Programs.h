@@ -18,7 +18,8 @@ namespace Programs {
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 
-	MoleculeHullCollection MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection);
+	MoleculeHullCollection MakeLipidVesicle(GroFile&, TopologyFile&, LipidsSelection, float vesicleRadius, 
+		Float3 vesicleCenter, std::optional<int> numLipids=std::nullopt);
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 } // namespace Programs

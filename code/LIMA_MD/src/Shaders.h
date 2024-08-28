@@ -322,9 +322,9 @@ public:
         facetsBuffer.Bind(0);
         facetsBuffer.SetData_FromCuda(facets_cudaMem, numFacets * sizeof(Facet));
 
-        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-        cudaMemcpy(ptr, facets_cudaMem, numFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        //void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        //cudaMemcpy(ptr, facets_cudaMem, numFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
+        //glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 

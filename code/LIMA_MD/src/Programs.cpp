@@ -228,7 +228,7 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	ConvexHullEngine chEngine{};
 
 	//while (true) {
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < 10; i++) {
 		chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize);
 
 		d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(50));
@@ -246,11 +246,14 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 
 
 
-MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection) {
+MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection, float vesicleRadius, Float3 vesicleCenter, std::optional<int> numLipids) {
+
+	const float area = 4.f * PI * vesicleRadius * vesicleRadius;
+	const int nLipids = numLipids.value_or(static_cast<int>(area * 1.f/0.6f));		
 
 	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
 		lipidsSelection,
-		3, .5f, grofile.box_size * 0.5f
+		nLipids, vesicleRadius, vesicleCenter
 	);
 
 	std::vector<MoleculeHullFactory> moleculeContainers;

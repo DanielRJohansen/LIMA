@@ -19,7 +19,7 @@
 #include<span>
 
 const int maxFacetsInCH = 128;
-const int maxCollisionsPerMH = 8;
+const int maxCollisionsPerMH = 16;
 
 struct Overlap {
 	bool isOverlapping = false;
@@ -181,10 +181,12 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 		overlap.isOverlapping = true;
 		overlapsBuffer[blockIdx.x] = overlap;
 
-		const float magnitudeScalar = 0.006f;
+		const float magnitudeScalar = 0.003f;
 
 		const int collisionId = hullsBuffer[blockIdx.x].nCollisions-1; // -1 Because the previous kernel did the "++" 
-
+		if (collisionId < 0 || collisionId >= maxCollisionsPerMH) {
+			printf("Invalid collision id %d nVert %d\n", collisionId, nVertices);
+		}
 		forceApplicationPoints[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.intersectionCenter;
 		forceMagnitudes[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.depth * magnitudeScalar;
 	}
@@ -194,14 +196,20 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 
 const int nThreadsInFindIntersectionKernel = 32;
 __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBuffer, const Facet* const facets, Float3 boxSize, int targetHull, 
-	Float3* verticesOutBuffer, int* nVerticesOutBuffer, Float3* pivotPoints, Float3* forceDirections) {
+	Float3* verticesOutBuffer, int* nVerticesOutBuffer, Float3* pivotPoints
+	//,bool* collisionsBuffer
+) {
 	__shared__ TriList clippedFacets;
 	__shared__ Facet currentClippingFacet;
 	__shared__ int prefixSumBuffer[nThreadsInFindIntersectionKernel];
 
+	if (threadIdx.x == 0)
+		nVerticesOutBuffer[blockIdx.x] = 0;
+
 	if (targetHull == blockIdx.x) {
-		if (threadIdx.x == 0)
-			nVerticesOutBuffer[blockIdx.x] = 0;
+		if (threadIdx.x == 0) {
+			//collisionsBuffer[blockIdx.x] = false;
+		}
 		return;
 	}
 		
@@ -303,8 +311,70 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 	}
 	if (threadIdx.x == 0) {
 		pivotPoints[blockIdx.x * maxCollisionsPerMH + mh1.nCollisions] = mh1.center;
-		forceDirections[blockIdx.x * maxCollisionsPerMH + mh1.nCollisions] = (mh1.center - mh2.center).norm();
 		hullsBuffer[blockIdx.x].nCollisions++;
+	}
+}
+
+__global__ void FindForceDirection(const MoleculeHull* const hullsBuffer, const Facet* const facets, const Float3* const intersectionCenters, 
+	Float3* forceDirections, const int* const nVerticesInCollision, int targetMoleculeId) {
+	__shared__ float minDistToFacet;
+	__shared__ Float3 intersectionCenter;
+	__shared__ Float3 forceDirection;
+	__shared__ bool intersectionFound;
+	__shared__ MoleculeHull otherMolecule;
+
+	// First figure out if there is any work to do
+	{
+		if (threadIdx.x == 0) {
+			intersectionFound = nVerticesInCollision[blockIdx.x] > 3;
+		}
+		__syncthreads();
+		if (!intersectionFound)
+			return;
+	}
+
+	// Setup shared data
+	if (threadIdx.x == 0) {
+		otherMolecule = hullsBuffer[targetMoleculeId];
+		intersectionCenter = intersectionCenters[blockIdx.x];
+		minDistToFacet = FLT_MAX;
+	}
+	__syncthreads();
+
+	// Run algo, local first then sequential reduciton
+	float localMinDist = FLT_MAX;
+	Float3 localBestForceDirection{};
+	for (int clippingFacetId = otherMolecule.indexOfFirstFacetInBuffer; clippingFacetId < otherMolecule.indexOfFirstFacetInBuffer + otherMolecule.nFacets; clippingFacetId++) {
+		const float dist = std::abs(facets[clippingFacetId].signedDistance(intersectionCenter));
+
+		if (dist < localMinDist) {
+			localMinDist = dist;
+			localBestForceDirection = facets[clippingFacetId].normal;
+		}
+	}
+	for (int i = 0; i < blockDim.x; i++) {
+		if (i == threadIdx.x) {
+			if (localMinDist < minDistToFacet) {
+				minDistToFacet = localMinDist;
+				forceDirection = localBestForceDirection;
+			}
+		}
+		__syncthreads();
+	}
+
+	// Finally push result 
+	if (threadIdx.x == 0) {
+		const int localCollisionId = hullsBuffer[blockIdx.x].nCollisions - 1;
+
+		if (forceDirection.dot(hullsBuffer[blockIdx.x].center - otherMolecule.center) < 0) {
+			forceDirection = hullsBuffer[blockIdx.x].center - otherMolecule.center;
+		}
+			//forceDirection = -forceDirection;
+			//printf("Dotp %f\n", forceDirection.dot(hullsBuffer[blockIdx.x].center - otherMolecule.center));
+			//forceDirection = -forceDirection;))
+			//forceDirection.print('d');
+		forceDirections[blockIdx.x * maxCollisionsPerMH + localCollisionId] = forceDirection;
+		//forceDirections[blockIdx.x * maxCollisionsPerMH + localCollisionId] = hullsBuffer[blockIdx.x].center - otherMolecule.center;
 	}
 }
 
@@ -342,7 +412,7 @@ __global__ void ApplyTransformations(MoleculeHull* moleculeHulls, Facet* facetsB
 				facet.vertices[i] = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z };
 			}
 
-			facet.normal = (facet.vertices[1] - facet.vertices[0]).cross(facet.vertices[2] - facet.vertices[0]).norm();
+			facet.normal = ((facet.vertices[1] - facet.vertices[0]).norm()).cross(facet.vertices[2] - facet.vertices[0]).norm();
 			facet.D = facet.normal.dot(facet.vertices[0]);
 
 			facetsBuffer[facetId] = facet;
@@ -389,10 +459,13 @@ struct ComputeTransformationMatrix
 		torqueAxis = glm::normalize(torqueAxis);
 
 		// Step 3: Determine the rotation angle
-		float rotationAngle = forceMagnitude;
+		const float translationRatio = std::abs(glm::dot(glm::normalize(forceApplicationPoint - rotationPivotPoint), forceDirection));
+		const float translationMagnitude = forceMagnitude * translationRatio;
+		const float rotationMagnitude = forceMagnitude * (1.f - translationMagnitude);
+		//float rotationAngle = forceMagnitude;
 
 		// Step 4: Create the rotation matrix
-		glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, torqueAxis);
+		glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationMagnitude, torqueAxis);
 
 		// Step 5: Create translation matrices
 		glm::mat4 translationMatrixToPivot = glm::translate(glm::mat4(1.0f), -rotationPivotPoint);
@@ -417,14 +490,6 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 {
 	TimeIt timer{ "FindIntersect", false };
 
-	Facet* facets = new Facet[mhCol.nFacets];
-	RenderAtom* atoms = new RenderAtom[mhCol.nParticles];
-	MoleculeHull* moleculeHulls = new MoleculeHull[mhCol.nMoleculeHulls];
-
-	cudaMemcpy(facets, mhCol.facets, mhCol.nFacets * sizeof(Facet), cudaMemcpyDeviceToHost);
-	cudaMemcpy(atoms, mhCol.particles, mhCol.nParticles * sizeof(RenderAtom), cudaMemcpyDeviceToHost);
-	cudaMemcpy(moleculeHulls, mhCol.moleculeHulls, mhCol.nMoleculeHulls * sizeof(MoleculeHull), cudaMemcpyDeviceToHost);
-
 	Float3* verticesOutDev = nullptr;
 	int* nVerticesOutDev = nullptr;
 	Overlap* overlapDev = nullptr;
@@ -432,8 +497,6 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	cudaMalloc(&verticesOutDev, mhCol.nMoleculeHulls * maxFacetsInCH * 3 * sizeof(Float3));
 	cudaMalloc(&nVerticesOutDev, mhCol.nMoleculeHulls * sizeof(int));
 	cudaMalloc(&overlapDev, mhCol.nMoleculeHulls * sizeof(Overlap));
-
-
 
 
 
@@ -460,12 +523,12 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 
 		bool anyIntersecting = false;
 
-		for (int j = 0; j < mhCol.nMoleculeHulls; j++) {
+		for (int queryMoleculeId = 0; queryMoleculeId < mhCol.nMoleculeHulls; queryMoleculeId++) {
 
 			//ResetCollisionCounters<< <(mhCol.nMoleculeHulls + 64 -1)/ 64, 64 >> > (mhCol.moleculeHulls, mhCol.nMoleculeHulls);
 
-			FindIntersectionConvexhullFrom2Convexhulls << <mhCol.nMoleculeHulls, nThreadsInFindIntersectionKernel >> > (mhCol.moleculeHulls, mhCol.facets, boxSize, j, 
-				verticesOutDev, nVerticesOutDev, pivotPoints, forceDirections);
+			FindIntersectionConvexhullFrom2Convexhulls << <mhCol.nMoleculeHulls, nThreadsInFindIntersectionKernel >> > (mhCol.moleculeHulls, mhCol.facets, boxSize, queryMoleculeId,
+				verticesOutDev, nVerticesOutDev, pivotPoints);
 			LIMA_UTILS::genericErrorCheck("FindIntersectionConvexhullFrom2Convexhulls");
 			cudaDeviceSynchronize();
 
@@ -473,7 +536,8 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 				verticesOutDev, nVerticesOutDev, overlapDev, mhCol.moleculeHulls, pivotPoints, forceApplicationPoints, forceDirections, forceMagnitudes
 				);
 			LIMA_UTILS::genericErrorCheck("CalculateIntersectionCenterAndDepth");
-
+			
+			FindForceDirection << <mhCol.nMoleculeHulls, 32 >> > (mhCol.moleculeHulls, mhCol.facets, forceApplicationPoints, forceDirections, nVerticesOutDev, queryMoleculeId);
 		}
 
 		// Apply the transformation using thrust::transform

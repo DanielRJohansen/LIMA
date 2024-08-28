@@ -69,7 +69,7 @@ namespace TestMembraneBuilder {
 		GroFile grofile;
 		grofile.box_size = Float3{ 5.f };
 		TopologyFile topfile;
-		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} });
+		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
 

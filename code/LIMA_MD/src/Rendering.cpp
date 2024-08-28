@@ -96,6 +96,9 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
     if (!drawAtomsShader || drawAtomsShader->numAtomsReservedInRenderatomsBuffer < molCollection.nParticles)
         drawAtomsShader = std::make_unique<DrawAtomsShader>(molCollection.nParticles, &renderAtomsBufferCudaResource);
 
+    if (!drawNormalsShader)
+        drawNormalsShader = std::make_unique<DrawNormalsShader>();
+
     TimeIt timer{};
 
     while (true) {
@@ -108,7 +111,7 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
             break;
         }
 
-        if (duration.has_value() && timer.elapsed() > duration)
+        if (duration.has_value() && timer.elapsed() > duration && !pause)
             break;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -116,7 +119,7 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
         const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
         drawBoxOutlineShader->Draw(MVP);
 
-        {
+        if (renderAtoms) {
 
             // Map buffer object for writing from CUDA
             RenderAtom* renderAtomsBuffer;
@@ -130,12 +133,15 @@ void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 box
 
             // Release buffer object from CUDA
             cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+
+            drawAtomsShader->Draw(MVP, molCollection.nParticles);
         }
 
-        drawAtomsShader->Draw(MVP, molCollection.nParticles);
+        if (renderFacets)
+            drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
 
-        drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
-
+        if (renderFacetsNormals)
+            drawNormalsShader->Draw(MVP, molCollection.facets, molCollection.nFacets, boxSize);
 
         // Swap front and back buffers
         glfwSwapBuffers(window);

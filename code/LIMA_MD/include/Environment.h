@@ -64,7 +64,7 @@ public:
 
 
 	// Run a standard MD sim
-	void run(bool em_variant=false, bool doPostRunEvents=true);
+	void run(bool doPostRunEvents=true);
 
 	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
 	// atoms in the input coordinate file.

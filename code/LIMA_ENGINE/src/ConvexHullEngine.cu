@@ -18,8 +18,12 @@
 #include "TimeIt.h"
 #include<span>
 
+#define WITHOUT_NUMPY
+#include "matplotlib-cpp/matplotlibcpp.h"
+#undef WITHOUT_NUMPY
+
 const int maxFacetsInCH = 128;
-const int maxCollisionsPerMH = 16;
+const int maxCollisionsPerMH = 32;
 
 struct Overlap {
 	bool isOverlapping = false;
@@ -139,8 +143,8 @@ __device__ void FindMinimaxPoint(Float3& sharedDownGradient, float& sharedMaxDis
 
 
 // Input is in global memory
-__global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerticesBuffer, const int* const nVerticesBuffer, Overlap* overlapsBuffer, 
-	MoleculeHull* hullsBuffer, Float3* pivotPoints, Float3* forceApplicationPoints, Float3* forceDirections, float* forceMagnitudes)
+__global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerticesBuffer, const int* const nVerticesBuffer, 
+	MoleculeHull* hullsBuffer, Float3* pivotPoints, Float3* forceApplicationPoints, Float3* forceDirections, float* intersectionRadii)
 {
 	__shared__ float prevVelocity;
 	__shared__ int nVertices;
@@ -155,8 +159,6 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 	// First figure out if there is any work to do
 	if (threadIdx.x == 0) {
 		nVertices = nVerticesBuffer[blockIdx.x];
-		if (nVertices < 4)
-			overlapsBuffer[blockIdx.x].isOverlapping = false;
 	}
 	__syncthreads();
 	if (nVertices < 4)
@@ -178,17 +180,13 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 	FindMaxDepth(overlap.intersectionCenter, triVertices, nVertices, overlap.depth);
 
 	if (threadIdx.x == 0) {
-		overlap.isOverlapping = true;
-		overlapsBuffer[blockIdx.x] = overlap;
-
-		const float magnitudeScalar = 0.003f;
 
 		const int collisionId = hullsBuffer[blockIdx.x].nCollisions-1; // -1 Because the previous kernel did the "++" 
 		if (collisionId < 0 || collisionId >= maxCollisionsPerMH) {
 			printf("Invalid collision id %d nVert %d\n", collisionId, nVertices);
 		}
 		forceApplicationPoints[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.intersectionCenter;
-		forceMagnitudes[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.depth * magnitudeScalar;
+		intersectionRadii[blockIdx.x * maxCollisionsPerMH + collisionId] = overlap.depth;
 	}
 }
 
@@ -369,10 +367,7 @@ __global__ void FindForceDirection(const MoleculeHull* const hullsBuffer, const 
 		if (forceDirection.dot(hullsBuffer[blockIdx.x].center - otherMolecule.center) < 0) {
 			forceDirection = hullsBuffer[blockIdx.x].center - otherMolecule.center;
 		}
-			//forceDirection = -forceDirection;
-			//printf("Dotp %f\n", forceDirection.dot(hullsBuffer[blockIdx.x].center - otherMolecule.center));
-			//forceDirection = -forceDirection;))
-			//forceDirection.print('d');
+
 		forceDirections[blockIdx.x * maxCollisionsPerMH + localCollisionId] = forceDirection;
 		//forceDirections[blockIdx.x * maxCollisionsPerMH + localCollisionId] = hullsBuffer[blockIdx.x].center - otherMolecule.center;
 	}
@@ -449,10 +444,12 @@ struct ComputeTransformationMatrix
 	__host__ __device__
 		glm::mat4 operator()(const thrust::tuple<glm::vec3, glm::vec3, glm::vec3, float>& t) const
 	{
+		const float magnitudeScalar = 0.003f;
+
 		glm::vec3 rotationPivotPoint = thrust::get<0>(t);
 		glm::vec3 forceApplicationPoint = thrust::get<1>(t);
 		glm::vec3 forceDirection = thrust::get<2>(t);
-		float forceMagnitude = thrust::get<3>(t);
+		float forceMagnitude = thrust::get<3>(t) * magnitudeScalar;
 
 		// Step 2: Compute the torque axis
 		glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
@@ -484,19 +481,50 @@ struct ComputeTransformationMatrix
 
 
 
+__global__ void MeasureOverallOverlapRadius(const MoleculeHull* const moleculeHulls, const float* const intersectionRadii, int nMolsTotal, float* results) {
+	__shared__ double sharedSum;
+	__shared__ float sharedMaxRatio;
+
+	if (threadIdx.x == 0) {
+		sharedSum = 0.f;
+		sharedMaxRatio = 0.f;
+	}
+	__syncthreads();
+
+	double localSum = 0.f;
+	float localMaxRatio = 0.f;
+	for (int index = threadIdx.x; index < nMolsTotal * maxCollisionsPerMH; index+=blockDim.x) {
+		const float moleculeRadius = moleculeHulls[index / maxCollisionsPerMH].radius;
+		localSum += intersectionRadii[index] / moleculeRadius;
+		localMaxRatio = std::max(localMaxRatio, intersectionRadii[index] / moleculeRadius);
+	}
+
+	for (int i = 0; i < blockDim.x; i++) {
+		if (i == threadIdx.x) {
+			sharedSum += localSum;
+			sharedMaxRatio = std::max(sharedMaxRatio, localMaxRatio);
+		}
+		__syncthreads();
+	}
+
+	if (threadIdx.x == 0) {
+		results[0] = sharedSum;
+		results[1] = sharedMaxRatio;
+	}
+}
 
 
-void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) 
+
+
+void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize, std::function<void()> callEachIteration)
 {
 	TimeIt timer{ "FindIntersect", false };
 
 	Float3* verticesOutDev = nullptr;
 	int* nVerticesOutDev = nullptr;
-	Overlap* overlapDev = nullptr;
 
 	cudaMalloc(&verticesOutDev, mhCol.nMoleculeHulls * maxFacetsInCH * 3 * sizeof(Float3));
 	cudaMalloc(&nVerticesOutDev, mhCol.nMoleculeHulls * sizeof(int));
-	cudaMalloc(&overlapDev, mhCol.nMoleculeHulls * sizeof(Overlap));
 
 
 
@@ -519,9 +547,20 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	thrust::device_ptr<float> forceMagnitudesPtr(forceMagnitudes);
 	thrust::device_ptr<glm::mat4> transformationMatricesPtr(transformMatrices);
 
-	while (true) {
+	float* totalOverlapDev;
+	cudaMalloc(&totalOverlapDev, sizeof(float)*2);
+
+	
+
+	std::vector<float> avgOverlapRatioHistory, maxOverlapHistory;
+	const int maxIterations = 1000;
+	for (int iteration = 0; iteration < maxIterations; iteration++) {
+		TimeIt timer{ "FindIntersectIteration", false };
 
 		bool anyIntersecting = false;
+
+		// We set this to 0, so we can count the total sum in an iteration without accounting for some molecules not having all collisions filled
+		cudaMemset(forceMagnitudes, 0, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float)); 
 
 		for (int queryMoleculeId = 0; queryMoleculeId < mhCol.nMoleculeHulls; queryMoleculeId++) {
 
@@ -533,7 +572,7 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 			cudaDeviceSynchronize();
 
 			CalculateIntersectionCenterAndDepth<<<mhCol.nMoleculeHulls, 32>>>(
-				verticesOutDev, nVerticesOutDev, overlapDev, mhCol.moleculeHulls, pivotPoints, forceApplicationPoints, forceDirections, forceMagnitudes
+				verticesOutDev, nVerticesOutDev, mhCol.moleculeHulls, pivotPoints, forceApplicationPoints, forceDirections, forceMagnitudes
 				);
 			LIMA_UTILS::genericErrorCheck("CalculateIntersectionCenterAndDepth");
 			
@@ -555,12 +594,25 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 		ApplyTransformations << <mhCol.nMoleculeHulls, 32 >> > (mhCol.moleculeHulls, mhCol.facets, mhCol.particles, transformMatrices, boxSize);
 		LIMA_UTILS::genericErrorCheck("Apply transform: ");
 
-		break;
+
+
+
+		callEachIteration();
+
+		MeasureOverallOverlapRadius<<<1, 128>>>( mhCol.moleculeHulls, forceMagnitudes, mhCol.nMoleculeHulls, totalOverlapDev);
+
+		std::array<float,2> totalOverlapHost; // totalRatio, maxRatio;
+		cudaMemcpy(totalOverlapHost.data(), totalOverlapDev, sizeof(float) * 2, cudaMemcpyDeviceToHost);
+
+		const float avgOverlapRatio = totalOverlapHost[0] / static_cast<float>(mhCol.nMoleculeHulls);
+		avgOverlapRatioHistory.push_back(avgOverlapRatio);
+		maxOverlapHistory.push_back(totalOverlapHost[1]);
+		if (avgOverlapRatio < 0.01f && totalOverlapHost[1] < 0.05f)
+			break;
 	}
 
 	cudaFree(verticesOutDev);
 	cudaFree(nVerticesOutDev);
-	cudaFree(overlapDev);
 
 
 	cudaFree(pivotPoints);
@@ -570,4 +622,7 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 
 	LIMA_UTILS::genericErrorCheck("Algo Exit");
 
+	matplotlibcpp::named_plot("Avg overlap", avgOverlapRatioHistory);
+	matplotlibcpp::named_plot("Max overlap", maxOverlapHistory);
+	matplotlibcpp::show();
 }

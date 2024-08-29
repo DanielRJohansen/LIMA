@@ -114,7 +114,7 @@ namespace Benchmarks {
 		ip.dt = 50;
 		ip.enable_electrostatics = true;
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(false, false);
+		env.run(false);
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
 

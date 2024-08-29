@@ -223,7 +223,7 @@ void Environment::sayHello() {
 }
 #include <optional>
 
-void Environment::run(bool em_variant, bool doPostRunEvents) {
+void Environment::run(bool doPostRunEvents) {
 	if (!prepareForRun()) { return; }
 
 	std::optional<Display> display;
@@ -234,10 +234,8 @@ void Environment::run(bool em_variant, bool doPostRunEvents) {
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	while (true) {
 		if (engine->runstatus.simulation_finished) { break; }
-		if (em_variant)
-			engine->step();
-		else
-			engine->step();
+		
+		engine->step();
 
 
 

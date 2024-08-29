@@ -562,7 +562,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f; // Golden ratio
 
 	for (int i = 0; i < nMoleculesToInsert; i++) {
-		float z = 1.0f - (2.0f * i) / static_cast<float>(nMoleculesToInsert - 1); // z-coordinate
+		float z = 1.0f - (2.0f * i) / static_cast<float>(std::max(nMoleculesToInsert,2) - 1); // z-coordinate
 		float radius = std::sqrt(1.0f - z * z); // radius for current z slice
 
 		float theta = 2.0f * PI * i / phi; // angle in xy-plane

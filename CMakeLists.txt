@@ -38,6 +38,10 @@ endif()
 
 find_package(OpenGL REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+find_package(PythonLibs REQUIRED)
+
+include_directories(${PYTHON_INCLUDE_DIRS})
+link_directories(${PYTHON_LIBRARIES})
 
 if (UNIX)
 	find_package(glm REQUIRED)

@@ -66,7 +66,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
+		loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
@@ -105,18 +105,18 @@ int main() {
 		
 
 
-		GroFile grofile;
-		grofile.box_size = Float3{ 10.f };
-		TopologyFile topfile;
-		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
-		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
-		mhCol.WritePositionsToGrofile(grofile);		
-		auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
-		SimParams params{};
-		params.em_variant = true;
-		params.dt = 20;
-		env->CreateSimulation(grofile, topfile, params);
-
+		//GroFile grofile;
+		//grofile.box_size = Float3{ 10.f };
+		//TopologyFile topfile;
+		//MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
+		//Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		//mhCol.WritePositionsToGrofile(grofile);		
+		//auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
+		//SimParams params{};
+		//params.em_variant = true;
+		//params.dt = 20;
+		//env->CreateSimulation(grofile, topfile, params);
+		//env->run();
 
 
 
@@ -137,7 +137,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

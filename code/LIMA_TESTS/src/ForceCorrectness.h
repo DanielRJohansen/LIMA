@@ -428,7 +428,7 @@ namespace StressTesting {
 		params.n_steps = 100;
 
 		auto func = [&]() {
-			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.0001f, 1e-7, params, false);
+			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.0001f, 1e-7, params);
 		};
 		TestUtils::stressTest(func, 50);
 		return true;

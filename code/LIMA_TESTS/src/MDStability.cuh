@@ -21,7 +21,7 @@ namespace TestMDStability {
 		auto env = basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
-		env->run(true);
+		env->run();
 		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
 		// Do sim

@@ -18,7 +18,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(LIMA_ENGINE LIMA_BASE)
-target_link_libraries(LIMA_ENGINE ${PYTHON_LIBRARIES})
+#target_link_libraries(LIMA_ENGINE ${PYTHON_LIBRARIES})
 
 if (UNIX)
     target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)

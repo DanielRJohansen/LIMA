@@ -18,9 +18,9 @@
 #include "TimeIt.h"
 #include<span>
 
-#define WITHOUT_NUMPY
-#include "matplotlib-cpp/matplotlibcpp.h"
-#undef WITHOUT_NUMPY
+//#define WITHOUT_NUMPY
+//#include "matplotlib-cpp/matplotlibcpp.h"
+//#undef WITHOUT_NUMPY
 
 const int maxFacetsInCH = 128;
 const int maxCollisionsPerMH = 32;
@@ -622,7 +622,7 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 
 	LIMA_UTILS::genericErrorCheck("Algo Exit");
 
-	matplotlibcpp::named_plot("Avg overlap", avgOverlapRatioHistory);
-	matplotlibcpp::named_plot("Max overlap", maxOverlapHistory);
-	matplotlibcpp::show();
+	//matplotlibcpp::named_plot("Avg overlap", avgOverlapRatioHistory);
+	//matplotlibcpp::named_plot("Max overlap", maxOverlapHistory);
+	//matplotlibcpp::show();
 }

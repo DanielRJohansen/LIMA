@@ -239,12 +239,11 @@ namespace TestUtils {
 		EnvMode envmode,
 		float max_vc = 0.001,
 		float max_gradient=1e-7,
-		LAL::optional<SimParams> ip = {},
-		bool em_variant = false
+		LAL::optional<SimParams> ip = {}
 	)
 	{		
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
-		env->run(em_variant);
+		env->run();
 
 		const auto analytics = env->getAnalyzedPackage();
 		

@@ -426,15 +426,6 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0,3))
 				throw std::runtime_error("Atom names do not match between gro and topology file");
 
-
-			// TODO: This is a temporary solution
-	/*		int parameterIndex = -1;
-			try {
-				parameterIndex = forcefield.GetActiveLjParameterIndex(topology.topology.forcefieldIncludes, atom.type);
-			}
-			catch (std::runtime_error& e) {
-				parameterIndex = forcefield.GetActiveLjParameterIndex(topology.topology.forcefieldIncludes, atom.type.substr(0, atom.type.length() - 1));
-			}*/
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(topology.topology.forcefieldIncludes, atom.type), uniqueResId };
 
 			

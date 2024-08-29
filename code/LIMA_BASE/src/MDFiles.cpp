@@ -238,6 +238,8 @@ public:
 			throw std::runtime_error("Encountered 'dihedraltypes' directive more than 2 times in .itp/ file");
 		}
 		if (directive == "impropertypes") return impropertypes;
+		if (directive == "defaults") return defaults;
+		if (directive == "cmaptypes") return cmaptypes;
 
 		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
 	}
@@ -297,14 +299,18 @@ bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int i
 /// <param name="sectionGetter"></param>
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
 bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
-	if (line.size() == 0) {
+	//if (line.size() == 0) {
+	//	currentSection = no_section;
+	//	return true;
+	//}
+	//if (std::all_of(line.begin(), line.end(), isspace)) {	// Check if all chars in line is space
+	//	return true;	// TODO Set to nosection here
+	//}
+	if (line.empty() && currentSection == TopologySection::title) {
 		currentSection = no_section;
 		return true;
 	}
-	else if (std::all_of(line.begin(), line.end(), isspace)) {	// Check if all chars in line is space
-		return true;	// TODO Set to nosection here
-	}
-	else if (line[0] == '[') {
+	else if (!line.empty() && line[0] == '[') {
 		currentSection = sectionGetter(extractSectionName(line));
 		return true;
 	}
@@ -355,10 +361,35 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				continue;
 			}
 
+			if (line.empty())
+				continue;
+
 			// Check if current line is commented
-			if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
+			if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { 
+				continue; 
+			}	// Only title-sections + atoms reads the comments
 
 			std::istringstream iss(line);
+
+
+			if (line[0] == '#') {
+				if (line.size() > 8 && line.substr(0, 8) == "#include") {
+					// take second word, remove "
+
+					std::string _, pathWithQuotes;
+					iss >> _ >> pathWithQuotes;
+					if (pathWithQuotes.size() < 3)
+						throw std::runtime_error("Include is not formatted as expected: " + line);
+
+					if (pathWithQuotes.find(".ff") != std::string::npos)
+						forcefieldIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));
+					else
+						otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));				
+				}
+				continue;
+			}
+
+
 			switch (current_section)
 			{
 			case TopologySection::title:
@@ -395,9 +426,14 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 			{
 				if (firstNonspaceCharIs(line, ';')) {
 					// TODO: Test for residue or lipid_section in the [1] position of the comment instead
-					if (iss.str().find("type") == std::string::npos) {
-						sectionname = line;
+
+					// Skip the very first line which is the legend
+					if (line.find("cgnr") != std::string::npos) {
+						break;
+
 					}
+					if (line.find("residue") != std::string::npos || line.find("lipid_section") != std::string::npos)
+						sectionname = line;					
 				}
 				else {
 					TopologyFile::AtomsEntry atom;
@@ -477,7 +513,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				improperdihedralbonds.entries.back().sourceLine = line;
 				break;
 			}
-			default:
+			default:				
 				// Do nothing
 				//throw std::runtime_error("Illegal state");
 				break;
@@ -486,6 +522,9 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 		WriteFileToBinaryCache(*this);
 	}
 
+	// TODO: this is temp, because i didn't remeber to add the forcefield includes the optimized .itp files for the lipids
+	if (path.string().find("Lipids") != std::string::npos)
+		forcefieldIncludes.emplace_back("Slipids_2020.ff/forcefield.itp");
 
 	//// Verify that atoms id's are a sequence starting at 1
 	//for (int i = 0; i < atoms.entries.size(); i++) {
@@ -658,6 +697,18 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 
 	while (getline(file, line)) {
+
+		if (line.empty())
+			continue;
+
+		if (line.find("#include") != std::string::npos) {
+			if (!sections.contains(includes))
+				sections.insert({ includes, {} });
+
+			sections.at(includes).emplace_back(line);
+			continue;
+		}
+
 		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
 			newSection = true;
 			continue;
@@ -669,6 +720,7 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 		// Check if this line contains another illegal keyword
 		if (firstNonspaceCharIs(line, '#')) {// Skip ifdef, include etc TODO: this needs to be implemented at some point
 			if (line.find("#include") != std::string::npos) {
+				// TODO: this is prob dangerous, but we need includes for forcefields
 				throw std::runtime_error("This class should never be reading files containing thye #include keyword!");
 			}
 			continue;

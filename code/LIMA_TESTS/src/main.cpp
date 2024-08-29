@@ -105,17 +105,17 @@ int main() {
 		
 
 
-		//GroFile grofile;
-		//grofile.box_size = Float3{ 10.f };
-		//TopologyFile topfile;
-		//MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
-		//Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
-		//mhCol.WritePositionsToGrofile(grofile);		
-		//auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
-		//SimParams params{};
-		//params.em_variant = true;
-		//params.dt = 20;
-		//env->CreateSimulation(grofile, topfile, params);
+		GroFile grofile;
+		grofile.box_size = Float3{ 10.f };
+		TopologyFile topfile;
+		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
+		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		mhCol.WritePositionsToGrofile(grofile);		
+		auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
+		SimParams params{};
+		params.em_variant = true;
+		params.dt = 20;
+		env->CreateSimulation(grofile, topfile, params);
 
 
 

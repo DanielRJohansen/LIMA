@@ -22,7 +22,7 @@ struct LazyLoadFile {
 	LazyLoadFile(const fs::path& path) : path(path) {}
 	LazyLoadFile(std::shared_ptr<T> preloadedFile) : file(preloadedFile) {}
 
-	std::shared_ptr<T>& Get() {
+	std::shared_ptr<T> Get() {
 		if (file == nullptr) {
 			file = std::make_shared<T>(path);
 		}
@@ -237,6 +237,9 @@ public:
 	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
 
 
+	std::vector<std::string> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
+	std::vector<std::string> otherIncludes;
+
 	template <typename T>
 	Section<T>& GetSection() {
 		if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
@@ -429,7 +432,10 @@ enum TopologySection {
 	// Keywords typically found in topologies
 	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
 	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
-	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes,
+	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
+
+	// custom one i defined to do some workarounds
+	includes
 };
 
 // .itp files follow a simple ruleset. Here we can read such a file, that is NOT a topology file

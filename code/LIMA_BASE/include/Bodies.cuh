@@ -272,7 +272,7 @@ struct CompoundCompact {
 
 const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES + 4;	// Due to AA such a TRP, thhere might be more bonds than atoms
 const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
-const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64;
+const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64 + 32;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
 // Rather large unique structures in global memory, that can be partly loaded when needed

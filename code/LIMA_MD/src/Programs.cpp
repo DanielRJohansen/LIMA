@@ -129,11 +129,13 @@ void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const Topology
 
 
 void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
-	LIMAForcefield forcefield{};
+	ForcefieldManager forcefield{};
+	
+
 
 	std::vector<int> ljtypeIndices;
 	for (auto& atom : topfile.GetAllAtoms()) {
-		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(atom.type));
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.forcefieldIncludes, atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
 

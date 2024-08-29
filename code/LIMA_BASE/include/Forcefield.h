@@ -60,18 +60,18 @@ class ParameterDatabase;
 class LIMAForcefield {
 public:
 	LIMAForcefield();
+	LIMAForcefield(const std::string name, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
 
 	int GetActiveLjParameterIndex(const std::string& query);
-	ForceField_NB GetActiveLjParameters();
 
 
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 
-
+	const std::string name;
 
 private:
 	std::unique_ptr<LjParameterDatabase> ljParameters;
@@ -82,4 +82,25 @@ private:
 	std::unique_ptr<ParameterDatabase<ImproperDihedralbondType>> improperdihedralbondParameters;
 
 	void LoadFileIntoForcefield(const fs::path& path);
+};
+
+class ForcefieldManager {
+	std::shared_ptr<std::vector<AtomType>> activeLJParamtypes;
+
+	std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
+
+	LIMAForcefield& GetForcefield(const std::string& forcefieldName);
+
+	const std::string defaultForcefield = "charmm27.ff/forcefield.itp";
+
+public:
+
+	ForcefieldManager();
+	~ForcefieldManager();
+
+	int GetActiveLjParameterIndex(const std::vector<std::string>& forcefieldName, const std::string& query);
+	ForceField_NB GetActiveLjParameters();
+
+	template<typename GenericBond>
+	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const std::vector<std::string>& forcefieldName, const auto& query);
 };

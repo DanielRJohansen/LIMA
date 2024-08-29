@@ -287,5 +287,5 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
 		printf("%d ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
 	}
 
-    return LimaUnittestResult{ true, "", envmode == Full };
+    return LimaUnittestResult{ true, "No Error", envmode == Full };
 }

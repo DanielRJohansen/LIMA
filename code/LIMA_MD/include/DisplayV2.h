@@ -72,6 +72,11 @@ public:
 private:
 	LimaLogger logger;
 	Rasterizer rasterizer;
+
+	// The renderThread will be spawned during construction, and run this indefinitely
+	void Mainloop();
+
+
 	bool initGLFW();
 
 	void updateCamera(float pitch, float yaw, float delta_dist=0.f);

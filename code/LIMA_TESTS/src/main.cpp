@@ -70,7 +70,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
 
@@ -138,7 +138,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		//runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

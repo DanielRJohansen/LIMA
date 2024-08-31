@@ -137,13 +137,19 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 
 
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
-	if (simparams.snf_select == HorizontalSqueeze) {
-		const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
-		SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
-	}
+	__syncthreads();
+
+	//if (simparams.snf_select == HorizontalSqueeze) {
+	//	const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
+	//	SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
+	//
+	//}
+
+
 	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
 		force += box->uniformElectricField.GetForce(box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
+	__syncthreads();
 
 
 	// -------------------------------------------------------------- Integration & PBC --------------------------------------------------------------- //	
@@ -163,14 +169,23 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 
 		float speed = 0.f;
 		
+		float forceLen = force.len();
+		if (forceLen > 10.f) {
+			printf("Illegally large force %d %d\n", blockIdx.x, threadIdx.x);
+			force.print('F');
+			signals->critical_error_encountered = true;
+		}
+		__syncthreads();
+
 		if (threadIdx.x < compound.n_particles) {
+
+
+
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
-			if (force.len() > 10.f) {
-				printf("Illegally large force");
-				force.print('F');
-				signals->critical_error_encountered = true;
-			}
+			
+
+
 
 
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?

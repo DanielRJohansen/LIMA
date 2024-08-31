@@ -8,7 +8,7 @@
 
 #include <chrono>
 #include <string>
-
+#include <thread>
 
 
 class DrawBoxOutlineShader;
@@ -40,7 +40,9 @@ struct PointsTask {
 	std::optional<Float3> pointsColor;
 };
 
+struct AsyncSignals {
 
+};
 
 
 class Display {
@@ -49,6 +51,12 @@ public:
 	~Display();
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
+
+	void RenderAsync(const Float3* positions, const std::vector<Compound>& compounds,
+		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
+
+	void RenderLoop(const Float3* positions, const std::vector<Compound>& compounds,
+		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
 
 	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, 
 		std::optional<std::chrono::milliseconds> duration = std::nullopt);
@@ -67,7 +75,7 @@ private:
 	bool initGLFW();
 
 	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
-
+	void AsyncRenderloop(const BoxParams& boxparams);
 
 	// Interfacing
 	bool isDragging = false;
@@ -91,6 +99,11 @@ private:
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader = nullptr;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
+
+
+
+	std::jthread renderThread;
+
 
 	float camera_pitch = 0.f;
 	float camera_yaw = 0.f;

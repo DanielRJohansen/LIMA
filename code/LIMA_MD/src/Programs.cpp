@@ -34,8 +34,10 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 		ip.n_steps = carryout_em ? 20000 : 0;
 		ip.snf_select = HorizontalSqueeze;
 		ip.em_variant = true;
+		ip.data_logging_interval = 1;
 		env.CreateSimulation(*monolayerGro, *monolayerTop, ip);
 
+		//env.RenderSimulation();
 		// Draw each lipid towards the center - no pbc
 		env.run();
 		
@@ -253,7 +255,7 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, LipidsSelection lipidsSelection, float vesicleRadius, Float3 vesicleCenter, std::optional<int> numLipids) {
 
 	const float area = 4.f * PI * vesicleRadius * vesicleRadius;
-	const int nLipids = numLipids.value_or(static_cast<int>(area * 0.5f));		
+	const int nLipids = numLipids.value_or(static_cast<int>(area * 0.9f));		
 
 	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
 		lipidsSelection,

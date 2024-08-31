@@ -76,14 +76,114 @@ void Display::render(const Float3* positions, const std::vector<Compound>& compo
     
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-
-
-
-    //printf("\tRender time: %4d ys  ", (int) duration.count());
 }
 
 
 
+void Display::AsyncRenderloop(const BoxParams& boxparams) {
+    while (true) {
+        glfwPollEvents();
+
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+        drawBoxOutlineShader->Draw(MVP);
+
+        drawAtomsShader->Draw(MVP, boxparams.total_particles);
+
+        // Swap front and back buffers
+        glfwSwapBuffers(window);
+
+        //   break;
+    }
+}
+
+void Display::RenderAsync(const Float3* positions, const std::vector<Compound>& compounds,
+    const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) 
+{
+    auto start = std::chrono::high_resolution_clock::now();
+
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(boxparams.total_particles, &renderAtomsBufferCudaResource);
+
+    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, step, temperature);
+    glfwSetWindowTitle(window, window_text.c_str());
+
+    // Preprocess the renderAtoms
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+        assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
+
+        rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+
+    if (!renderThread.joinable()) {
+        renderThread = std::jthread(&Display::AsyncRenderloop, this, boxparams);
+        //AsyncRenderloop(boxparams);
+    }
+}
+
+
+void Display::RenderLoop(const Float3* positions, const std::vector<Compound>& compounds, const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod) {
+    TimeIt timer{"Renderloop"};
+
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(boxparams.total_particles, &renderAtomsBufferCudaResource);
+
+
+    // Preprocess the renderAtoms
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+        assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
+
+        rasterizer.render(positions, compounds, boxparams, step, camera_normal, coloringMethod, renderAtomsBuffer);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+
+    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, step, temperature);
+    glfwSetWindowTitle(window, window_text.c_str());
+
+    while (true) {
+        if (!checkWindowStatus())
+            break;
+
+        if (debugValue == 1) {
+            debugValue = 0;
+            break;
+        }
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+        const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
+        drawBoxOutlineShader->Draw(MVP);
+
+        drawAtomsShader->Draw(MVP, boxparams.total_particles);
+
+        // Swap front and back buffers
+        glfwSwapBuffers(window);
+    }
+}
 
 
 void Display::RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, std::optional<std::chrono::milliseconds> duration) {

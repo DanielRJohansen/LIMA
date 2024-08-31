@@ -173,6 +173,9 @@ void Environment::verifyBox() {
 }
 
 bool Environment::prepareForRun() {
+	if (simulation == nullptr)// TEMP, ENv should never give sim to engine
+		return true;
+
 	if (simulation->finished) { 
 		printf("Cannot prepare run, since simulation has already finished");
 		assert(false);
@@ -226,13 +229,15 @@ void Environment::sayHello() {
 void Environment::run(bool doPostRunEvents) {
 	if (!prepareForRun()) { return; }
 
-	std::optional<Display> display;
+
 	if (m_mode == Full) {
-		display.emplace(m_mode);
+		display = std::make_unique<Display>(m_mode );
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	while (true) {
+		time0 = std::chrono::high_resolution_clock::now();
+
 		if (engine->runstatus.simulation_finished) { break; }
 		
 		engine->step();
@@ -242,7 +247,7 @@ void Environment::run(bool doPostRunEvents) {
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
 		if (m_mode == Full)
-			if (!handleDisplay(*compounds, boxparams, display.value())) { break; }
+			if (!handleDisplay(*compounds, boxparams, *display)) { break; }
 
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
@@ -362,7 +367,6 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 		step_at_last_update = step;
 		engine->timings.reset();
-		time0 = std::chrono::high_resolution_clock::now();
 	}
 }
 
@@ -373,6 +377,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
+		//display.RenderAsync(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		display.render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;
 	}
@@ -380,6 +385,27 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 	const bool displayStillExists = display.checkWindowStatus();
 	return displayStillExists;
 }
+
+
+void Environment::RenderSimulation() {
+	if (!prepareForRun()) { throw std::runtime_error("Failed to prepare simulation "); }
+
+	if (display == nullptr)
+		display = std::make_unique<Display>( m_mode );
+
+
+	
+	display->RenderLoop(engine->runstatus.most_recent_positions, *compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
+
+
+}
+
+
+
+
+
+
+
 
 void Environment::renderTrajectory(std::string trj_path)
 {

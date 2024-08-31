@@ -130,7 +130,7 @@ struct Float3 {
 	}
 	__host__ __device__ Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
-	__host__ __device__ inline float len() const { return (float)sqrtf(x * x + y * y + z * z); }
+	__host__ __device__ inline float len() const { return sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }

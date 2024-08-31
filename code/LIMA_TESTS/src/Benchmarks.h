@@ -43,7 +43,7 @@ namespace Benchmarks {
 			membraneGrofile->printToFile(work_dir / "molecule/membrane_with_psome.gro");
 			membraneTopfile->printToFile(work_dir / "molecule/membrane_with_psome.top");
 		}
-		return;
+		//return;
 
 		SimParams emparams{ 2000, 20, true, PBC };
 

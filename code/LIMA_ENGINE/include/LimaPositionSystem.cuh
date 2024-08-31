@@ -250,6 +250,13 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 
+	__device__ inline void LoadCompoundPositionAsLm(const CompoundCoords* const coordsGlobal, Float3& origoOut, Float3* relposOut, int nActiveParticles) {
+		if (threadIdx.x == 0) {
+			origoOut = nodeIndexToAbsolutePosition(coordsGlobal->origo);
+		}
+		relposOut[threadIdx.x] = coordsGlobal->rel_positions->toFloat3();
+	}
+
 };
 
 

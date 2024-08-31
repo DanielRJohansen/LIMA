@@ -178,8 +178,10 @@ namespace SimulationBuilder{
 				const LipidSelect& inputlipid = getNextRandomLipid();
 
 				const Float3 center_offset = startpoint + Float3{ static_cast<float>(x), static_cast<float>(y), 0.f } *dist;
+				const float rotationAngle = genRandomAngle();
 				std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-					pos.rotateAroundOrigo({ 0.f, 0.f, genRandomAngle() });
+					pos = Float3::rodriguesRotatation(pos, Float3{ 0,0,1 }, rotationAngle);
+//					pos.rotateAroundOrigo({ 0.f, 0.f, });
 					pos += center_offset;
 					};
 

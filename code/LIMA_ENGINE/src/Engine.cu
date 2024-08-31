@@ -13,6 +13,7 @@
 
 #include "EngineKernels.cuh"
 
+#include "SupernaturalForces.cuh"
 
 
 Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
@@ -262,6 +263,9 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		}
 	}
 
+	step_at_last_traj_transfer = 0.f;
+	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(0);
+
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
@@ -298,6 +302,10 @@ void Engine::deviceMaster() {
 	if (simulation->boxparams_host.n_bridges > 0) {
 		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
 		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
+	}
+
+	if (simulation->simparams_host.snf_select != None) {
+		SupernaturalForces::ApplyHorizontalSqueeze<<< simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev);
 	}
 
 	cudaDeviceSynchronize();

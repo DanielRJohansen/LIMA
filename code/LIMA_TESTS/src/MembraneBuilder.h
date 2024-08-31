@@ -43,23 +43,20 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "monolayer.top" };
 		TopologyFile refTop{ mol_dir / "monolayer_reference.top" };
 
-		if (newTop.GetAllAtoms() != refTop.GetAllAtoms()) {
-			return LimaUnittestResult{ false , "Atom mismatch", envmode == Full };
-		}
-		if (newTop.GetAllSinglebonds() != refTop.GetAllSinglebonds()) {
-			return LimaUnittestResult{ false , "Singlebond mismatch", envmode == Full };
-		}
-		if (newTop.GetAllPairs() != refTop.GetAllPairs()) {
-			return LimaUnittestResult{ false , "Pair mismatch", envmode == Full };
-		}
-		if (newTop.GetAllAnglebonds() != refTop.GetAllAnglebonds()) {
-			return LimaUnittestResult{ false , "Anglebond mismatch", envmode == Full };
-		}
-		if (newTop.GetAllDihedralbonds() != refTop.GetAllDihedralbonds()) {
-			return LimaUnittestResult{ false , "Dihedralbond mismatch", envmode == Full };
-		}
-		if (newTop.GetAllImproperDihedralbonds() != refTop.GetAllImproperDihedralbonds()) {
-			return LimaUnittestResult{ false , "Improper mismatch", envmode == Full };
+		ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
+		ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
+		ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
+		ASSERT(newTop.GetAllAnglebonds() == refTop.GetAllAnglebonds(), "Topology Anglebond Mismatch");
+		ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
+		ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
+
+		GroFile newGro{ mol_dir / "monolayer.gro" };
+		GroFile refGro{ mol_dir / "monolayer_reference.gro" };
+
+		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
+		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
+		for (int i = 0; i < newGro.atoms.size(); i++) {
+			ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
 		}
 
 		return LimaUnittestResult{ true , "No error", envmode == Full};

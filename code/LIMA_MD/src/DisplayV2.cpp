@@ -4,9 +4,23 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#elif defined(__linux__) || defined(__APPLE__)
+#include <pthread.h>
+#endif
 
-
-
+void SetThreadName(const std::string& name) {
+#if defined(_WIN32) || defined(_WIN64)
+    // Windows 10, version 1607 and later
+    auto handle = GetCurrentThread();
+    auto wideName = std::wstring(name.begin(), name.end());
+    SetThreadDescription(handle, wideName.c_str());
+#elif defined(__linux__) || defined(__APPLE__)
+    // pthread_setname_np is available on Linux and macOS
+    pthread_setname_np(pthread_self(), name.c_str());
+#endif
+}
 
 void Display::updateCamera(float pitch, float yaw, float delta_distance) {
     camera_distance += delta_distance;  
@@ -19,12 +33,12 @@ void Display::updateCamera(float pitch, float yaw, float delta_distance) {
     };
 }
 
-Display::Display(EnvMode envmode) :
-    logger(LimaLogger::LogMode::compact, envmode, "display") 
-{    
+
+void Display::Setup() {
+    printf("Hello");
     int success = initGLFW();
 
-
+    SetThreadName("RenderThread");
 
     // Initialize GLEW
     glewExperimental = GL_TRUE; // Ensure GLEW uses modern techniques for managing OpenGL functionality
@@ -61,11 +75,11 @@ Display::Display(EnvMode envmode) :
                     display->updateCamera(display->camera_pitch, display->camera_yaw, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-					display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
-					break;
+                    display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
+                    break;
                 case GLFW_KEY_N:
-					display->debugValue = 1;
-					break;
+                    display->debugValue = 1;
+                    break;
                 case GLFW_KEY_P:
                     display->pause = !display->pause;
                     break;
@@ -74,11 +88,11 @@ Display::Display(EnvMode envmode) :
                     break;
                 case GLFW_KEY_2:
                     display->renderFacets = !display->renderFacets;
-					break;
-                }                              
+                    break;
+                }
             }
         }
-    };
+        };
     glfwSetKeyCallback(window, keyCallback);
 
 
@@ -103,14 +117,59 @@ Display::Display(EnvMode envmode) :
         }
         });
 
-
     logger.finishSection("Display initialized");
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        setupCompleted = true; // Set the flag to true after setup is complete
+        cv_.notify_one();
+    }
+}
+
+Display::Display(EnvMode envmode) :
+    logger(LimaLogger::LogMode::compact, envmode, "display")
+{
+    renderThread = std::jthread([this] {
+        Setup();
+        Mainloop();
+        });
+
+ 
 }
 
 Display::~Display() {
+    kill = true;
+    if (renderThread.joinable())
+        renderThread.join();
     glfwTerminate();
 }
 
+void Display::WaitForDisplayReady() {
+    if (setupCompleted)
+		return;
+
+    // Wait for the render thread to complete Setup
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [this] { return setupCompleted; });
+    // The main thread will block here until setupCompleted becomes true
+}
+
+
+
+void Display::Mainloop() {
+    while (!kill) {
+        glfwPollEvents();
+        if (glfwWindowShouldClose(window))
+            break;
+
+        if (renderSimulationTask != nullptr) {
+            RenderAsync(renderSimulationTask->positions, renderSimulationTask->compounds, renderSimulationTask->boxparams, renderSimulationTask->step, renderSimulationTask->temperature, renderSimulationTask->coloringMethod);
+        }
+    }
+}
+void Display::Render(std::unique_ptr<Rendering::SimulationTask> task) {
+    renderSimulationTask = std::move(task);
+}
 
 
 
@@ -154,13 +213,14 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 
 
 bool Display::checkWindowStatus() {
-    glfwPollEvents();
-    if (glfwWindowShouldClose(window)) {
-        glfwTerminate();
+    //glfwPollEvents();
+    //if (glfwWindowShouldClose(window)) {
+    //    glfwTerminate();
 
-        return false;
-    }
+    //    return false;
+    //}
 
+    //return true;
     return true;
 }
 

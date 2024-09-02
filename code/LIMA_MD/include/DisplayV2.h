@@ -9,7 +9,9 @@
 #include <chrono>
 #include <string>
 #include <thread>
-
+#include <variant>
+#include <mutex>
+#include <condition_variable>
 
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
@@ -40,6 +42,20 @@ struct PointsTask {
 	std::optional<Float3> pointsColor;
 };
 
+namespace Rendering {
+	struct SimulationTask {
+		const Float3* positions;
+		const std::vector<Compound> compounds;
+		const BoxParams boxparams;
+		int64_t step;
+		float temperature;
+		ColoringMethod coloringMethod;
+	};
+
+
+}
+//using RenderTask = std::variant<RenderSimulationTask
+
 struct AsyncSignals {
 
 };
@@ -49,6 +65,12 @@ class Display {
 public:
 	Display(EnvMode);
 	~Display();
+
+	void WaitForDisplayReady();
+
+	void Render(std::unique_ptr<Rendering::SimulationTask>);
+
+
 	void render(const Float3* positions, const std::vector<Compound>& compounds, 
 		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
 
@@ -69,6 +91,8 @@ public:
 
 	int debugValue = 0;
 
+
+
 private:
 	LimaLogger logger;
 	Rasterizer rasterizer;
@@ -76,6 +100,7 @@ private:
 	// The renderThread will be spawned during construction, and run this indefinitely
 	void Mainloop();
 
+	void Setup();
 
 	bool initGLFW();
 
@@ -95,7 +120,7 @@ private:
 	bool renderFacetsNormals = false;
 	FPS fps{};
 
-
+	std::unique_ptr<Rendering::SimulationTask> renderSimulationTask = nullptr;
 
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader = nullptr;
@@ -108,7 +133,10 @@ private:
 
 
 	std::jthread renderThread;
-
+	bool kill = false;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+	bool setupCompleted = false;
 
 	float camera_pitch = 0.f;
 	float camera_yaw = 0.f;

@@ -128,10 +128,13 @@ void Display::RenderAsync(const Float3* positions, const std::vector<Compound>& 
         cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
     }
 
-    if (!renderThread.joinable()) {
-        renderThread = std::jthread(&Display::AsyncRenderloop, this, boxparams);
-        //AsyncRenderloop(boxparams);
-    }
+    AsyncRenderloop(boxparams);
+
+
+    //if (!renderThread.joinable()) {
+    //    //renderThread = std::jthread(&Display::AsyncRenderloop, this, boxparams);
+    //    AsyncRenderloop(boxparams);
+    //}
 }
 
 

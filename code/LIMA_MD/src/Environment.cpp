@@ -232,6 +232,7 @@ void Environment::run(bool doPostRunEvents) {
 
 	if (m_mode == Full) {
 		display = std::make_unique<Display>(m_mode );
+		display->WaitForDisplayReady();
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
@@ -377,8 +378,11 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
 		
+		display.Render(std::make_unique<Rendering::SimulationTask>( 
+			engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod 
+		));
 		//display.RenderAsync(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
-		display.render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
+		//display.render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;
 	}
 

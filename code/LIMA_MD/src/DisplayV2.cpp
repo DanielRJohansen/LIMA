@@ -10,6 +10,8 @@
 #include <pthread.h>
 #endif
 
+using namespace Rendering;
+
 void SetThreadName(const std::string& name) {
 #if defined(_WIN32) || defined(_WIN64)
     // Windows 10, version 1607 and later
@@ -130,14 +132,21 @@ Display::Display(EnvMode envmode) :
     logger(LimaLogger::LogMode::compact, envmode, "display")
 {
     renderThread = std::jthread([this] {
-        Setup();
-        Mainloop();
-        });
-
- 
+        try {
+            Setup();
+            Mainloop();
+        }
+        catch(...) {
+            displayThreadException = std::current_exception();
+            printf("Caught an exception");
+        }
+        printf("Display self terminated");
+        displaySelfTerminated = true;
+    }); 
 }
 
 Display::~Display() {
+    printf("####################### Display destructor called");
     kill = true;
     if (renderThread.joinable())
         renderThread.join();
@@ -156,19 +165,79 @@ void Display::WaitForDisplayReady() {
 
 
 
-void Display::Mainloop() {
-    while (!kill) {
-        glfwPollEvents();
-        if (glfwWindowShouldClose(window))
-            break;
+void Display::PrepareTask(Task& task) {
+    std::visit([&](auto&& taskPtr) {
+        using T = std::decay_t<decltype(taskPtr)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
+            PrepareNewRenderTask(
+                taskPtr->positions,
+                taskPtr->compounds,
+                taskPtr->boxparams,
+                taskPtr->step,
+                taskPtr->temperature,
+                taskPtr->coloringMethod
+            );
+        }
+        else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
+            PrepareNewRenderTask(
+				taskPtr->molCollection
+            );
+            // Handle MoleculehullTask preparation if needed
+            // Example: PrepareNewRenderTask(taskPtr->someData);
+        }
+        }, task);
+}
 
-        if (renderSimulationTask != nullptr) {
-            RenderAsync(renderSimulationTask->positions, renderSimulationTask->compounds, renderSimulationTask->boxparams, renderSimulationTask->step, renderSimulationTask->temperature, renderSimulationTask->coloringMethod);
+void Display::Mainloop() {
+
+    Rendering::Task currentRenderTask = nullptr;
+
+
+    while (!kill) {
+        // Update camera, check if window is closed
+        glfwPollEvents();
+        if (glfwWindowShouldClose(window)) {
+            break;
+            printf("Window closed");
+        }
+
+        // Check if new data
+        {
+            bool newData = false;
+            incomingRenderTaskMutex.lock();
+            if (!std::holds_alternative<void*>(incomingRenderTask)) {
+                currentRenderTask = std::move(incomingRenderTask);
+                incomingRenderTask = nullptr;
+                newData = true;
+            }
+            incomingRenderTaskMutex.unlock();
+
+            if (newData) {
+                PrepareTask(currentRenderTask);
+            }
+        }
+
+        if (!std::holds_alternative<void*>(currentRenderTask)) {
+            std::visit([&](auto& taskPtr) {
+                using T = std::decay_t<decltype(taskPtr)>;
+                if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
+                    _Render(taskPtr->boxparams);
+                }
+                else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
+                    _Render(taskPtr->molCollection, taskPtr->boxSize);
+                }
+                }, currentRenderTask);
         }
     }
+    printf("Kill status %d\n", kill.load());
 }
-void Display::Render(std::unique_ptr<Rendering::SimulationTask> task) {
-    renderSimulationTask = std::move(task);
+
+#include "RenderUtilities.cuh"
+
+void Display::Render(Rendering::Task task) {
+    incomingRenderTaskMutex.lock();
+    incomingRenderTask = std::move(task);
+    incomingRenderTaskMutex.unlock();
 }
 
 
@@ -206,22 +275,6 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
 	camera_distance += yoffset * 0.1f;
-}
-
-
-
-
-
-bool Display::checkWindowStatus() {
-    //glfwPollEvents();
-    //if (glfwWindowShouldClose(window)) {
-    //    glfwTerminate();
-
-    //    return false;
-    //}
-
-    //return true;
-    return true;
 }
 
 bool Display::initGLFW() {

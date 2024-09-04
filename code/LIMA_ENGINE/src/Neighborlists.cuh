@@ -311,16 +311,16 @@ void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSel
 	}
 
 	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
+	//LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
 
-	//#ifdef ENABLE_SOLVENTS
 	if (boxparams.n_solvents > 0) {
-		//const int n_blocks = CompoundGrid::blocks_total / nthreads_in_blockgridkernel + 1;
 		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
 		LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev);
 	}
-	//#endif
 
-	cudaDeviceSynchronize();
+	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
+
+
 	const auto t1 = std::chrono::high_resolution_clock::now();
 	timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 }

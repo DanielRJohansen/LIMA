@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Simulation.cuh"
-#include "Rasterizer.cuh"
 #include "LimaTypes.cuh"
 #include "Utilities.h"
 #include "MoleculeHull.cuh"
@@ -30,17 +29,17 @@ public:
 };
 
 
-struct FacetTask {
-	std::vector<Facet> facets;
-	std::optional<Float3> facetsColor;
-	bool drawFacetNormals;
-	FacetDrawMode facetDrawMode;
-};
-
-struct PointsTask {
-	std::vector<Float3> points;
-	std::optional<Float3> pointsColor;
-};
+//struct FacetTask {
+//	std::vector<Facet> facets;
+//	std::optional<Float3> facetsColor;
+//	bool drawFacetNormals;
+//	FacetDrawMode facetDrawMode;
+//};
+//
+//struct PointsTask {
+//	std::vector<Float3> points;
+//	std::optional<Float3> pointsColor;
+//};
 
 namespace Rendering {
 	struct SimulationTask {
@@ -52,50 +51,32 @@ namespace Rendering {
 		ColoringMethod coloringMethod;
 	};
 
+	struct MoleculehullTask {
+		const MoleculeHullCollection& molCollection;
+		Float3 boxSize{};
+	};
 
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>>;
 }
-//using RenderTask = std::variant<RenderSimulationTask
 
-struct AsyncSignals {
-
-};
 
 
 class Display {
 public:
+	// Functions called by main thread only
 	Display(EnvMode);
 	~Display();
-
 	void WaitForDisplayReady();
-
-	void Render(std::unique_ptr<Rendering::SimulationTask>);
-
-
-	void render(const Float3* positions, const std::vector<Compound>& compounds, 
-		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);	
-
-	void RenderAsync(const Float3* positions, const std::vector<Compound>& compounds,
-		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
-
-	void RenderLoop(const Float3* positions, const std::vector<Compound>& compounds,
-		const BoxParams& boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
-
-	void RenderLoop(const MoleculeHullCollection& molCollection, Float3 boxSize, 
-		std::optional<std::chrono::milliseconds> duration = std::nullopt);
-
-	// This is meant as a debugging tool
-	void RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsTask>& pointsTasks, 
-		Float3 boxSize,	std::optional<std::chrono::milliseconds> duration=std::nullopt);
-
-	bool checkWindowStatus();		// Returns false if the windows should close
+	void Render(Rendering::Task);
+	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
 	int debugValue = 0;
 
+	std::exception_ptr displayThreadException{ nullptr };
 
 
 private:
 	LimaLogger logger;
-	Rasterizer rasterizer;
 
 	// The renderThread will be spawned during construction, and run this indefinitely
 	void Mainloop();
@@ -105,7 +86,14 @@ private:
 	bool initGLFW();
 
 	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
-	void AsyncRenderloop(const BoxParams& boxparams);
+	void _Render(const BoxParams& boxparams);
+	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
+
+	void PrepareTask(Rendering::Task& task);
+
+	void PrepareNewRenderTask(const Float3* positions, const std::vector<Compound> compounds,
+		const BoxParams boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
+	void PrepareNewRenderTask(const MoleculeHullCollection& molCollection);
 
 	// Interfacing
 	bool isDragging = false;
@@ -120,7 +108,8 @@ private:
 	bool renderFacetsNormals = false;
 	FPS fps{};
 
-	std::unique_ptr<Rendering::SimulationTask> renderSimulationTask = nullptr;
+	Rendering::Task incomingRenderTask = nullptr;
+	std::mutex incomingRenderTaskMutex;
 
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader = nullptr;
@@ -130,10 +119,10 @@ private:
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 
+	std::vector<RenderAtom> renderAtomsTemp;
 
 
 	std::jthread renderThread;
-	bool kill = false;
 	std::mutex mutex_;
 	std::condition_variable cv_;
 	bool setupCompleted = false;
@@ -153,4 +142,7 @@ private:
 	const int screenWidth = 1400;
 
 	const int screensize[2] = {3840, 2160};
+
+	std::atomic_bool kill = false;
+	std::atomic_bool displaySelfTerminated = false;
 };

@@ -217,7 +217,6 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 
 	cudaMemcpy(
-		//&simulation->traj_buffer[step_relative * simulation->total_particles_upperbound],
 		simulation->traj_buffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->traj_buffer,
 		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
@@ -252,7 +251,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	std::vector<CompoundCoords> compoundcoords_array(simulation->boxparams_host.n_compounds);
 	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck(error);
-	
+
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {

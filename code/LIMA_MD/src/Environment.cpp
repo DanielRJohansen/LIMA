@@ -239,7 +239,9 @@ void Environment::run(bool doPostRunEvents) {
 	while (true) {
 		time0 = std::chrono::high_resolution_clock::now();
 
-		if (engine->runstatus.simulation_finished) { break; }
+		if (engine->runstatus.simulation_finished) { 
+			break; 
+		}
 		
 		engine->step();
 
@@ -247,9 +249,10 @@ void Environment::run(bool doPostRunEvents) {
 
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
-		if (m_mode == Full)
-			if (!handleDisplay(*compounds, boxparams, *display)) { break; }
-
+		if (!handleDisplay(*compounds, boxparams, *display)) { 
+			break; 
+		}
+		
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
 	}
@@ -374,20 +377,24 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 
 bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display) {	
-	//if (!display) { return true; }	// Headless or ConsoleOnly
+	if (m_mode != Full) {
+		return true;
+	}
+
+	auto displayException = display.displayThreadException;
+	if (displayException) {
+		std::rethrow_exception(displayException);
+	}
 
 	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
-		
+
 		display.Render(std::make_unique<Rendering::SimulationTask>( 
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod 
+			engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
 		));
-		//display.RenderAsync(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
-		//display.render(engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
 		step_at_last_render = engine->runstatus.current_step;
 	}
 
-	const bool displayStillExists = display.checkWindowStatus();
-	return displayStillExists;
+	return !display.DisplaySelfTerminated();
 }
 
 
@@ -399,9 +406,9 @@ void Environment::RenderSimulation() {
 
 
 	
-	display->RenderLoop(engine->runstatus.most_recent_positions, *compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod);
-
-
+	display->Render(Rendering::Task(std::make_unique<Rendering::SimulationTask>(
+		engine->runstatus.most_recent_positions, *compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
+	)));
 }
 
 

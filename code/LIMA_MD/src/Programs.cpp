@@ -225,14 +225,13 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	Display d(Full);
 
 
-	d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(200));
-	//d.RenderLoop(mhCol, boxSize);
 
+	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 
 	ConvexHullEngine chEngine{};
 
 	auto renderCallback = [&d, &mhCol, &boxSize]() {
-		d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(50));
+		d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 	};
 
 	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, renderCallback);
@@ -241,9 +240,7 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	TimeIt::PrintTaskStats("FindIntersectIteration");
 
 	
-	d.RenderLoop(mhCol, boxSize, std::chrono::milliseconds(100));
-
-
+	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 }
 
 

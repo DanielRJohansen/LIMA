@@ -6,7 +6,6 @@ add_library(LIMA_MD STATIC
     src/DisplayV2.cpp
     src/Environment.cpp
     src/Interface.cpp
-    src/Rasterizer.cu
     src/Programs.cpp
     src/Rendering.cpp
 )

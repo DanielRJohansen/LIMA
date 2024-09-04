@@ -366,7 +366,7 @@ class DrawAtomsShader : public Shader {
         vec4 atomPos = atoms[gl_InstanceID].position; 
         vec4 worldPos = vec4(atomPos.xyz, 1.0); 
         vec4 offset = vec4(cos(angle) * atomPos.w, sin(angle)  * atomPos.w, 0.01, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
-        gl_Position = MVP * worldPos + offset; 
+        gl_Position = MVP * worldPos + offset * vec4(length(MVP[0])); 
         if (gl_VertexID == 0) { 
             gl_Position = MVP * vec4(atomPos.xyz, 1.0); 
         } 

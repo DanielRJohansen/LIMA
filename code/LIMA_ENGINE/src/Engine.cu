@@ -303,7 +303,7 @@ void Engine::deviceMaster() {
 		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
 	}
 
-	if (simulation->simparams_host.snf_select != None) {
+	if (simulation->simparams_host.snf_select == HorizontalSqueeze) {
 		SupernaturalForces::ApplyHorizontalSqueeze<<< simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev);
 	}
 

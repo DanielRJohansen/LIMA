@@ -7,8 +7,6 @@
 namespace RenderUtilities {
 	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM };
 
-
-
     __device__ __host__ inline ATOM_TYPE RAS_getTypeFromAtomletter(char atom) {
         switch (atom)
         {
@@ -77,7 +75,7 @@ namespace RenderUtilities {
         case ATOM_TYPE::LIMA_CUSTOM:
             return 0.1f;
         case ATOM_TYPE::NONE:
-            return 3.f;
+            return .5f;
         default:
             return 1.f;
         }

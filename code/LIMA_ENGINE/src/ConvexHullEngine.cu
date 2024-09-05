@@ -422,14 +422,11 @@ __global__ void ApplyTransformations(MoleculeHull* moleculeHulls, Facet* facetsB
 		}
 
 		for (int particleId = moleculeHull.indexOfFirstParticleInBuffer; particleId < moleculeHull.indexOfFirstParticleInBuffer + moleculeHull.nParticles; particleId++) {
-			const Float3 screenNormalizedPosition = Float3{ renderatomsBuffer[particleId].position.x, renderatomsBuffer[particleId].position.y, renderatomsBuffer[particleId].position.z };
-			const Float3 unNormalizedPosition = (screenNormalizedPosition + 0.5f) * boxSize;
+			const glm::vec4 pos{ renderatomsBuffer[particleId].position.x, renderatomsBuffer[particleId].position.y, renderatomsBuffer[particleId].position.z , 1.f };
+			glm::vec4 transformedVertex = transformMatrix * pos;
+			transformedVertex.w = renderatomsBuffer[particleId].position.w;
 
-			const glm::vec4 transformedVertex = transformMatrix * glm::vec4{ unNormalizedPosition.x, unNormalizedPosition.y, unNormalizedPosition.z, 1.f };
-
-			Float3 normalizedTransformedPosition = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z } / boxSize - 0.5f;
-
-			renderatomsBuffer[particleId].position = normalizedTransformedPosition.Tofloat4(renderatomsBuffer[particleId].position.w);
+			renderatomsBuffer[particleId].position = float4{ transformedVertex.x, transformedVertex.y, transformedVertex.z, transformedVertex.w };// normalizedTransformedPosition.Tofloat4(renderatomsBuffer[particleId].position.w);
 		}	
 	}
 

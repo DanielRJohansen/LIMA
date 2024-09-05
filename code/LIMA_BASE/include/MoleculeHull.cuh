@@ -171,7 +171,7 @@ struct MoleculeHullCollection
 {
 	// Device memory
 	Facet* facets = nullptr;
-	RenderAtom* particles = nullptr; // [normalized -0.5 -> 0.5] Only to be used for rendering
+	RenderAtom* particles = nullptr;
 	MoleculeHull* moleculeHulls = nullptr;
 
 	// Hostside

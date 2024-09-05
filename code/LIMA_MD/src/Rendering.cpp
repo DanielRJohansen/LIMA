@@ -10,38 +10,39 @@ const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
 
 
+glm::mat4 Camera::View() {
+    glm::mat4 view = glm::mat4(1.0f);
 
-static glm::mat4 GetMVPMatrix(float camera_distance, float camera_pitch, float camera_yaw, int screenWidth, int screenHeight, std::optional<Float3> boxSize = std::nullopt) {
-    // Set up the perspective projection
-    double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
+    // Translate the camera back by the camera distance
+    view = glm::translate(view, glm::vec3(0.0f, 0.0f, dist));
+
+    // Apply the fixed rotation to make Z up
+    view = glm::rotate(view, (-PI / 2.f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // Apply pitch and yaw rotations
+    view = glm::rotate(view, pitch, glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
+    view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
+
+    // Translate the world to the opposite direction of the camera position to look at the center
+    view = glm::translate(view, -center.ToVec3());
+
+    return view;
+}
+
+glm::mat4 Camera::Projection() {
+    //double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
+    double aspectRatio = 1.f;
     double fovY = 45.0;
     double nearPlane = 0.1;
-    double farPlane = 10.0;
-    double fH = tan(fovY / 360.0 * 3.141592653589793) * nearPlane;
+    double farPlane = 100.0;
+    double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
     double fW = fH * aspectRatio;
 
-    glm::mat4 projection = glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
+    return glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
+}
 
-    // Set up the view matrix
-    glm::mat4 view = glm::mat4(1.0f);
-    view = glm::translate(view, glm::vec3(0.0f, 0.0f, camera_distance));
-    view = glm::rotate(view, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));  // Fixed rotation around x-axis
-    view = glm::rotate(view, glm::radians(camera_pitch), glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
-    view = glm::rotate(view, glm::radians(camera_yaw), glm::vec3(0.0f, 0.0f, 1.0f));  // Rotation around z-axis for yaw
-
-    // Model matrix (identity by default)
-    glm::mat4 model = glm::mat4(1.0f);
-
-    // Apply normalization transform if requested
-    if (boxSize.has_value()) {
-        //glm::vec3 boxCenter = boxSize.value().ToVec3() * 0.5f;
-        glm::vec3 scale = 1.0f / boxSize.value().ToVec3();  // Normalizing scale
-
-        // Translation to center the box at origin and scaling to normalize
-        model = glm::translate(model, glm::vec3{ -0.5f }) * glm::scale(glm::mat4(1.0f), scale);
-    }
-
-    return projection * view * model;
+glm::mat4 Camera::ViewProjection() {
+    return Projection() * View();
 }
 
 
@@ -52,12 +53,16 @@ void Display::_Render(const BoxParams& boxparams) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	{
-		const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-		drawBoxOutlineShader->Draw(MVP);
+		//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxparams.boxSize);
+        const glm::mat4 VP = camera.ViewProjection();
+        drawBoxOutlineShader->Draw(VP, Float3{ boxparams.boxSize });
 	}
 
-	const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxparams.boxSize);
-	drawAtomsShader->Draw(MVP, boxparams.total_particles);
+    const glm::mat4 view = camera.View();
+    const glm::mat4 projection = camera.Projection();
+    
+
+    drawAtomsShader->Draw(view, projection, boxparams.total_particles);
 
 	glfwSwapBuffers(window);
 }
@@ -172,17 +177,20 @@ void Display::PrepareNewRenderTask(const MoleculeHullCollection& molCollection) 
 void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSize) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-	drawBoxOutlineShader->Draw(MVP);
+	//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxSize.x);
+    const glm::mat4 V = camera.View();
+    const glm::mat4 P = camera.Projection();
+    const glm::mat4 VP = camera.ViewProjection();
+	drawBoxOutlineShader->Draw(VP, boxSize);
 
     if (renderAtoms) 
-        drawAtomsShader->Draw(MVP, molCollection.nParticles);
+        drawAtomsShader->Draw(V, P, molCollection.nParticles);
 
 	if (renderFacets)
-		drawTrianglesShader->Draw(MVP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
+		drawTrianglesShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
 
 	if (renderFacetsNormals)
-		drawNormalsShader->Draw(MVP, molCollection.facets, molCollection.nFacets, boxSize);
+		drawNormalsShader->Draw(VP, molCollection.facets, molCollection.nFacets, boxSize);
 
 	// Swap front and back buffers
 	glfwSwapBuffers(window);

@@ -38,6 +38,22 @@ void runAllUnitTests();
 #include <ostream>
 
 
+//void DisplayHelloWorld() {
+//	Display display{ Full , 1.f};
+//	
+//	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
+//	Compound compound;
+//	compound.n_particles = 1;
+//	compound.atomLetters[0] = '_';
+//	BoxParams params;
+//	params.boxSize = 2;
+//	params.total_compound_particles = 1;
+//	params.total_particles = 1;
+//	params.total_particles_upperbound = 1;
+//	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, 0, 0.f, Atomname));
+//	while(!display.DisplaySelfTerminated()) {}
+//}
+
 
 int main() {
 	try {
@@ -45,6 +61,8 @@ int main() {
 
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
+
+		//DisplayHelloWorld();
 
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
@@ -91,7 +109,7 @@ int main() {
 
 		//const fs::path work_dir = simulations_dir / "test";
 		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(5.f);
+		//env.CreateSimulation(2.f);
 		//LipidsSelection lipids;
 		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
 		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });

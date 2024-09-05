@@ -222,7 +222,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 
 void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
-	Display d(Full);
+	Display d(Full, boxSize);
 
 
 

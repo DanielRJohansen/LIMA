@@ -16,10 +16,13 @@ class DrawBoxOutlineShader : public Shader {
         #version 430 core
         layout(location = 0) in vec3 aPos;
         layout(location = 1) in vec3 aColor;
+
         out vec3 vertexColor;
         uniform mat4 MVP;
+        uniform vec3 boxSize;
+
         void main() {
-            gl_Position = MVP * vec4(aPos, 1.0);
+            gl_Position = MVP * vec4(aPos*boxSize, 1.0);
             vertexColor = aColor;
         }
         )";
@@ -38,14 +41,14 @@ public:
     DrawBoxOutlineShader() : Shader(vertexShaderSource, fragmentShaderSource) {
         const float boxVertices[] = {
             // positions          // colors
-            -0.5f, -0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-             0.5f, -0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-             0.5f,  0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-            -0.5f,  0.5f, -0.5f,  0.2f, 0.2f, 0.8f,
-            -0.5f, -0.5f,  0.5f,  0.4f, 0.4f, 0.4f,
-             0.5f, -0.5f,  0.5f,  0.4f, 0.4f, 0.4f,
-             0.5f,  0.5f,  0.5f,  0.8f, 0.4f, 0.4f,
-            -0.5f,  0.5f,  0.5f,  0.8f, 0.4f, 0.4f,
+            0.f, 0.f, 0.f,  0.2f, 0.2f, 0.8f,
+            1.f, 0.f, 0.f,  0.2f, 0.2f, 0.8f,
+            1.f, 1.f, 0.f,  0.2f, 0.2f, 0.8f,
+            0.f, 1.f, 0.f,  0.2f, 0.2f, 0.8f,
+            0.f, 0.f, 1.f,  0.4f, 0.4f, 0.4f,
+            1.f, 0.f, 1.f,  0.4f, 0.4f, 0.4f,
+            1.f, 1.f, 1.f,  0.8f, 0.4f, 0.4f,
+            0.f, 1.f, 1.f,  0.8f, 0.4f, 0.4f,
         };
 
         const unsigned int boxIndices[] = {
@@ -80,11 +83,12 @@ public:
 		glDeleteBuffers(1, &EBO);
 	}
 
-    void Draw(const glm::mat4 MVP) {
+    void Draw(const glm::mat4 MVP, Float3 boxSize) {
         use();
 
         glBindVertexArray(VAO);
         SetUniformMat4("MVP", MVP);
+        SetUniformFloat3("boxSize", boxSize);
         glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
@@ -145,7 +149,7 @@ class DrawTrianglesShader : public Shader {
         // First set position     
         vec3 position = vec3(facets[triIndex].data[vertexIndex * 3], 
                              facets[triIndex].data[vertexIndex * 3 + 1], 
-                             facets[triIndex].data[vertexIndex * 3 + 2]) / boxSize - vec3(0.5f,0.5f,0.5f);
+                             facets[triIndex].data[vertexIndex * 3 + 2]);// / boxSize - vec3(0.5f,0.5f,0.5f);
         gl_Position = MVP * vec4(position, 1.0);
 
 
@@ -352,26 +356,40 @@ class DrawAtomsShader : public Shader {
         RenderAtom atoms[]; 
     }; 
   
-    uniform mat4 MVP; 
+   
+    uniform mat4 View;   // View matrix
+    uniform mat4 Proj;   // Projection matrix
     uniform int numAtoms; 
     uniform int numVerticesPerAtom; 
     uniform float pi = 3.14159265359f; 
-     
+
     out vec4 vertexColor; 
-     
+
     void main() { 
         int numTrianglesPerAtom = numVerticesPerAtom - 2; 
-        float light = (sin(float(gl_VertexID * 2 * pi) / float(numTrianglesPerAtom )) + 1.f) / 2.f;
+        float light = (sin(float(gl_VertexID * 2 * pi) / float(numTrianglesPerAtom)) + 1.f) / 2.f;
         float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom); 
         vec4 atomPos = atoms[gl_InstanceID].position; 
-        vec4 worldPos = vec4(atomPos.xyz, 1.0); 
-        vec4 offset = vec4(cos(angle) * atomPos.w, sin(angle)  * atomPos.w, 0.01, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
-        gl_Position = MVP * worldPos + offset * vec4(length(MVP[0])); 
+
+        // Calculate the position of the sphere center in view space
+        vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0); 
+    
+        // Compute the offset in object space to make the sphere face the camera
+        float radius = atomPos.w;
+        vec4 offset = vec4(cos(angle) * radius, sin(angle) * radius, 0.01, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
+        
+
+        // Combine view space position and offset, then apply the projection
+        vec4 objectSpacePos = viewSpacePos + offset;
+        gl_Position = Proj * objectSpacePos;
+
+        // Ensure the center vertex of the fan is at the correct position
         if (gl_VertexID == 0) { 
-            gl_Position = MVP * vec4(atomPos.xyz, 1.0); 
+            gl_Position = Proj * viewSpacePos; 
         } 
+
         vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w); 
-    } 
+    }  
     )";
 
 
@@ -424,7 +442,7 @@ public:
 	}
     // This functions needs no renderAtoms input, as the class is initialized with a reference to the buffer where
     // CUDA will place the input data
-    void Draw(const glm::mat4& MVP, int nAtoms) {
+    void Draw(const glm::mat4& view, const glm::mat4& projection, int nAtoms) {
 
         // If we call this shader multiple times it doesnt matter if the following times has less atoms, but we currently have
         // not implemented to ability to increase the buffer size
@@ -437,10 +455,12 @@ public:
 
         renderAtomsBuffer.Bind(0);
 
-        SetUniformMat4("MVP", MVP);
+        //SetUniformMat4("MVP", MVP);
+        SetUniformMat4("View", view);
+        SetUniformMat4("Proj", projection);
         SetUniformI("numAtoms", nAtoms);
 
-        const int numVerticesPerAtom = 12;
+        const int numVerticesPerAtom = 18;
 		SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
         
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, nAtoms);

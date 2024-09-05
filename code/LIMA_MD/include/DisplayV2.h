@@ -17,6 +17,8 @@ class DrawTrianglesShader;
 class DrawAtomsShader;
 class DrawNormalsShader;
 
+class Camera;
+
 class GLFWwindow;
 
 class FPS {
@@ -26,6 +28,22 @@ public:
 	FPS();
 	void NewFrame();
 	int GetFps() const;
+};
+
+class Camera {
+	Float3 center;
+	float dist = -2.f;
+	float yaw = 0;
+	float pitch = 0;
+
+public:
+	Camera(Float3 center);
+	void Update(float deltaYaw, float deltaPitch, float deltaDist);
+
+	glm::mat4 View();
+	glm::mat4 Projection();
+	glm::mat4 ViewProjection();
+
 };
 
 
@@ -61,10 +79,11 @@ namespace Rendering {
 
 
 
+
 class Display {
 public:
 	// Functions called by main thread only
-	Display(EnvMode);
+	Display(EnvMode, Float3 boxSize=Float3{0});
 	~Display();
 	void WaitForDisplayReady();
 	void Render(Rendering::Task);
@@ -73,6 +92,7 @@ public:
 	int debugValue = 0;
 
 	std::exception_ptr displayThreadException{ nullptr };
+
 
 
 private:
@@ -85,7 +105,6 @@ private:
 
 	bool initGLFW();
 
-	void updateCamera(float pitch, float yaw, float delta_dist=0.f);
 	void _Render(const BoxParams& boxparams);
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
@@ -127,10 +146,7 @@ private:
 	std::condition_variable cv_;
 	bool setupCompleted = false;
 
-	float camera_pitch = 0.f;
-	float camera_yaw = 0.f;
-	float camera_distance = -2.f;
-	Float3 camera_normal{ 0.f,1.f,0.f };
+	Camera camera;
 
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 

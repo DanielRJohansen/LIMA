@@ -24,16 +24,6 @@ void SetThreadName(const std::string& name) {
 #endif
 }
 
-void Display::updateCamera(float pitch, float yaw, float delta_distance) {
-    camera_distance += delta_distance;  
-    camera_pitch = pitch;
-    camera_yaw = yaw;
-    camera_normal = Float3{
-    sin(yaw) * cos(pitch),
-    cos(yaw) * cos(pitch),
-    -sin(pitch)
-    };
-}
 
 
 void Display::Setup() {
@@ -62,22 +52,22 @@ void Display::Setup() {
                 const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
-                    display->updateCamera(display->camera_pitch + delta, display->camera_yaw);
+                    display->camera.Update(0, delta, 0);
                     break;
                 case GLFW_KEY_DOWN:
-                    display->updateCamera(display->camera_pitch - delta, display->camera_yaw);
+                    display->camera.Update(0, -delta, 0);
                     break;
                 case GLFW_KEY_LEFT:
-                    display->updateCamera(display->camera_pitch, display->camera_yaw + delta);
+                    display->camera.Update(delta, 0, 0);
                     break;
                 case GLFW_KEY_RIGHT:
-                    display->updateCamera(display->camera_pitch, display->camera_yaw - delta);
+                    display->camera.Update(-delta, 0, 0);
                     break;
                 case GLFW_KEY_PAGE_UP:
-                    display->updateCamera(display->camera_pitch, display->camera_yaw, 0.5f);
+                    display->camera.Update(0, 0, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-                    display->updateCamera(display->camera_pitch, display->camera_yaw, -0.5f);
+                    display->camera.Update(0, 0, -0.5f);
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
@@ -128,8 +118,9 @@ void Display::Setup() {
     }
 }
 
-Display::Display(EnvMode envmode) :
-    logger(LimaLogger::LogMode::compact, envmode, "display")
+Display::Display(EnvMode envmode, Float3 boxSize) :
+    logger(LimaLogger::LogMode::compact, envmode, "display"),
+    camera(boxSize/2.f)
 {
     renderThread = std::jthread([this] {
         try {
@@ -242,19 +233,19 @@ void Display::Render(Rendering::Task task) {
 
 
 
+
+
+
+
+
+
 void Display::OnMouseMove(double xpos, double ypos) {
     if (isDragging) {
-        float xOffset = static_cast<float>(xpos - lastX);
-        float yOffset = static_cast<float>(lastY - ypos); // Reversed since y-coordinates go from bottom to top
-
         const float sensitivity = 0.001f; // Adjust sensitivity as needed
-        xOffset *= sensitivity;
-        yOffset *= sensitivity;
+        const float xOffset = static_cast<float>(xpos - lastX) * sensitivity;
+        const float yOffset = static_cast<float>(lastY - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
 
-        camera_yaw += xOffset;
-        camera_pitch -= yOffset;
-
-        updateCamera(camera_pitch, camera_yaw);
+        camera.Update(xOffset, -yOffset, 0);
     }
 
     lastX = xpos;
@@ -274,7 +265,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 }
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
-	camera_distance += yoffset * 0.1f;
+    camera.Update(0,0,yoffset * 0.1f);
 }
 
 bool Display::initGLFW() {
@@ -303,6 +294,14 @@ bool Display::initGLFW() {
 }
 
 
+Camera::Camera(Float3 center) : center(center), dist(-4.0f * center.y) {
+
+}
+void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
+    yaw += deltaYaw;
+    pitch += deltaPitch;
+    dist += deltaDist;
+}
 
 
 

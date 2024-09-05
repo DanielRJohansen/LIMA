@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_RENDER = 5;
 const int STEPS_PER_UPDATE = 5;
-constexpr float FORCED_INTERRENDER_TIME = 0.f;		// [ms] Set to 0 for full speed sim
+constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output)
@@ -231,7 +231,7 @@ void Environment::run(bool doPostRunEvents) {
 
 
 	if (m_mode == Full) {
-		display = std::make_unique<Display>(m_mode );
+		display = std::make_unique<Display>(m_mode, Float3{ boxparams.boxSize });
 		display->WaitForDisplayReady();
 	}
 
@@ -254,7 +254,7 @@ void Environment::run(bool doPostRunEvents) {
 		}
 		
 		// Deadspin to slow down rendering for visual debugging :)
-		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < FORCED_INTERRENDER_TIME) {}
+		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < MIN_STEP_TIME) {}
 	}
 	simulationTimer->stop();
 

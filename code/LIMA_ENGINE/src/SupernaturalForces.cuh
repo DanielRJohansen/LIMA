@@ -29,7 +29,6 @@ namespace SupernaturalForces {
 			const float box_padding = 0.5f;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
 			const float boxlenHalfNM = boxSize_device.boxSizeNM_f / 2.f;
-
 			const float dist_x = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.x) - boxlenHalfNM + box_padding, 0.f);
 			const float dist_y = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.y) - boxlenHalfNM + box_padding, 0.f);
 
@@ -142,10 +141,11 @@ namespace SupernaturalForces {
 		{
 			const auto const coords = simDev->box->compoundcoordsCircularQueue->getCoordarrayRef(simDev->signals->step, blockIdx.x);
 			LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
+			__syncthreads();
 			relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
 			__syncthreads();
 
-			distributedSummation(relPosNm, nParticles);	// Get summed relpos in nm at pos[0]
+			distributedSummation(relPosNm, MAX_COMPOUND_PARTICLES);	// Get summed relpos in nm at pos[0]
 			if (threadIdx.x == 0) {
 				avg_abspos_nm = relPosNm[0] / static_cast<float>(nParticles);	// Get average relpos in nm
 			}
@@ -161,7 +161,7 @@ namespace SupernaturalForces {
 			distributedSummation(forcesZ, nParticles);
 
 			if (threadIdx.x == 0) {
-				avg_force_z = forcesZ[0] / static_cast<float>(nParticles);
+				avg_force_z = 0.f;// forcesZ[0] / static_cast<float>(nParticles);
 			}
 		}
 		__syncthreads();
@@ -171,12 +171,12 @@ namespace SupernaturalForces {
 			Float3 force{};
 			const float mass = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 			SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
-			//if (force.len() > 10.f ) {
-			//force.print('f');
-				//avg_abspos_nm.print('p');
-			//}
+			if (force.len() > 10.f ) {
+				force.print('f');
+				avg_abspos_nm.print('p');
+			}
 
-			//simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += force;
+			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += force;
 			//if (simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x].len() > 10.f) {
 			//	simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x].print('T');
 			//}	

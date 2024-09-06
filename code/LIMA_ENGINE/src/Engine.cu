@@ -304,7 +304,9 @@ void Engine::deviceMaster() {
 	}
 
 	if (simulation->simparams_host.snf_select == HorizontalSqueeze) {
+		cudaDeviceSynchronize();
 		SupernaturalForces::ApplyHorizontalSqueeze<<< simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev);
+		cudaDeviceSynchronize();
 	}
 
 	cudaDeviceSynchronize();

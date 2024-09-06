@@ -109,7 +109,7 @@ int main() {
 
 		//const fs::path work_dir = simulations_dir / "test";
 		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(2.f);
+		//env.CreateSimulation(12.f);
 		//LipidsSelection lipids;
 		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
 		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });

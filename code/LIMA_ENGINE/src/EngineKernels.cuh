@@ -170,11 +170,11 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		float speed = 0.f;
 		
 		float forceLen = force.len();
-		if (forceLen > 10.f) {
+		/*if (forceLen > 1000.f) {
 			printf("Illegally large force %d %d\n", blockIdx.x, threadIdx.x);
 			force.print('F');
 			signals->critical_error_encountered = true;
-		}
+		}*/
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {
@@ -184,7 +184,11 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
 			
-
+			if constexpr (energyMinimize) {				
+				const float maxForceMagnitude = 1.f;
+				if (force.len() > maxForceMagnitude)
+					force = force.norm_d() * maxForceMagnitude;
+			}
 
 
 

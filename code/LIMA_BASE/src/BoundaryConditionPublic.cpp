@@ -54,7 +54,7 @@ public:
 
 void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int boxlenNM, BoundaryConditionSelect bc) {
 	switch (bc) {
-	case NoBC: {
+	case None: {
 		NoBoundaryCondition::applyBC(nodeindex);
 		break;
 	}
@@ -70,7 +70,7 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, int nNodesPerDim) {
 
 void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
-	case NoBC: {
+	case None: {
 		NoBoundaryCondition::applyBC(pos_nm, boxlen_nm);
 		break;
 	}
@@ -83,7 +83,7 @@ void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, float boxlen_nm, Boundar
 
 void BoundaryConditionPublic::applyHyperposNM(const Float3& static_position, Float3& movable_position, float boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
-	case NoBC: {
+	case None: {
 		break;
 	}
 	case PBC: {
@@ -95,7 +95,7 @@ void BoundaryConditionPublic::applyHyperposNM(const Float3& static_position, Flo
 
 void BoundaryConditionPublic::applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {
-	case NoBC: {
+	case None: {
 		break;
 	}
 	case PBC: {

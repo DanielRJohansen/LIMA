@@ -60,6 +60,7 @@ def plot_histogram(all_bins, all_counts):
 
 
 if __name__ == "__main__":
+    Potentials.ShowLJ()
     #Energies.ShowEnergies()
     #MakeLipids
 

@@ -376,7 +376,7 @@ class DrawAtomsShader : public Shader {
     
         // Compute the offset in object space to make the sphere face the camera
         float radius = atomPos.w;
-        vec4 offset = vec4(cos(angle) * radius, sin(angle) * radius, 0.01, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
+        vec4 offset = vec4(cos(angle) * radius, sin(angle) * radius, -0.1, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
         
 
         // Combine view space position and offset, then apply the projection

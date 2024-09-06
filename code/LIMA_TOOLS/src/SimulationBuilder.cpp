@@ -50,6 +50,15 @@ float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) 
 	return max_dist;
 }
 
+float constexpr MinParticlePosInDimension(const LipidsSelection& lipidselection, int dim) {
+	float minPos = FLT_MAX;
+	for (const auto& lipid : lipidselection) {
+		for (const auto& atom : lipid.grofile->atoms) {
+			minPos = std::min(minPos, atom.position[dim]);
+		}
+	}
+	return minPos;
+}
 
 float genRandomAngle() {
 	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI - PI;
@@ -629,4 +638,102 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 		AddGroAndTopToGroAndTopfile(targetGrofile, *lipid.grofile, position_transform, targetTopol, lipid.topfile);
 	}
+}
+
+
+
+
+
+
+
+
+MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipidselection, Float3 boxSize, float membraneCenter) {
+	validateLipidselection(lipidselection);
+
+	for (auto& lipid : lipidselection) {
+		centerMoleculeAroundOrigo(*lipid.grofile);
+	}
+
+	
+	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
+	const float padding = 0.1f;	// [nm]
+	//const float molecule_diameter = fursthestDistanceToZAxis(lipidselection) * 2.f;	// [nm]
+	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
+	const float n_lipids_total = lipid_density * boxSize.x * boxSize.y;
+	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
+	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
+
+	const float distPerX = boxSize.x / static_cast<float>(lipidsPerDimx);
+	const float distPerY = boxSize.y / static_cast<float>(lipidsPerDimy);
+
+	auto outputgrofile = std::make_unique<GroFile>();
+	outputgrofile->box_size = boxSize;
+	outputgrofile->title = "Membrane consisting of ";
+	for (const auto& lipid : lipidselection) {
+		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
+	}
+	auto outputtopologyfile = std::make_unique<TopologyFile>();
+	outputtopologyfile->name = "monolayer";
+
+	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
+
+	srand(1238971);
+
+	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+
+	int nLipidsInserted = 0;
+	for (int x = 0; x < lipidsPerDimx; x++) {
+		const float packingOffset = x % 2 == 0 ? 0.f : distPerX / 2.f;
+
+		for (int y = 0; y < lipidsPerDimy; y++) {
+
+			if (nLipidsInserted == static_cast<int>(n_lipids_total))
+				break;
+
+
+			// Insert top lipid
+			{
+				const LipidSelect& inputlipid = getNextRandomLipid();
+
+				const Float3 lipidCenter = Float3{
+					static_cast<float>(x) * distPerX + distPerX / 2.f,
+					static_cast<float>(y) * distPerY + distPerY / 4.f + packingOffset,
+					membraneCenter + std::abs(lowestZpos) + interLipidLayerSpaceHalf
+				};
+
+				std::function<void(Float3&)> position_transform = [lipidCenter](Float3& pos) {
+					pos += lipidCenter;
+					};
+
+				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
+					*outputtopologyfile, inputlipid.topfile);
+			}
+
+			// Insert bottom lipid
+			{
+				const LipidSelect& inputlipid = getNextRandomLipid();
+
+				const Float3 lipidCenter = Float3{
+					static_cast<float>(x) * distPerX + distPerX / 2.f,
+					static_cast<float>(y) * distPerY + distPerY / 4.f + packingOffset,
+					membraneCenter - std::abs(lowestZpos) - interLipidLayerSpaceHalf
+				};
+
+				std::function<void(Float3&)> position_transform = [lipidCenter](Float3& pos) {
+					pos = Float3::rodriguesRotatation(pos, Float3{ 1,0,0 }, PI); // Rotate 180 degrees around x-axis
+					pos += lipidCenter;
+					};
+
+				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
+					*outputtopologyfile, inputlipid.topfile);
+			}
+
+
+
+
+			nLipidsInserted++;
+		}
+	}
+
+	return { std::move(outputgrofile), std::move(outputtopologyfile) };
 }

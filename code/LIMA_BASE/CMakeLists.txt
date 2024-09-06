@@ -14,7 +14,9 @@ add_library(LIMA_BASE STATIC
     src/Statistics.cpp
     src/BoundaryConditionPublic.cpp
     src/MoleculeHull.cpp
-    src/TimeIt.cpp)
+    src/TimeIt.cpp
+    src/Geometry.cpp
+)
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal

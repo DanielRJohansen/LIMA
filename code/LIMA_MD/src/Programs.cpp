@@ -276,3 +276,22 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 
 	return mhCol;
 }
+
+
+
+MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelection& lipidsSelection, Float3 boxSize, float membraneCenterZ) {
+
+	auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidsSelection, boxSize, membraneCenterZ);
+
+	Environment env{ workDir, Full, false};
+	SimParams params;
+	params.em_variant = true;
+	params.bc_select = BoundaryConditionSelect::NoBC;
+	params.dt = 1.f;
+	params.n_steps = 1000.f;
+	env.CreateSimulation(*grofile, *topfile, params);
+	env.run(false);
+
+	
+	return {};
+}

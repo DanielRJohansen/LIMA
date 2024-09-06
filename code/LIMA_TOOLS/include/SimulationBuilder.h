@@ -3,8 +3,9 @@
 #pragma once
 
 #include "MDFiles.h"
-#include <algorithm>
+#include "Geometry.cuh"
 
+#include <algorithm>
 struct LipidSelect {
 	LipidSelect(std::string lipidname, int percentage) : lipidname(lipidname), percentage(percentage) {
 		if (std::find(valid_lipids.begin(), valid_lipids.end(), lipidname) == valid_lipids.end()) {
@@ -33,7 +34,7 @@ using AtomsSelection = std::vector<AtomtypeSelect>;
 
 namespace SimulationBuilder {
 	using namespace MDFiles;
-
+	using Geometry::Plane;
 
 
 	FilePair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims);
@@ -61,4 +62,7 @@ namespace SimulationBuilder {
 		float sphereRadius,
 		const Float3& sphereCenter
 	);
+
+
+	FilePair CreateMembrane(const LipidsSelection& lipidselection, Float3 boxSize, float membraneCenter);
 };

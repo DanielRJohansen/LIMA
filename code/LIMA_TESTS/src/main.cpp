@@ -117,6 +117,15 @@ int main() {
 		//Programs::CreateMembrane(env, lipids, true, 3.5f, true);
 
 
+		//const fs::path work_dir = simulations_dir / "test";
+		//LipidsSelection lipids;
+		//lipids.emplace_back(LipidSelect{ "POPC", 30 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
+		//Programs::CreateMembrane(work_dir, lipids, Float3{7.f}, 3.5f);
+
+
+
 		//FileTests::TestFilesAreCachedAsBinaries(Headless);
 
 

@@ -6,8 +6,6 @@ class Environment;
 class MoleculeHullCollection;
 
 namespace Programs {
-	
-
 	MDFiles::FilePair CreateMembrane(Environment&, LipidsSelection&, bool doEM, 
 		float centerCoordinate, bool writeFiles);
 
@@ -22,4 +20,6 @@ namespace Programs {
 		Float3 vesicleCenter, std::optional<int> numLipids=std::nullopt);
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
+
+	MDFiles::FilePair CreateMembrane(const fs::path& workDir, LipidsSelection& lipidsSelection, Float3 boxSize, float membraneCenterZ);
 } // namespace Programs

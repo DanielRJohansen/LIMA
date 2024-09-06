@@ -400,18 +400,16 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 
 void Environment::RenderSimulation() {
-		std::unique_ptr<Display> display = nullptr;
 
 	if (!prepareForRun()) { throw std::runtime_error("Failed to prepare simulation "); }
 
-	if (display == nullptr)
-		display = std::make_unique<Display>( m_mode );
-
-
+	std::unique_ptr<Display> display = std::make_unique<Display>(m_mode, boxparams.boxSize);
 	
 	display->Render(Rendering::Task(std::make_unique<Rendering::SimulationTask>(
 		engine->runstatus.most_recent_positions, *compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
 	)));
+
+	while(!display->DisplaySelfTerminated()) {}
 }
 
 

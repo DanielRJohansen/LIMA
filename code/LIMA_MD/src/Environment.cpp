@@ -229,6 +229,7 @@ void Environment::sayHello() {
 void Environment::run(bool doPostRunEvents) {
 	if (!prepareForRun()) { return; }
 
+	std::unique_ptr<Display> display = nullptr;
 
 	if (m_mode == Full) {
 		display = std::make_unique<Display>(m_mode, Float3{ boxparams.boxSize });
@@ -399,6 +400,8 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 
 void Environment::RenderSimulation() {
+		std::unique_ptr<Display> display = nullptr;
+
 	if (!prepareForRun()) { throw std::runtime_error("Failed to prepare simulation "); }
 
 	if (display == nullptr)

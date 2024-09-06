@@ -190,7 +190,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (const auto& angle : boximage->topology.anglebonds) {
 			for (int i = 0; i < angle.nAtoms; i++)
 				file << atomNames[angle.global_atom_indexes[i]] << " ";
-			file << angle.params.theta_0 << " " << angle.params.k_theta << "\n";
+			file << angle.params.theta0 << " " << angle.params.kTheta << " " << angle.params.ub0 * LIMA_TO_NANO << " " << angle.params.kUB / LIMA_TO_NANO / LIMA_TO_NANO << "\n";
 		}
 		file << "\n";
 	}

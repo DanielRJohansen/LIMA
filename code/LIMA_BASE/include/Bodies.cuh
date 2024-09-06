@@ -39,24 +39,8 @@ struct SingleBond {
 	const static int nAtoms = 2;
 };
 
-struct AngleBond {
-	struct Parameters {
-		float theta_0 = 0.f;	// [rad]
-		float k_theta = 0.f;	// [J/mol/rad^2]
 
-		bool operator==(const Parameters&) const = default;
-		bool HasZeroParam() const { return k_theta == 0.f; }
-	};
-	
-	AngleBond() {}
-	AngleBond(std::array<uint8_t, 3> ids, float theta_0, float k_theta);
-
-	Parameters params;
-	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
-	const static int nAtoms = 3;
-};
-
-struct UreyBradley {
+struct AngleUreyBradleyBond {
 	struct Parameters {
 		float theta0 = 0.f;	// [rad]
 		float kTheta = 0.f;	// [J/mol/rad^2]
@@ -66,6 +50,9 @@ struct UreyBradley {
 		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return kTheta == 0.f; }
 	};
+
+	AngleUreyBradleyBond() {}
+	AngleUreyBradleyBond(std::array<uint8_t, 3> ids, float t0, float kT, float ub0, float kUB);
 
 	Parameters params;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
@@ -292,7 +279,7 @@ struct Compound : public CompoundCompact {
 
 	// Bonds
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
-	AngleBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
+	AngleUreyBradleyBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
 	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
@@ -350,7 +337,7 @@ struct CompoundBridge {
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
 
 	uint8_t n_anglebonds = 0;
-	AngleBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
+	AngleUreyBradleyBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
 
 	uint8_t n_dihedrals = 0;
 	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];

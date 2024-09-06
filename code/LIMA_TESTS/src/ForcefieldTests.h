@@ -19,10 +19,10 @@ using namespace TestUtils;
 #include <variant>
 
 
-void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond::Parameters>& bonds, std::vector<UreyBradley::Parameters>& angles,
+void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond::Parameters>& bonds, std::vector<AngleUreyBradleyBond::Parameters>& angles,
     std::vector<DihedralBond::Parameters>& dihedrals, std::vector<ImproperDihedralBond::Parameters>& improperDihedrals, std::vector<std::array<int, 4>>& dihIds) 
 {
-    std::vector<std::variant<SingleBond::Parameters, AngleBond::Parameters, UreyBradley::Parameters, DihedralBond::Parameters, ImproperDihedralBond::Parameters>> functypes;
+    std::vector<std::variant<SingleBond::Parameters, AngleUreyBradleyBond::Parameters, DihedralBond::Parameters, ImproperDihedralBond::Parameters>> functypes;
 
     std::ifstream file(filePath);
     std::string line;
@@ -42,14 +42,10 @@ void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond:
 
 
 
-    //std::regex bondRegex(R"(b0A\s*=\s*([\d\.\+e\-]+),\s*cbA\s*=\s*([\d\.\+e\-]+))");
-    //std::regex angleRegex(R"(t0A\s*=\s*([\d\.\+e\-]+),\s*ctA\s*=\s*([\d\.\+e\-]+))");
-    //std::regex dihedralRegex(R"(phiA\s*=\s*([\d\.\+e\-]+),\s*cpA\s*=\s*([\d\.\+e\-]+),\s*phiB\s*=\s*([\d\.\+e\-]+),\s*cpB\s*=\s*([\d\.\+e\-]+),\s*mult\s*=\s*(\d+))");
-    //std::regex improperDihedralRegex(R"(psi0\s*=\s*([\d\.\+e\-]+),\s*kPsi\s*=\s*([\d\.\+e\-]+))");
 
 
     std::regex bondRegex(R"(functype\[(\d+)\]=BONDS,\s*b0A\s*=\s*([\d\.\+e\-]+),\s*cbA\s*=\s*([\d\.\+e\-]+),\s*b0B\s*=\s*([\d\.\+e\-]+),\s*cbB\s*=\s*([\d\.\+e\-]+))");
-    std::regex angleRegex(R"(functype\[(\d+)\]=ANGLES,\s*t0A\s*=\s*([\d\.\+e\-]+),\s*ctA\s*=\s*([\d\.\+e\-]+))");
+    //std::regex angleRegex(R"(functype\[(\d+)\]=ANGLES,\s*t0A\s*=\s*([\d\.\+e\-]+),\s*ctA\s*=\s*([\d\.\+e\-]+))");
     std::regex ureyBradleyRegex(R"(functype\[(\d+)\]=UREY_BRADLEY,\s*thetaA\s*=\s*([\d\.\+e\-]+),\s*kthetaA\s*=\s*([\d\.\+e\-]+),\s*r13A\s*=\s*([\d\.\+e\-]+),\s*kUBA\s*=\s*([\d\.\+e\-]+))");    
     std::regex dihedralRegex(R"(functype\[(\d+)\]=PDIHS,\s*phiA\s*=\s*([\d\.\+e\-]+),\s*cpA\s*=\s*([\d\.\+e\-]+),\s*phiB\s*=\s*([\d\.\+e\-]+),\s*cpB\s*=\s*([\d\.\+e\-]+),\s*mult\s*=\s*(\d+))");
     std::regex improperDihedralRegex(R"(functype\[(\d+)\]=IDIHS,\s*xiA\s*=\s*([\d\.\+e\-]+),\s*cxA\s*=\s*([\d\.\+e\-]+))");
@@ -58,7 +54,6 @@ void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond:
 
     std::regex bondInstanceRegex(R"(type=(\d+)\s*\(BONDS\))");
     std::regex ureybradleyInstanceRegex(R"(type=(\d+)\s*\(UREY_BRADLEY\))");
-    //std::regex dihedralsInstanceRegex(R"(type=(\d+)\s*\(PDIHS\))");
     std::regex dihedralsInstanceRegex(R"(type=(\d+)\s*\(PDIHS\)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+))");
     std::regex improperDihedralsInstanceRegex(R"(type=(\d+)\s*\(IDIHS\))");
 
@@ -75,11 +70,12 @@ void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond:
         }*/
         else if (std::regex_search(line, match, ureyBradleyRegex)) {
             int index = std::stoi(match[1].str());
-            UreyBradley::Parameters params{
+            AngleUreyBradleyBond::Parameters params{
                 std::stof(match[2].str()), std::stof(match[3].str()), std::stof(match[4].str()), std::stof(match[5].str())
             };
             params.theta0 *= DEG_TO_RAD;
             params.kTheta *= KILO;
+            params.kUB *= KILO;
             functypes[index] = params;
         }
         else if (std::regex_search(line, match, dihedralRegex)) {
@@ -97,7 +93,7 @@ void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond:
             bonds.emplace_back(std::get<SingleBond::Parameters>(functypes[std::stoi(match[1].str())]));
         }
         else if (std::regex_search(line, match, ureybradleyInstanceRegex)) {
-            angles.emplace_back(std::get<UreyBradley::Parameters>(functypes[std::stoi(match[1].str())]));
+            angles.emplace_back(std::get<AngleUreyBradleyBond::Parameters>(functypes[std::stoi(match[1].str())]));
         }
         else if (std::regex_search(line, match, dihedralsInstanceRegex)) {
 			dihedrals.emplace_back(std::get<DihedralBond::Parameters>(functypes[std::stoi(match[1].str())]));
@@ -112,7 +108,7 @@ void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond:
 void ParseForcefieldFromItp(
     const std::string& filePath, 
     std::vector<SingleBond::Parameters>& bonds, 
-    std::vector<AngleBond::Parameters>& angles,
+    std::vector<AngleUreyBradleyBond::Parameters>& angles,
     std::vector<DihedralBond::Parameters>& dihedrals, 
     std::vector<ImproperDihedralBond::Parameters>& improperDihedrals,
     std::vector<std::array<std::string, 2>>& atomnamesSinglebonds,
@@ -139,10 +135,13 @@ void ParseForcefieldFromItp(
 		std::istringstream iss(line);
 
 		std::array<std::string, 3> atomNames;
-		AngleBond::Parameters angleparams{};
+        AngleUreyBradleyBond::Parameters angleparams{};
 		iss >> atomNames[0] >> atomNames[1] >> atomNames[2]
-			>> angleparams.theta_0
-			>> angleparams.k_theta;
+			>> angleparams.theta0
+			>> angleparams.kTheta
+            >> angleparams.ub0
+            >> angleparams.kUB;
+
 		angles.emplace_back(angleparams);
 		atomnamesAnglebonds.emplace_back(atomNames);
 	}
@@ -188,17 +187,15 @@ void ParseForcefieldFromItp(
 
 LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode) 
 {
-    if (envmode != Full) {
-        Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" },
-            TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
-            TestUtils::simulations_dir / "Forcefieldtests");
-	}
+	Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" },
+		TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
+		TestUtils::simulations_dir / "Forcefieldtests");
+
 	
 	
 
     std::vector<SingleBond::Parameters> bondparamsGromacs, bondparamsLima;
-    std::vector<UreyBradley::Parameters> angleparamsGromacs;
-    std::vector<AngleBond::Parameters> angleparamsLima;
+    std::vector<AngleUreyBradleyBond::Parameters> angleparamsGromacs, angleparamsLima;
     std::vector<DihedralBond::Parameters> dihedralparamsGromacs, dihedralparamsLima;
     std::vector<ImproperDihedralBond::Parameters> improperDihedralparamsGromacs, improperDihedralparamsLima;
     std::vector<std::array<std::string, 2>> atomnamesSinglebonds;
@@ -243,10 +240,15 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
 		const auto g = angleparamsGromacs[i];
 		const auto l = angleparamsLima[i];
 
-		const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
-			i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, l.theta_0, l.k_theta);
+		const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e} {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e} {:.4e} {:.4e}",
+			i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, g.ub0, g.kUB, l.theta0, l.kTheta, l.ub0, l.kUB);
 
-		ASSERT(std::abs(l.theta_0 - g.theta0) < 0.001f && std::abs((l.k_theta - g.kTheta) / std::max(g.kTheta, 1.f)) < maxError, errMsg);
+		ASSERT(
+            std::abs(l.theta0 - g.theta0) < 0.001f && 
+            std::abs((l.kTheta - g.kTheta) / std::max(g.kTheta, 1.f)) < maxError &&
+            std::abs(l.ub0 - g.ub0) < 0.001f &&
+            std::abs((l.kUB - g.kUB) / std::max(g.kUB, 1.f)) < maxError
+            , errMsg);
 	}
     if (envmode == Full) {
 		printf("%d Anglebond parameters verified\n", angleparamsGromacs.size());
@@ -265,7 +267,8 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
 
 		ASSERT(std::abs((float)l.phi_0 - (float)g.phi_0) < 0.001f 
             && std::abs(((float)l.k_phi - (float)g.k_phi) / std::max((float)g.k_phi, 1.f)) < maxError 
-            && (float)l.n == (float)g.n, errMsg);
+            && (float)l.n == (float)g.n
+            , errMsg);
 	}
     if (envmode == Full) {
         printf("%d Dihedralbond parameters verified\n", dihedralparamsGromacs.size());

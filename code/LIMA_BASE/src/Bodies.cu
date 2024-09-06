@@ -7,7 +7,7 @@ SingleBond::SingleBond(std::array<uint8_t, nAtoms> ids, float b0, float kb) : pa
 	}
 }
 
-AngleBond::AngleBond(std::array<uint8_t, nAtoms> ids, float theta_0, float k_theta) : params{ theta_0, k_theta } {
+AngleUreyBradleyBond::AngleUreyBradleyBond(std::array<uint8_t, nAtoms> ids, float t0, float kT, float ub0, float kUB) : params{ t0, kT, ub0, kUB} {
 	for (int i = 0; i < nAtoms; i++) {
 		atom_indexes[i] = ids[i];
 	}

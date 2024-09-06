@@ -368,11 +368,15 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 		AnglebondType anglebondtype{};
 		iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
-			>> anglebondtype.params.theta_0		// [degrees]
-			>> anglebondtype.params.k_theta;	// [kJ/mol/rad^2]
+			>> anglebondtype.params.theta0		// [degrees]
+			>> anglebondtype.params.kTheta	// [kJ/mol/rad^2]
+			>> anglebondtype.params.ub0
+			>> anglebondtype.params.kUB;
 
-		anglebondtype.params.theta_0 *= DEG_TO_RAD;
-		anglebondtype.params.k_theta *= KILO; // Convert to J/mol/rad^2
+		anglebondtype.params.theta0 *= DEG_TO_RAD;
+		anglebondtype.params.kTheta *= KILO; // Convert to J/mol/rad^2
+		anglebondtype.params.ub0 *= NANO_TO_LIMA;
+		anglebondtype.params.kUB *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
 
 		anglebondParameters->insert(anglebondtype);
 	}
@@ -418,7 +422,7 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondPara
 	if constexpr (std::is_same<GenericBond, SingleBond>::value) {
 		return singlebondParameters->get(query);
 	}
-	else if constexpr (std::is_same<GenericBond, AngleBond>::value) {
+	else if constexpr (std::is_same<GenericBond, AngleUreyBradleyBond>::value) {
 		return anglebondParameters->get(query);
 	}
 	else if constexpr (std::is_same<GenericBond, DihedralBond>::value) {
@@ -432,7 +436,7 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondPara
 	}
 }
 template const std::vector<SingleBond::Parameters>& LIMAForcefield::GetBondParameters<SingleBond>(const std::array<std::string, SingleBond::nAtoms>&);
-template const std::vector<AngleBond::Parameters>& LIMAForcefield::GetBondParameters<AngleBond>(const std::array<std::string, AngleBond::nAtoms>&);
+template const std::vector<AngleUreyBradleyBond::Parameters>& LIMAForcefield::GetBondParameters<AngleUreyBradleyBond>(const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
 template const std::vector<DihedralBond::Parameters>& LIMAForcefield::GetBondParameters<DihedralBond>(const std::array<std::string, DihedralBond::nAtoms>&);
 template const std::vector<ImproperDihedralBond::Parameters>& LIMAForcefield::GetBondParameters<ImproperDihedralBond>(const std::array<std::string, ImproperDihedralBond::nAtoms>&);
 
@@ -520,7 +524,7 @@ const std::vector<typename GenericBond::Parameters>& ForcefieldManager::GetBondP
 	throw std::runtime_error("Failed to find bond parameters");
 }
 template const std::vector<SingleBond::Parameters>& ForcefieldManager::GetBondParameters<SingleBond>(const std::vector<std::string>&, const std::array<std::string, SingleBond::nAtoms>&);
-template const std::vector<AngleBond::Parameters>& ForcefieldManager::GetBondParameters<AngleBond>(const std::vector<std::string>&, const std::array<std::string, AngleBond::nAtoms>&);
+template const std::vector<AngleUreyBradleyBond::Parameters>& ForcefieldManager::GetBondParameters<AngleUreyBradleyBond>(const std::vector<std::string>&, const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
 template const std::vector<DihedralBond::Parameters>& ForcefieldManager::GetBondParameters<DihedralBond>(const std::vector<std::string>&, const std::array<std::string, DihedralBond::nAtoms>&);
 template const std::vector<ImproperDihedralBond::Parameters>& ForcefieldManager::GetBondParameters<ImproperDihedralBond>(const std::vector<std::string>&, const std::array<std::string, ImproperDihedralBond::nAtoms>&);
 

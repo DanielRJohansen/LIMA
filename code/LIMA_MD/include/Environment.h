@@ -137,7 +137,6 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
-	std::unique_ptr<Display> display = nullptr;
 
 	ColoringMethod coloringMethod;	// Not ideal to have here..
 

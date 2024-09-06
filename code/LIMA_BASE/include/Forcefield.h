@@ -28,12 +28,10 @@ struct SinglebondType : public SingleBond {
 	Parameters params;
 };
 
-struct AnglebondType : public AngleBond {
+struct AnglebondType : public AngleUreyBradleyBond {
 	std::array<std::string, 3> bonded_typenames; // i,j,k
 	int func{};
 	Parameters params;
-	float ub0;	// No idea what this is
-	float cub;	// No idea what this is
 };
 
 struct DihedralbondType : public DihedralBond {

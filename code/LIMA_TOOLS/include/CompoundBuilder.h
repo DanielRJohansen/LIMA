@@ -33,7 +33,7 @@ struct BondFactory {
 
 
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
-using AngleBondFactory = BondFactory<3, AngleBond::Parameters>;
+using AngleBondFactory = BondFactory<3, AngleUreyBradleyBond::Parameters>;
 using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
 

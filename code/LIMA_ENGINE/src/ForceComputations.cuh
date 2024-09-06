@@ -48,7 +48,7 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 #endif
 }
 
-__device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleBond& angletype, Float3* results, float& potE) {
+__device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleUreyBradleyBond& angletype, Float3* results, float& potE) {
 	const Float3 v1 = (pos_left - pos_middle).norm();
 	const Float3 v2 = (pos_right - pos_middle).norm();
 	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
@@ -57,13 +57,13 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	const Float3 inward_force_direction2 = (v2.cross(normal)).norm();
 
 	const float angle = Float3::getAngleOfNormVectors(v1, v2);
-	const float error = angle - angletype.params.theta_0;				// [rad]
+	const float error = angle - angletype.params.theta0;				// [rad]
 
 	// Simple implementation
 	if constexpr (CALC_POTE) {
-		potE = angletype.params.k_theta * error * error * 0.5f;		// Energy [J/mol]
+		potE = angletype.params.kTheta * error * error * 0.5f;		// Energy [J/mol]
 	}
-	const float torque = angletype.params.k_theta * (error);				// Torque [J/(mol*rad)]
+	const float torque = angletype.params.kTheta * (error);				// Torque [J/(mol*rad)]
 
 	// Correct implementation
 	//potE = -angletype.k_theta * (cosf(error) - 1.f);		// Energy [J/mol]
@@ -73,8 +73,32 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	results[2] = inward_force_direction2 * (torque / (pos_right - pos_middle).len());
 	results[1] = (results[0] + results[2]) * -1.f;
 
+	// UreyBradley potential
+	{
+	//	const Float3 difference = pos_left - pos_right;						// [lm]
+	//	const float error = difference.len() - angletype.params.ub0;				// [lm]
 
+	//	if constexpr (CALC_POTE) {
+	//		potE = 0.5f * angletype.params.kUB * (error * error);				// [J/mol]
+	//	}
+	//	float force_scalar = -angletype.params.kUB * error;				// [J/(mol*lm)] = [1/lima N/mol]
 
+	//	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
+	//	// Note that we still get the correct value for potE
+	///*	if constexpr (energyMinimize) {
+	//		if (error > bondParams.b0 * 2.f) {
+	//			force_scalar = -bondParams.kb * bondParams.b0 * 2.f;
+	//		}
+	//	}*/
+
+	//	//printf("UB: %f Angleforce %f\n", force_scalar, results[0].len());
+
+	//	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
+	//	//results[0] += dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
+	//	//results[2] += -dir * force_scalar;
+	//	results[0] += -inward_force_direction1 * force_scalar;
+	//	results[2] += -inward_force_direction2 * force_scalar;
+	}
 #if defined LIMASAFEMODE
 	if (results[0].len() > 0.1f) {
 		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 %f [rad] kt %f\n", angle, error, results[0].len(), angletype.theta_0, angletype.k_theta);
@@ -302,7 +326,7 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 }
 
 
-__device__ inline Float3 computeAnglebondForces(const AngleBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
+__device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE)
 {
 	// First clear the buffer which will store the forces.
@@ -311,7 +335,7 @@ __device__ inline Float3 computeAnglebondForces(const AngleBond* const anglebond
 	__syncthreads();
 
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_anglebonds; bond_offset++) {
-		const AngleBond* ab = nullptr;
+		const AngleUreyBradleyBond* ab = nullptr;
 		Float3 forces[3] = { Float3{}, Float3{}, Float3{} };
 		float potential = 0.f;
 		const int bond_index = threadIdx.x + bond_offset * blockDim.x;

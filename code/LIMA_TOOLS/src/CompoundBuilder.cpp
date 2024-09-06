@@ -238,14 +238,16 @@ void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const Angl
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add anglebond to compound");
 	}
-	anglebonds[n_anglebonds++] = AngleBond(
+	anglebonds[n_anglebonds++] = AngleUreyBradleyBond(
 		{
 			static_cast<uint8_t>(atoms[bond.global_atom_indexes[0]].localIdInCompound),
 			static_cast<uint8_t>(atoms[bond.global_atom_indexes[1]].localIdInCompound),
 			static_cast<uint8_t>(atoms[bond.global_atom_indexes[2]].localIdInCompound)
 		},
-		bond.params.theta_0,
-		bond.params.k_theta
+		bond.params.theta0,
+		bond.params.kTheta,
+		bond.params.ub0,
+		bond.params.kUB
 		);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleInfo>& atoms, const DihedralBondFactory& bond) {
@@ -310,10 +312,12 @@ void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const Sing
 }
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const AngleBondFactory& bond) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
-	anglebonds[n_anglebonds++] = AngleBond{
+	anglebonds[n_anglebonds++] = AngleUreyBradleyBond{
 		ConvertGlobalIdsToCompoundlocalIds(particle_info, bond),
-		bond.params.theta_0,
-		bond.params.k_theta
+		bond.params.theta0,
+		bond.params.kTheta,
+		bond.params.ub0,
+		bond.params.kUB
 	};
 }
 void BridgeFactory::AddBond(std::vector<ParticleInfo>& particle_info, const DihedralBondFactory& bond) {
@@ -514,7 +518,7 @@ Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, Forcefi
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			
-			LoadBondIntoTopology<3, AngleBond, AngleBondFactory>(
+			LoadBondIntoTopology<3, AngleUreyBradleyBond, AngleBondFactory>(
 				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds, topologyFile.topology.forcefieldIncludes);
 		}
 

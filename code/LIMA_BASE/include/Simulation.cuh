@@ -13,7 +13,7 @@ enum ColoringMethod { Atomname, Charge };
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField};
+enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
 
 struct SimParams {
 	SimParams() {}

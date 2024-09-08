@@ -275,9 +275,15 @@ void Environment::run(bool doPostRunEvents) {
 	}
 }
 
-GroFile Environment::writeBoxCoordinatesToFile(const std::string& filename) {
+
+
+GroFile Environment::writeBoxCoordinatesToFile(const std::optional<std::string> filename) {
 	GroFile outputfile{ boximage->grofile };
-	outputfile.m_path = work_dir / "molecule" / (filename + ".gro");
+
+	if (filename.has_value()) {
+		outputfile.m_path = work_dir / "molecule" / (filename.value() + ".gro");
+	}
+
 	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;
 		const int pid = boximage->particleinfos[i].localIdInCompound;		
@@ -302,7 +308,7 @@ void Environment::postRunEvents() {
 	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
 	std::filesystem::create_directories(out_dir);
 
-	writeBoxCoordinatesToFile().printToFile();
+	//writeBoxCoordinatesToFile().printToFile();
 
 	if (POSTSIM_ANAL) {
 		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));

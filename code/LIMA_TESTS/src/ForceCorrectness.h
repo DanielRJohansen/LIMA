@@ -127,7 +127,7 @@ namespace ForceCorrectness {
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bondlenErrorNM * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + box_host.compounds[0].singlebonds[0].params.b0);
 
 
 		// Now figure the expected force and potential
@@ -152,7 +152,7 @@ namespace ForceCorrectness {
 		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
 		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
 
-		return LimaUnittestResult{ true, "", envmode == Full };
+		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 

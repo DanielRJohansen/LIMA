@@ -279,7 +279,7 @@ void Engine::deviceMaster() {
 
 
 	if (simulation->boxparams_host.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundLJKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
@@ -303,10 +303,8 @@ void Engine::deviceMaster() {
 		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
 	}
 
-	if (simulation->simparams_host.snf_select == HorizontalSqueeze) {
-		cudaDeviceSynchronize();
-		SupernaturalForces::ApplyHorizontalSqueeze<<< simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev);
-		cudaDeviceSynchronize();
+	if (simulation->simparams_host.snf_select != None) {
+		SupernaturalForces::SnfHandler(simulation.get(), sim_dev);
 	}
 
 	cudaDeviceSynchronize();

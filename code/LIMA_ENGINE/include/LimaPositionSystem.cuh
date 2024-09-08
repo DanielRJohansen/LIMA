@@ -254,7 +254,14 @@ namespace LIMAPOSITIONSYSTEM {
 		if (threadIdx.x == 0) {
 			origoOut = nodeIndexToAbsolutePosition(coordsGlobal->origo);
 		}
-		relposOut[threadIdx.x] = coordsGlobal->rel_positions->toFloat3();
+		relposOut[threadIdx.x] = coordsGlobal->rel_positions[threadIdx.x].toFloat3();
+	}
+
+	__device__ inline Float3 LoadRelposLmAndOrigo(const CompoundCoords* const coordsGlobal, Float3& origoOut) {
+		if (threadIdx.x == 0) {
+			origoOut = nodeIndexToAbsolutePosition(coordsGlobal->origo);
+		}
+		return coordsGlobal->rel_positions[threadIdx.x].toFloat3();
 	}
 
 };

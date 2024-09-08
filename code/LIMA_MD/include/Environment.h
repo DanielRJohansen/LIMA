@@ -66,9 +66,13 @@ public:
 	// Run a standard MD sim
 	void run(bool doPostRunEvents=true);
 
-	// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
-	// atoms in the input coordinate file.
-	GroFile writeBoxCoordinatesToFile(const std::string& filename="out");
+	/// <summary>
+	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
+	/// atoms in the input coordinate file.
+	/// </summary>
+	/// <param name="filename">New name of the file. Defaults to same name as it was as input</param>
+	/// <returns></returns>
+	GroFile writeBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
 
 	void RenderSimulation();
 	

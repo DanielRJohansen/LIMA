@@ -114,6 +114,10 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);	
 	}
 
+	if (force.len() > 10.f) {
+		printf("BONDS %f\n", force.len());
+	}
+
 	// Fetch interims from other kernels
 	if (threadIdx.x < compound.n_particles) {
 		force += box->compounds[blockIdx.x].forces_interim[threadIdx.x];
@@ -144,6 +148,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	//	SupernaturalForces::applyHorizontalSqueeze(utility_buffer_f3, utility_buffer_f, utility_buffer, compound_positions, compound.n_particles, compound_origo, force, mass);
 	//
 	//}
+
 
 
 	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
@@ -185,9 +190,12 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 
 			
 			if constexpr (energyMinimize) {				
-				const float maxForceMagnitude = 1.f;
-				if (force.len() > maxForceMagnitude)
+				const float maxForceMagnitude = 1000.f;
+				if (force.len() > maxForceMagnitude) {
+					printf("Magnitude %f\n", force.len());
 					force = force.norm_d() * maxForceMagnitude;
+					
+				}
 			}
 
 
@@ -247,7 +255,7 @@ template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, 
 
 
 #define compound_index blockIdx.x
-template <typename BoundaryCondition>
+template <typename BoundaryCondition, bool energyMinimize>
 __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK]; // [lm]
@@ -321,7 +329,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-			force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
+			force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
 				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
 			particleCharge, particleChargesCompound);
 		}
@@ -394,14 +402,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 				__syncthreads();
 
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+					force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 						utility_buffer_f3, n_particles_neighbor, atomtypes, bonded_particles_lut, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 						particleCharge, particleChargesNeighbors);
 				}
 			}
 			else {
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+					force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 						utility_buffer_f3, n_particles_neighbor, atomtypes, forcefield_shared, particleCharge, particleChargesNeighbors);
 				}
 			}
@@ -436,7 +444,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += LJ::computeSolventToCompoundLJForces(compound_positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared);
+				force += LJ::computeSolventToCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared);
 			}
 			__syncthreads();
 		}
@@ -471,8 +479,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		sim->box->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
-template __global__ void compoundLJKernel<NoBoundaryCondition>(SimulationDevice* sim);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
+template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
+template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
 #undef compound_index
 
 
@@ -551,7 +561,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 			if (solvent_active) {
-				force += LJ::computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
+				force += LJ::computeCompoundToSolventLJForces<energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -568,7 +578,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		}
 		__syncthreads();
 		if (solvent_active) {
-			force += LJ::computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
+			force += LJ::computeSolventToSolventLJForces<energyMinimize>(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -598,7 +608,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				__syncthreads();
 
 				if (solvent_active) {
-					force += LJ::computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
+					force += LJ::computeSolventToSolventLJForces<energyMinimize>(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
 				}
 				__syncthreads();
 			}

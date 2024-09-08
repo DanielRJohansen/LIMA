@@ -122,7 +122,7 @@ int main() {
 		//lipids.emplace_back(LipidSelect{ "POPC", 30 });
 		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
 		//lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{25.f}, 10.f);
+		//Programs::CreateMembrane(work_dir, lipids, Float3{10.f}, 5.f);
 
 
 

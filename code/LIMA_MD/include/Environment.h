@@ -129,9 +129,7 @@ private:
 	EnvMode m_mode;
 	const bool save_output;
 
-	//std::unique_ptr<Display> display = nullptr;
 	int step_at_last_render = 0;
-	int step_at_last_update = 0;
 
 
 	std::unique_ptr<BoxBuilder> boxbuilder;

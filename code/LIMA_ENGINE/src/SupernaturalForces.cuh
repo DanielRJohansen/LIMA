@@ -156,12 +156,13 @@ namespace SupernaturalForces {
 	Float3 __device__ BoxEdgeForce(const Float3& positionNM) {
 		const Float3 boxSize = boxSize_device.boxSizeNM_f;
 		Float3 force{};
-		force.x += std::exp(10.f * (0.f - positionNM.x) - 2.f);
-		force.x -= std::exp(10.f * (positionNM.x - boxSize.x) - 2.f);
-		force.y += std::exp(10.f * (0.f - positionNM.y) - 2.f);
-		force.y -= std::exp(10.f * (positionNM.y - boxSize.y) - 2.f);
-		force.z += std::exp(10.f * (0.f - positionNM.z) - 2.f);
-		force.z -= std::exp(10.f * (positionNM.z - boxSize.z) - 2.f);
+		float scalar = 10.f;
+		force.x += std::exp(scalar * (0.f - positionNM.x) - 2.f);
+		force.x -= std::exp(scalar * (positionNM.x - boxSize.x) - 2.f);
+		force.y += std::exp(scalar * (0.f - positionNM.y) - 2.f);
+		force.y -= std::exp(scalar * (positionNM.y - boxSize.y) - 2.f);
+		force.z += std::exp(scalar * (0.f - positionNM.z) - 2.f);
+		force.z -= std::exp(scalar * (positionNM.z - boxSize.z) - 2.f);
 		return force;
 	}
 
@@ -175,7 +176,7 @@ namespace SupernaturalForces {
 		const float massFactor = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
 		if (threadIdx.x < simDev->box->compounds[blockIdx.x].n_particles)
-			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor * 0;
+			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
 	}
 
 	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev) {
@@ -211,10 +212,10 @@ namespace SupernaturalForces {
 			case HorizontalChargeField:
 				break;
 			case BoxEdgePotential:
-				//if (simulation->boxparams_host.n_compounds > 0)
-				//	BoxEdgeForceCompounds << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev);	
-				//if (simulation->boxparams_host.n_solvents > 0) 
-				//	BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev);
+				if (simulation->boxparams_host.n_compounds > 0)
+					BoxEdgeForceCompounds << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev);	
+				if (simulation->boxparams_host.n_solvents > 0) 
+					BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev);
 				break;
 		}		
 		cudaDeviceSynchronize();

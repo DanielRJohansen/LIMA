@@ -114,9 +114,6 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);	
 	}
 
-	if (force.len() > 10.f) {
-		printf("BONDS %f\n", force.len());
-	}
 
 	// Fetch interims from other kernels
 	if (threadIdx.x < compound.n_particles) {

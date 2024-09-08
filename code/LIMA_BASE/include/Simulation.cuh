@@ -237,7 +237,7 @@ public:
 
 	float temperature = -1.f;			// Current temperature [k]
 
-	std::unique_ptr<Box> box_host;
+	std::unique_ptr<Box> box_host = nullptr;
 
 
 	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access

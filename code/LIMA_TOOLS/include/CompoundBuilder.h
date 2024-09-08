@@ -171,7 +171,6 @@ struct BoxImage {
 
 	const float box_size;
 
-	//const ParticleInfoTable particleinfotable;
 	const std::vector<ParticleInfo> particleinfos;
 
 	GroFile grofile;

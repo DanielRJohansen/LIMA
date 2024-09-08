@@ -20,7 +20,6 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_RENDER = 5;
 const int STEPS_PER_UPDATE = 5;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
@@ -183,9 +182,6 @@ bool Environment::prepareForRun() {
 	}
 
 	m_logger.startSection("Simulation started");
-
-	step_at_last_render = 0;
-	step_at_last_update = 0;
 	time0 = std::chrono::high_resolution_clock::now();
 
 	if (simulation->ready_to_run) { return true; }
@@ -357,8 +353,7 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 		return;
 	}
 
-	const int steps_since_update = step - step_at_last_update;
-	if (steps_since_update >= STEPS_PER_UPDATE) {
+	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
 
 		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
 		//const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
@@ -368,15 +363,14 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 		printf("\rStep #%06llu", step);
 		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
-			duration / steps_since_update,
-			engine->timings.compound_kernels / steps_since_update,
-			engine->timings.solvent_kernels / steps_since_update,
-			engine->timings.cpu_master/ steps_since_update,
-			engine->timings.nlist/ steps_since_update,
-			engine->timings.electrostatics / steps_since_update,
+			duration / STEPS_PER_UPDATE,
+			engine->timings.compound_kernels / STEPS_PER_UPDATE,
+			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
+			engine->timings.cpu_master/ STEPS_PER_UPDATE,
+			engine->timings.nlist/ STEPS_PER_UPDATE,
+			engine->timings.electrostatics / STEPS_PER_UPDATE,
 			0);
 
-		step_at_last_update = step;
 		engine->timings.reset();
 	}
 }
@@ -393,7 +387,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 		std::rethrow_exception(displayException);
 	}
 
-	if (engine->runstatus.stepForMostRecentData - step_at_last_render > STEPS_PER_RENDER && engine->runstatus.most_recent_positions != nullptr) {
+	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
 
 		display.Render(std::make_unique<Rendering::SimulationTask>( 
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod

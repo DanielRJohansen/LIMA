@@ -297,8 +297,12 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelect
 	params.dt = 20;
 	env.CreateSimulation(*grofile, *topfile, params);
 	env.run(false);
+	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
 
-
+	params.bc_select = BoundaryConditionSelect::PBC;
+	//params.dt = 100;
+	env.CreateSimulation(*grofile, *topfile, params);
+	env.run(false);
 
 	
 	return {};

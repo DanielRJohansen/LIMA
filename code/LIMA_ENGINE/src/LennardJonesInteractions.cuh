@@ -157,8 +157,6 @@ namespace LJ {
 		//printf("\nElectrostatic force %f %f %f\n", electrostaticForce.x, electrostaticForce.y, electrostaticForce.z);
 		//printf("ES %f LJ %f  %d %d \n", electrostaticForce.len(), force.len() * 24.f, threadIdx.x, nei);
 
-		if (force.len() > 1000.f)
-			printf("Force1 %f\n", force.len() * 24.f);
 		return force * 24.f + electrostaticForce;
 	}
 
@@ -199,8 +197,6 @@ namespace LJ {
 				}
 			}
 		}
-		if (force.len() > 1000.f)
-			printf("Force2 %f\n", force.len() * 24.f);
 
 		return force * 24.f + electrostaticForce;
 	}

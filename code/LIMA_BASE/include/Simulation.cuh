@@ -170,6 +170,7 @@ namespace LIMALOGSYSTEM {
 // This goes on Device
 struct Box {
 	Box() {}
+	Box(int boxSize);
 	~Box();
 	void moveToDevice();				// Loses pointer to RAM location!
 	void deleteMembers();
@@ -211,9 +212,9 @@ struct Box {
 // This stays on host
 class Simulation {
 public:
-	Simulation(const SimParams& sim_params, const std::string& molecule_path, EnvMode envmode);
-
-	void copyBoxVariables();
+	// Empty simulation, i dont like this very much
+	Simulation(const SimParams& simparams);
+	Simulation(const SimParams& simparams, std::unique_ptr<Box> box);
 	
 	inline int64_t getStep() const { return simsignals_host.step; }
 	

@@ -217,7 +217,7 @@ void runAllUnitTests() {
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	
 	// Test Forcefield and compoundbuilder
-	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", CoulombForceSanityCheck(envmode));
+	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 
 	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
@@ -229,7 +229,6 @@ void runAllUnitTests() {
 	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
 	ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
-	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Performance test
 	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));

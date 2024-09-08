@@ -8,44 +8,30 @@
 
 using namespace LIMA_Print;
 
-void BoxBuilder::buildBox(Simulation* simulation, float boxsize_nm) {
-	m_logger->startSection("Building box");
 
-//	simulation->box_host->boxparams.dims = Float3{ boxsize_nm };
-	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
+std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
+	auto box = std::make_unique<Box>(static_cast<int>(boxImage.box_size));
 
-	simulation->box_host->compounds = new Compound[MAX_COMPOUNDS];
-	simulation->box_host->compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
-	simulation->box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation->box_host->boxparams.boxSize);
-
-	simulation->box_host->bridge_bundle = new CompoundBridgeBundleCompact{};
-
-	simulation->box_host->owns_members = true; // I guess this sorta requires all ptr's to be allocated in the same scope otherwise the destructor will fail with this param / or not get all members
-
-	cudaDeviceSynchronize();
-	if (cudaGetLastError() != cudaSuccess) {
-		throw std::runtime_error("Error during buildBox()");		
-	}
-}
-
-
-void BoxBuilder::addBoxImage(Simulation* simulation, BoxImage& compound_collection) {
-	for (const CompoundFactory& compound : compound_collection.compounds) {		
-		//CALL_FUNCTION_WITH_BC(insertCompoundInBox, simulation->simparams_host.constparams.bc_select, compound, *simulation);
-		//insertCompoundInBox<BoundaryCondition>(compound, *simulation);
-		insertCompoundInBox(compound, *simulation);
+	for (const CompoundFactory& compound : boxImage.compounds) {
+		InsertCompoundInBox(compound, *box, simparams);
 	}
 
-	simulation->box_host->boxparams.total_compound_particles = compound_collection.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
-	simulation->box_host->boxparams.total_particles += compound_collection.total_compound_particles;
+	box->boxparams.total_compound_particles = boxImage.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
+	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	simulation->box_host->bridge_bundle = compound_collection.bridgebundle.release();					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
-	simulation->box_host->boxparams.n_bridges = simulation->box_host->bridge_bundle->n_bridges;
+	box->bridge_bundle = boxImage.bridgebundle.release();					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	box->boxparams.n_bridges = box->bridge_bundle->n_bridges;
 
-	simulation->box_host->bonded_particles_lut_manager = compound_collection.bp_lut_manager.release();
+	box->bonded_particles_lut_manager = boxImage.bp_lut_manager.release();
+
+#ifdef ENABLE_SOLVENTS
+	SolvateBox(*box, boxImage.forcefield, simparams, boxImage.solvent_positions);
+#endif
 
 	m_logger->print("BoxImage added to box\n");
+
+	return box;
 }
 
 
@@ -87,7 +73,12 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 	
 
 	// Load meta information
-	simulation->copyBoxVariables();
+	//simulation->copyBoxVariables();
+	simulation->boxparams_host = simulation->box_host->boxparams;
+	simulation->compounds_host.resize(simulation->boxparams_host.n_compounds);
+	for (int i = 0; i < simulation->boxparams_host.n_compounds; i++)
+		simulation->compounds_host[i] = simulation->box_host->compounds[i];
+
 	m_logger->print("Box contains " + std::to_string(simulation->boxparams_host.n_compounds) + " compounds, " 
 		+ std::to_string(simulation->boxparams_host.n_bridges) + " bridges and " + std::to_string(simulation->boxparams_host.n_solvents) + " solvents\n");
 
@@ -107,36 +98,22 @@ void BoxBuilder::finishBox(Simulation* simulation) {
 }
 
 
-int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	const float solvent_mass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-	const float default_solvent_start_temperature = 310;	// [K]
-
 	for (Float3 sol_pos : solvent_positions) {
-		if (simulation->box_host->boxparams.n_solvents == MAX_SOLVENTS) {
+		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
 		sol_pos += most_recent_offset_applied;			// So solvents are re-aligned with an offsat molecule.
 
-		if (spaceAvailable(*simulation->box_host, sol_pos, true) && simulation->box_host->boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
+		if (spaceAvailable(box, sol_pos, true) && box.boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 
 			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				sol_pos, static_cast<float>(simulation->box_host->boxparams.boxSize), simulation->simparams_host.bc_select);
+				sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
 
-
-			simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord, simulation->box_host->boxparams.n_solvents, 0, simulation->box_host->boxparams.boxSize);
-
-			//const Float3 direction = get3RandomSigned().norm();
-			//const float velocity = EngineUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);	// [m/s]
-			//const Float3 deltapos_lm = (direction * velocity * (simulation->simparams_host.constparams.dt));
-
-			//SolventCoord solventcoord_prev = solventcoord;
-			//solventcoord_prev.rel_position -= Coord{ deltapos_lm };
-
-			//simulation->box_host->solventblockgrid_circularqueue->addSolventToGrid(solventcoord_prev, simulation->box_host->boxparams.n_solvents, SolventBlocksCircularQueue::first_step_prev);
-
-			simulation->box_host->boxparams.n_solvents++;
+			box.solventblockgrid_circularqueue->addSolventToGrid(solventcoord, box.boxparams.n_solvents, 0, box.boxparams.boxSize);
+			box.boxparams.n_solvents++;
 		}
 		else {
 			// TODO: I should fill this out
@@ -145,22 +122,24 @@ int BoxBuilder::solvateBox(Simulation* simulation, const std::vector<Float3>& so
 	}
 
 	// Setup forces and vel's for VVS
-	simulation->box_host->solvents = new Solvent[simulation->box_host->boxparams.n_solvents];
-	for (int i = 0; i < simulation->box_host->boxparams.n_solvents; i++) {
-		simulation->box_host->solvents[i].force_prev = Float3{0};
+	const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
+	const float default_solvent_start_temperature = 310;	// [K]
+	box.solvents = new Solvent[box.boxparams.n_solvents];
+	for (int i = 0; i < box.boxparams.n_solvents; i++) {
+		box.solvents[i].force_prev = Float3{0};
 
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
 		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
-		simulation->box_host->solvents[i].vel_prev = direction * velocity;
+		box.solvents[i].vel_prev = direction * velocity;
 	}
 
 
-	simulation->box_host->boxparams.total_particles += simulation->box_host->boxparams.n_solvents;
-	auto a = std::to_string(simulation->box_host->boxparams.n_solvents);
+	box.boxparams.total_particles += box.boxparams.n_solvents;
+	auto a = std::to_string(box.boxparams.n_solvents);
 	auto b = std::to_string(solvent_positions.size());
 	m_logger->print(a + " of " + b + " solvents added to box\n");
-	return simulation->box_host->boxparams.n_solvents;
+	return box.boxparams.n_solvents;
 }
 
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
@@ -249,7 +228,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 
 // ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
-void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset)
+void BoxBuilder::InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimParams& simparams, Float3 offset)
 {
 	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
@@ -259,13 +238,13 @@ void BoxBuilder::insertCompoundInBox(const CompoundFactory& compound, Simulation
 		positions.push_back(extern_position);
 	}
 
-	CompoundCoords& coords_now = *simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, simulation.box_host->boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(simulation.box_host->boxparams.boxSize), simulation.simparams_host.bc_select);
-	if (simulation.simparams_host.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(simulation.box_host->boxparams.boxSize))) {
+	CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+	if (simparams.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 
-	simulation.box_host->compounds[simulation.box_host->boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
+	box.compounds[box.boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
 }
 
 

@@ -52,8 +52,9 @@ Environment::~Environment() {}
 
 void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
-	setupEmptySimulation(simparams);
-	boxbuilder->buildBox(simulation.get(), boxsize_nm);
+	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(boxsize_nm));
+	//simulation->box_host = std::make_unique<Box>(boxsize_nm);
+	//boxbuilder->buildBox(simulation.get(), boxsize_nm);
 	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
@@ -65,7 +66,9 @@ void Environment::CreateSimulation(std::string gro_path, std::string topol_path,
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-	setupEmptySimulation(params);
+	//setupEmptySimulation(params);
+	simulation = std::make_unique<Simulation>(params, std::make_unique<Box>(static_cast<int>(grofile.box_size.x)));
+
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
@@ -74,16 +77,19 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		IGNORE_HYDROGEN,
 		simulation->simparams_host
 		);
+
 	//TODO Find a better place for this
 	simulation->forcefield = boximage->forcefield;
+	//simulation->box_host = std::make_unique<Box>(boximage->box_size);
+	//boxbuilder->buildBox(simulation.get(), boximage->box_size);
 
-	boxbuilder->buildBox(simulation.get(), boximage->box_size);
+	simulation->box_host = boxbuilder->BuildBox(params, *boximage);
 
-	boxbuilder->addBoxImage(simulation.get(), *boximage);
+	//simulation = std::mak
 
-#ifdef ENABLE_SOLVENTS
-	boxbuilder->solvateBox(simulation.get(), boximage->solvent_positions);
-#endif
+//#ifdef ENABLE_SOLVENTS
+//	boxbuilder->solvateBox(simulation.get(), boximage->solvent_positions);
+//#endif
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
@@ -111,7 +117,7 @@ void Environment::createSimulationFiles(float boxlen) {
 }
 
 void Environment::setupEmptySimulation(const SimParams& simparams) {
-	simulation = std::make_unique<Simulation>(simparams, (work_dir / "molecule/").string(), m_mode);
+	simulation = std::make_unique<Simulation>(simparams);
 
 	verifySimulationParameters();
 }

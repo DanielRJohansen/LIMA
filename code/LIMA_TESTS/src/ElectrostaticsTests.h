@@ -28,7 +28,7 @@ namespace ElectrostaticsTests {
 
 		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
 		// TODO: add potE to this also
-		return LimaUnittestResult{ true, "", envmode == Full};
+		return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
 
 
@@ -123,7 +123,7 @@ namespace ElectrostaticsTests {
 		}
 
 
-		return LimaUnittestResult{ true, "", envmode == Full};
+		return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
 
 

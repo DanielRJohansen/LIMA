@@ -13,8 +13,8 @@ public:
 	{
 		srand(290128309);
 	};
-	void buildBox(Simulation* simulation, float boxsize_nm);
-	void addBoxImage(Simulation* simulation, BoxImage& coll);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
+	//void buildBox(Simulation* simulation, float boxsize_nm);
+	std::unique_ptr<Box> BuildBox(const SimParams& params, BoxImage& boxImage);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
 	//void addMembrane(Simulation& sim, BoxImage& lipid);
 
 
@@ -22,7 +22,7 @@ public:
 	//void addDoubleMembrane(Simulation* simulation, Compound* molecule);
 	void finishBox(Simulation* simulation);
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
-	int solvateBox(Simulation* simulation, const std::vector<Float3>& solvate_positions);	// Returns # of solvate compounds placed
+	int SolvateBox(Box&, const ForceField_NB&, const SimParams&, const std::vector<Float3>& solvent_positions);	// Returns # of solvate compounds placed
 
 
 	// Will create a membrane with lipids that are spread far apart
@@ -34,7 +34,7 @@ public:
 	bool verifyAllParticlesIsInsideBox(Simulation& sim, float padding = 0.f, bool verbose=true);
 
 private:
-	void insertCompoundInBox(const CompoundFactory& compound, Simulation& simulation, Float3 offset = Float3{});
+	void InsertCompoundInBox(const CompoundFactory&, Box&, const SimParams&, Float3 offset = Float3{});
 	
 	void setupDataBuffers(Simulation& simulation, const uint64_t n_steps);
 	void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps);

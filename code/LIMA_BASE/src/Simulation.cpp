@@ -86,6 +86,23 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 
 
+
+
+
+
+
+
+
+Box::Box(int boxSizeNM) :
+	owns_members(true)
+{
+	boxparams.boxSize = boxSizeNM;
+	compounds = new Compound[MAX_COMPOUNDS]; // TODO: This should NOT BE HERE
+	compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
+	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxSizeNM);
+	bridge_bundle = new CompoundBridgeBundleCompact{};
+}
+
 Box::~Box() {
 	if (owns_members) { deleteMembers(); }
 }
@@ -182,29 +199,16 @@ std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
 }
 
 
-Simulation::Simulation(const SimParams& params, const std::string& molecule_path, EnvMode envmode) :
+Simulation::Simulation(const SimParams& params) :
 	simparams_host{ params }
 {
 	box_host = std::make_unique<Box>();
-	//forcefield = std::make_unique<Forcefield>(envmode == Headless ? SILENT : V1, molecule_path);
 }
 
-void Simulation::copyBoxVariables() {
-	boxparams_host = box_host->boxparams;
-	//n_compounds = box_host->boxparams.n_compounds;
-	//n_bridges = box_host->bridge_bundle->n_bridges;
-
-
-	//n_solvents = box_host->boxparams.n_solvents;
-	//blocks_per_solventkernel = (int)ceil((float)n_solvents / (float)THREADS_PER_SOLVENTBLOCK);
-
-	compounds_host.resize(boxparams_host.n_compounds);
-	for (int i = 0; i < boxparams_host.n_compounds; i++)
-		compounds_host[i] = box_host->compounds[i];
-
-	// Need this variable both on host and device
-	//total_particles_upperbound = box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + SolventBlockGrid::blocks_total * MAX_SOLVENTS_IN_BLOCK;
-	//box_host->boxparams.total_particles_upperbound = total_particles_upperbound;
+Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> box) :
+	simparams_host{ params }
+{
+	box_host = std::move(box);
 }
 
 //void InputSimParams::overloadParams(std::map<std::string, double>& dict) {

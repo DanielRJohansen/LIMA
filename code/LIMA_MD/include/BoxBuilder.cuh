@@ -11,25 +11,18 @@ public:
 	BoxBuilder(std::unique_ptr<LimaLogger> logger) :
 		m_logger(std::move(logger))
 	{
-		srand(290128309);
+		//srand(290128309);
 	};
-	//void buildBox(Simulation* simulation, float boxsize_nm);
 	std::unique_ptr<Box> BuildBox(const SimParams& params, BoxImage& boxImage);		// Can only use a single "add" function per Simulation for now!!!!!!!!!!!!!
-	//void addMembrane(Simulation& sim, BoxImage& lipid);
 
 
-	//void addScatteredMolecules(Simulation* simulation, Compound* molecule, int n_copies);
-	//void addDoubleMembrane(Simulation* simulation, Compound* molecule);
-	void finishBox(Simulation* simulation);
+	//void finishBox(Simulation* simulation);
 	int solvateBox(Simulation* simulation);					// Returns # of solvate compounds placed
 	int SolvateBox(Box&, const ForceField_NB&, const SimParams&, const std::vector<Float3>& solvent_positions);	// Returns # of solvate compounds placed
 
 
-	// Will create a membrane with lipids that are spread far apart
-	//void createMembrane(Simulation& sim);
-
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
-	void copyBoxState(Simulation* simulation, std::unique_ptr<Box> boxsrc, const SimSignals& simparams_src, uint32_t boxsrc_current_step);
+	void copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsrc, uint32_t boxsrc_current_step);
 
 	bool verifyAllParticlesIsInsideBox(Simulation& sim, float padding = 0.f, bool verbose=true);
 
@@ -40,7 +33,6 @@ private:
 	void setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps);
 
 	// -------------- Functions for compound manipulation BEFORE integration -------------- //
-	//void placeMultipleCompoundsRandomly(Simulation* simulation, Compound* template_compound, int n_copies);
 	Compound* randomizeCompound(Compound* template_compound);
 	void moveCompound(Compound* compound, Float3 vector);
 
@@ -63,13 +55,7 @@ private:
 
 	const std::unique_ptr<LimaLogger> m_logger;
 
-	const float MIN_NONBONDED_DIST = 0.2f;
-
-
-	// If molecule is offset, each solvent from .gro file must be aswell
-	Float3 most_recent_offset_applied = Float3(0.f);	//TODO: Remove this constant, it's dangerous
-
-	
+	const float MIN_NONBONDED_DIST = 0.2f;	
 	
 
 	// ---------------------------------------------------- Helper functions ---------------------------------------------------- //

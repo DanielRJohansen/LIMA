@@ -154,6 +154,20 @@ public:
 		return genericMoveToDevice(this, 1);
 	}
 
+	__host__ SolventBlocksCircularQueue* CopyToDevice() const {
+		SolventBlocksCircularQueue queueTemp = *this;
+		const int blocksTotal = blocksInGrid * queue_len;
+		queueTemp.blocks = GenericCopyToDevice(blocks, blocksTotal);
+
+		//is_on_device = true;
+		return GenericCopyToDevice(&queueTemp, 1);
+	}
+	__host__ void CopyDataFromDevice(const SolventBlocksCircularQueue* const queue) const {
+		const int blocksTotal = blocksInGrid * queue_len;
+		cudaMemcpy(blocks, queue->blocks, sizeof(SolventBlock) * blocksTotal, cudaMemcpyDeviceToHost);
+	}
+
+
 	// Fuck me this seems overcomplicated. TODO: Redo this function, it is BAD code
 	__host__ SolventBlocksCircularQueue* copyToHost(int boxLenNM) {
 		SolventBlocksCircularQueue* this_host = new SolventBlocksCircularQueue();

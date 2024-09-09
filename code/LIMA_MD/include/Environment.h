@@ -109,9 +109,7 @@ public:
 
 
 private:
-	void resetEnvironment();	// TODO: This shouldn't exist, rather we should just destruct the entire object
 
-	void setupEmptySimulation(const SimParams&);
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
@@ -143,7 +141,7 @@ private:
 	ColoringMethod coloringMethod;	// Not ideal to have here..
 
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
-	std::vector<Compound>* compounds = nullptr;
+	std::vector<Compound> compounds;
 	BoxParams boxparams;
 
 	std::unique_ptr<BoxImage> boximage;

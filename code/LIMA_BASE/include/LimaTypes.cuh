@@ -568,6 +568,18 @@ void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently 
 	cudaDeviceSynchronize();
 }
 
+template<typename T>
+T* GenericCopyToDevice(const T* src, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
+	T* dest;
+	size_t bytesize = n_elements * sizeof(T);
+
+	cudaMallocManaged(&dest, bytesize);
+	cudaMemcpy(dest, src, bytesize, cudaMemcpyHostToDevice);
+
+	return dest;
+}
+
+
 
 
  

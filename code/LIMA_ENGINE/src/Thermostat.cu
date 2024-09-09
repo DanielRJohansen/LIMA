@@ -13,9 +13,9 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 
 
 	long double sum_kinE_compound = 0.;	// [J/mol]
-	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
-		for (int pid = 0; pid < simulation->compounds_host[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
-			const float mass = simulation->forcefield.particle_parameters[simulation->compounds_host[compound_id].atom_types[pid]].mass;
+	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
+		for (int pid = 0; pid < simulation->box_host->compounds[compound_id].n_particles; pid++) {	// i gotta move this somewhere else....
+			const float mass = simulation->forcefield.particle_parameters[simulation->box_host->compounds[compound_id].atom_types[pid]].mass;
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);
 			const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 
@@ -23,10 +23,10 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 			sum_kinE_compound += kinE;
 		}
 	}
-	package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->boxparams_host.total_particles));
+	package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->box_host->boxparams.total_particles));
 
 	long double sum_kinE_solvents = 0.;	// [J/mol]
-	for (int solvent_id = 0; solvent_id < simulation->boxparams_host.n_solvents; solvent_id++) {
+	for (int solvent_id = 0; solvent_id < simulation->box_host->boxparams.n_solvents; solvent_id++) {
 		const float mass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 		const float velocity = simulation->vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 		const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
@@ -34,9 +34,9 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
 		sum_kinE_solvents += static_cast<float>(kinE);
 	}
-	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->boxparams_host.n_solvents));
+	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->box_host->boxparams.n_solvents));
 
-	const long double totalKinEnergyAveraged = (sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->boxparams_host.total_particles);
+	const long double totalKinEnergyAveraged = (sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
 	package.temperature = PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);
 	return package;
 }

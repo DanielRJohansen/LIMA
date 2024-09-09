@@ -159,9 +159,9 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaMalloc(&forcefield_device, sizeof(ForceField_NB));
 	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
 
-	if (simulation->boxparams_host.n_compounds > 0) {
-		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->compounds_host.size());
-		cudaMemcpy(compounds_device, simulation->compounds_host.data(), sizeof(Compound) * simulation->compounds_host.size(), cudaMemcpyHostToDevice);
+	if (simulation->box_host->boxparams.n_compounds > 0) {
+		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);
+		cudaMemcpy(compounds_device, simulation->box_host->compounds, sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
 	}
 	
 
@@ -171,7 +171,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
 	int64_t max_steps_per_kernel = 100;
-	int64_t particles_per_step = simulation->boxparams_host.total_particles_upperbound;
+	int64_t particles_per_step = simulation->box_host->boxparams.total_particles_upperbound;
 	int64_t max_values_per_kernel = max_steps_per_kernel * particles_per_step;							// Pad steps with 2 for vel calculation
 
 	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
@@ -200,7 +200,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 	cudaFree(potE_buffer_device);
 	cudaFree(vel_buffer_device);
 	cudaFree(forcefield_device);
-	if (simulation->boxparams_host.n_compounds > 0) {
+	if (simulation->box_host->boxparams.n_compounds > 0) {
 		cudaFree(compounds_device);
 	}
 
@@ -212,17 +212,17 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
-	int blocks_per_solventkernel = (int)ceil((float)simulation->boxparams_host.n_solvents / (float)THREADS_PER_SOLVENTBLOCK_ANALYZER);
+	int blocks_per_solventkernel = (int)ceil((float)simulation->box_host->boxparams.n_solvents / (float)THREADS_PER_SOLVENTBLOCK_ANALYZER);
 
 	// If any solvents are present, fill above array
-	if (simulation->boxparams_host.n_solvents > 0) {
+	if (simulation->box_host->boxparams.n_solvents > 0) {
 
 		std::vector<Float3> average_solvent_energy_blocked(n_steps * blocks_per_solventkernel);
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->boxparams_host, potE_buffer_device, vel_buffer_device, data_out);	// TODO: FIx
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->box_host->boxparams, potE_buffer_device, vel_buffer_device, data_out);	// TODO: FIx
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
 		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
@@ -234,7 +234,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 			for (int block = 0; block < blocks_per_solventkernel; block++) {
 				average_solvent_energy[step] += average_solvent_energy_blocked[block + step * blocks_per_solventkernel];
 			}
-			//average_solvent_energy[step] *= (1.f / simulation->boxparams_host.n_solvents);
+			//average_solvent_energy[step] *= (1.f / simulation->box_host->boxparams.n_solvents);
 		}
 
 	}
@@ -244,18 +244,18 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 
 
 std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
-	const uint64_t n_datapoints = simulation->boxparams_host.n_compounds * steps_in_kernel;
+	const uint64_t n_datapoints = simulation->box_host->boxparams.n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
 
-	if (simulation->boxparams_host.total_compound_particles > 0) {
+	if (simulation->box_host->boxparams.total_compound_particles > 0) {
 		std::vector<Float3> host_data(n_datapoints);
 
 		Float3* data_out;
 		cudaMalloc(&data_out, sizeof(Float3) * n_datapoints);
 
-		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->boxparams_host.n_compounds, 1);
-		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (compounds_device, forcefield_device, simulation->boxparams_host, potE_buffer_device, vel_buffer_device, data_out);
+		dim3 block_dim(static_cast<uint32_t>(steps_in_kernel), simulation->box_host->boxparams.n_compounds, 1);
+		monitorCompoundEnergyKernel << < block_dim, MAX_COMPOUND_PARTICLES >> > (compounds_device, forcefield_device, simulation->box_host->boxparams, potE_buffer_device, vel_buffer_device, data_out);
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeCompoundEnergy\n");
 
@@ -264,8 +264,8 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 
 
 		for (uint64_t step = 0; step < steps_in_kernel; step++) {
-			for (uint64_t i = 0; i < simulation->boxparams_host.n_compounds; i++) {
-				total_compound_energy[step] += host_data[i + step * simulation->boxparams_host.n_compounds];
+			for (uint64_t i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
+				total_compound_energy[step] += host_data[i + step * simulation->box_host->boxparams.n_compounds];
 			}
 		}
 
@@ -384,12 +384,12 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 	
 	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simparams_host.data_logging_interval); entryindex++) {
 
-		for (int compound_id = 0; compound_id < sim.boxparams_host.n_compounds; compound_id++) {
+		for (int compound_id = 0; compound_id < sim.box_host->boxparams.n_compounds; compound_id++) {
 			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 				
 				const float potE = sim.potE_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 
-				const uint8_t& atom_type = sim.compounds_host[compound_id].atom_types[particle_id];
+				const uint8_t& atom_type = sim.box_host->compounds[compound_id].atom_types[particle_id];
 				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
 				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
@@ -399,7 +399,7 @@ void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::st
 			}
 		}
 
-		for (int solvent_id = 0; solvent_id < sim.boxparams_host.n_solvents; solvent_id++) {
+		for (int solvent_id = 0; solvent_id < sim.box_host->boxparams.n_solvents; solvent_id++) {
 
 			const float potE = sim.potE_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 
@@ -446,21 +446,21 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 	cudaMalloc(&histogramDataDevice, NUM_BINS * sizeof(int));
 		
 	float* energyBufferDevice;	
-	cudaMalloc(&energyBufferDevice, sizeof(float) * simulation.boxparams_host.total_particles_upperbound);
+	cudaMalloc(&energyBufferDevice, sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound);
 
 	Compound* compoundsDevice;
-	cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.compounds_host.size());
-	cudaMemcpy(compoundsDevice, simulation.compounds_host.data(), sizeof(Compound) * simulation.compounds_host.size(), cudaMemcpyHostToDevice);
+	cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.box_host->boxparams.n_compounds);
+	cudaMemcpy(compoundsDevice, simulation.box_host->compounds, sizeof(Compound) * simulation.box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
 
 	std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
 	int nPlots = stepsToPlot.size();
 	out_file.write(reinterpret_cast<char*>(&nPlots), sizeof(int));
 	for (int step : stepsToPlot) {
-		cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.boxparams_host.total_particles_upperbound, cudaMemcpyHostToDevice);
+		cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
 		cudaMemset(histogramDataDevice, 0, NUM_BINS * sizeof(int));
 
 		cudaDeviceSynchronize();
-		potEHistogramKernel << <simulation.boxparams_host.n_compounds, MAX_COMPOUND_PARTICLES >> > (compoundsDevice, simulation.boxparams_host.total_particles_upperbound, energyBufferDevice, histogramDataDevice, step);
+		potEHistogramKernel << <simulation.box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (compoundsDevice, simulation.box_host->boxparams.total_particles_upperbound, energyBufferDevice, histogramDataDevice, step);
 		cudaDeviceSynchronize();
 
 		std::vector<int> histogramDataHost;

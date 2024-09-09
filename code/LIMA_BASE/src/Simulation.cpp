@@ -107,28 +107,53 @@ Box::~Box() {
 	if (owns_members) { deleteMembers(); }
 }
 
-void Box::moveToDevice() {
-	/*const size_t bytes_total = sizeof(Compound) * boxparams.n_compounds
-		+ sizeof(CompoundState) * MAX_COMPOUNDS * 3u
-		+ sizeof(NeighborList) * (MAX_SOLVENTS + MAX_COMPOUNDS);*/
-	//printf("BOX: moving %.2f MB to device\n", (float)bytes_total * 1e-6);
+Box* Box::CopyToDevice() {
+	Box boxTemp = *this;
 
-	compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);
-	bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
+	boxTemp.compounds = GenericCopyToDevice(compounds, MAX_COMPOUNDS);
+	//compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);// TODO no need to move all
+	//bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
+	boxTemp.bridge_bundle = GenericCopyToDevice(bridge_bundle, 1);
 
-	solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
+	//solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
+	boxTemp.solvents = GenericCopyToDevice(solvents, boxparams.n_solvents);
 
-	//coordarray_circular_queue = genericMoveToDevice(coordarray_circular_queue, coordarray_circular_queue_n_elements);
-	solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
-	compoundcoordsCircularQueue = compoundcoordsCircularQueue->moveToDevice();
+	//solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
+	boxTemp.solventblockgrid_circularqueue = solventblockgrid_circularqueue->CopyToDevice();
+	//compoundcoordsCircularQueue = compoundcoordsCircularQueue->moveToDevice();
+	boxTemp.compoundcoordsCircularQueue = compoundcoordsCircularQueue->CopyToDevice();
 
 
-	bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
 
-	//forcefield = genericMoveToDevice(forcefield, 1);
+	//bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
+	boxTemp.bonded_particles_lut_manager = GenericCopyToDevice(bonded_particles_lut_manager, 1);
 
+	boxTemp.is_on_device = true;
+
+	Box* boxDev;
+	cudaMallocManaged(&boxDev, sizeof(Box));
+	cudaMemcpy(boxDev, &boxTemp, sizeof(Box), cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
-	is_on_device = true;
+
+	boxTemp.owns_members = false;
+
+	return boxDev;
+	//
+	//is_on_device = true;
+}
+
+void Box::CopyDataFromDevice(Box* boxDev) {
+	Box boxtemp;
+	cudaMemcpy(&boxtemp, boxDev, sizeof(Box), cudaMemcpyDeviceToHost);
+	boxtemp.owns_members = false;
+
+	cudaMemcpy(compounds, boxtemp.compounds, sizeof(Compound) * MAX_COMPOUNDS, cudaMemcpyDeviceToHost);
+	cudaMemcpy(bridge_bundle, boxtemp.bridge_bundle, sizeof(CompoundBridgeBundleCompact), cudaMemcpyDeviceToHost);
+	cudaMemcpy(solvents, boxtemp.solvents, sizeof(Solvent) * boxparams.n_solvents, cudaMemcpyDeviceToHost);
+	cudaMemcpy(bonded_particles_lut_manager, boxtemp.bonded_particles_lut_manager, sizeof(BondedParticlesLUTManager), cudaMemcpyDeviceToHost);
+
+	solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
+	compoundcoordsCircularQueue->CopyDataFromDevice(boxtemp.compoundcoordsCircularQueue);
 }
 
 void Box::deleteMembers() {
@@ -136,8 +161,6 @@ void Box::deleteMembers() {
 		cudaFree(compounds);
 		cudaFree(compoundcoordsCircularQueue);
 		cudaFree(solventblockgrid_circularqueue);
-
-		//cudaFree(forcefield);
 
 		cudaFree(bridge_bundle);
 		cudaFree(bonded_particles_lut_manager);
@@ -209,6 +232,40 @@ Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> box) :
 	simparams_host{ params }
 {
 	box_host = std::move(box);
+}
+
+void Simulation::PrepareDataBuffers() {
+	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
+	const auto n_steps = std::max(simparams_host.n_steps, uint64_t{ 1 });
+	// Standard Data Buffers 
+	{
+		// Permanent Outputs for energy & trajectory analysis
+		const int particlesUpperbound = box_host->boxparams.total_particles_upperbound;
+		const size_t n_datapoints = particlesUpperbound * n_steps / simparams_host.data_logging_interval;
+		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+		//m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
+
+
+		potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
+		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
+		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
+		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
+
+		temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
+	}
+
+	// Trainingdata buffers
+	{
+#ifdef GENERATETRAINDATA
+		uint64_t n_loggingdata_host = 10 * n_steps;
+		uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.boxparams_host.n_compounds;
+		auto datasize_str = std::to_string((float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
+		m_logger->print("Reserving " + datasize_str + "GB host mem for logging and training data\n");
+
+		simulation.loggingdata.resize(n_loggingdata_host);
+		simulation.trainingdata.resize(n_traindata_host);
+#endif
+	}
 }
 
 //void InputSimParams::overloadParams(std::map<std::string, double>& dict) {

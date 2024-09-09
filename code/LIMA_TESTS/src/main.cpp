@@ -6,6 +6,7 @@
 #include "Benchmarks.h"
 #include "FileTests.h"
 #include "ForcefieldTests.h"
+#include "SetupTests.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -87,35 +88,13 @@ int main() {
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 
 
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 4.9e-5, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-
-		//loadAndRunBasicSimulation("manyt4", envmode, 1.6e-3);
-
-		//SimParams params;
-		////params.enable_electrostatics = true;
-		//params.n_steps = 5000;
-		//loadAndRunBasicSimulation("psome", envmode, 1.5e-4, 1.1e-6);
-		// 
-		//doPool50x(EnvMode::Headless);
-	
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//TestIntegration(envmode);
 
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
-
-
-
-		//const fs::path work_dir = simulations_dir / "test";
-		//Environment env{ work_dir.string(), envmode, false };
-		//env.CreateSimulation(12.f);
-		//LipidsSelection lipids;
-		//lipids.emplace_back(LipidSelect{ "POPC", 50 });
-		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		//lipids.emplace_back(LipidSelect{ "cholesterol", 10 });		
-		//Programs::CreateMembrane(env, lipids, true, 3.5f, true);
-
 
 		//const fs::path work_dir = simulations_dir / "test";
 		//LipidsSelection lipids;
@@ -165,6 +144,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
+		//TestBoxIsSavedCorrectlyBetweenSimulations(envmode);
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
@@ -202,12 +182,10 @@ void runAllUnitTests() {
 	ADD_TEST("doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
-
 	// Smaller compound tests
 	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
 	ADD_TEST("TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
-
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
@@ -218,6 +196,8 @@ void runAllUnitTests() {
 	
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
+
+
 
 
 	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));

@@ -66,8 +66,6 @@ void Environment::CreateSimulation(std::string gro_path, std::string topol_path,
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-	//setupEmptySimulation(params);
-	simulation = std::make_unique<Simulation>(params, std::make_unique<Box>(static_cast<int>(grofile.box_size.x)));
 
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
@@ -75,30 +73,19 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
 		IGNORE_HYDROGEN,
-		simulation->simparams_host
+		params
 		);
 
-	//TODO Find a better place for this
+	simulation = std::make_unique<Simulation>(params, boxbuilder->BuildBox(params, *boximage));
 	simulation->forcefield = boximage->forcefield;
-	//simulation->box_host = std::make_unique<Box>(boximage->box_size);
-	//boxbuilder->buildBox(simulation.get(), boximage->box_size);
-
-	simulation->box_host = boxbuilder->BuildBox(params, *boximage);
-
-	//simulation = std::mak
-
-//#ifdef ENABLE_SOLVENTS
-//	boxbuilder->solvateBox(simulation.get(), boximage->solvent_positions);
-//#endif
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
-	setupEmptySimulation(params);
 
-	boxbuilder->copyBoxState(simulation.get(), std::move(simulation_src.box_host), simulation_src.simsignals_host, simulation_src.simsignals_host.step);
+	simulation.reset(new Simulation(params));
+	boxbuilder->copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.simsignals_host.step);
 
 	simulation->forcefield = simulation_src.forcefield;
-	//TODO Find a better place for this
 }
 
 
@@ -116,29 +103,12 @@ void Environment::createSimulationFiles(float boxlen) {
 	simparams.dumpToFile(work_dir / "sim_params.txt");
 }
 
-void Environment::setupEmptySimulation(const SimParams& simparams) {
-	simulation = std::make_unique<Simulation>(simparams);
-
-	verifySimulationParameters();
-}
-
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
 	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
-	//static_assert(BOX_LEN > 3.f, "Box too small");
-	//static_assert(BOX_LEN > CUTOFF_NM *2.f, "CUTOFF too large relative to BOXLEN");
-
-	//static_assert(STEPS_PER_THERMOSTAT % STEPS_PER_LOGTRANSFER == 0);		// Change to trajtransfer later
-	//static_assert(STEPS_PER_THERMOSTAT >= STEPS_PER_LOGTRANSFER);
-
-
-	//auto a = std::roundf(std::abs(BOX_LEN / SolventBlockGrid::node_len)) * SolventBlockGrid::node_len;// -BOX_LEN_NM;
-
-	// Assert that boxlen is a multiple of nodelen
-	//assert((static_cast<int>(static_cast<double>(_BOX_LEN_PM)*1000) % BOXGRID_NODE_LEN_pico) == 0 && "BOXLEN must be a multiple of nodelen (1.2 nm)");
 }
 
 void Environment::verifyBox() {
-	for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
+	for (int c = 0; c < simulation->box_host->boxparams.n_compounds; c++) {
 		//printf("Compound radius: %f\t center: %f %f %f\n", simulation->compounds_host[c].confining_particle_sphere, simulation->compounds_host[c].center_of_mass.x, simulation->compounds_host[c].center_of_mass.y, simulation->compounds_host[c].center_of_mass.z);
 		/*if ((simulation->compounds_host[c].radius * 1.1) > BOX_LEN_HALF) {
 			throw std::runtime_error(std::format("Compound {} too large for simulation-box", c).c_str());
@@ -153,16 +123,12 @@ void Environment::verifyBox() {
 
 	
 
-	if (simulation->simparams_host.bc_select == NoBC && simulation->boxparams_host.n_solvents != 0) {
+	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.n_solvents != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}
 	assert(STEPS_PER_THERMOSTAT % simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer == 0);
 	assert(STEPS_PER_THERMOSTAT >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
-	//assert(STEPS_PER_LOGTRANSFER % simulation->simparams_host.data_logging_interval == 0);//, "Log intervals doesn't match"
 
-	//if (std::abs(SOLVENT_MASS - simulation->forcefield.particle_parameters[0].mass) > 1e-3f) {
-	//	throw std::runtime_error("Error: Solvent mass is unreasonably large");
-	//}
 
 
 #ifdef LIMAKERNELDEBUGMODE
@@ -192,17 +158,16 @@ bool Environment::prepareForRun() {
 
 	if (simulation->ready_to_run) { return true; }
 
-	boxbuilder->finishBox(simulation.get());
-	//simulation->moveToDevice();	// Only moves the Box to the device
-
-
+	simulation->PrepareDataBuffers();
 	
 	verifyBox();
 	simulation->ready_to_run = true;
 
 	// TEMP, this is a bad solution
-	compounds = &simulation->compounds_host;
-	boxparams = simulation->boxparams_host;
+	compounds.resize(simulation->box_host->boxparams.n_compounds);
+	memcpy(compounds.data(), simulation->box_host->compounds, simulation->box_host->boxparams.n_compounds * sizeof(Compound));
+	//compounds = simulation->box_host->compounds;
+	boxparams = simulation->box_host->boxparams;
 	coloringMethod = simulation->simparams_host.coloring_method;
 
 
@@ -252,7 +217,7 @@ void Environment::run(bool doPostRunEvents) {
 
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
-		if (!handleDisplay(*compounds, boxparams, *display)) { 
+		if (!handleDisplay(compounds, boxparams, *display)) { 
 			break; 
 		}
 		
@@ -295,7 +260,7 @@ GroFile Environment::writeBoxCoordinatesToFile(const std::optional<std::string> 
 
 	// Handle solvents 
 	const int firstSolventIndex = boximage->total_compound_particles;
-	for (int solventId = 0; solventId < simulation->boxparams_host.n_solvents; solventId++) {
+	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
 		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, simulation->simsignals_host.step - 1);
 		outputfile.atoms[firstSolventIndex + solventId].position = new_position;
 	}
@@ -325,8 +290,8 @@ void Environment::postRunEvents() {
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
 		printH2();
-		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->boxparams_host.n_solvents, 
-			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->boxparams_host.n_compounds, "total p upperbound", simulation->boxparams_host.total_particles_upperbound);
+		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->box_host->boxparams.n_solvents,
+			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->box_host->boxparams.n_compounds, "total p upperbound", simulation->box_host->boxparams.total_particles_upperbound);
 		printH2();
 	}
 	
@@ -344,7 +309,7 @@ void Environment::postRunEvents() {
 	}
 
 	if (DUMP_POTE) {
-		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->boxparams_host.total_particles_upperbound, out_dir.string() + "potE.bin");
+		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->box_host->boxparams.total_particles_upperbound, out_dir.string() + "potE.bin");
 	}
 
 	simulation->ready_to_run = false;
@@ -412,7 +377,7 @@ void Environment::RenderSimulation() {
 	std::unique_ptr<Display> display = std::make_unique<Display>(m_mode, boxparams.boxSize);
 	
 	display->Render(Rendering::Task(std::make_unique<Rendering::SimulationTask>(
-		engine->runstatus.most_recent_positions, *compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
+		engine->runstatus.most_recent_positions, compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
 	)));
 
 	while(!display->DisplaySelfTerminated()) {}
@@ -488,8 +453,4 @@ Simulation* Environment::getSimPtr() {
 Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
 {
 	return &postsim_anal_package;
-}
-
-void Environment::resetEnvironment() {
-
 }

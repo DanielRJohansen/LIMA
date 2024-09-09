@@ -1,5 +1,3 @@
-
-
 #include "Engine.cuh"
 #include "Utilities.h"
 #include "Neighborlists.cuh"
@@ -15,6 +13,20 @@
 
 #include "SupernaturalForces.cuh"
 
+#include <assert.h>
+
+
+//const int compound_size = sizeof(CompoundCompact);
+//const int nlsit_size = sizeof(NeighborList);
+//const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;
+//const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(NeighborList) +
+//	(2* sizeof(Float3)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) + sizeof(Float3) + clj_utilitybuffer_bytes;
+//static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
+
+//const int sbsize = sizeof(SolventBlock);
+//const int Skernel_shared_mem = (sizeof(Float3) + 1) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
+//	+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
+//	+ 4 + 4 * 3 * 2;
 
 Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc), m_logger(std::move(logger))
@@ -23,41 +35,18 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 	verifyEngine();
 
-	//const int compound_size = sizeof(CompoundCompact);
-	//const int nlsit_size = sizeof(NeighborList);
-	//const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;
-	//const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(NeighborList) +
-	//	(2* sizeof(Float3)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) + sizeof(Float3) + clj_utilitybuffer_bytes;
-	//static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
-
-	//const int sbsize = sizeof(SolventBlock);
-	//const int Skernel_shared_mem = (sizeof(Float3) + 1) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
-	//	+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
-	//	+ 4 + 4 * 3 * 2;
-
 	// Create the Sim_dev
 	if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
-	sim_dev = new SimulationDevice(simulation->simparams_host, std::move(simulation->box_host));
+	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get());
 	sim_dev = genericMoveToDevice(sim_dev, 1);
-
-
-
 
 	//this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
-	BoxSize bs;
-	cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
-
-	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
-
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	BoxSize bs1;
-	cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
-
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -77,7 +66,7 @@ void Engine::setDeviceConstantMemory() {
 
 
 	BoxSize boxSize_host;
-	boxSize_host.Set(simulation->boxparams_host.boxSize);
+	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
 	cudaMemcpyToSymbol(boxSize_device, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
 	//SetConstantMem(simulation->boxparams_host.boxSize);
 	//BoxSize bs;
@@ -138,8 +127,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			handleBoxtemp();
 		}
 
-		//nlist_manager->handleNLISTS(simulation.get(), ALLOW_ASYNC_NLISTUPDATE, false, &timings.nlist);
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->boxparams_host, timings.nlist);
+		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	}
 	//if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
 	//	offloadTrainData();
@@ -164,9 +152,11 @@ void Engine::terminateSimulation() {
 	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 	offloadTrajectory(stepsReadyToTransfer);	
+
+	simulation->box_host->CopyDataFromDevice(sim_dev->box);
+
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
-#include <assert.h>
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
@@ -178,24 +168,24 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	const int64_t startstep = simulation->getStep() - steps_to_transfer * simulation->simparams_host.data_logging_interval;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
-
+	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
 	cudaMemcpy(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
 		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
 		sim_dev->databuffers->potE_buffer, 
-		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->vel_buffer,
-		sizeof(float) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpy(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->forceBuffer,
-		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 #ifdef GENERATETRAINDATA
@@ -219,7 +209,7 @@ void Engine::offloadTrajectory(const int steps_to_transfer) {
 	cudaMemcpy(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->traj_buffer,
-		sizeof(Float3) * simulation->boxparams_host.total_particles_upperbound * indices_to_transfer,
+		sizeof(Float3) * simulation->box_host->boxparams.total_particles_upperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost
 	);
 
@@ -248,13 +238,13 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
-	std::vector<CompoundCoords> compoundcoords_array(simulation->boxparams_host.n_compounds);
-	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->boxparams_host.n_compounds, cudaMemcpyDeviceToHost);
+	std::vector<CompoundCoords> compoundcoords_array(simulation->box_host->boxparams.n_compounds);
+	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck(error);
 
 
 	// We need to bootstrap step-0 which is used for traj-buffer
-	for (int compound_id = 0; compound_id < simulation->boxparams_host.n_compounds; compound_id++) {
+	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 
 			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
@@ -277,9 +267,11 @@ void Engine::deviceMaster() {
 	const auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
+	const BoxParams& boxparams = simulation->box_host->boxparams;
 
-	if (simulation->boxparams_host.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+
+	if (boxparams.n_compounds > 0) {
+		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 
@@ -293,13 +285,13 @@ void Engine::deviceMaster() {
 //#endif
 	if constexpr (ENABLE_ELECTROSTATICS) {
 		if (simulation->simparams_host.enable_electrostatics) {
-			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, simulation->boxparams_host);
+			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
 		}
 	}
 	const auto t0b = std::chrono::high_resolution_clock::now();
 
-	if (simulation->boxparams_host.n_bridges > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
+	if (boxparams.n_bridges > 0) {
+		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
 		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
 	}
 
@@ -308,8 +300,8 @@ void Engine::deviceMaster() {
 	}
 
 	cudaDeviceSynchronize();
-	if (simulation->boxparams_host.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+	if (boxparams.n_compounds > 0) {
+		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//compoundBondsAndIntegrationKernel<BoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
@@ -317,15 +309,15 @@ void Engine::deviceMaster() {
 
 
 #ifdef ENABLE_SOLVENTS
-	if (simulation->boxparams_host.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+	if (boxparams.n_solvents > 0) {
+		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
 		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->boxparams_host.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
 			//solventTransferKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
 		}
 	}

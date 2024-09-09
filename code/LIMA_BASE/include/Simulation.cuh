@@ -172,21 +172,17 @@ struct Box {
 	Box() {}
 	Box(int boxSize);
 	~Box();
-	void moveToDevice();				// Loses pointer to RAM location!
+	Box* CopyToDevice();				// Loses pointer to RAM location!
+	void CopyDataFromDevice(Box* boxDev);
 	void deleteMembers();
 
 	BoxParams boxparams;
 
-
-	static constexpr size_t coordarray_circular_queue_n_elements = MAX_COMPOUNDS * 3;
-
 	// flags used for destructing only!
 	bool is_on_device = false;
 	bool owns_members = false;
-	//bool marked_for_delete = true;
 
 	Compound* compounds = nullptr;
-	//CompoundCoords* coordarray_circular_queue = nullptr;
 	CompoundcoordsCircularQueue* compoundcoordsCircularQueue = nullptr;
 
 
@@ -203,7 +199,6 @@ struct Box {
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
 
-
 	UniformElectricField uniformElectricField;
 };
 
@@ -216,6 +211,8 @@ public:
 	Simulation(const SimParams& simparams);
 	Simulation(const SimParams& simparams, std::unique_ptr<Box> box);
 	
+	void PrepareDataBuffers();
+
 	inline int64_t getStep() const { return simsignals_host.step; }
 	
 	bool ready_to_run = false;
@@ -243,9 +240,8 @@ public:
 
 	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
 	SimParams simparams_host;
-	BoxParams boxparams_host;	// only available after box_device has been created
 
-	std::vector<Compound> compounds_host;
+	//std::vector<Compound> compounds_host;
 	//std::unique_ptr<Forcefield> forcefield;
 	ForceField_NB forcefield;
 };

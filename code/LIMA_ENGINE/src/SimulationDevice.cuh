@@ -16,7 +16,7 @@
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, std::unique_ptr<Box> box_host)
+	SimulationDevice(const SimParams& params_host, Box* box_host)
 	{
 		// Allocate structures for keeping track of solvents and compounds
 		compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
@@ -34,22 +34,19 @@ struct SimulationDevice {
 		databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds, params_host.data_logging_interval);
 		databuffers = genericMoveToDevice(databuffers, 1);
 
-		box_host->moveToDevice();
+		box = box_host->CopyToDevice();
+		/*box_host->moveToDevice();
 		cudaMallocManaged(&box, sizeof(Box));
-		cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);
-
-		//ChargeOctTree charge_octtree_host;
-		//cudaMallocManaged(&charge_octtree, sizeof(ChargeOctTree));
-		//cudaMemcpy(charge_octtree, &charge_octtree_host, sizeof(ChargeOctTree), cudaMemcpyHostToDevice);
+		cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);*/
 
 
 		chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
 		chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
 		chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
 
-		box_host->owns_members = false;
-		box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
-		box_host.reset();
+		//box_host->owns_members = false;
+		//box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
+		//box_host.reset();
 	}
 
 	// Recursively free members. Use cudaFree on *this immediately after

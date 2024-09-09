@@ -116,7 +116,7 @@ struct CompoundCoords {
 class CompoundcoordsCircularQueue {
 	CompoundCoords* queue = nullptr;
 
-	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue;
+	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
 public:
 	static const int queueLen = 3;
 	static const int nElementsInQueue = queueLen * MAX_COMPOUNDS;
@@ -133,6 +133,14 @@ public:
 		return genericMoveToDevice(this, 1);
 	}
 
+	__host__ CompoundcoordsCircularQueue* CopyToDevice() const {
+		CompoundcoordsCircularQueue queueTemp = *this;
+		queueTemp.queue = GenericCopyToDevice(queue, nElementsInQueue);
+		return GenericCopyToDevice(&queueTemp, 1);
+	}
+	__host__ void CopyDataFromDevice(const CompoundcoordsCircularQueue* const queue) {
+		cudaMemcpy(this->queue, queue->queue, queueBytesize, cudaMemcpyDeviceToHost);
+	}
 	__host__ CompoundcoordsCircularQueue* copyToHost() {
 		CompoundcoordsCircularQueue* this_host = new CompoundcoordsCircularQueue();
 		this_host->queue = new CompoundCoords[MAX_COMPOUNDS * queueLen];

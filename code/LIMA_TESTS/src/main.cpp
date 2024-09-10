@@ -96,12 +96,12 @@ int main() {
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
 
-		const fs::path work_dir = simulations_dir / "test";
-		LipidsSelection lipids;
-		lipids.emplace_back(LipidSelect{ "POPC", 30 });
-		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
-		Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 5.f, envmode);
+		//const fs::path work_dir = simulations_dir / "test";
+		//LipidsSelection lipids;
+		//lipids.emplace_back(LipidSelect{ "POPC", 30 });
+		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		//lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
+		//Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 5.f, envmode);
 
 
 
@@ -144,7 +144,7 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//runAllUnitTests();
+		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

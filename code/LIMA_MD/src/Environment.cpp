@@ -45,7 +45,7 @@ Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output
 	if (!fs::exists(moldir))
 		fs::create_directory(moldir);
 
-	boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
+	//boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
 }
 
 Environment::~Environment() {}
@@ -76,14 +76,14 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		params
 		);
 
-	simulation = std::make_unique<Simulation>(params, boxbuilder->BuildBox(params, *boximage));
+	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
 	simulation->forcefield = boximage->forcefield;
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 
 	simulation.reset(new Simulation(params));
-	boxbuilder->copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.simsignals_host.step);
+	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.simsignals_host.step);
 
 	simulation->forcefield = simulation_src.forcefield;
 }

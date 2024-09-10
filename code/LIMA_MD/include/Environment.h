@@ -9,7 +9,6 @@
 #include "DisplayV2.h"
 #include "TimeIt.h"
 
-class BoxBuilder;
 class Display;
 struct BoxImage;
 class Engine;
@@ -130,7 +129,7 @@ private:
 	int step_at_last_render = 0;
 
 
-	std::unique_ptr<BoxBuilder> boxbuilder;
+	//std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
 
 

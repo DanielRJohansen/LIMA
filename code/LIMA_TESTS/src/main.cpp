@@ -89,7 +89,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//TestIntegration(envmode);
 
@@ -144,7 +144,6 @@ int main() {
 
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//TestBoxIsSavedCorrectlyBetweenSimulations(envmode);
 		runAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
@@ -197,7 +196,8 @@ void runAllUnitTests() {
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
-
+	// Test Setup
+	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));	
 
 
 	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));

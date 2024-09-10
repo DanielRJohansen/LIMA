@@ -129,15 +129,12 @@ Display::Display(EnvMode envmode, Float3 boxSize) :
         }
         catch(...) {
             displayThreadException = std::current_exception();
-            printf("Caught an exception");
         }
-        printf("Display self terminated");
         displaySelfTerminated = true;
     }); 
 }
 
 Display::~Display() {
-    printf("####################### Display destructor called");
     kill = true;
     if (renderThread.joinable())
         renderThread.join();

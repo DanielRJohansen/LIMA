@@ -9,6 +9,56 @@
 using namespace LIMA_Print;
 
 
+
+
+// ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
+
+void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimParams& simparams, Float3 offset = Float3{})
+{
+	std::vector<Float3> positions;
+	positions.reserve(MAX_COMPOUND_PARTICLES);
+
+	for (int i = 0; i < compound.n_particles; i++) {
+		const Float3& extern_position = compound.positions[i];
+		positions.push_back(extern_position);
+	}
+
+	CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
+	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+	if (simparams.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
+		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
+	}
+
+	box.compounds[box.boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
+}
+
+	Float3 get3Random() {	// Returns 3 numbers between 0-1
+		return Float3(
+			(float) (rand() % RAND_MAX / (double) RAND_MAX),
+			(float) (rand() % RAND_MAX / (double) RAND_MAX),
+			(float) (rand() % RAND_MAX / (double) RAND_MAX)
+		);
+	}
+	Float3 get3RandomSigned() {	// returns 3 numbers between -0.5->0.5
+		return get3Random() - Float3(0.5f);
+	}
+
+	float random() {
+		return static_cast<float>(rand() % 10000) / 10000.f * 2.f - 1.f;
+	}
+
+
+
+
+
+
+
+
+
+
+
+// ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
+
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
 	srand(290128309);
 
@@ -34,64 +84,13 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
 
-	m_logger->print("BoxImage added to box\n");
+	//m_logger->print("BoxImage added to box\n");
 
 	return box;
 }
 
 
 
-
-void BoxBuilder::setupDataBuffers(Simulation& simulation, const uint64_t n_steps) {
-	// Permanent Outputs for energy & trajectory analysis
-	const int particlesUpperbound = simulation.box_host->boxparams.total_particles_upperbound;
-	const size_t n_datapoints = particlesUpperbound * n_steps / simulation.simparams_host.data_logging_interval;
-	const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
-	m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
-
-
-	simulation.potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, simulation.box_host->boxparams.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
-	simulation.vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, simulation.box_host->boxparams.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
-	simulation.forceBuffer= std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, simulation.box_host->boxparams.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
-
-#ifndef DONTGETDATA
-	simulation.traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, simulation.box_host->boxparams.n_compounds, n_steps, simulation.simparams_host.data_logging_interval);
-#endif
-
-	simulation.temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
-}
-
-void BoxBuilder::setupTrainingdataBuffers(Simulation& simulation, const uint64_t n_steps) {
-#ifdef GENERATETRAINDATA
-	uint64_t n_loggingdata_host = 10 * n_steps;
-	uint64_t n_traindata_host = n_steps * N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simulation.boxparams_host.n_compounds;
-	auto datasize_str = std::to_string((float)(sizeof(Float3) * n_traindata_host + sizeof(float) * n_loggingdata_host) * 1e-9);
-	m_logger->print("Reserving " + datasize_str + "GB host mem for logging and training data\n");
-
-	simulation.loggingdata.resize(n_loggingdata_host);
-	simulation.trainingdata.resize(n_traindata_host);
-#endif
-}
-//void BoxBuilder::finishBox(Simulation* simulation) {
-//
-//	
-//	m_logger->print("Box contains " + std::to_string(simulation->box_host->boxparams.n_compounds) + " compounds, " 
-//		+ std::to_string(simulation->box_host->boxparams.n_bridges) + " bridges and " + std::to_string(simulation->box_host->boxparams.n_solvents) + " solvents\n");
-//
-//	// Copy forcefield to sim
-//	//simulation->box_host->forcefield = new ForceField_NB{ simulation->forcefield};	// Copy
-//
-//	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
-//	const auto n_steps = std::max(simulation->simparams_host.n_steps, uint64_t{ 1 });
-//	setupDataBuffers(*simulation, n_steps);
-//	setupTrainingdataBuffers(*simulation, n_steps);
-//	LIMA_UTILS::genericErrorCheck("Error during log-data mem. allocation");
-//
-//	m_logger->print("Total particles upperbound: " +  std::to_string(simulation->box_host->boxparams.total_particles_upperbound) + "\n");
-//	m_logger->print("Max particles in compound: " + std::to_string(MAX_COMPOUND_PARTICLES) + "\n");
-//
-//	m_logger->finishSection("Boxbuild complete");
-//}
 
 
 int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
@@ -102,18 +101,13 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 		}
 
 
-		if (spaceAvailable(box, sol_pos, true) && box.boxparams.n_solvents < MAX_SOLVENTS) {						// Should i check? Is this what energy-min is for?
 
-			const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-				sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+		const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
+			sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
 
-			box.solventblockgrid_circularqueue->addSolventToGrid(solventcoord, box.boxparams.n_solvents, 0, box.boxparams.boxSize);
-			box.boxparams.n_solvents++;
-		}
-		else {
-			// TODO: I should fill this out
-			throw std::runtime_error("No room for solvent");
-		}
+		box.solventblockgrid_circularqueue->addSolventToGrid(solventcoord, box.boxparams.n_solvents, 0, box.boxparams.boxSize);
+		box.boxparams.n_solvents++;
+
 	}
 
 	// Setup forces and vel's for VVS
@@ -133,7 +127,7 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 	box.boxparams.total_particles += box.boxparams.n_solvents;
 	auto a = std::to_string(box.boxparams.n_solvents);
 	auto b = std::to_string(solvent_positions.size());
-	m_logger->print(a + " of " + b + " solvents added to box\n");
+	//m_logger->print(a + " of " + b + " solvents added to box\n");
 	return box.boxparams.n_solvents;
 }
 
@@ -158,8 +152,10 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		simulation.box_host->compoundcoordsCircularQueue->Flush();
 
 		// Copy the temporary storage back into the queue
-		CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		memcpy(dest_t0, coords_t0.data(), bytesize);
+		for (int i = 0; i < 3; i++) {
+			CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
+			memcpy(dest_t0, coords_t0.data(), bytesize);
+		}
 	}
 
 	// Do the same for solvents
@@ -199,7 +195,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 
 			for (int i = 0; i < 3; i++) {
 				if (pos[i] < padding || pos[i] > (static_cast<float>(sim.box_host->boxparams.boxSize) - padding)) {
-					m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
+					//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}
 			}
@@ -218,66 +214,4 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 
 
 
-
-
-
-// ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
-
-void BoxBuilder::InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimParams& simparams, Float3 offset)
-{
-	std::vector<Float3> positions;
-	positions.reserve(MAX_COMPOUND_PARTICLES);
-
-	for (int i = 0; i < compound.n_particles; i++) {
-		const Float3& extern_position = compound.positions[i];
-		positions.push_back(extern_position);
-	}
-
-	CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-	if (simparams.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
-		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
-	}
-
-	box.compounds[box.boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// This funciton is currently blank! TODO: fix
-bool BoxBuilder::spaceAvailable(const Box& box, Float3 particle_center, bool verbose)
-{
-	particle_center = particle_center;
-	for (uint32_t c_index = 0; c_index < box.boxparams.n_compounds; c_index++) {
-		//if (minDist(&box->compounds[c_index], particle_center) < MIN_NONBONDED_DIST)
-
-		// This no longer works, as box doesn't store compound state arrays!
-		/*if (minDist(box->compound_state_array[c_index], particle_center) < MIN_NONBONDED_DIST)
-			return false;*/
-	}
-
-	// THis also no longer works
-	/*for (int si = 0; si < box->n_solvents; si++) {
-		float dist = EngineUtils::calcHyperDist(&box->solvents[si].pos, &particle_center);
-		if (dist < MIN_NONBONDED_DIST) {
-			printf("\tWARNING: Skipping particle with dist %f\n", dist);
-			return false;
-		}
-	}*/
-
-	return true;
-}
 

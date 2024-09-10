@@ -18,7 +18,7 @@ namespace lfs = Filehandler;
 
 MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& lipidselection, bool carryout_em, float centerCoordinate, bool writeFiles) {
 
-	BoxBuilder boxbuilder( std::make_unique<LimaLogger>());
+	//BoxBuilder boxbuilder( std::make_unique<LimaLogger>());
 
 	// Insert the x lipids with plenty of distance in a non-pbc box
 	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
@@ -41,7 +41,7 @@ MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& li
 		// Draw each lipid towards the center - no pbc
 		env.run();
 		
-		if (!boxbuilder.verifyAllParticlesIsInsideBox(*env.getSimPtr(), 0.06f)) { return { {},{} }; }	// FAIL
+		if (!BoxBuilder::verifyAllParticlesIsInsideBox(*env.getSimPtr(), 0.06f)) { return { {},{} }; }	// FAIL
 		*monolayerGro = env.writeBoxCoordinatesToFile();	
 	}
 

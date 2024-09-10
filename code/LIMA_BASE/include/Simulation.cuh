@@ -98,9 +98,10 @@ struct DatabuffersDevice {
 template <typename T>
 class ParticleDataBuffer {
 public:
-	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, int loggingInterval) 
-		: n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
-		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), buffer(n_particles_upperbound* n_indices, T{}),
+	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, int loggingInterval) : 
+		n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
+		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
+		buffer(n_particles_upperbound* n_indices, T{}),
 		loggingInterval(loggingInterval)
 	{
 		//buffer.resize(n_particles_upperbound * n_indices);

@@ -14,78 +14,6 @@
 #include <gtx/rotate_vector.hpp>
 #undef GLM_ENABLE_EXPERIMENTAL
 
-namespace lfs = Filehandler;
-
-MDFiles::FilePair Programs::CreateMembrane(Environment& env, LipidsSelection& lipidselection, bool carryout_em, float centerCoordinate, bool writeFiles) {
-
-	//BoxBuilder boxbuilder( std::make_unique<LimaLogger>());
-
-	// Insert the x lipids with plenty of distance in a non-pbc box
-	auto [monolayerGro, monolayerTop] = SimulationBuilder::buildMembrane(lipidselection, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
-
-	// Create simulation and run on the newly created files in the workfolder
-	monolayerGro->printToFile(env.work_dir / "molecule/monolayer.gro");
-	monolayerTop->printToFile(env.work_dir / "molecule/monolayer.top");
-
-	// Monolayer energy Minimization NoBC
-	if (carryout_em) {
-		SimParams ip{};
-		ip.bc_select = NoBC;
-		ip.n_steps = carryout_em ? 20000 : 0;
-		ip.snf_select = HorizontalSqueeze;
-		ip.em_variant = true;
-		ip.data_logging_interval = 1;
-		env.CreateSimulation(*monolayerGro, *monolayerTop, ip);
-
-		//env.RenderSimulation();
-		// Draw each lipid towards the center - no pbc
-		env.run();
-		
-		if (!BoxBuilder::verifyAllParticlesIsInsideBox(*env.getSimPtr(), 0.06f)) { return { {},{} }; }	// FAIL
-		*monolayerGro = env.writeBoxCoordinatesToFile();	
-	}
-
-	// Copy each particle, and flip them around the xy plane, so the monolayer becomes a bilayer
-	auto [bilayerGro, bilayerTop] = SimulationBuilder::makeBilayerFromMonolayer({ std::move(monolayerGro), std::move(monolayerTop) }, Float3{ env.getSimPtr()->box_host->boxparams.boxSize });
-
-	bilayerTop->printToFile(env.work_dir / "molecule/bilayer.top");
-
-	// Run EM for a while - with pbc
-	if (carryout_em) {
-		SimParams ip{};
-		ip.n_steps = carryout_em ? 3000 : 0;
-		ip.dt = 50.f;
-		ip.bc_select = carryout_em ? PBC : NoBC;	// Cannot insert compounds with PBC, if they are not in box
-		env.CreateSimulation(*bilayerGro, *bilayerTop, ip);
-
-		// Draw each lipid towards the center - no pbc
-		env.run();
-
-		*bilayerGro = env.writeBoxCoordinatesToFile();
-	}
-
-
-	// Ensure the membrane is centered around the centerCoordinate
-	{
-		double sum = 0;
-		for (auto& particle : bilayerGro->atoms) {
-			sum += particle.position.z;
-		}
-		const float diff = centerCoordinate - (sum / static_cast<double>(bilayerGro->atoms.size()));
-		for (auto& particle : bilayerGro->atoms) {
-			particle.position.z += diff;
-		}
-	}
-
-	// Save box to .gro and .top file
-	if (writeFiles) {
-		bilayerGro->printToFile(env.work_dir / "molecule/membrane.gro");
-		bilayerTop->printToFile(env.work_dir / "molecule/membrane.top");
-	}
-
-	return { std::move(bilayerGro), std::move(bilayerTop) };
-}
-
 void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 	
 	// First make sure the molecule is not split due to PBC
@@ -279,11 +207,11 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 
 
 
-MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelection& lipidsSelection, Float3 boxSize, float membraneCenterZ) {
+MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelection& lipidsSelection, Float3 boxSize, float membraneCenterZ, EnvMode envmode) {
 
 	auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidsSelection, boxSize, membraneCenterZ);
 
-	Environment env{ workDir, Full, false};
+	Environment env{ workDir, envmode, false};
 	SimParams params;
 	params.em_variant = true;
 	params.bc_select = BoundaryConditionSelect::NoBC;
@@ -295,16 +223,14 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelect
 	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
 
 	params.dt = 20;
-	//env.CreateSimulation(*grofile, *topfile, params);
 	env.CreateSimulation(*env.getSim(), params);
 	env.run(false);
 	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
 
+	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
-	//params.dt = 100;
-	env.CreateSimulation(*grofile, *topfile, params);
+	env.CreateSimulation(*env.getSim(), params);
 	env.run(false);
 
-	
-	return {};
+	return {grofile, topfile};
 }

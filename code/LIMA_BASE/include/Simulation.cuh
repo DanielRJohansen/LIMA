@@ -189,13 +189,9 @@ struct Box {
 
 	Solvent* solvents = nullptr;
 
-	//SolventCoord
-
 	// Positions and solvent_ids
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
-	// TODO: this should be removed from box, i dont think it is used in the engine kernels
-	//ForceField_NB* forcefield = nullptr;	// a replika is made available as __constant__ memory to the simulation kernels only
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
 	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
@@ -242,7 +238,6 @@ public:
 	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
 	SimParams simparams_host;
 
-	//std::vector<Compound> compounds_host;
 	//std::unique_ptr<Forcefield> forcefield;
 	ForceField_NB forcefield;
 };

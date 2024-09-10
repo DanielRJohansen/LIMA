@@ -70,18 +70,15 @@ private:
 int buildMembrane(int argc, char** argv) {
 	BuildMembraneSetup setup(argc, argv);
 
-    auto a = setup.work_dir.string();
-	Environment env{ a, setup.envmode, false};
     const SimParams params{ SimParams::defaultPath() };
 
 
 
-	env.CreateSimulation(setup.boxsize);
 	LipidsSelection lipidselection;
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(LipidSelect{ lipid.first, lipid.second });
 	}
-    Programs::CreateMembrane(env, lipidselection, true, setup.membraneCenterZ, true);
+    Programs::CreateMembrane(setup.work_dir, lipidselection, setup.membraneCenterZ, true, setup.envmode);
 
 	return 0;
 }

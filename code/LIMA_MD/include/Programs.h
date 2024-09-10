@@ -6,9 +6,6 @@ class Environment;
 class MoleculeHullCollection;
 
 namespace Programs {
-	MDFiles::FilePair CreateMembrane(Environment&, LipidsSelection&, bool doEM, 
-		float centerCoordinate, bool writeFiles);
-
 	void SetMoleculeCenter(GroFile& grofile, Float3 targetCenter);
 
 	// Load file into a box, optionally solvate it and then run untill energy is at a stable level
@@ -21,5 +18,5 @@ namespace Programs {
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 
-	MDFiles::FilePair CreateMembrane(const fs::path& workDir, LipidsSelection& lipidsSelection, Float3 boxSize, float membraneCenterZ);
+	MDFiles::FilePair CreateMembrane(const fs::path& workDir, LipidsSelection&, Float3 boxSize, float membraneCenterZ, EnvMode);
 } // namespace Programs

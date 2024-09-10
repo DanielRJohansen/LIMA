@@ -29,7 +29,7 @@ namespace Benchmarks {
 				lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10 });	// 10% of each lipid, except 50% POPC
 			}
 
-			auto [membraneGrofile, membraneTopfile] = Programs::CreateMembrane(env, lipidselection, true, boxlen / 4.f, false);
+			auto [membraneGrofile, membraneTopfile] = Programs::CreateMembrane(work_dir, lipidselection, Float3{boxlen}, boxlen / 4.f, envmode);
 
 
 			GroFile psomeGrofile{ work_dir / "molecule/psome.gro" };

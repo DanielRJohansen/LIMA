@@ -96,12 +96,12 @@ int main() {
 		//Benchmarks::ReadGroFile(envmode);
 		//Benchmarks::MembraneWithPsome(envmode);
 
-		//const fs::path work_dir = simulations_dir / "test";
-		//LipidsSelection lipids;
-		//lipids.emplace_back(LipidSelect{ "POPC", 30 });
-		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		//lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 5.f, envmode);
+		const fs::path work_dir = simulations_dir / "test";
+		LipidsSelection lipids;
+		lipids.emplace_back(LipidSelect{ "POPC", 30 });
+		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
+		lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
+		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);
 
 
 
@@ -116,7 +116,7 @@ int main() {
 		//grofile.box_size = Float3{ 10.f };
 		//TopologyFile topfile;
 		//MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
-		//Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		//Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size); 
 		//mhCol.WritePositionsToGrofile(grofile);		
 		//auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
 		//SimParams params{};

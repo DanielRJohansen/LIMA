@@ -656,8 +656,6 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 
 	
 	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
-	const float padding = 0.1f;	// [nm]
-	//const float molecule_diameter = fursthestDistanceToZAxis(lipidselection) * 2.f;	// [nm]
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
 	const float n_lipids_total = lipid_density * boxSize.x * boxSize.y;
 	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
@@ -691,6 +689,8 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 				break;
 
 
+			const Float3 randomTopDownTranslation{ 0.f,0.f,static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.1f - 0.05f };
+
 			// Insert top lipid
 			{
 				const LipidSelect& inputlipid = getNextRandomLipid();
@@ -701,8 +701,12 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 					membraneCenter + std::abs(lowestZpos) + interLipidLayerSpaceHalf
 				};
 
-				std::function<void(Float3&)> position_transform = [lipidCenter](Float3& pos) {
+
+				const float randomRot = genRandomAngle();
+				std::function<void(Float3&)> position_transform = [lipidCenter, randomRot, randomTopDownTranslation](Float3& pos) {
+					pos = Float3::rodriguesRotatation(pos, Float3{ 0,0,1 }, randomRot);
 					pos += lipidCenter;
+					pos += randomTopDownTranslation;
 					};
 
 				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
@@ -719,17 +723,17 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 					membraneCenter - std::abs(lowestZpos) - interLipidLayerSpaceHalf
 				};
 
-				std::function<void(Float3&)> position_transform = [lipidCenter](Float3& pos) {
+				const float randomRot = genRandomAngle();
+				std::function<void(Float3&)> position_transform = [lipidCenter, randomRot, randomTopDownTranslation](Float3& pos) {
+					pos = Float3::rodriguesRotatation(pos, Float3{ 0,0,1 }, randomRot);
 					pos = Float3::rodriguesRotatation(pos, Float3{ 1,0,0 }, PI); // Rotate 180 degrees around x-axis
 					pos += lipidCenter;
+					pos += randomTopDownTranslation;
 					};
 
 				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
 					*outputtopologyfile, inputlipid.topfile);
 			}
-
-
-
 
 			nLipidsInserted++;
 		}

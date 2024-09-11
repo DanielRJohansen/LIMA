@@ -1,4 +1,4 @@
-#include "DisplayV2.h"
+#include "Display.h"
 #include "Shaders.h"
 #include "TimeIt.h"
 
@@ -53,7 +53,6 @@ void Display::_Render(const BoxParams& boxparams) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	{
-		//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxparams.boxSize);
         const glm::mat4 VP = camera.ViewProjection();
         drawBoxOutlineShader->Draw(VP, Float3{ boxparams.boxSize });
 	}
@@ -102,11 +101,6 @@ void Display::PrepareNewRenderTask(const Float3* positions, const std::vector<Co
                     const float chargeNormalized = (static_cast<float>(compounds[cid].atom_charges[pid]) + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
                     renderAtomsTemp[index].color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 1.f };
                 }
-
-                /*      if (atomType == RenderUtilities::ATOM_TYPE::H && !drawHydrogens) {
-                          renderAtomsTemp[index].position.w = 0.f;
-                      }*/
-
                 index++;
             }
         }
@@ -131,8 +125,6 @@ void Display::PrepareNewRenderTask(const Float3* positions, const std::vector<Co
         }
 
         assert(num_bytes == boxparams.total_particles * sizeof(RenderAtom));
-
-        //rasterizer->render(positions, boxparams, step, coloringMethod, renderAtomsBuffer);
 
         cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
 

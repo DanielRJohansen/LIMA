@@ -1,5 +1,7 @@
-#include "DisplayV2.h"
+#include "Display.h"
 #include "Shaders.h"    
+#include "TimeIt.h"
+
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -177,9 +179,7 @@ void Display::PrepareTask(Task& task) {
 }
 
 void Display::Mainloop() {
-
     Rendering::Task currentRenderTask = nullptr;
-
 
     while (!kill) {
         // Update camera, check if window is closed
@@ -205,7 +205,7 @@ void Display::Mainloop() {
             }
         }
 
-        if (!std::holds_alternative<void*>(currentRenderTask)) {
+        if (!std::holds_alternative<void*>(currentRenderTask)) {            
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {

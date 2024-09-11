@@ -3,7 +3,7 @@
 add_library(LIMA_MD STATIC
     src/Analyzer.cu
     src/BoxBuilder.cpp
-    src/DisplayV2.cpp
+    src/Display.cpp
     src/Environment.cpp
     src/Interface.cpp
     src/Programs.cpp

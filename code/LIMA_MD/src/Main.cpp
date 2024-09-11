@@ -3,7 +3,7 @@
 #include "Environment.h"
 #include "Engine.cuh"
 #include "Forcefield.h"
-#include "DisplayV2.h"
+#include "Display.h"
 
 int main() {
 	//Environment env{"", EnvMode::Full};

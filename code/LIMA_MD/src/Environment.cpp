@@ -8,7 +8,7 @@
 #include "MDFiles.h"
 #include "CompoundBuilder.h"
 #include "VirtualPathMaker.h"
-#include "DisplayV2.h"
+#include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "Forcefield.h"

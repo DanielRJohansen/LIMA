@@ -148,8 +148,6 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 			throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
 		}
 
-
-
 		int skipCnt = 2;	// First 2 lines are title and atom count
 
 		const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
@@ -737,4 +735,59 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 		GetSection(current_section).emplace_back(line);	// OPTIM: i prolly should cache this address instead
 	}
+}
+
+
+PDBfile::PDBfile(const fs::path& path) : mPath(path) {
+	if (!(path.extension().string() == std::string{ ".pdb" }))
+		throw std::runtime_error("Expected .pdb extension");
+	if (!fs::exists(path))
+		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+
+
+
+	std::ifstream file;
+	file.open(path);
+	if (!file.is_open() || file.fail()) {
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+	}
+
+	std::string line{};
+	while (getline(file, line)) {
+		if (line.length() < 80) continue;
+
+		bool isATOM = (line.substr(0, 4) == "ATOM");
+		bool isHETATM = (line.substr(0, 6) == "HETATM");
+
+		if (isATOM || isHETATM) {
+			ATOM atom;
+
+			atom.atomSerialNumber = std::stoi(line.substr(6, 5));
+			strncpy(atom.atomName, line.substr(12, 4).c_str(), 4);
+			atom.altLocIndicator = line[16];
+			strncpy(atom.resName, line.substr(17, 3).c_str(), 3);
+			atom.chainID = line[21];
+			atom.resSeq = std::stoi(line.substr(22, 4));
+			atom.iCode = line[26];
+
+			// Convert coordinates from Ångströms to nanometers
+			atom.position.x = std::stof(line.substr(30, 8)) * 0.1f;
+			atom.position.y = std::stof(line.substr(38, 8)) * 0.1f;
+			atom.position.z = std::stof(line.substr(46, 8)) * 0.1f;
+
+			atom.occupancy = std::stof(line.substr(54, 6));
+			atom.tempFactor = std::stof(line.substr(60, 6));
+			strncpy(atom.segmentIdentifier, line.substr(72, 4).c_str(), 4);
+			atom.elementSymbol = line[76];
+			strncpy(atom.charge, line.substr(78, 2).c_str(), 2);
+
+			if (isATOM) {
+				ATOMS.push_back(atom);
+			}
+			else if (isHETATM) {
+				HETATMS.push_back(atom);
+			}
+		}
+	}
+	
 }

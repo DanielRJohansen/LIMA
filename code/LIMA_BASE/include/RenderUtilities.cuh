@@ -81,4 +81,40 @@ namespace RenderUtilities {
         }
     }
 
+    float4 inline HSLtoRGB(float h, float s, float b) {
+
+        float i = std::floor(h * 6.0f);
+        float f = h * 6.0f - i;
+        float p = b * (1.0f - s);
+        float q = b * (1.0f - f * s);
+        float t = b * (1.0f - (1.0f - f) * s);
+
+        switch (static_cast<int>(i) % 6) {
+        case 0: return { b, t, p, 1.0f };
+        case 1: return { q, b, p, 1.0f };
+        case 2: return { p, b, t, 1.0f };
+        case 3: return { p, q, b, 1.0f };
+        case 4: return { t, p, b, 1.0f };
+        case 5: return { b, p, q, 1.0f };
+        default: return { b, p, q, 1.0f };
+        }
+    }
+
+    float4 static GetColorInGradient(float value) {
+        value = std::fmaxf(value, 0.f);
+        value = std::fminf(value, 1.f);
+
+
+        return float4(value, 0.f, 0.1f, 1.f);
+        //value = std::max(value, 0.f);
+
+        // Set constant saturation and brightness
+        float saturation = 1.0f;
+        float brightness = .8f;
+
+        // Use value as hue (0-1 maps to 0-360 degrees in HSB)
+        return HSLtoRGB(value, saturation, brightness);
+    }
+
+
 }

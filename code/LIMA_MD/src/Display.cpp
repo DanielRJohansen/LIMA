@@ -1,7 +1,7 @@
 #include "Display.h"
 #include "Shaders.h"    
 #include "TimeIt.h"
-
+#include "MDFiles.h"
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -159,22 +159,14 @@ void Display::PrepareTask(Task& task) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-            PrepareNewRenderTask(
-                taskPtr->positions,
-                taskPtr->compounds,
-                taskPtr->boxparams,
-                taskPtr->step,
-                taskPtr->temperature,
-                taskPtr->coloringMethod
-            );
+            PrepareNewRenderTask(*taskPtr);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
-            PrepareNewRenderTask(
-				taskPtr->molCollection
-            );
-            // Handle MoleculehullTask preparation if needed
-            // Example: PrepareNewRenderTask(taskPtr->someData);
+            PrepareNewRenderTask(*taskPtr);
         }
+        else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
+			PrepareNewRenderTask(*taskPtr);
+		}
         }, task);
 }
 
@@ -209,11 +201,14 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _Render(taskPtr->boxparams);
+                    _RenderAtomsFromCudaresource(taskPtr->boxparams.boxSize, taskPtr->boxparams.total_particles);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
                 }
+                else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
+                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->grofile.atoms.size());
+				}
                 }, currentRenderTask);
         }
     }
@@ -222,10 +217,19 @@ void Display::Mainloop() {
 
 #include "RenderUtilities.cuh"
 
-void Display::Render(Rendering::Task task) {
+void Display::Render(Rendering::Task task, bool blocking) {
     incomingRenderTaskMutex.lock();
     incomingRenderTask = std::move(task);
     incomingRenderTaskMutex.unlock();
+
+    if (blocking) {
+        while (1) {
+            if (debugValue) {
+                debugValue = 0;
+                return;
+            }
+        }
+    }
 }
 
 

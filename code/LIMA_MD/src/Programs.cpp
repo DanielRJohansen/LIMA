@@ -6,7 +6,7 @@
 #include "BoxBuilder.cuh"
 #include "Forcefield.h"
 #include "Statistics.h"
-
+#include "MoleculeGraph.h"
 #include "ConvexHullEngine.cuh"
 
 #include <glm.hpp>
@@ -229,4 +229,15 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelect
 	env.run(false);
 
 	return {grofile, topfile};
+}
+
+void Programs::ReorderLipidAndDivideIntoCompoundsizedSections(GroFile& grofile, TopologyFile& topfile) {
+	Display d(Full, grofile.box_size);	
+	d.Render( std::make_unique<Rendering::GrofileTask>( grofile, ColoringMethod::GradientFromAtomid ), true);
+
+	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
+
+	topfile.printToFile(std::string("out.itp"));
+
+	d.Render(std::make_unique<Rendering::GrofileTask>(grofile, ColoringMethod::GradientFromAtomid), true);
 }

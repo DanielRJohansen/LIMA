@@ -19,4 +19,6 @@ namespace Programs {
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 
 	MDFiles::FilePair CreateMembrane(const fs::path& workDir, LipidsSelection&, Float3 boxSize, float membraneCenterZ, EnvMode);
+
+	void ReorderLipidAndDivideIntoCompoundsizedSections(GroFile&, TopologyFile&);
 } // namespace Programs

@@ -184,6 +184,9 @@ public:
 
 	void printToFile(const std::filesystem::path& path) const;
 	void printToFile() const { printToFile(path); };
+	void printToFile(const std::string& name) const {
+		printToFile(std::filesystem::path(path.parent_path() / name));
+	}
 
 	// Apply a mapping of resNr and GroID to all entries in this file
 	//void IncrementIds(int atomNrIncrement, int resNrIncrement);
@@ -235,7 +238,7 @@ public:
 	const std::vector<DihedralBond>& GetLocalDihedralbonds() const { return dihedralbonds.entries; }
 	std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() { return improperdihedralbonds.entries; }
 	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
-
+	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
 	std::vector<std::string> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
 	std::vector<std::string> otherIncludes;
@@ -466,6 +469,39 @@ public:
 		return sections.at(section);
 	}
 };
+
+
+
+
+
+class PDBfile {
+	struct ATOM {
+		int atomSerialNumber;
+		char atomName[4];
+		char altLocIndicator;
+		char resName[3];
+		char chainID;
+		int resSeq;
+		char iCode;
+		Float3 position; // [nm] (but Angstrom in actual file, so beware of conversion)
+		float occupancy;
+		float tempFactor;
+		char segmentIdentifier[4];
+		char elementSymbol;
+		char charge[2];
+	};
+public:
+
+	std::vector<ATOM> ATOMS;
+	std::vector<ATOM> HETATMS;
+	fs::path mPath;
+
+
+	PDBfile(const fs::path&);
+};
+
+
+
 
 
 

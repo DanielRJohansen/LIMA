@@ -7,7 +7,7 @@
 #include "BoxGrid.cuh"
 
 
-enum ColoringMethod { Atomname, Charge };
+enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
 
 

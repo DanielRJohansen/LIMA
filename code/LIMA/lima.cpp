@@ -27,7 +27,13 @@ int reorderMoleculeParticles(int argc, char** argv) {
 	const fs::path gro_path_out = argv[3];
 	const fs::path top_path_out = argv[4];
 
-	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(gro_path_in, top_path_in, gro_path_out, top_path_out);
+	GroFile grofile{gro_path_in};
+	TopologyFile topfile{top_path_in};
+
+	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
+
+	grofile.printToFile(gro_path_out);
+	topfile.printToFile(top_path_out);
 
 	return 0;
 }

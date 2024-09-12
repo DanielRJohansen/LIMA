@@ -74,7 +74,12 @@ namespace Rendering {
 		Float3 boxSize{};
 	};
 
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>>;
+	struct GrofileTask {
+		const GroFile& grofile;
+		ColoringMethod coloringMethod;
+	};
+
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
 }
 
 
@@ -86,7 +91,13 @@ public:
 	Display(EnvMode, Float3 boxSize=Float3{0});
 	~Display();
 	void WaitForDisplayReady();
-	void Render(Rendering::Task);
+
+	/// <summary>
+	/// Queue up a new task for the Display to render. The function waits for a mutex, transfers the data and then leaves
+	/// </summary>
+	/// <param name=""></param>
+	/// <param name="blocking"> If true, the calling thread will be blocked untill debugvalue is set</param>
+	void Render(Rendering::Task, bool blocking=false);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
 	int debugValue = 0;
@@ -105,14 +116,15 @@ private:
 
 	bool initGLFW();
 
-	void _Render(const BoxParams& boxparams);
+	void _RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles);
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
 	void PrepareTask(Rendering::Task& task);
 
-	void PrepareNewRenderTask(const Float3* positions, const std::vector<Compound> compounds,
-		const BoxParams boxparams, int64_t step, float temperature, ColoringMethod coloringMethod);
-	void PrepareNewRenderTask(const MoleculeHullCollection& molCollection);
+	void PrepareNewRenderTask(const Rendering::SimulationTask&);
+	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
+	void PrepareNewRenderTask(const Rendering::GrofileTask&);
+
 
 	// Interfacing
 	bool isDragging = false;

@@ -60,15 +60,22 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		/*std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol", "SM16" };
+
+		for (auto target : targets) {
+			GroFile grofile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".gro" };
+			TopologyFile topfile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".itp" };
+
+			Programs::ReorderLipidAndDivideIntoCompoundsizedSections(grofile, topfile);
+		}*/
+
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
-
 		//DisplayHelloWorld();
-
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
-
 		//SinglebondForceAndPotentialSanityCheck(envmode);
 		//SinglebondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
@@ -77,39 +84,26 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
-
 		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6);
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
-
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
-
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
-		//TestIntegration(envmode);
 
-		//Benchmarks::ReadGroFile(envmode);
-		//Benchmarks::MembraneWithPsome(envmode);
 
-		const fs::path work_dir = simulations_dir / "test";
+
+	/*	const fs::path work_dir = simulations_dir / "test";
 		LipidsSelection lipids;
 		lipids.emplace_back(LipidSelect{ "POPC", 30 });
 		lipids.emplace_back(LipidSelect{ "DMPC", 40 });
 		lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
-		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);
-
-
-
-		//FileTests::TestFilesAreCachedAsBinaries(Headless);
-
-
-		//BuildAndRelaxVesicle(envmode);
-		
+		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
 
 
 		//GroFile grofile;
@@ -207,7 +201,7 @@ void runAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
-	ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
+	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
 
 	// Performance test

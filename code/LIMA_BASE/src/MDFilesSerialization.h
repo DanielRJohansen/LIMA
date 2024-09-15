@@ -17,7 +17,7 @@ using namespace MDFiles;
 namespace fs = std::filesystem;
 
 
-const int __CacheVersionNumber = 2;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+const int __CacheVersionNumber = 8;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 const uint64_t CacheVersionNumberValue = 0xF0F0F0F0'00000000 + __CacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 
 
@@ -91,6 +91,14 @@ namespace cereal {
 		archive(section.entries);
 	}
 
+	template <class Archive>
+	void serialize(Archive& ar, fs::path& p) {
+		std::string path_str = p.string();
+		ar(path_str);  // Serialize as a string
+		if (Archive::is_loading::value) {
+			p = fs::path(path_str);  // Convert back to fs::path when loading
+		}
+	}
 } // namespace cereal
 
 
@@ -141,6 +149,7 @@ void readTopFileFromBinaryCache(const fs::path& path, TopologyFile& file) {
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
+	archive(file.forcefieldIncludes);
 	archive(file.molecules);	// Only write the name of the file
 	archive(file.moleculetypes);
 	archive(file.GetLocalAtoms());
@@ -166,6 +175,7 @@ void WriteFileToBinaryCache(const TopologyFile& file, std::optional<fs::path> _p
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
+	archive(file.forcefieldIncludes);
 	archive(file.molecules);	// Only write the path of the file
 	archive(file.moleculetypes);
 	archive(file.GetLocalAtoms());

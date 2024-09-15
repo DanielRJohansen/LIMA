@@ -212,7 +212,6 @@ void Display::Mainloop() {
                 }, currentRenderTask);
         }
     }
-    printf("Kill status %d\n", kill.load());
 }
 
 #include "RenderUtilities.cuh"

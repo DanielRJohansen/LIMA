@@ -100,13 +100,9 @@ namespace RenderUtilities {
         }
     }
 
-    float4 static GetColorInGradient(float value) {
+    float4 static GetColorInGradientHue(float value) {
         value = std::fmaxf(value, 0.f);
         value = std::fminf(value, 1.f);
-
-
-        return float4(value, 0.f, 0.1f, 1.f);
-        //value = std::max(value, 0.f);
 
         // Set constant saturation and brightness
         float saturation = 1.0f;
@@ -116,5 +112,10 @@ namespace RenderUtilities {
         return HSLtoRGB(value, saturation, brightness);
     }
 
+    float4 static GetColorInGradientBlueRed(float value) {
+        value = std::fmaxf(value, 0.f);
+        value = std::fminf(value, 1.f);
+        return float4(value, 0.f, 1.f - value, 1.f);
+    }
 
 }

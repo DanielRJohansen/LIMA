@@ -18,7 +18,8 @@ void Programs::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 	
 	// First make sure the molecule is not split due to PBC
 	for (auto& particle : grofile.atoms) {
-		const Float3 center{ 0, 0, 0 };
+		//const Float3 center{ 0, 0, 0 };
+		const Float3 center = grofile.atoms[0].position;
 		BoundaryConditionPublic::applyHyperposNM(center, particle.position, grofile.box_size.x, BoundaryConditionSelect::PBC);
 	}
 
@@ -231,13 +232,149 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, LipidsSelect
 	return {grofile, topfile};
 }
 
-void Programs::ReorderLipidAndDivideIntoCompoundsizedSections(GroFile& grofile, TopologyFile& topfile) {
-	Display d(Full, grofile.box_size);	
-	d.Render( std::make_unique<Rendering::GrofileTask>( grofile, ColoringMethod::GradientFromAtomid ), true);
 
+float CalculateRadius(const std::span<const Float3>& positions) {
+	const Float3 mean = Statistics::Mean(positions);
+
+	float maxDistSquared = 0;
+	for (const Float3& pos : positions) {
+		const float dist = (pos - mean).lenSquared();
+		if (dist > maxDistSquared)
+			maxDistSquared = dist;
+	}
+	return std::sqrt(maxDistSquared);
+}
+
+float CalculateTotalRadius(const std::vector<Float3>& positions, const std::vector<int>& partition) {
+	std::vector<std::span<const Float3>> sections(partition.size());
+
+	int head = 0;
+
+	for (int i = 0; i < partition.size(); i++) {
+		sections[i] = std::span<const Float3>(positions.data() + head, partition[i]);
+		head += partition[i];
+	}
+	
+
+	float radiusSum = 0;
+	for (const auto& section : sections) {
+		radiusSum += CalculateRadius(section);
+	}
+	return radiusSum;
+}
+
+void BruteForcePartition(const std::vector<int>& acceptableSectionSizes, const std::vector<Float3>& positions, int index, std::vector<int>& currentPartition, 
+	float& minRadius, std::vector<int>& bestCombination) 
+{
+	if (index == positions.size()) {
+		// Calculate radii for this partition
+		double currentRadius = CalculateTotalRadius(positions, currentPartition);
+
+		// Keep track of the minimum radius configuration
+		if (currentRadius < minRadius) {
+			minRadius = currentRadius;
+			bestCombination = currentPartition;
+		}
+		return;
+	}
+
+	// Try each section size from acceptableSectionSizes
+	for (int size : acceptableSectionSizes) {
+		if (index + size <= positions.size()) {
+			currentPartition.push_back(size);
+			BruteForcePartition(acceptableSectionSizes, positions, index + size, currentPartition, minRadius, bestCombination);
+			currentPartition.pop_back();
+		}
+	}
+}
+
+std::vector<int> DetermineAcceptableSectionsizesBasedOnAtomcount(int nAtoms) {
+	int maxSize = 200;
+
+	// SectionSizes based in 32 threads/warp
+	std::vector<int> idealSectionsizes {
+		64, 63, 62, 61, 60, 59, 58,
+		32, 31, 30, 29, 28, 27, 26, 
+	};
+
+	// Figure out if the atomcount  can be represented by these ideal sectionsizes
+	{
+		std::vector<bool> dp(nAtoms + 1, false);
+		dp[0] = true; // base case: we can always make the sum 0
+
+		for (int num : idealSectionsizes) {
+			for (int i = nAtoms; i >= num; --i) {
+				if (dp[i - num]) {
+					dp[i] = true;
+				}
+			}
+		}
+
+		if (dp[nAtoms]) {
+			return idealSectionsizes;
+		}
+	}
+
+	// Otherwise, return this list that can represent all atomcounts
+	{
+		
+		return std::vector<int> {
+			64, 63, 62, 61, 60, 59, 58, 57, 56,
+			32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21
+		};
+	}	
+}
+
+
+void Programs::ReorderLipidAndDivideIntoCompoundsizedSections(GroFile& grofile, TopologyFile& topfile) {
+	std::cout << grofile.m_path << "\n";
+	grofile.box_size = Float3{ 6.f };
+	SetMoleculeCenter(grofile, grofile.box_size / 2.f);
+
+	Display d(Full, grofile.box_size);	
+	d.Render( std::make_unique<Rendering::GrofileTask>( grofile, ColoringMethod::GradientFromAtomid ), false);
+	//std::this_thread::sleep_for(std::chrono::milliseconds(500));
 	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
 
 	topfile.printToFile(std::string("out.itp"));
 
-	d.Render(std::make_unique<Rendering::GrofileTask>(grofile, ColoringMethod::GradientFromAtomid), true);
+	d.Render(std::make_unique<Rendering::GrofileTask>(grofile, ColoringMethod::GradientFromAtomid), false);
+
+	// Figure out how to prioritise only using the better sizes, IF that combination can be made
+	std::vector<int> sectionSIzes = DetermineAcceptableSectionsizesBasedOnAtomcount(grofile.atoms.size());
+
+	std::vector<Float3> positions(grofile.atoms.size());
+	for (int i = 0; i < grofile.atoms.size(); i++) {
+		positions[i] = grofile.atoms[i].position;
+	}
+
+	float minRadius = FLT_MAX;
+	std::vector<int> bestPartition;
+	std::vector<int> currentPartition;
+	BruteForcePartition(sectionSIzes, positions, 0, currentPartition, minRadius, bestPartition);
+
+	int cummulativeIndex = 0;
+	for (int index : bestPartition) {
+		topfile.GetLocalAtoms()[cummulativeIndex].section_name = "lipid_section";
+		cummulativeIndex += index;
+	}
+
+	Environment env{ grofile.m_path.parent_path(), Headless, false };
+	SimParams params;
+	params.n_steps = 2;
+	params.dt = 0;
+	params.data_logging_interval = 1;
+	params.em_variant = true;
+	env.CreateSimulation(grofile, topfile, params);
+	env.run(false);
+	auto sim = env.getSim();
+
+	std::vector<Compound> compoundsVec(sim->box_host->boxparams.n_compounds);
+	memcpy(compoundsVec.data(), sim->box_host->compounds, sim->box_host->boxparams.n_compounds * sizeof(Compound));
+	d.Render(std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), compoundsVec, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId), false);
+	//std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+	//grofile.printToFile();
+	//topfile.printToFile();
 }
+

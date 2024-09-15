@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = true;
+const bool ENABLE_FILE_CACHING = false;
 
 
 namespace fs = std::filesystem;
@@ -41,6 +41,7 @@ struct GroRecord {
 	int gro_id{};
 	Float3 position{};
 	std::optional<Float3> velocity{};
+	std::string sourceLine;
 };
 
 struct GroFile {
@@ -240,7 +241,7 @@ public:
 	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
 	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
-	std::vector<std::string> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
+	std::vector<fs::path> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
 	std::vector<std::string> otherIncludes;
 
 	template <typename T>

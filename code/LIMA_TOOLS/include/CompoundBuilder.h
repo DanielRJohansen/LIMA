@@ -29,6 +29,7 @@ struct BondFactory {
 
 	ParamsType params;
 	std::array<uint32_t, nAtoms> global_atom_indexes;
+	std::string sourceLine;
 };
 
 
@@ -78,6 +79,8 @@ struct ParticleInfo {
 	// Only available once the bridges have been created
 	int bridgeId = -1;
 	int localIdInBridge = -1;
+
+	std::string sourceLine;
 };
 
 class CompoundFactory : public Compound {

@@ -60,15 +60,34 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		/*std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol", "SM16" };
-
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+	/*	std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol", "SM16" };
 		for (auto target : targets) {
 			GroFile grofile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".gro" };
 			TopologyFile topfile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".itp" };
 
 			Programs::ReorderLipidAndDivideIntoCompoundsizedSections(grofile, topfile);
 		}*/
+
+		//std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
+		//std::vector<std::string> targets;
+
+		//for (const auto& entry : fs::directory_iterator(path)) {
+		//	if (entry.path().extension() == ".gro") {
+		//		std::string base_name = entry.path().stem().string();
+		//		std::string itp_file = path + base_name + ".itp";
+		//		if (fs::exists(itp_file)) {
+		//			targets.push_back(base_name);
+		//		}
+		//	}
+		//}
+
+		//for (const auto& target : targets) {
+		//	GroFile grofile{ path + target + ".gro" };
+		//	TopologyFile topfile{ path + target + ".itp" };
+
+		//	Programs::ReorderLipidAndDivideIntoCompoundsizedSections(grofile, topfile);
+		//}
 
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -106,22 +125,6 @@ int main() {
 		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
 
 
-		//GroFile grofile;
-		//grofile.box_size = Float3{ 10.f };
-		//TopologyFile topfile;
-		//MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 4.5f, grofile.box_size / 2.f);
-		//Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size); 
-		//mhCol.WritePositionsToGrofile(grofile);		
-		//auto env = std::make_unique<Environment>(simulations_dir/"test", envmode, false);
-		//SimParams params{};
-		//params.em_variant = true;
-		//params.dt = 20;
-		//env->CreateSimulation(grofile, topfile, params);
-		//env->run();
-
-
-
-		//testReorderMoleculeParticles(envmode);
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		

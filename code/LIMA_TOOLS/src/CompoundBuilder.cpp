@@ -428,10 +428,11 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 			}
 
 			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0,3))
-				throw std::runtime_error("Atom names do not match between gro and topology file");
+				throw std::runtime_error("Atom names do not match between gro and topology file");			
 
-			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, forcefield.GetActiveLjParameterIndex(topology.topology.forcefieldIncludes, atom.type), uniqueResId };
-
+			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(topology.topology.forcefieldIncludes, atom.type);
+			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, activeLJParamIndex, uniqueResId };
+			atomRefs[globalIndex].sourceLine = grofile.atoms[globalIndex].sourceLine;
 			
 			globalIndex++;		
 		}
@@ -458,7 +459,7 @@ std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
 
 template <int n, typename GenericBond, typename BondtypeFactory>
 void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOffset, ForcefieldManager& forcefield,
-	const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology, const std::vector<std::string>& forcefieldNames)
+	const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology, const std::vector<fs::path>& forcefieldNames, std::string sourceLine = "")
 {
 	std::array<uint32_t, n> globalIds{};
 	for (int i = 0; i < n; i++) {
@@ -473,8 +474,6 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 		atomTypenames[i] = atomRefs[globalIds[i]].topAtom->type;
 	}
 
-	//SortBondedtypeNames<GenericBond>(atomTypenames);
-
 	// TODO: This is the correct place to make this check, but we cant implement it here untill we do a graph-based search for LJ ignores,
 	// since the bonds here are currently used for that
 	//if (forcefield.BondHasZeroParameter<typename GenericBond::Parameters>(atomTypenames))
@@ -482,10 +481,10 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 
 	auto bondParams = forcefield.GetBondParameters<GenericBond>(forcefieldNames, atomTypenames);
 
-	for (const auto& param : bondParams)
-		topology.emplace_back(BondtypeFactory{ globalIds, param});
-
-	//topology.emplace_back(BondtypeFactory{ globalIds, bondparams });
+	for (const auto& param : bondParams) {
+		topology.emplace_back(BondtypeFactory{ globalIds, param });
+		topology.back().sourceLine = sourceLine;
+	}
 }
 
 void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileRef>& topologyFiles) {
@@ -514,7 +513,7 @@ Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, Forcefi
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			
 			LoadBondIntoTopology<2, SingleBond, SingleBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds, topologyFile.topology.forcefieldIncludes);
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds, topologyFile.topology.forcefieldIncludes, bondTopol.sourceLine);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			

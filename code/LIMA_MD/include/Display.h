@@ -100,7 +100,7 @@ public:
 	void Render(Rendering::Task, bool blocking=false);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
-	int debugValue = 0;
+	volatile int debugValue = 0;
 
 	std::exception_ptr displayThreadException{ nullptr };
 

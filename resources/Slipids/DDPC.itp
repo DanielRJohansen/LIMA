@@ -1,4 +1,4 @@
-       DDPC (22:6(n-3)-22:6(n-3)PC lipid
+;       DDPC (22:6(n-3)-22:6(n-3)PC lipid
 ;	File 'topol.top' was generated
 ;	By user: inna (1000)
 ;	On host: inna
@@ -16,7 +16,7 @@
 ;
 
 ; Include forcefield parameters
-;#include "./forcefield.ff/forcefield.itp"
+#include "./forcefield.ff/forcefield.itp"
 
 [ moleculetype ]
 ; Name            nrexcl

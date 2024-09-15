@@ -185,6 +185,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 					int c = 0;
 				assert(prevLine.length() >= min_chars);
 				atoms.emplace_back(parseGroLine(prevLine));
+				atoms.back().sourceLine = prevLine;
 			}
 			prevLine = line;
 		}
@@ -315,7 +316,11 @@ bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection&
 	
 	return false; // We did not change section, and should continue parsing the current line
 }
-
+bool isOnlySpacesAndTabs(const std::string& str) {
+	return std::all_of(str.begin(), str.end(), [](char c) {
+		return c == ' ' || c == '\t';
+		});
+}
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
@@ -359,7 +364,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				continue;
 			}
 
-			if (line.empty())
+			if (line.empty() || isOnlySpacesAndTabs(line))
 				continue;
 
 			// Check if current line is commented
@@ -379,8 +384,15 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 					if (pathWithQuotes.size() < 3)
 						throw std::runtime_error("Include is not formatted as expected: " + line);
 
-					if (pathWithQuotes.find(".ff") != std::string::npos)
-						forcefieldIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));
+					if (pathWithQuotes.find(".ff") != std::string::npos) {
+
+						// If a forcefield is provided relative to the topology, then we use that topology. Otherwise, we only store the name
+						const std::string forcefieldName = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
+						if (fs::exists(path.parent_path() / forcefieldName))
+							forcefieldIncludes.emplace_back(path.parent_path() / forcefieldName);
+						else
+							forcefieldIncludes.emplace_back(forcefieldName);
+					}						
 					else
 						otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));				
 				}
@@ -448,6 +460,9 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 						atoms.entries.back().section_name = sectionname;
 						sectionname = "";
 					}
+					if (atom.type.empty() || atom.residue.empty() || atom.atomname.empty())
+						throw std::runtime_error("Atom type, residue or atomname is empty");
+
 				}
 				break;
 			}
@@ -463,6 +478,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 					auto a = name;
 					int c = 0;
 				}
+				singlebond.sourceLine = line;
 				singlebonds.entries.emplace_back(singlebond);
 				break;
 			}
@@ -520,9 +536,6 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 		WriteFileToBinaryCache(*this);
 	}
 
-	// TODO: this is temp, because i didn't remeber to add the forcefield includes the optimized .itp files for the lipids
-	if (path.string().find("Lipids") != std::string::npos)
-		forcefieldIncludes.emplace_back("Slipids_2020.ff/forcefield.itp");
 
 	//// Verify that atoms id's are a sequence starting at 1
 	//for (int i = 0; i < atoms.entries.size(); i++) {

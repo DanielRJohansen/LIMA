@@ -17,7 +17,7 @@
 ;
 
 ; Include forcefield parameters
-;#include "./forcefield.ff/forcefield.itp"
+#include "./forcefield.ff/forcefield.itp"
 
 [ moleculetype ]
 ; Name            nrexcl

@@ -95,7 +95,10 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
                     renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);
                 else if (task.coloringMethod == ColoringMethod::Charge) {
                     const float chargeNormalized = (static_cast<float>(task.compounds[cid].atom_charges[pid]) + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
-                    renderAtomsTemp[index].color = float4{ chargeNormalized, 0.f, (1.f - chargeNormalized), 1.f };
+                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+                }
+                else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
+                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(cid) / task.boxparams.n_compounds);
                 }
                 index++;
             }
@@ -293,7 +296,7 @@ void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
 			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
             if (task.coloringMethod == GradientFromAtomid)
-                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradient(static_cast<float>(i) / task.grofile.atoms.size());
+                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.grofile.atoms.size());
             else 
 			    renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
 		}

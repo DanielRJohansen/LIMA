@@ -1,6 +1,7 @@
 #include "MoleculeGraph.h"
 
-
+#include "queue"
+#include "unordered_set"
 #include <stack>
 #include <algorithm>
 
@@ -33,65 +34,72 @@ MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile& topolfile) {
 	return graph;
 }
 
-int GetNumNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::vector<bool>& visitedNodes) {
+int GetNumNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::unordered_set<int>& visitedNodes) {
 	int nNonvisitedNonHydrogenNeighbors = 0;
 	for (const MoleculeGraph::Node* neighbor : node->getNeighbors()) {
-		if (!visitedNodes[neighbor->atomid] && !neighbor->isHydrogen())
+		if (!visitedNodes.contains(neighbor->atomid) && !neighbor->isHydrogen())
 			nNonvisitedNonHydrogenNeighbors++;
 	}
 	return nNonvisitedNonHydrogenNeighbors;
 }
-
-std::vector<const MoleculeGraph::Node*> GetNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::vector<bool>& visitedNodes) {
+std::vector<const MoleculeGraph::Node*> GetNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::unordered_set<int>& visitedNodes) {
 	std::vector<const MoleculeGraph::Node*> neighbors;
 	for (const MoleculeGraph::Node* neighbor : node->getNeighbors()) {
-		if (!visitedNodes[neighbor->atomid] && !neighbor->isHydrogen())
+		if (!visitedNodes.contains(neighbor->atomid) && !neighbor->isHydrogen())
 			neighbors.push_back(neighbor);
 	}
 	return neighbors;
 }
 
-const std::pair<const MoleculeGraph::Node*, int> FindFurthestNode(const MoleculeGraph& molgraph, std::vector<bool> visitedNodes, const MoleculeGraph::Node* currentNode, int currentDistance) {
-	while (true) {
-		int nNonvisitedNonHydrogenNeighbors = GetNumNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes);
 
-		if (nNonvisitedNonHydrogenNeighbors == 0)
-			return std::make_pair(currentNode, currentDistance);
-		if (nNonvisitedNonHydrogenNeighbors == 1) {
-			const auto neighbor = GetNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes)[0];
-			visitedNodes[neighbor->atomid] = true;
-			currentNode = neighbor;
-			currentDistance++;
+std::pair<const MoleculeGraph::Node*, int> FindFurthestNode(
+	const MoleculeGraph& molgraph,
+	const MoleculeGraph::Node* start, 
+	std::unordered_set<int> visitedNodes = {} // by default an empty set, but we can pass in a set of visited nodes if wanted
+) {
+	// Queue for BFS, storing pairs of node pointer and current depth
+	std::queue<std::pair<const MoleculeGraph::Node*, int>> q;
+	
+	q.push({ start, 0 });
+	visitedNodes.insert(start->atomid);
+
+	// Track the furthest node and its distance
+	const MoleculeGraph::Node* furthestNode = start;
+	int maxDistance = 0;
+
+	while (!q.empty()) {
+		auto [currentNode, currentDistance] = q.front();
+		q.pop();
+
+		// Update the furthest node if the current distance is greater
+		if (currentDistance > maxDistance) {
+			furthestNode = currentNode;
+			maxDistance = currentDistance;
 		}
-		else {
-			// We need to search multiple sidechains
-			std::vector<std::pair<const MoleculeGraph::Node*, int>> furthestNodes;
 
-			for (const auto neighbor : GetNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes)) {
-				visitedNodes[neighbor->atomid] = true;
-				currentDistance++;
-				furthestNodes.push_back(FindFurthestNode(molgraph, visitedNodes, neighbor, currentDistance));
+		// Get all non-visited, non-hydrogen neighbors
+		auto neighbors = GetNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes);
+
+		// Add them to the queue and mark as visited
+		for (const auto& neighbor : neighbors) {
+			if (visitedNodes.find(neighbor->atomid) == visitedNodes.end()) {
+				visitedNodes.insert(neighbor->atomid);
+				q.push({ neighbor, currentDistance + 1 });
 			}
-
-
-			const int furthestNodeIndex = std::max_element(furthestNodes.begin(), furthestNodes.end(), [](const auto& a, const auto& b) {return a.second < b.second; }) - furthestNodes.begin();
-			return furthestNodes[furthestNodeIndex];
 		}
 	}
+
+	return { furthestNode, maxDistance };
 }
 
 const MoleculeGraph::Node* FindRootNodeInGraph(const MoleculeGraph& molgraph) {
 	const MoleculeGraph::Node* const initialGuessForRootnode = &molgraph.nodes.find(molgraph.highestNodeId)->second;
 
-	std::vector<bool> visitedNodes1(molgraph.highestNodeId+2, false);
-	visitedNodes1[initialGuessForRootnode->atomid] = true;
-	auto [secondGuessForRootnode, depth1] = FindFurthestNode(molgraph, visitedNodes1, initialGuessForRootnode, 0);
+	auto [secondGuessForRootnode, depth1] = FindFurthestNode(molgraph, initialGuessForRootnode);
 
-	std::vector<bool> visitedNodes2(molgraph.highestNodeId+2, false);
-	visitedNodes2[secondGuessForRootnode->atomid] = true;
-	auto [thirdGuessForRootnode, depth2] = FindFurthestNode(molgraph, visitedNodes2, secondGuessForRootnode, 0);
-
-	assert(depth2 >= depth1);
+	auto [thirdGuessForRootnode, depth2] = FindFurthestNode(molgraph, secondGuessForRootnode);
+	
+	assert(depth2 >= depth1-1); // Minus 1 because the initial guess might be a hydrogen, in which case we we move 1 step extra.
 
 	return thirdGuessForRootnode;
 }
@@ -101,19 +109,22 @@ void AddNodeToMapping(const MoleculeGraph::Node* node, std::vector<int>& mapping
 	if (node->atomid >= mapping.size())
 		throw std::runtime_error("Node id is too high, shoudnt happen as we keep track of highest id");
 
+	if (mapping[node->atomid] != -1)
+		int a = 90;
 	mapping[node->atomid] = next_new_id++;
 	for (const MoleculeGraph::Node* neighbor : node->getNeighbors()) {
 		if (neighbor->isHydrogen()) {
+			assert(mapping[neighbor->atomid] == -1);
 			mapping[neighbor->atomid] = next_new_id++;
 		}
 	}
 }
 
-void SortSidechainsByDepth(const MoleculeGraph& molgraph, const std::vector<bool>& visitedNodes, std::vector<const MoleculeGraph::Node*>& neighbors) {
+void SortSidechainsByDepth(const MoleculeGraph& molgraph, const std::unordered_set<int>& visitedNodes, std::vector<const MoleculeGraph::Node*>& neighbors) {
 	// Measure the depths of each sidechain
 	std::vector<int> sidechainDepths(neighbors.size());
 	for (int i = 0; i < neighbors.size(); i++) {
-		sidechainDepths[i] = FindFurthestNode(molgraph, visitedNodes, neighbors[i], 0).second;
+		sidechainDepths[i] = FindFurthestNode(molgraph, neighbors[i], visitedNodes).second;
 	}
 
 	// Now sort the neighbors wrt to the depths, so we take the shallowest one first
@@ -136,23 +147,24 @@ void SortSidechainsByDepth(const MoleculeGraph& molgraph, const std::vector<bool
 	}
 }
 
-void AddSidechainToMapping(const MoleculeGraph& molgraph, std::vector<bool>& visitedNodes, std::vector<int>& mapping, int& next_new_id, const MoleculeGraph::Node* currentNode) {
-	if (visitedNodes[currentNode->atomid])
+void AddSidechainToMapping(const MoleculeGraph& molgraph, std::unordered_set<int>& visitedNodes, std::vector<int>& mapping, int& next_new_id, const MoleculeGraph::Node* currentNode) {
+	if (visitedNodes.contains(currentNode->atomid))
 		return; // If we have loops, we might encounter a start of a chain already selected (i think)
 
 	while (true) {
 		// First add current node
-		visitedNodes[currentNode->atomid] = true;
 		AddNodeToMapping(currentNode, mapping, next_new_id);
-
+		visitedNodes.insert(currentNode->atomid);
+	
 		// Now find out if we need to go to a new node/nodes
 		const int nNonvisitedNonhydrogenNeighbors = GetNumNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes);
 
 		if (nNonvisitedNonhydrogenNeighbors == 0)
-			break;
-		if (nNonvisitedNonhydrogenNeighbors == 1) {
+			return;
+		else if (nNonvisitedNonhydrogenNeighbors == 1) {
 			// Only 1 nonvisited non-hydrogen neighbor, go to that one
 			currentNode = GetNonvisitedNonHydrogenNeighbors(currentNode, visitedNodes)[0];
+			continue;
 		}
 		else {
 			// We need to search multiple sidechains
@@ -162,6 +174,7 @@ void AddSidechainToMapping(const MoleculeGraph& molgraph, std::vector<bool>& vis
 			for (const auto neighbor : neighbors) {
 				AddSidechainToMapping(molgraph, visitedNodes, mapping, next_new_id, neighbor);
 			}
+			return;
 		}
 	}
 }
@@ -169,10 +182,10 @@ void AddSidechainToMapping(const MoleculeGraph& molgraph, std::vector<bool>& vis
 std::vector<int> MakeParticleReorderMapping(const MoleculeGraph& molgraph) {
 	const MoleculeGraph::Node* currentNode = FindRootNodeInGraph(molgraph);
 
-	std::vector<bool> visitedNodes(molgraph.highestNodeId+2, false);
-
-	std::vector<int> mapping(molgraph.highestNodeId+2, -1);
-	int next_new_id = 1;
+	//std::vector<bool> visitedNodes(molgraph.highestNodeId+1, false);
+	std::unordered_set<int> visitedNodes;
+	std::vector<int> mapping(molgraph.highestNodeId+1, -1);
+	int next_new_id = 0;
 
 	AddSidechainToMapping(molgraph, visitedNodes, mapping, next_new_id, currentNode);
 
@@ -195,6 +208,12 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 
 
 void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& grofile, TopologyFile& topfile) {
+
+	std::vector<std::array<std::string, 2>> sbAtomtypesCheck;
+	for (const auto& sb : topfile.GetLocalSinglebonds()) {
+		sbAtomtypesCheck.push_back({ topfile.GetLocalAtoms()[sb.ids[0]].atomname, topfile.GetLocalAtoms()[sb.ids[1]].atomname });
+	}
+
 	const MoleculeGraph molgraph = createGraph(topfile);
 
 	const std::vector<int> map = MakeParticleReorderMapping(molgraph);
@@ -218,13 +237,40 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	overwriteParticleIds<>(topfile.GetLocalDihedralbonds(), map);
 	overwriteParticleIds<>(topfile.GetLocalImproperDihedralbonds(), map);
 
+
+
+
+
 	// Re-sort all entries with the new groids
 	std::sort(grofile.atoms.begin(), grofile.atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
 
 	std::sort(topfile.GetLocalAtoms().begin(), topfile.GetLocalAtoms().end(), [](const auto& a, const auto& b) {return a.id < b.id; });
+
+	// Check that we didn't mess up the singlebonds. If all these are identical, the other bonds must be aswell
+	for (int i = 0; i < topfile.GetLocalSinglebonds().size(); i++) {
+		if (
+			sbAtomtypesCheck[i][0] != topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[0]].atomname ||
+			sbAtomtypesCheck[i][1] != topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[1]].atomname
+			)
+		{
+			auto a = topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[0]].atomname;
+			auto b = topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[1]].atomname;
+			throw std::runtime_error("Reordering of particles messed up singlebonds" + std::to_string(i));
+		}
+	}
+
 	std::sort(topfile.GetLocalSinglebonds().begin(), topfile.GetLocalSinglebonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(topfile.GetLocalPairs().begin(), topfile.GetLocalPairs().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(topfile.GetLocalAnglebonds().begin(), topfile.GetLocalAnglebonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(topfile.GetLocalDihedralbonds().begin(), topfile.GetLocalDihedralbonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(topfile.GetLocalImproperDihedralbonds().begin(), topfile.GetLocalImproperDihedralbonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+
+
+	for (int i = 0; i < topfile.GetLocalAtoms().size(); i++) {
+		if (topfile.GetLocalAtoms()[i].id != i)
+			throw std::runtime_error("Reordering of particles messed up atoms" + std::to_string(i));
+	}
+
+
+
 }

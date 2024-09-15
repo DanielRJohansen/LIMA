@@ -21,6 +21,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "./forcefield.ff/forcefield.itp"
 
 [ moleculetype ]
 ; Name            nrexcl

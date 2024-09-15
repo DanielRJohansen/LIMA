@@ -58,7 +58,7 @@ class ParameterDatabase;
 class LIMAForcefield {
 public:
 	LIMAForcefield();
-	LIMAForcefield(const std::string name, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
+	LIMAForcefield(const fs::path& path, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
@@ -69,7 +69,7 @@ public:
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 
-	const std::string name;
+	const fs::path path;
 
 private:
 	std::unique_ptr<LjParameterDatabase> ljParameters;
@@ -87,18 +87,26 @@ class ForcefieldManager {
 
 	std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
 
-	LIMAForcefield& GetForcefield(const std::string& forcefieldName);
+	LIMAForcefield& GetForcefield(fs::path forcefieldName);	
 
-	const std::string defaultForcefield = "charmm27.ff/forcefield.itp";
+#ifdef __linux__
+	const fs::path internalForcefieldsDir = "/opt/LIMA/resources/Forcefields";
+#else
+	const fs::path internalForcefieldsDir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields";
+#endif
+
+	const fs::path limaTestForcefield = internalForcefieldsDir / "lima_custom_forcefield.itp";
+	const fs::path defaultForcefield = "charmm27.ff/forcefield.itp";
 
 public:
 
 	ForcefieldManager();
 	~ForcefieldManager();
 
-	int GetActiveLjParameterIndex(const std::vector<std::string>& forcefieldName, const std::string& query);
+	int GetActiveLjParameterIndex(const std::vector<fs::path>& forcefieldName, const std::string& query);
 	ForceField_NB GetActiveLjParameters();
 
 	template<typename GenericBond>
-	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const std::vector<std::string>& forcefieldName, const auto& query);
+	const std::vector<typename GenericBond::Parameters>& GetBondParameters(
+		const std::vector<fs::path>& forcefieldNames, const auto& query);
 };

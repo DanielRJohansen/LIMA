@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      ENTF       C23        56     -0.08    12.011
          1      HAL3         1      ENTF      H23X        74      0.02     1.008
          2      HAL3         1      ENTF      H23Y        75      0.02     1.008
@@ -49,7 +50,7 @@ lipid_section
         23      HAL2         1      ENTF      H30X        89      0.00     1.008
         24      HAL2         1      ENTF      H30Y        90      0.00     1.008
         25      CTL2         1      ENTF       C31        64      0.00    12.011
-lipid_section
+;lipid_section
         26      HAL2         1      ENTF      H31X        91      0.00     1.008
         27      HAL2         1      ENTF      H31Y        92      0.00     1.008
         28      CTL2         1      ENTF       C32        65      0.00    12.011
@@ -76,7 +77,7 @@ lipid_section
         49      CTL2         1      ENTF       C39        72     -0.06    12.011
         50      HAL2         1      ENTF      H39X       107      0.03     1.008
         51      HAL2         1      ENTF      H39Y       108      0.03     1.008
-lipid_section
+;lipid_section
         52        CL         1      ENTF       C40        73      0.79    12.011
         53       OBL         1      ENTF       O40       110     -0.65    15.999
         54       OSL         1      ENTF       O42       112     -0.47    15.999
@@ -137,7 +138,7 @@ lipid_section
        109      HAL2         1      ENTF      H14Y        45      0.00     1.008
        110      CEL1         1      ENTF       C13        13     -0.28    12.011
        111      HEL1         1      ENTF      H13X        43      0.14     1.008
-lipid_section
+;lipid_section
        112      CEL1         1      ENTF       C12        12     -0.28    12.011
        113      HEL1         1      ENTF      H12X        42      0.14     1.008
        114      CTL2         1      ENTF       C11        11      0.28    12.011

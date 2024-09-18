@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      SAPC       C21        52     -0.08    12.011
          1      HAL3         1      SAPC      H21X        70      0.02     1.008
          2      HAL3         1      SAPC      H21Y        71      0.02     1.008
@@ -50,7 +51,7 @@ lipid_section
         24      HAL2         1      SAPC      H28Y        86      0.00     1.008
         25      CTL2         1      SAPC       C29        60      0.00    12.011
         26      HAL2         1      SAPC      H29X        87      0.00     1.008
-lipid_section
+;lipid_section
         27      HAL2         1      SAPC      H29Y        88      0.00     1.008
         28      CTL2         1      SAPC       C30        61      0.00    12.011
         29      HAL2         1      SAPC      H30X        89      0.00     1.008
@@ -77,7 +78,7 @@ lipid_section
         50      HAL2         1      SAPC      H37X       103      0.03     1.008
         51      HAL2         1      SAPC      H37Y       104      0.03     1.008
         52        CL         1      SAPC       C38        69      0.79    12.011
-lipid_section
+;lipid_section
         53       OBL         1      SAPC      O38R       105     -0.65    15.999
         54       OSL         1      SAPC      O38S       108     -0.47    15.999
         55      CTL2         1      SAPC       C40       110      0.13    12.011
@@ -138,7 +139,7 @@ lipid_section
        110      CTL2         1      SAPC       C11        11      0.28    12.011
        111      HAL2         1      SAPC      H11X        38      0.00     1.008
        112      HAL2         1      SAPC      H11Y        39      0.00     1.008
-lipid_section
+;lipid_section
        113      CEL1         1      SAPC       C10        10     -0.28    12.011
        114      HEL1         1      SAPC      H10X        37      0.14     1.008
        115      CEL1         1      SAPC        C9         9     -0.28    12.011

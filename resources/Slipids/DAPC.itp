@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DAPC       C21        21     -0.08    12.011
          1      HAL3         1      DAPC      H21X        72      0.02     1.008
          2      HAL3         1      DAPC      H21Y        73      0.02     1.008
@@ -46,7 +47,7 @@ lipid_section
         20      CTL2         1      DAPC       C28        28      0.28    12.011
         21      HAL2         1      DAPC      H28X        85      0.00     1.008
         22      HAL2         1      DAPC      H28Y        86      0.00     1.008
-lipid_section
+;lipid_section
         23      CEL1         1      DAPC       C29        29     -0.28    12.011
         24      HEL1         1      DAPC      H29X        87      0.14     1.008
         25      CEL1         1      DAPC       C30        30     -0.28    12.011
@@ -106,7 +107,7 @@ lipid_section
         79        HL         1      DAPC      H48X       136      0.19     1.008
         80        HL         1      DAPC      H48Y       137      0.19     1.008
         81        HL         1      DAPC      H48Z       138      0.19     1.008
-lipid_section
+;lipid_section
         82      CTL2         1      DAPC       C41       107      0.13    12.011
         83      HAL2         1      DAPC      H41X       109      0.06     1.008
         84      HAL2         1      DAPC      H41Y       110      0.06     1.008

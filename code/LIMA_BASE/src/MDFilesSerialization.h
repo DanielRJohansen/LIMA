@@ -17,8 +17,11 @@ using namespace MDFiles;
 namespace fs = std::filesystem;
 
 
-const int __CacheVersionNumber = 8;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
-const uint64_t CacheVersionNumberValue = 0xF0F0F0F0'00000000 + __CacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
+
+constexpr uint64_t CacheVersionNumberValue() {
+	const int cacheVersionNumber = 9;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
+}  
 
 
 namespace cereal {
@@ -99,6 +102,13 @@ namespace cereal {
 			p = fs::path(path_str);  // Convert back to fs::path when loading
 		}
 	}
+
+	template <class Archive>
+	void serialize(Archive& archive, TopologyFile::ForcefieldInclude& include) {
+		archive(include.isUserSupplied);
+		archive(include.path);
+		archive(include.name);
+	}
 } // namespace cereal
 
 
@@ -129,7 +139,7 @@ void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> _path =
 	}
 
 	cereal::BinaryOutputArchive archive(os);
-	archive(CacheVersionNumberValue);
+	archive(CacheVersionNumberValue());
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
@@ -171,7 +181,7 @@ void WriteFileToBinaryCache(const TopologyFile& file, std::optional<fs::path> _p
 	}
 
 	cereal::BinaryOutputArchive archive(os);
-	archive(CacheVersionNumberValue);
+	archive(CacheVersionNumberValue());
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
@@ -209,7 +219,7 @@ static bool UseCachedBinaryFile(const fs::path& path, fs::file_time_type requred
 	// Read the version number as a 64-bit unsigned integer
 	uint64_t versionNumber;
 	file.read(reinterpret_cast<char*>(&versionNumber), sizeof(uint64_t));
-	if (versionNumber != CacheVersionNumberValue)
+	if (versionNumber != CacheVersionNumberValue())
 		return false;
 
 

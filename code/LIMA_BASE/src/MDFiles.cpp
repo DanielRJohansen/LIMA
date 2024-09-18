@@ -108,11 +108,11 @@ void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<T
         throw std::invalid_argument("Source path is not a directory: " + srcDir.string());
     }
 	for (const auto& entry : fs::directory_iterator(srcDir)) {
-		if (entry.is_directory()) {
-			fs::path subDir = entry.path();
-			fs::path itpFile = subDir / (subDir.filename().string() + ".itp");
-			if (fs::exists(itpFile)) {
-				includedFiles.insert({ subDir.filename().string(), {itpFile} });
+		if (entry.path().extension() == ".gro") {
+			const std::string base_name = entry.path().stem().string();
+			const fs::path itp_file = srcDir / (base_name + ".itp");
+			if (fs::exists(itp_file)) {
+				includedFiles.insert({ base_name, {itp_file} });
 			}
 		}
 	}
@@ -280,7 +280,7 @@ fs::path SearchForFile(fs::path dir, const std::string& filename) {
 }
 
 TopologyFile::TopologyFile() {
-	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
+	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Slipids");
 }
 
 template <int n>
@@ -323,7 +323,7 @@ bool isOnlySpacesAndTabs(const std::string& str) {
 }
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
-	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Lipids");
+	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/SLipids");
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
@@ -385,13 +385,8 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 						throw std::runtime_error("Include is not formatted as expected: " + line);
 
 					if (pathWithQuotes.find(".ff") != std::string::npos) {
-
-						// If a forcefield is provided relative to the topology, then we use that topology. Otherwise, we only store the name
 						const std::string forcefieldName = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
-						if (fs::exists(path.parent_path() / forcefieldName))
-							forcefieldIncludes.emplace_back(path.parent_path() / forcefieldName);
-						else
-							forcefieldIncludes.emplace_back(forcefieldName);
+						forcefieldIncludes.emplace_back(path.parent_path(), forcefieldName);
 					}						
 					else
 						otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));				
@@ -610,6 +605,11 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 
 	// TODO: What i currently use "molecules" for should actually be an "#include" argument..
 
+	for (const auto& include : forcefieldIncludes) {
+		if (include.isUserSupplied)
+			throw std::runtime_error("Writing a topology file with a user supplied forcefield is not yet supported");
+		file << "#include \"" << include.path << "\"\n";
+	}
 	if (!molecules.entries.empty()) { file << molecules.composeString(); }
 	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }
 
@@ -750,6 +750,25 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 	}
 }
 
+// If a forcefield with the specified name is available relative to the topology's path, then we take that user supplied path and use
+// Otherwise we assume the name is simply pointing to a LIMA forcefield.
+TopologyFile::ForcefieldInclude::ForcefieldInclude(const fs::path& topolPath, const std::string& includeName) :
+	isUserSupplied(fs::exists(topolPath / includeName)),
+	path(fs::exists(topolPath / includeName) ? topolPath / includeName : Filehandler::GetLimaDir() / "resources" / "forcefields" / includeName),
+	name(fs::exists(topolPath / includeName) ? topolPath / includeName : includeName)
+{
+	if (!fs::exists(path)) {
+		throw std::runtime_error(std::format("Forcefield include \"{}\" was not found", path.string()));
+	}
+}
+
+std::vector<fs::path> TopologyFile::GetForcefieldPaths() const {
+	std::vector<fs::path> paths;
+	for (const auto& include : forcefieldIncludes) {
+		paths.emplace_back(include.path);
+	}
+	return paths;
+}
 
 PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 	if (!(path.extension().string() == std::string{ ".pdb" }))

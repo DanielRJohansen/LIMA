@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      SM18      C216       130     -0.08    12.011
          1      HAL3         1      SM18      H16S       131      0.02     1.008
          2      HAL3         1      SM18      H16R       132      0.02     1.008
@@ -51,7 +52,7 @@ lipid_section
         19      CTL2         1      SM18      C210       112      0.00    12.011
         20      HAL2         1      SM18      H10S       113      0.00     1.008
         21      HAL2         1      SM18      H10R       114      0.00     1.008
-lipid_section
+;lipid_section
         22      CTL2         1      SM18       C29       109      0.00    12.011
         23      HAL2         1      SM18       H9S       110      0.00     1.008
         24      HAL2         1      SM18       H9R       111      0.00     1.008
@@ -114,7 +115,7 @@ lipid_section
         81      CTL2         1      SM18       C32        34      0.04    12.011
         82      HAL2         1      SM18       H2X        35      0.03     1.008
         83      HAL2         1      SM18       H2Y        36      0.03     1.008
-lipid_section
+;lipid_section
         84      CTL2         1      SM18       C33        37      0.00    12.011
         85      HAL2         1      SM18       H3X        38      0.00     1.008
         86      HAL2         1      SM18       H3Y        39      0.00     1.008
@@ -140,7 +141,7 @@ lipid_section
        106      HAL2         1      SM18      H10X        59      0.00     1.008
        107      HAL2         1      SM18      H10Y        60      0.00     1.008
        108      CTL2         1      SM18      C311        61      0.00    12.011
-lipid_section
+;lipid_section
        109      HAL2         1      SM18      H11X        62      0.00     1.008
        110      HAL2         1      SM18      H11Y        63      0.00     1.008
        111      CTL2         1      SM18      C312        64      0.00    12.011

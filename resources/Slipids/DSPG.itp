@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DSPG      C318       132     -0.08    12.011
          1      HAL3         1      DSPG      H18X       133      0.02     1.008
          2      HAL3         1      DSPG      H18Y       134      0.02     1.008
@@ -59,7 +60,7 @@ lipid_section
         27      HAL2         1      DSPG      H10Y       110      0.00     1.008
         28      CTL2         1      DSPG       C39       105      0.00    12.011
         29      HAL2         1      DSPG       H9X       106      0.00     1.008
-lipid_section
+;lipid_section
         30      HAL2         1      DSPG       H9Y       107      0.00     1.008
         31      CTL2         1      DSPG       C38       102      0.00    12.011
         32      HAL2         1      DSPG       H8X       103      0.00     1.008
@@ -122,7 +123,7 @@ lipid_section
         89      CTL2         1      DSPG       C24        41      0.00    12.011
         90      HAL2         1      DSPG       H4R        42      0.00     1.008
         91      HAL2         1      DSPG       H4S        43      0.00     1.008
-lipid_section
+;lipid_section
         92      CTL2         1      DSPG       C25        44      0.00    12.011
         93      HAL2         1      DSPG       H5R        45      0.00     1.008
         94      HAL2         1      DSPG       H5S        46      0.00     1.008
@@ -144,7 +145,7 @@ lipid_section
        110      CTL2         1      DSPG      C211        62      0.00    12.011
        111      HAL2         1      DSPG      H11R        63      0.00     1.008
        112      HAL2         1      DSPG      H11S        64      0.00     1.008
-lipid_section
+;lipid_section
        113      CTL2         1      DSPG      C212        65      0.00    12.011
        114      HAL2         1      DSPG      H12R        66      0.00     1.008
        115      HAL2         1      DSPG      H12S        67      0.00     1.008

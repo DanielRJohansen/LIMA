@@ -26,6 +26,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -33,7 +34,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DOPC      C318       135     -0.08    12.011
          1      HAL3         1      DOPC      H18X       136      0.02     1.008
          2      HAL3         1      DOPC      H18Y       137      0.02     1.008
@@ -59,7 +60,7 @@ lipid_section
         22      CTL2         1      DOPC      C311       114      0.03    12.011
         23      HAL2         1      DOPC      H11X       115      0.03     1.008
         24      HAL2         1      DOPC      H11Y       116      0.03     1.008
-lipid_section
+;lipid_section
         25      CEL1         1      DOPC      C310       112     -0.20    12.011
         26      HEL1         1      DOPC      H10X       113      0.11     1.008
         27      CEL1         1      DOPC       C39       110     -0.20    12.011
@@ -124,7 +125,7 @@ lipid_section
         86        CL         1      DOPC       C21        31      0.79    12.011
         87       OBL         1      DOPC       O22        32     -0.65    15.999
         88      CTL2         1      DOPC       C22        33     -0.06    12.011
-lipid_section
+;lipid_section
         89      HAL2         1      DOPC       H2R        34      0.03     1.008
         90      HAL2         1      DOPC       H2S        35      0.03     1.008
         91      CTL2         1      DOPC       C23        45      0.00    12.011
@@ -151,7 +152,7 @@ lipid_section
        112      HEL1         1      DOPC      H10R        66      0.11     1.008
        113      CTL2         1      DOPC      C211        67      0.03    12.011
        114      HAL2         1      DOPC      H11R        68      0.03     1.008
-lipid_section
+;lipid_section
        115      HAL2         1      DOPC      H11S        69      0.03     1.008
        116      CTL2         1      DOPC      C212        70      0.00    12.011
        117      HAL2         1      DOPC      H12R        71      0.00     1.008

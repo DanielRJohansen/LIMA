@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DOPS      C318       128     -0.08    12.011
          1      HAL3         1      DOPS      H18X       129      0.02     1.008
          2      HAL3         1      DOPS      H18Y       130      0.02     1.008
@@ -56,7 +57,7 @@ lipid_section
         24      HAL2         1      DOPS      H11Y       109      0.03     1.008
         25      CEL1         1      DOPS      C310       105     -0.20    12.011
         26      HEL1         1      DOPS      H10X       106      0.11     1.008
-lipid_section
+;lipid_section
         27      CEL1         1      DOPS       C39       103     -0.20    12.011
         28      HEL1         1      DOPS       H9X       104      0.11     1.008
         29      CTL2         1      DOPS       C38       100      0.03    12.011
@@ -79,7 +80,7 @@ lipid_section
         46      HAL2         1      DOPS       H3Y        87      0.00     1.008
         47      CTL2         1      DOPS       C32        35     -0.06    12.011
         48      HAL2         1      DOPS       H2X        36      0.03     1.008
-lipid_section
+;lipid_section
         49      HAL2         1      DOPS       H2Y        37      0.03     1.008
         50        CL         1      DOPS       C31        33      0.79    12.011
         51       OBL         1      DOPS       O32        34     -0.65    15.999
@@ -140,7 +141,7 @@ lipid_section
        106      CTL2         1      DOPS      C211        60      0.03    12.011
        107      HAL2         1      DOPS      H11R        61      0.03     1.008
        108      HAL2         1      DOPS      H11S        62      0.03     1.008
-lipid_section
+;lipid_section
        109      CTL2         1      DOPS      C212        63      0.00    12.011
        110      HAL2         1      DOPS      H12R        64      0.00     1.008
        111      HAL2         1      DOPS      H12S        65      0.00     1.008

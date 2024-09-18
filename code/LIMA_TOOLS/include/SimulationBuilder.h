@@ -12,9 +12,9 @@ struct LipidSelect {
 			throw std::runtime_error("LipidSelect: Lipid not supported (yet): " + lipidname);
 		};
 
-		const fs::path lipid_path = Filehandler::GetLimaDir() / ("resources/Lipids/" + lipidname);
-		grofile = std::make_unique<GroFile>(lipid_path / (lipidname + ".gro"));
-		topfile = std::make_unique<TopologyFile>(lipid_path / (lipidname + ".itp"));
+		const fs::path lipids_path = Filehandler::GetLimaDir() / ("resources/Slipids");
+		grofile = std::make_unique<GroFile>(lipids_path / (lipidname + ".gro"));
+		topfile = std::make_unique<TopologyFile>(lipids_path / (lipidname + ".itp"));
 	}
 	const std::string lipidname;
 	const int percentage;

@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      PDPC       C23        54     -0.08    12.011
          1      HAL3         1      PDPC      H23X        70      0.02     1.008
          2      HAL3         1      PDPC      H23Y        71      0.02     1.008
@@ -54,7 +55,7 @@ lipid_section
         28      CTL2         1      PDPC       C32        63      0.00    12.011
         29      HAL2         1      PDPC      H32X        89      0.00     1.008
         30      HAL2         1      PDPC      H32Y        90      0.00     1.008
-lipid_section
+;lipid_section
         31      CTL2         1      PDPC       C33        64      0.00    12.011
         32      HAL2         1      PDPC      H33X        91      0.00     1.008
         33      HAL2         1      PDPC      H33Y        92      0.00     1.008
@@ -116,7 +117,7 @@ lipid_section
         89      HAL2         1      PDPC      H20Y        51      0.01     1.008
         90      CEL1         1      PDPC       C19        19     -0.28    12.011
         91      HEL1         1      PDPC      H19X        49      0.14     1.008
-lipid_section
+;lipid_section
         92      CEL1         1      PDPC       C18        18     -0.28    12.011
         93      HEL1         1      PDPC      H18X        48      0.14     1.008
         94      CTL2         1      PDPC       C17        17      0.28    12.011
@@ -138,7 +139,7 @@ lipid_section
        110      HAL2         1      PDPC      H11Y        39      0.00     1.008
        111      CEL1         1      PDPC       C10        10     -0.28    12.011
        112      HEL1         1      PDPC      H10X        37      0.14     1.008
-lipid_section
+;lipid_section
        113      CEL1         1      PDPC        C9         9     -0.28    12.011
        114      HEL1         1      PDPC       H9X        36      0.14     1.008
        115      CTL2         1      PDPC        C8         8      0.28    12.011

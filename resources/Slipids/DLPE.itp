@@ -26,6 +26,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -33,7 +34,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DLPE      C312        94     -0.08    12.011
          1      HAL3         1      DLPE      H12X        95      0.02     1.008
          2      HAL3         1      DLPE      H12Y        96      0.02     1.008
@@ -56,7 +57,7 @@ lipid_section
         19      CTL2         1      DLPE       C36        76      0.00    12.011
         20      HAL2         1      DLPE       H6X        77      0.00     1.008
         21      HAL2         1      DLPE       H6Y        78      0.00     1.008
-lipid_section
+;lipid_section
         22      CTL2         1      DLPE       C35        73      0.00    12.011
         23      HAL2         1      DLPE       H5X        74      0.00     1.008
         24      HAL2         1      DLPE       H5Y        75      0.00     1.008
@@ -80,7 +81,7 @@ lipid_section
         42      CTL2         1      DLPE        C1        16     -0.11    12.011
         43      HAL2         1      DLPE        HA        17      0.07     1.008
         44      HAL2         1      DLPE        HB        18      0.07     1.008
-lipid_section
+;lipid_section
         45      OSLP         1      DLPE       O11        14     -0.49    15.999
         46        PL         1      DLPE         P        11      1.58    30.974
         47       O2L         1      DLPE       O13        12     -0.86    15.999
@@ -111,7 +112,7 @@ lipid_section
         72      CTL2         1      DLPE       C25        42      0.00    12.011
         73      HAL2         1      DLPE       H5R        43      0.00     1.008
         74      HAL2         1      DLPE       H5S        44      0.00     1.008
-lipid_section
+;lipid_section
         75      CTL2         1      DLPE       C26        45      0.00    12.011
         76      HAL2         1      DLPE       H6R        46      0.00     1.008
         77      HAL2         1      DLPE       H6S        47      0.00     1.008

@@ -26,6 +26,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -33,7 +34,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DOPE      C318       126     -0.08    12.011
          1      HAL3         1      DOPE      H18X       127      0.02     1.008
          2      HAL3         1      DOPE      H18Y       128      0.02     1.008
@@ -57,7 +58,7 @@ lipid_section
         20      HAL2         1      DOPE      H12X       109      0.00     1.008
         21      HAL2         1      DOPE      H12Y       110      0.00     1.008
         22      CTL2         1      DOPE      C311       105      0.03    12.011
-lipid_section
+;lipid_section
         23      HAL2         1      DOPE      H11X       106      0.03     1.008
         24      HAL2         1      DOPE      H11Y       107      0.03     1.008
         25      CEL1         1      DOPE      C310       103     -0.20    12.011
@@ -120,7 +121,7 @@ lipid_section
         82      CTL2         1      DOPE       C23        36      0.00    12.011
         83      HAL2         1      DOPE       H3R        37      0.00     1.008
         84      HAL2         1      DOPE       H3S        38      0.00     1.008
-lipid_section
+;lipid_section
         85      CTL2         1      DOPE       C24        39      0.00    12.011
         86      HAL2         1      DOPE       H4R        40      0.00     1.008
         87      HAL2         1      DOPE       H4S        41      0.00     1.008
@@ -143,7 +144,7 @@ lipid_section
        104      CTL2         1      DOPE      C211        58      0.03    12.011
        105      HAL2         1      DOPE      H11R        59      0.03     1.008
        106      HAL2         1      DOPE      H11S        60      0.03     1.008
-lipid_section
+;lipid_section
        107      CTL2         1      DOPE      C212        61      0.00    12.011
        108      HAL2         1      DOPE      H12R        62      0.00     1.008
        109      HAL2         1      DOPE      H12S        63      0.00     1.008

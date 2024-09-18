@@ -26,6 +26,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -33,7 +34,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      POPC      C316       131     -0.08    12.011
          1      HAL3         1      POPC      H16X       132      0.02     1.008
          2      HAL3         1      POPC      H16Y       133      0.02     1.008
@@ -62,7 +63,7 @@ lipid_section
         25      CTL2         1      POPC       C38       107      0.00    12.011
         26      HAL2         1      POPC       H8X       108      0.00     1.008
         27      HAL2         1      POPC       H8Y       109      0.00     1.008
-lipid_section
+;lipid_section
         28      CTL2         1      POPC       C37       104      0.00    12.011
         29      HAL2         1      POPC       H7X       105      0.00     1.008
         30      HAL2         1      POPC       H7Y       106      0.00     1.008
@@ -126,7 +127,7 @@ lipid_section
         88      HAL2         1      POPC       H3R        46      0.00     1.008
         89      HAL2         1      POPC       H3S        47      0.00     1.008
         90      CTL2         1      POPC       C24        48      0.00    12.011
-lipid_section
+;lipid_section
         91      HAL2         1      POPC       H4R        49      0.00     1.008
         92      HAL2         1      POPC       H4S        50      0.00     1.008
         93      CTL2         1      POPC       C25        51      0.00    12.011
@@ -148,7 +149,7 @@ lipid_section
        109      CTL2         1      POPC      C211        67      0.03    12.011
        110      HAL2         1      POPC      H11R        68      0.03     1.008
        111      HAL2         1      POPC      H11S        69      0.03     1.008
-lipid_section
+;lipid_section
        112      CTL2         1      POPC      C212        70      0.00    12.011
        113      HAL2         1      POPC      H12R        71      0.00     1.008
        114      HAL2         1      POPC      H12S        72      0.00     1.008

@@ -21,6 +21,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DPPC      C316       127     -0.08    12.011
          1      HAL3         1      DPPC      H16X       128      0.02     1.008
          2      HAL3         1      DPPC      H16Y       129      0.02     1.008
@@ -60,7 +61,7 @@ lipid_section
         28      CTL2         1      DPPC       C37       100      0.00    12.011
         29      HAL2         1      DPPC       H7X       101      0.00     1.008
         30      HAL2         1      DPPC       H7Y       102      0.00     1.008
-lipid_section
+;lipid_section
         31      CTL2         1      DPPC       C36        97      0.00    12.011
         32      HAL2         1      DPPC       H6X        98      0.00     1.008
         33      HAL2         1      DPPC       H6Y        99      0.00     1.008
@@ -117,7 +118,7 @@ lipid_section
         84      CTL2         1      DPPC       C22        33     -0.06    12.011
         85      HAL2         1      DPPC       H2R        34      0.03     1.008
         86      HAL2         1      DPPC       H2S        35      0.03     1.008
-lipid_section
+;lipid_section
         87      CTL2         1      DPPC       C23        45      0.00    12.011
         88      HAL2         1      DPPC       H3R        46      0.00     1.008
         89      HAL2         1      DPPC       H3S        47      0.00     1.008
@@ -139,7 +140,7 @@ lipid_section
        105      CTL2         1      DPPC       C29        63      0.00    12.011
        106      HAL2         1      DPPC       H9R        64      0.00     1.008
        107      HAL2         1      DPPC       H9S        65      0.00     1.008
-lipid_section
+;lipid_section
        108      CTL2         1      DPPC      C210        66      0.00    12.011
        109      HAL2         1      DPPC      H10R        67      0.00     1.008
        110      HAL2         1      DPPC      H10S        68      0.00     1.008

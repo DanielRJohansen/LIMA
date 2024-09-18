@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      ENET        C1         1     -0.27    12.011
          1      HAL3         1      ENET       H1X        19      0.05     1.008
          2      HAL3         1      ENET       H1Y        20      0.05     1.008
@@ -54,7 +55,7 @@ lipid_section
         28      CTL2         1      ENET       C12        12      0.00    12.011
         29      HAL2         1      ENET      H12X        36      0.00     1.008
         30      HAL2         1      ENET      H12Y        37      0.00     1.008
-lipid_section
+;lipid_section
         31      CTL2         1      ENET       C13        13      0.00    12.011
         32      HAL2         1      ENET      H13X        38      0.00     1.008
         33      HAL2         1      ENET      H13Y        39      0.00     1.008
@@ -116,7 +117,7 @@ lipid_section
         89      HAL2         1      ENET      H34Y        98      0.00     1.008
         90      CTL2         1      ENET       C33        62      0.00    12.011
         91      HAL2         1      ENET      H33X        95      0.00     1.008
-lipid_section
+;lipid_section
         92      HAL2         1      ENET      H33Y        96      0.00     1.008
         93      CTL2         1      ENET       C32        61      0.00    12.011
         94      HAL2         1      ENET      H32X        93      0.00     1.008
@@ -139,7 +140,7 @@ lipid_section
        111      CTL2         1      ENET       C26        55      0.00    12.011
        112      HAL2         1      ENET      H26X        81      0.00     1.008
        113      HAL2         1      ENET      H26Y        82      0.00     1.008
-lipid_section
+;lipid_section
        114      CTL2         1      ENET       C25        54      0.00    12.011
        115      HAL2         1      ENET      H25X        79      0.00     1.008
        116      HAL2         1      ENET      H25Y        80      0.00     1.008

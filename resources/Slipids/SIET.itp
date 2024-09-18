@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      SIET       C19        50     -0.08    12.011
          1      HAL3         1      SIET      H19X        66      0.02     1.008
          2      HAL3         1      SIET      H19Y        67      0.02     1.008
@@ -51,7 +52,7 @@ lipid_section
         25      CTL2         1      SIET       C27        58      0.00    12.011
         26      HAL2         1      SIET      H27X        83      0.00     1.008
         27      HAL2         1      SIET      H27Y        84      0.00     1.008
-lipid_section
+;lipid_section
         28      CTL2         1      SIET       C28        59      0.00    12.011
         29      HAL2         1      SIET      H28X        85      0.00     1.008
         30      HAL2         1      SIET      H28Y        86      0.00     1.008
@@ -114,7 +115,7 @@ lipid_section
         87      CTL2         1      SIET       C16        16      0.00    12.011
         88      HAL2         1      SIET      H16X        46      0.00     1.008
         89      HAL2         1      SIET      H16Y        47      0.00     1.008
-lipid_section
+;lipid_section
         90      CTL2         1      SIET       C15        15      0.00    12.011
         91      HAL2         1      SIET      H15X        44      0.00     1.008
         92      HAL2         1      SIET      H15Y        45      0.00     1.008
@@ -136,7 +137,7 @@ lipid_section
        108      HAL2         1      SIET       H8X        34      0.01     1.008
        109      HAL2         1      SIET       H8Y        35      0.01     1.008
        110      CTL2         1      SIET        C7         7      0.00    12.011
-lipid_section
+;lipid_section
        111      HAL2         1      SIET       H7X        32      0.00     1.008
        112      HAL2         1      SIET       H7Y        33      0.00     1.008
        113      CTL2         1      SIET        C6         6      0.00    12.011

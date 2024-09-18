@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = false;
+const bool ENABLE_FILE_CACHING = true;
 
 
 namespace fs = std::filesystem;
@@ -96,6 +96,7 @@ class TopologyFile {	//.top or .itp
 
 	static const char commentChar = ';';
 public:
+	struct ForcefieldInclude;
 	struct MoleculeEntry {
 		MoleculeEntry() {}
 		MoleculeEntry(const std::string& name, int globalIndexOfFirstParticle=0)
@@ -210,15 +211,6 @@ public:
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
 
-	//void LoadAllSubMolecules() {
-	//	for (auto& mol : molecules.entries) {
-	//		if (mol.includeTopologyFile == nullptr) {
-	//			mol.includeTopologyFile = includedFiles.at(mol.name).Get();
-	//		}
-	//	}
-	//}
-
-
 private:
 	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
 	Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
@@ -241,8 +233,9 @@ public:
 	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
 	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
-	std::vector<fs::path> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
+	std::vector<ForcefieldInclude> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
 	std::vector<std::string> otherIncludes;
+	std::vector<fs::path> GetForcefieldPaths() const;
 
 	template <typename T>
 	Section<T>& GetSection() {
@@ -472,6 +465,20 @@ public:
 };
 
 
+struct TopologyFile::ForcefieldInclude {
+	ForcefieldInclude() {}
+	ForcefieldInclude(const fs::path& topolPath, const std::string& includeName);
+
+	/// <summary>
+	/// Copies the forcefieldfile AND any include files to a target directory
+	/// </summary>
+	/// <param name="directory"></param>
+	void CopyToDirectory(const fs::path& directory) const;
+
+	bool isUserSupplied;
+	fs::path path;
+	fs::path name; // Same as path for user supplied, path relative to FF dir for LIMA FF
+};
 
 
 

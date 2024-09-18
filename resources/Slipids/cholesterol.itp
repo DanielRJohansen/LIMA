@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@ Cholesterol         3
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      CHL1       C26        67     -0.23    12.011
          1      HAL3         1      CHL1      H26A        68      0.05     1.008
          2      HAL3         1      CHL1      H26B        69      0.05     1.008
@@ -55,7 +56,7 @@ lipid_section
         23      HAL3         1      CHL1      H21B        54      0.05     1.008
         24      HAL3         1      CHL1      H21C        55      0.05     1.008
         25      CTL1         1      CHL1       C17        24      0.04    12.011
-lipid_section
+;lipid_section
         26      HAL1         1      CHL1       H17        25      0.01     1.008
         27      CTL1         1      CHL1       C13        26      0.09    12.011
         28      CTL3         1      CHL1       C18        27     -0.09    12.011
@@ -80,7 +81,7 @@ lipid_section
         47      CTL2         1      CHL1       C12        31     -0.05    12.011
         48      HAL2         1      CHL1      H12A        32      0.00     1.008
         49      HAL2         1      CHL1      H12B        33      0.00     1.008
-lipid_section
+;lipid_section
         50      CTL1         1      CHL1       C10        39      0.05    12.011
         51      CTL3         1      CHL1       C19        40     -0.05    12.011
         52      HAL3         1      CHL1      H19A        41      0.02     1.008

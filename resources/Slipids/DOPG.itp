@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DOPG      C318       128     -0.08    12.011
          1      HAL3         1      DOPG      H18X       129      0.02     1.008
          2      HAL3         1      DOPG      H18Y       130      0.02     1.008
@@ -51,7 +52,7 @@ lipid_section
         19      CTL2         1      DOPG      C312       110      0.00    12.011
         20      HAL2         1      DOPG      H12X       111      0.00     1.008
         21      HAL2         1      DOPG      H12Y       112      0.00     1.008
-lipid_section
+;lipid_section
         22      CTL2         1      DOPG      C311       107      0.03    12.011
         23      HAL2         1      DOPG      H11X       108      0.03     1.008
         24      HAL2         1      DOPG      H11Y       109      0.03     1.008
@@ -73,7 +74,7 @@ lipid_section
         40      HAL2         1      DOPG       H5Y        93      0.00     1.008
         41      CTL2         1      DOPG       C34        88      0.00    12.011
         42      HAL2         1      DOPG       H4X        89      0.00     1.008
-lipid_section
+;lipid_section
         43      HAL2         1      DOPG       H4Y        90      0.00     1.008
         44      CTL2         1      DOPG       C33        85      0.00    12.011
         45      HAL2         1      DOPG       H3X        86      0.00     1.008
@@ -135,7 +136,7 @@ lipid_section
        101      HAL2         1      DOPG       H8S        55      0.03     1.008
        102      CEL1         1      DOPG       C29        56     -0.20    12.011
        103      HEL1         1      DOPG       H9R        57      0.11     1.008
-lipid_section
+;lipid_section
        104      CEL1         1      DOPG      C210        58     -0.20    12.011
        105      HEL1         1      DOPG      H10R        59      0.11     1.008
        106      CTL2         1      DOPG      C211        60      0.03    12.011

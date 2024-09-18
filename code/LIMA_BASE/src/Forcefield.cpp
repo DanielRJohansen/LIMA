@@ -473,14 +473,7 @@ ForcefieldManager::~ForcefieldManager() {}
 
 
 
-LIMAForcefield& ForcefieldManager::GetForcefield(fs::path forcefieldPath) {
-
-	// If the user provided a forcefield relative to the input topology, then the current forcefieldpath is valid.
-	// If not, then we look for the forcefield name relative to our internal forcefields dir
-	if (!fs::exists(forcefieldPath))
-		forcefieldPath = internalForcefieldsDir / forcefieldPath; 
-
-
+LIMAForcefield& ForcefieldManager::GetForcefield(const fs::path& forcefieldPath) {	
 	for (auto& forcefield : forcefields) {
 		if (forcefield->path == forcefieldPath)
 			return *forcefield;

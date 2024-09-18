@@ -15,6 +15,7 @@
 ;	Force field was read from current directory or a relative path - path added.
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -22,7 +23,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DDPC       C23        23     -0.27    12.011
          1      HAL3         1      DDPC      H23X        76      0.05     1.008
          2      HAL3         1      DDPC      H23Y        77      0.05     1.008
@@ -53,7 +54,7 @@ lipid_section
         27      HAL2         1      DDPC      H33Y        92      0.00     1.008
         28      CEL1         1      DDPC       C34        34     -0.28    12.011
         29      HEL1         1      DDPC      H34X        93      0.14     1.008
-lipid_section
+;lipid_section
         30      CEL1         1      DDPC       C35        35     -0.28    12.011
         31      HEL1         1      DDPC      H35X        94      0.14     1.008
         32      CTL2         1      DDPC       C36        36      0.28    12.011
@@ -114,7 +115,7 @@ lipid_section
         87       OSL         1      DDPC      O22S       107     -0.47    15.999
         88        CL         1      DDPC       C22        22      0.79    12.011
         89       OBL         1      DDPC      O22B       108     -0.65    15.999
-lipid_section
+;lipid_section
         90      CTL2         1      DDPC       C21        21     -0.06    12.011
         91      HAL2         1      DDPC      H21X        74      0.03     1.008
         92      HAL2         1      DDPC      H21Y        75      0.03     1.008
@@ -141,7 +142,7 @@ lipid_section
        113      HEL1         1      DDPC      H12X        62      0.14     1.008
        114      CTL2         1      DDPC       C11        11      0.28    12.011
        115      HAL2         1      DDPC      H11X        60      0.00     1.008
-lipid_section
+;lipid_section
        116      HAL2         1      DDPC      H11Y        61      0.00     1.008
        117      CEL1         1      DDPC       C10        10     -0.28    12.011
        118      HEL1         1      DDPC      H10X        59      0.14     1.008

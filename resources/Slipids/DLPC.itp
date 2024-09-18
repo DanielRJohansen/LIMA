@@ -21,6 +21,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DLPC      C312       103     -0.08    12.011
          1      HAL3         1      DLPC      H12X       104      0.02     1.008
          2      HAL3         1      DLPC      H12Y       105      0.02     1.008
@@ -57,7 +58,7 @@ lipid_section
         25      CTL2         1      DLPC       C34        79      0.00    12.011
         26      HAL2         1      DLPC       H4X        80      0.00     1.008
         27      HAL2         1      DLPC       H4Y        81      0.00     1.008
-lipid_section
+;lipid_section
         28      CTL2         1      DLPC       C33        76      0.00    12.011
         29      HAL2         1      DLPC       H3X        77      0.00     1.008
         30      HAL2         1      DLPC       H3Y        78      0.00     1.008
@@ -114,7 +115,7 @@ lipid_section
         81      CTL2         1      DLPC       C25        51      0.00    12.011
         82      HAL2         1      DLPC       H5R        52      0.00     1.008
         83      HAL2         1      DLPC       H5S        53      0.00     1.008
-lipid_section
+;lipid_section
         84      CTL2         1      DLPC       C26        54      0.00    12.011
         85      HAL2         1      DLPC       H6R        55      0.00     1.008
         86      HAL2         1      DLPC       H6S        56      0.00     1.008

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import CompareParametersWithGromacs
 import Potentials
+import os
 
 import Energies
 
@@ -58,9 +59,28 @@ def plot_histogram(all_bins, all_counts):
     plt.show()
 
 
-
 if __name__ == "__main__":
-    Potentials.ShowLJ()
+    # Get the current folder path
+    folder_path = R"C:\Users\Daniel\git_repo\LIMA\resources\Slipids"
+
+    # Loop over all .itp files in the current folder
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".itp"):
+            file_path = os.path.join(folder_path, filename)
+
+            # Read the file
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+
+            # Replace "lipid_section" with ";lipid_section"
+            updated_lines = [line.replace('lipid_section', ';lipid_section') for line in lines]
+
+            # Write the changes back to the file
+            with open(file_path, 'w') as file:
+                file.writelines(updated_lines)
+
+    print("Replacement complete.")
+    #Potentials.ShowLJ()
     #Energies.ShowEnergies()
     #MakeLipids
 
@@ -68,7 +88,7 @@ if __name__ == "__main__":
     #plot_histogram(bins, counts)
 
     #Potentials.ShowLJ()
-    CompareParametersWithGromacs.CompareParameters("C:/Users/Daniel/git_repo/LIMA_data/Forcefieldtest")
+    #CompareParametersWithGromacs.CompareParameters("C:/Users/Daniel/git_repo/LIMA_data/Forcefieldtest")
 
     #pot_energy = [38976.5, 33643.6, 26578.7, 18757.6, 11260.7, 5123.36, 1193.4, 13.6142, 1746.96, 6154.03, 12626.1, 20269.2, 28027.6, 34829.7, 39736, 42068.7, 41505.7, 38124.7, 32392.8, 25101.5, 17258.2, 9946.05, 4175.13, 742.553, 122.428, 2400.4, 7261.83, 14035.2, 21785, 29440.7, 35945, 40399.3, 42188.5, 41065.4, 37185, 31083.6, 23603.7, 15778.5, 8688.96, 3314.26, 396.775, 339.488, 3150.32, 8441.02, 15480.8, 23297.3, 30810.9, 36983.7, 40963.1, 42199.5, 40522, 36162.5, 29722.9, 22092.9, 14326.4, 7495.93, 2545.15, 157.815, 663.688, 3992.9, 9685.6, 16955.4, 24798.3, 32131, 37940.5, 41424.5, 42101.7, 39878.5, 35062.2, 28317.9, 20577.1, 12909.2, 6373.15, 1871.82, 26.9351, 1093.33, 4923.71, 10989, 18451.5, 26280.3, 33394.2, 38810.4, 41781, 41895.5, 39138.2, 33890, 26875.7, 19064.1, 11534.3, 5326.36, 1297.69, 4.79429, 1626.23, 5938.05, 12344.7, 19961.2, 27735.5, 34593.9]
     #plt.plot(pot_energy)

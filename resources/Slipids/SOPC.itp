@@ -26,6 +26,7 @@
 ; the CHARMM All-Atom Additive Force Field for Lipids: Validation on Six
 ; Lipid Types" J. Phys. Chem. B, 2010, 114 (23), pp 7830–7843
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -33,7 +34,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      SOPC      C318       137     -0.08    12.011
          1      HAL3         1      SOPC      H18X       138      0.02     1.008
          2      HAL3         1      SOPC      H18Y       139      0.02     1.008
@@ -60,7 +61,7 @@ lipid_section
         23      HAL2         1      SOPC      H11X       117      0.00     1.008
         24      HAL2         1      SOPC      H11Y       118      0.00     1.008
         25      CTL2         1      SOPC      C310       113      0.00    12.011
-lipid_section
+;lipid_section
         26      HAL2         1      SOPC      H10X       114      0.00     1.008
         27      HAL2         1      SOPC      H10Y       115      0.00     1.008
         28      CTL2         1      SOPC       C39       110      0.00    12.011
@@ -87,7 +88,7 @@ lipid_section
         49      CTL2         1      SOPC       C32        42     -0.06    12.011
         50      HAL2         1      SOPC       H2X        43      0.03     1.008
         51      HAL2         1      SOPC       H2Y        44      0.03     1.008
-lipid_section
+;lipid_section
         52        CL         1      SOPC       C31        40      0.79    12.011
         53       OBL         1      SOPC       O32        41     -0.65    15.999
         54       OSL         1      SOPC       O31        39     -0.47    15.999
@@ -147,7 +148,7 @@ lipid_section
        108      CTL2         1      SOPC       C28        60      0.03    12.011
        109      HAL2         1      SOPC       H8R        61      0.03     1.008
        110      HAL2         1      SOPC       H8S        62      0.03     1.008
-lipid_section
+;lipid_section
        111      CEL1         1      SOPC       C29        63     -0.20    12.011
        112      HEL1         1      SOPC       H91        64      0.11     1.008
        113      CEL1         1      SOPC      C210        65     -0.20    12.011

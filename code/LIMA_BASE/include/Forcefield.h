@@ -87,16 +87,12 @@ class ForcefieldManager {
 
 	std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
 
-	LIMAForcefield& GetForcefield(fs::path forcefieldName);	
+	LIMAForcefield& GetForcefield(const fs::path& forcefieldName);	
 
-#ifdef __linux__
-	const fs::path internalForcefieldsDir = "/opt/LIMA/resources/Forcefields";
-#else
-	const fs::path internalForcefieldsDir = "C:/Users/Daniel/git_repo/LIMA/resources/Forcefields";
-#endif
+	const fs::path internalForcefieldsDir = Filehandler::GetLimaDir() / "resources/Forcefields";
 
 	const fs::path limaTestForcefield = internalForcefieldsDir / "lima_custom_forcefield.itp";
-	const fs::path defaultForcefield = "charmm27.ff/forcefield.itp";
+	const fs::path defaultForcefield = internalForcefieldsDir / "charmm27.ff/forcefield.itp";
 
 public:
 

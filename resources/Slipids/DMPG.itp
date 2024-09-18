@@ -21,6 +21,7 @@
 ; Joakim P. M. Jämbeck and Alexander P. Lyubertsev, "Another Piece of the Membrane Puzzle: Extending Slipids Further"
 ; J. Chem. Theory Comput., submitted
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -28,7 +29,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DMPG      C314       108     -0.08    12.011
          1      HAL3         1      DMPG      H14X       109      0.02     1.008
          2      HAL3         1      DMPG      H14Y       110      0.02     1.008
@@ -55,7 +56,7 @@ lipid_section
         23      HAL2         1      DMPG       H7X        88      0.00     1.008
         24      HAL2         1      DMPG       H7Y        89      0.00     1.008
         25      CTL2         1      DMPG       C36        84      0.00    12.011
-lipid_section
+;lipid_section
         26      HAL2         1      DMPG       H6X        85      0.00     1.008
         27      HAL2         1      DMPG       H6Y        86      0.00     1.008
         28      CTL2         1      DMPG       C35        81      0.00    12.011
@@ -114,7 +115,7 @@ lipid_section
         81      HAL2         1      DMPG       H5R        45      0.00     1.008
         82      HAL2         1      DMPG       H5S        46      0.00     1.008
         83      CTL2         1      DMPG       C26        47      0.00    12.011
-lipid_section
+;lipid_section
         84      HAL2         1      DMPG       H6R        48      0.00     1.008
         85      HAL2         1      DMPG       H6S        49      0.00     1.008
         86      CTL2         1      DMPG       C27        50      0.00    12.011

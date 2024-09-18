@@ -7,6 +7,7 @@
 ;	This is a standalone topology file
 ;
 
+#include "Slipids_2020.ff/forcefield.itp"
 
 [ moleculetype ]
 ;      Name    nrexcl
@@ -14,7 +15,7 @@
 
 [ atoms ]
 ;        nr      type     resnr   residue      atom      cgnr    charge      mass
-lipid_section
+;lipid_section
          0      CTL3         1      DSPC       C19        19     -0.08    12.011
          1      HAL3         1      DSPC      H19X        72      0.02     1.008
          2      HAL3         1      DSPC      H19Y        73      0.02     1.008
@@ -43,7 +44,7 @@ lipid_section
         25      CTL2         1      DSPC       C27        27      0.00    12.011
         26      HAL2         1      DSPC      H27X        89      0.00     1.008
         27      HAL2         1      DSPC      H27Y        90      0.00     1.008
-lipid_section
+;lipid_section
         28      CTL2         1      DSPC       C28        28      0.00    12.011
         29      HAL2         1      DSPC      H28X        91      0.00     1.008
         30      HAL2         1      DSPC      H28Y        92      0.00     1.008
@@ -70,7 +71,7 @@ lipid_section
         51      HAL2         1      DSPC      H35Y       106      0.03     1.008
         52        CL         1      DSPC       C36        36      0.79    12.011
         53       OBL         1      DSPC      O36B       110     -0.65    15.999
-lipid_section
+;lipid_section
         54       OSL         1      DSPC      O36S       109     -0.47    15.999
         55      CTL1         1      DSPC       C38       112      0.48    12.011
         56      HAL1         1      DSPC      H38X       113      0.04     1.008
@@ -131,7 +132,7 @@ lipid_section
        111      CTL2         1      DSPC       C10        10      0.00    12.011
        112      HAL2         1      DSPC      H10X        56      0.00     1.008
        113      HAL2         1      DSPC      H10Y        57      0.00     1.008
-lipid_section
+;lipid_section
        114      CTL2         1      DSPC        C9         9      0.00    12.011
        115      HAL2         1      DSPC       H9X        54      0.00     1.008
        116      HAL2         1      DSPC       H9Y        55      0.00     1.008

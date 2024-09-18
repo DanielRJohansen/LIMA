@@ -64,7 +64,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	
 	std::vector<int> ljtypeIndices;
 	for (auto& atom : topfile.GetAllAtoms()) {
-		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.forcefieldIncludes, atom.type));
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPaths(), atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
 
@@ -355,7 +355,7 @@ void Programs::ReorderLipidAndDivideIntoCompoundsizedSections(GroFile& grofile, 
 
 	int cummulativeIndex = 0;
 	for (int index : bestPartition) {
-		topfile.GetLocalAtoms()[cummulativeIndex].section_name = "lipid_section";
+		topfile.GetLocalAtoms()[cummulativeIndex].section_name = ";lipid_section";
 		cummulativeIndex += index;
 	}
 

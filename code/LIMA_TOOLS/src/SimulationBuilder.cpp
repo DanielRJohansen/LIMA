@@ -8,8 +8,22 @@
 #include "EngineCore.h"
 
 #include "Statistics.h"
+LipidSelect::LipidSelect(const std::string& lipidname, const fs::path& workDir, double percentage) : 
+	userSupplied(fs::exists(workDir / (lipidname + ".gro")) && fs::exists(workDir / (lipidname + ".itp"))),
+	lipidname(lipidname), 
+	percentage(percentage) 
+{	
+	const fs::path defaultLipidsDir = Filehandler::GetLimaDir() / ("resources/Slipids");
 
-const std::array<std::string, 6> LipidSelect::valid_lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
+	if (!userSupplied && !fs::exists(defaultLipidsDir / (lipidname + ".itp"))) {
+		throw std::runtime_error(std::format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
+			lipidname, workDir.string(), defaultLipidsDir.string()));
+	}
+	
+	grofile = std::make_unique<GroFile>(defaultLipidsDir / (lipidname + ".gro"));
+	topfile = std::make_unique<TopologyFile>(defaultLipidsDir / (lipidname + ".itp"));
+}
+
 
 
 void centerMoleculeAroundOrigo(GroFile& grofile) {
@@ -89,18 +103,20 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 }
 
 
-void constexpr validateLipidselection(const LipidsSelection& lipidselection) {
-	int total_percentage = 0;
+void validateLipidselection(const LipidsSelection& lipidselection) {
+	double total_percentage = 0;
 	for (const auto& lipid : lipidselection) {
 		total_percentage += lipid.percentage;
 	}
-	if (total_percentage != 100) {
-		throw std::runtime_error("BuildMembrane failed: Lipid selection did not add up to 100%");
+	if (std::abs(total_percentage - 100) > 0.00001f) {
+		throw std::runtime_error("Invalid lipid selection, did not add up to 100%");
 	}
 
 	for (const auto& lipid : lipidselection) {
 		if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
-			throw std::runtime_error("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.");
+			throw std::runtime_error(std::format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
+				lipid.grofile->m_path.string(), lipid.topfile->path.string())
+			);
 		}
 	}
 }

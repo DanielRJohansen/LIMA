@@ -103,20 +103,20 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 }
 
 
-void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<TopologyFile>>& includedFiles, fs::path srcDir) {
-	if (!fs::exists(srcDir) || !fs::is_directory(srcDir)) {
-        throw std::invalid_argument("Source path is not a directory: " + srcDir.string());
-    }
-	for (const auto& entry : fs::directory_iterator(srcDir)) {
-		if (entry.path().extension() == ".gro") {
-			const std::string base_name = entry.path().stem().string();
-			const fs::path itp_file = srcDir / (base_name + ".itp");
-			if (fs::exists(itp_file)) {
-				includedFiles.insert({ base_name, {itp_file} });
-			}
-		}
-	}
-}
+//void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<TopologyFile>>& includedFiles, fs::path srcDir) {
+//	if (!fs::exists(srcDir) || !fs::is_directory(srcDir)) {
+//        throw std::invalid_argument("Source path is not a directory: " + srcDir.string());
+//    }
+//	for (const auto& entry : fs::directory_iterator(srcDir)) {
+//		if (entry.path().extension() == ".gro") {
+//			const std::string base_name = entry.path().stem().string();
+//			const fs::path itp_file = srcDir / (base_name + ".itp");
+//			if (fs::exists(itp_file)) {
+//				includedFiles.insert({ base_name, {itp_file} });
+//			}
+//		}
+//	}
+//}
 
 
 
@@ -263,7 +263,7 @@ std::string GetCleanFilename(const fs::path& path) {
 	return filename.starts_with(prefix) ? filename.substr(prefix.length()) : filename;
 }
 
-fs::path SearchForFile(fs::path dir, const std::string& filename) {
+std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::string& filename) {
 	const std::array<std::string, 2> extensions = { ".itp", ".top" };
 	const std::array<std::string, 2> prefixes = { std::string(""), "topol_" };
 
@@ -276,12 +276,23 @@ fs::path SearchForFile(fs::path dir, const std::string& filename) {
 		}
 	}
 
-	throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", filename, dir.string()));
+	return std::nullopt;
+}
+fs::path SearchForFile(const fs::path& workDir, const std::string& includeName) {
+	// First look relative to the current topology file
+	std::optional<fs::path> includePath = _SearchForFile(workDir, includeName);
+
+	// If no value, look in the default includes dir
+	if (!includePath.has_value())
+		includePath = _SearchForFile(Filehandler::GetLimaDir() / "resources/Slipids", includeName);
+
+	if (!includePath.has_value())
+		throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", includeName, workDir.string()));
+
+	return includePath.value();
 }
 
-TopologyFile::TopologyFile() {
-	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/Slipids");
-}
+
 
 template <int n>
 bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int ids[n]) {
@@ -321,9 +332,10 @@ bool isOnlySpacesAndTabs(const std::string& str) {
 		return c == ' ' || c == '\t';
 		});
 }
+
+
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
-	LoadDefaultIncludeTopologies(includedFiles, Filehandler::GetLimaDir() / "resources/SLipids");
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
@@ -411,8 +423,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 
 				if (includedFiles.count(include_name) == 0) {
-					const fs::path includePath = SearchForFile(path.parent_path(), include_name);
-					includedFiles.emplace(include_name, includePath);
+					includedFiles.emplace(include_name, SearchForFile(path.parent_path(), include_name));
 				}
 
 				const int globalIndexOfFirstParticle = molecules.entries.empty() 
@@ -620,8 +631,6 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	file << anglebonds.composeString();
 	file << dihedralbonds.composeString();
 	file << improperdihedralbonds.composeString();
-
-
 
 	// Also cache the file
 	WriteFileToBinaryCache(*this, path);

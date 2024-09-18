@@ -7,21 +7,13 @@
 
 #include <algorithm>
 struct LipidSelect {
-	LipidSelect(std::string lipidname, int percentage) : lipidname(lipidname), percentage(percentage) {
-		if (std::find(valid_lipids.begin(), valid_lipids.end(), lipidname) == valid_lipids.end()) {
-			throw std::runtime_error("LipidSelect: Lipid not supported (yet): " + lipidname);
-		};
+	LipidSelect(const std::string& lipidname, const fs::path& workDir, double percentage);
 
-		const fs::path lipids_path = Filehandler::GetLimaDir() / ("resources/Slipids");
-		grofile = std::make_unique<GroFile>(lipids_path / (lipidname + ".gro"));
-		topfile = std::make_unique<TopologyFile>(lipids_path / (lipidname + ".itp"));
-	}
+	const bool userSupplied = false;
 	const std::string lipidname;
-	const int percentage;
+	const double percentage;
 	std::shared_ptr<GroFile> grofile;
 	std::shared_ptr<TopologyFile> topfile;
-
-	static const std::array<std::string, 6> valid_lipids;	// Defined in .cpp file
 };
 // Since this is a vector of structs with unique_ptrs, it can never be copied, or resized
 using LipidsSelection = std::vector<LipidSelect>;
@@ -35,10 +27,6 @@ using AtomsSelection = std::vector<AtomtypeSelect>;
 namespace SimulationBuilder {
 	using namespace MDFiles;
 	using Geometry::Plane;
-
-
-	FilePair buildMembrane(const LipidsSelection& lipidselection, Float3 box_dims);
-	FilePair makeBilayerFromMonolayer(const FilePair& inputfiles, Float3 box_dims);
 
 	void DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles,
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);

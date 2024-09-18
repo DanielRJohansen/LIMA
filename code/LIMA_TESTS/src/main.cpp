@@ -60,35 +60,6 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-	/*	std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol", "SM16" };
-		for (auto target : targets) {
-			GroFile grofile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".gro" };
-			TopologyFile topfile{ "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/" + target + ".itp" };
-
-			Programs::ReorderLipidAndDivideIntoCompoundsizedSections(grofile, topfile);
-		}*/
-
-		//std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
-		//std::vector<std::string> targets;
-
-		//for (const auto& entry : fs::directory_iterator(path)) {
-		//	if (entry.path().extension() == ".gro") {
-		//		std::string base_name = entry.path().stem().string();
-		//		std::string itp_file = path + base_name + ".itp";
-		//		if (fs::exists(itp_file)) {
-		//			targets.push_back(base_name);
-		//		}
-		//	}
-		//}
-
-		//for (const auto& target : targets) {
-		//	GroFile grofile{ path + target + ".gro" };
-		//	TopologyFile topfile{ path + target + ".itp" };
-
-		//	Programs::ReorderLipidAndDivideIntoCompoundsizedSections(grofile, topfile);
-		//}
-
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//DisplayHelloWorld();
@@ -117,12 +88,13 @@ int main() {
 
 
 
-		//const fs::path work_dir = simulations_dir / "test";
-		//LipidsSelection lipids;
-		//lipids.emplace_back(LipidSelect{ "POPC", 30 });
-		//lipids.emplace_back(LipidSelect{ "DMPC", 40 });
-		//lipids.emplace_back(LipidSelect{ "cholesterol", 30 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);
+		const fs::path work_dir = simulations_dir / "test";
+		LipidsSelection lipids;
+		lipids.emplace_back(LipidSelect{ "DPPE", work_dir, 30.5 });
+		lipids.emplace_back(LipidSelect{ "DMPG", work_dir, 39.5 });
+		lipids.emplace_back(LipidSelect{ "cholesterol", work_dir, 10 });
+		lipids.emplace_back(LipidSelect{ "SM18", work_dir, 20 });
+		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);
 
 
 		//testBuildmembraneSmall(envmode, false);

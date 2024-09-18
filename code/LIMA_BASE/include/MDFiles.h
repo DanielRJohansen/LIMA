@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = true;
+const bool ENABLE_FILE_CACHING = false;
 
 
 namespace fs = std::filesystem;
@@ -104,7 +104,7 @@ public:
 	struct ImproperDihedralBond;
 
 	
-	TopologyFile();										// Create an empty file	
+	TopologyFile() {}										// Create an empty file	
 	TopologyFile(const fs::path& path);	// Load a file from path	
 
 	void printToFile(const fs::path& path) const;

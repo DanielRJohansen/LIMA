@@ -11,20 +11,15 @@ namespace TestMembraneBuilder {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
 
-
-
-	void thing(LipidsSelection& s) {
-
-	}
-
 	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 		const fs::path mol_dir = work_dir / "molecule";
 
 		LipidsSelection lipidselection;
-		for (const auto& name : LipidSelect::valid_lipids) {
-			lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10});	// 10% of each lipid, except 50% POPC
+		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
+		for (const auto& lipidname : lipids) {
+			lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
 		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
 		gro->printToFile(mol_dir / "membrane.gro");
@@ -56,7 +51,8 @@ namespace TestMembraneBuilder {
 		GroFile grofile;
 		grofile.box_size = Float3{ 5.f };
 		TopologyFile topfile;
-		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", 10}, {"cholesterol", 30}, {"DMPC", 60} }, 0.5, grofile.box_size/2.f, 3);
+		const fs::path workDir = TestUtils::simulations_dir / "etc";
+		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
 

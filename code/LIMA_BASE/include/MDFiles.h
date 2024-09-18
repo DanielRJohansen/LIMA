@@ -46,7 +46,7 @@ struct GroRecord {
 
 struct GroFile {
 	GroFile() {};
-	GroFile(const std::filesystem::path& path);
+	GroFile(const fs::path& path);
 
 	// Contents inside file
 	std::string title="";
@@ -55,14 +55,14 @@ struct GroFile {
 	// --------------------- // 
 
 	// Meta data not in file
-	std::filesystem::path m_path;
-	std::filesystem::file_time_type lastModificationTimestamp;
+	fs::path m_path;
+	fs::file_time_type lastModificationTimestamp;
 	bool readFromCache = false;
 	// --------------------- // 
 
 
 	void printToFile() const { printToFile(m_path);};
-	void printToFile(const std::filesystem::path& path) const;
+	void printToFile(const fs::path& path) const;
 	void printToFile(const std::string& name) const {
 		printToFile(m_path.parent_path() / name);
 	}
@@ -91,117 +91,28 @@ struct Section {
 };
 
 class TopologyFile {	//.top or .itp
-	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
-	friend class GenericItpFile;
-
-	static const char commentChar = ';';
 public:
 	struct ForcefieldInclude;
-	struct MoleculeEntry {
-		MoleculeEntry() {}
-		MoleculeEntry(const std::string& name, int globalIndexOfFirstParticle=0)
-			: name(name), globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
-		MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile, 
-			int globalIndexOfFirstParticle)
-			: name(name), includeTopologyFile(includeTopologyFile), 
-			globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
+	struct MoleculeEntry;
+	struct MoleculetypeEntry;
+	struct AtomsEntry;
+	template <size_t N>	struct GenericBond;
+	struct SingleBond;
+	struct Pair;
+	struct AngleBond;
+	struct DihedralBond;
+	struct ImproperDihedralBond;
 
-		void composeString(std::ostringstream& oss) const;
-
-		int GlobalIndexOfFinalParticle() const {
-			if (includeTopologyFile == nullptr)
-				throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile is nullptr");
-			if (includeTopologyFile->atoms.entries.empty())
-				throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile has no atoms");
-			return globalIndexOfFirstParticle + includeTopologyFile->atoms.entries.size() - 1;
-		}
-		int globalIndexOfFirstParticle = 0; // Determined for each molecule when loading the file
-		std::string name{};	// Name of file without extension and path
-		std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
-	};
 	
-	struct MoleculetypeEntry {
-		std::string name{};
-		int nrexcl{};
+	TopologyFile();										// Create an empty file	
+	TopologyFile(const fs::path& path);	// Load a file from path	
 
-		void composeString(std::ostringstream& oss) const;
-	};
-
-	// Variable names are from .itp file
-	struct AtomsEntry {
-		std::optional<std::string> section_name{};// Either a residue or lipid_section
-
-		//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
-		int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
-		std::string type{};	// Atom type
-		int resnr{};
-		std::string residue{};
-		std::string atomname{};	// TODONOW SHould this be prioritized over type???<?>>?>>?<<?!!!!!!
-		int cgnr{};
-		float charge{};// In elementary charges [e]. Convert to kilo C/mol before using
-		float mass{};
-		//int chain_id{ -1 };
-
-		void composeString(std::ostringstream& oss) const;
-
-		bool operator==(const AtomsEntry&) const = default;
-	};
-
-	template <size_t N>
-	struct GenericBond {
-		virtual ~GenericBond() = default;
-		static const int n = N;
-		//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
-		int ids[N]{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
-		int funct{};
-
-		std::string sourceLine{};	// used for debugging	TODO: remove
-
-		void composeString(std::ostringstream& oss) const {
-			const int width = 10;
-			for (size_t i = 0; i < N; ++i) {
-				oss << std::setw(width) << std::right << ids[i];
-			}
-			oss << std::setw(width) << std::right << funct;
-		}
-
-		void IncrementIds(const int increment)  {
-			for (size_t i = 0; i < N; ++i) {
-				ids[i] += increment;
-			}
-		}
-
-		bool operator==(const GenericBond<N>&) const = default;
-	};
-	struct SingleBond : GenericBond<2> {};
-	struct Pair : GenericBond<2> {};
-	struct AngleBond : GenericBond<3> {};
-	struct DihedralBond : GenericBond<4> {};
-	struct ImproperDihedralBond : GenericBond<4> {};
-
-	// Create an empty file
-	TopologyFile();
-	// Load a file from path
-	TopologyFile(const std::filesystem::path& path);
-
-	void printToFile(const std::filesystem::path& path) const;
+	void printToFile(const fs::path& path) const;
 	void printToFile() const { printToFile(path); };
 	void printToFile(const std::string& name) const {
-		printToFile(std::filesystem::path(path.parent_path() / name));
+		printToFile(fs::path(path.parent_path() / name));
 	}
-
-	// Apply a mapping of resNr and GroID to all entries in this file
-	//void IncrementIds(int atomNrIncrement, int resNrIncrement);
-	TopologyFile copy() const { return *this; }
-
-	void AppendTopology(const std::shared_ptr<TopologyFile>& other) {
-		if (includedFiles.count(other->name) == 0)
-			includedFiles.emplace(other->name, LazyLoadFile<TopologyFile>(other));
-
-		const int globalIndexOfFirstParticle = molecules.entries.empty()
-			? 0 : molecules.entries.back().GlobalIndexOfFinalParticle()+1;
-		molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get(), globalIndexOfFirstParticle);
-	}
+	void AppendTopology(const std::shared_ptr<TopologyFile>& other);
 
 
 
@@ -211,14 +122,7 @@ public:
 	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
 
 
-private:
-	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
-	Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
-	Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
-	Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
-	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
-	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
-public:
+
 	std::vector<AtomsEntry>& GetLocalAtoms() { return atoms.entries; }
 	const std::vector<AtomsEntry>& GetLocalAtoms() const { return atoms.entries; }
 	std::vector<SingleBond>& GetLocalSinglebonds() { return singlebonds.entries; }
@@ -276,8 +180,8 @@ public:
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	std::string name;
-	std::filesystem::path path;
-	std::filesystem::file_time_type lastModificationTimestamp{};
+	fs::path path;
+	fs::file_time_type lastModificationTimestamp{};
 	bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 
@@ -293,15 +197,122 @@ public:
 
 
 private:
+	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
+	friend class GenericItpFile;
+
+	static const char commentChar = ';';
+
+	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
+	Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
+	Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
+	Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
+	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
+	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
+
 	// Private copy constructor, since this should be avoided when possible
 	TopologyFile& operator=(const TopologyFile&) = default;
 
 	static std::string generateLegend(std::vector<std::string> elements);
 };
 
+struct TopologyFile::MoleculeEntry {
+	MoleculeEntry() {}
+	MoleculeEntry(const std::string& name, int globalIndexOfFirstParticle = 0)
+		: name(name), globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
+	MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile,
+		int globalIndexOfFirstParticle)
+		: name(name), includeTopologyFile(includeTopologyFile),
+		globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
+
+	void composeString(std::ostringstream& oss) const;
+
+	int GlobalIndexOfFinalParticle() const {
+		if (includeTopologyFile == nullptr)
+			throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile is nullptr");
+		if (includeTopologyFile->atoms.entries.empty())
+			throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile has no atoms");
+		return globalIndexOfFirstParticle + includeTopologyFile->atoms.entries.size() - 1;
+	}
+	int globalIndexOfFirstParticle = 0; // Determined for each molecule when loading the file
+	std::string name{};	// Name of file without extension and path
+	std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
+};
+
+struct TopologyFile::MoleculetypeEntry {
+	std::string name{};
+	int nrexcl{};
+
+	void composeString(std::ostringstream& oss) const;
+};
+
+// Variable names are from .itp file
+struct TopologyFile::AtomsEntry {
+	std::optional<std::string> section_name{};// Either a residue or lipid_section
+
+	//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
+	int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
+	std::string type{};	// Atom type
+	int resnr{};
+	std::string residue{};
+	std::string atomname{};	// TODONOW SHould this be prioritized over type???<?>>?>>?<<?!!!!!!
+	int cgnr{};
+	float charge{};// In elementary charges [e]. Convert to kilo C/mol before using
+	float mass{};
+	//int chain_id{ -1 };
+
+	void composeString(std::ostringstream& oss) const;
+
+	bool operator==(const AtomsEntry&) const = default;
+};
+
+struct TopologyFile::ForcefieldInclude {
+	ForcefieldInclude() {}
+	ForcefieldInclude(const fs::path& topolPath, const std::string& includeName);
+
+	/// <summary>
+	/// Copies the forcefieldfile AND any include files to a target directory
+	/// </summary>
+	/// <param name="directory"></param>
+	void CopyToDirectory(const fs::path& directory) const;
+
+	bool isUserSupplied;
+	fs::path path;
+	fs::path name; // Same as path for user supplied, path relative to FF dir for LIMA FF
+};
 
 
 
+template <size_t N>
+struct TopologyFile::GenericBond{
+	virtual ~GenericBond() = default;
+	static const int n = N;
+	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
+	int ids[N]{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
+	int funct{};
+
+	std::string sourceLine{};	// used for debugging	TODO: remove
+
+	void composeString(std::ostringstream & oss) const {
+		const int width = 10;
+		for (size_t i = 0; i < N; ++i) {
+			oss << std::setw(width) << std::right << ids[i];
+		}
+		oss << std::setw(width) << std::right << funct;
+	}
+
+	void IncrementIds(const int increment) {
+		for (size_t i = 0; i < N; ++i) {
+			ids[i] += increment;
+		}
+	}
+
+	bool operator==(const GenericBond<N>&) const = default;
+};
+struct TopologyFile::SingleBond : GenericBond<2> {};
+struct TopologyFile::Pair : GenericBond<2> {};
+struct TopologyFile::AngleBond : GenericBond<3> {};
+struct TopologyFile::DihedralBond : GenericBond<4> {};
+struct TopologyFile::ImproperDihedralBond : GenericBond<4> {};
 
 
 template <typename T>
@@ -463,23 +474,6 @@ public:
 		return sections.at(section);
 	}
 };
-
-
-struct TopologyFile::ForcefieldInclude {
-	ForcefieldInclude() {}
-	ForcefieldInclude(const fs::path& topolPath, const std::string& includeName);
-
-	/// <summary>
-	/// Copies the forcefieldfile AND any include files to a target directory
-	/// </summary>
-	/// <param name="directory"></param>
-	void CopyToDirectory(const fs::path& directory) const;
-
-	bool isUserSupplied;
-	fs::path path;
-	fs::path name; // Same as path for user supplied, path relative to FF dir for LIMA FF
-};
-
 
 
 class PDBfile {

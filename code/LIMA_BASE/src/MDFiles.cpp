@@ -626,6 +626,14 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	// Also cache the file
 	WriteFileToBinaryCache(*this, path);
 }
+void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
+	if (includedFiles.count(other->name) == 0)
+		includedFiles.emplace(other->name, LazyLoadFile<TopologyFile>(other));
+
+	const int globalIndexOfFirstParticle = molecules.entries.empty()
+		? 0 : molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
+	molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get(), globalIndexOfFirstParticle);
+}
 
 
 TopologyFile::SectionRange<TopologyFile::AtomsEntry> TopologyFile::GetAllAtoms() const {

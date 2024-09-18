@@ -121,16 +121,10 @@ public:
 	static const int queueLen = 3;
 	static const int nElementsInQueue = queueLen * MAX_COMPOUNDS;
 
-	__host__ static CompoundcoordsCircularQueue* CreateQueue() {
-		auto coordQueue = new CompoundcoordsCircularQueue();		
+	__host__ static std::unique_ptr<CompoundcoordsCircularQueue> CreateQueue() {
+		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue>();		
 		coordQueue->queue = new CompoundCoords[nElementsInQueue];
 		return coordQueue;
-	}
-
-	__host__ CompoundcoordsCircularQueue* moveToDevice() {
-		queue = genericMoveToDevice(queue, nElementsInQueue);
-		//is_on_device = true;
-		return genericMoveToDevice(this, 1);
 	}
 
 	__host__ CompoundcoordsCircularQueue* CopyToDevice() const {

@@ -12,7 +12,7 @@
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
 #include "PhysicsUtils.cuh"
-
+#include "SimulationDevice.cuh"
 #include "KernelWarnings.cuh"
 #include "KernelConstants.cuh"
 
@@ -70,7 +70,7 @@ namespace EngineUtils {
 
 
 
-	__device__ inline void LogCompoundData(const CompoundCompact& compound, Box* box, CompoundCoords& compound_coords, 
+	__device__ inline void LogCompoundData(const CompoundCompact& compound, BoxDevice* box, CompoundCoords& compound_coords, 
 		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, DatabuffersDevice* databuffers, const float speed)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
@@ -86,7 +86,7 @@ namespace EngineUtils {
 		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
-	__device__ inline void LogSolventData(Box* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 
+	__device__ inline void LogSolventData(BoxDevice* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 
 		const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers, int loggingInterval)
 	{
 		if (step % loggingInterval != 0) { return; }

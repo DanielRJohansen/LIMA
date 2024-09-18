@@ -91,7 +91,7 @@ void Engine::setDeviceConstantMemory() {
 
 std::unique_ptr<Simulation> Engine::takeBackSim() {
 	assert(sim_dev);
-	simulation->box_host = SimUtils::copyToHost(sim_dev->box);
+	sim_dev->box->CopyDataToHost(*simulation->box_host);
 	return std::move(simulation);
 }
 
@@ -153,7 +153,8 @@ void Engine::terminateSimulation() {
 	offloadLoggingData(stepsReadyToTransfer);
 	offloadTrajectory(stepsReadyToTransfer);	
 
-	simulation->box_host->CopyDataFromDevice(sim_dev->box);
+	//simulation->box_host->CopyDataFromDevice(sim_dev->box);
+	sim_dev->box->CopyDataToHost(*simulation->box_host);
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
@@ -236,11 +237,11 @@ void Engine::offloadTrainData() {
 
 void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
-	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->box_host->boxparams.n_compounds);
-	auto error = cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost);
-	LIMA_UTILS::genericErrorCheck(error);
+	cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost);
+	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
+
 
 
 	// We need to bootstrap step-0 which is used for traj-buffer

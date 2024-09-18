@@ -369,9 +369,9 @@ void Programs::ReorderLipidAndDivideIntoCompoundsizedSections(GroFile& grofile, 
 	env.run(false);
 	auto sim = env.getSim();
 
-	std::vector<Compound> compoundsVec(sim->box_host->boxparams.n_compounds);
-	memcpy(compoundsVec.data(), sim->box_host->compounds, sim->box_host->boxparams.n_compounds * sizeof(Compound));
-	d.Render(std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), compoundsVec, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId), false);
+	//std::vector<Compound> compoundsVec(sim->box_host->boxparams.n_compounds);
+	//memcpy(compoundsVec.data(), sim->box_host->compounds, sim->box_host->boxparams.n_compounds * sizeof(Compound));
+	d.Render(std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId), false);
 	//std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
 	//grofile.printToFile();

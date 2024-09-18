@@ -114,8 +114,8 @@ public:
 
 	SolventBlocksCircularQueue() {};	// C
 
-	__host__ static SolventBlocksCircularQueue* createQueue(int boxlenNM) {
-		auto queue = new SolventBlocksCircularQueue();
+	__host__ static std::unique_ptr<SolventBlocksCircularQueue> createQueue(int boxlenNM) {
+		auto queue = std::make_unique<SolventBlocksCircularQueue>();
 		queue->allocateData(BoxGrid::NodesPerDim(boxlenNM));
 		queue->initializeBlocks(boxlenNM);
 		return queue;
@@ -145,15 +145,6 @@ public:
 		}
 	}
 
-
-	__host__ SolventBlocksCircularQueue* moveToDevice() {
-		const int blocksTotal = blocksInGrid * queue_len;
-		blocks = genericMoveToDevice(blocks, blocksTotal);
-
-		is_on_device = true;
-		return genericMoveToDevice(this, 1);
-	}
-
 	__host__ SolventBlocksCircularQueue* CopyToDevice() const {
 		SolventBlocksCircularQueue queueTemp = *this;
 		const int blocksTotal = blocksInGrid * queue_len;
@@ -166,19 +157,6 @@ public:
 		const int blocksTotal = blocksInGrid * queue_len;
 		cudaMemcpy(blocks, queue->blocks, sizeof(SolventBlock) * blocksTotal, cudaMemcpyDeviceToHost);
 	}
-
-
-	// Fuck me this seems overcomplicated. TODO: Redo this function, it is BAD code
-	__host__ SolventBlocksCircularQueue* copyToHost(int boxLenNM) {
-		SolventBlocksCircularQueue* this_host = new SolventBlocksCircularQueue();
-		this_host->allocateData(BoxGrid::NodesPerDim(boxLenNM));
-		const int gridqueueBytesize = 
-			sizeof(SolventBlock) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxLenNM)) * queue_len;
-		cudaMemcpy(this_host->blocks, blocks, gridqueueBytesize, cudaMemcpyDeviceToHost);
-		return this_host;
-	}
-
-
 
 
 	// This function assumes the user has used PBC

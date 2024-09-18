@@ -163,9 +163,9 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
-	// TEMP, this is a bad solution
+	// TEMP, this is a bad solution ?? TODO NOW
 	compounds.resize(simulation->box_host->boxparams.n_compounds);
-	memcpy(compounds.data(), simulation->box_host->compounds, simulation->box_host->boxparams.n_compounds * sizeof(Compound));
+	memcpy(compounds.data(), simulation->box_host->compounds.data(), simulation->box_host->boxparams.n_compounds * sizeof(Compound));
 	//compounds = simulation->box_host->compounds;
 	boxparams = simulation->box_host->boxparams;
 	coloringMethod = simulation->simparams_host.coloring_method;

@@ -161,7 +161,7 @@ Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// C
 
 	if (simulation->box_host->boxparams.n_compounds > 0) {
 		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);
-		cudaMemcpy(compounds_device, simulation->box_host->compounds, sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
+		cudaMemcpy(compounds_device, simulation->box_host->compounds.data(), sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
 	}
 	
 
@@ -450,7 +450,7 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 
 	Compound* compoundsDevice;
 	cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.box_host->boxparams.n_compounds);
-	cudaMemcpy(compoundsDevice, simulation.box_host->compounds, sizeof(Compound) * simulation.box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
+	cudaMemcpy(compoundsDevice, simulation.box_host->compounds.data(), sizeof(Compound) * simulation.box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
 
 	std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
 	int nPlots = stepsToPlot.size();

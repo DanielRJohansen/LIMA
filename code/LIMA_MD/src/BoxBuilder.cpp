@@ -29,7 +29,8 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
 	}
 
-	box.compounds[box.boxparams.n_compounds++] = Compound{ compound };	// Cast and copy only the base of the factory
+	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
+	box.boxparams.n_compounds++;
 }
 
 	Float3 get3Random() {	// Returns 3 numbers between 0-1
@@ -64,18 +65,19 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	auto box = std::make_unique<Box>(static_cast<int>(boxImage.box_size));
 
+	box->compounds.reserve(boxImage.compounds.size());
 	for (const CompoundFactory& compound : boxImage.compounds) {
 		InsertCompoundInBox(compound, *box, simparams);
-	}
+	}	
 
 	box->boxparams.total_compound_particles = boxImage.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	box->bridge_bundle = boxImage.bridgebundle.release();					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
+	box->bridge_bundle = std::move(boxImage.bridgebundle);					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 	box->boxparams.n_bridges = box->bridge_bundle->n_bridges;
 
-	box->bonded_particles_lut_manager = boxImage.bp_lut_manager.release();
+	box->bonded_particles_lut_manager = std::move(boxImage.bp_lut_manager);
 
 #ifdef ENABLE_SOLVENTS
 	SolvateBox(*box, boxImage.forcefield, simparams, boxImage.solvent_positions);
@@ -83,8 +85,6 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
-
-	//m_logger->print("BoxImage added to box\n");
 
 	return box;
 }
@@ -113,21 +113,17 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 	// Setup forces and vel's for VVS
 	const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
-	box.solvents = new Solvent[box.boxparams.n_solvents];
-	for (int i = 0; i < box.boxparams.n_solvents; i++) {
-		box.solvents[i].force_prev = Float3{0};
-
+	box.solvents.reserve(box.boxparams.n_solvents);
+	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
 		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
-		box.solvents[i].vel_prev = direction * velocity;
+
+		box.solvents.emplace_back(Solvent{ direction * velocity, Float3{} });
 	}
 
 
 	box.boxparams.total_particles += box.boxparams.n_solvents;
-	auto a = std::to_string(box.boxparams.n_solvents);
-	auto b = std::to_string(solvent_positions.size());
-	//m_logger->print(a + " of " + b + " solvents added to box\n");
 	return box.boxparams.n_solvents;
 }
 
@@ -173,7 +169,7 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);
 
 		// Clear all of the data
-		delete simulation.box_host->solventblockgrid_circularqueue;
+		//delete simulation.box_host->solventblockgrid_circularqueue;
 		simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation.box_host->boxparams.boxSize);
 
 

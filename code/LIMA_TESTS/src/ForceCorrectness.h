@@ -212,7 +212,7 @@ namespace ForceCorrectness {
 		const float errorThreshold = 1e-2;
 
 		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("Expected frequency: {:.4e} [1/fs], Actual frequency: {:.4e} [1/fs], Error: {:.2e}", expectedFrequency, actualFrequency, error),
+			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs], Error: {:.2e}", expectedFrequency, actualFrequency, error),
 			envmode == Full };
 	}
 

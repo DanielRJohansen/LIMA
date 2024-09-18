@@ -172,29 +172,18 @@ namespace LIMALOGSYSTEM {
 struct Box {
 	Box() {}
 	Box(int boxSize);
-	~Box();
-	Box* CopyToDevice();				// Loses pointer to RAM location!
-	void CopyDataFromDevice(Box* boxDev);
-	void deleteMembers();
 
 	BoxParams boxparams;
 
-	// flags used for destructing only!
-	bool is_on_device = false;
-	bool owns_members = false;
 
-	Compound* compounds = nullptr;
-	CompoundcoordsCircularQueue* compoundcoordsCircularQueue = nullptr;
+	std::vector<Compound> compounds;
+	std::unique_ptr<CompoundcoordsCircularQueue> compoundcoordsCircularQueue = nullptr;
 
+	std::vector<Solvent> solvents;
+	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
 
-	Solvent* solvents = nullptr;
-
-	// Positions and solvent_ids
-	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
-
-
-	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
-	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
+	std::unique_ptr<CompoundBridgeBundleCompact> bridge_bundle = nullptr;
+	std::unique_ptr<BondedParticlesLUTManager> bonded_particles_lut_manager = nullptr;
 
 	UniformElectricField uniformElectricField;
 };
@@ -228,17 +217,12 @@ public:
 	std::vector<float> loggingdata;
 #endif
 
-
-
-	float temperature = -1.f;			// Current temperature [k]
-
 	std::unique_ptr<Box> box_host = nullptr;
 
 
 	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
 	SimParams simparams_host;
 
-	//std::unique_ptr<Forcefield> forcefield;
 	ForceField_NB forcefield;
 };
 

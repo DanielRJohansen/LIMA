@@ -69,7 +69,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 	// Buffer to be cast to different datatypes. This is dangerous!
 	__shared__ char utility_buffer[cbkernel_utilitybuffer_size];
 
-	Box* box = sim->box;
+	BoxDevice* box = sim->box;
 	SimParams& simparams = *sim->params;
 	SimSignals* signals = sim->signals;
 	const Compound* const compound_global = &box->compounds[blockIdx.x];
@@ -265,7 +265,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	__shared__ ForceField_NB forcefield_shared;
 
-	Box* box = sim->box;
+	BoxDevice* box = sim->box;
 	SimParams& simparams = *sim->params;
 	SimSignals* signals = sim->signals;
 
@@ -500,7 +500,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 
-	Box* box = sim->box;
+	BoxDevice* box = sim->box;
 	SimParams& simparams = *sim->params;
 	SimSignals* signals = sim->signals;
 	SolventBlock* solventblock_ptr = box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, signals->step);
@@ -666,7 +666,7 @@ template __global__ void solventForceKernel<NoBoundaryCondition, false>(Simulati
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
 __global__ void solventTransferKernel(SimulationDevice* sim) {
-	Box* box = sim->box;
+	BoxDevice* box = sim->box;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	
@@ -716,7 +716,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	__shared__ Coord utility_coord[MAX_COMPOUNDS_IN_BRIDGE];
 
 	SimParams& simparams = *sim->params;
-	Box* box = sim->box;
+	BoxDevice* box = sim->box;
 
 	if (threadIdx.x == 0) {
 		bridge.loadMeta(&box->bridge_bundle->compound_bridges[blockIdx.x]);

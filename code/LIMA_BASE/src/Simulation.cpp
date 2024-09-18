@@ -93,133 +93,14 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 
 
-Box::Box(int boxSizeNM) :
-	owns_members(true)
-{
+Box::Box(int boxSizeNM) {
 	boxparams.boxSize = boxSizeNM;
-	compounds = new Compound[MAX_COMPOUNDS]; // TODO: This should NOT BE HERE
 	compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
 	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxSizeNM);
-	bridge_bundle = new CompoundBridgeBundleCompact{};
 }
 
-Box::~Box() {
-	if (owns_members) { deleteMembers(); }
-}
-
-Box* Box::CopyToDevice() {
-	Box boxTemp = *this;
-
-	boxTemp.compounds = GenericCopyToDevice(compounds, MAX_COMPOUNDS);
-	//compounds = genericMoveToDevice(compounds, MAX_COMPOUNDS);// TODO no need to move all
-	//bridge_bundle = genericMoveToDevice(bridge_bundle, 1);
-	boxTemp.bridge_bundle = GenericCopyToDevice(bridge_bundle, 1);
-
-	//solvents = genericMoveToDevice(solvents, boxparams.n_solvents);
-	boxTemp.solvents = GenericCopyToDevice(solvents, boxparams.n_solvents);
-
-	//solventblockgrid_circularqueue = solventblockgrid_circularqueue->moveToDevice();
-	boxTemp.solventblockgrid_circularqueue = solventblockgrid_circularqueue->CopyToDevice();
-	//compoundcoordsCircularQueue = compoundcoordsCircularQueue->moveToDevice();
-	boxTemp.compoundcoordsCircularQueue = compoundcoordsCircularQueue->CopyToDevice();
 
 
-
-	//bonded_particles_lut_manager = genericMoveToDevice(bonded_particles_lut_manager, 1);
-	boxTemp.bonded_particles_lut_manager = GenericCopyToDevice(bonded_particles_lut_manager, 1);
-
-	boxTemp.is_on_device = true;
-
-	Box* boxDev;
-	cudaMallocManaged(&boxDev, sizeof(Box));
-	cudaMemcpy(boxDev, &boxTemp, sizeof(Box), cudaMemcpyHostToDevice);
-	cudaDeviceSynchronize();
-
-	boxTemp.owns_members = false;
-
-	return boxDev;
-	//
-	//is_on_device = true;
-}
-
-void Box::CopyDataFromDevice(Box* boxDev) {
-	Box boxtemp;
-	cudaMemcpy(&boxtemp, boxDev, sizeof(Box), cudaMemcpyDeviceToHost);
-	boxtemp.owns_members = false;
-
-	cudaMemcpy(compounds, boxtemp.compounds, sizeof(Compound) * MAX_COMPOUNDS, cudaMemcpyDeviceToHost);
-	cudaMemcpy(bridge_bundle, boxtemp.bridge_bundle, sizeof(CompoundBridgeBundleCompact), cudaMemcpyDeviceToHost);
-	cudaMemcpy(solvents, boxtemp.solvents, sizeof(Solvent) * boxparams.n_solvents, cudaMemcpyDeviceToHost);
-	cudaMemcpy(bonded_particles_lut_manager, boxtemp.bonded_particles_lut_manager, sizeof(BondedParticlesLUTManager), cudaMemcpyDeviceToHost);
-
-	solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
-	compoundcoordsCircularQueue->CopyDataFromDevice(boxtemp.compoundcoordsCircularQueue);
-}
-
-void Box::deleteMembers() {
-	if (is_on_device) {
-		cudaFree(compounds);
-		cudaFree(compoundcoordsCircularQueue);
-		cudaFree(solventblockgrid_circularqueue);
-
-		cudaFree(bridge_bundle);
-		cudaFree(bonded_particles_lut_manager);
-
-		if (boxparams.n_solvents > 0) {
-			cudaFree(solvents);
-		}		
-	}
-	else {
-		delete[] compounds;
-		delete compoundcoordsCircularQueue;// I think this should have a destructor
-		delete solventblockgrid_circularqueue;	// I think this should have a destructor
-
-
-		delete[] bridge_bundle;
-		delete[] bonded_particles_lut_manager;
-
-		// TMP, forcefield should maybe come with other members?
-		//if (forcefield) { delete forcefield; }
-
-		if (boxparams.n_solvents > 0) {
-			delete[] solvents;
-		}
-	}
-	owns_members = false;	
-	cudaDeviceSynchronize();
-	auto cuda_status = cudaGetLastError();
-	if (cuda_status != cudaSuccess) {
-		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-		exit(1);
-	}
-}
-
-std::unique_ptr<Box> SimUtils::copyToHost(Box* box_dev) {
-	auto box = std::make_unique<Box>();
-
-	// First copy the box meta info, which we need to some of the dataptr transfers
-	cudaMemcpy(box.get(), box_dev, sizeof(Box), cudaMemcpyDeviceToHost);
-
-	genericCopyToHost(&box->compounds, MAX_COMPOUNDS);
-	//genericCopyToHost(&box->coordarray_circular_queue, MAX_COMPOUNDS * 3);
-	box->compoundcoordsCircularQueue = box->compoundcoordsCircularQueue->copyToHost();
-
-	genericCopyToHost(&box->solvents, box->boxparams.n_solvents);
-	box->solventblockgrid_circularqueue = box->solventblockgrid_circularqueue->copyToHost(box->boxparams.boxSize);
-
-	
-	//genericCopyToHost(&box->forcefield, 1);
-
-	genericCopyToHost(&box->bridge_bundle, 1);
-	genericCopyToHost(&box->bonded_particles_lut_manager, 1);
-	
-
-
-	box->owns_members = true;
-	box->is_on_device = false;
-	//printf("Box copied to host\n");
-	return box;
-}
 
 
 Simulation::Simulation(const SimParams& params) :

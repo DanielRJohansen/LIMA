@@ -9,6 +9,30 @@
 
 //using namespace SCA;
 
+
+
+
+struct BoxDevice {
+	BoxDevice() {}
+	void CopyDataToHost(Box& boxDev);
+	void DeleteBox();
+
+	BoxParams boxparams;
+
+	Compound* compounds = nullptr;
+	CompoundcoordsCircularQueue* compoundcoordsCircularQueue = nullptr;
+
+	Solvent* solvents = nullptr;
+	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
+
+	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
+	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
+
+	UniformElectricField uniformElectricField;	
+};
+
+
+
 /// <summary>
 /// All members of this will only ever exist on device. Immediately after creating this class
 /// it must also be moved to device.
@@ -16,57 +40,10 @@
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host)
-	{
-		// Allocate structures for keeping track of solvents and compounds
-		compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
-		cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
-		
-		cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
-
-		{
-			SimSignals temp{};
-			genericCopyToDevice(temp, &signals, 1);
-		}
-		
-		genericCopyToDevice(params_host, &params, 1);
-
-		databuffers = new DatabuffersDevice(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds, params_host.data_logging_interval);
-		databuffers = genericMoveToDevice(databuffers, 1);
-
-		box = box_host->CopyToDevice();
-		/*box_host->moveToDevice();
-		cudaMallocManaged(&box, sizeof(Box));
-		cudaMemcpy(box, box_host.get(), sizeof(Box), cudaMemcpyHostToDevice);*/
-
-
-		chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
-		chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
-		chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
-
-		//box_host->owns_members = false;
-		//box_host->is_on_device = false; // because moveToDevice sets it to true before transferring.
-		//box_host.reset();
-	}
+	SimulationDevice(const SimParams& params_host, Box* box_host);
 
 	// Recursively free members. Use cudaFree on *this immediately after
-	void deleteMembers() {
-		box->deleteMembers();
-		cudaFree(box);
-
-		databuffers->freeMembers();
-		cudaFree(databuffers);
-
-		cudaFree(params);
-
-		cudaFree(compound_grid);
-		cudaFree(compound_neighborlists);
-
-		//cudaFree(charge_octtree);
-		cudaFree(chargeGrid);
-		cudaFree(chargeGridChargeSums);
-		cudaFree(chargeGridOutputForceAndPot);
-	}
+	void deleteMembers();
 
 	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
 	CompoundGridNode* compound_grid = nullptr;
@@ -79,7 +56,8 @@ struct SimulationDevice {
 
 	SimParams* params;
 	SimSignals* signals;
-	Box* box;
+	//Box* box;
+	BoxDevice* box;
 	DatabuffersDevice* databuffers;
 
 	//ChargeOctTree* charge_octtree;

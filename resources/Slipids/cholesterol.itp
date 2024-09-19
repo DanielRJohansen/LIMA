@@ -1,4 +1,4 @@
-; Force field (FF) parameters for cholesterol
+; Force field (FF) parameters for Cholesterol
 ; Use together with "forcefield.ff" (available at http://people.su.se/~jjm or 
 ; on http://www.gromacs.org/Downloads/User_contributions/Force_fields)
 ; Can be used togther with the AMBER99SB/AMBER99SB-ILDN/AMBER03 FF for proteins

@@ -12,27 +12,10 @@
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = false;
+const bool ENABLE_FILE_CACHING = true;
 
 
 namespace fs = std::filesystem;
-
-template <typename T>
-struct LazyLoadFile {
-	LazyLoadFile(const fs::path& path) : path(path) {}
-	LazyLoadFile(std::shared_ptr<T> preloadedFile) : file(preloadedFile) {}
-
-	std::shared_ptr<T> Get() {
-		if (file == nullptr) {
-			file = std::make_shared<T>(path);
-		}
-		return file;
-	}
-
-private:
-	fs::path path;
-	std::shared_ptr<T> file = nullptr;
-};
 
 struct GroRecord {
 	int residue_number{};
@@ -94,7 +77,6 @@ class TopologyFile {	//.top or .itp
 public:
 	struct ForcefieldInclude;
 	struct MoleculeEntry;
-	struct MoleculetypeEntry;
 	struct AtomsEntry;
 	template <size_t N>	struct GenericBond;
 	struct SingleBond;
@@ -102,7 +84,11 @@ public:
 	struct AngleBond;
 	struct DihedralBond;
 	struct ImproperDihedralBond;
-
+	struct Moleculetype {
+		std::string name{};
+		int nrexcl{};
+		std::string composeString() const;
+	};
 	
 	TopologyFile() {}										// Create an empty file	
 	TopologyFile(const fs::path& path);	// Load a file from path	
@@ -119,8 +105,7 @@ public:
 	// ----------------------- Information kept in the actual files ----------------------- //
 	std::string title="";
 	Section<MoleculeEntry> molecules{ "[ molecules ]", generateLegend({}) };
-	Section<MoleculetypeEntry> moleculetypes{ "[ moleculetype ]", generateLegend({ "Name", "nrexcl" }) };
-
+	std::optional<Moleculetype> moleculetype;
 
 
 	std::vector<AtomsEntry>& GetLocalAtoms() { return atoms.entries; }
@@ -138,6 +123,7 @@ public:
 	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
 	std::vector<ForcefieldInclude> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
+	std::unordered_map<std::string, std::shared_ptr<TopologyFile>> includeTopologies;
 	std::vector<std::string> otherIncludes;
 	std::vector<fs::path> GetForcefieldPaths() const;
 
@@ -197,7 +183,6 @@ public:
 
 
 private:
-	std::unordered_map<std::string, LazyLoadFile<TopologyFile>> includedFiles;
 	friend class GenericItpFile;
 
 	static const char commentChar = ';';
@@ -212,7 +197,7 @@ private:
 	// Private copy constructor, since this should be avoided when possible
 	TopologyFile& operator=(const TopologyFile&) = default;
 
-	static std::string generateLegend(std::vector<std::string> elements);
+	static std::string generateLegend(const std::vector<std::string>& elements);
 };
 
 struct TopologyFile::MoleculeEntry {
@@ -236,13 +221,6 @@ struct TopologyFile::MoleculeEntry {
 	int globalIndexOfFirstParticle = 0; // Determined for each molecule when loading the file
 	std::string name{};	// Name of file without extension and path
 	std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
-};
-
-struct TopologyFile::MoleculetypeEntry {
-	std::string name{};
-	int nrexcl{};
-
-	void composeString(std::ostringstream& oss) const;
 };
 
 // Variable names are from .itp file
@@ -306,7 +284,9 @@ struct TopologyFile::GenericBond{
 		}
 	}
 
-	bool operator==(const GenericBond<N>&) const = default;
+	bool operator==(const GenericBond<N>& other) const {
+		return std::equal(std::begin(ids), std::end(ids), std::begin(other.ids)) && funct == other.funct;
+	}
 };
 struct TopologyFile::SingleBond : GenericBond<2> {};
 struct TopologyFile::Pair : GenericBond<2> {};

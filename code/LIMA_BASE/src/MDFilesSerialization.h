@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 
 
 constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 10;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 13;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 
@@ -84,7 +84,7 @@ namespace cereal {
 	}
 
 	template <class Archive>
-	void serialize(Archive& archive, TopologyFile::MoleculetypeEntry& moleculetype) {
+	void serialize(Archive& archive, TopologyFile::Moleculetype& moleculetype) {
 		archive(moleculetype.name);
 		archive(moleculetype.nrexcl);
 	}
@@ -109,6 +109,21 @@ namespace cereal {
 		archive(include.path);
 		archive(include.name);
 	}
+
+	template <class Archive>
+	void serialize(Archive& archive, std::array<std::string, 2>& strArr) {
+		archive(strArr[0]);
+		archive(strArr[1]);
+	}
+
+	//template <class Archive>
+	//void serialize(Archive& archive, std::unordered_map<std::string, std::shared_ptr<TopologyFile>>& includeTopologies) {
+	//	for (auto& [key, value] : includeTopologies) {
+	//		archive(key);
+	//		archive(value->path);
+	//	}
+	//}
+
 } // namespace cereal
 
 
@@ -159,9 +174,16 @@ void readTopFileFromBinaryCache(const fs::path& path, TopologyFile& file) {
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
-	archive(file.forcefieldIncludes);
+	archive(file.forcefieldIncludes);	
+
+	std::vector<std::array<std::string, 2>> includeTopologies; // name,path
+	archive(includeTopologies);
+	for (auto& includeTopology : includeTopologies) {
+		file.includeTopologies.insert({ includeTopology[0], std::make_shared<TopologyFile>(includeTopology[1]) });
+	}
+
 	archive(file.molecules);	// Only write the name of the file
-	archive(file.moleculetypes);
+	archive(file.moleculetype);
 	archive(file.GetLocalAtoms());
 	archive(file.GetLocalSinglebonds());
 	archive(file.GetLocalPairs());
@@ -186,8 +208,15 @@ void WriteFileToBinaryCache(const TopologyFile& file, std::optional<fs::path> _p
 
 	archive(file.title);
 	archive(file.forcefieldIncludes);
+
+	std::vector<std::array<std::string, 2>> includeTopologies; // name,path
+	for (auto& [key, value] : file.includeTopologies) {
+		includeTopologies.push_back({ key, value->path.string()});
+	}
+	archive(includeTopologies);
+
 	archive(file.molecules);	// Only write the path of the file
-	archive(file.moleculetypes);
+	archive(file.moleculetype);
 	archive(file.GetLocalAtoms());
 	archive(file.GetLocalSinglebonds());
 	archive(file.GetLocalPairs());

@@ -88,13 +88,13 @@ int main() {
 
 
 
-		const fs::path work_dir = simulations_dir / "test";
+		/*const fs::path work_dir = simulations_dir / "test";
 		LipidsSelection lipids;
 		lipids.emplace_back(LipidSelect{ "DPPE", work_dir, 30.5 });
 		lipids.emplace_back(LipidSelect{ "DMPG", work_dir, 39.5 });
-		lipids.emplace_back(LipidSelect{ "cholesterol", work_dir, 10 });
+		lipids.emplace_back(LipidSelect{ "Cholesterol", work_dir, 10 });
 		lipids.emplace_back(LipidSelect{ "SM18", work_dir, 20 });
-		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);
+		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
 
 
 		//testBuildmembraneSmall(envmode, false);

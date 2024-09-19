@@ -17,7 +17,7 @@ namespace TestMembraneBuilder {
 		const fs::path mol_dir = work_dir / "molecule";
 
 		LipidsSelection lipidselection;
-		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
+		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "Cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
 			lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
@@ -47,12 +47,48 @@ namespace TestMembraneBuilder {
 		return LimaUnittestResult{ true , "No error", envmode == Full};
 	}
 
+	//static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode, bool do_em) {
+	//	const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
+	//	const fs::path mol_dir = work_dir / "molecule";
+
+	//	LipidsSelection lipidselection;
+	//	const std::array<std::string, 6> lipids = { "POPC", "CUST"};
+	//	for (const auto& lipidname : lipids) {
+	//		lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10. });	// 10% of each lipid, except 50% POPC
+	//	}
+	//	auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+	//	gro->printToFile(mol_dir / "membrane.gro");
+	//	top->printToFile(mol_dir / "membrane.top");
+
+	//	TopologyFile newTop{ mol_dir / "membrane.top" };
+	//	TopologyFile refTop{ mol_dir / "membrane_reference.top" };
+
+	//	ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
+	//	ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
+	//	ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
+	//	ASSERT(newTop.GetAllAnglebonds() == refTop.GetAllAnglebonds(), "Topology Anglebond Mismatch");
+	//	ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
+	//	ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
+
+	//	GroFile newGro{ mol_dir / "membrane.gro" };
+	//	GroFile refGro{ mol_dir / "membrane_reference.gro" };
+
+	//	ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
+	//	ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
+	//	for (int i = 0; i < newGro.atoms.size(); i++) {
+	//		ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
+	//	}
+
+	//	return LimaUnittestResult{ true , "No error", envmode == Full };
+	//}
+
+
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {
 		GroFile grofile;
 		grofile.box_size = Float3{ 5.f };
 		TopologyFile topfile;
 		const fs::path workDir = TestUtils::simulations_dir / "etc";
-		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
+		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"Cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
 

@@ -83,8 +83,13 @@ void TopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
 	oss << includeTopologyFile->name;
 }
 
-void TopologyFile::MoleculetypeEntry::composeString(std::ostringstream& oss) const {
-	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl;
+std::string TopologyFile::Moleculetype::composeString() const {
+	std::ostringstream oss;
+	const std::string legend = generateLegend({ "Name", "nrexcl" });
+	oss << "[ moleculetype ]\n";
+	oss << legend << "\n";
+	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n";
+	return oss.str();
 }
 
 void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
@@ -102,30 +107,6 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 		<< std::setw(10) << std::fixed << std::setprecision(3) << mass;
 }
 
-
-//void LoadDefaultIncludeTopologies(std::unordered_map<std::string, LazyLoadFile<TopologyFile>>& includedFiles, fs::path srcDir) {
-//	if (!fs::exists(srcDir) || !fs::is_directory(srcDir)) {
-//        throw std::invalid_argument("Source path is not a directory: " + srcDir.string());
-//    }
-//	for (const auto& entry : fs::directory_iterator(srcDir)) {
-//		if (entry.path().extension() == ".gro") {
-//			const std::string base_name = entry.path().stem().string();
-//			const fs::path itp_file = srcDir / (base_name + ".itp");
-//			if (fs::exists(itp_file)) {
-//				includedFiles.insert({ base_name, {itp_file} });
-//			}
-//		}
-//	}
-//}
-
-
-
-bool isFloat(const std::string& str) {
-	std::istringstream iss(str);
-	float f;
-	iss >> std::noskipws >> f; // noskipws considers leading/trailing whitespace invalid
-	return iss.eof() && !iss.fail();
-}
 
 GroFile::GroFile(const fs::path& path) : m_path(path){
 	if (!(path.extension().string() == std::string{ ".gro" }))
@@ -278,6 +259,7 @@ std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::string& f
 
 	return std::nullopt;
 }
+
 fs::path SearchForFile(const fs::path& workDir, const std::string& includeName) {
 	// First look relative to the current topology file
 	std::optional<fs::path> includePath = _SearchForFile(workDir, includeName);
@@ -303,19 +285,9 @@ bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int i
 	return true;
 }
 
-/// <summary></summary>
-/// <param name="line"></param>
-/// <param name="currentSection"></param>
-/// <param name="sectionGetter"></param>
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
 bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
-	//if (line.size() == 0) {
-	//	currentSection = no_section;
-	//	return true;
-	//}
-	//if (std::all_of(line.begin(), line.end(), isspace)) {	// Check if all chars in line is space
-	//	return true;	// TODO Set to nosection here
-	//}
+
 	if (line.empty() && currentSection == TopologySection::title) {
 		currentSection = no_section;
 		return true;
@@ -351,9 +323,11 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 			assert(molecule.includeTopologyFile == nullptr);
 			assert(molecule.name != "");
 
-			if (includedFiles.count(molecule.name) == 0)
-				includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
-			molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
+			if (!includeTopologies.contains(molecule.name)) {
+				throw std::runtime_error(std::format("Could not find include topology file: {}", molecule.name));
+			}
+
+			molecule.includeTopologyFile = includeTopologies.at(molecule.name);
 		}
 	}
 	else {
@@ -396,10 +370,22 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 					if (pathWithQuotes.size() < 3)
 						throw std::runtime_error("Include is not formatted as expected: " + line);
 
-					if (pathWithQuotes.find(".ff") != std::string::npos) {
-						const std::string forcefieldName = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
-						forcefieldIncludes.emplace_back(path.parent_path(), forcefieldName);
-					}						
+					std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
+
+					if (filename.find(".ff") != std::string::npos) {
+						forcefieldIncludes.emplace_back(path.parent_path(), filename);
+					}
+					else if (filename.find("posre") != std::string::npos) {
+						// Do nothing, not yet supported
+					}
+					else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
+						assert(fs::exists(path.parent_path() / filename));
+						auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename);
+						if (!includeTopology->moleculetype.has_value()) {						
+							throw std::runtime_error(std::format("Include topology did not contain a moleculetype section: {}", includeTopology->path.string()));
+						}
+						includeTopologies.insert({includeTopology->moleculetype.value().name, includeTopology});
+					}
 					else
 						otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));				
 				}
@@ -413,7 +399,6 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				title.append(line + "\n");	// +\n because getline implicitly strips it away.
 				break;
 			case TopologySection::molecules: {
-				// TODO: This is incorrect, we should have a section where we look for "#include" and include those files
 				std::string include_name;
 				iss >> include_name;
 
@@ -421,21 +406,24 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 				if (include_name == "SOL")
 					continue;
 
-
-				if (includedFiles.count(include_name) == 0) {
-					includedFiles.emplace(include_name, SearchForFile(path.parent_path(), include_name));
+				if (!includeTopologies.contains(include_name)) {
+					throw std::runtime_error(std::format("Could not find include topology file: {}", include_name));
 				}
 
 				const int globalIndexOfFirstParticle = molecules.entries.empty() 
 					? 0
 					: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
-				molecules.entries.emplace_back(include_name, includedFiles.at(include_name).Get(), globalIndexOfFirstParticle);
+				molecules.entries.emplace_back(include_name, includeTopologies.at(include_name), globalIndexOfFirstParticle);
+				break;
 			}
-			case moleculetype:
+			case TopologySection::moleculetype:
 			{
-				TopologyFile::MoleculetypeEntry moleculetype{};
-				iss >> moleculetype.name >> moleculetype.nrexcl;
-				moleculetypes.entries.emplace_back(moleculetype);
+				if (moleculetype.has_value()) {
+					throw std::runtime_error(std::format("A single topology file may not contain multiple molecule types: {}", this->path.string()));
+				}
+				TopologyFile::Moleculetype _moleculetype{};
+				iss >> _moleculetype.name >> _moleculetype.nrexcl;
+				moleculetype = _moleculetype;
 				break;
 			}
 			case TopologySection::atoms:
@@ -592,7 +580,7 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 
 
 
-std::string TopologyFile::generateLegend(std::vector<std::string> elements)
+std::string TopologyFile::generateLegend(const std::vector<std::string>& elements)
 {
 	std::ostringstream legend;
 	legend << ';'; // Start with a semicolon
@@ -607,41 +595,60 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
 	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expectec [.top/.itp]", ext)); }
 
-	std::ofstream file(path);
-	if (!file.is_open()) {
-		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+	{
+		std::ofstream file(path);
+		if (!file.is_open()) {
+			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+		}
+
+		file << title << "\n\n";
+
+		// TODO: What i currently use "molecules" for should actually be an "#include" argument..
+
+		for (const auto& include : forcefieldIncludes) {
+			if (include.isUserSupplied)
+				throw std::runtime_error("Writing a topology file with a user supplied forcefield is not yet supported");
+			file << ("#include \"" + include.name.string() + "\"\n");
+		}
+		file << "\n";
+
+		for (const auto& include : includeTopologies) {
+			file << ("#include \"topol_" + include.first + ".itp\"\n");
+		}
+		file << "\n";
+
+
+		if (!molecules.entries.empty()) { file << molecules.composeString(); }
+		if (moleculetype.has_value()) { file << moleculetype.value().composeString(); }
+
+
+		file << atoms.composeString();
+		file << singlebonds.composeString();
+		file << pairs.composeString();
+		file << anglebonds.composeString();
+		file << dihedralbonds.composeString();
+		file << improperdihedralbonds.composeString();
 	}
-
-	file << title << "\n\n";
-
-	// TODO: What i currently use "molecules" for should actually be an "#include" argument..
-
-	for (const auto& include : forcefieldIncludes) {
-		if (include.isUserSupplied)
-			throw std::runtime_error("Writing a topology file with a user supplied forcefield is not yet supported");
-		file << "#include \"" << include.path << "\"\n";
-	}
-	if (!molecules.entries.empty()) { file << molecules.composeString(); }
-	if (!moleculetypes.entries.empty()) { file << moleculetypes.composeString(); }
-
-	
-	file << atoms.composeString();
-	file << singlebonds.composeString();
-	file << pairs.composeString();
-	file << anglebonds.composeString();
-	file << dihedralbonds.composeString();
-	file << improperdihedralbonds.composeString();
 
 	// Also cache the file
 	WriteFileToBinaryCache(*this, path);
+
+	for (const auto& [name, include] : includeTopologies) {
+		include->printToFile(path.parent_path() / ("topol_" + name + ".itp"));
+	}
 }
 void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
-	if (includedFiles.count(other->name) == 0)
-		includedFiles.emplace(other->name, LazyLoadFile<TopologyFile>(other));
+
+	if (!other->moleculetype.has_value()) {
+		throw std::runtime_error(std::format("Trying to append a topology file without a moleculetype section: {}", other->path.string()));
+	}
+
+	if (!includeTopologies.contains(other->moleculetype.value().name))
+		includeTopologies.insert({ other->moleculetype.value().name, other });
 
 	const int globalIndexOfFirstParticle = molecules.entries.empty()
 		? 0 : molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
-	molecules.entries.emplace_back(other->name, includedFiles.at(other->name).Get(), globalIndexOfFirstParticle);
+	molecules.entries.emplace_back(other->name, includeTopologies.at(other->name), globalIndexOfFirstParticle);
 }
 
 

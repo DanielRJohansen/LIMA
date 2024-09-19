@@ -90,7 +90,7 @@ namespace cereal {
 	}
 
 	template <class Archive, typename EntryType>
-	void serialize(Archive& archive, Section<EntryType>& section) {
+	void serialize(Archive& archive, TopologyFile::Section<EntryType>& section) {
 		archive(section.entries);
 	}
 

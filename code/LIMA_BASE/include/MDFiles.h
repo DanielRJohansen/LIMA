@@ -51,27 +51,101 @@ struct GroFile {
 	}
 };
 
-template <typename EntryType>
-struct Section {
-	std::string title;	// or "directive" in gromacs terms
-	const std::string legend;
-	std::vector<EntryType> entries;
 
-	std::string composeString() const {
-		std::ostringstream oss;
+enum TopologySection {
+	// Keywords typically found in topologies
+	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
+	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
+	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
 
-		oss << title << '\n';
+	// custom one i defined to do some workarounds
+	includes
+};
 
-		oss << legend << "\n";
-		for (const EntryType& entry : entries) {
-			entry.composeString(oss);
-			oss << '\n';
+// .itp files follow a simple ruleset. Here we can read such a file, that is NOT a topology file
+// This class does NOT support recursive includes, so for reading topologies use the one above
+// It is also not very fast, since it stores a lot of data as strings
+class GenericItpFile {
+
+	// A section is simply a list of non-comment rows from the file
+	using Section = std::vector<std::string>;
+
+	std::unordered_map<TopologySection, Section> sections;
+	const Section emptySection;  // Default empty section
+
+public:
+	GenericItpFile(const fs::path& path);
+
+	const Section& GetSection(TopologySection section) const {
+		auto it = sections.find(section);
+		if (it == sections.end()) {
+			return emptySection;
 		}
-
-		oss << '\n';
-		return oss.str();
+		return it->second;
+	}
+	Section& GetSection(TopologySection section) {
+		if (!sections.contains(section)) {
+			sections.insert({ section, emptySection });
+		}
+		return sections.at(section);
 	}
 };
+
+
+class PDBfile {
+	struct ATOM {
+		int atomSerialNumber;
+		char atomName[4];
+		char altLocIndicator;
+		char resName[3];
+		char chainID;
+		int resSeq;
+		char iCode;
+		Float3 position; // [nm] (but Angstrom in actual file, so beware of conversion)
+		float occupancy;
+		float tempFactor;
+		char segmentIdentifier[4];
+		char elementSymbol;
+		char charge[2];
+	};
+public:
+
+	std::vector<ATOM> ATOMS;
+	std::vector<ATOM> HETATMS;
+	fs::path mPath;
+
+
+	PDBfile(const fs::path&);
+};
+
+class TopologyFile;
+
+namespace MDFiles {
+	namespace fs = std::filesystem;
+
+	struct FilePair {
+		std::shared_ptr<GroFile> grofile;
+		std::shared_ptr<TopologyFile> topfile;
+	};
+
+	// Takes the gro and top of "right" and inserts it into left
+	void MergeFiles(GroFile& leftGro, TopologyFile& leftTop,
+		GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop);
+
+	// Maybe add simparams here too?
+	struct SimulationFilesCollection {
+		SimulationFilesCollection() {};
+		SimulationFilesCollection(const fs::path& workDir);
+		std::unique_ptr<GroFile> grofile;
+		std::unique_ptr<TopologyFile> topfile;
+	};
+}
+
+
+
+
+
+
 
 class TopologyFile {	//.top or .itp
 public:
@@ -89,7 +163,27 @@ public:
 		int nrexcl{};
 		std::string composeString() const;
 	};
-	
+	template <typename EntryType> struct Section {
+		std::string title;	// or "directive" in gromacs terms
+		const std::string legend;
+		std::vector<EntryType> entries;
+
+		std::string composeString() const {
+			std::ostringstream oss;
+
+			oss << title << '\n';
+			oss << legend << "\n";
+			for (const EntryType& entry : entries) {
+				entry.composeString(oss);
+				oss << '\n';
+			}
+
+			oss << '\n';
+			return oss.str();
+		}
+	};
+
+
 	TopologyFile() {}										// Create an empty file	
 	TopologyFile(const fs::path& path);	// Load a file from path	
 
@@ -298,8 +392,6 @@ struct TopologyFile::ImproperDihedralBond : GenericBond<4> {};
 template <typename T>
 class TopologyFile::SectionRange {
 public:
-
-
 	template <typename TopolPointerType, typename ReturnReferenceType>
 	class _Iterator {
 	public:
@@ -415,101 +507,3 @@ public:
 private:
 	TopologyFile* const topology = nullptr;
 };
-
-enum TopologySection {
-	// Keywords typically found in topologies
-	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
-	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
-	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
-
-	// custom one i defined to do some workarounds
-	includes
-};
-
-// .itp files follow a simple ruleset. Here we can read such a file, that is NOT a topology file
-// This class does NOT support recursive includes, so for reading topologies use the one above
-// It is also not very fast, since it stores a lot of data as strings
-class GenericItpFile {
-
-	// A section is simply a list of non-comment rows from the file
-	using Section = std::vector<std::string>;
-
-	std::unordered_map<TopologySection, Section> sections;
-	const Section emptySection;  // Default empty section
-
-public:
-	GenericItpFile(const fs::path& path);
-
-	const Section& GetSection(TopologySection section) const {
-		auto it = sections.find(section);
-		if (it == sections.end()) {
-			return emptySection;
-		}
-		return it->second;
-	}
-	Section& GetSection(TopologySection section) {
-		if (!sections.contains(section)) {
-			sections.insert({ section, emptySection });
-		}
-		return sections.at(section);
-	}
-};
-
-
-class PDBfile {
-	struct ATOM {
-		int atomSerialNumber;
-		char atomName[4];
-		char altLocIndicator;
-		char resName[3];
-		char chainID;
-		int resSeq;
-		char iCode;
-		Float3 position; // [nm] (but Angstrom in actual file, so beware of conversion)
-		float occupancy;
-		float tempFactor;
-		char segmentIdentifier[4];
-		char elementSymbol;
-		char charge[2];
-	};
-public:
-
-	std::vector<ATOM> ATOMS;
-	std::vector<ATOM> HETATMS;
-	fs::path mPath;
-
-
-	PDBfile(const fs::path&);
-};
-
-
-
-
-
-
-namespace MDFiles {
-	namespace fs = std::filesystem;
-
-	struct FilePair {
-		std::shared_ptr<GroFile> grofile;
-		std::shared_ptr<TopologyFile> topfile;
-	};
-
-	// Takes the gro and top of "right" and inserts it into left
-	void MergeFiles(GroFile& leftGro, TopologyFile& leftTop, 
-		GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop);
-
-	// Maybe add simparams here too?
-	struct SimulationFilesCollection {
-		SimulationFilesCollection() {};
-		SimulationFilesCollection(const fs::path& workDir);
-		std::unique_ptr<GroFile> grofile;
-		std::unique_ptr<TopologyFile> topfile;
-	};
-
-
-
-
-	
-
-}

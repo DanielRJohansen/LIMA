@@ -59,7 +59,35 @@ def plot_histogram(all_bins, all_counts):
     plt.show()
 
 
+
+
+def count_lines_in_directory():
+    directory = R"C:\Users\Daniel\git_repo\LIMA\code"
+
+    def count_lines_in_file(file_path):
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+            return sum(1 for _ in file)
+
+    total_lines = 0
+    extensions = ['.cpp', '.h', '.cuh', '.cu']
+    excluded_dirs = {'LIMA_DEPENDS', 'dependencies'}
+
+    for root, dirs, files in os.walk(directory):
+        # Remove excluded directories from the walk
+        dirs[:] = [d for d in dirs if d not in excluded_dirs]
+        
+        for file in files:
+            if any(file.endswith(ext) for ext in extensions):
+                file_path = os.path.join(root, file)
+                total_lines += count_lines_in_file(file_path)
+
+    print(f"Total lines of code: {total_lines}")
+
+
 if __name__ == "__main__":
+    count_lines_in_directory()
+    exit(0)
+
     # Get the current folder path
     folder_path = R"C:\Users\Daniel\git_repo\LIMA\resources\Slipids"
 

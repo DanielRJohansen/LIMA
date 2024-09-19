@@ -189,9 +189,8 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 			if constexpr (energyMinimize) {				
 				const float maxForceMagnitude = 1000.f;
 				if (force.len() > maxForceMagnitude) {
-					printf("Magnitude %f\n", force.len());
-					force = force.norm_d() * maxForceMagnitude;
-					
+					//printf("Magnitude %f\n", force.len());
+					force = force.norm_d() * maxForceMagnitude;					
 				}
 			}
 

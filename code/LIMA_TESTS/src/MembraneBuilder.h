@@ -47,40 +47,34 @@ namespace TestMembraneBuilder {
 		return LimaUnittestResult{ true , "No error", envmode == Full};
 	}
 
-	//static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode, bool do_em) {
-	//	const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
-	//	const fs::path mol_dir = work_dir / "molecule";
+	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
+		const fs::path work_dir = simulations_dir / "BuildMembraneCustom";
+		const fs::path mol_dir = work_dir / "molecule";
 
-	//	LipidsSelection lipidselection;
-	//	const std::array<std::string, 6> lipids = { "POPC", "CUST"};
-	//	for (const auto& lipidname : lipids) {
-	//		lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10. });	// 10% of each lipid, except 50% POPC
-	//	}
-	//	auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
-	//	gro->printToFile(mol_dir / "membrane.gro");
-	//	top->printToFile(mol_dir / "membrane.top");
+		TestUtils::CleanDirectory(mol_dir);
 
-	//	TopologyFile newTop{ mol_dir / "membrane.top" };
-	//	TopologyFile refTop{ mol_dir / "membrane_reference.top" };
+		LipidsSelection lipidselection;
+		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };
+		for (const auto& [lipidname, percentage] : lipids) {
+			lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
+		}
 
-	//	ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
-	//	ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
-	//	ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
-	//	ASSERT(newTop.GetAllAnglebonds() == refTop.GetAllAnglebonds(), "Topology Anglebond Mismatch");
-	//	ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
-	//	ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
+		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+		gro->printToFile(mol_dir / "membrane.gro");
+		top->printToFile(mol_dir / "membrane.top");
 
-	//	GroFile newGro{ mol_dir / "membrane.gro" };
-	//	GroFile refGro{ mol_dir / "membrane_reference.gro" };
+		TopologyFile newTop{ mol_dir / "membrane.top" };
+		GroFile newGro{ mol_dir / "membrane.gro" };
 
-	//	ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
-	//	ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
-	//	for (int i = 0; i < newGro.atoms.size(); i++) {
-	//		ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
-	//	}
+		ASSERT(newTop.GetAllAtoms() == top->GetAllAtoms(), "Topology Atom Mismatch");
 
-	//	return LimaUnittestResult{ true , "No error", envmode == Full };
-	//}
+		SimParams params{};
+		params.em_variant = true;
+		Environment env(work_dir, envmode, false);
+		env.CreateSimulation(newGro, newTop, params);
+
+		return LimaUnittestResult{ true , "No error", envmode == Full };
+	}
 
 
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {

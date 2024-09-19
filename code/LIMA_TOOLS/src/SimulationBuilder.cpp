@@ -20,8 +20,10 @@ LipidSelect::LipidSelect(const std::string& lipidname, const fs::path& workDir, 
 			lipidname, workDir.string(), defaultLipidsDir.string()));
 	}
 	
-	grofile = std::make_unique<GroFile>(defaultLipidsDir / (lipidname + ".gro"));
-	topfile = std::make_unique<TopologyFile>(defaultLipidsDir / (lipidname + ".itp"));
+	const fs::path& lipidDir = userSupplied ? workDir : defaultLipidsDir;
+
+	grofile = std::make_unique<GroFile>(lipidDir / (lipidname + ".gro"));
+	topfile = std::make_unique<TopologyFile>(lipidDir / (lipidname + ".itp"));
 }
 
 

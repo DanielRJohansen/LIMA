@@ -96,7 +96,7 @@ int main() {
 		lipids.emplace_back(LipidSelect{ "SM18", work_dir, 20 });
 		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
 
-
+		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//testBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
@@ -176,6 +176,7 @@ void runAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
+	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
 

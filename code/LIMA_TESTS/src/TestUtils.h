@@ -37,6 +37,23 @@ namespace TestUtils {
 		}
 	}
 
+	void CleanDirectory(const fs::path& dir) {
+		if (dir.string().find("LIMA_data") == std::string::npos) {
+			throw std::runtime_error("LIMA is not allowed to clean this directory");
+		}
+
+		if (!fs::exists(dir) || !fs::is_directory(dir)) {
+			std::cerr << "Path does not exist or is not a directory: " << dir << std::endl;
+			return;
+		}
+
+		for (const auto& entry : fs::directory_iterator(dir)) {
+			if (fs::is_regular_file(entry.path())) {
+				fs::remove(entry.path());  // Delete the file
+			}
+		}
+	}
+
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...

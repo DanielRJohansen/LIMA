@@ -372,14 +372,13 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 					std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
 
-					if (filename.find(".ff") != std::string::npos) {
+					if (filename.find(".ff") != std::string::npos || filename.find("forcefield") != std::string::npos) {
 						forcefieldIncludes.emplace_back(path.parent_path(), filename);
 					}
 					else if (filename.find("posre") != std::string::npos) {
 						// Do nothing, not yet supported
 					}
 					else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
-						assert(fs::exists(path.parent_path() / filename));
 						auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename);
 						if (!includeTopology->moleculetype.has_value()) {						
 							throw std::runtime_error(std::format("Include topology did not contain a moleculetype section: {}", includeTopology->path.string()));
@@ -603,11 +602,9 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 
 		file << title << "\n\n";
 
-		// TODO: What i currently use "molecules" for should actually be an "#include" argument..
 
 		for (const auto& include : forcefieldIncludes) {
-			if (include.isUserSupplied)
-				throw std::runtime_error("Writing a topology file with a user supplied forcefield is not yet supported");
+			include.CopyToDirectory(path.parent_path());
 			file << ("#include \"" + include.name.string() + "\"\n");
 		}
 		file << "\n";
@@ -754,10 +751,6 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 		// Check if this line contains another illegal keyword
 		if (firstNonspaceCharIs(line, '#')) {// Skip ifdef, include etc TODO: this needs to be implemented at some point
-			if (line.find("#include") != std::string::npos) {
-				// TODO: this is prob dangerous, but we need includes for forcefields
-				throw std::runtime_error("This class should never be reading files containing thye #include keyword!");
-			}
 			continue;
 		}
 
@@ -774,17 +767,70 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 	}
 }
 
+std::optional<std::string> extractStringBetweenQuotationMarks(const std::string& in) {
+	size_t first_quote = in.find('"');
+	if (first_quote == std::string::npos) {
+		return std::nullopt;
+	}
+
+	size_t second_quote = in.find('"', first_quote + 1);
+	if (second_quote == std::string::npos) {
+		return std::nullopt;
+	}
+
+	return in.substr(first_quote + 1, second_quote - first_quote - 1);
+}
+
 // If a forcefield with the specified name is available relative to the topology's path, then we take that user supplied path and use
 // Otherwise we assume the name is simply pointing to a LIMA forcefield.
 TopologyFile::ForcefieldInclude::ForcefieldInclude(const fs::path& topolPath, const std::string& includeName) :
 	isUserSupplied(fs::exists(topolPath / includeName)),
 	path(fs::exists(topolPath / includeName) ? topolPath / includeName : Filehandler::GetLimaDir() / "resources" / "forcefields" / includeName),
-	name(fs::exists(topolPath / includeName) ? topolPath / includeName : includeName)
+	name(includeName)
 {
 	if (!fs::exists(path)) {
 		throw std::runtime_error(std::format("Forcefield include \"{}\" was not found", path.string()));
 	}
 }
+void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory) const {
+	if (!fs::is_directory(directory)) {
+		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
+	}
+
+	// Create the target path for the main file
+	fs::path toplevelForcefieldTargetPath = directory / name;
+
+	// Copy the main file
+	if (!fs::exists(toplevelForcefieldTargetPath.parent_path())) {
+		fs::create_directories(toplevelForcefieldTargetPath.parent_path()); // Create parent directories if they don't exist
+	}
+
+	fs::copy_file(path, toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
+
+
+	std::vector<fs::path> subIncludes;
+	GenericItpFile ffInclude(path);
+
+	for (const std::string& subInclude : ffInclude.GetSection(includes)) {
+		auto subIncludeName = extractStringBetweenQuotationMarks(subInclude);
+		if (!subIncludeName.has_value()) {
+			throw std::runtime_error("Could not extract include name from include directive: " + subInclude);
+		}
+		subIncludes.emplace_back(path.parent_path() / subIncludeName.value());
+	}
+
+	// Copy sub-includes
+	for (const auto& include : subIncludes) {
+		fs::path includeTargetPath = toplevelForcefieldTargetPath.parent_path() / include.filename();
+		if (!fs::exists(includeTargetPath.parent_path())) {
+			fs::create_directories(includeTargetPath.parent_path()); // Ensure directory structure exists
+		}
+
+		fs::copy_file(include, includeTargetPath, fs::copy_options::overwrite_existing);
+	}
+}
+
+
 
 std::vector<fs::path> TopologyFile::GetForcefieldPaths() const {
 	std::vector<fs::path> paths;

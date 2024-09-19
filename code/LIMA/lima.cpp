@@ -6,7 +6,6 @@
 #include "Environment.h"
 
 #include "selftest.h"
-#include "MoleculeGraph.h"
 
 #include "CommandlineUtils.h"
 
@@ -18,35 +17,31 @@
 namespace fs = std::filesystem;
 
 
-int reorderMoleculeParticles(int argc, char** argv) {
-	if (argc != 3)
-		throw std::runtime_error(std::format("reordermoleculeparticles expected 2 arguments (.gro file & .top file), but got {}", argc - 1));
+static const std::string helpText = R"(
+Usage: lima <program> [OPTIONS]
 
-	const fs::path gro_path_in = argv[1];
-	const fs::path top_path_in = argv[2];
-	const fs::path gro_path_out = argv[3];
-	const fs::path top_path_out = argv[4];
+Description:
+    LIMA is a suite of tools for molecular dynamics and membrane simulation tasks. 
+    Each program in the suite has its own set of options and parameters.
+	Input "lima <program> -help" for help on a specific program.
 
-	GroFile grofile{gro_path_in};
-	TopologyFile topfile{top_path_in};
+Programs:
+    mdrun               Runs the molecular dynamics simulation.
+    buildmembrane       Builds a membrane structure with specified lipid composition and box size. 
+    makesimparams       Generates default simulation parameters and writes them to a file.
+    selftest            Runs internal self-tests to validate functionality.
 
-	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
+Options:
+    -help, -h           Displays this help message and exits.
 
-	grofile.printToFile(gro_path_out);
-	topfile.printToFile(top_path_out);
+Examples:
+    lima buildmembrane -help
+        Displays help for the buildmembrane program.
+        
+    lima makesimparams
+        Generates and outputs default simulation parameters to a file in the current directory
+)";
 
-	return 0;
-}
-
-// TODO: Expand this with the options for each program
-void printHelp() {
-	std::cout << "LIMA - the faster Molecular Dynamics Engine\n";
-	std::cout << "Usage: lima <program> <args>\n";
-	std::cout << "Available programs:\n";
-	std::cout << "\tmdrun\n";
-	std::cout << "\tbuildmembrane\n";
-	std::cout << "\tmakesimparams\n";
-}
 
 
 int main(int argc, char** argv) 
@@ -57,9 +52,9 @@ int main(int argc, char** argv)
 		if (program == "mdrun") { mdrun(argc, argv); }
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
-		else if (program == "-help" || program =="-h"||program == "help") { printHelp(); }
+		else if (program == "-help" || program =="-h"||program == "help") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
-		else if (program == "getforcefieldparams") { GetForcefieldParams(); }
+		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
 		}

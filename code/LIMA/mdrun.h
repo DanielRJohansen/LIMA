@@ -29,25 +29,25 @@ struct MdrunSetup {
 MdrunSetup parseProgramArguments(int argc, char** argv) {
 	MdrunSetup setup{};
 
-	char* user_structure = getCmdOption(argv, argv + argc, "-structure");
+	char* user_structure = CmdLineUtils::getCmdOption(argv, argv + argc, "-structure");
 	if (user_structure)
 	{
 		setup.structure = setup.work_dir / user_structure;
 	}
 
-	char* user_topol = getCmdOption(argv, argv + argc, "-topology");
+	char* user_topol = CmdLineUtils::getCmdOption(argv, argv + argc, "-topology");
 	if (user_topol)
 	{
 		setup.topol = setup.work_dir / user_topol;
 	}
 
-	char* user_params = getCmdOption(argv, argv + argc, "-simparams");
+	char* user_params = CmdLineUtils::getCmdOption(argv, argv + argc, "-simparams");
 	if (user_params)
 	{
 		setup.simpar = setup.work_dir / user_params;
 	}
 
-	char* user_envmode = getCmdOption(argv, argv + argc, "-envmode");
+	char* user_envmode = CmdLineUtils::getCmdOption(argv, argv + argc, "-envmode");
 	if (user_envmode)
 	{
 		const std::string user_envmode_str(user_envmode);

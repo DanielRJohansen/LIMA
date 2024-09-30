@@ -198,7 +198,7 @@ void Environment::run(bool doPostRunEvents) {
 	std::unique_ptr<Display> display = nullptr;
 
 	if (m_mode == Full) {
-		display = std::make_unique<Display>(m_mode, Float3{ boxparams.boxSize });
+		display = std::make_unique<Display>(m_mode);
 		display->WaitForDisplayReady();
 	}
 
@@ -373,7 +373,7 @@ void Environment::RenderSimulation() {
 
 	if (!prepareForRun()) { throw std::runtime_error("Failed to prepare simulation "); }
 
-	std::unique_ptr<Display> display = std::make_unique<Display>(m_mode, boxparams.boxSize);
+	std::unique_ptr<Display> display = std::make_unique<Display>(m_mode);
 	
 	display->Render(Rendering::Task(std::make_unique<Rendering::SimulationTask>(
 		engine->runstatus.most_recent_positions, compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod

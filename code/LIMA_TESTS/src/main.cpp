@@ -40,7 +40,7 @@ void runAllUnitTests();
 
 
 //void DisplayHelloWorld() {
-//	Display display{ Full , 1.f};
+//	Display display{ Full};
 //	
 //	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
 //	Compound compound;
@@ -84,16 +84,32 @@ int main() {
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
+			Environment env{ grofile.m_path.parent_path(), Headless, false };
+			SimParams params;
+			params.n_steps = 2;
+			params.dt = 0;
+			params.data_logging_interval = 1;
+			params.em_variant = true;
+			env.CreateSimulation(grofile, topfile, params);
+			env.run(false);
+			auto sim = env.getSim();
+			Display d(Full);
 
+			d.Render(
+				std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
+				true);
+			};
 
+		//Lipids::_MakeLipids(renderCallback);
 
 
 		/*const fs::path work_dir = simulations_dir / "test";
-		LipidsSelection lipids;
-		lipids.emplace_back(LipidSelect{ "DPPE", work_dir, 30.5 });
-		lipids.emplace_back(LipidSelect{ "DMPG", work_dir, 39.5 });
-		lipids.emplace_back(LipidSelect{ "Cholesterol", work_dir, 10 });
-		lipids.emplace_back(LipidSelect{ "SM18", work_dir, 20 });
+		Lipids::Selection lipids;
+		lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
+		lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
+		lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
+		lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
 		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);

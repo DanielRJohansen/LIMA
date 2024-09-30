@@ -4,19 +4,10 @@
 
 #include "MDFiles.h"
 #include "Geometry.cuh"
+#include "Lipids.h"
 
 #include <algorithm>
-struct LipidSelect {
-	LipidSelect(const std::string& lipidname, const fs::path& workDir, double percentage);
 
-	const bool userSupplied = false;
-	const std::string lipidname;
-	const double percentage;
-	std::shared_ptr<GroFile> grofile;
-	std::shared_ptr<TopologyFile> topfile;
-};
-// Since this is a vector of structs with unique_ptrs, it can never be copied, or resized
-using LipidsSelection = std::vector<LipidSelect>;
 
 struct AtomtypeSelect {
 	const TopologyFile::AtomsEntry atomtype;
@@ -45,12 +36,12 @@ namespace SimulationBuilder {
 	void InsertSubmoleculesOnSphere(
 		GroFile& targetGrofile,
 		TopologyFile& targetTopol,
-		LipidsSelection,
+		Lipids::Selection,
 		int nMoleculesToInsert,
 		float sphereRadius,
 		const Float3& sphereCenter
 	);
 
 
-	FilePair CreateMembrane(const LipidsSelection& lipidselection, Float3 boxSize, float membraneCenter);
+	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
 };

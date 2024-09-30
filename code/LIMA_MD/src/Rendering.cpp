@@ -67,6 +67,8 @@ void Display::_RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles) {
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
+    camera.Update(task.boxparams.boxSize);
+
     if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
         throw std::runtime_error("Invalid number of compounds");
 
@@ -147,6 +149,8 @@ void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
     if (!drawNormalsShader)
         drawNormalsShader = std::make_unique<DrawNormalsShader>();
 
+    camera.Update(task.boxSize);
+
     if (renderAtoms) {
         // Map buffer object for writing from CUDA
         RenderAtom* renderAtomsBuffer;
@@ -192,101 +196,14 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 }
 
 
-//void CopyBufferIntoCudaIntoOpengl(cudaGraphicsResource** renderAtomsBufferCudaResource, Float3 boxSize, std::optional<Float3> pointsColor, const std::vector<Float3>& points) {
-//    // Map buffer object for writing from CUDA
-//    RenderAtom* renderAtomsBuffer;
-//    cudaGraphicsMapResources(1, renderAtomsBufferCudaResource, 0);
-//    size_t num_bytes = 0;
-//    cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, *renderAtomsBufferCudaResource);
-//    assert(num_bytes >= points.size() * sizeof(RenderAtom));
-//
-//
-//    std::vector<RenderAtom> renderAtoms(points.size());
-//    for (int i = 0; i < points.size(); i++) {
-//        renderAtoms[i] = RenderAtom{ points[i], boxSize, 'O' };
-//        if (pointsColor.has_value())
-//            renderAtoms[i].color = pointsColor.value().Tofloat4(1.f);
-//    }
-//
-//    cudaMemcpy(renderAtomsBuffer, renderAtoms.data(), sizeof(RenderAtom) * points.size(), cudaMemcpyHostToDevice);
-//
-//    // Release buffer object from CUDA
-//    cudaGraphicsUnmapResources(1, renderAtomsBufferCudaResource, 0);
-//}
-
-//
-//void Display::RenderLoop(std::vector<FacetTask>& facetTasks, std::vector<PointsTask>& pointsTasks, Float3 boxSize, std::optional<std::chrono::milliseconds> duration)
-//{
-//    if (!drawBoxOutlineShader)
-//        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
-//
-//    if (!drawTrianglesShader)
-//        drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
-//
-//    int maxPoints = 0;
-//    for (const auto& task : pointsTasks)
-//		maxPoints = std::max(maxPoints, (int)task.points.size());
-//
-//    if (!drawAtomsShader || drawAtomsShader->numAtomsReservedInRenderatomsBuffer < maxPoints)
-//        drawAtomsShader = std::make_unique<DrawAtomsShader>(maxPoints, &renderAtomsBufferCudaResource);
-//
-//    if (!drawNormalsShader)
-//        drawNormalsShader = std::make_unique<DrawNormalsShader>();
-//
-//
-//    TimeIt timer{};
-//
-//    while (true) {
-//
-//        //if (!checkWindowStatus())
-//        //    break;
-//
-//        if (debugValue == 1) {
-//			debugValue = 0;
-//			break;
-//		}
-//
-//        if (duration.has_value() && timer.elapsed() > duration)
-//			break;
-//
-//
-//        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-//
-//        const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight);
-//        drawBoxOutlineShader->Draw(MVP);
-//
-//
-//        for (const auto& task : pointsTasks) {
-//            CopyBufferIntoCudaIntoOpengl(&renderAtomsBufferCudaResource, boxSize, task.pointsColor, task.points);
-//            drawAtomsShader->Draw(MVP, task.points.size());
-//        }
-//
-//        for (const auto& task : facetTasks) {
-//            Facet* facetsDev;
-//            cudaMalloc(&facetsDev, sizeof(Facet) * task.facets.size());
-//            cudaMemcpy(facetsDev, task.facets.data(), sizeof(Facet) * task.facets.size(), cudaMemcpyHostToDevice);
-//            drawTrianglesShader->Draw(MVP, facetsDev, task.facets.size(), task.facetDrawMode, boxSize);
-//            if (task.drawFacetNormals)
-//                drawNormalsShader->Draw(MVP, facetsDev, task.facets.size(), boxSize);
-//            cudaFree(facetsDev);
-//        }
-//
-//
-//        // Swap front and back buffers
-//        glfwSwapBuffers(window);
-//
-//        fps.NewFrame();
-//        std::string windowText = window_title + "    FPS: " + std::to_string(fps.GetFps());
-//        glfwSetWindowTitle(window, windowText.c_str());
-//    }
-//}
-
 void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsShader)
 		drawAtomsShader = std::make_unique<DrawAtomsShader>(task.grofile.atoms.size(), &renderAtomsBufferCudaResource);
+
+    camera.Update(task.grofile.box_size);
 
 	// Preprocess the renderAtoms
 	{

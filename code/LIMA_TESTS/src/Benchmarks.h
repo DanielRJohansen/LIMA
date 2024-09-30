@@ -24,9 +24,9 @@ namespace Benchmarks {
 		//	const float boxlen = 23.f;
 
 		//	env.CreateSimulation(boxlen);
-		//	LipidsSelection lipidselection;
-		//	for (const auto& name : LipidSelect::valid_lipids) {
-		//		lipidselection.emplace_back(LipidSelect{ name, name == "POPC" ? 50 : 10 });	// 10% of each lipid, except 50% POPC
+		//	Lipids::Selection lipidselection;
+		//	for (const auto& name : Lipids::Select::valid_lipids) {
+		//		lipidselection.emplace_back(Lipids::Select{ name, name == "POPC" ? 50 : 10 });	// 10% of each lipid, except 50% POPC
 		//	}
 
 		//	auto [membraneGrofile, membraneTopfile] = Programs::CreateMembrane(work_dir, lipidselection, Float3{boxlen}, boxlen / 4.f, envmode);

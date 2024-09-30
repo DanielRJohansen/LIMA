@@ -13,12 +13,11 @@ namespace Programs {
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 
-	MoleculeHullCollection MakeLipidVesicle(GroFile&, TopologyFile&, LipidsSelection, float vesicleRadius, 
+	MoleculeHullCollection MakeLipidVesicle(GroFile&, TopologyFile&, Lipids::Selection, float vesicleRadius, 
 		Float3 vesicleCenter, std::optional<int> numLipids=std::nullopt);
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 
-	MDFiles::FilePair CreateMembrane(const fs::path& workDir, LipidsSelection&, Float3 boxSize, float membraneCenterZ, EnvMode);
+	MDFiles::FilePair CreateMembrane(const fs::path& workDir, Lipids::Selection&, Float3 boxSize, float membraneCenterZ, EnvMode);
 
-	void ReorderLipidAndDivideIntoCompoundsizedSections(GroFile&, TopologyFile&);
 } // namespace Programs

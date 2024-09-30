@@ -16,10 +16,10 @@ namespace TestMembraneBuilder {
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 		const fs::path mol_dir = work_dir / "molecule";
 
-		LipidsSelection lipidselection;
+		Lipids::Selection lipidselection;
 		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "Cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
-			lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
+			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
 		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
 		gro->printToFile(mol_dir / "membrane.gro");
@@ -53,10 +53,10 @@ namespace TestMembraneBuilder {
 
 		TestUtils::CleanDirectory(mol_dir);
 
-		LipidsSelection lipidselection;
+		Lipids::Selection lipidselection;
 		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };
 		for (const auto& [lipidname, percentage] : lipids) {
-			lipidselection.emplace_back(LipidSelect{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
+			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
 		}
 
 		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);

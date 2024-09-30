@@ -104,9 +104,9 @@ int buildMembrane(int argc, char** argv) {
 
     const SimParams params{ SimParams::defaultPath() };
 
-	LipidsSelection lipidselection;
+	Lipids::Selection lipidselection;
 	for (const auto& lipid : setup.lipids) {
-		lipidselection.emplace_back(LipidSelect{ lipid.first, setup.work_dir, lipid.second });
+		lipidselection.emplace_back(Lipids::Select{ lipid.first, setup.work_dir, lipid.second });
 	}
     auto [grofile, topfile] = Programs::CreateMembrane(setup.work_dir, lipidselection, setup.membraneCenterZ, true, setup.envmode);
 

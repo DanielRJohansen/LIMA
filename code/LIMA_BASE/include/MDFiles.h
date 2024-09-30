@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = true;
+const bool ENABLE_FILE_CACHING = false;
 
 
 namespace fs = std::filesystem;

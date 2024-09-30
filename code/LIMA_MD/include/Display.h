@@ -37,8 +37,9 @@ class Camera {
 	float pitch = 0;
 
 public:
-	Camera(Float3 center);
+	Camera(Float3 boxSize);
 	void Update(float deltaYaw, float deltaPitch, float deltaDist);
+	void Update(Float3 boxSize);
 
 	glm::mat4 View();
 	glm::mat4 Projection();
@@ -88,7 +89,7 @@ namespace Rendering {
 class Display {
 public:
 	// Functions called by main thread only
-	Display(EnvMode, Float3 boxSize=Float3{0});
+	Display(EnvMode);
 	~Display();
 	void WaitForDisplayReady();
 

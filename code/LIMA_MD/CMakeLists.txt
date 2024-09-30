@@ -8,6 +8,7 @@ add_library(LIMA_MD STATIC
     src/Interface.cpp
     src/Programs.cpp
     src/Rendering.cpp
+    src/Lipids.cpp
 )
 
 

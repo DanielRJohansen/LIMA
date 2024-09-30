@@ -53,7 +53,7 @@ public:
 	/// </summary>
 	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
 	/// which ensures all particles are inside the box</param>
-	//void createMembrane(LipidsSelection& lipidselection, bool carryout_em = true);
+	//void createMembrane(Lipids::Selection& lipidselection, bool carryout_em = true);
 
 	/// <summary>
 	/// Create .gro .top and simparams.txt files in the current directory

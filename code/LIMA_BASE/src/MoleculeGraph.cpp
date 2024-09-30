@@ -220,7 +220,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 
 	// Overwrite all references to gro_ids in the files	
 	for (auto& atom : grofile.atoms) {
-		if (map[atom.gro_id-1] == -1)
+		if (map[atom.gro_id-1] < 0)
 			throw std::runtime_error("Invalid gro_id in map");
 		atom.gro_id = map[atom.gro_id-1];
 	}

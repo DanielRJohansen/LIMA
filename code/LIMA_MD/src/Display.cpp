@@ -120,9 +120,9 @@ void Display::Setup() {
     }
 }
 
-Display::Display(EnvMode envmode, Float3 boxSize) :
+Display::Display(EnvMode envmode) :
     logger(LimaLogger::LogMode::compact, envmode, "display"),
-    camera(boxSize/2.f)
+    camera(2.f)
 {
     renderThread = std::jthread([this] {
         try {
@@ -294,13 +294,15 @@ bool Display::initGLFW() {
 }
 
 
-Camera::Camera(Float3 center) : center(center), dist(-4.0f * center.y) {
-
-}
+Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}
 void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
     yaw += deltaYaw;
     pitch += deltaPitch;
     dist += deltaDist;
+}
+void Camera::Update(Float3 boxSize) {
+    if (center != boxSize / 2.f)
+        *this = Camera(boxSize);
 }
 
 

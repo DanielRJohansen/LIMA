@@ -15,7 +15,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(LIMA_TOOLS LIMA_BASE)
-
+target_link_libraries(LIMA_TOOLS LIMA_MD)
 
 if (UNIX)
     target_compile_options(LIMA_TOOLS PRIVATE -use_fast_math -O3)

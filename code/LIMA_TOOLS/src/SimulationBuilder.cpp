@@ -1,30 +1,16 @@
 #include "SimulationBuilder.h"
 
+#include "BoundaryConditionPublic.h"
+#include "EngineCore.h"
+#include "Statistics.h"
+#include "MoleculeGraph.h"
+
 #include <format>
 #include <functional>
 #include <algorithm>
 #include <random>
-#include "BoundaryConditionPublic.h"
-#include "EngineCore.h"
 
-#include "Statistics.h"
-LipidSelect::LipidSelect(const std::string& lipidname, const fs::path& workDir, double percentage) : 
-	userSupplied(fs::exists(workDir / (lipidname + ".gro")) && fs::exists(workDir / (lipidname + ".itp"))),
-	lipidname(lipidname), 
-	percentage(percentage) 
-{	
-	const fs::path defaultLipidsDir = Filehandler::GetLimaDir() / ("resources/Slipids");
 
-	if (!userSupplied && !fs::exists(defaultLipidsDir / (lipidname + ".itp"))) {
-		throw std::runtime_error(std::format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
-			lipidname, workDir.string(), defaultLipidsDir.string()));
-	}
-	
-	const fs::path& lipidDir = userSupplied ? workDir : defaultLipidsDir;
-
-	grofile = std::make_unique<GroFile>(lipidDir / (lipidname + ".gro"));
-	topfile = std::make_unique<TopologyFile>(lipidDir / (lipidname + ".itp"));
-}
 
 
 
@@ -55,7 +41,7 @@ Float3 calcDimensions(const GroFile& grofile)
 	return dims;
 }
 
-float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) {
+float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
 		for (const auto& atom : lipid.grofile->atoms) {
@@ -66,7 +52,7 @@ float constexpr fursthestDistanceToZAxis(const LipidsSelection& lipidselection) 
 	return max_dist;
 }
 
-float constexpr MinParticlePosInDimension(const LipidsSelection& lipidselection, int dim) {
+float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselection, int dim) {
 	float minPos = FLT_MAX;
 	for (const auto& lipid : lipidselection) {
 		for (const auto& atom : lipid.grofile->atoms) {
@@ -105,7 +91,7 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 }
 
 
-void validateLipidselection(const LipidsSelection& lipidselection) {
+void validateLipidselection(const Lipids::Selection& lipidselection) {
 	double total_percentage = 0;
 	for (const auto& lipid : lipidselection) {
 		total_percentage += lipid.percentage;
@@ -154,7 +140,7 @@ private:
 	std::mt19937 g;
 };
 
-using GetNextRandomLipid = SampleSelectionRandomly<LipidsSelection>;
+using GetNextRandomLipid = SampleSelectionRandomly<Lipids::Selection>;
 using GetNextRandomParticle = SampleSelectionRandomly<AtomsSelection>;
 
 void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
@@ -451,7 +437,7 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 void SimulationBuilder::InsertSubmoleculesOnSphere(
 	GroFile& targetGrofile,
 	TopologyFile& targetTopol,
-	LipidsSelection lipidselection,
+	Lipids::Selection lipidselection,
 	int nMoleculesToInsert,
 	float sphereRadius,
 	const Float3& sphereCenter
@@ -521,7 +507,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 
-		const LipidSelect& lipid = genNextRandomLipid();
+		const Lipids::Select& lipid = genNextRandomLipid();
 
 		const float selfRotAngle = genRandomAngle();
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
@@ -545,7 +531,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 
-MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipidselection, Float3 boxSize, float membraneCenter) {
+MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
 	validateLipidselection(lipidselection);
 
 	for (auto& lipid : lipidselection) {
@@ -591,7 +577,7 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 
 			// Insert top lipid
 			{
-				const LipidSelect& inputlipid = getNextRandomLipid();
+				const Lipids::Select& inputlipid = getNextRandomLipid();
 
 				const Float3 lipidCenter = Float3{
 					static_cast<float>(x) * distPerX + distPerX / 2.f,
@@ -613,7 +599,7 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const LipidsSelection& lipid
 
 			// Insert bottom lipid
 			{
-				const LipidSelect& inputlipid = getNextRandomLipid();
+				const Lipids::Select& inputlipid = getNextRandomLipid();
 
 				const Float3 lipidCenter = Float3{
 					static_cast<float>(x) * distPerX + distPerX / 2.f,

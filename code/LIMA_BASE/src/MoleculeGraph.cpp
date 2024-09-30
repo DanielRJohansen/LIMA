@@ -222,7 +222,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	for (auto& atom : grofile.atoms) {
 		if (map[atom.gro_id-1] < 0)
 			throw std::runtime_error("Invalid gro_id in map");
-		atom.gro_id = map[atom.gro_id-1];
+		atom.gro_id = map[atom.gro_id-1] + 1;  // +1 to convert from lima id to groID
 	}
 	// We can only do this part if the topol does NOT have includes
 	if (topfile.GetLocalMolecules().size() > 0)

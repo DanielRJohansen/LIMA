@@ -160,7 +160,7 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 	}
 }
 
-void Lipids::_MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback) {
+void Lipids::_MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback, bool writeToFile) {
 	std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
 	std::vector<std::string> targets;
 
@@ -180,12 +180,22 @@ void Lipids::_MakeLipids(std::function<void(const GroFile&, const TopologyFile&)
 		GroFile grofile{ path + target + ".gro" };
 		TopologyFile topfile{ path + target + ".itp" };
 
+		// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
 		assert(topfile.forcefieldIncludes.size() ==1);
+		topfile.forcefieldIncludes.resize(1);
+		topfile.forcefieldIncludes[0] = { TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp", "Slipids_2020.ff/forcefield.itp"} };
+
+		if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
+			grofile.box_size = Float3{ std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z) };
+		}
+
 
 		OrganizeLipidIntoCompoundsizedSections(grofile, topfile);
 
 		renderCallback(grofile, topfile);
-		//grofile.printToFile();
-		//topfile.printToFile();
+		if (writeToFile) {
+			grofile.printToFile();
+			topfile.printToFile();
+		}
 	}
-}
+}  

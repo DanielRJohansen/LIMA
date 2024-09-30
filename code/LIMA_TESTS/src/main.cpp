@@ -18,23 +18,25 @@ using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 void runAllUnitTests();
 
-//void makeLipids() {
-// Currently working POPC, POPE DMPC, chol, DPPC, DOPC, 
-// SM16 almost works, but H11 is only defined in Slipids_2020, which i need to integrate into the forcefieldmaker, but thats for later
-//	std::vector<std::string> targets = { "DOPC" };
-////std::vector<std::string> targets = { "DAPC", "DPPC", "DSPC", "POPC", "DOPC", "DLPC", "DMPC", "DUPC", "DIPC", "DPPS", "DOPS", "ENET", "ENTF", "ENTW", "PDPC", "PiLPC", "POPE", "POPG", "POPS", "SAPC", "SDPC", "SIET", "SOPC", "choleterol", "SM16" };
-////const string target = "DAPC";
-//for (auto target : targets) {
-//	try {
-//		const std::string to_folder = "C:/Users/Daniel/git_repo/LIMA/resources/Lipids/" + target + "/";
-//		const std::string from_folder = "C:/Users/Daniel/git_repo/LIMA/resources/Lipids/" + target + "/";
-//		LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(to_folder, from_folder, target);
-//	}
-//	catch (...) {
-//		// do nothing
-//	}
-//}
-//}
+void makeLipids() {
+	auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
+		Environment env{ grofile.m_path.parent_path(), Headless, false };
+		SimParams params;
+		params.n_steps = 2;
+		params.dt = 0;
+		params.data_logging_interval = 1;
+		params.em_variant = true;
+		env.CreateSimulation(grofile, topfile, params);
+		env.run(false);
+		auto sim = env.getSim();
+		Display d(Full);
+
+		d.Render(
+			std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
+			false);
+		};
+	Lipids::_MakeLipids(renderCallback, false);
+}
 
 #include <ostream>
 
@@ -84,24 +86,7 @@ int main() {
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
-			Environment env{ grofile.m_path.parent_path(), Headless, false };
-			SimParams params;
-			params.n_steps = 2;
-			params.dt = 0;
-			params.data_logging_interval = 1;
-			params.em_variant = true;
-			env.CreateSimulation(grofile, topfile, params);
-			env.run(false);
-			auto sim = env.getSim();
-			Display d(Full);
-
-			d.Render(
-				std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
-				true);
-			};
-
-		//Lipids::_MakeLipids(renderCallback);
+		
 
 
 		/*const fs::path work_dir = simulations_dir / "test";

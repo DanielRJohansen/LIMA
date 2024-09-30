@@ -49,7 +49,7 @@ struct SimSignals {
 
 
 struct BoxParams {
-	int boxSize=0;	// [nm]
+	int boxSize = 0;	// [nm]
 
 	int n_compounds = 0;
 	int n_bridges = 0;

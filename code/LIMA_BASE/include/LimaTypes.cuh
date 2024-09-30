@@ -55,7 +55,7 @@ struct Float3 {
 	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
 	__host__ __device__ Float3(float x, float y, float z) : x(x), y(y), z(z) {}
 	__host__ __device__ Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
-	__host__ __device__ Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
+	__host__ __device__ explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 

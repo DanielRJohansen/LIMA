@@ -18,6 +18,6 @@ namespace Lipids {
 
 	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile&);
 
-	void _MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback);
+	void _MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback, bool writeToFile);
 };
 

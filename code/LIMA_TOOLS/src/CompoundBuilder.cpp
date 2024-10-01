@@ -377,7 +377,6 @@ uint8_t BridgeFactory::getBridgelocalIdOfParticle(ParticleInfo& particle_info) {
 	}
 	// If it has another id, fail as we dont support that for now
 	else if (particle_info.bridgeId != this->bridge_id) {
-		//printf("Particle global id %d\n", particle_info.globalId);
 		throw std::runtime_error(std::format("Cannot add particle to this bridge ({}) as it already has another bridge ({})", bridge_id, particle_info.bridgeId).c_str());
 	}
 
@@ -672,13 +671,96 @@ std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float box
 	return compounds;
 }
 
+#include <set>
+
+bool ContainsSubset(const std::set<int>& set, const std::set<int>& subset) {
+	return std::all_of(subset.begin(), subset.end(), [&set](const int& elem) {
+		return set.find(elem) != set.end();
+		});
+}
+
+std::vector<BridgeFactory> CreateBridges1(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<ParticleInfo>& atoms)
+{
+	// First figure out which compounds each particle interacts with via bonds
+	std::vector<std::set<int>> compoundidsInteractedWithByAtoms(atoms.size());
+
+	for (const auto& bond : singlebonds) {
+		
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 2; j++) {
+				
+				const int pidLeft = bond.global_atom_indexes[i];
+				const int pidRight = bond.global_atom_indexes[j];
+
+				const int cidLeft = atoms[pidLeft].compoundId;
+				const int cidRight = atoms[pidRight].compoundId;
+
+				compoundidsInteractedWithByAtoms[pidLeft].insert(cidRight);
+				compoundidsInteractedWithByAtoms[pidRight].insert(cidLeft);				
+			}
+		}
+	}
+
+	// Now make a list of bridges needed to connect the compounds. 
+	// compound<bridges<compoundids>>
+	std::vector<std::set<std::set<int>>> compoundsBridgeCandidates(compounds.size());
+	for (const auto& set : compoundidsInteractedWithByAtoms) {
+		for (const auto& cid : set) {
+			if (!compoundsBridgeCandidates[cid].contains(set))
+				compoundsBridgeCandidates[cid].insert(set);
+		}
+	}
+
+	// Now trim the candidates
+	// TODO: This trimming does not handle the edgecase where a subset contains 2 or more elements of a set, so erroneusly 2 bridges are created where there should be 1
+	for (auto& compoundBridgeCandidates : compoundsBridgeCandidates) {
+		std::vector<std::set<int>> toRemove;
+
+		// Use iterators for more efficient traversal and avoid modifying container during iteration
+		for (auto itLeft = compoundBridgeCandidates.begin(); itLeft != compoundBridgeCandidates.end(); ++itLeft) {
+			for (auto itRight = std::next(itLeft); itRight != compoundBridgeCandidates.end(); ++itRight) {
+
+				// If left contains all ids of right, mark right for removal
+				if (ContainsSubset(*itLeft, *itRight)) {
+					toRemove.push_back(*itRight);
+				}
+				else if (ContainsSubset(*itRight, *itLeft)) {
+					toRemove.push_back(*itLeft);
+				}
+			}
+		}
+
+		// Remove marked elements after the iteration is complete
+		for (const auto& candidate : toRemove) {
+			compoundBridgeCandidates.erase(candidate);
+		}
+	}
+
+	// <bridge<compoundIds>>
+	std::set<std::set<int>> compoundidsInBridges;
+	for (const auto& compoundBridgeCandidates : compoundsBridgeCandidates) {
+		for (const auto& candidate : compoundBridgeCandidates) {
+			compoundidsInBridges.insert(candidate);
+		}
+	}
+
+	std::vector<BridgeFactory> bridges;
+	bridges.reserve(compoundidsInBridges.size());
+	for (const std::set<int>& compoundIdSet : compoundidsInBridges) {
+		const int bridgeId = static_cast<int>(compoundidsInBridges.size());
+		const std::vector<int> compoundIdsInBridge{ compoundIdSet.begin(), compoundIdSet.end() };
+		bridges.push_back(BridgeFactory{ static_cast<int>(compoundidsInBridges.size()), compoundIdsInBridge });
+	}
+	return bridges;
+}
+
 
 std::vector<BridgeFactory> CreateBridges(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<ParticleInfo>& atoms)
 {
 	std::vector<BridgeFactory> compoundBridges;
 
 
-	// First find which ompounds are bonded to other compounds. I assume singlebonds should find all these, 
+	// First find which compounds are bonded to other compounds. I assume singlebonds should find all these, 
 	// since angles and dihedrals make no sense if the singlebond is not present, as the distances between the atoms can then be extremely large
 	std::vector<std::unordered_set<int>> compound_to_bondedcompound_table(compounds.size());
 	for (const auto& bond : singlebonds) {
@@ -960,7 +1042,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, simparams.bc_select);
-	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
+	std::vector<BridgeFactory> bridges = CreateBridges1(topology.singlebonds, compounds, preparedAtoms);
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size());
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 

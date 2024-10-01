@@ -11,7 +11,7 @@ struct ForceAndPotential {
 };
 
 struct CompoundGridNode {
-	__device__ __host__ bool addNearbyCompound(int16_t compound_id) {
+	__device__ __host__ bool addNearbyCompound(uint16_t compound_id) {
 		if (n_nearby_compounds >= max_nearby_compounds) {
 			printf("Failed to add compound to CompoundGridNode\n");
 			return false;
@@ -29,10 +29,10 @@ struct CompoundGridNode {
 	// Compounds that are near this specific node
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
-	static_assert(MAX_COMPOUNDS <= INT16_MAX, "CompoundGridNode cannot handle such large compound ids");
+	static_assert(MAX_COMPOUNDS <= UINT16_MAX-1, "CompoundGridNode cannot handle such large compound ids");
 	static const int max_nearby_compounds = 64 + 16;
-	int16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
-	int16_t compoundidsWithinShortRangeESCutoff[max_nearby_compounds]{};
+	uint16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
+	uint16_t compoundidsWithinShortRangeESCutoff[max_nearby_compounds]{};
 	int n_nearby_compounds = 0;
 };
 

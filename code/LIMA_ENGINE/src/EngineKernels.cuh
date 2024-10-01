@@ -540,7 +540,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 
 		for (int i = 0; i < utility_int; i++) {
-			const int16_t neighborcompound_index = compoundgridnode->compoundidsWithinLjCutoff[i];
+			const uint16_t neighborcompound_index = compoundgridnode->compoundidsWithinLjCutoff[i];
 			const Compound* neighborcompound = &box->compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 

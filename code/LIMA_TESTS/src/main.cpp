@@ -92,7 +92,7 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{25.f}, 10.f, envmode);
+		//Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 10.f, envmode);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//testBuildmembraneSmall(envmode, false);

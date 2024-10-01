@@ -17,29 +17,26 @@ using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 void runAllUnitTests();
-
-void makeLipids() {
-	auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
-		Environment env{ grofile.m_path.parent_path(), Headless, false };
-		SimParams params;
-		params.n_steps = 2;
-		params.dt = 0;
-		params.data_logging_interval = 1;
-		params.em_variant = true;
-		env.CreateSimulation(grofile, topfile, params);
-		env.run(false);
-		auto sim = env.getSim();
-		Display d(Full);
-
-		d.Render(
-			std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
-			false);
-		};
-	Lipids::_MakeLipids(renderCallback, false);
-}
-
-#include <ostream>
-
+//
+//void makeLipids() {
+//	auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
+//		Environment env{ grofile.m_path.parent_path(), Headless, false };
+//		SimParams params;
+//		params.n_steps = 2;
+//		params.dt = 0;
+//		params.data_logging_interval = 1;
+//		params.em_variant = true;
+//		env.CreateSimulation(grofile, topfile, params);
+//		env.run(false);
+//		auto sim = env.getSim();
+//		Display d(Full);
+//
+//		d.Render(
+//			std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
+//			false);
+//		};
+//	Lipids::_MakeLipids(renderCallback, false);
+//}
 
 //void DisplayHelloWorld() {
 //	Display display{ Full};
@@ -89,13 +86,13 @@ int main() {
 		
 
 
-		/*const fs::path work_dir = simulations_dir / "test";
-		Lipids::Selection lipids;
-		lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
-		lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
-		lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
-		lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		Programs::CreateMembrane(work_dir, lipids, Float3{20.f}, 5.f, envmode);*/
+		//const fs::path work_dir = simulations_dir / "test";
+		//Lipids::Selection lipids;
+		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
+		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
+		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
+		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
+		//Programs::CreateMembrane(work_dir, lipids, Float3{25.f}, 10.f, envmode);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//testBuildmembraneSmall(envmode, false);

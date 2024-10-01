@@ -384,12 +384,10 @@ struct BoundingBox {
 	}
 };
 
-template <int len>
-class FixedSizeMatrix{
+class BondedParticlesLUT {
 public:
-	__device__ FixedSizeMatrix() {}
-	__host__ FixedSizeMatrix(bool val) {
-		//uint8_t bit = val ? 1 : 0;
+	__device__ BondedParticlesLUT() {}
+	__host__ BondedParticlesLUT(bool val) {
 		for (int i = 0; i < m_size; i++) {
 			matrix[i] = val ? 0xFF : 0;
 		}
@@ -412,105 +410,39 @@ public:
 			matrix[byteIndex] &= ~(1U << bitIndex);
 	}
 
-	__device__ void load(const FixedSizeMatrix<len>& src) {
+	__device__ void load(const BondedParticlesLUT& src) {
 		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
 			matrix[i] = src.matrix[i];
 		}
 	}
 
-
-	__host__ void printMatrix(int n) const {
-		// Print column indices
-		std::cout << "     ";  // Space for row indices
-		for (int j = 0; j < n; ++j) { 
-			std::string separator = j + 1 < 10 ? "  " : " ";
-			std::cout << j+1 << separator;
-		}
-		std::cout << '\n';
-
-		// Print separator
-		std::cout << "   +";
-		for (int j = 0; j < n; ++j) {
-			std::cout << "---";
-		}
-		std::cout << '\n';
-
-		// Print rows with row indices
-		for (int i = 0; i < n; ++i) {
-			std::string separator = i + 1 < 10 ? "  | " : " | ";
-			std::cout << i + 1 << separator;  // Row index
-			for (int j = 0; j < n; ++j) {
-				std::cout << (get(i, j) ? 'X' : 'O') << "  ";
-			}
-			std::cout << '\n';
-		}
-	}
+	__host__ void printMatrix(int n) const;
 
 private:
-	const static int m_len = len;
+	const static int m_len = MAX_COMPOUND_PARTICLES;
 	const static int m_size = (m_len * m_len + 7) / 8; // Ceil division
 	uint8_t matrix[m_size]{};
 };
 
-using BondedParticlesLUT = FixedSizeMatrix<MAX_COMPOUND_PARTICLES>;
-
-class BondedParticlesLUTManager {
+namespace BondedParticlesLUTHelpers {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
-	static const int n_elements = MAX_COMPOUNDS * max_bonded_compounds;
 
-	BondedParticlesLUT luts[n_elements];
-	uint32_t connected_compound_ids_masks[MAX_COMPOUNDS];
-
-	__device__ __host__ int getLocalIndex(int id_self, int id_other) {
-		return (max_bonded_compounds/2) + (id_other - id_self);
+	__device__ __host__ int inline getLocalIndex(int id_self, int id_other) {
+		return (max_bonded_compounds / 2) + (id_other - id_self);
 	}
-	__device__ __host__ int getGlobalIndex(int local_index, int id_self) {
-		return id_self*max_bonded_compounds + local_index;
+	__device__ __host__ int inline getGlobalIndex(int local_index, int id_self) {
+		return id_self * max_bonded_compounds + local_index;
 	}
-	__device__ __host__ uint32_t getMask(int index) {
+	__device__ __host__ uint32_t inline getMask(int index) {
 		return 1u << index;
 	}
 
-public:
-	BondedParticlesLUTManager() {
-		for (int i = 0; i < n_elements; i++) {
-			luts[i] = BondedParticlesLUT(false);
-		}
-	}
-
-	__device__ BondedParticlesLUT* get(int id_self, int id_other){
+	__device__ inline BondedParticlesLUT* get(BondedParticlesLUT* bpLutCollection, int id_self, int id_other) {
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
-		return &luts[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
+		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
 	}
-
-	__host__ BondedParticlesLUT* get(int id_self, int id_other, bool) {
-		if (std::abs(id_self - id_other > 2)) {
-			throw std::runtime_error("Cannot get BPLUT for compounds with distanecs > 2 in id-space");
-		}
-
-		const int local_index = getLocalIndex(id_self, id_other);
-		if (connected_compound_ids_masks[id_self] & getMask(local_index)) {
-			return &luts[getGlobalIndex(local_index, id_self)];
-		}
-		return nullptr;
-	}
-
-	__host__ void addNewConnectedCompoundIfNotAlreadyConnected(int id_self, int id_other) {
-
-		if (std::abs(id_self - id_other > 2)) {
-			throw std::runtime_error("Cannot connect compounds that are too far apart in id space");
-		}
-
-		connected_compound_ids_masks[id_self] |= getMask(getLocalIndex(id_self, id_other));
-	}
-};
-
-
-
-
-
-
+}
 
 
 template<typename T>
@@ -579,7 +511,13 @@ T* GenericCopyToDevice(const T* src, int n_elements) {	// Currently uses MallocM
 	return dest;
 }
 
-
+template<typename T>
+T* GenericCopyToDevice(const std::vector<T>& src) {
+	T* dest;
+	cudaMalloc(&dest, src.size() * sizeof(T));
+	cudaMemcpy(dest, src.data(), src.size() * sizeof(T), cudaMemcpyHostToDevice);
+	return dest;
+}
 
 
  

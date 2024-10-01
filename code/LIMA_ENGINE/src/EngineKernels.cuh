@@ -313,7 +313,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		__syncthreads();
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
 
-		BondedParticlesLUT* bplut_global = box->bonded_particles_lut_manager->get(compound_index, compound_index);
+		BondedParticlesLUT* bplut_global = BondedParticlesLUTHelpers::get(box->bpLUTs, compound_index, compound_index);
 		BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
 		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
 
@@ -393,7 +393,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			// The bonded compounds always comes first in the list
 			if (i < compound.n_bonded_compounds)
 			{
-				BondedParticlesLUT* compoundpair_lut_global = box->bonded_particles_lut_manager->get(compound_index, neighborcompound_id);
+				BondedParticlesLUT* compoundpair_lut_global = BondedParticlesLUTHelpers::get(box->bpLUTs, compound_index, neighborcompound_id); // A bit silly that all threads do this expensive lookup
+
 				bonded_particles_lut->load(*compoundpair_lut_global);
 				__syncthreads();
 

@@ -166,7 +166,7 @@ struct BoxImage {
 	const std::vector<CompoundFactory> compounds;
 	const int32_t total_compound_particles;
 
-	std::unique_ptr<BondedParticlesLUTManager> bp_lut_manager;
+	std::vector<BondedParticlesLUT> bpLutCollection;
 
 	std::unique_ptr<CompoundBridgeBundleCompact> bridgebundle;
 

@@ -183,7 +183,7 @@ struct Box {
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
 
 	std::unique_ptr<CompoundBridgeBundleCompact> bridge_bundle = nullptr;
-	std::unique_ptr<BondedParticlesLUTManager> bonded_particles_lut_manager = nullptr;
+	std::vector<BondedParticlesLUT> bpLutCollection;
 
 	UniformElectricField uniformElectricField;
 };

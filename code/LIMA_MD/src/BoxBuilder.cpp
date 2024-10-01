@@ -15,6 +15,9 @@ using namespace LIMA_Print;
 
 void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimParams& simparams, Float3 offset = Float3{})
 {
+	if (box.compounds.size() >= MAX_COMPOUNDS) {
+		throw std::runtime_error("Compounds surpass MAX_COMPOUNDS");
+	}
 	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
 
@@ -77,7 +80,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->bridge_bundle = std::move(boxImage.bridgebundle);					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
 	box->boxparams.n_bridges = box->bridge_bundle->n_bridges;
 
-	box->bonded_particles_lut_manager = std::move(boxImage.bp_lut_manager);
+	box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
 #ifdef ENABLE_SOLVENTS
 	SolvateBox(*box, boxImage.forcefield, simparams, boxImage.solvent_positions);

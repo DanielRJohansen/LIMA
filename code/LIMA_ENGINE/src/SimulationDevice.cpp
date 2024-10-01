@@ -24,7 +24,7 @@ void BoxDevice::DeleteBox() {
 	cudaFree(boxtemp.solvents);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
 	cudaFree(boxtemp.bridge_bundle);
-	cudaFree(boxtemp.bonded_particles_lut_manager);
+	cudaFree(boxtemp.bpLUTs);
 }
 
 BoxDevice* MakeBox(const Box& box) {
@@ -32,7 +32,6 @@ BoxDevice* MakeBox(const Box& box) {
 	cudaMalloc(&boxTemp.compounds, sizeof(Compound) * box.boxparams.n_compounds);
 	cudaMalloc(&boxTemp.solvents, sizeof(Solvent) * box.boxparams.n_solvents);
 	cudaMalloc(&boxTemp.bridge_bundle, sizeof(CompoundBridgeBundleCompact));
-	cudaMalloc(&boxTemp.bonded_particles_lut_manager, sizeof(BondedParticlesLUTManager));
 
 	boxTemp.boxparams = box.boxparams;
 	boxTemp.uniformElectricField = box.uniformElectricField;
@@ -42,7 +41,7 @@ BoxDevice* MakeBox(const Box& box) {
 	cudaMemcpy(boxTemp.solvents, box.solvents.data(), sizeof(Solvent) * box.boxparams.n_solvents, cudaMemcpyHostToDevice);
 	boxTemp.solventblockgrid_circularqueue = box.solventblockgrid_circularqueue->CopyToDevice();
 	cudaMemcpy(boxTemp.bridge_bundle, box.bridge_bundle.get(), sizeof(CompoundBridgeBundleCompact), cudaMemcpyHostToDevice);
-	cudaMemcpy(boxTemp.bonded_particles_lut_manager, box.bonded_particles_lut_manager.get(), sizeof(BondedParticlesLUTManager), cudaMemcpyHostToDevice);
+	boxTemp.bpLUTs = GenericCopyToDevice(box.bpLutCollection);
 
 	BoxDevice* devPtr;
 	cudaMallocManaged(&devPtr, sizeof(BoxDevice));

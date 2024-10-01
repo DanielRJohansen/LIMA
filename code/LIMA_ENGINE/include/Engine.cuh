@@ -19,7 +19,6 @@
 class SimulationDevice;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
-const int lutsize = sizeof(BondedParticlesLUTManager);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
 static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
 	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");

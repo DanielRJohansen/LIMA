@@ -7,6 +7,34 @@
 
 using namespace LIMA_MOLECULEBUILD;
 
+class BondedParticlesLUTManagerFactory {
+	std::vector<BondedParticlesLUT> luts;
+	const int nCompounds;
+public:
+	BondedParticlesLUTManagerFactory(int nCompounds) : 
+		nCompounds(nCompounds) ,
+		luts(nCompounds * BondedParticlesLUTHelpers::max_bonded_compounds, BondedParticlesLUT(false)) 
+	{}
+
+
+	BondedParticlesLUT& get(int id_self, int id_other) {
+		if (std::abs(id_self - id_other > 2)) {
+			throw std::runtime_error("Cannot get BPLUT for compounds with distanecs > 2 in id-space");
+		}
+		if (id_self >= nCompounds || id_other >= nCompounds) {
+			throw std::runtime_error("Cannot get BPLUT for compounds with id >= nCompounds");
+		}
+
+		const int local_index = BondedParticlesLUTHelpers::getLocalIndex(id_self, id_other);
+		return luts[BondedParticlesLUTHelpers::getGlobalIndex(local_index, id_self)];
+	}
+
+	// Returns device ptr to the bpLUTS
+	std::vector<BondedParticlesLUT> Finish() {
+		return std::move(luts);
+	}
+};
+
 bool compoundsAreAlreadyConnected(const std::vector<int> compound_ids, const std::vector<BridgeFactory>& compoundbriges) 
 {
 	for (auto& bridge : compoundbriges) {
@@ -720,7 +748,7 @@ bool SpansTwoCompounds(const std::array<uint32_t, n_ids> bond_globalids, const s
 }
 
 template <int n_ids>
-void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector<ParticleInfo>& atoms, const std::array<uint32_t, n_ids>& global_ids) {
+void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleInfo>& atoms, const std::array<uint32_t, n_ids>& global_ids) {
 	for (auto gid_self : global_ids) {
 		for (auto gid_other : global_ids) {
 
@@ -729,10 +757,8 @@ void DistributeLJIgnores(BondedParticlesLUTManager* bplut_man, const std::vector
 			const int compoundIndexSelf = atoms[gid_self].compoundId;
 			const int compoundIndexOther = atoms[gid_other].compoundId;
 
-
-			bplut_man->addNewConnectedCompoundIfNotAlreadyConnected(compoundIndexSelf, compoundIndexOther);
-			BondedParticlesLUT* lut = bplut_man->get(compoundIndexSelf, compoundIndexOther, true);
-			lut->set(atoms[gid_self].localIdInCompound, atoms[gid_other].localIdInCompound, true);
+			BondedParticlesLUT& lut = bplut_man->get(compoundIndexSelf, compoundIndexOther);
+			lut.set(atoms[gid_self].localIdInCompound, atoms[gid_other].localIdInCompound, true);
 		}
 	}
 }
@@ -793,7 +819,7 @@ BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<u
 
 template <typename BondTypeFactory>
 void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds, std::vector<ParticleInfo>& particleinfotable, std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges,
-	BondedParticlesLUTManager& bpLutManager, std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges) {
+	BondedParticlesLUTManagerFactory& bpLutManager, std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges) {
 	
 	constexpr int atoms_in_bond = BondTypeFactory::nAtoms;
 
@@ -821,7 +847,7 @@ void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bo
 }
 
 void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen_nm, std::vector<ParticleInfo>& atoms, BoundaryConditionSelect bc_select, 
-	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges, BondedParticlesLUTManager& bpLutManager)
+	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges, BondedParticlesLUTManagerFactory& bpLutManager)
 {
 	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridges{};
 
@@ -839,9 +865,9 @@ void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen
 	// so we can doubly use this lut to avoid doing that
 
 	for (int com_id = 0; com_id < compounds.size(); com_id++) {
-		auto* lut = bpLutManager.get(com_id, com_id);
+		auto& lut = bpLutManager.get(com_id, com_id);
 		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
-			lut->set(pid, pid, true);
+			lut.set(pid, pid, true);
 		}
 	}
 
@@ -935,7 +961,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, simparams.bc_select);
 	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
-	auto bpLutManager = std::make_unique<BondedParticlesLUTManager>();
+	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size());
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
@@ -953,7 +979,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	auto boxImage = std::make_unique<BoxImage>(
 		std::move(compounds),
 		static_cast<int>(preparedAtoms.size()),
-		std::move(bpLutManager),
+		bpLutManager->Finish(),
 		std::move(bridges_compact),
 		std::move(solventPositions),
 		gro_file.box_size.x,	// TODO: Find a better way..

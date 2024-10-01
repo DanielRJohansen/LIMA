@@ -26,7 +26,9 @@ struct BoxDevice {
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
 
 	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
-	BondedParticlesLUTManager* bonded_particles_lut_manager = nullptr;
+
+	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
+	BondedParticlesLUT* bpLUTs = nullptr;
 
 	UniformElectricField uniformElectricField;	
 };
@@ -56,7 +58,7 @@ struct SimulationDevice {
 
 	SimParams* params;
 	SimSignals* signals;
-	//Box* box;
+
 	BoxDevice* box;
 	DatabuffersDevice* databuffers;
 

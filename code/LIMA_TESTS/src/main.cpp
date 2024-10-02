@@ -17,26 +17,7 @@ using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 void runAllUnitTests();
-//
-//void makeLipids() {
-//	auto renderCallback = [](const GroFile& grofile, const TopologyFile& topfile) {
-//		Environment env{ grofile.m_path.parent_path(), Headless, false };
-//		SimParams params;
-//		params.n_steps = 2;
-//		params.dt = 0;
-//		params.data_logging_interval = 1;
-//		params.em_variant = true;
-//		env.CreateSimulation(grofile, topfile, params);
-//		env.run(false);
-//		auto sim = env.getSim();
-//		Display d(Full);
-//
-//		d.Render(
-//			std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
-//			false);
-//		};
-//	Lipids::_MakeLipids(renderCallback, false);
-//}
+
 
 //void DisplayHelloWorld() {
 //	Display display{ Full};
@@ -59,6 +40,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
+		//Lipids::_MakeLipids(true, false);
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//DisplayHelloWorld();

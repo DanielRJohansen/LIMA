@@ -1,6 +1,19 @@
 #include "MoleculeUtils.h"
 #include "BoundaryConditionPublic.h"
 
+
+
+Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
+	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
+
+	for (const auto& atom : grofile.atoms) {
+		bbMin = Float3::ElementwiseMin(bbMin, atom.position);
+		bbMax = Float3::ElementwiseMax(bbMax, atom.position);
+	}
+
+	return (bbMin + bbMax) / 2;
+}
+
 void MoleculeUtils::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 
 	// First make sure the molecule is not split due to PBC ;; TODO We are not currently checking that
@@ -14,6 +27,7 @@ void MoleculeUtils::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 	for (auto& particle : grofile.atoms)
 		sum += particle.position;
 
+	//TODO This is WRONG, we should not use CoM, but geometric center
 	const Double3 currentCenter = sum / static_cast<double>(grofile.atoms.size());
 	const Float3 diff = targetCenter - Float3{ currentCenter.x, currentCenter.y, currentCenter.z };
 

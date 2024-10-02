@@ -15,9 +15,10 @@ namespace Lipids {
 	// Since this is a vector of structs with unique_ptrs, it can never be copied, or resized
 	using Selection = std::vector<Select>;
 
+	void OrientLipidhead(GroFile&, Float3 desiredOrientation = Float3{0,0,1});
 
 	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile&);
 
-	void _MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback, bool writeToFile);
+	void _MakeLipids(bool writeToFile, bool displayEachLipidAndHalt);
 };
 

@@ -77,7 +77,7 @@ namespace Rendering {
 
 	struct GrofileTask {
 		const GroFile& grofile;
-		ColoringMethod coloringMethod;
+		ColoringMethod coloringMethod = Atomname;
 	};
 
 	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;

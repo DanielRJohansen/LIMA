@@ -27,7 +27,58 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 
 
 
+Float3 LipidheadCenterOfMassEstimate(const GroFile& grofile) {
+	Float3 sum{ 0 };
+	int count = 0;
+	for (const auto& atom : grofile.atoms) {
+		if (atom.atomName[0] != 'C' && atom.atomName[0] != 'H') {
+			sum += atom.position;
+			count++;
+		}
+	}
+	return sum / static_cast<float>(count);
+}
 
+Float3 LipidbodyGeometricCenter(const GroFile& grofile) {
+	Float3 boundingboxMax{ -FLT_MAX }, boundingboxMin{ FLT_MAX };
+
+	for (const auto& atom : grofile.atoms) {
+		if (atom.atomName[0] == 'C') {
+			boundingboxMax = Float3::ElementwiseMax(boundingboxMax, atom.position);
+			boundingboxMin = Float3::ElementwiseMin(boundingboxMin, atom.position);
+		}
+	}
+
+	return (boundingboxMax + boundingboxMin) / 2.f;
+}
+
+
+void Lipids::OrientLipidhead(GroFile& grofile, Float3 desiredOrientation) {
+	// These are NOT precise, just naive heuristics
+	const Float3 headCenter = LipidheadCenterOfMassEstimate(grofile);
+	const Float3 lipidbodyCenter = LipidbodyGeometricCenter(grofile);
+
+	if ((headCenter- lipidbodyCenter).len() < 0.1f) {
+		return; // Our estimate of the head relative to the body is too weak to orient. We wont panic but simply hope it is oriented correctly
+		// TODO: We need to have a warning system in place for this for the user
+	}
+
+	const Float3 lipidOrientation = (headCenter - lipidbodyCenter).norm();	
+
+	if (std::abs(lipidOrientation.dot(desiredOrientation)) > 0.98f) {
+		return; // Already oriented correctly
+	}
+
+	const Float3 rotationAxis = lipidOrientation.cross(desiredOrientation).norm();
+	const float rotationAngle = std::acos(lipidOrientation.dot(desiredOrientation));
+	const Float3 rotationPoint = MoleculeUtils::GeometricCenter(grofile);
+
+	for (auto& atom : grofile.atoms) {
+		atom.position -= rotationPoint;
+		atom.position = Float3::rodriguesRotatation(atom.position, rotationAxis, rotationAngle);
+		atom.position += rotationPoint;
+	}
+}
 
 
 
@@ -123,6 +174,8 @@ std::vector<int> DetermineAcceptableSectionsizesBasedOnAtomcount(int nAtoms) {
 	}
 }
 
+#include "Display.h"
+
 void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFile& topfile) {
 
 	if (!topfile.GetLocalMolecules().empty()) {
@@ -138,6 +191,7 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 	if (grofile.box_size == Float3{0})
 		grofile.box_size = Float3{ 10.f };
 	MoleculeUtils::SetMoleculeCenter(grofile, grofile.box_size / 2.f);
+	OrientLipidhead(grofile);
 
 	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
 	// Figure out how to prioritise only using the better sizes, IF that combination can be made
@@ -159,10 +213,13 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 		cummulativeIndex += index;
 	}
 }
+#include "Environment.h"
 
-void Lipids::_MakeLipids(std::function<void(const GroFile&, const TopologyFile&)> renderCallback, bool writeToFile) {
+void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 	std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
 	std::vector<std::string> targets;
+
+	//std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr;
 
 	for (const auto& entry : fs::directory_iterator(path)) {
 		if (entry.path().extension() == ".gro") {
@@ -185,14 +242,33 @@ void Lipids::_MakeLipids(std::function<void(const GroFile&, const TopologyFile&)
 		topfile.forcefieldIncludes.resize(1);
 		topfile.forcefieldIncludes[0] = { TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp", "Slipids_2020.ff/forcefield.itp"} };
 
-		if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
+		grofile.box_size = Float3{ 5.f };
+	/*	if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
 			grofile.box_size = Float3{ std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z) };
-		}
-
+		}*/
 
 		OrganizeLipidIntoCompoundsizedSections(grofile, topfile);
 
-		renderCallback(grofile, topfile);
+		// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
+		{
+			Environment env{ grofile.m_path.parent_path(), Headless, false };
+			SimParams params;
+			params.n_steps = 2;
+			params.dt = 0;
+			params.data_logging_interval = 1;
+			params.em_variant = true;
+			env.CreateSimulation(grofile, topfile, params);
+			env.run(false);
+			auto sim = env.getSim();
+
+			if (displayEachLipidAndHalt) {
+				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr; // TODO: move to top so we dont reinit every time
+				display->Render(
+					std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
+					true);
+			}
+		}
+
 		if (writeToFile) {
 			grofile.printToFile();
 			topfile.printToFile();

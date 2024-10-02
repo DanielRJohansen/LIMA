@@ -270,7 +270,7 @@ public:
 		size_t count = 0;
 		count += GetSection<T>().entries.size();
 		for (const auto& mol : molecules.entries) {
-			count += mol.includeTopologyFile->GetElementCount<T>();
+			count += mol.includeTopologyFile->template GetElementCount<T>();
 		}
 		return count;
 	}

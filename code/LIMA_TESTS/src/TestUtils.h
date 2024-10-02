@@ -18,9 +18,6 @@
 
 namespace TestUtils {
 #ifndef __linux__
-	//const std::string simulations_dir = "C:/PROJECTS/Quantom/Simulation/";
-
-
 	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
 	const fs::path simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
@@ -61,8 +58,8 @@ namespace TestUtils {
 		
 		const fs::path work_folder = simulations_dir / foldername;
 		//const std::string conf = work_folder / "molecule/conf.gro";
-		const fs::path conf = getMostSuitableGroFile(work_folder);
-		const fs::path topol = work_folder / "molecule/topol.top";
+		const GroFile conf{getMostSuitableGroFile(work_folder)};
+		const TopologyFile topol {work_folder / "molecule/topol.top"};
 		const fs::path simpar = work_folder / "sim_params.txt";
 
 		auto env = std::make_unique<Environment>(work_folder, envmode, false);

@@ -13,7 +13,7 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 	simparams.dt = 100.f;
 	simparams.data_logging_interval = 1;
 
-	env.CreateSimulation(workDir / "molecule/conf.gro", workDir / "molecule/topol.top", simparams);
+	env.CreateSimulation(GroFile{workDir / "molecule/conf.gro"}, TopologyFile{workDir / "molecule/topol.top"}, simparams);
 	//env.getSimPtr()->box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * 2000.f;
 	env.run();
 	auto sim1 = env.getSim();

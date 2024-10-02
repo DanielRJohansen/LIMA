@@ -4,6 +4,7 @@
 #include "Constants.h"
 #include "LimaTypes.cuh"
 
+#include <memory>
 #include <vector>
 #include <array>
 #include <cuda_fp16.h>

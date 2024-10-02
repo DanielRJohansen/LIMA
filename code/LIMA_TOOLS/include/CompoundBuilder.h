@@ -21,9 +21,9 @@ struct BoxImage;
 
 
 // --------------------------------- Bond Factories --------------------------------- //
-template <int nAtoms, typename ParamsType>
+template <int n_Atoms, typename ParamsType>
 struct BondFactory {
-	static const int nAtoms = nAtoms;
+	static const int nAtoms = n_Atoms;
 	BondFactory(const std::array<uint32_t, nAtoms>& ids, const ParamsType& parameters) 
 		: params(parameters), global_atom_indexes(ids) {}
 

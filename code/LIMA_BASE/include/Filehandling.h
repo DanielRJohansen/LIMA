@@ -11,6 +11,7 @@
 #include <limits>
 
 #include <filesystem>
+#include <fstream>
 
 struct SimpleParsedFile {
 	struct Row {

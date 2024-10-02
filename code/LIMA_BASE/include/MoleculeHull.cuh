@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include <functional>
+#include <algorithm>
 
 class GroFile;
 

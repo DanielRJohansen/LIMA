@@ -19,21 +19,6 @@ using namespace VerletintegrationTesting;
 void runAllUnitTests();
 
 
-//void DisplayHelloWorld() {
-//	Display display{ Full};
-//	
-//	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
-//	Compound compound;
-//	compound.n_particles = 1;
-//	compound.atomLetters[0] = '_';
-//	BoxParams params;
-//	params.boxSize = 2;
-//	params.total_compound_particles = 1;
-//	params.total_particles = 1;
-//	params.total_particles_upperbound = 1;
-//	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, 0, 0.f, Atomname));
-//	while(!display.DisplaySelfTerminated()) {}
-//}
 
 
 int main() {
@@ -43,7 +28,7 @@ int main() {
 		//Lipids::_MakeLipids(true, false);
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
-		//DisplayHelloWorld();
+		//Display::TestDisplay();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
@@ -91,6 +76,7 @@ int main() {
 
 		//Benchmarks::Psome(envmode);
 
+		//TestAllStockholmlipids(envmode);
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 		runAllUnitTests();
@@ -157,6 +143,8 @@ void runAllUnitTests() {
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
+	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
+
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
 

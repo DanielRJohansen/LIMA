@@ -679,7 +679,7 @@ bool ContainsSubset(const std::set<int>& set, const std::set<int>& subset) {
 		});
 }
 
-std::vector<BridgeFactory> CreateBridges1(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<ParticleInfo>& atoms)
+std::vector<BridgeFactory> CreateBridges(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<ParticleInfo>& atoms)
 {
 	// First figure out which compounds each particle interacts with via bonds
 	std::vector<std::set<int>> compoundidsInteractedWithByAtoms(atoms.size());
@@ -753,68 +753,6 @@ std::vector<BridgeFactory> CreateBridges1(const std::vector<SingleBondFactory>& 
 	}
 	return bridges;
 }
-
-
-std::vector<BridgeFactory> CreateBridges(const std::vector<SingleBondFactory>& singlebonds, const std::vector<CompoundFactory>& compounds, const std::vector<ParticleInfo>& atoms)
-{
-	std::vector<BridgeFactory> compoundBridges;
-
-
-	// First find which compounds are bonded to other compounds. I assume singlebonds should find all these, 
-	// since angles and dihedrals make no sense if the singlebond is not present, as the distances between the atoms can then be extremely large
-	std::vector<std::unordered_set<int>> compound_to_bondedcompound_table(compounds.size());
-	for (const auto& bond : singlebonds) {
-		const int particle_gid_left = bond.global_atom_indexes[0];
-		const int particle_gid_right = bond.global_atom_indexes[1];
-
-		const int compound_gid_left = atoms[particle_gid_left].compoundId;
-		const int compound_gid_right = atoms[particle_gid_right].compoundId;
-
-		if (compound_gid_left != compound_gid_right) {
-			compound_to_bondedcompound_table[compound_gid_left].insert(compound_gid_right);
-			compound_to_bondedcompound_table[compound_gid_right].insert(compound_gid_left);
-		}
-	}
-
-	// Knowing which compounds are bonded we can create the bridges.
-	for (int compound_id_self = 0; compound_id_self < compound_to_bondedcompound_table.size(); compound_id_self++) {
-		const std::unordered_set<int>& bonded_compounds_set = compound_to_bondedcompound_table[compound_id_self];
-
-		// if a compound is the entire molecule, this set will be empty, and that is alright
-		if (bonded_compounds_set.empty()) {
-			continue;
-		}
-
-		// A compound can not be bonded to itself
-		if (compound_id_self == *std::min_element(bonded_compounds_set.begin(), bonded_compounds_set.end())) {
-			throw std::runtime_error("Something went wrong in the createBridges algorithm");
-		}
-
-
-		// Each compound is only allowed to create a bridge to compounds with a larger id
-		std::vector<int> bridge_compound_ids{ compound_id_self };
-		for (auto compound_id_other : bonded_compounds_set) {
-			if (compound_id_other > compound_id_self) {
-				bridge_compound_ids.push_back(compound_id_other);
-			}
-		}
-
-		// Note that this bridge might contain more compounds than this compound proposes to bridge, as it was made by a compound with a lower id, that is compound does not include!
-		if (!compoundsAreAlreadyConnected(bridge_compound_ids, compoundBridges)) {
-			compoundBridges.push_back(BridgeFactory{ static_cast<int>(compoundBridges.size()), bridge_compound_ids });
-
-		}
-	}
-
-	return compoundBridges;
-}
-
-
-
-
-
-
-
 
 
 template <int n_ids>
@@ -1042,7 +980,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, gro_file.box_size.x, atomGroups, preparedAtoms, atomIdToSinglebondsMap, simparams.bc_select);
-	std::vector<BridgeFactory> bridges = CreateBridges1(topology.singlebonds, compounds, preparedAtoms);
+	std::vector<BridgeFactory> bridges = CreateBridges(topology.singlebonds, compounds, preparedAtoms);
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size());
 	DistributeBondsToCompoundsAndBridges(topology, gro_file.box_size.x, preparedAtoms, simparams.bc_select, compounds, bridges, *bpLutManager);
 

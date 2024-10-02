@@ -337,3 +337,17 @@ int FPS::GetFps() const {
     return static_cast<int>(1e9 / avgFrameTime.count());
 }
 
+void Display::TestDisplay() {
+	Display display{ Full};
+	
+	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
+	Compound compound;
+	compound.n_particles = 1;
+	compound.atomLetters[0] = '_';
+	BoxParams params;
+	params.boxSize = 2;
+	params.total_compound_particles = 1;
+	params.total_particles = 1;
+	params.total_particles_upperbound = 1;
+	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, 0, 0.f, Atomname), true);
+}

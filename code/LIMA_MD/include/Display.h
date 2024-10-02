@@ -105,7 +105,7 @@ public:
 
 	std::exception_ptr displayThreadException{ nullptr };
 
-
+	static void TestDisplay();
 
 private:
 	LimaLogger logger;

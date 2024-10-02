@@ -76,6 +76,31 @@ namespace TestMembraneBuilder {
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 
+	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
+		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
+		const fs::path mol_dir = work_dir / "molecule";
+
+		std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
+		std::vector<std::string> targets;
+		for (const auto& entry : fs::directory_iterator(path)) {
+			if (entry.path().extension() == ".gro") {
+				std::string base_name = entry.path().stem().string();
+				std::string itp_file = path + base_name + ".itp";
+				if (fs::exists(itp_file)) {
+
+					targets.push_back(base_name);
+				}
+			}
+		}
+
+		Lipids::Selection lipidselection;
+		for (const auto& lipidname : targets) {
+			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
+		}
+		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 15.f }, 5.f, envmode);
+
+		return LimaUnittestResult{ true , "", envmode == Full };
+	}
 
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {
 		GroFile grofile;

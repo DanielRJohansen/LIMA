@@ -9,7 +9,8 @@ using std::string;
 LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const fs::path& workfolder)
     : logmode(lm)
     , envmode{em}
-    , enable_logging(workfolder !="")
+    //, enable_logging(workfolder !="")
+    , enable_logging(false)
     , log_dir((workfolder / "logs/").string())
 {
     if (enable_logging) {

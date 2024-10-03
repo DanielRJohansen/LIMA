@@ -49,3 +49,8 @@ out*
 *.gro.bin
 *.top.bin
 *.itp.bin
+
+# Ignore all files in the deb build folder, except the .deb file
+/distribution/debian/build/*
+!/distribution/debian/build/*.deb
+*.debhelper*

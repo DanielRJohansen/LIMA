@@ -1,0 +1,12 @@
+Source: lima
+Section: misc
+Priority: optional
+Maintainer: Daniel <daniel@lima-dynamics.com>
+Build-Depends: debhelper-compat (= 13), curl
+Standards-Version: 4.5.0
+Homepage: http://www.lima-dynamics.com
+
+Package: lima
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, glu, bash, libglvnd0
+Description: The Molecular Dynamics engine for the Generative Era

@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: lima
+Source: https://github.com/DanielRJohansen/LIMAMD
+
+Files: *
+Copyright: Daniel Johansen <daniel@lima-dynamics.com>
+License: Proprietary
+ This package is proprietary software.

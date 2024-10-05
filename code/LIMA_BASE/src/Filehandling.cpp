@@ -227,7 +227,7 @@ void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, fl
 
 fs::path Filehandler::GetLimaDir() {
 #ifdef __linux__
-	return {"/opt/LIMA"};
+	return {"/usr/share/LIMA"};
 #else
 	const int maxPathLen = 2048;
 	char executablePath[maxPathLen];

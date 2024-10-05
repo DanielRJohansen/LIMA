@@ -144,10 +144,10 @@ private:
 	std::mutex incomingRenderTaskMutex;
 
 
-	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader = nullptr;
-	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader = nullptr;
-	std::unique_ptr<DrawAtomsShader> drawAtomsShader = nullptr;
-	std::unique_ptr<DrawNormalsShader> drawNormalsShader = nullptr;
+	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
+	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
+	std::unique_ptr<DrawAtomsShader> drawAtomsShader;
+	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 

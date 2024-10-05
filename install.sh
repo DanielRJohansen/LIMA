@@ -61,7 +61,7 @@ fi
 
 ## -- INSTALL LIMA  -- ##
 
-LIMA_DIR="/opt/LIMA"    # Used by Cmake to save all resource files
+LIMA_DIR="/usr/share/LIMA"    # Used by Cmake to save all resource files
 sudo rm -rf $LIMA_DIR
 
 BUILD_DIR="$(pwd)/build"

@@ -229,7 +229,7 @@ void Environment::run(bool doPostRunEvents) {
 	simulation = engine->takeBackSim();
 
 	simulation->finished = true;
-	simulation->ready_to_run = false;
+	simulation->ready_to_run = false ;
 
 	
 	m_logger.finishSection("Simulation Finished");

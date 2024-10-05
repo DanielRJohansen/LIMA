@@ -3,6 +3,7 @@
 #include "Statistics.h"
 #include "MoleculeUtils.h"
 #include "MoleculeGraph.h"
+#include <format>
 
 Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, double percentage) :
 	userSupplied(fs::exists(workDir / (lipidname + ".gro")) && fs::exists(workDir / (lipidname + ".itp"))),

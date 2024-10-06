@@ -192,7 +192,7 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, Lipids::Sele
 	params.em_variant = true;
 	params.bc_select = BoundaryConditionSelect::NoBC;
 	params.dt = 1.f;
-	params.n_steps = 1000;
+	params.n_steps = 2000;
 	params.snf_select = BoxEdgePotential;
 	env.CreateSimulation(*grofile, *topfile, params);
 	env.run(false);

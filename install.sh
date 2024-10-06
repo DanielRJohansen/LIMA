@@ -99,8 +99,7 @@ lima selftest
 
 
 # Run small sim
-if [ "$1" != "-notest" ]; then
-    SIMS_DIR=/$HOME/LIMA/simulations
+if [ "$1" != "-notest" ] && [ "$2" != "-notest" ]; then    SIMS_DIR=/$HOME/LIMA/simulations
     echo "Running self test in dir $SIMS_DIR"
     mkdir -p "$SIMS_DIR"
 

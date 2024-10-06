@@ -92,15 +92,9 @@ public:
 
 #ifdef __linux__
 	std::chrono::system_clock::time_point time0;
-	std::string main_dir = "/opt/LIMA";
 #else
 	std::chrono::steady_clock::time_point time0;
-
-	// Main folder of the lima package, contains code/lib/resources and more
-	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
 #endif
-
-	const fs::path mainDir = Filehandler::GetLimaDir();
 
 	const fs::path work_dir = "";	// Main dir of the current simulation
 

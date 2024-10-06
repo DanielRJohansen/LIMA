@@ -6,6 +6,8 @@
 
 #if [ "$(id -u)" -ne 0 ]; then echo "Please run as root." >&2; exit 1;fi
 
+set -e
+
 echo "\nWelcome to the LIMA Dynamics installer\n"
 
 
@@ -86,6 +88,14 @@ echo -e "\n\t LIMA has been installed successfully \n\n\n"
 ## -- INSTALL LIMA done  -- ##
 
 
+
+# Move files to LIMAMD, prepared for distribution
+rm ~/Downloads/LIMAMD/lima
+cp /usr/bin/lima ~/Downloads/LIMAMD/
+rm -rf ~/Downloads/LIMAMD/resources
+cp -r /usr/share/LIMA/resources ~/Downloads/LIMAMD
+
+lima selftest
 
 
 # Run small sim

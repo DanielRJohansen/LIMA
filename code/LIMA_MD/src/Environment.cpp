@@ -178,7 +178,7 @@ bool Environment::prepareForRun() {
 
 
 void Environment::sayHello() {
-	std::ifstream file(main_dir+"/resources/logo/logo_ascii.txt");
+	std::ifstream file(Filehandler::GetLimaDir() / "resources/logo/logo_ascii.txt");
 	if (!file) {
 		throw std::runtime_error("Failed to open logo file");
 	}

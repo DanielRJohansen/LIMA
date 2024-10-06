@@ -40,12 +40,6 @@ Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output
 	case EnvMode::Headless:
 		break;
 	}
-
-	const auto moldir = fs::path(workdir) / "molecule";	// TODO: Find a better place for this
-	if (!fs::exists(moldir))
-		fs::create_directory(moldir);
-
-	//boxbuilder = std::make_unique<BoxBuilder>(std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "boxbuilder", work_dir));
 }
 
 Environment::~Environment() {}

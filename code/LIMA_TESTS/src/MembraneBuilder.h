@@ -97,6 +97,10 @@ namespace TestMembraneBuilder {
 		}
 		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 15.f }, 5.f, envmode);
 
+		for (const auto& includeTop : top->GetAllSubMolecules()) {
+			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");
+		}
+
 		return LimaUnittestResult{ true , "", envmode == Full };
 	}
 

@@ -10,7 +10,6 @@ using namespace Filehandler;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
-
 GroRecord parseGroLine(const std::string& line) {
 	GroRecord record;
 
@@ -114,9 +113,9 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	if (!fs::exists(path))
 		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
 
-	lastModificationTimestamp = fs::last_write_time(path);
+	lastModificationTimestamp = TimeSinceEpoch(fs::last_write_time(path));
 
-	if (UseCachedBinaryFile(path, lastModificationTimestamp)) {
+	if (UseCachedBinaryFile(path)) {
 		readGroFileFromBinaryCache(path, *this);
 	}
 	else {
@@ -313,9 +312,9 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 	if (!fs::exists(path))
 		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
 
-	lastModificationTimestamp = fs::last_write_time(path);
+	lastModificationTimestamp = TimeSinceEpoch(fs::last_write_time(path));
 
-	if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
+	if (UseCachedBinaryFile(path)) {
 		readTopFileFromBinaryCache(path, *this);
 
 		// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
@@ -331,199 +330,201 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 		}
 	}
 	else {
-		std::ifstream file;
-		file.open(path);
-		if (!file.is_open() || file.fail()) {
-			throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
-		}
-
-		TopologySection current_section{ TopologySection::title };
-		TopologySectionGetter getTopolSection{};
-
-		std::string line{}, word{};
-		std::string sectionname = "";
-		std::vector<int> groIdToLimaId;
-
-
-		while (getline(file, line)) {
-			if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
-				continue;
+		{
+			std::ifstream file;
+			file.open(path);
+			if (!file.is_open() || file.fail()) {
+				throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 			}
 
-			if (line.empty() || isOnlySpacesAndTabs(line))
-				continue;
+			TopologySection current_section{ TopologySection::title };
+			TopologySectionGetter getTopolSection{};
 
-			// Check if current line is commented
-			if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { 
-				continue; 
-			}	// Only title-sections + atoms reads the comments
-
-			std::istringstream iss(line);
+			std::string line{}, word{};
+			std::string sectionname = "";
+			std::vector<int> groIdToLimaId;
 
 
-			if (line[0] == '#') {
-				if (line.size() > 8 && line.substr(0, 8) == "#include") {
-					// take second word, remove "
-
-					std::string _, pathWithQuotes;
-					iss >> _ >> pathWithQuotes;
-					if (pathWithQuotes.size() < 3)
-						throw std::runtime_error("Include is not formatted as expected: " + line);
-
-					std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
-
-					if (filename.find(".ff") != std::string::npos || filename.find("forcefield") != std::string::npos) {
-						forcefieldIncludes.emplace_back(path.parent_path(), filename);
-					}
-					else if (filename.find("posre") != std::string::npos) {
-						// Do nothing, not yet supported
-					}
-					else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
-						auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename);
-						if (!includeTopology->moleculetype.has_value()) {						
-							throw std::runtime_error(std::format("Include topology did not contain a moleculetype section: {}", includeTopology->path.string()));
-						}
-						includeTopologies.insert({includeTopology->moleculetype.value().name, includeTopology});
-					}
-					else
-						otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));				
+			while (getline(file, line)) {
+				if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
+					continue;
 				}
-				continue;
-			}
 
-
-			switch (current_section)
-			{
-			case TopologySection::title:
-				title.append(line + "\n");	// +\n because getline implicitly strips it away.
-				break;
-			case TopologySection::molecules: {
-				std::string include_name;
-				iss >> include_name;
-
-				// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
-				if (include_name == "SOL")
+				if (line.empty() || isOnlySpacesAndTabs(line))
 					continue;
 
-				if (!includeTopologies.contains(include_name)) {
-					throw std::runtime_error(std::format("Could not find include topology file: {}", include_name));
+				// Check if current line is commented
+				if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
+					continue;
+				}	// Only title-sections + atoms reads the comments
+
+				std::istringstream iss(line);
+
+
+				if (line[0] == '#') {
+					if (line.size() > 8 && line.substr(0, 8) == "#include") {
+						// take second word, remove "
+
+						std::string _, pathWithQuotes;
+						iss >> _ >> pathWithQuotes;
+						if (pathWithQuotes.size() < 3)
+							throw std::runtime_error("Include is not formatted as expected: " + line);
+
+						std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
+
+						if (filename.find(".ff") != std::string::npos || filename.find("forcefield") != std::string::npos) {
+							forcefieldIncludes.emplace_back(path.parent_path(), filename);
+						}
+						else if (filename.find("posre") != std::string::npos) {
+							// Do nothing, not yet supported
+						}
+						else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
+							auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename);
+							if (!includeTopology->moleculetype.has_value()) {
+								throw std::runtime_error(std::format("Include topology did not contain a moleculetype section: {}", includeTopology->path.string()));
+							}
+							includeTopologies.insert({ includeTopology->moleculetype.value().name, includeTopology });
+						}
+						else
+							otherIncludes.emplace_back(pathWithQuotes.substr(1, pathWithQuotes.size() - 2));
+					}
+					continue;
 				}
 
-				const int globalIndexOfFirstParticle = molecules.entries.empty() 
-					? 0
-					: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
-				molecules.entries.emplace_back(include_name, includeTopologies.at(include_name), globalIndexOfFirstParticle);
-				break;
-			}
-			case TopologySection::moleculetype:
-			{
-				if (moleculetype.has_value()) {
-					throw std::runtime_error(std::format("A single topology file may not contain multiple molecule types: {}", this->path.string()));
-				}
-				TopologyFile::Moleculetype _moleculetype{};
-				iss >> _moleculetype.name >> _moleculetype.nrexcl;
-				moleculetype = _moleculetype;
-				break;
-			}
-			case TopologySection::atoms:
-			{
-				if (firstNonspaceCharIs(line, ';')) {
-					// TODO: Test for residue or lipid_section in the [1] position of the comment instead
 
-					// Skip the very first line which is the legend
-					if (line.find("cgnr") != std::string::npos) {
+				switch (current_section)
+				{
+				case TopologySection::title:
+					title.append(line + "\n");	// +\n because getline implicitly strips it away.
+					break;
+				case TopologySection::molecules: {
+					std::string include_name;
+					iss >> include_name;
+
+					// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
+					if (include_name == "SOL")
+						continue;
+
+					if (!includeTopologies.contains(include_name)) {
+						throw std::runtime_error(std::format("Could not find include topology file: {}", include_name));
+					}
+
+					const int globalIndexOfFirstParticle = molecules.entries.empty()
+						? 0
+						: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
+					molecules.entries.emplace_back(include_name, includeTopologies.at(include_name), globalIndexOfFirstParticle);
+					break;
+				}
+				case TopologySection::moleculetype:
+				{
+					if (moleculetype.has_value()) {
+						throw std::runtime_error(std::format("A single topology file may not contain multiple molecule types: {}", this->path.string()));
+					}
+					TopologyFile::Moleculetype _moleculetype{};
+					iss >> _moleculetype.name >> _moleculetype.nrexcl;
+					moleculetype = _moleculetype;
+					break;
+				}
+				case TopologySection::atoms:
+				{
+					if (firstNonspaceCharIs(line, ';')) {
+						// TODO: Test for residue or lipid_section in the [1] position of the comment instead
+
+						// Skip the very first line which is the legend
+						if (line.find("cgnr") != std::string::npos) {
+							break;
+
+						}
+						if (line.find("residue") != std::string::npos || line.find("lipid_section") != std::string::npos)
+							sectionname = line;
+					}
+					else {
+						TopologyFile::AtomsEntry atom;
+						int groId;
+						iss >> groId >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
+
+						if (groIdToLimaId.size() < groId + 1)
+							groIdToLimaId.resize(groId + 1, -1);
+						groIdToLimaId[groId] = atoms.entries.size();
+						atom.id = groIdToLimaId[groId];
+						atoms.entries.emplace_back(atom);
+
+						if (sectionname != "") {
+							atoms.entries.back().section_name = sectionname;
+							sectionname = "";
+						}
+						if (atom.type.empty() || atom.residue.empty() || atom.atomname.empty())
+							throw std::runtime_error("Atom type, residue or atomname is empty");
+
+					}
+					break;
+				}
+				case TopologySection::bonds: {
+					TopologyFile::SingleBond singlebond{};
+					int groIds[2];
+					iss >> groIds[0] >> groIds[1] >> singlebond.funct;
+					if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
 						break;
-
+					for (int i = 0; i < 2; i++)
+						singlebond.ids[i] = groIdToLimaId[groIds[i]];
+					if (singlebond.ids[0] == 1770 && singlebond.ids[1] == 1772) {
+						auto a = name;
+						int c = 0;
 					}
-					if (line.find("residue") != std::string::npos || line.find("lipid_section") != std::string::npos)
-						sectionname = line;					
+					singlebond.sourceLine = line;
+					singlebonds.entries.emplace_back(singlebond);
+					break;
 				}
-				else {
-					TopologyFile::AtomsEntry atom;
-					int groId;
-					iss >> groId>> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
-
-					if (groIdToLimaId.size() < groId + 1)
-						groIdToLimaId.resize(groId + 1, -1);
-					groIdToLimaId[groId] = atoms.entries.size();
-					atom.id = groIdToLimaId[groId];
-					atoms.entries.emplace_back(atom);
-
-					if (sectionname != "") {
-						atoms.entries.back().section_name = sectionname;
-						sectionname = "";
-					}
-					if (atom.type.empty() || atom.residue.empty() || atom.atomname.empty())
-						throw std::runtime_error("Atom type, residue or atomname is empty");
-
+				case TopologySection::pairs: {
+					TopologyFile::Pair pair{};
+					int groIds[2];
+					iss >> groIds[0] >> groIds[1] >> pair.funct;
+					if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
+						break;
+					for (int i = 0; i < 2; i++)
+						pair.ids[i] = groIdToLimaId.at(groIds[i]);
+					pairs.entries.emplace_back(pair);
+					break;
 				}
-				break;
-			}
-			case TopologySection::bonds: {
-				TopologyFile::SingleBond singlebond{};
-				int groIds[2];
-				iss >> groIds[0] >> groIds[1] >> singlebond.funct;
-				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
+				case TopologySection::angles: {
+					TopologyFile::AngleBond angle{};
+					int groIds[3];
+					iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
+					if (!VerifyAllParticlesInBondExists<3>(groIdToLimaId, groIds))
+						break;
+					for (int i = 0; i < 3; i++)
+						angle.ids[i] = groIdToLimaId.at(groIds[i]);
+					anglebonds.entries.emplace_back(angle);
 					break;
-				for (int i = 0; i < 2; i++) 
-					singlebond.ids[i] = groIdToLimaId[groIds[i]];
-				if (singlebond.ids[0] == 1770 && singlebond.ids[1] == 1772) {
-					auto a = name;
-					int c = 0;
 				}
-				singlebond.sourceLine = line;
-				singlebonds.entries.emplace_back(singlebond);
-				break;
-			}
-			case TopologySection::pairs: {
-				TopologyFile::Pair pair{};
-				int groIds[2];
-				iss >> groIds[0] >> groIds[1] >> pair.funct;
-				if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
+				case TopologySection::dihedrals: {
+					TopologyFile::DihedralBond dihedral{};
+					int groIds[4];
+					iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
+					if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
+						break;
+					for (int i = 0; i < 4; i++)
+						dihedral.ids[i] = groIdToLimaId.at(groIds[i]);
+					dihedralbonds.entries.emplace_back(dihedral);
 					break;
-				for (int i = 0; i < 2; i++)
-					pair.ids[i] = groIdToLimaId.at(groIds[i]);
-				pairs.entries.emplace_back(pair);
-				break;
-			}
-			case TopologySection::angles: {
-				TopologyFile::AngleBond angle{};
-				int groIds[3];
-				iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
-				if (!VerifyAllParticlesInBondExists<3>(groIdToLimaId, groIds))
+				}
+				case TopologySection::impropers: {
+					TopologyFile::ImproperDihedralBond improper{};
+					int groIds[4];
+					iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
+					if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
+						break;
+					for (int i = 0; i < 4; i++)
+						improper.ids[i] = groIdToLimaId.at(groIds[i]);
+					improperdihedralbonds.entries.emplace_back(improper);
+					improperdihedralbonds.entries.back().sourceLine = line;
 					break;
-				for (int i = 0; i < 3; i++)					
-					angle.ids[i] = groIdToLimaId.at(groIds[i]);								
-				anglebonds.entries.emplace_back(angle);
-				break;
-			}
-			case TopologySection::dihedrals: {
-				TopologyFile::DihedralBond dihedral{};
-				int groIds[4];
-				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
-				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
+				}
+				default:
+					// Do nothing
+					//throw std::runtime_error("Illegal state");
 					break;
-				for (int i = 0; i < 4; i++)					
-					dihedral.ids[i] = groIdToLimaId.at(groIds[i]);				
-				dihedralbonds.entries.emplace_back(dihedral);
-				break;
-			}
-			case TopologySection::impropers: {
-				TopologyFile::ImproperDihedralBond improper{};
-				int groIds[4];
-				iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
-				if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
-					break;
-				for (int i = 0; i < 4; i++)
-					improper.ids[i] = groIdToLimaId.at(groIds[i]);								
-				improperdihedralbonds.entries.emplace_back(improper);
-				improperdihedralbonds.entries.back().sourceLine = line;
-				break;
-			}
-			default:				
-				// Do nothing
-				//throw std::runtime_error("Illegal state");
-				break;
+				}
 			}
 		}
 		WriteFileToBinaryCache(*this);

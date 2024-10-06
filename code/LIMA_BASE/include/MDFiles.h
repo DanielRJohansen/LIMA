@@ -39,7 +39,7 @@ struct GroFile {
 
 	// Meta data not in file
 	fs::path m_path;
-	fs::file_time_type lastModificationTimestamp;
+	int64_t lastModificationTimestamp;
 	bool readFromCache = false;
 	// --------------------- // 
 
@@ -261,7 +261,7 @@ public:
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	std::string name;
 	fs::path path;
-	fs::file_time_type lastModificationTimestamp{};
+	int64_t lastModificationTimestamp;
 	bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 

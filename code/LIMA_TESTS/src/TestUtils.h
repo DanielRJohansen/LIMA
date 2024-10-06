@@ -51,6 +51,52 @@ namespace TestUtils {
 		}
 	}
 
+	void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
+		if (dir.string().find("LIMA_data") == std::string::npos) {
+			throw std::runtime_error("LIMA is not allowed to clean this directory");
+		}
+
+		if (!fs::exists(dir) || !fs::is_directory(dir)) {
+			std::cerr << "Path does not exist or is not a directory: " << dir << std::endl;
+			return;
+		}
+
+		// Remove all files that do not contain "reference" in their name
+		for (auto& p : fs::recursive_directory_iterator(dir)) {
+			if (fs::is_regular_file(p) && p.path().filename().string().find(except) == std::string::npos) {
+				try {
+					fs::remove(p);
+				}
+				catch (const fs::filesystem_error& e) {
+					std::cerr << "Error removing " << p.path() << ": " << e.what() << '\n';
+				}
+			}
+		}
+
+		// Collect all directories in a vector
+		std::vector<fs::path> directories;
+		for (auto& p : fs::recursive_directory_iterator(dir)) {
+			if (fs::is_directory(p)) {
+				directories.push_back(p);
+			}
+		}
+
+		// Sort directories in reverse order to remove from the deepest level first
+		std::sort(directories.rbegin(), directories.rend());
+
+		// Remove empty directories
+		for (const auto& p : directories) {
+			if (fs::is_empty(p)) {
+				try {
+					fs::remove(p);
+				}
+				catch (const fs::filesystem_error& e) {
+					std::cerr << "Error removing " << p << ": " << e.what() << '\n';
+				}
+			}
+		}
+	}
+
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...

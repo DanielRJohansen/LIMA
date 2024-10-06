@@ -13,8 +13,12 @@ namespace TestMembraneBuilder {
 
 	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{
+		
+
+
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 		const fs::path mol_dir = work_dir / "molecule";
+		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
 		Lipids::Selection lipidselection;
 		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "Cholesterol", "DOPC" };

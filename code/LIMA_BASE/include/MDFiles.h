@@ -338,18 +338,16 @@ struct TopologyFile::AtomsEntry {
 };
 
 struct TopologyFile::ForcefieldInclude {
-	ForcefieldInclude() {}
-	ForcefieldInclude(const fs::path& topolPath, const std::string& includeName);
+	ForcefieldInclude(const std::string& includeName="");
 
 	/// <summary>
 	/// Copies the forcefieldfile AND any include files to a target directory
 	/// </summary>
 	/// <param name="directory"></param>
-	void CopyToDirectory(const fs::path& directory) const;
+	void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
+	fs::path Path(const fs::path& ownerDir) const;
 
-	bool isUserSupplied;
-	fs::path path;
-	fs::path name; // Same as path for user supplied, path relative to FF dir for LIMA FF
+	fs::path name; // Either name in resources/forcefields, or a path relative to the topologyfile
 };
 
 

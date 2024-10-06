@@ -8,6 +8,6 @@ Homepage: http://www.lima-dynamics.com
 
 Package: lima
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, libglu1-mesa, libglvnd0
+Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, libglu1-mesa, libglvnd0, libcudart12, nvidia-driver-550 | nvidia-driver-535 | nvidia-driver-525
 Description: The Molecular Dynamics engine for the Generative Era
  LIMA is a high-performance molecular dynamics engine designed for modern scientific computations and generative modeling.

@@ -8,6 +8,8 @@ sudo rm -rf /usr/share/LIMA
 rm debian/lima.substvars debian/debhelper-build-stamp
 rm -rf debian/lima
 
+set -e
+
 # Now download files and move to debian dir
 curl -L https://github.com/DanielRJohansen/LIMAMD/archive/main.tar.gz -o source.tar.gz
 tar xzf source.tar.gz
@@ -33,3 +35,4 @@ sudo dpkg -i ./build/lima_*.deb
 sudo apt-get install -f
 
 
+lima selftest

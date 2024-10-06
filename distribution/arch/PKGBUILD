@@ -9,7 +9,7 @@ url="http://www.lima-dynamics.com"
 license=('LicenseRef-Proprietary')
 depends=('glibc' 'glu' 'bash' 'libglvnd')
 source=("https://github.com/DanielRJohansen/LIMAMD/archive/main.tar.gz")
-sha256sums=('de536be7a3c2e3c2b4e746f423742298099047bffacefce9f8b9301d7885b6b6')
+sha256sums=('c028eef6e412657f74001f5563d894fb6c53079dfd9dda197f7192e767ad8a5e')
 
 package() {
     cd "$srcdir/LIMAMD-main"

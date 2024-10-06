@@ -285,7 +285,9 @@ bool Display::initGLFW() {
         glfwTerminate();
         return 0;
     }
+#ifndef __linux__
     glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
+#endif
     logger.print("done\n");
 
     // Make the window's context current

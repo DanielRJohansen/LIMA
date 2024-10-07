@@ -25,7 +25,9 @@ namespace TestMembraneBuilder {
 		for (const auto& lipidname : lipids) {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+
+		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
+		Programs::EnergyMinimizeMax(*gro, *top, work_dir, envmode);
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
@@ -63,7 +65,9 @@ namespace TestMembraneBuilder {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
 		}
 
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
+		Programs::EnergyMinimizeMax(*gro, *top, work_dir, envmode);
+
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
@@ -99,9 +103,11 @@ namespace TestMembraneBuilder {
 		for (const auto& lipidname : targets) {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
 		}
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 15.f }, 5.f, envmode);
 
-		for (const auto& includeTop : top->GetAllSubMolecules()) {
+		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 15.f }, 5.f);
+		Programs::EnergyMinimizeMax(*grofile, *topfile, work_dir, envmode);
+
+		for (const auto& includeTop : topfile->GetAllSubMolecules()) {
 			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");
 		}
 

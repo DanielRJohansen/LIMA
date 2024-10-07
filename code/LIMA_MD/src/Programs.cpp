@@ -181,37 +181,6 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-
-
-MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, Lipids::Selection& lipidsSelection, Float3 boxSize, float membraneCenterZ, EnvMode envmode) {
-
-	auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidsSelection, boxSize, membraneCenterZ);
-
-	Environment env{ workDir, envmode, false};
-	SimParams params;
-	params.em_variant = true;
-	params.bc_select = BoundaryConditionSelect::NoBC;
-	params.dt = 1.f;
-	params.n_steps = 2000;
-	params.snf_select = BoxEdgePotential;
-	env.CreateSimulation(*grofile, *topfile, params);
-	env.run(false);
-	env.WriteBoxCoordinatesToFile(*grofile);
-
-	params.dt = 20;
-	env.CreateSimulation(*env.getSim(), params);
-	env.run(false);
-	env.WriteBoxCoordinatesToFile(*grofile);
-
-	params.snf_select = None;
-	params.bc_select = BoundaryConditionSelect::PBC;
-	env.CreateSimulation(*env.getSim(), params);
-	env.run(false);
-	env.WriteBoxCoordinatesToFile(*grofile);
-
-	return {grofile, topfile};
-}
-
 void Programs::EnergyMinimizeMax(GroFile& grofile, const TopologyFile& topfile, const fs::path& workDir, EnvMode envmode) {
 	Environment env{ workDir, envmode, false };
 	SimParams params;

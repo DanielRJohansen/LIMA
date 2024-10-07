@@ -16,8 +16,6 @@ namespace Programs {
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
 
-	MDFiles::FilePair CreateMembrane(const fs::path& workDir, Lipids::Selection&, Float3 boxSize, float membraneCenterZ, EnvMode);
-
 	// Load file into a box, optionally solvate it and then run untill energy is at a stable level
 	void EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topFile, bool solvate, float boxlenNM);
 

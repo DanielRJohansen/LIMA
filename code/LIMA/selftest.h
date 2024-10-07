@@ -22,7 +22,9 @@ void SelfTest() {
 	for (const auto& lipidname : targets) {
 		lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size()) });
 	}
-	auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 10.f }, 5.f, Full);
+
+	auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
+	Programs::EnergyMinimizeMax(*gro, *top, work_dir, Full);
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

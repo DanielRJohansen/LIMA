@@ -532,13 +532,28 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
+	auto outputgrofile = std::make_unique<GroFile>();
+	outputgrofile->box_size = boxSize;
+	outputgrofile->title = "Membrane consisting of ";
+	for (const auto& lipid : lipidselection) {
+		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
+	}
+	auto outputtopologyfile = std::make_unique<TopologyFile>();
+	outputtopologyfile->name = "monolayer";
+
+	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, boxSize, membraneCenter);
+
+	return { std::move(outputgrofile), std::move(outputtopologyfile) };
+}
+
+void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
+
 	validateLipidselection(lipidselection);
 
 	for (auto& lipid : lipidselection) {
 		centerMoleculeAroundOrigo(*lipid.grofile);
 	}
 
-	
 	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
 	const float n_lipids_total = lipid_density * boxSize.x * boxSize.y;
@@ -548,14 +563,6 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	const float distPerX = boxSize.x / static_cast<float>(lipidsPerDimx);
 	const float distPerY = boxSize.y / static_cast<float>(lipidsPerDimy);
 
-	auto outputgrofile = std::make_unique<GroFile>();
-	outputgrofile->box_size = boxSize;
-	outputgrofile->title = "Membrane consisting of ";
-	for (const auto& lipid : lipidselection) {
-		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
-	}
-	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->name = "monolayer";
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
@@ -593,8 +600,8 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
-					*outputtopologyfile, inputlipid.topfile);
+				AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+					topfile, inputlipid.topfile);
 			}
 
 			// Insert bottom lipid
@@ -615,13 +622,11 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
-					*outputtopologyfile, inputlipid.topfile);
+				AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+					topfile, inputlipid.topfile);
 			}
 
 			nLipidsInserted++;
 		}
 	}
-
-	return { std::move(outputgrofile), std::move(outputtopologyfile) };
 }

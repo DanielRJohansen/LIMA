@@ -229,26 +229,6 @@ fs::path Filehandler::GetLimaDir() {
 #ifdef __linux__
 	return {"/usr/share/LIMA"};
 #else
-	const int maxPathLen = 2048;
-	char executablePath[maxPathLen];
-	GetModuleFileName(NULL, executablePath, maxPathLen);
-
-
-	// Start from the directory of the executable
-	fs::path execPath(executablePath);
-	fs::path currentPath = execPath.parent_path();
-
-	// Traverse up the directory tree until "LIMA" directory is found or root is reached
-	int count = 0;
-	while (currentPath.has_parent_path()) {
-		if (currentPath.filename() == "LIMA") {
-			return currentPath; // Return the path when "LIMA" is found
-		}
-		currentPath = currentPath.parent_path(); // Move one level up in the directory tree
-		if (count++ > 20)
-			break;
-	}
-
-	throw std::runtime_error("Could not find LIMA directory");
+	return { R"(C:\Users\Daniel\git_repo\LIMA)" };
 #endif
 }

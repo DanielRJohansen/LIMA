@@ -338,16 +338,21 @@ struct TopologyFile::AtomsEntry {
 };
 
 struct TopologyFile::ForcefieldInclude {
-	ForcefieldInclude(const std::string& includeName="");
+	ForcefieldInclude(const std::string& name = "") : name(name) {};
+	ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
+	void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
 
 	/// <summary>
 	/// Copies the forcefieldfile AND any include files to a target directory
 	/// </summary>
 	/// <param name="directory"></param>
 	void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
-	fs::path Path(const fs::path& ownerDir) const;
+	const fs::path& Path() const;
 
 	fs::path name; // Either name in resources/forcefields, or a path relative to the topologyfile
+
+private:
+	std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
 };
 
 

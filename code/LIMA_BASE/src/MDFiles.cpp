@@ -327,7 +327,12 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 			}
 
 			molecule.includeTopologyFile = includeTopologies.at(molecule.name);
+
+			for (auto& forcefieldInclude : molecule.includeTopologyFile->forcefieldIncludes)
+				forcefieldInclude.LoadFullPath(path.parent_path());
 		}
+		for (auto& forcefieldInclude : forcefieldIncludes)
+			forcefieldInclude.LoadFullPath(path.parent_path());
 	}
 	else {
 		{
@@ -373,7 +378,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 						std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
 
 						if (filename.find(".ff") != std::string::npos || filename.find("forcefield") != std::string::npos) {
-							forcefieldIncludes.emplace_back(filename);
+							forcefieldIncludes.emplace_back(filename, path.parent_path());
 						}
 						else if (filename.find("posre") != std::string::npos) {
 							// Do nothing, not yet supported
@@ -784,7 +789,12 @@ std::optional<std::string> extractStringBetweenQuotationMarks(const std::string&
 
 // If a forcefield with the specified name is available relative to the topology's path, then we take that user supplied path and use
 // Otherwise we assume the name is simply pointing to a LIMA forcefield.
-TopologyFile::ForcefieldInclude::ForcefieldInclude(const std::string& name) : name(name) {}
+TopologyFile::ForcefieldInclude::ForcefieldInclude(const std::string& name, const fs::path& ownerDir) : 
+	name(name),
+	path(fs::exists(ownerDir / name)
+	? ownerDir / name
+	: Filehandler::GetLimaDir() / "resources" / "forcefields" / name)
+{}
 void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const {
 	if (!fs::is_directory(directory)) {
 		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
@@ -792,9 +802,8 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 
 	// Create the target path for the main file
 	const fs::path toplevelForcefieldTargetPath = directory / name;
-	const fs::path myPath = Path(ownerDir);
 
-	if (toplevelForcefieldTargetPath == myPath)
+	if (toplevelForcefieldTargetPath == path)
 		return; // This forcefield has already been copied to the target location
 
 	// Copy the main file
@@ -802,18 +811,18 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 		fs::create_directories(toplevelForcefieldTargetPath.parent_path()); // Create parent directories if they don't exist
 	}
 
-	fs::copy_file(myPath, toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
+	fs::copy_file(Path(), toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
 
 
 	std::vector<fs::path> subIncludes;
-	GenericItpFile ffInclude(myPath);
+	GenericItpFile ffInclude(Path());
 
 	for (const std::string& subInclude : ffInclude.GetSection(includes)) {
 		auto subIncludeName = extractStringBetweenQuotationMarks(subInclude);
 		if (!subIncludeName.has_value()) {
 			throw std::runtime_error("Could not extract include name from include directive: " + subInclude);
 		}
-		subIncludes.emplace_back(myPath.parent_path() / subIncludeName.value());
+		subIncludes.emplace_back(Path().parent_path() / subIncludeName.value());
 	}
 
 	// Copy sub-includes
@@ -826,12 +835,17 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 		fs::copy_file(include, includeTargetPath, fs::copy_options::overwrite_existing);
 	}
 }
-
-fs::path TopologyFile::ForcefieldInclude::Path(const fs::path& ownerDir) const {
-	return fs::exists(ownerDir / name)
+void TopologyFile::ForcefieldInclude::LoadFullPath(const fs::path& ownerDir) {
+	path = fs::exists(ownerDir / name)
 		? ownerDir / name
 		: Filehandler::GetLimaDir() / "resources" / "forcefields" / name;
 }
+const fs::path& TopologyFile::ForcefieldInclude::Path() const {
+	if (!path.has_value())
+		throw std::runtime_error("Path has not been set");
+	return path.value();
+}
+
 
 
 
@@ -840,7 +854,7 @@ fs::path TopologyFile::ForcefieldInclude::Path(const fs::path& ownerDir) const {
 std::vector<fs::path> TopologyFile::GetForcefieldPaths() const {
 	std::vector<fs::path> paths;
 	for (const auto& include : forcefieldIncludes) {
-		paths.emplace_back(include.Path(this->path.parent_path()));
+		paths.emplace_back(include.Path());
 	}
 	return paths;
 }

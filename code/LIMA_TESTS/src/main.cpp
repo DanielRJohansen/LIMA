@@ -59,7 +59,9 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 10.f, envmode);
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
+		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, Float3{ 20.f }, 15.f);
+		//Programs::EnergyMinimizeMax(*grofile, *topfile, work_dir, envmode);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//testBuildmembraneSmall(envmode, false);

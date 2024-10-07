@@ -26,7 +26,7 @@ void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const Topology
 	env.CreateSimulation(grofile, topfile, simparams);
 	env.run();
 
-	GroFile EnergyMinimizedGro = env.writeBoxCoordinatesToFile();
+	GroFile EnergyMinimizedGro = env.WriteBoxCoordinatesToFile();
 	
 	// Now save the new positions to the original gro file, sans any eventually newly added solvents
 	assert(grofile.atoms.size() <= EnergyMinimizedGro.atoms.size());
@@ -196,18 +196,42 @@ MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, Lipids::Sele
 	params.snf_select = BoxEdgePotential;
 	env.CreateSimulation(*grofile, *topfile, params);
 	env.run(false);
-	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
+	env.WriteBoxCoordinatesToFile(*grofile);
 
 	params.dt = 20;
 	env.CreateSimulation(*env.getSim(), params);
 	env.run(false);
-	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
+	env.WriteBoxCoordinatesToFile(*grofile);
 
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 	env.CreateSimulation(*env.getSim(), params);
 	env.run(false);
+	env.WriteBoxCoordinatesToFile(*grofile);
 
 	return {grofile, topfile};
 }
 
+void Programs::EnergyMinimizeMax(GroFile& grofile, const TopologyFile& topfile, const fs::path& workDir, EnvMode envmode) {
+	Environment env{ workDir, envmode, false };
+	SimParams params;
+	params.em_variant = true;
+	params.bc_select = BoundaryConditionSelect::NoBC;
+	params.dt = 1.f;
+	params.n_steps = 2000;
+	params.snf_select = BoxEdgePotential;
+	env.CreateSimulation(grofile, topfile, params);
+	env.run(false);
+	env.WriteBoxCoordinatesToFile(grofile);
+
+	params.dt = 20;
+	env.CreateSimulation(*env.getSim(), params);
+	env.run(false);
+	env.WriteBoxCoordinatesToFile(grofile);
+
+	params.snf_select = None;
+	params.bc_select = BoundaryConditionSelect::PBC;
+	env.CreateSimulation(*env.getSim(), params);
+	env.run(false);
+	env.WriteBoxCoordinatesToFile(grofile);
+}

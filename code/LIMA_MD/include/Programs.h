@@ -8,9 +8,7 @@ class MoleculeHullCollection;
 namespace Programs {
 	void SetMoleculeCenter(GroFile& grofile, Float3 targetCenter);
 
-	// Load file into a box, optionally solvate it and then run untill energy is at a stable level
-	void EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topFile, bool solvate, float boxlenNM);
-
+	
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 
 	MoleculeHullCollection MakeLipidVesicle(GroFile&, TopologyFile&, Lipids::Selection, float vesicleRadius, 
@@ -20,4 +18,9 @@ namespace Programs {
 
 	MDFiles::FilePair CreateMembrane(const fs::path& workDir, Lipids::Selection&, Float3 boxSize, float membraneCenterZ, EnvMode);
 
+	// Load file into a box, optionally solvate it and then run untill energy is at a stable level
+	void EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topFile, bool solvate, float boxlenNM);
+
+	// Same as above, but starts with extreme EM and iteratively increases dt
+	void EnergyMinimizeMax(GroFile& grofile, const TopologyFile& topfile, const fs::path& workDir, EnvMode envmode);
 } // namespace Programs

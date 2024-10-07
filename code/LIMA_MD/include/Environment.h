@@ -71,7 +71,8 @@ public:
 	/// </summary>
 	/// <param name="filename">New name of the file. Defaults to same name as it was as input</param>
 	/// <returns></returns>
-	GroFile writeBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
+	GroFile WriteBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
+	void WriteBoxCoordinatesToFile(GroFile& grofile);
 
 	void RenderSimulation();
 	

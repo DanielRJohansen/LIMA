@@ -103,7 +103,7 @@ namespace Benchmarks {
 
 			SimAnalysis::PlotPotentialEnergyDistribution(*env.getSimPtr(), env.work_dir, { 0,1000, 2000, 3000, 4000 - 1 });
 
-			GroFile emGro = env.writeBoxCoordinatesToFile();
+			GroFile emGro = env.WriteBoxCoordinatesToFile();
 			emGro.printToFile(std::string{ "em.gro" });
 		}
 

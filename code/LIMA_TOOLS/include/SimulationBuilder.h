@@ -44,5 +44,5 @@ namespace SimulationBuilder {
 
 
 	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
-	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
+	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter);
 };

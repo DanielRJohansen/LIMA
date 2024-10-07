@@ -286,10 +286,10 @@ void Environment::postRunEvents() {
 
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
-		printH2();
-		LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->box_host->boxparams.n_solvents,
-			"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->box_host->boxparams.n_compounds, "total p upperbound", simulation->box_host->boxparams.total_particles_upperbound);
-		printH2();
+		//printH2();
+		//LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->box_host->boxparams.n_solvents,
+		//	"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->box_host->boxparams.n_compounds, "total p upperbound", simulation->box_host->boxparams.total_particles_upperbound);
+		//printH2();
 	}
 	
 	if (DUMP_TRAJ) {

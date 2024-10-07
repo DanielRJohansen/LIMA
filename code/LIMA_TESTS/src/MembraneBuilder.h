@@ -104,7 +104,7 @@ namespace TestMembraneBuilder {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
 		}
 
-		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 15.f }, 5.f);
+		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
 		Programs::EnergyMinimizeMax(*grofile, *topfile, work_dir, envmode);
 
 		for (const auto& includeTop : topfile->GetAllSubMolecules()) {

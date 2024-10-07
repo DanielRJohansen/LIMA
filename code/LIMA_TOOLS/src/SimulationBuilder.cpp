@@ -541,12 +541,12 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
 	outputtopologyfile->name = "monolayer";
 
-	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, boxSize, membraneCenter);
+	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
 
 	return { std::move(outputgrofile), std::move(outputtopologyfile) };
 }
 
-void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
+void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter) {
 
 	validateLipidselection(lipidselection);
 
@@ -556,12 +556,12 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
-	const float n_lipids_total = lipid_density * boxSize.x * boxSize.y;
+	const float n_lipids_total = lipid_density * grofile.box_size.x * grofile.box_size.y;
 	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
 	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
 
-	const float distPerX = boxSize.x / static_cast<float>(lipidsPerDimx);
-	const float distPerY = boxSize.y / static_cast<float>(lipidsPerDimy);
+	const float distPerX = grofile.box_size.x / static_cast<float>(lipidsPerDimx);
+	const float distPerY = grofile.box_size.y / static_cast<float>(lipidsPerDimy);
 
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]

@@ -50,7 +50,7 @@ int main() {
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		
+
 
 
 		//const fs::path work_dir = simulations_dir / "test";
@@ -59,9 +59,15 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
-		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, Float3{ 20.f }, 15.f);
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 10.f }, 5.f);
+		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
 		//Programs::EnergyMinimizeMax(*grofile, *topfile, work_dir, envmode);
+
+		//SimParams params{};
+		//params.n_steps = 1000;
+		//params.data_logging_interval = 2;
+		//Environment env(work_dir, envmode, true);
+		//env.run(true);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//testBuildmembraneSmall(envmode, false);

@@ -11,6 +11,9 @@
 struct ShittyFileFormat {
     ShittyFileFormat(const ShittyFileFormat&) = delete;
     ShittyFileFormat(const fs::path& path) {
+        if (path.extension() != ".trr");
+            throw std::runtime_error(std::format("Expected extension .trr, got '{}'", path.extension().string()));
+
         file = fopen(path.string().c_str(), "wb");
     }
 
@@ -99,8 +102,6 @@ struct FrameHeader {
 };
 
 class TRRFormat {
-
-
     ShittyFileFormat file;
 
     void get_cell(std::vector<float>& box) {

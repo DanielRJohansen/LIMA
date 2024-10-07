@@ -27,7 +27,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimizeMax(*gro, *top, work_dir, envmode);
+		Programs::EnergyMinimizeMax(*gro, *top, true, work_dir, envmode);
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
@@ -66,7 +66,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimizeMax(*gro, *top, work_dir, envmode);
+		Programs::EnergyMinimizeMax(*gro, *top, true, work_dir, envmode);
 
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
@@ -105,7 +105,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-		Programs::EnergyMinimizeMax(*grofile, *topfile, work_dir, envmode);
+		Programs::EnergyMinimizeMax(*grofile, *topfile, false, work_dir, envmode);
 
 		for (const auto& includeTop : topfile->GetAllSubMolecules()) {
 			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");

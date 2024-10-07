@@ -9,8 +9,6 @@
 
 enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
-
-
 enum BoundaryConditionSelect{NoBC, PBC};
 
 enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
@@ -18,26 +16,27 @@ enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, Bo
 struct SimParams {
 	SimParams() {}
 	SimParams(const std::filesystem::path& path);
-	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
-		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
+	SimParams(std::initializer_list<int>) = delete;
 
 	void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
 
+	// Main params
 	uint64_t n_steps = 1000;
 	float dt = 100.f;									// [ls]
 	bool em_variant = false;
+
+	// Physics params
 	BoundaryConditionSelect bc_select{ PBC };
-	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
 	bool enable_electrostatics = false;
+	float cutoff_nm = 1.2f;
+	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
 
-
+	// Output params
+	int data_logging_interval = 5;
+	bool save_trajectory = false;
+	bool save_energy = false;
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
 
-	int data_logging_interval = 5;
-
-	float cutoff_nm = 1.2f;
-
-	static std::string defaultPath() { return "sim_params.txt"; };
 };
 
 struct SimSignals {

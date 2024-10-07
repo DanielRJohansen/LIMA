@@ -252,7 +252,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 
 		// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
 		{
-			Environment env{ grofile.m_path.parent_path(), Headless, false };
+			Environment env{ grofile.m_path.parent_path(), Headless};
 			SimParams params;
 			params.n_steps = 2;
 			params.dt = 0;

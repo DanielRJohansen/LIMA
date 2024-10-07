@@ -24,11 +24,10 @@ const int STEPS_PER_UPDATE = 50;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
-Environment::Environment(const fs::path& workdir, EnvMode mode, bool save_output)
+Environment::Environment(const fs::path& workdir, EnvMode mode)
 	: work_dir(workdir)
 	, m_mode(mode)
 	, m_logger{ LimaLogger::compact, m_mode, "environment", workdir.string()}	// .string() is temp
-	, save_output(save_output)
 {
 	switch (mode)
 	{
@@ -272,8 +271,6 @@ void Environment::postRunEvents() {
 	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
 	std::filesystem::create_directories(out_dir);
 
-	if (!save_output) { return; }
-
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
 		//printH2();
@@ -282,25 +279,13 @@ void Environment::postRunEvents() {
 		//printH2();
 	}
 	
-	if (DUMP_TRAJ) {
-		//dumpToFile(simulation->traj_buffer->data(), simulation->getStep() * simulation->total_particles_upperbound, out_dir + "trajectory.bin");
-		//MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
-	}
+	//if (simulation->simparams_host.save_trajectory)
+	//	MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
 
-	if (POSTSIM_ANAL) {
-		//Filehandler::dumpToFile(
-		//	postsim_anal_package.energy_data.data(),
-		//	postsim_anal_package.energy_data.size(),
-		//	out_dir.string() + "energy.bin"
-		//);
-	}
-
-	if (DUMP_POTE) {
-		Filehandler::dumpToFile(simulation->potE_buffer->getBufferAtIndex(0), simulation->getStep() * simulation->box_host->boxparams.total_particles_upperbound, out_dir.string() + "potE.bin");
-	}
+	/*if (simulation->simparams_host.save_energy)
+		Filehandler::dumpToFile(postsim_anal_package.energy_data.data(), postsim_anal_package.energy_data.size(), out_dir.string() + "energy.bin");*/
 
 	simulation->ready_to_run = false;
-
 	m_logger.finishSection("Post-run events finished Finished");
 }
 

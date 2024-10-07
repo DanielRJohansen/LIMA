@@ -24,7 +24,7 @@ class Environment
 public:
 	Environment() = delete;
 	Environment(const Environment&) = delete;
-	Environment(const fs::path& workdir, EnvMode mode, bool save_output);
+	Environment(const fs::path& workdir, EnvMode mode);
 
 	~Environment();
 
@@ -59,8 +59,6 @@ public:
 	/// Create .gro .top and simparams.txt files in the current directory
 	/// </summary>
 	void createSimulationFiles(float boxlen);
-
-
 
 	// Run a standard MD sim
 	void run(bool doPostRunEvents=true);
@@ -119,7 +117,6 @@ private:
 
 
 	EnvMode m_mode;
-	const bool save_output;
 
 	int step_at_last_render = 0;
 

@@ -78,7 +78,7 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment env(work_dir, envmode, false);
+		Environment env(work_dir, envmode);
 		env.CreateSimulation(newGro, newTop, params);
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };

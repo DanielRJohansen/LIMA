@@ -1,14 +1,17 @@
 #include "Simulation.cuh"
 
-#include <map>
 #include <functional>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
 #include <filesystem>
 #include "Filehandling.h"
 #include <fstream>
 
+#include <concepts>
+
 using std::string;
 namespace fs = std::filesystem;
+
+using Dictionary = std::unordered_map<string, string>;
 
 template <typename T>
 constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
@@ -20,50 +23,64 @@ constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, c
 
 	throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_str + " " + val_str);
 }
-
 // Helper function for overwriting templates
 template <typename T>
-constexpr void overwriteParamNonNumbers(std::map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
+constexpr void overwriteParamNonNumbers(std::unordered_map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
 	if (dict.count(key)) {
 		val = transform(dict[key]);
 	}
 }
 
-template <typename T>
-constexpr void overloadParamNumber(std::map<std::string, std::string>& dict, T& param,
-	std::string key, std::function<T(const T&)> transform = [](const T& v) {return v; })
-{
-	static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>, "T must be an integral or floating-point type.");
+void Readb(const Dictionary& dict, bool& value, const std::string& key_name) {
+	if (!dict.contains(key_name))
+		return;
 
+	std::string value_str = dict.at(key_name);
+	if (value_str != "true" && value_str != "false") {
+		throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_name + " " + value_str);
+	}
+	
+	value = (value_str == "true");
+}
+template <std::integral T>
+constexpr void Readi(std::unordered_map<std::string, std::string>& dict, T& param,
+	const std::string& key, std::function<T(const T&)> transform = [](const T& v) { return v; })
+{
 	if (dict.count(key)) {
-		if constexpr (std::is_integral_v<T>) {
-			// For integral types (e.g., int)
-			param = static_cast<T>(std::stoi(dict[key]));
-		}
-		else if constexpr (std::is_floating_point_v<T>) {
-			// For floating-point types (e.g., float, double)
-			param = static_cast<T>(transform(std::stof(dict[key])));
-		}
+		param = static_cast<T>(transform(std::stoll(dict[key])));
+	}
+}
+template <std::floating_point T, typename Transform = std::function<T(const T&)>>
+constexpr void Readf(std::unordered_map<std::string, std::string>& dict, T& param,
+	const std::string& key, Transform transform = [](const T& v) { return v; })
+{
+	if (dict.count(key)) {
+		param = static_cast<T>(transform(std::stod(dict[key])));
 	}
 }
 
 SimParams::SimParams(const fs::path& path) {
-	auto dict = Filehandler::parseINIFile(path.string());
-	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
-	overloadParamNumber(dict, n_steps, "n_steps");
-	overloadParamNumber(dict, data_logging_interval, "data_logging_interval");
+	const bool forceKeysAndValuesLowercase = true;
+	auto dict = Filehandler::parseINIFile(path.string(), forceKeysAndValuesLowercase);
 
-	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
-		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }
-	);
-	overwriteParamNonNumbers<bool>(dict, "enable_electrostatics", enable_electrostatics,
-				[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "enable_electrostatics", value); }
-	);
-
+	Readi(dict, n_steps, "n_steps");
+	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_LIMA; });
+	Readb(dict, em_variant, "em");
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
-		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC}}, "boundarycondition", value); }
+		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC} }, "boundarycondition", value); }
 	);
+	Readb(dict, enable_electrostatics, "enable_electrostatics");
+	Readf(dict, cutoff_nm, "cutoff_nm");
+	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
+		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC} }, "boundarycondition", value); }
+	);
+	// Skip SNF for now	
+
+	Readi(dict, data_logging_interval, "data_logging_interval");	
+	Readb(dict, save_trajectory, "save_trajectory");
+	Readb(dict, save_energy, "save_energy");
+	// Skip colormethod for now
 }
 
 
@@ -74,13 +91,23 @@ void SimParams::dumpToFile(const fs::path& filename) {
 		throw std::runtime_error("Unable to open file: " + filename.string());
 	}
 
+	file << "// Main params" << "\n";
 	file << "n_steps=" << n_steps << "\n";
 	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
+
+	file << "// Physics params" << "\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
-	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
-	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
 	file << "enable_electrostatics=" << (enable_electrostatics ? "true" : "false") << "\n";
+	file << "cutoff_nm=" << cutoff_nm << " # [nm]\n";
+	// Skip SNF for now
+
+	file << "// Output params" << "\n";
+	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
+	file << "save_trajectory=" << (save_trajectory ? "true" : "false") << "\n";
+	file << "save_energy=" << (save_energy ? "true" : "false") << " # (Save kinetic and potential energy to file)" << "\n";
+	// Skip colormethod for now
+	
 	file.close();
 }
 

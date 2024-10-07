@@ -61,7 +61,7 @@ namespace ElectrostaticsTests {
 	// Additionally check that the final force and potential energy is as we would expect if calculate it manually
 	LimaUnittestResult doPoolBenchmarkES(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const int nSteps = 2;
 
@@ -130,7 +130,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestAttractiveParticlesInteractingWithESandLJ(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 
 		const int nSteps = 1000;
@@ -169,7 +169,7 @@ namespace ElectrostaticsTests {
 	}
 
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		Environment env(simulations_dir / dirName, EnvMode::Headless, false);
+		Environment env(simulations_dir / dirName, EnvMode::Headless);
 
 		env.createSimulationFiles(boxLen);
 
@@ -196,7 +196,9 @@ namespace ElectrostaticsTests {
 			);
 
 
-		SimParams simparams{ 1000, 20, true, PBC };
+		SimParams simparams;
+		simparams.dt = 20;
+		simparams.em_variant = true;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;
@@ -271,7 +273,8 @@ namespace ElectrostaticsTests {
 
 		const int nSteps = 1000;
 
-		SimParams simparams{ nSteps, 20, false, PBC };
+		SimParams simparams;
+		simparams.n_steps = nSteps;
 		simparams.dt = 100;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
@@ -345,7 +348,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestLongrangeEsNoLJ(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
 		{

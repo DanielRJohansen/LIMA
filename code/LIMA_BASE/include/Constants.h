@@ -81,25 +81,6 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 
-// ------------------------------------------------ Box Parameters ---------------------------------------------- //
-// -------------------------------------------------------------------------------------------------------------- //
-
-
-
-
-
-
-// -------------------------------------------- Simulation Parameters ------------------------------------------- //
-const bool print_compound_positions = false;		// what is tihs?
-const bool DUMP_TRAJ = false;		// Make sure this is correct with DONTGETDATA flag
-const bool DUMP_POTE = true;
-const bool POSTSIM_ANAL = true;
-// -------------------------------------------------------------------------------------------------------------- //
-
-
-
-
-
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents

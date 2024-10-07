@@ -102,7 +102,7 @@ Example:
 int buildMembrane(int argc, char** argv) {
 	BuildMembraneSetup setup(argc, argv);
 
-    const SimParams params{ SimParams::defaultPath() };
+    const SimParams params{};
 
 	Lipids::Selection lipidselection;
 	for (const auto& lipid : setup.lipids) {

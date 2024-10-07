@@ -182,7 +182,7 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 }
 
 void Programs::EnergyMinimizeMax(GroFile& grofile, const TopologyFile& topfile, const fs::path& workDir, EnvMode envmode) {
-	Environment env{ workDir, envmode, false };
+	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;
 	params.bc_select = BoundaryConditionSelect::NoBC;

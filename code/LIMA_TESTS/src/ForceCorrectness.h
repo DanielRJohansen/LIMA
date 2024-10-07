@@ -12,7 +12,7 @@ namespace ForceCorrectness {
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 		std::vector<float> particle_temps{ 400 };
@@ -55,7 +55,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
 
@@ -113,7 +113,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 1;
@@ -162,7 +162,7 @@ namespace ForceCorrectness {
 		const fs::path conf = work_folder / "molecule/conf.gro";
 		const fs::path topol = work_folder / "molecule/topol.top";
 		const fs::path simpar = work_folder / "sim_params.txt";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
@@ -226,7 +226,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
@@ -283,7 +283,7 @@ namespace ForceCorrectness {
 	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
 		const fs::path work_folder = simulations_dir / "Anglebond/";
 
-		Environment env{ work_folder, envmode, false};
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
 
 		const float relaxed_angle = 1.8849f; // [rad]
@@ -339,7 +339,7 @@ namespace ForceCorrectness {
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {
 		const fs::path work_folder = simulations_dir / "Improperbond/";
 
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
 		//params.n_steps = 5000;
 		//params.data_logging_interval = 1;
@@ -443,7 +443,7 @@ namespace VerletintegrationTesting {
 	LimaUnittestResult TestIntegration(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
 
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		SimParams params{};
 		params.n_steps = 1000;

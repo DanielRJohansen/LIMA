@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <algorithm>
 #include <functional>
-#include <map>
 #include <array>
 #include <fstream>
 
@@ -59,13 +58,18 @@ bool Filehandler::firstNonspaceCharIs(const std::string& str, char query) {
 }
 
 // Reads "key=value" pairs from a file. Disregards all comments (#)
-std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& path) {
+std::unordered_map<std::string, std::string> Filehandler::parseINIFile(const std::string& path, bool forceLowercase) {
 	std::ifstream file(path);
 	if (!file.is_open()) {
 		throw std::runtime_error(std::format("Failed to open file {}\n", path));
 	}
 
-	std::map<std::string, std::string> dict;
+	auto ToLowercase = [](std::string& str) {
+		std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+	};
+	
+
+	std::unordered_map<std::string, std::string> dict;
 	std::string line;
 	while (getline(file, line)) {
 		// Sanitize line by removing everything after a '#' character
@@ -80,6 +84,12 @@ std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& 
 			// Remove spaces from both key and value
 			key.erase(remove_if(key.begin(), key.end(), ::isspace), key.end());
 			value.erase(remove_if(value.begin(), value.end(), ::isspace), value.end());
+
+			if (forceLowercase) {
+				ToLowercase(key);
+				ToLowercase(value);
+			}
+
 			dict[key] = value;
 		}
 	}

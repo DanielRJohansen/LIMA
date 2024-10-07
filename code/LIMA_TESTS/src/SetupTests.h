@@ -6,7 +6,7 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 	//const fs::path workDir = simulations_dir / "pool";
 	const fs::path workDir = simulations_dir / "T4Lysozyme";
 
-	Environment env{ workDir , envmode, false };
+	Environment env{ workDir , envmode};
 
 	SimParams simparams;
 	simparams.n_steps = 100;

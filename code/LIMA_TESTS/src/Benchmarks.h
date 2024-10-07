@@ -89,7 +89,7 @@ namespace Benchmarks {
 
 		const fs::path work_dir = simulations_dir / "psome";
 		float boxlen = 23.f;
-		Environment env{ work_dir, envmode, false };
+		Environment env{ work_dir, envmode};
 		
 		bool em = false;
 		if (em) {

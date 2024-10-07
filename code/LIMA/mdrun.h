@@ -71,7 +71,7 @@ int mdrun(int argc, char** argv)
 {
 	std::cout << "LIMA is preparing simulation in dir " << std::filesystem::current_path().string() << "\n";
 	MdrunSetup setup = parseProgramArguments(argc, argv);
-	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode, true);
+	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
 	const SimParams ip(setup.simpar);		
 	GroFile grofile{setup.structure};

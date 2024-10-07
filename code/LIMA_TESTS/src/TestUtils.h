@@ -103,12 +103,11 @@ namespace TestUtils {
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<SimParams> simparams, EnvMode envmode) {
 		
 		const fs::path work_folder = simulations_dir / foldername;
-		//const std::string conf = work_folder / "molecule/conf.gro";
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
 		const TopologyFile topol {work_folder / "molecule/topol.top"};
 		const fs::path simpar = work_folder / "sim_params.txt";
 
-		auto env = std::make_unique<Environment>(work_folder, envmode, false);
+		auto env = std::make_unique<Environment>(work_folder, envmode);
 
 		const SimParams ip = simparams.hasValue()
 			? simparams.value()

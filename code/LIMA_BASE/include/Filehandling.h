@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-#include <map>
+#include <unordered_map>
 #include <cassert>
 #include <cstdint>
 #include <limits>
@@ -44,7 +44,7 @@ namespace Filehandler {
 
 	std::string extractFilename(const std::string& path);
 
-	std::map<std::string, std::string> parseINIFile(const std::string& path);
+	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
 
 	static std::vector<std::vector<std::string>> readFile(const std::string path, 
 		std::vector<char> comment_markers = { ';', '/' },

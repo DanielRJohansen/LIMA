@@ -139,6 +139,15 @@ namespace MDFiles {
 		std::unique_ptr<GroFile> grofile;
 		std::unique_ptr<TopologyFile> topfile;
 	};
+	
+	struct TrrFile {
+		//TrrFile(const fs::path& path);
+		TrrFile() {};
+
+		void Dump(const fs::path& path) const;
+
+		std::vector<std::vector<Float3>> positions;
+	};
 }
 
 

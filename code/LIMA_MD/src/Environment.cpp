@@ -279,8 +279,8 @@ void Environment::postRunEvents() {
 		//printH2();
 	}
 	
-	//if (simulation->simparams_host.save_trajectory)
-	//	MDFiles::TrrFile::dumpToFile(simulation.get(), out_dir + "trajectory.trr");
+	if (simulation->simparams_host.save_trajectory)
+		simulation->ToTracjectoryFile()->Dump(out_dir / "trajectory.bin");
 
 	/*if (simulation->simparams_host.save_energy)
 		Filehandler::dumpToFile(postsim_anal_package.energy_data.data(), postsim_anal_package.energy_data.size(), out_dir.string() + "energy.bin");*/

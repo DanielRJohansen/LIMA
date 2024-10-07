@@ -6,6 +6,7 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 
+namespace MDFiles { struct TrrFile; }
 
 enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
@@ -200,6 +201,8 @@ public:
 
 	inline int64_t getStep() const { return simsignals_host.step; }
 	
+	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
+
 	bool ready_to_run = false;
 	bool finished = false;
 

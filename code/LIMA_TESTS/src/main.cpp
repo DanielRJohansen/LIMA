@@ -66,7 +66,8 @@ int main() {
 		//SimParams params{};
 		//params.n_steps = 1000;
 		//params.data_logging_interval = 2;
-		//Environment env(work_dir, envmode, true);
+		//params.save_trajectory = true;
+		//Environment env(work_dir, envmode);
 		//env.run(true);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);

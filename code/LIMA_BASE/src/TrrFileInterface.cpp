@@ -3,7 +3,6 @@
 #include "MDFiles.h"
 
 #include <string>
-//#include <format>
 
 // definitions from the xdrfile library
 #define TRR_MAGIC 1993
@@ -11,8 +10,8 @@
 
 struct ShittyFileFormat {
     ShittyFileFormat(const ShittyFileFormat&) = delete;
-    ShittyFileFormat(const std::string& path) {
-        file = fopen(path.c_str(), "wb");
+    ShittyFileFormat(const fs::path& path) {
+        file = fopen(path.string().c_str(), "wb");
     }
 
     ~ShittyFileFormat() {
@@ -143,8 +142,7 @@ class TRRFormat {
 
 public:
     TRRFormat(const TRRFormat&) = delete;
-    TRRFormat(const std::string& path) : file(ShittyFileFormat{ path }) {
-    }
+    TRRFormat(const fs::path& path) : file(ShittyFileFormat{ path }) {}
 
     void write(const std::vector<Float3>& positions, int32_t step) {
 
@@ -192,33 +190,12 @@ public:
 
 
 
-//
-//
-//void MDFiles::TrrFile::dumpToFile(const Simulation* sim, const std::string& path) {
-//    TRRFormat trrfile(path);
-//
-//    const int inc = sim->getStep() > 2000 ? 10 : 1;
-//    
-//
-//    std::vector<Float3> positions(sim->boxparams_host.total_particles);
-//    // TODO: Fix the below, by passing a lambda that gets the entryindex based on the step
-//    //for (int entryindex = 0; entryindex < LIMALOGSYSTEM::getDataentryIndex(sim->getStep()); entryindex += inc) {
-//
-//    //    int index = 0; 
-//
-//    //    // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
-//
-//
-//    //    for (int compound_id = 0; compound_id < sim->boxparams_host.n_compounds; compound_id++) {
-//    //        for (int i = 0; i < sim->box_host->compounds[compound_id].n_particles; i++) {
-//    //            positions[index++] = sim->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, i, entryindex);
-//    //        }
-//    //    }
-//
-//    //    for (int solvent_index = 0; solvent_index < sim->boxparams_host.n_solvents; solvent_index++) {
-//    //        positions[index++] = sim->traj_buffer->getSolventparticleDatapointAtIndex(solvent_index, entryindex);
-//    //    }
-//
-//    //    trrfile.write(positions, entryindex);
-//    //}
-//}
+
+
+void MDFiles::TrrFile::Dump(const fs::path& path) const {
+    TRRFormat trrfile(path);
+
+    for (int i = 0; i < positions.size(); i++) {
+		trrfile.write(positions[i], i);
+	}
+}

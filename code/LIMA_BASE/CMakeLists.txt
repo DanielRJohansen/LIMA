@@ -16,7 +16,7 @@ add_library(LIMA_BASE STATIC
     src/MoleculeHull.cpp
     src/TimeIt.cpp
     src/Geometry.cpp
-  "include/MoleculeUtils.h" "src/MoleculeUtils.cpp")
+    src/MoleculeUtils.cpp)
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal

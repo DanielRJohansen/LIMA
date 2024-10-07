@@ -37,9 +37,9 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
-			if (envmode != Headless) { Analyzer::printEnergy(analytics); }
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
+			if (envmode != Headless) { analytics.Print(); }
 		}
 
 		if (envmode != Headless) {
@@ -92,11 +92,11 @@ namespace ForceCorrectness {
 
 			auto analytics = env.getAnalyzedPackage();
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 			
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 		}
 
 		if (envmode != Headless) {
@@ -257,15 +257,15 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 
-			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
-			//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
+			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
+			//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
 		}
 
 		if (envmode != Headless) {
@@ -313,11 +313,11 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 		}
 
@@ -392,11 +392,11 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 				//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
 
 			}
@@ -474,7 +474,7 @@ namespace VerletintegrationTesting {
 
 
 
-		const float actualKineticEnergy = env.getAnalyzedPackage()->kin_energy.back();
+		const float actualKineticEnergy = env.getAnalyzedPackage().kin_energy.back();
 
 		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
 

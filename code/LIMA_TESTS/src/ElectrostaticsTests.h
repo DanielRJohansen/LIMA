@@ -90,7 +90,7 @@ namespace ElectrostaticsTests {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();
-		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
+		if (envmode != Headless) { analytics.Print(); }
 
 		// Check if engine calculates the force and POTE we expect
 		{
@@ -161,7 +161,7 @@ namespace ElectrostaticsTests {
 
 		//LIMA_Print::printPythonVec("potE", env.getAnalyzedPackage()->pot_energy);
 
-		const float actualVC = env.getAnalyzedPackage()->variance_coefficient;
+		const float actualVC = env.getAnalyzedPackage().variance_coefficient;
 		const float maxVC = 1e-3;
 		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
@@ -228,7 +228,7 @@ namespace ElectrostaticsTests {
 			for (const auto& pair : velDistributions) {
 				const int charge = pair.first;
 				const auto& velocities = pair.second;
-				std::cout << "Charge: " << charge << " | Mean Velocity: " << getMean(velocities) << " | Standard Deviation: " << getStdDev(velocities) << std::endl;
+				std::cout << "Charge: " << charge << " | Mean Velocity: " << Statistics::Mean(velocities) << " | Standard Deviation: " << Statistics::StdDev(velocities) << std::endl;
 			}
 		}
 
@@ -331,14 +331,14 @@ namespace ElectrostaticsTests {
 
 		// Now do the normal VC check
 		const float targetVarCoeff = 8e-3f;
-		auto analytics = env->getAnalyzedPackage();
+		auto analytics = SimAnalysis::analyzeEnergy(sim.get());
 
 
-		ASSERT(analytics->variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics->variance_coefficient, targetVarCoeff));
+		ASSERT(analytics.variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
 
 		return LimaUnittestResult{ 
 			true, 
-			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
+			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
 			envmode == Full };
 	}
 

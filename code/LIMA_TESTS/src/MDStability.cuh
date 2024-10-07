@@ -37,17 +37,17 @@ namespace TestMDStability {
 		const auto analytics = env->getAnalyzedPackage();
 		
 		if (envmode != Headless) {
-			Analyzer::printEnergy(analytics);
-			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
-			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
+			analytics.Print();
+			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics.variance_coefficient});
+			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics.energy_gradient});
 		}		
 
-		//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
-		//LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
-		//LIMA_Print::printPythonVec("totE", analytics->total_energy);
-		//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
+		//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
+		//LIMA_Print::printPythonVec("kinE", analytics.kin_energy);
+		//LIMA_Print::printPythonVec("totE", analytics.total_energy);
+		//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 
-		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
+		const auto result = evaluateTest({ analytics.variance_coefficient }, max_vc, { analytics.energy_gradient }, max_gradient);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

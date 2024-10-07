@@ -73,7 +73,7 @@ namespace Benchmarks {
 		////const auto analytics = env->getAnalyzedPackage();
 
 		////if (envmode != Headless) {
-		////	Analyzer::printEnergy(analytics);
+		////	analytics.Print();
 		////	LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
 		////	LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
 		////}

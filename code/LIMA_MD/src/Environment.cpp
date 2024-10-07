@@ -272,17 +272,7 @@ void Environment::postRunEvents() {
 	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
 	std::filesystem::create_directories(out_dir);
 
-	//writeBoxCoordinatesToFile().printToFile();
-
-	if (POSTSIM_ANAL) {
-		Analyzer analyzer(std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "analyzer", work_dir));
-		postsim_anal_package = analyzer.analyzeEnergy(simulation.get());
-	}
-
-	
-
 	if (!save_output) { return; }
-
 
 	// Nice to have for matlab stuff
 	if (m_mode != Headless) {
@@ -298,11 +288,11 @@ void Environment::postRunEvents() {
 	}
 
 	if (POSTSIM_ANAL) {
-		Filehandler::dumpToFile(
-			postsim_anal_package.energy_data.data(),
-			postsim_anal_package.energy_data.size(),
-			out_dir.string() + "energy.bin"
-		);
+		//Filehandler::dumpToFile(
+		//	postsim_anal_package.energy_data.data(),
+		//	postsim_anal_package.energy_data.size(),
+		//	out_dir.string() + "energy.bin"
+		//);
 	}
 
 	if (DUMP_POTE) {
@@ -447,7 +437,12 @@ Simulation* Environment::getSimPtr() {
 	return nullptr;
 }
 
-Analyzer::AnalyzedPackage* Environment::getAnalyzedPackage()
+const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
 {
-	return &postsim_anal_package;
+	if (simulation == nullptr)
+		throw std::runtime_error("Env has no simulation");
+	// TODO: make some check here that the simulation has finished
+	if (!postsim_anal_package.has_value())
+		postsim_anal_package = SimAnalysis::analyzeEnergy(simulation.get());
+	return postsim_anal_package.value();
 }

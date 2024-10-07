@@ -307,21 +307,21 @@ namespace TestUtils {
 
 		const auto analytics = env->getAnalyzedPackage();
 		
-		float varcoff = analytics->variance_coefficient;
+		float varcoff = analytics.variance_coefficient;
 		
 
 		if (envmode != Headless) {
-			Analyzer::printEnergy(analytics);
-			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics->pot_energy});
-			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics->kin_energy});
-			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics->total_energy});
-			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
+			analytics.Print();
+			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics.pot_energy});
+			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics.kin_energy});
+			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics.total_energy});
+			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 		}
 		ASSERT(env->getSimPtr()->simsignals_host.critical_error_encountered == false, "Critical error encountered");
 		ASSERT(env->getSimPtr()->simsignals_host.step == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
 			env->getSimPtr()->simsignals_host.step, env->getSimPtr()->simparams_host.n_steps));
 
-		const auto result = evaluateTest({ varcoff }, max_vc, {analytics->energy_gradient}, max_gradient);
+		const auto result = evaluateTest({ varcoff }, max_vc, {analytics.energy_gradient}, max_gradient);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

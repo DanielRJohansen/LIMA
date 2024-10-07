@@ -8,13 +8,12 @@
 #include <string>
 
 
-class Analyzer {
-public:
-	Analyzer(std::unique_ptr<LimaLogger> logger) : m_logger(std::move(logger)) {}
-
+namespace SimAnalysis {
 	struct AnalyzedPackage {
 		AnalyzedPackage() = default;
 		AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature);
+
+		void Print() const;
 
 		std::vector<float> pot_energy;
 		std::vector<float> kin_energy;
@@ -31,54 +30,7 @@ public:
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 
-	static void printEnergy(AnalyzedPackage* package);
-	//static float getVarianceCoefficient(const std::vector<float>& total_energy);
 
-
-	// Temp dev function
-	static void findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir);
-
-	
-	
-
-
-
-private:
-	std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps);
-	std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t n_steps);
-
-	float* potE_buffer_device = nullptr;
-	float* vel_buffer_device = nullptr;
-
-	ForceField_NB* forcefield_device = nullptr;	// Just used to find mass of particles in kernel
-	Compound* compounds_device = nullptr;			// 
-
-	std::unique_ptr<LimaLogger> m_logger;
-};
-
-static float getMean(const std::vector<float>& vec)
-{
-	double sum = 0.;
-	for (auto elem : vec) { sum += static_cast<double>(elem); }
-	return static_cast<float>(sum / static_cast<double>(vec.size()));
-}
-
-static float getStdDev(const std::vector<float>& vec) {
-	if (vec.size() == 0) { return 0.f; }
-
-	const double mean = getMean(vec);
-
-	double variance = 0;
-	for (auto elem : vec) { variance += (elem - mean) * (elem - mean); }
-
-	const double deviation = variance / static_cast<double>(vec.size());
-	return static_cast<float>(std::abs(std::sqrt(deviation)));
-}
-
-
-
-
-namespace SimAnalysis {
 	void PlotPotentialEnergyDistribution(const Simulation& sim, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot);
 
 	int CountOscillations(std::vector<float>& data);

@@ -86,7 +86,7 @@ public:
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	std::unique_ptr<Simulation> getSim();
 	Simulation* getSimPtr();
-	Analyzer::AnalyzedPackage* getAnalyzedPackage();
+	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 	SolventBlocksCircularQueue* getSolventBlocks();
 
 	std::string getWorkdir() { return work_dir.string(); }
@@ -140,5 +140,5 @@ private:
 
 	std::unique_ptr<BoxImage> boximage;
 
-	Analyzer::AnalyzedPackage postsim_anal_package;
+	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
 };

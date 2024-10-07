@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Statistics.h"
-
+#include <numeric>
 #include <assert.h>
 #include <cmath>
 #include <math.h>
@@ -87,4 +87,25 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
     }
 
     return currentPoint;
+}
+
+float Statistics::Mean(const std::vector<float>& vec)
+{
+    double sum = std::accumulate(vec.begin(), vec.end(), 0.0);
+    return static_cast<float>(sum / static_cast<double>(vec.size()));
+}
+
+float Statistics::StdDev(const std::vector<float>& vec) {
+    if (vec.empty()) { return 0.f; }
+
+    const double mean = Mean(vec);
+
+    double variance = std::accumulate(vec.begin(), vec.end(), 0.0,
+        [mean](double acc, float elem) {
+            double diff = elem - mean;
+            return acc + diff * diff;
+        });
+
+    const double deviation = variance / static_cast<double>(vec.size());
+    return static_cast<float>(std::sqrt(deviation));
 }

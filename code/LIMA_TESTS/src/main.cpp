@@ -53,7 +53,7 @@ int main() {
 
 
 
-		//const fs::path work_dir = simulations_dir / "test";
+	//	const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
@@ -61,14 +61,18 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
 		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
 		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//auto sim = Programs::EnergyMinimizeMax(*grofile, *topfile, false, work_dir, envmode);
+		//auto sim = Programs::EnergyMinimizeMax(*grofile, *topfile, true, work_dir, envmode);
+		//grofile->printToFile(work_dir / "membrane.gro");
+		//topfile->printToFile(work_dir / "membrane.top");
 
 		//SimParams params{};
-		//params.n_steps = 1000;
+		//params.n_steps = 100;
 		//params.data_logging_interval = 2;
 		//params.save_trajectory = true;
 		//Environment env(work_dir, envmode);
-		//env.CreateSimulation(*sim, params);
+		//GroFile grofile{ work_dir / "membrane.gro" };
+		//TopologyFile topfile{ work_dir / "membrane.top" };
+		//env.CreateSimulation(grofile, topfile, params);
 		//env.run(true);
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);

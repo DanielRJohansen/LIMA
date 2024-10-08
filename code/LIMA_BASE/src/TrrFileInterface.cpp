@@ -8,26 +8,31 @@
 #define TRR_MAGIC 1993
 #define TRR_VERSION "GMX_trn_file"
 
-struct ShittyFileFormat {
-    ShittyFileFormat(const ShittyFileFormat&) = delete;
-    ShittyFileFormat(const fs::path& path) {
-        if (path.extension() != ".trr");
+
+class TrrWriter {
+public:
+    TrrWriter(const TrrWriter&) = delete;
+
+    TrrWriter(const fs::path& path) {
+        if (path.extension() != ".trr")
             throw std::runtime_error(std::format("Expected extension .trr, got '{}'", path.extension().string()));
 
-        file = fopen(path.string().c_str(), "wb");
+        file.open(path, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error(std::format("Failed to open file at '{}'", path.string()));
+        }
     }
 
-    ~ShittyFileFormat() {
-        fclose(file);
+    ~TrrWriter() {
+        if (file.is_open()) {
+            file.close();
+        }
     }
-
-    FILE* file;
 
     template<typename T>
     inline void write_as_big_endian(const T* data, size_t count) {
         const size_t byte_count = sizeof(T) * count;
-        this->write_char(reinterpret_cast<const char*>(data), byte_count);
-
+        write_char(reinterpret_cast<const char*>(data), byte_count);
     }
 
     void write_u32(const uint32_t* data, size_t count) {
@@ -54,11 +59,9 @@ struct ShittyFileFormat {
         write_f32(&value, 1);
     }
 
-    void write_gmx_string(const std::string & value) {
-        // lenght with null terminator
-        const uint32_t len = static_cast<uint32_t>(value.size() + 1);
+    void write_gmx_string(const std::string& value) {
+        const uint32_t len = static_cast<uint32_t>(value.size() + 1);  // length with null terminator
         write_single_u32(len);
-        // next comes XDR string without terminator
         write_opaque(value.c_str(), len - 1);
     }
 
@@ -71,14 +74,17 @@ struct ShittyFileFormat {
     }
 
     void write_char(const char* data, size_t count) {
-        auto written = std::fwrite(data, 1, count, file);
-        if (written != count) {
-        /*    throw std::format(
-                "failed to write {} bytes to the file at '{}': {}",
-                count, this->path(), std::strerror(errno)
-            );*/
+        file.write(data, count);
+        if (!file) {
+            throw std::runtime_error(std::format(
+                "Failed to write {} bytes to the file: {}",
+                count, std::strerror(errno)
+            ));
         }
     }
+
+private:
+    std::ofstream file;
 };
 
 struct FrameHeader {
@@ -101,102 +107,89 @@ struct FrameHeader {
     double lambda; /* Current value of lambda (float or double) */
 };
 
-class TRRFormat {
-    ShittyFileFormat file;
+void get_cell(std::vector<float>& box, Float3 boxSize) {
+    box[0] = 1.f * boxSize.x;
+    box[1] = 0.f;
+    box[2] = 0.f;
+    box[3] = 0.f;
+    box[4] = 1.f * boxSize.y;
+    box[5] = 0.f;
+    box[6] = 0.f;
+    box[7] = 0.f;
+    box[8] = 1.f * boxSize.z;
+}
 
-    void get_cell(std::vector<float>& box) {
-        throw std::runtime_error("Cannot access BOX_LEN, dev please fix");
-        //box[0] = 1.f * BOX_LEN_NM;
-        //box[1] = 0.f;
-        //box[2] = 0.f;
-        //box[3] = 0.f;
-        //box[4] = 1.f * BOX_LEN_NM;
-        //box[5] = 0.f;
-        //box[6] = 0.f;
-        //box[7] = 0.f;
-        //box[8] = 1.f * BOX_LEN_NM;
+void write_frame_header(TrrWriter& file, const FrameHeader& header) {
+    file.write_single_i32(TRR_MAGIC);
+
+    file.write_gmx_string(TRR_VERSION);
+
+    // use_double is not written and has to be inferred when reading
+    file.write_single_i32(static_cast<int32_t>(header.ir_size));
+    file.write_single_i32(static_cast<int32_t>(header.e_size));
+    file.write_single_i32(static_cast<int32_t>(header.box_size));
+    file.write_single_i32(static_cast<int32_t>(header.vir_size));
+    file.write_single_i32(static_cast<int32_t>(header.pres_size));
+    file.write_single_i32(static_cast<int32_t>(header.top_size));
+    file.write_single_i32(static_cast<int32_t>(header.sym_size));
+    file.write_single_i32(static_cast<int32_t>(header.x_size));
+    file.write_single_i32(static_cast<int32_t>(header.v_size));
+    file.write_single_i32(static_cast<int32_t>(header.f_size));
+
+    file.write_single_i32(static_cast<int32_t>(header.natoms));
+    file.write_single_i32(static_cast<int32_t>(header.step));
+    file.write_single_i32(static_cast<int32_t>(header.nre));
+    file.write_single_f32(static_cast<float>(header.time));
+    file.write_single_f32(static_cast<float>(header.lambda));
+}
+
+void WriteRow(TrrWriter& file, const std::vector<Float3>& positions, int32_t step, Float3 boxSize) {
+
+    size_t boxBytesize = sizeof(float) * 3 * 3;
+
+    const size_t natoms = positions.size();
+    const size_t posdata_size = sizeof(float) * natoms * 3;;
+
+
+    size_t veldata_size = 0;
+
+    FrameHeader header = {
+        false,    // use_double
+        0,        // ir_size
+        0,        // e_size
+        boxBytesize, // box_size
+        0,        // vir_size
+        0,        // pres_size
+        0,        // top_size
+        0,        // sym_size
+        posdata_size,   // x_size
+        0,        // v_size
+        0,        // f_size
+
+        natoms,                                            // natoms
+        static_cast<size_t>(step),                                      // step
+        0,                                                 // nre
+        0.f,//frame.get("time").value_or(0.0).as_double(),       // time
+        0.f//frame.get("trr_lambda").value_or(0.0).as_double(), // lambda
+    };
+    write_frame_header(file,  header);
+
+    std::vector<float> box(3 * 3);
+    if (boxBytesize > 0) {
+        get_cell(box, boxSize);
+        file.write_f32(box.data(), 9);
     }
 
-    void write_frame_header(const FrameHeader& header) {
-        file.write_single_i32(TRR_MAGIC);
-
-        file.write_gmx_string(TRR_VERSION);
-
-        // use_double is not written and has to be inferred when reading
-        file.write_single_i32(static_cast<int32_t>(header.ir_size));
-        file.write_single_i32(static_cast<int32_t>(header.e_size));
-        file.write_single_i32(static_cast<int32_t>(header.box_size));
-        file.write_single_i32(static_cast<int32_t>(header.vir_size));
-        file.write_single_i32(static_cast<int32_t>(header.pres_size));
-        file.write_single_i32(static_cast<int32_t>(header.top_size));
-        file.write_single_i32(static_cast<int32_t>(header.sym_size));
-        file.write_single_i32(static_cast<int32_t>(header.x_size));
-        file.write_single_i32(static_cast<int32_t>(header.v_size));
-        file.write_single_i32(static_cast<int32_t>(header.f_size));
-
-        file.write_single_i32(static_cast<int32_t>(header.natoms));
-        file.write_single_i32(static_cast<int32_t>(header.step));
-        file.write_single_i32(static_cast<int32_t>(header.nre));
-        file.write_single_f32(static_cast<float>(header.time));
-        file.write_single_f32(static_cast<float>(header.lambda));
+    for (auto& position : positions) {
+        file.write_f32((float*)&position, 3);
     }
-
-public:
-    TRRFormat(const TRRFormat&) = delete;
-    TRRFormat(const fs::path& path) : file(ShittyFileFormat{ path }) {}
-
-    void write(const std::vector<Float3>& positions, int32_t step) {
-
-        size_t box_size = sizeof(float) * 3 * 3;
-        
-        const size_t natoms = positions.size();
-        const size_t posdata_size = sizeof(float) * natoms * 3;;
-        
-
-        size_t veldata_size = 0;
-
-
-        FrameHeader header = {
-            false,    // use_double
-            0,        // ir_size
-            0,        // e_size
-            box_size, // box_size
-            0,        // vir_size
-            0,        // pres_size
-            0,        // top_size
-            0,        // sym_size
-            posdata_size,   // x_size
-            0,        // v_size
-            0,        // f_size
-
-            natoms,                                            // natoms
-            static_cast<size_t>(step),                                      // step
-            0,                                                 // nre
-            0.f,//frame.get("time").value_or(0.0).as_double(),       // time
-            0.f//frame.get("trr_lambda").value_or(0.0).as_double(), // lambda
-        };
-        write_frame_header(header);
-
-        std::vector<float> box(3 * 3);
-        if (box_size > 0) {
-            get_cell(box);
-            file.write_f32(box.data(), 9);
-        }
-
-        for (auto& position : positions) {
-            file.write_f32((float*)&position, 3);
-        }
-    }
-};
-
-
-
-
+}
 
 void MDFiles::TrrFile::Dump(const fs::path& path) const {
-    TRRFormat trrfile(path);
+    TrrWriter outFile{ path };
 
     for (int i = 0; i < positions.size(); i++) {
-		trrfile.write(positions[i], i);
+		WriteRow(outFile, positions[i], i, boxSize);
 	}
 }
+

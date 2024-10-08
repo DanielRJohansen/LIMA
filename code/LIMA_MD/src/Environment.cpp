@@ -268,7 +268,7 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 void Environment::postRunEvents() {
 	if (simulation->getStep() == 0) { return; }
 
-	const fs::path out_dir = (work_dir / "Steps_" / std::to_string(simulation->getStep()) / "/").string();
+	const fs::path out_dir = work_dir / ("Steps_" + std::to_string(simulation->getStep()));
 	std::filesystem::create_directories(out_dir);
 
 	// Nice to have for matlab stuff

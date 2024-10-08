@@ -120,7 +120,6 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if (DatabuffersDevice::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
 		offloadLoggingData();
-		offloadTrajectory();
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
@@ -151,9 +150,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 void Engine::terminateSimulation() {
 	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
-	offloadTrajectory(stepsReadyToTransfer);	
 
-	//simulation->box_host->CopyDataFromDevice(sim_dev->box);
 	sim_dev->box->CopyDataToHost(*simulation->box_host);
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
@@ -189,37 +186,17 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-#ifdef GENERATETRAINDATA
-	cudaMemcpy(	// THIS IS PROLLY WRONG NOW
-		&simulation->loggingdata[startindex * 10],
-		sim_dev->databuffers->outdata, 
-		sizeof(float) * 10 * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
-#endif
-	cudaDeviceSynchronize();
-}
-
-void Engine::offloadTrajectory(const int steps_to_transfer) {
-#ifndef DONTGENDATA
-	if (steps_to_transfer == 0) { return; }
-
-	const int64_t startstep = simulation->getStep() - steps_to_transfer;
-	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
-	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
-
 	cudaMemcpy(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
 		sim_dev->databuffers->traj_buffer,
-		sizeof(Float3) * simulation->box_host->boxparams.total_particles_upperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost
-	);
+		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
+		cudaMemcpyDeviceToHost);
+
+	step_at_last_traj_transfer = simulation->getStep();
+	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep() - 1, simulation->simparams_host.data_logging_interval));
 
 	cudaDeviceSynchronize();
-#endif
-	step_at_last_traj_transfer = simulation->getStep();
-	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep()-1, simulation->simparams_host.data_logging_interval));
 }
-
 
 void Engine::offloadTrainData() {
 #ifdef GENERATETRAINDATA

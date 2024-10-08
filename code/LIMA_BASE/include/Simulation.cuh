@@ -148,6 +148,7 @@ public:
 		return getSolventparticleDatapointAtIndex(solvent_id, entryIndex);
 	}
 
+	size_t GetLoggingInterval() const { return loggingInterval; }
 private:
 	const size_t loggingInterval;
 	const size_t n_particles_upperbound;

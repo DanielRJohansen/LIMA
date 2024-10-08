@@ -178,8 +178,9 @@ void Simulation::PrepareDataBuffers() {
 }
 
 std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{	
-	auto trrFile = std::make_unique<MDFiles::TrrFile>();
+	auto trrFile = std::make_unique<MDFiles::TrrFile>(Float3{ box_host->boxparams.boxSize });
 
+	assert(simparams_host.data_logging_interval == traj_buffer->GetLoggingInterval());
 	const int nLoggedSteps = simsignals_host.step / simparams_host.data_logging_interval;
 	trrFile->positions.reserve(nLoggedSteps);
 
@@ -205,16 +206,6 @@ std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{
 	return std::move(trrFile);
 }
 
-//void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
-//	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
-//	overloadParam(dict, &n_steps, "n_steps");
-//}
-
-
-
-//SimParams::SimParams(const InputSimParams& ip) : 
-//	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)
-//{}
 
 DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval) :
 	total_particles_upperbound{ total_particles_upperbound }
@@ -222,7 +213,7 @@ DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compo
 	// Permanent Outputs for energy & trajectory analysis
 	{
 		const size_t n_datapoints = total_particles_upperbound * nStepsInBuffer;
-		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
+		const size_t bytesize_mb = (2 * sizeof(float) * n_datapoints + 2 * sizeof(Float3) * n_datapoints) / 1'000'000;
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
 

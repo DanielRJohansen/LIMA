@@ -142,11 +142,12 @@ namespace MDFiles {
 	
 	struct TrrFile {
 		//TrrFile(const fs::path& path);
-		TrrFile() {};
-
+		TrrFile(Float3 boxSize) : boxSize(boxSize) {};
 		void Dump(const fs::path& path) const;
-
 		std::vector<std::vector<Float3>> positions;
+
+	private:
+		Float3 boxSize;
 	};
 }
 

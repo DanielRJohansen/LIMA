@@ -91,7 +91,6 @@ private:
 
 	// streams every n steps
 	void offloadLoggingData(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
-	void offloadTrajectory(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
 	void offloadTrainData();
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call

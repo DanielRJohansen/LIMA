@@ -50,3 +50,7 @@ out*
 /distribution/debian/build/*
 !/distribution/debian/build/*.deb
 *.debhelper*
+
+/dev/VMDscripts/*
+!/dev/VMDscripts/instructions.txt
+!/dev/VMDscripts/makefilm.tcl

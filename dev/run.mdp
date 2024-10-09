@@ -1,0 +1,38 @@
+; RUN CONTROL PARAMETERS
+integrator        = md
+nsteps            = 1000  ; number of steps
+dt                = 0.001  ; time step in ps
+
+; OUTPUT CONTROL OPTIONS
+nstxout           = 100   ; save coordinates every 1000 steps
+nstvout           = 100   ; save velocities every 1000 steps
+nstenergy         = 100   ; save energies every 1000 steps
+nstlog            = 100   ; update log file every 1000 steps
+
+; NEIGHBOR SEARCHING PARAMETERS
+nstlist           = 10
+rlist             = 1.0
+
+; ELECTROSTATICS
+coulombtype       = PME
+rcoulomb          = 1.2
+
+; VDW
+vdwtype           = cut-off
+rvdw              = 1.2
+
+; TEMPERATURE COUPLING
+tcoupl            = V-rescale
+tc-grps           = System
+tau_t             = 0.1
+ref_t             = 300
+
+; PRESSURE COUPLING (disabled for testing)
+pcoupl            = no
+
+; PERIODIC BOUNDARY CONDITIONS
+pbc               = xyz
+
+; CONSTRAINTS
+constraints       = h-bonds
+

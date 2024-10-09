@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 struct BuildMembraneSetup{
 	BuildMembraneSetup(int argc, char** argv) : work_dir(std::filesystem::current_path())
     {		
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
             if (arg == "-lipids") {
@@ -57,7 +57,7 @@ struct BuildMembraneSetup{
 	const fs::path work_dir;
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
-    float membraneCenterZ = 0.0f;
+    std::optional<float> membraneCenterZ = std::nullopt;
     float boxsize = -1.f;
 
 private:
@@ -109,7 +109,7 @@ int buildMembrane(int argc, char** argv) {
 		lipidselection.emplace_back(Lipids::Select{ lipid.first, setup.work_dir, lipid.second });
 	}
     
-    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, { setup.boxsize }, setup.membraneCenterZ);
+    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, { setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
     Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, setup.work_dir, setup.envmode);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");

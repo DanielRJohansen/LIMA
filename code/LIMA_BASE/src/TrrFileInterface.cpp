@@ -3,6 +3,7 @@
 #include "MDFiles.h"
 
 #include <string>
+#include <format>
 
 // definitions from the xdrfile library
 #define TRR_MAGIC 1993

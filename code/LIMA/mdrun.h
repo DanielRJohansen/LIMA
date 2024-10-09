@@ -11,7 +11,7 @@ struct MdrunSetup {
 
 	MdrunSetup() {
 		work_dir = std::filesystem::current_path();
-		structure = work_dir / "molecule/conf.gro";
+		conf = work_dir / "molecule/conf.gro";
 		topol = work_dir / "molecule/topol.top";
 		simpar = work_dir / "sim_params.txt";
 	}

@@ -67,6 +67,7 @@ SimParams::SimParams(const fs::path& path) {
 	Readi(dict, n_steps, "n_steps");
 	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_LIMA; });
 	Readb(dict, em_variant, "em");
+	Readf(dict, em_force_tolerance, "em_force_tolerance");
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
 		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC} }, "boundarycondition", value); }
@@ -82,6 +83,9 @@ SimParams::SimParams(const fs::path& path) {
 	Readb(dict, save_trajectory, "save_trajectory");
 	Readb(dict, save_energy, "save_energy");
 	// Skip colormethod for now
+
+	Readi(dict, steps_per_temperature_measurement, "steps_per_temperature_measurement");
+	Readb(dict, apply_thermostat, "apply_thermostat");
 }
 
 
@@ -96,6 +100,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "n_steps=" << n_steps << "\n";
 	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
+	file << "em_force_tolerance=" << em_force_tolerance << "\n"; // TODO add units
 
 	file << "// Physics params" << "\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
@@ -109,6 +114,11 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "save_energy=" << (save_energy ? "true" : "false") << " # (Save kinetic and potential energy to file)" << "\n";
 	// Skip colormethod for now
 	
+	file << "// Temperature params" << "\n";
+	file << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
+	file << "apply_thermostat=" << (apply_thermostat ? "true" : "false") << " # will speed up or slow down particles to achieve the desired temperature\n";
+	file << "# desired_temperatued - not currently available forced to be 300 [k]\n";
+
 	file.close();
 }
 
@@ -159,8 +169,8 @@ void Simulation::PrepareDataBuffers() {
 		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
 		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
 		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
-
-		temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
+		
+		temperature_buffer.reserve(n_steps / simparams_host.steps_per_temperature_measurement + 1);
 	}
 
 	// Trainingdata buffers

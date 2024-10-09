@@ -1,6 +1,7 @@
 #include "Engine.cuh"
 #include "Utilities.h"
 #include "Neighborlists.cuh"
+#include "Statistics.h"
 
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
@@ -14,7 +15,6 @@
 #include "SupernaturalForces.cuh"
 
 #include <assert.h>
-
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
@@ -116,31 +116,39 @@ void Engine::step() {
 	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
+float HighestValue(const float* const arr, const int n) {
+	float max = 0.f;
+	for (int i = 0; i < n; i++) {
+		if (arr[i] > max) {
+			max = arr[i];
+		}
+	}
+	return max;
+}
+
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if (DatabuffersDevice::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
 		offloadLoggingData();
 		runstatus.stepForMostRecentData = simulation->getStep();
 
-		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
-			handleBoxtemp();
-		}
+		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
+			const float temp_scalar = HandleBoxtemp();
+			if (simulation->simparams_host.apply_thermostat)
+				sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE TODO: Find a better solution
 
+			HandleEarlyStoppingInEM();
+		}
+		
 		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	}
-	//if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
-	//	offloadTrainData();
-	//}
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();
 	runstatus.critical_error_occured = sim_dev->signals->critical_error_encountered;	// TODO: Can i get this from simparams_host? UNSAFE
-	// most recent positions are handled automaticall by transfer_traj
-	runstatus.simulation_finished = runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured;
+	if (runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured)
+		runstatus.simulation_finished = true;
 
-	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp
-	//	simulation->box->thermostat_scalar = 1.f;
-	//}
 
 	const auto t1 = std::chrono::high_resolution_clock::now();
 	const int cpu_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -167,7 +175,7 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
-	cudaMemcpy(
+	cudaMemcpy( // TODO make these async since we sync at the bottom anyways
 		simulation->potE_buffer->getBufferAtIndex(startindex),
 		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
 		sim_dev->databuffers->potE_buffer, 
@@ -219,8 +227,6 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
-
-
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
@@ -236,7 +242,21 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
+void Engine::HandleEarlyStoppingInEM() {
+	if (!simulation->simparams_host.em_variant)
+		return;
 
+	if (simulation->getStep() == simulation->simparams_host.n_steps)
+		return;
+
+	//printf("max force %f\n", runstatus.greatestForce);
+	// Compute the max force, and convert it to userfriendly units
+	const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()), simulation->forceBuffer->EntriesPerStep()); // [1/l N/mol]
+	runstatus.greatestForce = greatestForce / LIMA * NANO / KILO; // [kJ/mol/nm]
+	if (simulation->simparams_host.em_variant && runstatus.greatestForce <= simulation->simparams_host.em_force_tolerance) {
+		//runstatus.simulation_finished = true;
+	}
+}
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//

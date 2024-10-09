@@ -1,9 +1,15 @@
 #include "Engine.cuh"
-#include "EngineUtils.cuh"
-#include "SimulationDevice.cuh"
+//#include "SimulationDevice.cuh"
 #include "PhysicsUtils.cuh"
 #include <algorithm>
 
+struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
+	float temperature = 0;			// [k]
+	float avg_kinE_compound = 0;	// [J/mol]
+	float max_kinE_compound = 0;	// [J/mol]
+	float avg_kinE_solvent = 0;		// [J/mol]
+	float max_kinE_solvent = 0;		// [J/mol]
+};
 
 static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 	TemperaturPackage package{};
@@ -43,30 +49,29 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 
 
 
-void Engine::handleBoxtemp() {
-	const float target_temp = simulation->simparams_host.em_variant ? 150.f : 310.f;				// [k]
+float Engine::HandleBoxtemp() {
 	const TemperaturPackage temp_package = getBoxTemperature(simulation.get());
-	const float temp = temp_package.temperature;
 
 	simulation->temperature_buffer.push_back(temp_package.temperature);
+	runstatus.current_temperature = temp_package.temperature;
 
-	runstatus.current_temperature = temp;
-	
-	if constexpr(APPLY_THERMOSTAT) {
-		// So we avoid dividing by 0
-		const float temp_safe = temp == 0.f ? 1 : temp;
+	if (simulation->simparams_host.apply_thermostat) {		
+		const float target_temp = simulation->simparams_host.em_variant ? 150.f : 310.f;				// [k]
+		const float temp_safe = temp_package.temperature == 0.f ? 1 : temp_package.temperature;// So we avoid dividing by 0
 		float temp_scalar = target_temp / temp_safe;
 
 		
 		// I just added this to not change any temperatures too rapidly. However in EM we can go faster, and should so we reach goal temperature before sim starts
+		const float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(simulation->simparams_host.steps_per_temperature_measurement);	// change vel by 0.1% over NSTEPS
 		const float max_scalar = simulation->simparams_host.em_variant ? MAX_THERMOSTAT_SCALER * 10.f : MAX_THERMOSTAT_SCALER;
 		temp_scalar = std::clamp(temp_scalar, 1.f - max_scalar, 1.f + max_scalar);
 		
 		
 		// Apply 1/n scalar for n steps.
-
-		sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE
-	}	
+		return temp_scalar;
+		//sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE
+	}
+	return 1.f;
 }
 
 

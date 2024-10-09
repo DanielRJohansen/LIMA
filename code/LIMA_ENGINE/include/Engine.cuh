@@ -47,7 +47,9 @@ struct RunStatus {
 	int current_step = 0;
 	float current_temperature = 0.f;
 
-
+	//int stepsSinceEnergycheck = 0;
+	//float highestEnergy = 0.f; // measured in a single particle
+	float greatestForce = 0.f; // measured in a single particle
 
 	bool simulation_finished = false;
 	bool critical_error_occured = false;
@@ -96,9 +98,10 @@ private:
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
 
-
-	void handleBoxtemp();
-
+	// Measures temperature aswell as the maximum kinE measured in a particle
+	// Returns thermostat scalar, for the engine to push to device
+	float HandleBoxtemp();
+	void HandleEarlyStoppingInEM();
 	std::unique_ptr<LimaLogger> m_logger;
 
 	bool updatenlists_mutexlock = 0;
@@ -117,12 +120,3 @@ private:
 	const BoundaryConditionSelect bc_select;
 };
 
-
-
-struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
-	float temperature = 0;			// [k]
-	float avg_kinE_compound = 0;	// [J/mol]
-	float max_kinE_compound = 0;	// [J/mol]
-	float avg_kinE_solvent = 0;		// [J/mol]
-	float max_kinE_solvent = 0;		// [J/mol]
-};

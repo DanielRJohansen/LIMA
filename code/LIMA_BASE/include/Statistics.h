@@ -18,4 +18,8 @@ namespace Statistics {
     float Mean(const std::vector<float>& vec);
 
 	float StdDev(const std::vector<float>& vec);
+
+    float Max(const float* const data, size_t size);
+
+    float MaxLen(const Float3* const data, size_t n);
 }

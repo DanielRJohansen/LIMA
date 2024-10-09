@@ -20,19 +20,22 @@ struct MdrunSetup {
 	EnvMode envmode = Full;
 
 	fs::path work_dir;
-	fs::path structure;
+	fs::path conf;
 	fs::path topol;
 	fs::path simpar;
+
+	// Output
+	fs::path conf_out;
 };
 
 
 MdrunSetup parseProgramArguments(int argc, char** argv) {
 	MdrunSetup setup{};
 
-	char* user_structure = CmdLineUtils::getCmdOption(argv, argv + argc, "-structure");
+	char* user_structure = CmdLineUtils::getCmdOption(argv, argv + argc, "-conf");
 	if (user_structure)
 	{
-		setup.structure = setup.work_dir / user_structure;
+		setup.conf = setup.work_dir / user_structure;
 	}
 
 	char* user_topol = CmdLineUtils::getCmdOption(argv, argv + argc, "-topology");
@@ -60,6 +63,16 @@ MdrunSetup parseProgramArguments(int argc, char** argv) {
 		}
 	}
 
+	char* user_confout = CmdLineUtils::getCmdOption(argv, argv + argc, "-structure_out");
+	if (user_confout)
+	{
+		setup.conf_out = setup.work_dir / user_confout;
+	}
+	else
+	{
+		setup.conf_out = setup.work_dir / "out.gro";
+	}
+
 	return setup;
 }
 
@@ -74,11 +87,14 @@ int mdrun(int argc, char** argv)
 	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
 	const SimParams ip(setup.simpar);		
-	GroFile grofile{setup.structure};
+	GroFile grofile{setup.conf};
 	TopologyFile topfile{setup.topol};
 
 	env->CreateSimulation(grofile, topfile, ip);
 	env->run();
+
+	env->WriteBoxCoordinatesToFile(grofile);
+	grofile.printToFile(setup.conf_out);
 
 	return 0;
 }

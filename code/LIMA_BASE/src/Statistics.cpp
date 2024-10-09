@@ -5,6 +5,9 @@
 #include <assert.h>
 #include <cmath>
 #include <math.h>
+#include <algorithm>
+#include <execution>
+
 
 std::pair<float, float> Statistics::linearFit(const std::vector<float>& x, const std::vector<float>& y) {
     assert(x.size() == y.size());
@@ -108,4 +111,17 @@ float Statistics::StdDev(const std::vector<float>& vec) {
 
     const double deviation = variance / static_cast<double>(vec.size());
     return static_cast<float>(std::sqrt(deviation));
+}
+
+float Statistics::Max(const float* const data, size_t n) {
+    return *std::max_element(std::execution::par, data, data + n);
+}
+
+float Statistics::MaxLen(const Float3* const data, size_t n) {
+    const Float3 maxElem = *std::max_element(std::execution::par, data, data + n,
+        [](const Float3& a, const Float3& b) {
+            return a.lenSquared() < b.lenSquared();
+        }
+    );
+    return maxElem.len();
 }

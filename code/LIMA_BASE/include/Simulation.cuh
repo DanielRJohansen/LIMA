@@ -25,6 +25,7 @@ struct SimParams {
 	uint64_t n_steps = 1000;
 	float dt = 100.f;									// [ls]
 	bool em_variant = false;
+	float em_force_tolerance = 1000; // [kJ/mol/nm]
 
 	// Physics params
 	BoundaryConditionSelect bc_select{ PBC };
@@ -37,6 +38,10 @@ struct SimParams {
 	bool save_trajectory = false;
 	bool save_energy = false;
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
+
+	// Thermostat
+	int steps_per_temperature_measurement = 200;
+	bool apply_thermostat = false;
 
 };
 
@@ -149,6 +154,7 @@ public:
 	}
 
 	size_t GetLoggingInterval() const { return loggingInterval; }
+	size_t EntriesPerStep() const { return n_particles_upperbound; }
 private:
 	const size_t loggingInterval;
 	const size_t n_particles_upperbound;

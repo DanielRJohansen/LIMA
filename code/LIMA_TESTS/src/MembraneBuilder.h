@@ -128,7 +128,6 @@ namespace TestMembraneBuilder {
 		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"Cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
-
 		// Compare before relaxation
 		{
 			std::vector<Facet> facets;

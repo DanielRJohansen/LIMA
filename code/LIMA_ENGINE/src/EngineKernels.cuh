@@ -172,43 +172,26 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		float speed = 0.f;
 		
 		float forceLen = force.len();
-		/*if (forceLen > 1000.f) {
-			printf("Illegally large force %d %d\n", blockIdx.x, threadIdx.x);
-			force.print('F');
-			signals->critical_error_encountered = true;
-		}*/
+
 		__syncthreads();
 
-		if (threadIdx.x < compound.n_particles) {
+		if (threadIdx.x < compound.n_particles) {			
 
-
-
-			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
-
-			
-			if constexpr (energyMinimize) {				
-				const float maxForceMagnitude = 1000.f;
-				if (force.len() > maxForceMagnitude) {
-					//printf("Magnitude %f\n", force.len());
-					force = force.norm_d() * maxForceMagnitude;					
-				}
+			// Energy minimize
+			if constexpr (energyMinimize) {
+				force = EngineUtils::ForceActivationFunction(force);
 			}
 
-
-
+			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 			const Float3 force_prev = box->compounds[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = box->compounds[blockIdx.x].vels_prev[threadIdx.x];
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.dt);
 
-
-
 			Float3 velScaled;
-			if constexpr (energyMinimize)
-				velScaled = EngineUtils::SlowHighEnergyParticle(vel_now, simparams.dt, mass, signals->thermostat_scalar);
-			else
-				velScaled = vel_now * signals->thermostat_scalar;
-
+			if constexpr (!energyMinimize)
+				velScaled = vel_now * signals->thermostat_scalar;				
+				
 			box->compounds[blockIdx.x].forces_prev[threadIdx.x] = force;
 			box->compounds[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 

@@ -181,21 +181,18 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-std::unique_ptr<Simulation> Programs::EnergyMinimizeMax(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, const fs::path& workDir, EnvMode envmode) {
+std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, const fs::path& workDir, EnvMode envmode) {
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;
 	params.bc_select = BoundaryConditionSelect::NoBC;
-	params.dt = 1.f;
-	params.n_steps = 8000;
+	params.dt = 100.f;
+	params.n_steps = 2000;
 	params.snf_select = BoxEdgePotential;
 	env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
 
-	params.dt = 20;
-	env.CreateSimulation(*env.getSim(), params);
-	env.run(false);
-
+	params.n_steps = 10000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 	env.CreateSimulation(*env.getSim(), params);

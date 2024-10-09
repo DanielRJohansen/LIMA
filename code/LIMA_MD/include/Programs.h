@@ -33,10 +33,12 @@ namespace Programs {
 	
 
 	/// <summary>
-	/// Same as above, but starts with extreme EM and iteratively increases dt 
+	/// Same as above, but can handle cases such as membranes where the contents spill over the edges.
+	/// This is handled by running 2 back-to-back EMs, the first with NoBC and BoxEdgePotential, 
+	/// The second a normal longer EM with PBC 
 	/// </summary>
 	/// <param name="writePositionsToGrofile">If false, the grofile will not be modified</param>
 	/// <returns>Can be discarded if not needed. Only makes sense to discard if overwriting grofile</returns>
-	std::unique_ptr<Simulation> EnergyMinimizeMax(GroFile&, const TopologyFile&, 
+	std::unique_ptr<Simulation> EnergyMinimizeWithEdgeoverlap(GroFile&, const TopologyFile&, 
 		bool writePositionsToGrofile, const fs::path& workDir, EnvMode);
 } // namespace Programs

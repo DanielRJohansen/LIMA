@@ -44,6 +44,20 @@ namespace EngineUtils {
 		return vel;
 	}
 
+	// Tanh activation functions that scales forces during EM
+	__device__ static Float3 ForceActivationFunction(const Float3 force) {
+		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 10
+		const float alpha = 10000. * LIMA / NANO * KILO; // [1/l N/mol]		
+
+		// Apply tanh to the magnitude
+		float scaledMagnitude = alpha * tanh(alpha * force.len());
+
+		// Scale the original force vector by the ratio of the new magnitude to the original magnitude
+		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-6)); // Avoid division by zero
+
+		return scaledForce;
+	}
+
 	__device__ static Float3 SlowHighEnergyParticle(const Float3& velocityNow, const float dt, const float mass, float thermostatScalar) {
 		const float kineticEnergy = PhysicsUtils::calcKineticEnergy(velocityNow.len(), mass);
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergy);

@@ -16,7 +16,7 @@ using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
-void runAllUnitTests();
+void RunAllUnitTests();
 
 
 
@@ -61,7 +61,7 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
 		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 10.f }, 5.f);
 		////simulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//auto sim = Programs::EnergyMinimizeMax(*grofile, *topfile, true, work_dir, envmode);
+		//auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, work_dir, envmode);
 		//grofile->printToFile(work_dir / "membrane.gro");
 		//topfile->printToFile(work_dir / "membrane.top");
 
@@ -93,7 +93,7 @@ int main() {
 		//TestAllStockholmlipids(envmode);
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -112,7 +112,7 @@ int main() {
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
 // Runs all unit tests with the fastest/crucial ones first
-void runAllUnitTests() {
+void RunAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 

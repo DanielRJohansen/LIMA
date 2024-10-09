@@ -19,34 +19,45 @@ file mkdir ./frames
 
 # Set image resolution to 1920x1080
 display resize 1920 1080
-#display resize 220 180
 puts "Set display resolution to 1920x1080"
-
-
-set framesPerStep 2
 
 # Set up view and rotation
 display resetview
 rotate x by -90
-set zoom [expr 1 + 0.8 / double($num_frames * $framesPerStep - 1)]
-puts "$zoom"
+set zoom [expr 1 + 0.8 / double($num_frames - 1)]
+puts "Zoom factor: $zoom"
 scale by 2
 mol modstyle 0 0 CPK
 
-puts "Start rendering frames $num_frames"
-for {set i 0} {$i < $num_frames} {incr i} {
+# Get the list of existing frames in ./frames
+set frame_files [glob ./frames/frame_*.tga]
+set last_frame_rendered -1
+foreach filename $frame_files {
+    # Extract the frame number from the filename
+    if {[regexp {frame_(\d+)\.tga} $filename match frame_num_str]} {
+        set frame_num [int $frame_num_str]
+        if {$frame_num > $last_frame_rendered} {
+            set last_frame_rendered $frame_num
+        }
+    }
+}
+puts "Last frame rendered: $last_frame_rendered"
+
+# Set starting frame to next frame not yet rendered
+set start_frame [expr {$last_frame_rendered + 1}]
+puts "Starting from frame: $start_frame"
+
+puts "Start rendering frames from $start_frame to $num_frames"
+for {set i $start_frame} {$i < $num_frames} {incr i} {
     # Go to the current trajectory frame
     animate goto $i
 
-    for {set j 0} {$j < $framesPerStep} {incr j} {
-        # Calculate the overall index of the rendered frame
-        set frame_index [expr $i * $framesPerStep + $j]
+    # Apply zoom scaling
+    scale by $zoom
 
-        scale by $zoom
-
-        # Render the current subframe
-        render TachyonInternal "./frames/frame_$frame_index.tga"
-    }
+    # Render the current frame
+    render TachyonInternal "./frames/frame_$i.tga"
 }
+
 puts "Script finished"
 quit

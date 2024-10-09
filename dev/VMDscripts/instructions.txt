@@ -1,3 +1,6 @@
 copy conf.gro and traj.trr into this directory
-"C:\Program Files (x86)\University of Illinois\VMD\vmd.exe" -e makefilm.tcl
-"C:\ffmpeg-7.1-full_build\bin\ffmpeg.exe" -r 30 -i ./frames/frame_%d.tga -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4
+clear the frames dir
+//"C:\Program Files (x86)\University of Illinois\VMD\vmd.exe" -e makefilm.tcl
+"C:\Program Files\VMD\vmd.exe" -dispdev text -e makefilm.tcl
+Expect the above to crash ALOT. Simply call the script again, it will continue where it left off
+"C:\ffmpeg-7.1-full_build\bin\ffmpeg.exe" -r 16 -i ./frames/frame_%d.tga -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4

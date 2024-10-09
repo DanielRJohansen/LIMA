@@ -64,6 +64,7 @@ struct BoxParams {
 	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
+// TODO: Move to Simulation device?
 struct DatabuffersDevice {
 	DatabuffersDevice(const DatabuffersDevice&) = delete;
 	DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval);
@@ -108,12 +109,7 @@ public:
 		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
 		buffer(n_particles_upperbound* n_indices, T{}),
 		loggingInterval(loggingInterval)
-	{
-		//buffer.resize(n_particles_upperbound * n_indices);
-		//for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
-		//	buffer[i] = T{};
-		//}
-	}
+	{}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
 
@@ -220,6 +216,7 @@ public:
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [1/l N/mol] // For debug only
 
 	std::vector<float> temperature_buffer;
+	std::vector<float> maxForceBuffer; // The maximum force experienced by any particle in the system
 
 #ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;

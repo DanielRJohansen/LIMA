@@ -135,11 +135,11 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
 			const float temp_scalar = HandleBoxtemp();
 			if (simulation->simparams_host.apply_thermostat)
-				sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE TODO: Find a better solution
-
-			HandleEarlyStoppingInEM();
+				sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE TODO: Find a better solution			
 		}
 		
+		HandleEarlyStoppingInEM();
+
 		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	}
 
@@ -243,20 +243,24 @@ void Engine::bootstrapTrajbufferWithCoords() {
 }
 
 void Engine::HandleEarlyStoppingInEM() {
-	if (!simulation->simparams_host.em_variant)
+	if (!simulation->simparams_host.em_variant || simulation->getStep() == simulation->simparams_host.n_steps)
 		return;
 
-	if (simulation->getStep() == simulation->simparams_host.n_steps)
-		return;
+	const int checkInterval = 500;
+	if (simulation->getStep() > stepAtLastEarlystopCheck + checkInterval) {
+		const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()-1), simulation->forceBuffer->EntriesPerStep());
+		runstatus.greatestForce = greatestForce / LIMA * NANO / KILO; // Convert to [kJ/mol/nm]
+		simulation->maxForceBuffer.emplace_back(runstatus.greatestForce);
 
-	//printf("max force %f\n", runstatus.greatestForce);
-	// Compute the max force, and convert it to userfriendly units
-	const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()), simulation->forceBuffer->EntriesPerStep()); // [1/l N/mol]
-	runstatus.greatestForce = greatestForce / LIMA * NANO / KILO; // [kJ/mol/nm]
-	if (simulation->simparams_host.em_variant && runstatus.greatestForce <= simulation->simparams_host.em_force_tolerance) {
-		//runstatus.simulation_finished = true;
+		if (runstatus.greatestForce <= simulation->simparams_host.em_force_tolerance) {
+			//runstatus.simulation_finished = true;
+		}
+
+		stepAtLastEarlystopCheck = simulation->getStep();
 	}
 }
+
+
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//

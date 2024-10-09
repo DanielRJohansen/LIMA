@@ -101,7 +101,10 @@ private:
 	// Measures temperature aswell as the maximum kinE measured in a particle
 	// Returns thermostat scalar, for the engine to push to device
 	float HandleBoxtemp();
+
 	void HandleEarlyStoppingInEM();
+	int stepAtLastEarlystopCheck = 0;
+
 	std::unique_ptr<LimaLogger> m_logger;
 
 	bool updatenlists_mutexlock = 0;

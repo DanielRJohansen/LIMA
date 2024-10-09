@@ -76,7 +76,7 @@ int main() {
 		env.run(true);*/
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//testBuildmembraneSmall(envmode, false);
+		//TestBuildmembraneSmall(envmode, false);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
 
@@ -155,7 +155,7 @@ void runAllUnitTests() {
 	
 
 	// Programs test
-	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
+	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 

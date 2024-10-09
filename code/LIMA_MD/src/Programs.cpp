@@ -187,7 +187,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimizeMax(GroFile& grofile, const 
 	params.em_variant = true;
 	params.bc_select = BoundaryConditionSelect::NoBC;
 	params.dt = 1.f;
-	params.n_steps = 2000;
+	params.n_steps = 8000;
 	params.snf_select = BoxEdgePotential;
 	env.CreateSimulation(grofile, topfile, params);
 	env.run(false);

@@ -652,10 +652,10 @@ void TopologyFile::printToFile(const std::filesystem::path& path, bool printForc
 			file << improperdihedralbonds.composeString();
 		}
 
-		if (!molecules.entries.empty()) { file << molecules.composeString(); }
-
 		if (path.extension() == ".top")
 			file << "[ system ]\n" << system << "\n";
+
+		if (!molecules.entries.empty()) { file << molecules.composeString(); }
 	}
 
 	// Also cache the file

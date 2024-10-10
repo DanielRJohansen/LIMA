@@ -154,12 +154,8 @@ namespace MDFiles {
 
 
 
-
-
-
 class TopologyFile {	//.top or .itp
 public:
-	struct ForcefieldInclude;
 	struct MoleculeEntry;
 	struct AtomsEntry;
 	template <size_t N>	struct GenericBond;
@@ -173,6 +169,24 @@ public:
 		int nrexcl{};
 		std::string composeString() const;
 	};
+	struct ForcefieldInclude {
+		ForcefieldInclude(const std::string& name = "") : name(name) {};
+		ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
+		void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
+
+		/// <summary>
+		/// Copies the forcefieldfile AND any include files to a target directory
+		/// </summary>
+		/// <param name="directory"></param>
+		void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
+		const fs::path& Path() const;
+
+		fs::path name; // Either name in resources/forcefields, or a path relative to the topologyfile
+
+	private:
+		std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
+	};
+
 	template <typename EntryType> struct Section {
 		std::string title;	// or "directive" in gromacs terms
 		const std::string legend;
@@ -194,7 +208,7 @@ public:
 	};
 
 
-	TopologyFile() {}										// Create an empty file	
+	TopologyFile();										// Create an empty file	
 	TopologyFile(const fs::path& path);	// Load a file from path	
 
 	void printToFile(const fs::path& path) const;
@@ -226,10 +240,14 @@ public:
 	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
 	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
-	std::vector<ForcefieldInclude> forcefieldIncludes;	// Multiple forcefields can apply to a topology file, in such a case the first forcefield with a hit is used
+	std::optional<ForcefieldInclude> forcefieldInclude = std::nullopt;
 	std::unordered_map<std::string, std::shared_ptr<TopologyFile>> includeTopologies;
 	std::vector<std::string> otherIncludes;
-	std::vector<fs::path> GetForcefieldPaths() const;
+
+	// Returns the top's forcefield IF it exists.
+	// If not, tries to return it's parents IF, if those exists
+	// Otherwise, returns nullopt
+	std::optional<fs::path> GetForcefieldPath() const;
 
 	template <typename T>
 	Section<T>& GetSection() {
@@ -302,6 +320,11 @@ private:
 	TopologyFile& operator=(const TopologyFile&) = default;
 
 	static std::string generateLegend(const std::vector<std::string>& elements);
+
+	// GROMACS only allows for a single forcefield to be included in a topology file incl includetopologies
+	// In most cases the topologies we make have all includetopologies using the same forcefield.
+	// This function will move the forcefield includes from the includetopologies to the main topology
+	void HandleForcefieldincludeHiarchy();
 };
 
 struct TopologyFile::MoleculeEntry {
@@ -345,24 +368,6 @@ struct TopologyFile::AtomsEntry {
 	void composeString(std::ostringstream& oss) const;
 
 	bool operator==(const AtomsEntry&) const = default;
-};
-
-struct TopologyFile::ForcefieldInclude {
-	ForcefieldInclude(const std::string& name = "") : name(name) {};
-	ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
-	void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
-
-	/// <summary>
-	/// Copies the forcefieldfile AND any include files to a target directory
-	/// </summary>
-	/// <param name="directory"></param>
-	void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
-	const fs::path& Path() const;
-
-	fs::path name; // Either name in resources/forcefields, or a path relative to the topologyfile
-
-private:
-	std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
 };
 
 

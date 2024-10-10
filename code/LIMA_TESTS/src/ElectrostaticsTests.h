@@ -177,6 +177,9 @@ namespace ElectrostaticsTests {
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.24f, particlesPerNm3);
 
+		// Overwrite the forcefield
+		simfiles.topfile->forcefieldInclude = TopologyFile::ForcefieldInclude{ "lima_custom_forcefield.itp", simfiles.topfile->path.parent_path()};
+
 		simfiles.grofile->title = "ElectroStatic Field Test";
 		simfiles.topfile->title = "ElectroStatic Field Test";
 		simfiles.grofile->printToFile();
@@ -186,11 +189,11 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
 		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
 			}, 
 			5.f
 			);

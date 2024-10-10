@@ -1,3 +1,4 @@
 [ atomtypes ]
 ;name	at.num	mass	charge	ptype	sigma	epsilon
 lt1	1	12.01100	0.51	A	0.356359487256	0.0 
+lt2	1	12.01100	0.51	A	0.356359487256	0.46024 

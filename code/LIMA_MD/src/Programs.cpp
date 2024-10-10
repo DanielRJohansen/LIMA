@@ -43,7 +43,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	
 	std::vector<int> ljtypeIndices;
 	for (auto& atom : topfile.GetAllAtoms()) {
-		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPaths(), atom.type));
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPath(), atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
 

@@ -304,7 +304,7 @@ bool isOnlySpacesAndTabs(const std::string& str) {
 		});
 }
 
-
+TopologyFile::TopologyFile() {}
 TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
@@ -328,11 +328,14 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 			molecule.includeTopologyFile = includeTopologies.at(molecule.name);
 
-			for (auto& forcefieldInclude : molecule.includeTopologyFile->forcefieldIncludes)
-				forcefieldInclude.LoadFullPath(path.parent_path());
+			if (molecule.includeTopologyFile->forcefieldInclude)
+				molecule.includeTopologyFile->forcefieldInclude->LoadFullPath(path.parent_path());
+			/*for (auto& forcefieldInclude : molecule.includeTopologyFile->forcefieldIncludes)
+				forcefieldInclude.LoadFullPath(path.parent_path());*/
 		}
-		for (auto& forcefieldInclude : forcefieldIncludes)
-			forcefieldInclude.LoadFullPath(path.parent_path());
+		if (forcefieldInclude) 
+			forcefieldInclude->LoadFullPath(path.parent_path());
+			
 	}
 	else {
 		{
@@ -377,8 +380,13 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 						std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
 
-						if (filename.find(".ff") != std::string::npos || filename.find("forcefield") != std::string::npos) {
-							forcefieldIncludes.emplace_back(filename, path.parent_path());
+						if (filename.find("forcefield.itp") != std::string::npos) {
+							assert(!forcefieldInclude);
+							forcefieldInclude = ForcefieldInclude(filename, path.parent_path());
+						}
+						else if (filename.find("charmm27.ff") != std::string::npos) {
+							// This is when including ions.itp or top3p.itp or other structures which we dont yet support!
+							// TODO Warn user here!
 						}
 						else if (filename.find("posre") != std::string::npos) {
 							// Do nothing, not yet supported
@@ -609,11 +617,11 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		file << title << "\n\n";
 
 
-		for (const auto& include : forcefieldIncludes) {
-			include.CopyToDirectory(path.parent_path(), path.parent_path());
-			file << ("#include \"" + include.name.string() + "\"\n");
+		if (forcefieldInclude) {
+			forcefieldInclude->CopyToDirectory(path.parent_path(), path.parent_path());
+			file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
+			file << "\n";
 		}
-		file << "\n";
 
 		for (const auto& include : includeTopologies) {
 			file << ("#include \"topol_" + include.first + ".itp\"\n");
@@ -652,6 +660,16 @@ void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
 	const int globalIndexOfFirstParticle = molecules.entries.empty()
 		? 0 : molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
 	molecules.entries.emplace_back(other->name, includeTopologies.at(other->name), globalIndexOfFirstParticle);
+}
+void TopologyFile::HandleForcefieldincludeHiarchy() {
+
+	// First set the main forcefieldinclude to the first used forcefield
+	/*if (forcefieldIncludes.empty() && !molecules.entries.empty()) {
+
+	}*/
+		
+
+
 }
 
 
@@ -851,12 +869,13 @@ const fs::path& TopologyFile::ForcefieldInclude::Path() const {
 
 
 
-std::vector<fs::path> TopologyFile::GetForcefieldPaths() const {
-	std::vector<fs::path> paths;
-	for (const auto& include : forcefieldIncludes) {
-		paths.emplace_back(include.Path());
-	}
-	return paths;
+std::optional<fs::path> TopologyFile::GetForcefieldPath() const {	
+	if (forcefieldInclude)
+		return forcefieldInclude->Path();
+
+
+
+	return std::nullopt;
 }
 
 PDBfile::PDBfile(const fs::path& path) : mPath(path) {

@@ -99,10 +99,10 @@ public:
 	ForcefieldManager();
 	~ForcefieldManager();
 
-	int GetActiveLjParameterIndex(const std::vector<fs::path>& forcefieldName, const std::string& query);
+	int GetActiveLjParameterIndex(const std::optional<fs::path>& forcefieldName, const std::string& query);
 	ForceField_NB GetActiveLjParameters();
 
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(
-		const std::vector<fs::path>& forcefieldNames, const auto& query);
+		const std::optional<fs::path>& forcefieldName, const auto& query);
 };

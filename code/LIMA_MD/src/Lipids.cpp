@@ -227,9 +227,8 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 		TopologyFile topfile{ itppath };
 
 		// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
-		assert(topfile.forcefieldIncludes.size() ==1);
-		topfile.forcefieldIncludes.resize(1);
-		topfile.forcefieldIncludes[0] = { TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp"} };
+		assert(topfile.forcefieldInclude);
+		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude(TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp"} );
 
 		grofile.box_size = Float3{ 5.f };
 	/*	if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {

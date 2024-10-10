@@ -124,7 +124,7 @@ public:
 
 	__host__ static std::unique_ptr<CompoundcoordsCircularQueue> CreateQueue() {
 		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue>();		
-		coordQueue->queue = new CompoundCoords[nElementsInQueue];
+		coordQueue->queue = new CompoundCoords[nElementsInQueue]; // TODO MAJOR MEMLEAK
 		return coordQueue;
 	}
 
@@ -135,12 +135,6 @@ public:
 	}
 	__host__ void CopyDataFromDevice(const CompoundcoordsCircularQueue* const queue) {
 		cudaMemcpy(this->queue, queue->queue, queueBytesize, cudaMemcpyDeviceToHost);
-	}
-	__host__ CompoundcoordsCircularQueue* copyToHost() {
-		CompoundcoordsCircularQueue* this_host = new CompoundcoordsCircularQueue();
-		this_host->queue = new CompoundCoords[MAX_COMPOUNDS * queueLen];
-		cudaMemcpy(this_host->queue, queue, queueBytesize, cudaMemcpyDeviceToHost);
-		return this_host;
 	}
 
 	__host__ const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {

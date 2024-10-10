@@ -29,7 +29,7 @@ int64_t TimeSinceEpoch(std::filesystem::file_time_type fileTime) {
 }
 
 constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 18;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 19;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 

@@ -380,15 +380,9 @@ struct TopologyFile::GenericBond{
 	void composeString(std::ostringstream & oss) const {
 		const int width = 10;
 		for (size_t i = 0; i < N; ++i) {
-			oss << std::setw(width) << std::right << ids[i];
+			oss << std::setw(width) << std::right << ids[i] + 1; // convert back to 1-indexed
 		}
 		oss << std::setw(width) << std::right << funct;
-	}
-
-	void IncrementIds(const int increment) {
-		for (size_t i = 0; i < N; ++i) {
-			ids[i] += increment;
-		}
 	}
 
 	bool operator==(const GenericBond<N>& other) const {

@@ -96,7 +96,7 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 		oss << section_name.value() << "\n";
 	}
 	oss << std::right
-		<< std::setw(10) << id
+		<< std::setw(10) << id + 1 // convert back to 1-indexed
 		<< std::setw(10) << type
 		<< std::setw(10) << resnr
 		<< std::setw(10) << residue

@@ -1,3 +1,10 @@
+curl --version || exit 1 # install curl
+debuild --version || exit 1 # install devscripts
+#install debhelper-compat
+#debhelper-compat --version || exit 1
+#install libtbb12
+
+
 # First cleanup from previous builds
 rm -rf resources
 rm lima license.md README.md

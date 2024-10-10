@@ -539,7 +539,8 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->name = "monolayer";
+	outputtopologyfile->name = "Membrane";
+	outputtopologyfile->system = "Membrane";
 
 	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
 

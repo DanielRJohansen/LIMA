@@ -51,10 +51,10 @@ struct GroFile {
 	}
 };
 
-
 enum TopologySection {
 	// Keywords typically found in topologies
-	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, cmap, no_section,
+	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, // system is a protected keyword??
+	cmap, no_section,
 	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
 	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
 
@@ -196,7 +196,8 @@ public:
 			std::ostringstream oss;
 
 			oss << title << '\n';
-			oss << legend << "\n";
+			if (!legend.empty());
+				oss << legend << "\n";
 			for (const EntryType& entry : entries) {
 				entry.composeString(oss);
 				oss << '\n';
@@ -248,6 +249,8 @@ public:
 	std::optional<ForcefieldInclude> forcefieldInclude = std::nullopt;
 	std::unordered_map<std::string, std::shared_ptr<TopologyFile>> includeTopologies;
 	std::vector<std::string> otherIncludes;
+
+	std::string system = "noname";	// [ system ] section
 
 	// Returns the top's forcefield IF it exists.
 	// If not, tries to return it's parents IF, if those exists

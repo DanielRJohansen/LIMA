@@ -79,7 +79,7 @@ std::string composeGroLine(const GroRecord& record) {
 void TopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
 	if (includeTopologyFile->name == "")
 		throw std::runtime_error("Trying to save a topology with an empty include topology name");
-	oss << includeTopologyFile->name;
+	oss << includeTopologyFile->name << " 1";
 }
 
 std::string TopologyFile::Moleculetype::composeString() const {
@@ -532,6 +532,10 @@ TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path
 					improperdihedralbonds.entries.back().sourceLine = line;
 					break;
 				}
+				case TopologySection::_system: {
+					iss >> system;
+					break;
+				}
 				default:
 					// Do nothing
 					//throw std::runtime_error("Illegal state");
@@ -637,17 +641,21 @@ void TopologyFile::printToFile(const std::filesystem::path& path, bool printForc
 		}
 		file << "\n";
 
-
-		if (!molecules.entries.empty()) { file << molecules.composeString(); }
 		if (moleculetype.has_value()) { file << moleculetype.value().composeString(); }
 
+		if (!atoms.entries.empty()) {
+			file << atoms.composeString();
+			file << singlebonds.composeString();
+			file << pairs.composeString();
+			file << anglebonds.composeString();
+			file << dihedralbonds.composeString();
+			file << improperdihedralbonds.composeString();
+		}
 
-		file << atoms.composeString();
-		file << singlebonds.composeString();
-		file << pairs.composeString();
-		file << anglebonds.composeString();
-		file << dihedralbonds.composeString();
-		file << improperdihedralbonds.composeString();
+		if (!molecules.entries.empty()) { file << molecules.composeString(); }
+
+		if (path.extension() == ".top")
+			file << "[ system ]\n" << system << "\n";
 	}
 
 	// Also cache the file

@@ -7,7 +7,7 @@
 void SelfTest() {
 	const std::filesystem::path work_dir = std::filesystem::current_path() / "selftest";
 
-	const fs::path slipidsPath = Filehandler::GetLimaDir() / "resources/Slipids";
+	const fs::path slipidsPath = FileUtils::GetLimaDir() / "resources/Slipids";
 	std::vector<std::string> targets;
 	for (const auto& entry : fs::directory_iterator(slipidsPath)) {
 		if (entry.path().extension() == ".gro") {

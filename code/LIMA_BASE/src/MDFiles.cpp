@@ -6,7 +6,7 @@
 #include <format>
 
 
-using namespace Filehandler;
+using namespace FileUtils;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
@@ -265,7 +265,7 @@ fs::path SearchForFile(const fs::path& workDir, const std::string& includeName) 
 
 	// If no value, look in the default includes dir
 	if (!includePath.has_value())
-		includePath = _SearchForFile(Filehandler::GetLimaDir() / "resources/Slipids", includeName);
+		includePath = _SearchForFile(FileUtils::GetLimaDir() / "resources/Slipids", includeName);
 
 	if (!includePath.has_value())
 		throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", includeName, workDir.string()));
@@ -793,7 +793,7 @@ TopologyFile::ForcefieldInclude::ForcefieldInclude(const std::string& name, cons
 	name(name),
 	path(fs::exists(ownerDir / name)
 	? ownerDir / name
-	: Filehandler::GetLimaDir() / "resources" / "forcefields" / name)
+	: FileUtils::GetLimaDir() / "resources" / "forcefields" / name)
 {}
 void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const {
 	if (!fs::is_directory(directory)) {
@@ -838,7 +838,7 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 void TopologyFile::ForcefieldInclude::LoadFullPath(const fs::path& ownerDir) {
 	path = fs::exists(ownerDir / name)
 		? ownerDir / name
-		: Filehandler::GetLimaDir() / "resources" / "forcefields" / name;
+		: FileUtils::GetLimaDir() / "resources" / "forcefields" / name;
 }
 const fs::path& TopologyFile::ForcefieldInclude::Path() const {
 	if (!path.has_value())

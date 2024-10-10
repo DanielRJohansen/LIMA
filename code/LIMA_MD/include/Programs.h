@@ -19,17 +19,6 @@ namespace Programs {
 
 	// Load file into a box, optionally solvate it and then run untill energy is at a stable level
 	void EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topFile, bool solvate, float boxlenNM);
-
-	
-	/// <summary>
-	/// Same as above, but starts with extreme EM and iteratively increases dt 
-	/// </summary>
-	/// <param name="grofile"></param>
-	/// <param name="topfile"></param>
-	/// <param name="workDir"></param>
-	/// <param name="envmode"></param>
-	/// <returns></returns>
-	/// 
 	
 
 	/// <summary>

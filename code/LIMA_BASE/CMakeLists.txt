@@ -31,12 +31,16 @@ target_include_directories(LIMA_BASE PUBLIC
 )
 
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
-  
+if (UNIX)  
+    target_link_libraries(LIMA_BASE PUBLIC
+        LIMA_DEPENDS
+        TBB::tbb
+    )
+else()
 target_link_libraries(LIMA_BASE PUBLIC
-    LIMA_DEPENDS
-    TBB::tbb
-)
-
+        LIMA_DEPENDS
+    )
+endif()
 
 if (UNIX)
     target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)

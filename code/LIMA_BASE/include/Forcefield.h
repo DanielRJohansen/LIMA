@@ -89,7 +89,7 @@ class ForcefieldManager {
 
 	LIMAForcefield& GetForcefield(const fs::path& forcefieldName);	
 
-	const fs::path internalForcefieldsDir = Filehandler::GetLimaDir() / "resources/forcefields";
+	const fs::path internalForcefieldsDir = FileUtils::GetLimaDir() / "resources/forcefields";
 
 	const fs::path limaTestForcefield = internalForcefieldsDir / "lima_custom_forcefield.itp";
 	const fs::path defaultForcefield = internalForcefieldsDir / "charmm27.ff/forcefield.itp";

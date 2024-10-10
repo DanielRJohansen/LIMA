@@ -62,7 +62,7 @@ constexpr void Readf(std::unordered_map<std::string, std::string>& dict, T& para
 
 SimParams::SimParams(const fs::path& path) {
 	const bool forceKeysAndValuesLowercase = true;
-	auto dict = Filehandler::parseINIFile(path.string(), forceKeysAndValuesLowercase);
+	auto dict = FileUtils::parseINIFile(path.string(), forceKeysAndValuesLowercase);
 
 	Readi(dict, n_steps, "n_steps");
 	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_LIMA; });

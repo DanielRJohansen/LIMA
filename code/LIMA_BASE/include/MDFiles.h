@@ -1,4 +1,4 @@
-// Superstructure to the Filehandler. 
+// Superstructure to the FileUtils. 
 // Provides special functionality for MD files such as .gro .itp .top .pdb and more
 #pragma once
 

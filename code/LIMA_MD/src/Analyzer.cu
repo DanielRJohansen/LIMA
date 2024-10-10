@@ -419,7 +419,7 @@ SimAnalysis::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, s
 //		}
 //	}
 //
-//	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
+//	FileUtils::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
 //}
 
 

@@ -89,7 +89,7 @@ namespace TestMembraneBuilder {
 	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 
-		const fs::path path = Filehandler::GetLimaDir() / "resources/Slipids";
+		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
 		std::vector<std::string> targets;
 		for (const auto& entry : fs::directory_iterator(path)) {
 			if (entry.path().extension() == ".gro") {

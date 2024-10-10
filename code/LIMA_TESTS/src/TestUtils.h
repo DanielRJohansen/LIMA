@@ -135,11 +135,11 @@ namespace TestUtils {
 
 	bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
 		if (overwriteFile) {
-			Filehandler::WriteVectorToBinaryFile(path, vec);
+			FileUtils::WriteVectorToBinaryFile(path, vec);
 			return true;
 		}
 
-		const std::vector<Float3> fileVec = Filehandler::ReadBinaryFileIntoVector<Float3>(path);
+		const std::vector<Float3> fileVec = FileUtils::ReadBinaryFileIntoVector<Float3>(path);
 		if (vec.size() != fileVec.size()) {
 			return false;
 		}

@@ -12,7 +12,7 @@
 #include <format>
 #include <fstream>
 
-using namespace Filehandler;
+using namespace FileUtils;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
@@ -259,7 +259,7 @@ static bool UseCachedBinaryFile(const fs::path& path) {
 	// If we are on linux and in the resources dir, we will NOT do the check, since the files were made on windows
 	// and may mismatch AND we may not write to the resources dir
 #ifdef __linux__
-	if (path.parent_path().parent_path().parent_path() == Filehandler::GetLimaDir())
+	if (path.parent_path().parent_path().parent_path() == FileUtils::GetLimaDir())
 		return true;
 #endif	
 

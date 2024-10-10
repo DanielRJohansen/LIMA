@@ -10,7 +10,7 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 	lipidname(lipidname),
 	percentage(percentage)
 {
-	const fs::path defaultLipidsDir = Filehandler::GetLimaDir() / ("resources/Slipids");
+	const fs::path defaultLipidsDir = FileUtils::GetLimaDir() / ("resources/Slipids");
 
 	if (!userSupplied && !fs::exists(defaultLipidsDir / (lipidname + ".itp"))) {
 		throw std::runtime_error(std::format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
@@ -217,26 +217,14 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 #include "Environment.h"
 
 void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
-	std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
-	std::vector<std::string> targets;
+	fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
 
-	//std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr;
+	std::vector<std::array<fs::path, 2>> lipidFiles = FileUtils::GetAllGroItpFilepairsInDir(dir);
 
-	for (const auto& entry : fs::directory_iterator(path)) {
-		if (entry.path().extension() == ".gro") {
-			std::string base_name = entry.path().stem().string();
-			std::string itp_file = path + base_name + ".itp";
-			if (fs::exists(itp_file)) {
-
-				targets.push_back(base_name);
-			}
-		}
-	}
-
-	for (const auto& target : targets) {
-		printf("Organizing %s\n", target.c_str());
-		GroFile grofile{ path + target + ".gro" };
-		TopologyFile topfile{ path + target + ".itp" };
+	for (auto [gropath, itppath] : lipidFiles) {
+		printf("Organizing %s\n", gropath.stem().string().c_str());
+		GroFile grofile{ gropath};
+		TopologyFile topfile{ itppath };
 
 		// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
 		assert(topfile.forcefieldIncludes.size() ==1);

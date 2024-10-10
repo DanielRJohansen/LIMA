@@ -189,6 +189,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& gro
 	params.dt = 100.f;
 	params.n_steps = 2000;
 	params.snf_select = BoxEdgePotential;
+	params.em_force_tolerance = 100;
 	env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
 

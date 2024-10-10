@@ -70,13 +70,10 @@ SimParams::SimParams(const fs::path& path) {
 	Readf(dict, em_force_tolerance, "em_force_tolerance");
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
-		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC} }, "boundarycondition", value); }
+		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"pbc", PBC }, {"nobc", NoBC} }, "boundarycondition", value); }
 	);
 	Readb(dict, enable_electrostatics, "enable_electrostatics");
 	Readf(dict, cutoff_nm, "cutoff_nm");
-	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
-		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC} }, "boundarycondition", value); }
-	);
 	// Skip SNF for now	
 
 	Readi(dict, data_logging_interval, "data_logging_interval");	

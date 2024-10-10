@@ -30,7 +30,7 @@ PushBuildToGit() {
     while true; do
         read -p "Do you wish to push the update to LIMAMD? (y/n): " yn
         case $yn in
-            [Yy]* ) return 0;;
+            [Yy]* ) break;;
             [Nn]* ) echo "Aborting."; exit 1;;
             * ) echo "Please answer yes or no.";;
         esac

@@ -305,7 +305,7 @@ bool isOnlySpacesAndTabs(const std::string& str) {
 }
 
 TopologyFile::TopologyFile() {}
-TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFilename(path))
+TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path(path), name(GetCleanFilename(path)), parentTopology(parentTop)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
@@ -328,14 +328,13 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 
 			molecule.includeTopologyFile = includeTopologies.at(molecule.name);
 
+			molecule.includeTopologyFile->parentTopology = this;
+
 			if (molecule.includeTopologyFile->forcefieldInclude)
 				molecule.includeTopologyFile->forcefieldInclude->LoadFullPath(path.parent_path());
-			/*for (auto& forcefieldInclude : molecule.includeTopologyFile->forcefieldIncludes)
-				forcefieldInclude.LoadFullPath(path.parent_path());*/
 		}
 		if (forcefieldInclude) 
-			forcefieldInclude->LoadFullPath(path.parent_path());
-			
+			forcefieldInclude->LoadFullPath(path.parent_path());		
 	}
 	else {
 		{
@@ -392,7 +391,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path), name(GetCleanFile
 							// Do nothing, not yet supported
 						}
 						else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
-							auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename);
+							auto includeTopology = std::make_shared<TopologyFile>(path.parent_path() / filename, this);
 							if (!includeTopology->moleculetype.has_value()) {
 								throw std::runtime_error(std::format("Include topology did not contain a moleculetype section: {}", includeTopology->path.string()));
 							}
@@ -604,7 +603,9 @@ std::string TopologyFile::generateLegend(const std::vector<std::string>& element
 	return legend.str();
 }
 
-void TopologyFile::printToFile(const std::filesystem::path& path) const {
+
+
+void TopologyFile::printToFile(const std::filesystem::path& path, bool printForcefieldinclude) const {
 	const auto ext = path.extension().string();
 	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expectec [.top/.itp]", ext)); }
 
@@ -616,11 +617,19 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		
 		file << title << "\n\n";
 
-
-		if (forcefieldInclude) {
-			forcefieldInclude->CopyToDirectory(path.parent_path(), path.parent_path());
-			file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
-			file << "\n";
+		if (printForcefieldinclude) {
+			std::optional<ForcefieldInclude> sharedff = ThisAndAllSubmoleculesShareTheSameForcefieldinclude();
+			if (sharedff.has_value()) {
+				sharedff.value().CopyToDirectory(path.parent_path(), path.parent_path());
+				file << ("#include \"" + sharedff->name.string() + "\"\n");
+				file << "\n";
+				printForcefieldinclude = false;
+			}
+			else if (forcefieldInclude) {
+				forcefieldInclude.value().CopyToDirectory(path.parent_path(), path.parent_path());
+				file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
+				file << "\n";
+			}
 		}
 
 		for (const auto& include : includeTopologies) {
@@ -645,7 +654,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	WriteFileToBinaryCache(*this, path);
 
 	for (const auto& [name, include] : includeTopologies) {
-		include->printToFile(path.parent_path() / ("topol_" + name + ".itp"));
+		include->printToFile(path.parent_path() / ("topol_" + name + ".itp"), printForcefieldinclude);
 	}
 }
 void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
@@ -661,15 +670,20 @@ void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
 		? 0 : molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
 	molecules.entries.emplace_back(other->name, includeTopologies.at(other->name), globalIndexOfFirstParticle);
 }
-void TopologyFile::HandleForcefieldincludeHiarchy() {
+std::optional<TopologyFile::ForcefieldInclude> TopologyFile::ThisAndAllSubmoleculesShareTheSameForcefieldinclude() const {
 
-	// First set the main forcefieldinclude to the first used forcefield
-	/*if (forcefieldIncludes.empty() && !molecules.entries.empty()) {
+	std::optional<TopologyFile::ForcefieldInclude> sharedff = std::nullopt;
 
-	}*/
-		
+	for (const auto& mol : GetAllSubMolecules()) {
+		if (!mol.includeTopologyFile->forcefieldInclude)
+			continue;
 
-
+		if (!sharedff)
+			sharedff = mol.includeTopologyFile->forcefieldInclude;
+		else if (sharedff.value().name != mol.includeTopologyFile->forcefieldInclude.value().name)
+			return std::nullopt;
+	}
+	return sharedff;
 }
 
 
@@ -872,8 +886,8 @@ const fs::path& TopologyFile::ForcefieldInclude::Path() const {
 std::optional<fs::path> TopologyFile::GetForcefieldPath() const {	
 	if (forcefieldInclude)
 		return forcefieldInclude->Path();
-
-
+	else if (parentTopology != nullptr)
+		return parentTopology->GetForcefieldPath();
 
 	return std::nullopt;
 }

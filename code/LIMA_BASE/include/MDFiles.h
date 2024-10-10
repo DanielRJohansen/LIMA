@@ -209,9 +209,14 @@ public:
 
 
 	TopologyFile();										// Create an empty file	
-	TopologyFile(const fs::path& path);	// Load a file from path	
+	TopologyFile(const fs::path& path, TopologyFile* parentTop=nullptr);	// Load a file from path	
 
-	void printToFile(const fs::path& path) const;
+	/// <summary>
+	/// Recursively write topology + all includes + forcefieldfiles to the parentpath of the dir
+	/// </summary>
+	/// <param name="path">path of the output .top file. All other files we be in the same dir</param>
+	/// <param name="printForcefieldinclude">Variable used internally in the class</param>
+	void printToFile(const fs::path& path, bool printForcefieldinclude=true) const;
 	void printToFile() const { printToFile(path); };
 	void printToFile(const std::string& name) const {
 		printToFile(fs::path(path.parent_path() / name));
@@ -316,15 +321,18 @@ private:
 	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
 	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
 
+	TopologyFile* parentTopology = nullptr; // USE WITH CARE!
+
 	// Private copy constructor, since this should be avoided when possible
 	TopologyFile& operator=(const TopologyFile&) = default;
 
 	static std::string generateLegend(const std::vector<std::string>& elements);
 
-	// GROMACS only allows for a single forcefield to be included in a topology file incl includetopologies
-	// In most cases the topologies we make have all includetopologies using the same forcefield.
-	// This function will move the forcefield includes from the includetopologies to the main topology
-	void HandleForcefieldincludeHiarchy();
+	
+	// If this and all submolecules share the same forcefieldinclude, return it, even if this does not have a forcefieldinclude
+	// This is useful because GROMACS only allow a single forcefield to be included, and in cases where it is possible
+	// we will provide a topology that wont break in GROMACS
+	std::optional<ForcefieldInclude> ThisAndAllSubmoleculesShareTheSameForcefieldinclude() const;
 };
 
 struct TopologyFile::MoleculeEntry {

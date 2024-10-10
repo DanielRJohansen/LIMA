@@ -21,7 +21,7 @@ struct BuildMembraneSetup{
                     lipids.emplace_back(argv[i+1], std::stod(argv[i+2]));
                     i+=2;
                 }
-                if ((i + 1 < argc && argv[i + 1][0] != '-') || (lipids.size() * 2 != argc - i - 1)) {
+                if ((i + 1 < argc && argv[i + 1][0] != '-')) {
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;
                 }
             }

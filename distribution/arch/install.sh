@@ -39,7 +39,8 @@ PushBuildToGit() {
     git add -A
     read -p "Enter commit message: " commit_msg
     git commit -m "$commit_msg"
-    git push origin main
+    git push
+    echo "Updated LIMAMD gitrepo"
 }
 
 
@@ -54,6 +55,7 @@ cd "$script_dir"
 
 
 # Update PKGBUILD
+echo -e "\nStart updating PKGBUILD"
 # Automatically increment the minor version number in the PKGBUILD
 pkgver=$(grep "^pkgver=" PKGBUILD | cut -d= -f2)
 major=$(echo $pkgver | cut -d. -f1)
@@ -80,25 +82,22 @@ echo "PKGBUILD updated with new version $new_pkgver and checksum."
 
 
 
-
-
 # Now test that we can install from the PKGBUILD
 
 ## Preinstall cleanup
-sudo pacman -R lima
-makepkg -Cf
-sudo rm -rf /usr/share/LIMA
-sudo rm /usr/bin/lima
-rm -rf src
-rm -rf pkg
-rm lima*
-rm main*
 ls
+sudo rm /usr/bin/lima
+sudo rm -rf /usr/share/LIMA
+echo "Preinstall cleanup"
 
 makepkg -si
+echo "makepkg -si ran succesfully"
 
 ## Postinstall cleanup
 rm -rf pkg
 rm -rf src
 rm main.tar.gz
 rm lima-*
+echo "Postinstall cleanup"
+
+echo "Scrip ran succesfully"

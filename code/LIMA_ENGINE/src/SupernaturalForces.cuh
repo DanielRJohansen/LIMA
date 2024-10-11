@@ -99,7 +99,7 @@ namespace SupernaturalForces {
 
 		// Compute the avg position
 		{
-			const auto const coords = simDev->box->compoundcoordsCircularQueue->getCoordarrayRef(simDev->signals->step, blockIdx.x);
+			const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->box->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
 			LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
 			__syncthreads();
 			relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
@@ -169,7 +169,7 @@ namespace SupernaturalForces {
 	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev) {
 		__shared__ Float3 origo;
 
-		const auto const coords = simDev->box->compoundcoordsCircularQueue->getCoordarrayRef(simDev->signals->step, blockIdx.x);
+		const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->box->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
 		const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
 		__syncthreads();
 		const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;

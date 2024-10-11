@@ -473,23 +473,7 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 		delete data_ptr;
 	else
 		delete[] data_ptr;
-
-	//data_ptr = gpu_ptr;
-
-	//printf("Moved %.2f MB to device\n", bytesize*1e-6);
 	return gpu_ptr;
-}
-
-// TODO MEMLEAK: this function is not freeing the memory of the original data
-// Assumes data is a ptr to device memory. Will copy what was in data, allocate new memory for data and move the copied data into that
-template<typename T>
-void genericCopyToHost(T** data, uint32_t n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	T* data_host = new T[n_elements];
-
-	size_t bytesize = sizeof(T) * n_elements;
-	cudaMemcpy(data_host, *data, bytesize, cudaMemcpyDeviceToHost);
-
-	*data = data_host;
 }
 
 template<typename T>

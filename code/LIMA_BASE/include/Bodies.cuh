@@ -114,50 +114,14 @@ struct CompoundCoords {
 	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
 };
 
-class CompoundcoordsCircularQueue {
-	CompoundCoords* queue = nullptr;
 
-	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
-public:
+namespace CompoundcoordsCircularQueueUtils {
 	static const int queueLen = 3;
-	static const int nElementsInQueue = queueLen * MAX_COMPOUNDS;
 
-	__host__ static std::unique_ptr<CompoundcoordsCircularQueue> CreateQueue() {
-		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue>();		
-		coordQueue->queue = new CompoundCoords[nElementsInQueue]; // TODO MAJOR MEMLEAK
-		return coordQueue;
-	}
-
-	__host__ CompoundcoordsCircularQueue* CopyToDevice() const {
-		CompoundcoordsCircularQueue queueTemp = *this;
-		queueTemp.queue = GenericCopyToDevice(queue, nElementsInQueue);
-		return GenericCopyToDevice(&queueTemp, 1);
-	}
-	__host__ void CopyDataFromDevice(const CompoundcoordsCircularQueue* const queue) {
-		cudaMemcpy(this->queue, queue->queue, queueBytesize, cudaMemcpyDeviceToHost);
-	}
-
-	__host__ const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
-		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
-		return queue[index0_of_currentstep_coordarray + compound_index];
-	}
-
-	__host__ __device__ CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
+	__host__ __device__ inline CompoundCoords* getCoordarrayRef(CompoundCoords* queue, uint32_t step, uint32_t compound_index) {
 		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
 		return &queue[index0_of_currentstep_coordarray + compound_index];
 	}
-
-
-	// ----- Host Only Functions ----- //
-
-	__host__ void Flush() {
-		for (size_t i = 0; i < queueLen * MAX_COMPOUNDS; i++) {
-			queue[i] = CompoundCoords{};
-		}
-	}
-
-	// Get raw ptr. Try to avoid using
-	__host__ CompoundCoords* data() { return queue; }	
 };
 
 

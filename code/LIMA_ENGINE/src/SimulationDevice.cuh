@@ -20,7 +20,7 @@ struct BoxDevice {
 	BoxParams boxparams;
 
 	Compound* compounds = nullptr;
-	CompoundcoordsCircularQueue* compoundcoordsCircularQueue = nullptr;
+	CompoundCoords* compoundcoordsCircularQueue = nullptr;
 
 	Solvent* solvents = nullptr;
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;

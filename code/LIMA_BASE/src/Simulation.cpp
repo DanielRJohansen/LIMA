@@ -130,7 +130,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 Box::Box(int boxSizeNM) {
 	boxparams.boxSize = boxSizeNM;
-	compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
+	compoundcoordsCircularQueue = CompoundcoordsCircularQueue_Host::CreateQueue();
 	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxSizeNM);
 }
 

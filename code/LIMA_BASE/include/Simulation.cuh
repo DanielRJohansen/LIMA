@@ -171,6 +171,47 @@ namespace LIMALOGSYSTEM {
 	}
 }
 
+class CompoundcoordsCircularQueue_Host {
+	std::vector<CompoundCoords> queue;
+
+	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
+public:
+	static const int nElementsInQueue = CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS;
+
+	static std::unique_ptr<CompoundcoordsCircularQueue_Host> CreateQueue() {
+		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue_Host>();
+		coordQueue->queue.resize(nElementsInQueue);
+		return coordQueue;
+	}
+
+	CompoundCoords* CopyToDevice() const {
+		return GenericCopyToDevice(queue);
+	}
+	void CopyDataFromDevice(const CompoundCoords* const src) {
+		cudaMemcpy(this->queue.data(), src, queueBytesize, cudaMemcpyDeviceToHost);
+	}
+
+	const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
+		const int index0_of_currentstep_coordarray = (step % CompoundcoordsCircularQueueUtils::queueLen) * MAX_COMPOUNDS;
+		return queue[index0_of_currentstep_coordarray + compound_index];
+	}
+
+	CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
+		return CompoundcoordsCircularQueueUtils::getCoordarrayRef(queue.data(), step, compound_index);
+	}
+
+	// ----- Host Only Functions ----- //
+	void Flush() {
+		for (size_t i = 0; i < CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS; i++) {
+			queue[i] = CompoundCoords{};
+		}
+	}
+
+	// Get raw ptr. Try to avoid using
+	CompoundCoords* data() { return queue.data(); }
+};
+
+
 // This goes on Device
 struct Box {
 	Box() {}
@@ -180,7 +221,7 @@ struct Box {
 
 
 	std::vector<Compound> compounds;
-	std::unique_ptr<CompoundcoordsCircularQueue> compoundcoordsCircularQueue = nullptr;
+	std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 
 	std::vector<Solvent> solvents;
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;

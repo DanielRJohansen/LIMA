@@ -1,8 +1,4 @@
-#include "Environment.h"
 #include "Programs.h"
-
-#include <iostream>
-
 
 void SelfTest() {
 	const std::filesystem::path work_dir = std::filesystem::current_path() / "selftest";
@@ -24,7 +20,7 @@ void SelfTest() {
 	}
 
 	auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-	Programs::EnergyMinimizeWithEdgeoverlap(*gro, *top, false, work_dir, Full);
+	Programs::EnergyMinimizeWithEdgeoverlap(*gro, *top, false, work_dir, Full, 1000.f);
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

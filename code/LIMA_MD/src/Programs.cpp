@@ -193,7 +193,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& gro
 	env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
 
-	params.n_steps = 10000;
+	params.n_steps = 20000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 	env.CreateSimulation(*env.getSim(), params);

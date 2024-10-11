@@ -73,13 +73,6 @@ namespace EngineUtils {
 
 	}
 
-	template <bool energyMinimize>
-	__device__ Float3 ScaleVelocity(const Float3& velocity, const float thermostatScalar, float dt, float mass) {
-		if constexpr (energyMinimize)
-			return EngineUtils::SlowHighEnergyParticle(velocity, dt, mass, thermostatScalar);
-		else
-			return velocity * thermostatScalar;
-	}
 
 
 

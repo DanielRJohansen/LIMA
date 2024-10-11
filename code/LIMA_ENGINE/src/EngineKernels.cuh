@@ -597,22 +597,27 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 	Coord relpos_next{};
 	if (solvent_active) {
+
+		if constexpr (energyMinimize)
+			force = EngineUtils::ForceActivationFunction(force);
+
 		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
 		Solvent& solventdata_ref = box->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
-		const Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
+		Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
 		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
+		
+		if constexpr(!energyMinimize)
+			vel_now *= signals->thermostat_scalar;
 
-		const Float3 velScaled = EngineUtils::ScaleVelocity<energyMinimize>(vel_now, signals->thermostat_scalar, simparams.dt, mass);
 
-		//solventdata_ref.vel_prev = vel_now * signals->thermostat_scalar;
-		solventdata_ref.vel_prev = velScaled;
+		solventdata_ref.vel_prev = vel_now;
 		solventdata_ref.force_prev = force;
 
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
 
-		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, velScaled, signals->step, sim->databuffers, simparams.data_logging_interval);
+		EngineUtils::LogSolventData(box, potE_sum, solventblock, solvent_active, force, vel_now, signals->step, sim->databuffers, simparams.data_logging_interval);
 	}
 
 

@@ -180,21 +180,24 @@ namespace SupernaturalForces {
 	}
 
 	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev) {
-		__shared__ SolventBlock solventblock;
+		// TODO Implement
+		// 
+		// 
+		//__shared__ SolventBlock solventblock;
 
-		SolventBlock* solventblock_ptr = simDev->box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simDev->signals->step);
+		//SolventBlock* solventblock_ptr = simDev->box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simDev->signals->step);
 
-		if (threadIdx.x == 0) {
-			solventblock.loadMeta(*solventblock_ptr);
-		}
-		__syncthreads();
-		solventblock.loadData(*solventblock_ptr);
-		__syncthreads();
+		//if (threadIdx.x == 0) {
+		//	solventblock.loadMeta(*solventblock_ptr);
+		//}
+		//__syncthreads();
+		//solventblock.loadData(*solventblock_ptr);
+		//__syncthreads();
 
 
-		Float3 force{};
-		float potE_sum{};
-		const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
+		//Float3 force{};
+		//float potE_sum{};
+		//const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
 	}
 
 

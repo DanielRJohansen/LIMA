@@ -79,10 +79,10 @@ struct Float3 {
 	__host__ __device__ glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
 	__host__ __device__ glm::vec4 ToVec4(float w) const { return glm::vec4(x, y, z, w); }
 
-	float* begin() { return &x; }
-	const float* begin() const { return &x; }
-	float* end() { return &x + 3; }
-	const float* end() const { return &x + 3; }
+	//float* begin() { return &x; }
+	//const float* begin() const { return &x; }
+	//float* end() { return &x + 3; }
+	//const float* end() const { return &x + 3; }
 
 	__host__ __device__ inline float operator[] (int index) const {
 		switch (index) {

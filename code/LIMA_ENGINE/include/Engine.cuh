@@ -7,7 +7,6 @@
 #include "Constants.h"
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-//#include "SimulationDevice.cuh"
 #include "Utilities.h"
 
 

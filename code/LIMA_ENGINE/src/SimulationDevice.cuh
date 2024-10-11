@@ -14,7 +14,7 @@
 
 struct BoxDevice {
 	BoxDevice() {}
-	void CopyDataToHost(Box& boxDev);
+	void CopyDataToHost(Box& boxDev) const;
 	void DeleteBox();
 
 	BoxParams boxparams;

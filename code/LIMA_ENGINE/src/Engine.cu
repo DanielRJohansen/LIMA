@@ -14,7 +14,6 @@
 
 #include "SupernaturalForces.cuh"
 
-#include <assert.h>
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
@@ -40,7 +39,6 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get());
 	sim_dev = genericMoveToDevice(sim_dev, 1);
 
-	//this->forcefield_host = forcefield_host;
 	setDeviceConstantMemory();
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet

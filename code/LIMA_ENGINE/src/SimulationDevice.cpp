@@ -2,7 +2,7 @@
 
 
 // Assumes "this" is a ptr to a device object
-void BoxDevice::CopyDataToHost(Box& boxHost) {
+void BoxDevice::CopyDataToHost(Box& boxHost) const {
 	BoxDevice boxtemp;
 	cudaMemcpy(&boxtemp, this, sizeof(BoxDevice), cudaMemcpyDeviceToHost);
 

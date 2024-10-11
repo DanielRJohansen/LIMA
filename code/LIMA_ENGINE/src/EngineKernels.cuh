@@ -2,13 +2,11 @@
 
 #include "Engine.cuh"
 #include "ForceComputations.cuh"
-#include "Utilities.h"
 #include "KernelWarnings.cuh"
 #include "EngineUtils.cuh"
 
 #include "SimulationDevice.cuh"
 #include "BoundaryCondition.cuh"
-#include "SupernaturalForces.cuh"
 #include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
 

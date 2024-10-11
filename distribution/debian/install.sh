@@ -41,5 +41,5 @@ echo -e "\n\n### Installing from deb package"
 sudo dpkg -i ./build/lima_*.deb
 sudo apt-get install -f
 
-
+lima -help
 lima selftest

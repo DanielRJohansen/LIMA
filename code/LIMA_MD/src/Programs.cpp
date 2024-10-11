@@ -181,7 +181,7 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, const fs::path& workDir, EnvMode envmode) {
+std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, const fs::path& workDir, EnvMode envmode, float emtol) {
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;
@@ -189,7 +189,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& gro
 	params.dt = 100.f;
 	params.n_steps = 2000;
 	params.snf_select = BoxEdgePotential;
-	params.em_force_tolerance = 100;
+	params.em_force_tolerance = emtol;
 	env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
 

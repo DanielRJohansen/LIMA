@@ -5,96 +5,114 @@
 #include <CommandlineUtils.h>
 
 #include "Environment.h"
-
 namespace fs = std::filesystem;
+
 struct MdrunSetup {
+    MdrunSetup(int argc, char** argv) : work_dir(fs::current_path()) {
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
-	MdrunSetup() {
-		work_dir = std::filesystem::current_path();
-		conf = work_dir / "molecule/conf.gro";
-		topol = work_dir / "molecule/topol.top";
-		simpar = work_dir / "sim_params.txt";
-	}
+            if (arg == "-conf") {
+                if (i + 1 < argc) {
+                    conf = work_dir / argv[++i];
+                }
+                else {
+                    std::cerr << "-conf expects a path argument." << std::endl;
+                    exit(1);
+                }
+            }
+            else if (arg == "-topology") {
+                if (i + 1 < argc) {
+                    topol = work_dir / argv[++i];
+                }
+                else {
+                    std::cerr << "-topology expects a path argument." << std::endl;
+                    exit(1);
+                }
+            }
+            else if (arg == "-simparams") {
+                if (i + 1 < argc) {
+                    simpar = work_dir / argv[++i];
+                }
+                else {
+                    std::cerr << "-simparams expects a path argument." << std::endl;
+                    exit(1);
+                }
+            }
+            else if (arg == "-structure_out") {
+                if (i + 1 < argc) {
+                    conf_out = work_dir / argv[++i];
+                }
+                else {
+                    std::cerr << "-structure_out expects a path argument." << std::endl;
+                    exit(1);
+                }
+            }
+            else if (arg == "-help" || arg == "-h") {
+                std::cout << helpText;
+                exit(0);
+            }
+            else if (arg == "-display" || arg == "-d")
+                envmode = Full;
+            else {
+                std::cerr << "Unknown argument: " << arg << std::endl;
+                exit(1);
+            }
+        }
+    }
 
+    EnvMode envmode = ConsoleOnly;
+    fs::path work_dir;
+    fs::path conf = work_dir / "molecule/conf.gro";
+    fs::path topol = work_dir / "molecule/topol.top";
+    fs::path simpar = work_dir / "sim_params.txt";
+    fs::path conf_out = work_dir / "out.gro";
 
-	EnvMode envmode = Full;
+private:
+    const std::string helpText = R"(
+Usage: mdrun [OPTIONS]
 
-	fs::path work_dir;
-	fs::path conf;
-	fs::path topol;
-	fs::path simpar;
+Description:
+    This program runs a molecular dynamics simulation based on provided configuration files and parameters.
 
-	// Output
-	fs::path conf_out;
+Options:
+    -conf [path]
+        Path to the configuration (.gro) file. Defaults to molecule/conf.gro.
+    
+    -topology [path]
+        Path to the topology (.top) file. Defaults to molecule/topol.top.
+    
+    -simparams [path]
+        Path to the simulation parameters file. Defaults to sim_params.txt.
+
+    -display, -d
+		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
+
+    -structure_out [path]
+        Output path for the resulting structure file. Defaults to out.gro.
+
+    -help, -h
+        Display this help text and exit.
+
+Example:
+    mdrun -conf myconf.gro -topology mytopol.top -simparams params.txt -display
+    )";
 };
 
+int mdrun(int argc, char** argv) {
+    std::cout << "LIMA is preparing simulation in dir " << fs::current_path().string() << "\n";
+    MdrunSetup setup(argc, argv);
+    auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
-MdrunSetup parseProgramArguments(int argc, char** argv) {
-	MdrunSetup setup{};
+    const SimParams ip(setup.simpar);
+    GroFile grofile{ setup.conf };
+    TopologyFile topfile{ setup.topol };
 
-	char* user_structure = CmdLineUtils::getCmdOption(argv, argv + argc, "-conf");
-	if (user_structure)
-	{
-		setup.conf = setup.work_dir / user_structure;
-	}
+    env->CreateSimulation(grofile, topfile, ip);
+    env->run();
 
-	char* user_topol = CmdLineUtils::getCmdOption(argv, argv + argc, "-topology");
-	if (user_topol)
-	{
-		setup.topol = setup.work_dir / user_topol;
-	}
+    env->WriteBoxCoordinatesToFile(grofile);
+    grofile.printToFile(setup.conf_out);
 
-	char* user_params = CmdLineUtils::getCmdOption(argv, argv + argc, "-simparams");
-	if (user_params)
-	{
-		setup.simpar = setup.work_dir / user_params;
-	}
-
-	char* user_envmode = CmdLineUtils::getCmdOption(argv, argv + argc, "-envmode");
-	if (user_envmode)
-	{
-		const std::string user_envmode_str(user_envmode);
-
-		if (user_envmode_str == "full") setup.envmode = Full;
-		else if (user_envmode_str == "console") setup.envmode = ConsoleOnly;
-		else if (user_envmode_str == "headless") setup.envmode = Headless;
-		else {
-			throw std::runtime_error(std::format("Got illegal envmode parameter {}", user_envmode_str).c_str());
-		}
-	}
-
-	char* user_confout = CmdLineUtils::getCmdOption(argv, argv + argc, "-structure_out");
-	if (user_confout)
-	{
-		setup.conf_out = setup.work_dir / user_confout;
-	}
-	else
-	{
-		setup.conf_out = setup.work_dir / "out.gro";
-	}
-
-	return setup;
-}
-
-
-
-
-
-int mdrun(int argc, char** argv) 
-{
-	std::cout << "LIMA is preparing simulation in dir " << std::filesystem::current_path().string() << "\n";
-	MdrunSetup setup = parseProgramArguments(argc, argv);
-	auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
-
-	const SimParams ip(setup.simpar);		
-	GroFile grofile{setup.conf};
-	TopologyFile topfile{setup.topol};
-
-	env->CreateSimulation(grofile, topfile, ip);
-	env->run();
-
-	env->WriteBoxCoordinatesToFile(grofile);
-	grofile.printToFile(setup.conf_out);
-
-	return 0;
+    return 0;
 }

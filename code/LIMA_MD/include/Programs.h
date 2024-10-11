@@ -29,5 +29,5 @@ namespace Programs {
 	/// <param name="writePositionsToGrofile">If false, the grofile will not be modified</param>
 	/// <returns>Can be discarded if not needed. Only makes sense to discard if overwriting grofile</returns>
 	std::unique_ptr<Simulation> EnergyMinimizeWithEdgeoverlap(GroFile&, const TopologyFile&, 
-		bool writePositionsToGrofile, const fs::path& workDir, EnvMode);
+		bool writePositionsToGrofile, const fs::path& workDir, EnvMode, float emtol=100.f);
 } // namespace Programs

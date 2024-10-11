@@ -18,31 +18,42 @@ struct BuildMembraneSetup{
             if (arg == "-lipids") {
                 // If we have atleasat 2 more args, and next arg is not a keyword, and second arg is a float
                 while (i + 2 < argc && argv[i + 1][0] != '-' && isFloatingpoint(argv[i + 2])) {
-                    lipids.emplace_back(argv[i+1], std::stod(argv[i+2]));
-                    i+=2;
+                    lipids.emplace_back(argv[i + 1], std::stod(argv[i + 2]));
+                    i += 2;
                 }
                 if ((i + 1 < argc && argv[i + 1][0] != '-')) {
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;
                 }
             }
-            else if (arg== "-centerz") {
-				if (i + 1 < argc) {
-					membraneCenterZ = std::stof(argv[i + 1]);
-					i++;
-				}
-				else {
-					std::cerr << "-centerZ expected an argument." << std::endl;
-				}
-			}
-            else if (arg == "-boxsize") {
-                if (i+1 < argc) {
-					boxsize = std::stof(argv[i+1]);
-					i++;
-				}
-				else {
-					std::cerr << "boxsize expected an argument." << std::endl;
-				}
+            else if (arg == "-centerz") {
+                if (i + 1 < argc) {
+                    membraneCenterZ = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "-centerZ expected an argument." << std::endl;
+                }
             }
+            else if (arg == "-boxsize") {
+                if (i + 1 < argc) {
+                    boxsize = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "boxsize expected an argument." << std::endl;
+                }
+            }
+            else if (arg == "-emtol") {
+                if (i + 1 < argc) {
+                    emtol = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "emtol expected an argument." << std::endl;
+                }
+            }
+            else if (arg == "-display" || arg == "-d")
+                envmode = Full;
             else if (arg == "-help" || arg == "-h") {
                 std::cout << helpText;
                 exit(0);
@@ -53,13 +64,13 @@ struct BuildMembraneSetup{
         }
 	}
 
-	EnvMode envmode = Full;
+	EnvMode envmode = ConsoleOnly;
 	const fs::path work_dir;
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
     std::optional<float> membraneCenterZ = std::nullopt;
     float boxsize = -1.f;
-
+    float emtol = 100.f;
 private:
     bool isFloatingpoint(const std::string& s) {
         std::istringstream iss(s);
@@ -88,6 +99,13 @@ Options:
     -boxsize [value]    
         Defines the size (nm) of the simulation box. Non-cubic boxes are not yet supported
         Example: -boxsize 10.0
+    
+    -emtol [value]
+        Sets the force tolerance (kJ/mol/nm) for the energy minimization. Default is 100.
+		Example: -emtol 100
+
+    -display, -d    
+		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
 
     -help, -h    
         Displays this help text and exits.
@@ -110,7 +128,7 @@ int buildMembrane(int argc, char** argv) {
 	}
     
     auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, { setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
-    Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, setup.work_dir, setup.envmode);
+    Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, setup.work_dir, setup.envmode, setup.emtol);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");
     topfile->printToFile(setup.work_dir / "membrane.top");

@@ -64,42 +64,6 @@ struct BoxParams {
 	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
-// TODO: Move to Simulation device?
-struct DatabuffersDevice {
-	DatabuffersDevice(const DatabuffersDevice&) = delete;
-	DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval);
-	void freeMembers();
-
-	static const int nStepsInBuffer = 10;
-
-	static bool IsBufferFull(size_t step, int loggingInterval) {
-		return step % (nStepsInBuffer * loggingInterval) == 0;
-	}
-	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
-		const int stepsSinceTransfer = step % (nStepsInBuffer * loggingInterval);
-		return stepsSinceTransfer / loggingInterval;
-	}
-
-	__device__ int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int step, int loggingInterval) const {
-		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
-		
-		//const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
-		const int stepOffset = steps_since_transfer / loggingInterval * total_particles_upperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return stepOffset + compound_offset + particleIdLocal;
-	}
-
-	float* potE_buffer = nullptr;				// For total energy summation
-	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
-	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
-	Float3* forceBuffer = nullptr;				// [1/l N/mol] // For debug only
-	const int total_particles_upperbound;
-#ifdef GENERATETRAINDATA
-	float* outdata = nullptr;					// Temp, for longging values to whatever
-	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
-#endif
-	//Float3* debugdataf3 = nullptr;
-};
 
 template <typename T>
 class ParticleDataBuffer {

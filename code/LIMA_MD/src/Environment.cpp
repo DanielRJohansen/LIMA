@@ -117,8 +117,7 @@ void Environment::verifyBox() {
 	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.n_solvents != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}	
-	assert(simulation->simparams_host.steps_per_temperature_measurement % simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer == 0);
-	assert(simulation->simparams_host.steps_per_temperature_measurement >= simulation->simparams_host.data_logging_interval * DatabuffersDevice::nStepsInBuffer);
+
 
 
 

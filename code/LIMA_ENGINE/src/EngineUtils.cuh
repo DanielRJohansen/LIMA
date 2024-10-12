@@ -78,33 +78,34 @@ namespace EngineUtils {
 
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, BoxDevice* box, CompoundCoords& compound_coords, 
-		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, DatabuffersDevice* databuffers, const float speed)
+		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
+		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 
 		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
 
-		const int index = databuffers->GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval);
-		databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
-		databuffers->potE_buffer[index] = *potE_sum;
-		databuffers->vel_buffer[index] = speed;
-		databuffers->forceBuffer[index] = force;
+		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval, box->boxparams.total_particles_upperbound);
+		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
+		poteBuffer[index] = *potE_sum;
+		velBuffer[index] = speed;
+		forceBuffer[index] = force;
 
 		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
 	__device__ inline void LogSolventData(BoxDevice* box, const float& potE, const SolventBlock& solventblock, bool solvent_active, 
-		const Float3& force, const Float3& velocity, uint32_t step, DatabuffersDevice* databuffers, int loggingInterval)
+		const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
 	{
 		if (step % loggingInterval != 0) { return; }
 
 
 		if (solvent_active) {
-			const int index = databuffers->GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval);
+			const int index = DatabuffersDeviceController::GetLogIndexOfParticle(solventblock.ids[threadIdx.x], box->boxparams.n_compounds, step, loggingInterval, box->boxparams.total_particles_upperbound);
 
-			databuffers->traj_buffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
-			databuffers->potE_buffer[index] = potE;
-			databuffers->vel_buffer[index] = velocity.len();
+			trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(solventblock.origo, solventblock.rel_pos[threadIdx.x]);
+			poteBuffer[index] = potE;
+			velBuffer[index] = velocity.len();
 		}
 	}
 

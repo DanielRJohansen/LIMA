@@ -58,7 +58,7 @@ int main() {
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
 
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//const fs::path work_dir = simulations_dir / "test";
@@ -94,7 +94,7 @@ int main() {
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

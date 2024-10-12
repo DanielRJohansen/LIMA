@@ -3,6 +3,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <memory>
 
 #include "Constants.h"
 #include "LimaTypes.cuh"
@@ -13,9 +14,9 @@
 
 
 
-#include <memory>
 
 class SimulationDevice;
+class DatabuffersDeviceController;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
@@ -91,7 +92,7 @@ private:
 	void verifyEngine();
 
 	// streams every n steps
-	void offloadLoggingData(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
+	void offloadLoggingData(const int steps_to_transfer);
 	void offloadTrainData();
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
@@ -118,6 +119,8 @@ private:
 	std::unique_ptr<Simulation> simulation = nullptr;
 
 	SimulationDevice* sim_dev = nullptr;
+
+	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 
 	const BoundaryConditionSelect bc_select;
 };

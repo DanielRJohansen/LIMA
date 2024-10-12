@@ -34,9 +34,13 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 	verifyEngine();
 
+	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->boxparams.total_particles_upperbound, 
+		simulation->box_host->boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
+
+
 	// Create the Sim_dev
 	if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
-	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get());
+	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get(), *dataBuffersDevice);
 	sim_dev = genericMoveToDevice(sim_dev, 1);
 
 	setDeviceConstantMemory();
@@ -98,6 +102,9 @@ void Engine::verifyEngine() {
 
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
 	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
+
+	assert(simulation->simparams_host.steps_per_temperature_measurement % simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer == 0);
+	assert(simulation->simparams_host.steps_per_temperature_measurement >= simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer);
 }
 
 void Engine::step() {
@@ -126,8 +133,8 @@ float HighestValue(const float* const arr, const int n) {
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
-	if (DatabuffersDevice::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
-		offloadLoggingData();
+	if (DatabuffersDeviceController::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
+		offloadLoggingData(DatabuffersDeviceController::nStepsInBuffer);
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
@@ -154,7 +161,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 }
 
 void Engine::terminateSimulation() {
-	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+	const int stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 
 	sim_dev->box->CopyDataToHost(*simulation->box_host);
@@ -173,28 +180,27 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
-	cudaMemcpy( // TODO make these async since we sync at the bottom anyways
+	cudaMemcpyAsync(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
-		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
-		sim_dev->databuffers->potE_buffer, 
+		dataBuffersDevice->potE_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->vel_buffer,
+		dataBuffersDevice->vel_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->forceBuffer,
+		dataBuffersDevice->forceBuffer,
 		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->traj_buffer,
+		dataBuffersDevice->traj_buffer,
 		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
@@ -212,7 +218,7 @@ void Engine::offloadTrainData() {
 	}
 
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
-	cudaMemcpy(&simulation->trainingdata[step_offset], sim_dev->databuffers->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->trainingdata[step_offset], dataBuffersDevice->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck("Cuda error during traindata offloading\n");
 #endif
 }

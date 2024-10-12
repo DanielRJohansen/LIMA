@@ -59,6 +59,34 @@ BoxDevice* MakeBox(const Box& box) {
 
 
 
+DatabuffersDeviceController::DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval) :
+	total_particles_upperbound{ total_particles_upperbound }
+{
+	// Permanent Outputs for energy & trajectory analysis
+	{
+		const size_t n_datapoints = total_particles_upperbound * nStepsInBuffer;
+		const size_t bytesize_mb = (2 * sizeof(float) * n_datapoints + 2 * sizeof(Float3) * n_datapoints) / 1'000'000;
+		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
+		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
+
+		cudaMalloc(&potE_buffer, sizeof(*potE_buffer) * n_datapoints);
+		cudaMalloc(&traj_buffer, sizeof(*traj_buffer) * n_datapoints);
+		cudaMalloc(&vel_buffer, sizeof(*vel_buffer) * n_datapoints);
+		cudaMalloc(&forceBuffer, sizeof(*forceBuffer) * n_datapoints);
+		
+
+		cudaMemset(potE_buffer, 0, sizeof(float) * n_datapoints);
+		cudaMemset(traj_buffer, 0, sizeof(Float3) * n_datapoints);
+		cudaMemset(vel_buffer, 0, sizeof(float) * n_datapoints);
+		cudaMemset(forceBuffer, 0, sizeof(Float3) * n_datapoints);
+	}
+}
+DatabuffersDeviceController::~DatabuffersDeviceController() {
+	cudaFree(potE_buffer);
+	cudaFree(traj_buffer);
+	cudaFree(vel_buffer);
+	cudaFree(forceBuffer);
+}
 
 
 
@@ -67,8 +95,7 @@ BoxDevice* MakeBox(const Box& box) {
 
 
 
-
-SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host)
+SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const DatabuffersDeviceController& databuffers)
 {
 	// Allocate structures for keeping track of solvents and compounds
 	compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
@@ -83,10 +110,11 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host)
 
 	genericCopyToDevice(params_host, &params, 1);
 
-	{
-		DatabuffersDevice databuffersTemp(box_host->boxparams.total_particles_upperbound, box_host->boxparams.n_compounds, params_host.data_logging_interval);
-		databuffers = GenericCopyToDevice(&databuffersTemp, 1);
-	}	
+	potE_buffer = databuffers.potE_buffer;
+	traj_buffer = databuffers.traj_buffer;
+	vel_buffer = databuffers.vel_buffer;
+	forceBuffer = databuffers.forceBuffer;
+
 
 	box = MakeBox(*box_host);
 
@@ -98,9 +126,6 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host)
 void SimulationDevice::deleteMembers() {
 	box->DeleteBox();
 	cudaFree(box);
-
-	databuffers->freeMembers();
-	cudaFree(databuffers);
 
 	cudaFree(params);
 

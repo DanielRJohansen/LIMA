@@ -351,5 +351,5 @@ void Display::TestDisplay() {
 	params.total_compound_particles = 1;
 	params.total_particles = 1;
 	params.total_particles_upperbound = 1;
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, 0, 0.f, Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
 }

@@ -145,7 +145,7 @@ bool Environment::prepareForRun() {
 	}
 
 	m_logger.startSection("Simulation started");
-	time0 = std::chrono::high_resolution_clock::now();
+	time0 = std::chrono::steady_clock::now();
 
 	if (simulation->ready_to_run) { return true; }
 
@@ -184,6 +184,7 @@ void Environment::sayHello() {
 #include <optional>
 
 void Environment::run(bool doPostRunEvents) {
+	const bool emVariant = simulation->simparams_host.em_variant;
 	if (!prepareForRun()) { return; }
 
 	std::unique_ptr<Display> display = nullptr;
@@ -195,7 +196,7 @@ void Environment::run(bool doPostRunEvents) {
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	while (true) {
-		time0 = std::chrono::high_resolution_clock::now();
+		auto stepStartTime = std::chrono::steady_clock::now();
 
 		if (engine->runstatus.simulation_finished) { 
 			break; 
@@ -207,12 +208,12 @@ void Environment::run(bool doPostRunEvents) {
 
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
 
-		if (!handleDisplay(compounds, boxparams, *display)) { 
+		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {
 			break; 
 		}
 		
 		// Deadspin to slow down rendering for visual debugging :)
-		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count() < MIN_STEP_TIME) {}
+		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
 	simulationTimer->stop();
 
@@ -299,7 +300,6 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
 
 		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
-		//const int remaining_minutes = (int)(1.f / 1000 * duration / steps_since_update * (n_steps - step) / 60);
 
 		// First clear the current line
 		printf("\r\033[K");
@@ -315,12 +315,13 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 			0);
 
 		engine->timings.reset();
+		time0 = std::chrono::steady_clock::now();
 	}
 }
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display) {	
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant) {
 	if (m_mode != Full) {
 		return true;
 	}
@@ -332,30 +333,18 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
 
+		const std::string info = emVariant
+			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
+			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
+
 		display.Render(std::make_unique<Rendering::SimulationTask>( 
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
+			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
 		));
 		step_at_last_render = engine->runstatus.current_step;
 	}
 
 	return !display.DisplaySelfTerminated();
 }
-
-
-void Environment::RenderSimulation() {
-
-	if (!prepareForRun()) { throw std::runtime_error("Failed to prepare simulation "); }
-
-	std::unique_ptr<Display> display = std::make_unique<Display>(m_mode);
-	
-	display->Render(Rendering::Task(std::make_unique<Rendering::SimulationTask>(
-		engine->runstatus.most_recent_positions, compounds, boxparams, engine->runstatus.current_step, engine->runstatus.current_temperature, coloringMethod
-	)));
-
-	while(!display->DisplaySelfTerminated()) {}
-}
-
-
 
 
 

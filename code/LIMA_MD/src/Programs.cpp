@@ -176,7 +176,11 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	params.n_steps = 20000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
-	env.CreateSimulation(*env.getSim(), params);
+
+	if (mayOverlapEdges)
+		env.CreateSimulation(*env.getSim(), params);
+	else
+		env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
 	if (writePositionsToGrofile)
 		env.WriteBoxCoordinatesToFile(grofile);

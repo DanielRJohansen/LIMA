@@ -65,8 +65,10 @@ namespace Rendering {
 		const Float3* positions;
 		const std::vector<Compound> compounds;
 		const BoxParams boxparams;
-		int64_t step;
-		float temperature;
+
+		std::string siminfo; // Will be output in the window header
+		/*int64_t step;
+		float temperature;*/
 		ColoringMethod coloringMethod;
 	};
 

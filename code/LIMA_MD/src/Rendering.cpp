@@ -80,8 +80,9 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
     if (!drawAtomsShader)
         drawAtomsShader = std::make_unique<DrawAtomsShader>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
 
-    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, task.step, task.temperature);
-    glfwSetWindowTitle(window, window_text.c_str());
+
+    std::string windowText = window_title + "\n" + task.siminfo;
+    glfwSetWindowTitle(window, windowText.c_str());
 
     // Preprocess the renderAtoms
     {

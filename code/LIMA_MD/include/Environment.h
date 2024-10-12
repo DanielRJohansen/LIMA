@@ -89,11 +89,7 @@ public:
 
 	std::string getWorkdir() { return work_dir.string(); }
 
-#ifdef __linux__
-	std::chrono::system_clock::time_point time0;
-#else
 	std::chrono::steady_clock::time_point time0;
-#endif
 
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
@@ -109,7 +105,7 @@ private:
 	void handleStatus(int64_t step, int64_t n_steps);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant);
 
 	void sayHello();
 

@@ -7,6 +7,7 @@
 #include "FileTests.h"
 #include "ForcefieldTests.h"
 #include "SetupTests.h"
+#include "Userinterface.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -16,6 +17,7 @@ using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
+
 void RunAllUnitTests();
 
 
@@ -93,7 +95,11 @@ int main() {
 		//TestAllStockholmlipids(envmode);
 		
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		RunAllUnitTests();
+		// 
+		
+		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
+
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -167,6 +173,9 @@ void RunAllUnitTests() {
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);
+
+
+	ADD_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
 
 	// Total test status will print as testman is destructed
 }

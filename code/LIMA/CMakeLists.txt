@@ -4,7 +4,7 @@
 # Now compile rest
 add_executable(lima
     lima.cpp
- "selftest.h" "GetForcefieldParams.h")
+)
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}
@@ -17,4 +17,8 @@ target_link_libraries(lima LIMA_MD)
 #install(TARGETS lima DESTINATION ${CMAKE_SOURCE_DIR}/applications)
 
 # Specify the installation target
-install(TARGETS lima DESTINATION /usr/bin)
+if (UNIX)
+    install(TARGETS lima DESTINATION /usr/bin)
+else()
+    install( TARGETS lima DESTINATION ${CMAKE_SOURCE_DIR}/applications )
+endif()

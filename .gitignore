@@ -54,3 +54,11 @@ out*
 /dev/VMDscripts/*
 !/dev/VMDscripts/instructions.txt
 !/dev/VMDscripts/makefilm.tcl
+
+
+
+
+# Tests
+/tests/userinterfacetests/*
+!/tests/userinterfacetests/test.gro
+!/tests/userinterfacetests/test.top

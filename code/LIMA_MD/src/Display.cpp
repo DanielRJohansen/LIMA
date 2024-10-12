@@ -223,7 +223,7 @@ void Display::Render(Rendering::Task task, bool blocking) {
 
     if (blocking) {
         while (1) {
-            if (debugValue) {
+            if (debugValue || displaySelfTerminated) {
                 debugValue = 0;
                 return;
             }

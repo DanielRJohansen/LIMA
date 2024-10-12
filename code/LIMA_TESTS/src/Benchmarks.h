@@ -98,7 +98,7 @@ namespace Benchmarks {
 			grofile.box_size = Float3{ boxlen, boxlen, boxlen };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
-			MoleculeUtils::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
+			MoleculeUtils::CenterMolecule(grofile, topfile);
 			SimulationBuilder::SolvateGrofile(grofile);
 			Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
 			grofile.printToFile(std::string{ "em.gro" });

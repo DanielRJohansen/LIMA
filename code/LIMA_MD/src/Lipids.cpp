@@ -191,7 +191,7 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 
 	if (grofile.box_size == Float3{0})
 		grofile.box_size = Float3{ 10.f };
-	MoleculeUtils::SetMoleculeCenter(grofile, grofile.box_size / 2.f);
+	MoleculeUtils::CenterMolecule(grofile, topfile);
 	OrientLipidhead(grofile);
 
 	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);

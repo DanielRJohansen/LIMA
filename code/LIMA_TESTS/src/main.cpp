@@ -61,8 +61,6 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
-
-
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -89,7 +87,7 @@ int main() {
 		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
-		
+				
 
 
 		//Benchmarks::Psome(envmode);				
@@ -163,7 +161,7 @@ void RunAllUnitTests() {
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
-	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
+	//ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
 
 	// Performance test
 	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));

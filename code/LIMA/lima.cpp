@@ -1,10 +1,5 @@
 #include <iostream>
-#include <format>
-#include <filesystem>
-#include <algorithm>
-#include <cctype>
-#include "Environment.h"
-
+#include "render.h"
 #include "selftest.h"
 
 #include "CommandlineUtils.h"
@@ -30,6 +25,7 @@ Programs:
     buildmembrane       Builds a membrane structure with specified lipid composition and box size. 
     makesimparams       Generates default simulation parameters and writes them to a file.
     selftest            Runs internal self-tests to validate functionality.
+	render				Render a molecule in a 3D viewer.	
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -54,6 +50,7 @@ int main(int argc, char** argv)
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
 		else if (program == "-help" || program =="-h"||program == "help") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
+		else if (program == "render") { render(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

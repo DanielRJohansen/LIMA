@@ -1,6 +1,7 @@
 #include "Programs.h"
 #include "TestUtils.h"
 #include "TimeIt.h"
+#include "MoleculeUtils.h"
 
 namespace Benchmarks {
 
@@ -91,20 +92,18 @@ namespace Benchmarks {
 		float boxlen = 23.f;
 		Environment env{ work_dir, envmode};
 		
-		bool em = false;
+		bool em = true;
 		if (em) {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
 			grofile.box_size = Float3{ boxlen, boxlen, boxlen };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
-			Programs::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
+			MoleculeUtils::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
 			SimulationBuilder::SolvateGrofile(grofile);
-			Programs::EnergyMinimize(env, grofile, topfile, true, boxlen);
+			Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
+			grofile.printToFile(std::string{ "em.gro" });
 
 			SimAnalysis::PlotPotentialEnergyDistribution(*env.getSimPtr(), env.work_dir, { 0,1000, 2000, 3000, 4000 - 1 });
-
-			GroFile emGro = env.WriteBoxCoordinatesToFile();
-			emGro.printToFile(std::string{ "em.gro" });
 		}
 
 		GroFile grofile{ work_dir / "molecule" / "em.gro" };

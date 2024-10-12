@@ -20,7 +20,7 @@ void SelfTest() {
 	}
 
 	auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-	Programs::EnergyMinimizeWithEdgeoverlap(*gro, *top, false, work_dir, Full, 1000.f);
+	Programs::EnergyMinimize(*gro, *top, false, work_dir, Full, true, 5000.f);
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

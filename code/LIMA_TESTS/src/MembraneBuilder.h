@@ -49,7 +49,7 @@ namespace TestMembraneBuilder {
 		}
 
 		// Finally test if we can stabilize the simulation
-		auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*gro, *top, true, work_dir, envmode);
+		auto sim = Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true);
 		ASSERT(sim->maxForceBuffer.back() < 1000.f, "Failed to energy minimize membrane");
 
 		return LimaUnittestResult{ true , "No error", envmode == Full};
@@ -68,7 +68,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimizeWithEdgeoverlap(*gro, *top, true, work_dir, envmode);
+		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true);
 
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
@@ -113,7 +113,7 @@ namespace TestMembraneBuilder {
 		}
 
 		// The third test is to see if this function throws
-		auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, false, work_dir, envmode);		
+		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, work_dir, envmode, true);
 
 		ASSERT(sim->maxForceBuffer.back() < 1000.f, "Failed to energy minimize membrane");
 

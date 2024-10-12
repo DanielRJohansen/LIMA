@@ -128,7 +128,7 @@ int buildMembrane(int argc, char** argv) {
 	}
     
     auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, { setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
-    Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, setup.work_dir, setup.envmode, setup.emtol);
+    Programs::EnergyMinimize(*grofile, *topfile, true, setup.work_dir, setup.envmode, true, setup.emtol);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");
     topfile->printToFile(setup.work_dir / "membrane.top");

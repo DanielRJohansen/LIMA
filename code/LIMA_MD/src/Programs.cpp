@@ -14,30 +14,6 @@
 #include <gtx/rotate_vector.hpp>
 #undef GLM_ENABLE_EXPERIMENTAL
 
-void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topfile, bool solvate, float boxlen_nm) 
-{
-	SimParams simparams;
-	simparams.em_variant = true;
-	simparams.n_steps = 4000;
-	simparams.dt = 10.f;	// 0.5 ls
-
-	grofile.box_size = Float3{ boxlen_nm };
-
-	env.CreateSimulation(grofile, topfile, simparams);
-	env.run();
-
-	GroFile EnergyMinimizedGro = env.WriteBoxCoordinatesToFile();
-	
-	// Now save the new positions to the original gro file, sans any eventually newly added solvents
-	assert(grofile.atoms.size() <= EnergyMinimizedGro.atoms.size());
-	for (int i = 0; i < grofile.atoms.size(); i++) {
-		assert(grofile.atoms[i].atomName == EnergyMinimizedGro.atoms[i].atomName);	// Sanity check the name is unchanged
-		grofile.atoms[i].position = EnergyMinimizedGro.atoms[i].position;
-	}
-}
-
-
-
 void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
 	ForcefieldManager forcefield{};
 	
@@ -181,17 +157,21 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-std::unique_ptr<Simulation> Programs::EnergyMinimizeWithEdgeoverlap(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, const fs::path& workDir, EnvMode envmode, float emtol) {
+std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 
+	const fs::path& workDir, EnvMode envmode, bool mayOverlapEdges, float emtol) {
 	Environment env{ workDir, envmode};
 	SimParams params;
-	params.em_variant = true;
-	params.bc_select = BoundaryConditionSelect::NoBC;
+	params.em_variant = true;	
 	params.dt = 100.f;
-	params.n_steps = 2000;
-	params.snf_select = BoxEdgePotential;
 	params.em_force_tolerance = emtol;
-	env.CreateSimulation(grofile, topfile, params);
-	env.run(false);
+
+	if (mayOverlapEdges) {
+		params.n_steps = 2000;
+		params.bc_select = BoundaryConditionSelect::NoBC;
+		params.snf_select = BoxEdgePotential;
+		env.CreateSimulation(grofile, topfile, params);
+		env.run(false);
+	}
 
 	params.n_steps = 20000;
 	params.snf_select = None;

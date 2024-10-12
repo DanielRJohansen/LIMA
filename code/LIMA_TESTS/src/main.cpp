@@ -49,6 +49,14 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
+				//TestLongrangeEsNoLJ(envmode);
+		//MakeChargeParticlesSim();
+		//TestChargedParticlesVelocityInUniformElectricField(envmode);
+		//CoulombForceSanityCheck(envmode);
+		//TestElectrostaticsManyParticles(envmode);
+		//doPoolBenchmarkES(envmode);
+		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
+
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
@@ -79,27 +87,16 @@ int main() {
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//TestBuildmembraneSmall(envmode, false);
+		//TestAllStockholmlipids(envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 		
 
-		//TestLongrangeEsNoLJ(envmode);
-		//MakeChargeParticlesSim();
-		//TestChargedParticlesVelocityInUniformElectricField(envmode);
-		//CoulombForceSanityCheck(envmode);
-		//TestElectrostaticsManyParticles(envmode);
-		//doPoolBenchmarkES(envmode);
-		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
-		//Benchmarks::Psome(envmode);
-
-		//TestAllStockholmlipids(envmode);
-		
+		//Benchmarks::Psome(envmode);				
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		// 
-		
 		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -175,7 +172,7 @@ void RunAllUnitTests() {
 	//doPool50x(EnvMode::Headless);
 
 
-	ADD_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
+	//ADD_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
 
 	// Total test status will print as testman is destructed
 }

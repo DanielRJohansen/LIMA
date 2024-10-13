@@ -67,7 +67,7 @@ void Display::_RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles) {
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
-    camera.Update(task.boxparams.boxSize);
+    camera.Update(Float3{ task.boxparams.boxSize });
 
     if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
         throw std::runtime_error("Invalid number of compounds");

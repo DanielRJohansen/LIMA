@@ -43,6 +43,8 @@ namespace TestMembraneBuilder {
 		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
 		for (int i = 0; i < newGro.atoms.size(); i++) {
+			if (newGro.atoms[0].position != refGro.atoms[0].position)
+				int a=0;
 			ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
 		}
 

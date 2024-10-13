@@ -127,7 +127,7 @@ int buildMembrane(int argc, char** argv) {
 		lipidselection.emplace_back(Lipids::Select{ lipid.first, setup.work_dir, lipid.second });
 	}
     
-    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, { setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
+    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
     Programs::EnergyMinimize(*grofile, *topfile, true, setup.work_dir, setup.envmode, true, setup.emtol);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");

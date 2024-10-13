@@ -76,7 +76,7 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
 
     const int maxIterations = 5;
     for (int i = 0; i < maxIterations; i++) {
-        Float3 downGradient = { 0, 0, 0 };
+        Float3 downGradient{};
         float maxDist = 0.0f;
         float secondMaxDist = 0.0f;
 

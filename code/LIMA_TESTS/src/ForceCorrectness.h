@@ -460,7 +460,7 @@ namespace VerletintegrationTesting {
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]
-		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, electricFieldStrength };
+		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, electricFieldStrength };
 
 
 

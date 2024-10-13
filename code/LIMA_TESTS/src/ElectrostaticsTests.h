@@ -207,7 +207,7 @@ namespace ElectrostaticsTests {
 		simparams.snf_select = HorizontalChargeField;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 4.f};
+		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 4.f};
 	
 		env->run();	
 
@@ -297,8 +297,8 @@ namespace ElectrostaticsTests {
 		// First check that the potential energy is calculated as we would expect if we do it the simple way
 		float maxForceError = 0.f;
 		for (int cidSelf = 0; cidSelf < sim->box_host->boxparams.n_compounds; cidSelf++) {
-			double potESum = 0.f;
-			Float3 forceSum = 0.f;
+			double potESum{};
+			Float3 forceSum{};
 
 			const Compound& compoundSelf = sim->box_host->compounds[cidSelf];
 			const float chargeSelf = compoundSelf.atom_charges[0];

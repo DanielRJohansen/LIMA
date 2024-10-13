@@ -154,7 +154,7 @@ namespace SupernaturalForces {
 
 
 	Float3 __device__ BoxEdgeForce(const Float3& positionNM) {
-		const Float3 boxSize = boxSize_device.boxSizeNM_f;
+		const Float3 boxSize{ boxSize_device.boxSizeNM_f };
 		Float3 force{};
 		const float scalar = 20.f;
 		force.x += std::exp(scalar * (0.f - positionNM.x) - 2.f);

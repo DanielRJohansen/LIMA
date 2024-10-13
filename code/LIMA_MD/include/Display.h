@@ -47,19 +47,6 @@ public:
 
 };
 
-
-//struct FacetTask {
-//	std::vector<Facet> facets;
-//	std::optional<Float3> facetsColor;
-//	bool drawFacetNormals;
-//	FacetDrawMode facetDrawMode;
-//};
-//
-//struct PointsTask {
-//	std::vector<Float3> points;
-//	std::optional<Float3> pointsColor;
-//};
-
 namespace Rendering {
 	struct SimulationTask {
 		const Float3* positions;

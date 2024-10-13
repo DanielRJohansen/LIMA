@@ -51,55 +51,53 @@ struct Int3 {
 struct Float3 {
 	float x = 0, y = 0, z = 0;
 
-	__host__ __device__ Float3() {}
-	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
-	__host__ __device__ Float3(float x, float y, float z) : x(x), y(y), z(z) {}
-	__host__ __device__ Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
-	__host__ __device__ explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
-	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
-	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	__host__ __device__ constexpr Float3() {}
+	__host__ __device__ constexpr explicit Float3(float a) : x(a), y(a), z(a) {}
+	__host__ __device__ constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
+	__host__ __device__ constexpr Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
+	__host__ __device__ constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
+	__host__ __device__ constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	__host__ constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-	__host__ __device__ inline Float3 operator - () const { return Float3(-x, -y, -z); }
-	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
-	__host__ __device__ inline Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
-	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
-	__host__ __device__ inline Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
-	__host__ __device__ inline Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ inline Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ inline bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
-	__host__ __device__ inline void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ inline void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
-	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
-
-	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
-	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
+	__host__ __device__ constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
+	__host__ __device__ constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
+	__host__ __device__ constexpr Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
+	__host__ __device__ constexpr Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
+	__host__ __device__ constexpr Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
+	__host__ __device__ constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
+	__host__ __device__ constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
+	__host__ __device__ constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	__host__ __device__ constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
+	__host__ __device__ constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
+	__host__ __device__ constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
+	__host__ __device__ constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
+	__host__ __device__ constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
 	__host__ __device__ glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
 	__host__ __device__ glm::vec4 ToVec4(float w) const { return glm::vec4(x, y, z, w); }
 
-	//float* begin() { return &x; }
-	//const float* begin() const { return &x; }
-	//float* end() { return &x + 3; }
-	//const float* end() const { return &x + 3; }
 
-	__host__ __device__ inline float operator[] (int index) const {
+
+
+	__host__ inline float operator[] (int index) const {
 		switch (index) {
-			case 0:
-				return x;
-			case 1:
-				return y;
-			case 2:
-				return z;
-			default:
-				return -404;
+		default:
+			throw std::runtime_error("Illegal index in operator");
+		case 0:
+			return x;
+		case 1:
+			return y;
+		case 2:
+			return z;
 		}
 	}
 
-	__host__ __device__ inline float& operator[] (int index) {
+	__host__ inline float& operator[] (int index) {
 		switch (index) {
-		default:			// Sadly it is not reasonable to catch this in release
+		default:
+			throw std::runtime_error("Illegal index in operator");
 		case 0:
 			return x;
 		case 1:
@@ -121,7 +119,7 @@ struct Float3 {
 			return *this * (1.f / l);
 		return Float3{};
 	}
-	__device__ Float3 norm_fast() const {		// Unsafe, may divide by 0
+	__device__ constexpr Float3 norm_fast() const {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
 

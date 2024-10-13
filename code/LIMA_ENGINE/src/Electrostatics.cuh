@@ -117,7 +117,7 @@ namespace Electrostatics {
 			? myNode_GlobalMem->charges[threadIdx.x]
 			: 0.f;
 
-		Float3 force = 0.f; // Accumulated as [GN/mol], converted to GigaN before writing to output
+		Float3 force{}; // Accumulated as [GN/mol], converted to GigaN before writing to output
 		float potE = 0.f; // Accumulated as [J/mol], converted to GigaJ before writing to output
 
 
@@ -199,7 +199,7 @@ namespace Electrostatics {
 	__global__ static void CalcLongrangeElectrostaticForces(SimulationDevice* simDev) {
 		__shared__ Float3 forceInterims[CalcLongrangeElectrostaticForces_nThreads];	// Each thread accumulates forces from the nodes it has seen
 		__shared__ float potEInterims[CalcLongrangeElectrostaticForces_nThreads];
-		forceInterims[threadIdx.x] = 0.f;
+		forceInterims[threadIdx.x] = Float3{};
 		potEInterims[threadIdx.x] = 0.f;
 
 		const NodeIndex myNodeindex = BoxGrid::Get3dIndex(blockIdx.x);

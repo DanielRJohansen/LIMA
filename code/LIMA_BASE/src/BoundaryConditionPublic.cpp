@@ -31,10 +31,12 @@ public:
 	static void applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm) {
 		const float boxlenhalf_nm = boxlen_nm / 2.f;
 
-		for (int i = 0; i < 3; i++) {
-			movable_particle[i] += boxlen_nm * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
-			movable_particle[i] -= boxlen_nm * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
-		}
+		movable_particle.x += boxlen_nm * ((static_particle.x - movable_particle.x) > boxlenhalf_nm);
+		movable_particle.x -= boxlen_nm * ((static_particle.x - movable_particle.x) < -boxlenhalf_nm);
+		movable_particle.y += boxlen_nm * ((static_particle.y - movable_particle.y) > boxlenhalf_nm);
+		movable_particle.y -= boxlen_nm * ((static_particle.y - movable_particle.y) < -boxlenhalf_nm);
+		movable_particle.z += boxlen_nm * ((static_particle.z - movable_particle.z) > boxlenhalf_nm);
+		movable_particle.z -= boxlen_nm * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm);
 	}
 
 	static void applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm) {

@@ -122,7 +122,7 @@ void Display::Setup() {
 
 Display::Display(EnvMode envmode) :
     logger(LimaLogger::LogMode::compact, envmode, "display"),
-    camera(2.f)
+    camera(Float3{ 2.f })
 {
     renderThread = std::jthread([this] {
         try {
@@ -201,7 +201,7 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->boxparams.boxSize, taskPtr->boxparams.total_particles);
+                    _RenderAtomsFromCudaresource(Float3{ taskPtr->boxparams.boxSize }, taskPtr->boxparams.total_particles);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
@@ -213,8 +213,6 @@ void Display::Mainloop() {
         }
     }
 }
-
-#include "RenderUtilities.cuh"
 
 void Display::Render(Rendering::Task task, bool blocking) {
     incomingRenderTaskMutex.lock();

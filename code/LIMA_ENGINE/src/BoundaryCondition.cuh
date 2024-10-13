@@ -52,10 +52,12 @@ public:
 	__device__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {		
 		const float boxlenhalf_nm = boxSize_device.boxSizeNM_f / 2.f;
 
-		for (int i = 0; i < 3; i++) {
-			movable_particle[i] += boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) > boxlenhalf_nm);
-			movable_particle[i] -= boxSize_device.boxSizeNM_f * ((static_particle[i] - movable_particle[i]) < -boxlenhalf_nm);
-		}
+		movable_particle.x += boxSize_device.boxSizeNM_f * ((static_particle.x - movable_particle.x) > boxlenhalf_nm);
+		movable_particle.x -= boxSize_device.boxSizeNM_f * ((static_particle.x - movable_particle.x) < -boxlenhalf_nm);
+		movable_particle.y += boxSize_device.boxSizeNM_f * ((static_particle.y - movable_particle.y) > boxlenhalf_nm);
+		movable_particle.y -= boxSize_device.boxSizeNM_f * ((static_particle.y - movable_particle.y) < -boxlenhalf_nm);
+		movable_particle.z += boxSize_device.boxSizeNM_f * ((static_particle.z - movable_particle.z) > boxlenhalf_nm);
+		movable_particle.z -= boxSize_device.boxSizeNM_f * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm);
 	}
 
 	__device__ static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		

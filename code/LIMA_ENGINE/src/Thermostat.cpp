@@ -21,12 +21,14 @@ float GetBoxTemperature(Simulation* simulation) {
 	}
 
 	const float solventMass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-	double sumKineSolvents = std::transform_reduce(
-		&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex), 
-		&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex) + simulation->box_host->boxparams.n_solvents,
-		0.0, std::plus<>(), [solventMass](const float& velocity) {
-		return PhysicsUtils::calcKineticEnergy(velocity, solventMass);
-	});
+	double sumKineSolvents = simulation->box_host->boxparams.n_solvents > 0
+		? std::transform_reduce(
+			&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex), 
+			&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex) + simulation->box_host->boxparams.n_solvents,
+			0.0, std::plus<>(), [solventMass](const float& velocity) {
+			return PhysicsUtils::calcKineticEnergy(velocity, solventMass);}
+		)
+		: 0.0;
 
 	const long double totalKinEnergyAveraged = (sum_kinE_compound + sumKineSolvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
 	return PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);

@@ -12,9 +12,9 @@
 std::array<Float3,3> ConvertFacet(const orgQhull::QhullFacet& f) {
     std::array<Float3,3> vertices;
 
-    vertices[0] = { f.vertices()[0].point().coordinates()[0], f.vertices()[0].point().coordinates()[1], f.vertices()[0].point().coordinates()[2] };
-    vertices[1] = { f.vertices()[1].point().coordinates()[0], f.vertices()[1].point().coordinates()[1], f.vertices()[1].point().coordinates()[2] };
-    vertices[2] = { f.vertices()[2].point().coordinates()[0], f.vertices()[2].point().coordinates()[1], f.vertices()[2].point().coordinates()[2] };
+    vertices[0] = Float3{ f.vertices()[0].point().coordinates()[0], f.vertices()[0].point().coordinates()[1], f.vertices()[0].point().coordinates()[2] };
+    vertices[1] = Float3{ f.vertices()[1].point().coordinates()[0], f.vertices()[1].point().coordinates()[1], f.vertices()[1].point().coordinates()[2] };
+    vertices[2] = Float3{ f.vertices()[2].point().coordinates()[0], f.vertices()[2].point().coordinates()[1], f.vertices()[2].point().coordinates()[2] };
 
     const Float3 normal{ f.outerplane().coordinates()[0], f.outerplane().coordinates()[1], f.outerplane().coordinates()[2] };
 
@@ -277,11 +277,11 @@ void MoleculeHull::ApplyTransformation(const glm::mat4& transformationMatrix, Fa
 
     for (int particleId = indexOfFirstParticleInBuffer; particleId < indexOfFirstParticleInBuffer + nParticles; particleId++) {
         const Float3 screenNormalizedPosition = Float3{ particlesInCollection[particleId].position.x, particlesInCollection[particleId].position.y, particlesInCollection[particleId].position.z };
-        const Float3 unNormalizedPosition = (screenNormalizedPosition + 0.5f) * boxSize;
+        const Float3 unNormalizedPosition = (screenNormalizedPosition + Float3{ 0.5f }) * boxSize;
 
         const glm::vec4 transformedVertex = transformationMatrix * glm::vec4{ unNormalizedPosition.x, unNormalizedPosition.y, unNormalizedPosition.z, 1.f };
 
-        Float3 normalizedTransformedPosition = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z} / boxSize - 0.5f;
+        Float3 normalizedTransformedPosition = Float3{ transformedVertex.x, transformedVertex.y, transformedVertex.z} / boxSize - Float3{0.5f};
 
         particlesInCollection[particleId].position = normalizedTransformedPosition.Tofloat4(particlesInCollection[particleId].position.w);
     }

@@ -26,21 +26,6 @@ void centerMoleculeAroundOrigo(GroFile& grofile) {
 	}
 }
 
-Float3 calcDimensions(const GroFile& grofile)
-{
-	BoundingBox bb{};
-
-	for (const auto& atom : grofile.atoms) {
-		for (int dim = 0; dim < 3; dim++) {
-			bb.min[dim] = std::min(bb.min[dim], atom.position[dim]);
-			bb.max[dim] = std::max(bb.max[dim], atom.position[dim]);
-		}		
-	}
-
-	const Float3 dims{ bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z };
-	return dims;
-}
-
 float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
@@ -55,7 +40,7 @@ float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection
 float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselection, int dim) {
 	float minPos = FLT_MAX;
 	for (const auto& lipid : lipidselection) {
-		for (const auto& atom : lipid.grofile->atoms) {
+		for (const auto& atom : lipid.grofile->atoms) {			
 			minPos = std::min(minPos, atom.position[dim]);
 		}
 	}

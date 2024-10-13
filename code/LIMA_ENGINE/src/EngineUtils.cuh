@@ -18,7 +18,7 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
-
+#include <curand_kernel.h>  // For generating random numbers
 
 namespace EngineUtils {
 
@@ -46,6 +46,13 @@ namespace EngineUtils {
 
 	// Tanh activation functions that scales forces during EM
 	__device__ static Float3 ForceActivationFunction(const Float3 force) {
+
+		// Handled inf forces by returning a pseudorandom z force based on global thread index
+		if (isinf(force.x) || isinf(force.y) || isinf(force.z)) {
+			return Float3{ 0.f,0.f, 0.89732f * (threadIdx.x + blockIdx.x * blockDim.x) / (blockDim.x * gridDim.x) };			
+		}
+
+
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 10
 		const float alpha = 10000. * LIMA / NANO * KILO; // [1/l N/mol]		
 

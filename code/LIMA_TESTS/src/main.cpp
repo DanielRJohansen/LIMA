@@ -61,14 +61,19 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
+		//TimeIt t0("Buildmembrane", true);
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 10.f }, 5.f);
-		////simulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 30.f }, 5.f);
+		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
+		//Display d{ Full };
+		//d.Render(std::make_unique<Rendering::GrofileTask>(*grofile), true);
+		//topfile->printToFile(work_dir/"mytop.top");
+		
 		//auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, work_dir, envmode);
 		//grofile->printToFile(work_dir / "membrane.gro");
 		//topfile->printToFile(work_dir / "membrane.top");

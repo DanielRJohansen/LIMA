@@ -77,9 +77,10 @@ std::string composeGroLine(const GroRecord& record) {
 }
 
 void TopologyFile::MoleculeEntry::composeString(std::ostringstream& oss) const {
-	if (includeTopologyFile->name == "")
-		throw std::runtime_error("Trying to save a topology with an empty include topology name");
-	oss << includeTopologyFile->name << " 1";
+	throw std::runtime_error("Dont call this function");
+	//if (includeTopologyFile->name == "")
+	//	throw std::runtime_error("Trying to save a topology with an empty include topology name");
+	//oss << includeTopologyFile->name;// << " 1";
 }
 
 std::string TopologyFile::Moleculetype::composeString() const {
@@ -410,8 +411,9 @@ TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path
 					title.append(line + "\n");	// +\n because getline implicitly strips it away.
 					break;
 				case TopologySection::molecules: {
-					std::string include_name;
-					iss >> include_name;
+					std::string include_name{};
+					int count{};
+					iss >> include_name >> count;
 
 					// Handle the case where there simply a random SOL that does not refer to a file.. Terrible standard...
 					if (include_name == "SOL")
@@ -421,10 +423,13 @@ TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path
 						throw std::runtime_error(std::format("Could not find include topology file: {}", include_name));
 					}
 
-					const int globalIndexOfFirstParticle = molecules.entries.empty()
-						? 0
-						: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
-					molecules.entries.emplace_back(include_name, includeTopologies.at(include_name), globalIndexOfFirstParticle);
+					for (int i = 0; i < count; i++) {
+						const int globalIndexOfFirstParticle = molecules.entries.empty()
+							? 0
+							: molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
+						molecules.entries.emplace_back(include_name, includeTopologies.at(include_name), globalIndexOfFirstParticle);
+					}
+
 					break;
 				}
 				case TopologySection::moleculetype:
@@ -655,7 +660,18 @@ void TopologyFile::printToFile(const std::filesystem::path& path, bool printForc
 		if (path.extension() == ".top")
 			file << "[ system ]\n" << system << "\n";
 
-		if (!molecules.entries.empty()) { file << molecules.composeString(); }
+		//if (!molecules.entries.empty()) { file << molecules.composeString(); }
+		// If we have the same submolecule multiple times in a row, we only print it once together with a count of how many there are
+		file << molecules.title << "\n" << molecules.legend << "\n";
+		for (int i = 0; i < molecules.entries.size(); i++) {
+			std::ostringstream oss;
+			int count = 1;
+			while (i + 1 < molecules.entries.size() && molecules.entries[i].name == molecules.entries[i + 1].name) {
+				count++;
+				i++;
+			}
+			file << molecules.entries[i].includeTopologyFile->name << " " << count << "\n";
+		}
 	}
 
 	// Also cache the file

@@ -9,7 +9,7 @@
 #include <functional>
 #include <algorithm>
 #include <random>
-
+#include <numeric>
 
 
 
@@ -547,6 +547,13 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	return { std::move(outputgrofile), std::move(outputtopologyfile) };
 }
 
+
+struct QueuedInsertion {
+	GroFile& grofile;
+	std::function<void(Float3&)> positionTransform;
+	std::shared_ptr<TopologyFile> topfile;
+};
+
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter) {
 
 	validateLipidselection(lipidselection);
@@ -570,6 +577,11 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 	srand(1238971);
 
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+
+	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
+	for (auto& lipid : lipidselection) {
+		queuedInsertions[lipid.lipidname] = std::vector<QueuedInsertion>();
+	}
 
 	int nLipidsInserted = 0;
 	for (int x = 0; x < lipidsPerDimx; x++) {
@@ -601,8 +613,10 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
-					topfile, inputlipid.topfile);
+				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+				//	topfile, inputlipid.topfile);
+
+				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}
 
 			// Insert bottom lipid
@@ -623,11 +637,27 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
-					topfile, inputlipid.topfile);
+				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+				//	topfile, inputlipid.topfile);
+				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}
 
 			nLipidsInserted++;
 		}
 	}
+
+
+	const int totalIncoming = std::reduce(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) { 
+		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
+		const int nLipids = pair.second.size();
+		return sum + nLipids*atomsPerLipid; 
+		});
+	grofile.atoms.reserve(grofile.atoms.size() + totalIncoming);
+
+	for (const auto& [_, lipidType] : queuedInsertions) {
+		for (const QueuedInsertion& queuedElement : lipidType) {
+			AddGroAndTopToGroAndTopfile(grofile, queuedElement.grofile, queuedElement.positionTransform, topfile, queuedElement.topfile);
+		}
+	}
+
 }

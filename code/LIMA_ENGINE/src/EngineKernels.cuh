@@ -322,6 +322,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		__shared__ Float3 relshifts[batchsize];	// [lm]
 		__shared__ int neighbor_n_particles[batchsize];
 		__shared__ CompoundCoords* coords_ptrs[batchsize];
+		__shared__ BondedParticlesLUT* compoundPairLUTs[batchsize];
 
 		const int utilitybuffer_reserved_size = sizeof(uint8_t) * MAX_COMPOUND_PARTICLES;
 		uint8_t* atomtypes = (uint8_t*)utility_buffer;
@@ -338,7 +339,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		int batch_index = batchsize;
 		for (int i = 0; i < neighborlist.n_compound_neighbors; i++)
 		{
-			//if (i > 10) break;
 			__syncthreads();
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (batch_index == batchsize) {
@@ -350,10 +350,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 					// calc Relative LimaPosition Shift from the origo-shift
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
-
 					neighbor_n_particles[threadIdx.x] = box->compounds[query_compound_id].n_particles;
-				
 					coords_ptrs[threadIdx.x] = CompoundcoordsCircularQueueUtils::getCoordarrayRef(box->compoundcoordsCircularQueue, signals->step, query_compound_id);
+					compoundPairLUTs[threadIdx.x] = BondedParticlesLUTHelpers::get(box->bpLUTs, compound_index, query_compound_id);
+
+					// Load first element in batch and sync
 				}
 				batch_index = 0;
 				__syncthreads();
@@ -371,12 +372,15 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			__syncthreads();
 
 
+			// if (i+1 < neighborlist.n_compound_neighbors) {
+			// Preload next
+			//}
+
+
 			// The bonded compounds always comes first in the list
 			if (i < compound.n_bonded_compounds)
 			{
-				BondedParticlesLUT* compoundpair_lut_global = BondedParticlesLUTHelpers::get(box->bpLUTs, compound_index, neighborcompound_id); // A bit silly that all threads do this expensive lookup
-
-				bonded_particles_lut->load(*compoundpair_lut_global);
+				bonded_particles_lut->load(*(compoundPairLUTs[i%batchsize]));
 				__syncthreads();
 
 				if (threadIdx.x < compound.n_particles) {
@@ -392,6 +396,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 				}
 			}
 			batch_index++;
+
+			// Barrier
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //

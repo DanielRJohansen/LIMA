@@ -136,3 +136,7 @@ float Statistics::MaxLen(const Float3* const data, size_t n) {
     );
     return maxElem.len();
 }
+
+double Statistics::Sumd(const float* const data, size_t n) {
+	return std::reduce(std::execution::par, data, data + n, 0.0);
+}

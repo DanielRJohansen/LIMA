@@ -1,18 +1,9 @@
 #include "Engine.cuh"
-//#include "SimulationDevice.cuh"
 #include "PhysicsUtils.cuh"
 #include <algorithm>
+#include <numeric>
 
-struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
-	float temperature = 0;			// [k]
-	float avg_kinE_compound = 0;	// [J/mol]
-	float max_kinE_compound = 0;	// [J/mol]
-	float avg_kinE_solvent = 0;		// [J/mol]
-	float max_kinE_solvent = 0;		// [J/mol]
-};
-
-static TemperaturPackage getBoxTemperature(Simulation* simulation) {
-	TemperaturPackage package{};
+float GetBoxTemperature(Simulation* simulation) {
 
 	const uint64_t step = simulation->getStep() - 1;	// We haven't loaded data for current step onto host yet.
 	const auto entryindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(step, simulation->simparams_host.data_logging_interval);
@@ -25,39 +16,33 @@ static TemperaturPackage getBoxTemperature(Simulation* simulation) {
 			const float velocity = simulation->vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, pid, entryindex);
 			const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
 
-			package.max_kinE_compound = std::max(package.max_kinE_compound, kinE);
 			sum_kinE_compound += kinE;
 		}
 	}
-	package.avg_kinE_compound = static_cast<float>(sum_kinE_compound / static_cast<long double>(simulation->box_host->boxparams.total_particles));
 
-	long double sum_kinE_solvents = 0.;	// [J/mol]
-	for (int solvent_id = 0; solvent_id < simulation->box_host->boxparams.n_solvents; solvent_id++) {
-		const float mass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-		const float velocity = simulation->vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
-		const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);
+	const float solventMass = simulation->forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
+	double sumKineSolvents = std::transform_reduce(
+		&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex), 
+		&simulation->vel_buffer->getSolventparticleDatapointAtIndex(0, entryindex) + simulation->box_host->boxparams.n_solvents,
+		0.0, std::plus<>(), [solventMass](const float& velocity) {
+		return PhysicsUtils::calcKineticEnergy(velocity, solventMass);
+	});
 
-		package.max_kinE_solvent = std::max(package.max_kinE_solvent, kinE);
-		sum_kinE_solvents += static_cast<float>(kinE);
-	}
-	package.avg_kinE_solvent = static_cast<float>(sum_kinE_solvents / static_cast<long double>(simulation->box_host->boxparams.n_solvents));
-
-	const long double totalKinEnergyAveraged = (sum_kinE_compound + sum_kinE_solvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
-	package.temperature = PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);
-	return package;
+	const long double totalKinEnergyAveraged = (sum_kinE_compound + sumKineSolvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
+	return PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);
 }
 
 
 
 float Engine::HandleBoxtemp() {
-	const TemperaturPackage temp_package = getBoxTemperature(simulation.get());
+	const float temperature = GetBoxTemperature(simulation.get());
 
-	simulation->temperature_buffer.push_back(temp_package.temperature);
-	runstatus.current_temperature = temp_package.temperature;
+	simulation->temperature_buffer.push_back(temperature);
+	runstatus.current_temperature = temperature;
 
 	if (simulation->simparams_host.apply_thermostat) {		
 		const float target_temp = simulation->simparams_host.em_variant ? 150.f : 310.f;				// [k]
-		const float temp_safe = temp_package.temperature == 0.f ? 1 : temp_package.temperature;// So we avoid dividing by 0
+		const float temp_safe = temperature == 0.f ? 1 : temperature;// So we avoid dividing by 0
 		float temp_scalar = target_temp / temp_safe;
 
 		

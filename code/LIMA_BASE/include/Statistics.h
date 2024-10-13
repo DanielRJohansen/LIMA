@@ -22,4 +22,6 @@ namespace Statistics {
     float Max(const float* const data, size_t size);
 
     float MaxLen(const Float3* const data, size_t n);
+
+    double Sumd(const float* const data, size_t size);
 }

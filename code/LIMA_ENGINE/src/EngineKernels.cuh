@@ -122,7 +122,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 
 
 	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
-	if constexpr (ENABLE_ELECTROSTATICS && ENABLE_ELECTROSTATICS_LONGRANGE) {
+	if constexpr (ENABLE_ES_LR) {
 		if (simparams.enable_electrostatics && threadIdx.x < compound.n_particles) {
 			NodeIndex nodeindex = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
 			BoundaryCondition::applyBC(nodeindex);
@@ -443,7 +443,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 
 	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
-	if constexpr (ENABLE_ELECTROSTATICS && ENABLE_ELECTROSTATICS_LONGRANGE) {
+	if constexpr (ENABLE_ES_LR) {
 		if (simparams.enable_electrostatics) {
 			__syncthreads();
 			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utility_buffer);

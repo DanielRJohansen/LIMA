@@ -22,4 +22,9 @@ target_link_libraries(LIMA_ENGINE LIMA_BASE)
 
 if (UNIX)
     target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)
+elseif (WIN32)
+       target_compile_options(LIMA_ENGINE PRIVATE 
+        $<$<CONFIG:Release>:/use_fast_math>
+        $<$<CONFIG:Release>:/O2>
+    )
 endif()

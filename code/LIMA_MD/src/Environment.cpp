@@ -202,7 +202,7 @@ void Environment::run(bool doPostRunEvents) {
 		}
 		
 		engine->step();
-
+		//exit(0);
 
 
 		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0

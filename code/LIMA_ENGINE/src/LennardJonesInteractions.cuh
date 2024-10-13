@@ -4,7 +4,7 @@
 #include "Constants.h"
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
-
+#include "PhysicsUtilsDevice.cuh"
 
 
 
@@ -86,7 +86,7 @@ namespace LJ {
 		s = s * s * s;
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
-		if constexpr (energyMinimize) {
+		if constexpr (energyMinimize) { // TODO Prolly remove this, now we use ActivationFunction for EM?
 			if (force_scalar * 24.f * diff.len() < -1.f)
 				force_scalar = -1.f / 24.f/diff.len(); // In EM dont let repellent force be above this value
 		}
@@ -144,9 +144,9 @@ namespace LJ {
 				);
 			}
 
-			if constexpr (ENABLE_ELECTROSTATICS) {
-				electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
-				potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+			if constexpr (ENABLE_ES_SR) {
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
+				potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;
 			}
 
 			//printf("ES %f LJ %f  %d %d \n", 
@@ -189,11 +189,11 @@ namespace LJ {
 				);
 			}
 
-			if constexpr (ENABLE_ELECTROSTATICS) {
-				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
+			if constexpr (ENABLE_ES_SR) {
+				if (chargeSelf != 0.f && (neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
 				{
-					electrostaticForce += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-					potE_sum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff.len() * LIMA_TO_NANO) * 0.5f;
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+					potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;
 				}
 			}
 		}

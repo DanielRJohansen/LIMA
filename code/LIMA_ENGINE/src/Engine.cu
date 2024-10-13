@@ -285,7 +285,7 @@ void Engine::deviceMaster() {
 	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
-	if constexpr (ENABLE_ELECTROSTATICS && ENABLE_ELECTROSTATICS_LONGRANGE) {
+	if constexpr (ENABLE_ES_LR) {
 		if (simulation->simparams_host.enable_electrostatics) {
 			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
 		}

@@ -90,7 +90,7 @@ namespace Benchmarks {
 
 		const fs::path work_dir = simulations_dir / "psome";
 		
-		bool em = true;
+		bool em = false;
 		if (em) {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };

@@ -14,12 +14,11 @@
 #error These are mutually exclusive
 #endif
 
-//#define ENABLE_ELECTROSTATICS
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
-const bool ENABLE_ELECTROSTATICS = true;
-const bool ENABLE_ELECTROSTATICS_LONGRANGE = true;
+const bool ENABLE_ES_SR = true;
+const bool ENABLE_ES_LR = true;
 
 //#define GENERATETRAINDATA
 

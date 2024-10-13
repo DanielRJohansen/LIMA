@@ -10,12 +10,7 @@
 #include "LimaPositionSystem.cuh"
 #include "KernelConstants.cuh"
 #include "BoundaryCondition.cuh"
-
-
-
-
-
-
+#include "PhysicsUtilsDevice.cuh"
 
 
 
@@ -152,8 +147,8 @@ namespace Electrostatics {
 
 							const Float3 diff = myPos - otherPos;	
 								
-							force += PhysicsUtils::CalcCoulumbForce(myCharge, otherCharge, diff);
-							potE += PhysicsUtils::CalcCoulumbPotential(myCharge, otherCharge, diff.len()) * 0.5f;	// 0.5 because the other particle is also calcing this
+							force += PhysicsUtilsDevice::CalcCoulumbForce(myCharge, otherCharge, diff);
+							potE += PhysicsUtilsDevice::CalcCoulumbPotential(myCharge, otherCharge, diff) * 0.5f;	// 0.5 because the other particle is also calcing this
 						}
 					}
 				}
@@ -230,8 +225,8 @@ namespace Electrostatics {
 			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
 
 
-			forceInterims[threadIdx.x] += PhysicsUtils::CalcCoulumbForce(1.f, queryCharge, diff);
-			potEInterims[threadIdx.x] += PhysicsUtils::CalcCoulumbPotential(1.f, queryCharge, diff.len()) * 0.5f;	// 0.5 because the other node is also calcing this
+			forceInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbForce(1.f, queryCharge, diff);
+			potEInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbPotential(1.f, queryCharge, diff) * 0.5f;	// 0.5 because the other node is also calcing this
 		}
 
 		__syncthreads();

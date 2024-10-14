@@ -200,9 +200,9 @@ struct Float3 {
 	}
 
 	__device__ __host__ inline float LargestMagnitudeElement() const {
-		return std::max(
-			std::max(std::abs(x), std::abs(y)),
-			std::abs(z)
+		return fmaxf(
+			fmaxf(fabsf(x), fabsf(y)),
+			fabsf(z)
 		);
 	}
 

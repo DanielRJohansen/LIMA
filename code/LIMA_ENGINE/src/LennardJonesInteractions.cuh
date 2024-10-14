@@ -154,9 +154,9 @@ namespace LJ {
 
 	// For non bonded-to compounds
 	template <bool energyMinimize>
-	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
-		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
-		float chargeSelf, const half* const chargeNeighbors)
+	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
+		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
+		const float chargeSelf, const half* const chargeNeighbors)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -164,9 +164,9 @@ namespace LJ {
 
 		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
 		const Float3 selfRelOffset{
-			std::abs(self_pos.x) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.x) : 0.f,
-			std::abs(self_pos.y) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.y) : 0.f,
-			std::abs(self_pos.z) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.z) : 0.f
+			fabsf(self_pos.x) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.x) : 0.f,
+			fabsf(self_pos.y) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.y) : 0.f,
+			fabsf(self_pos.z) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.z) : 0.f
 		};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
@@ -177,13 +177,14 @@ namespace LJ {
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
 				force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
 					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
 					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 				);
 			}
 
 			if constexpr (ENABLE_ES_SR) {
-				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM)*1.5f)
+				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM) * 1.5f)
 				{
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
 					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);

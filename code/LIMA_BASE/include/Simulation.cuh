@@ -40,7 +40,7 @@ struct SimParams {
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
 
 	// Thermostat
-	int steps_per_temperature_measurement = 200;
+	int64_t steps_per_temperature_measurement = 200;
 	bool apply_thermostat = false;
 
 };

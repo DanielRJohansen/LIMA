@@ -161,7 +161,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 }
 
 void Engine::terminateSimulation() {
-	const int stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+	const int64_t stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 
 	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
@@ -171,7 +171,7 @@ void Engine::terminateSimulation() {
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
-void Engine::offloadLoggingData(const int steps_to_transfer) {
+void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
 	if (steps_to_transfer == 0) { return; }
 

@@ -43,11 +43,11 @@ struct EngineTimings {
 
 struct RunStatus {
 	Float3* most_recent_positions = nullptr;
-	int stepForMostRecentData = 0;
+	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
 	float current_temperature = 0.f;
 
-	//int stepsSinceEnergycheck = 0;
+	//int64_t stepsSinceEnergycheck = 0;
 	//float highestEnergy = 0.f; // measured in a single particle
 	float greatestForce = 0.f; // measured in a single particle
 
@@ -92,7 +92,7 @@ private:
 	void verifyEngine();
 
 	// streams every n steps
-	void offloadLoggingData(const int steps_to_transfer);
+	void offloadLoggingData(const int64_t steps_to_transfer);
 	void offloadTrainData();
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
@@ -103,7 +103,7 @@ private:
 	float HandleBoxtemp();
 
 	void HandleEarlyStoppingInEM();
-	int stepAtLastEarlystopCheck = 0;
+	int64_t stepAtLastEarlystopCheck = 0;
 
 	std::unique_ptr<LimaLogger> m_logger;
 

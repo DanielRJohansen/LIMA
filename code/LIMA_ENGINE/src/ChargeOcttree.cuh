@@ -52,7 +52,7 @@ struct BoxParams;
 //namespace SCA {
 //	
 //
-//	__device__ __host__ inline bool DoRecalc(int step) {
+//	__device__ __host__ inline bool DoRecalc(int64_t step) {
 //		const int STEPS_PER_RECALC = 10;
 //		return step % STEPS_PER_RECALC == 0;
 //	}

@@ -23,7 +23,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev);
 
 
 namespace NeighborLists {
-	void updateNlists(SimulationDevice*, int step, BoundaryConditionSelect, const BoxParams&, int& timing);
+	void updateNlists(SimulationDevice*, int64_t step, BoundaryConditionSelect, const BoxParams&, int& timing);
 };
 
 
@@ -49,7 +49,7 @@ namespace NeighborLists {
 
 // Assumes the compound is active
 template <typename BoundaryCondition>
-__device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result, int step)
+__device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t step)
 {
 	const CompoundCoords& compound_coords = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim_dev.boxState->compoundcoordsCircularQueue, step, compound_id);
 	const NodeIndex compound_origo = compound_coords.origo;
@@ -60,7 +60,7 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 		result[i] = abspos;
 	}
 }
-template __device__ void getCompoundAbspositions<PeriodicBoundaryCondition>(SimulationDevice& sim_dev, int compound_id, Float3* result, int);
+template __device__ void getCompoundAbspositions<PeriodicBoundaryCondition>(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t);
 
 template <typename BoundaryCondition>
 __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const positionsLeft, const Float3* const positionsRight)
@@ -139,7 +139,7 @@ template __device__ bool addAllNearbyCompounds<PeriodicBoundaryCondition>(const 
 // has run, and thus it is not allowed to comment out this kernel call.
 const int threads_in_compoundnlist_kernel = 256;
 template <typename BoundaryCondition>
-__global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int step) {
+__global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t step) {
 
 	const int n_compounds = sim_dev->boxConfig.boxparams.n_compounds;
 	const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -236,14 +236,14 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int step) 
 		sim_dev->compound_neighborlists[compound_id] = nlist;
 	}
 }
-template __global__ void updateCompoundNlistsKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int step);
-template __global__ void updateCompoundNlistsKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int step);
+template __global__ void updateCompoundNlistsKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
+template __global__ void updateCompoundNlistsKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
 
 
 
 const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int step)
+__global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool block_active = block_id < BoxGrid::BlocksTotal(boxSize_device.blocksPerDim);
@@ -292,15 +292,15 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int step)
 		gridnode_global->loadData(gridnode);
 	}
 }
-template __global__ void updateBlockgridKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int step);
-template __global__ void updateBlockgridKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int step);
+template __global__ void updateBlockgridKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
+template __global__ void updateBlockgridKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
 
 
 
 
 
 
-void NeighborLists::updateNlists(SimulationDevice* sim_dev, int step, BoundaryConditionSelect bc_select, const BoxParams& boxparams, int& timing)
+void NeighborLists::updateNlists(SimulationDevice* sim_dev, int64_t step, BoundaryConditionSelect bc_select, const BoxParams& boxparams, int& timing)
 {
 	const auto t0 = std::chrono::high_resolution_clock::now();
 

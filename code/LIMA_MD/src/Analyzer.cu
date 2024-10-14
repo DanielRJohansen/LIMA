@@ -70,9 +70,9 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 
 
 	const int solvent_index = threadIdx.x + blockIdx.y * THREADS_PER_SOLVENTBLOCK_ANALYZER;
-	const int step = blockIdx.x;
+	const int64_t step = blockIdx.x;
 	const int compounds_offset = boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	const int step_offset = step * boxparams.total_particles_upperbound;
+	const int64_t step_offset = step * boxparams.total_particles_upperbound;
 
 	energy[threadIdx.x] = Float3(0.f);
 	if (threadIdx.x == 0) {
@@ -104,7 +104,7 @@ __device__ int getBinIndex(float value) {
 	return std::min(std::max(binIndex, 0), NUM_BINS - 1);  // Clamp to valid range
 }
 
-__global__ void potEHistogramKernel(Compound* compounds, int total_particles_upperbound, float* potE_buffer, int* histogramData, int step) {
+__global__ void potEHistogramKernel(Compound* compounds, int total_particles_upperbound, float* potE_buffer, int* histogramData, int64_t step) {
 	__shared__ int shared_histogram[NUM_BINS];
 
 	const int compound_index = blockIdx.x;   // Unique index for each compound
@@ -462,7 +462,7 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 	std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
 	int nPlots = stepsToPlot.size();
 	out_file.write(reinterpret_cast<char*>(&nPlots), sizeof(int));
-	for (int step : stepsToPlot) {
+	for (int64_t step : stepsToPlot) {
 		cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
 		cudaMemset(histogramDataDevice, 0, NUM_BINS * sizeof(int));
 

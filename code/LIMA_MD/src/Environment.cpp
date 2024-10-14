@@ -372,7 +372,7 @@ void Environment::makeVirtualTrajectory(std::string trj_path, std::string waterf
 
 
 	//Float3* particle_position = new Float3[n_steps];
-	//for (int step = 0; step < n_steps; step++)
+	//for (int64_t step = 0; step < n_steps; step++)
 	//	particle_position[step] = trj->positions[0 + step * trj->n_particles];
 	//Float3* forces = force_buffer->positions;
 	//
@@ -381,7 +381,7 @@ void Environment::makeVirtualTrajectory(std::string trj_path, std::string waterf
 	//Float3* vp_path = VPM.makeVirtualPath(particle_position, forces, n_steps);
 
 	//std::ofstream myfile("D:\\Quantom\\virtrj.csv");
-	//for (int step = 0; step < n_steps; step++) {
+	//for (int64_t step = 0; step < n_steps; step++) {
 
 	//	for (int k = 0; k < 3; k++) {
 	//		myfile << particle_position[step].at(k) << ";";

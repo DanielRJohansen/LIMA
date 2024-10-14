@@ -191,7 +191,7 @@ std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{
 	const int nLoggedSteps = step / simparams_host.data_logging_interval;
 	trrFile->positions.reserve(nLoggedSteps);
 
-	for (int step = 0; step < step; step += simparams_host.data_logging_interval) {
+	for (int64_t step = 0; step < step; step += simparams_host.data_logging_interval) {
 
 		std::vector<Float3> row(box_host->boxparams.total_particles);
 	    int index = 0; 

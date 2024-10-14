@@ -57,7 +57,7 @@ __device__ BondType* LoadBonds(char* utility_buffer, BondType* source, int nBond
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int step) {
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -224,16 +224,16 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int ste
 		coordarray_next_ptr->loadData(*compound_coords);
 	}
 }
-template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int step);
-template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int step);
-template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int step);
-template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int step);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
 
 
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundLJKernel(SimulationDevice* sim, const int step) {
+__global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 	__shared__ NeighborList neighborlist;		
@@ -478,10 +478,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int step) {
 		sim->boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int step);
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int step);
-template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int step);
-template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
 #undef compound_index
 
 
@@ -490,7 +490,7 @@ template __global__ void compoundLJKernel<NoBoundaryCondition, false>(Simulation
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(SimulationDevice* sim, int step) {
+__global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
@@ -657,10 +657,10 @@ __global__ void solventForceKernel(SimulationDevice* sim, int step) {
 		}
 	}
 }
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int);
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int);
-template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice*, int);
-template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice*, int);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int64_t);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int64_t);
+template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice*, int64_t);
+template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice*, int64_t);
 
 #undef solvent_index
 #undef solvent_mass
@@ -672,7 +672,7 @@ template __global__ void solventForceKernel<NoBoundaryCondition, false>(Simulati
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice* sim, int step) {
+__global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
 	BoxState* boxState = sim->boxState;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
@@ -708,14 +708,14 @@ __global__ void solventTransferKernel(SimulationDevice* sim, int step) {
 		solventblock_next->n_solvents = n_solvents_next;
 	}
 }
-template __global__ void solventTransferKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int step);
-template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDevice* sim, int step);
+template __global__ void solventTransferKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step);
+template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDevice* sim, int64_t step);
 
 
 
 #define particle_id_bridge threadIdx.x
 template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice* sim, int step) {
+__global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
@@ -779,7 +779,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int step) {
 		boxState->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}
 }
-template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int step);
-template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int step);
+template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int64_t step);
 #pragma warning (pop)
 #pragma warning (pop)

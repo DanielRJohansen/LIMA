@@ -22,7 +22,7 @@ namespace ForceCorrectness {
 
 		for (auto temp : particle_temps) {
 			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-			int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
+			int64_t steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 			SimParams params{};
 			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
@@ -69,7 +69,7 @@ namespace ForceCorrectness {
 			{
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
+				const int64_t steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
 				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 				GroFile grofile{ work_folder / "molecule/conf.gro" };

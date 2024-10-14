@@ -121,7 +121,7 @@ public:
 		return queue;
 	}
 
-	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int step, int boxSizeNM) {
+	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int64_t step, int boxSizeNM) {
 		// TODO: Implement safety feature checking and failing if PBC is not met!
 		return getBlockPtr(coord.origo, step, boxSizeNM)->addSolvent(coord.rel_position, solvent_id);
 	}
@@ -138,7 +138,7 @@ public:
 	}
 
 	__host__ void initializeBlocks(int boxlenNM) {
-		for (int step = 0; step < queue_len; step++) {
+		for (int64_t step = 0; step < queue_len; step++) {
 			for (int i = 0; i < blocksInGrid; i++) {
 				getBlockPtr(i, step)->origo = BoxGrid::Get3dIndex(i, boxlenNM);
 			}
@@ -160,7 +160,7 @@ public:
 
 
 	// This function assumes the user has used PBC
-	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int step, int boxSizeNm) {
+	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int64_t step, int boxSizeNm) {
 #if defined LIMASAFEMODE
 		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
@@ -171,10 +171,10 @@ public:
 		return getBlockPtr(BoxGrid::Get1dIndex(index3d, boxSizeNm), step);
 	}
 
-	__device__ __host__ bool static isTransferStep(int step) {
+	__device__ __host__ bool static isTransferStep(int64_t step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
 	}
-	__device__ bool static isFirstStepAfterTransfer(int step) {
+	__device__ bool static isFirstStepAfterTransfer(int64_t step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
 	}
 

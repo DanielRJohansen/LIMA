@@ -53,15 +53,15 @@ struct DatabuffersDeviceController {
 		return step % (nStepsInBuffer * loggingInterval) == 0;
 	}
 	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
-		const int stepsSinceTransfer = step % (nStepsInBuffer * loggingInterval);
+		const int64_t stepsSinceTransfer = step % (nStepsInBuffer * loggingInterval);
 		return stepsSinceTransfer / loggingInterval;
 	}
 
-	__device__ static int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int step,
+	__device__ static int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int64_t step,
 		int loggingInterval, int totalParticleUpperbound) {
-		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
+		const int64_t steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
 
-		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
+		const int64_t stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
 		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
 		return stepOffset + compound_offset + particleIdLocal;
 	}

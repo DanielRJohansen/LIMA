@@ -266,6 +266,12 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		compound_origo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 
+		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
+
+		// Important to wipe these, or the bondkernel will add again to next step	- or is it still now?
+		boxState->compounds[blockIdx.x].potE_interim[threadIdx.x] = float{};
+		boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] = Float3{};
+
 		cooperative_groups::wait(block);
 		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();
 	}
@@ -277,16 +283,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	__syncthreads();
 	compound.loadData(&boxState->compounds[blockIdx.x]);
 
-	// Load Forcefield
-	if (threadIdx.x < MAX_ATOM_TYPES)
-		forcefield_shared.particle_parameters[threadIdx.x] = forcefield_device.particle_parameters[threadIdx.x];
 
-	
-
-
-	// Important to wipe these, or the bondkernel will add again to next step	- or is it still now?
-	boxState->compounds[blockIdx.x].potE_interim[threadIdx.x] = float{};
-	boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] = Float3{};
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
@@ -319,7 +316,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		const int batchsize = 64;
 		__shared__ Float3 relshifts[batchsize];	// [lm]
 		__shared__ int neighbor_n_particles[batchsize];
-		__shared__ CompoundCoords* coords_ptrs[batchsize];
+		__shared__ const CompoundCoords* coords_ptrs[batchsize];
 		__shared__ const BondedParticlesLUT* compoundPairLUTs[batchsize];
 
 		__shared__ uint8_t atomtypesBuffer[MAX_COMPOUND_PARTICLES*2];

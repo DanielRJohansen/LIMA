@@ -252,28 +252,40 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	const SimParams& simparams = sim->params;
 	SimSignals* signals = sim->signals;
 
-	// Load positions
-	if (threadIdx.x == 0) {
-		compound.loadMeta(&boxState->compounds[blockIdx.x]);
-		neighborlist.loadMeta(&sim->compound_neighborlists[blockIdx.x]);
-	}
-	__syncthreads();
-	compound.loadData(&boxState->compounds[blockIdx.x]);
+	float potE_sum{};
+	Float3 force{};
 	NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
-
 	const float particleCharge = simparams.enable_electrostatics	// TODO: this is temporary
 		? static_cast<float>(boxState->compounds[blockIdx.x].atom_charges[threadIdx.x])
 		: 0.f;
 
+
 	{
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, &neighborlist, &sim->compound_neighborlists[blockIdx.x], sizeof(NeighborList));
+
 		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
+		compound_origo = compoundcoords_global->origo;
+		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
+		//compound_positions[threadIdx.x] = compoundcoords_global->rel_positions[threadIdx.x].toFloat3();
+
+		cooperative_groups::wait(block);
+		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();
+	}
+
+	// Load positions
+	if (threadIdx.x == 0) {
+		compound.loadMeta(&boxState->compounds[blockIdx.x]);
+	}
+	__syncthreads();
+	compound.loadData(&boxState->compounds[blockIdx.x]);
+
+	{
+		/*const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
 
 		compound_origo = compoundcoords_global->origo;		
 		compound_positions[threadIdx.x] = compoundcoords_global->rel_positions[threadIdx.x].toFloat3();
-		__syncthreads();
-
-		neighborlist.loadData(&sim->compound_neighborlists[blockIdx.x]);
-		__syncthreads();
+		__syncthreads();*/
 	}
 
 	// Load Forcefield
@@ -281,8 +293,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		forcefield_shared.particle_parameters[threadIdx.x] = forcefield_device.particle_parameters[threadIdx.x];
 
 	
-	float potE_sum{};
-	Float3 force{};
+
 
 	// Important to wipe these, or the bondkernel will add again to next step	- or is it still now?
 	boxState->compounds[blockIdx.x].potE_interim[threadIdx.x] = float{};

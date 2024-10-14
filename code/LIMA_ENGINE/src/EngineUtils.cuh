@@ -117,12 +117,10 @@ namespace EngineUtils {
 		}
 	}
 
-	__device__ static bool isOutsideCutoff(const float dist_sq_reciprocal) {
+	__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
 			const float threshold = cutoffLmSquaredReciprocal_device;//  1. / (CUTOFF_LM * CUTOFF_LM);
-			if (dist_sq_reciprocal < threshold) {
-				return true;
-			}
+			return dist_sq_reciprocal < threshold;
 		}
 		return false;
 	}

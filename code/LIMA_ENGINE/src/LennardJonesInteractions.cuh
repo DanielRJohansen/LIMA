@@ -91,9 +91,6 @@ namespace LJ {
 				force_scalar = -1.f / 24.f/diff.len(); // In EM dont let repellent force be above this value
 		}
 
-		if (std::abs(force_scalar) > 10)
-			printf("Scalar %f\n", force_scalar);
-
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (CALC_POTE) {
@@ -148,14 +145,7 @@ namespace LJ {
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
 				potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;
 			}
-
-			//printf("ES %f LJ %f  %d %d \n", 
-			//	PhysicsUtils::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO).len(), 
-			//	force.len() * 24.f, 
-			//	threadIdx.x, neighborparticle_id);
 		}
-		//printf("\nElectrostatic force %f %f %f\n", electrostaticForce.x, electrostaticForce.y, electrostaticForce.z);
-		//printf("ES %f LJ %f  %d %d \n", electrostaticForce.len(), force.len() * 24.f, threadIdx.x, nei);
 
 		return force * 24.f + electrostaticForce;
 	}
@@ -190,7 +180,7 @@ namespace LJ {
 			}
 
 			if constexpr (ENABLE_ES_SR) {
-				if (chargeSelf != 0.f && (neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < (static_cast<float>(BoxGrid::blocksizeLM)*1.5f))
+				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM)*1.5f)
 				{
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
 					potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;

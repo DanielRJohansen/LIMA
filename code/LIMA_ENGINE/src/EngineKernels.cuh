@@ -240,8 +240,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
 	__shared__ Float3 utility_float3;
 
-	// Buffer to be cast to different datatypes. UNSAFE!
-	//__shared__ char utility_buffer[clj_utilitybuffer_bytes];
 	__shared__ BondedParticlesLUT bpLUT;
 	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
@@ -267,7 +265,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
 		compound_origo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
-		//compound_positions[threadIdx.x] = compoundcoords_global->rel_positions[threadIdx.x].toFloat3();
 
 		cooperative_groups::wait(block);
 		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();
@@ -279,14 +276,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	}
 	__syncthreads();
 	compound.loadData(&boxState->compounds[blockIdx.x]);
-
-	{
-		/*const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
-
-		compound_origo = compoundcoords_global->origo;		
-		compound_positions[threadIdx.x] = compoundcoords_global->rel_positions[threadIdx.x].toFloat3();
-		__syncthreads();*/
-	}
 
 	// Load Forcefield
 	if (threadIdx.x < MAX_ATOM_TYPES)
@@ -305,13 +294,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
 
 		const BondedParticlesLUT* const bplut_global = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, compound_index);
-		//BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
-		//BondedParticlesLUT* bonded_particles_lut = &bplutBuffer[0];
 		bpLUT.load(*bplut_global);	// A lut always exists within a compound
 
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
 			"Utilitybuffer not large enough for neighbor charges");
-		//half* particleChargesCompound = (half*)(&utility_buffer[sizeof(BondedParticlesLUT)]);
 		half* particleChargesCompound = &particleChargesBuffers[0];
 		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
@@ -330,7 +316,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
-		const int batchsize = 32;
+		const int batchsize = 64;
 		__shared__ Float3 relshifts[batchsize];	// [lm]
 		__shared__ int neighbor_n_particles[batchsize];
 		__shared__ CompoundCoords* coords_ptrs[batchsize];
@@ -390,8 +376,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 				}
 			}
 
-			const int n_particles_neighbor = neighbor_n_particles[indexInBatch]; // TODO delete
-
 			if (i + 1 < neighborlist.n_compound_neighbors && indexInBatch+1 < batchsize) {
 				static_assert(sizeof(Coord) == sizeof(Float3));
 				const int nextNeighborId = neighborlist.neighborcompound_ids[i + 1];
@@ -410,14 +394,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 				__syncthreads();
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						neighborPositionsCurrent, n_particles_neighbor, neighborAtomstypesCurrent, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
+						neighborPositionsCurrent, neighbor_n_particles[indexInBatch], neighborAtomstypesCurrent, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 						particleCharge, neighborParticleschargesCurrent);
 				}
 			}
 			else {
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						neighborPositionsCurrent, n_particles_neighbor, neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
+						neighborPositionsCurrent, neighbor_n_particles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 				}
 			}
 

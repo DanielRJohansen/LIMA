@@ -178,11 +178,27 @@ struct CompoundInteractionBoundary {
 	int key_particle_indices[k];
 };
 
-struct CompoundCompact {
+struct TestClass {
+	//alignas(4) 
+	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	uint8_t var;
+
+	int n_singlebonds = 0;
+	int n_anglebonds = 0;
+	int n_dihedrals = 0;
+	int n_improperdihedrals = 0;
+
+	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
+	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
+	int n_bonded_compounds = 0;
+};
+
+
+struct alignas(4) CompoundCompact {
 	__host__ __device__ CompoundCompact() {}
 
-	uint8_t n_particles = 0;			
-	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	int n_particles = 0;
 
 #ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
@@ -248,7 +264,7 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
+	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];

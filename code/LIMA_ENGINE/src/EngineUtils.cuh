@@ -171,10 +171,26 @@ namespace EngineUtils {
 		// Eventually i could make it so i only copy the active particles in the compound
 		if (threadIdx.x < n_particles) {
 			static_assert(sizeof(Float3) == sizeof(Coord), "Float3 and Coord must have same size");
-			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
-			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;
+			/*const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
+			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;*/
 		}
 	}
+
+	//__device__ inline void LoadNextTaskAsync(int taskIndex, int indexInBatch, const NeighborList& neighborlist, 
+	//	int neighbor_n_particles[32], uint8_t* neighborAtomstypesNext, BoxDevice* box, thread_block block) {
+	//	//static_assert(sizeof(Coord) == sizeof(Float3));
+	//	const int nextNeighborIndex = neighborlist.neighborcompound_ids[taskIndex + 1];
+	//	const int nextNeighborNParticles = neighbor_n_particles[indexInBatch + 1];
+	//	neighborAtomstypesNext[threadIdx.x] = box->compounds[nextNeighborIndex].atom_types[threadIdx.x];// TODO figure out how to make this async. Probably by having all atomstypes in a single global buffer...
+	//	//neighborParticleschargesNext[threadIdx.x] = box->compounds[nextNeighborIndex].atom_charges[threadIdx.x];
+
+	//	cooperative_groups::memcpy_async(block, (Coord*)neighborPositionsNext, coords_ptrs[indexInBatch + 1]->rel_positions, sizeof(Coord) * nextNeighborNParticles);
+	//	cooperative_groups::memcpy_async(block, neighborParticleschargesNext, box->compounds[nextNeighborIndex].atom_charges, sizeof(half) * nextNeighborNParticles);
+	//	if (i + 1 >= compound.n_bonded_compounds)
+	//		cooperative_groups::memcpy_async(block, bplutNext, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch + 1], sizeof(BondedParticlesLUT));
+	//	//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, (uint8_t*)box->compounds[nextNeighborIndex].atom_types, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);				
+
+	//}
 
 	
 

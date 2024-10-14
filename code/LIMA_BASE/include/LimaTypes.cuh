@@ -394,21 +394,21 @@ public:
 	__device__ BondedParticlesLUT() {}
 	__host__ BondedParticlesLUT(bool val) {
 		for (int i = 0; i < m_size; i++) {
-			matrix[i] = val ? 0xFF : 0;
+			matrix[i] = val ? UINT32_MAX : 0;
 		}
 	}
 
 	__host__ __device__ bool get(int i1, int i2) const {
 		int index = i1 + i2 * m_len;
-		int byteIndex = index / 8;
-		int bitIndex = index % 8;
+		int byteIndex = index / 32;
+		int bitIndex = index % 32;
 		return (matrix[byteIndex] >> bitIndex) & 1U;
 	}
 
 	__host__ void set(int i1, int i2, bool val) {
 		int index = i1 + i2 * m_len;
-		int byteIndex = index / 8;
-		int bitIndex = index % 8;
+		int byteIndex = index / 32;
+		int bitIndex = index % 32;
 		if (val)
 			matrix[byteIndex] |= (1U << bitIndex);
 		else
@@ -425,8 +425,8 @@ public:
 
 private:
 	const static int m_len = MAX_COMPOUND_PARTICLES;
-	const static int m_size = (m_len * m_len + 7) / 8; // Ceil division
-	uint8_t matrix[m_size]{};
+	const static int m_size = (m_len * m_len + 31) / 32; // Ceil division
+	uint32_t matrix[m_size]{};
 };
 
 namespace BondedParticlesLUTHelpers {

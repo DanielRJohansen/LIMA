@@ -242,7 +242,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 	// Buffer to be cast to different datatypes. UNSAFE!
 	//__shared__ char utility_buffer[clj_utilitybuffer_bytes];
-	__shared__ BondedParticlesLUT bplutBuffer[2];
+	__shared__ BondedParticlesLUT bpLUT;
 	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
 	__shared__ ForceField_NB forcefield_shared;
@@ -294,8 +294,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		BondedParticlesLUT* bplut_global = BondedParticlesLUTHelpers::get(box->bpLUTs, compound_index, compound_index);
 		//BondedParticlesLUT* bonded_particles_lut = (BondedParticlesLUT*)utility_buffer;
-		BondedParticlesLUT* bonded_particles_lut = &bplutBuffer[0];
-		bonded_particles_lut->load(*bplut_global);	// A lut always exists within a compound
+		//BondedParticlesLUT* bonded_particles_lut = &bplutBuffer[0];
+		bpLUT.load(*bplut_global);	// A lut always exists within a compound
 
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
 			"Utilitybuffer not large enough for neighbor charges");
@@ -307,7 +307,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
 			force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
-				compound.atom_types, bonded_particles_lut, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
+				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
 			particleCharge, particleChargesCompound);
 		}
 
@@ -352,8 +352,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			uint8_t* neighborAtomstypesNext = atomtypesBuffer + (MAX_COMPOUND_PARTICLES * !(i & 1));
 			half* neighborParticleschargesCurrent = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * (i & 1));
 			half* neighborParticleschargesNext = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * !(i & 1));
-			BondedParticlesLUT* bplutCurrent = &bplutBuffer[i & 1];
-			BondedParticlesLUT* bplutNext = &bplutBuffer[!(i & 1)];
+			//BondedParticlesLUT* bplutCurrent = &bplutBuffer[i & 1];
+			//BondedParticlesLUT* bplutNext = &bplutBuffer[!(i & 1)];
 
 
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
@@ -383,8 +383,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 					neighborAtomstypesCurrent[threadIdx.x] = box->compounds[currentNeighborIndex].atom_types[threadIdx.x];// TODO figure out how to make this async. Probably by having all atomstypes in a single global buffer...
 					cooperative_groups::memcpy_async(block, (Coord*)neighborPositionsCurrent, coords_ptrs[indexInBatch]->rel_positions, sizeof(Coord) * currentNeighborNParticles);
 					cooperative_groups::memcpy_async(block, neighborParticleschargesCurrent, box->compounds[currentNeighborIndex].atom_charges, sizeof(half) * currentNeighborNParticles);
-					if (i < compound.n_bonded_compounds)
-						cooperative_groups::memcpy_async(block, bplutCurrent, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch], sizeof(BondedParticlesLUT));
+					/*if (i < compound.n_bonded_compounds)
+						cooperative_groups::memcpy_async(block, &bpLUT, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch], sizeof(BondedParticlesLUT));*/
 					//cooperative_groups::memcpy_async(block, neighborAtomstypesCurrent, (uint8_t*)box->compounds[currentNeighborIndex].atom_types, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);				
 
 					cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
@@ -405,8 +405,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 				cooperative_groups::memcpy_async(block, (Coord*)neighborPositionsNext, coords_ptrs[indexInBatch+1]->rel_positions, sizeof(Coord) * nextNeighborNParticles);
 				cooperative_groups::memcpy_async(block, neighborParticleschargesNext, box->compounds[nextNeighborIndex].atom_charges, sizeof(half) * nextNeighborNParticles);
-				if (i+1 < compound.n_bonded_compounds)
-					cooperative_groups::memcpy_async(block, bplutNext, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch+1], sizeof(BondedParticlesLUT));
+				/*if (i+1 < compound.n_bonded_compounds)
+					cooperative_groups::memcpy_async(block, bplutNext, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch+1], sizeof(BondedParticlesLUT));*/
 				//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, (uint8_t*)box->compounds[nextNeighborIndex].atom_types, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);				
 			}
 			
@@ -414,9 +414,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			// The bonded compounds always comes first in the list
 			if (i < compound.n_bonded_compounds)
 			{
+				bpLUT.load(*compoundPairLUTs[indexInBatch]);
+				__syncthreads();
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeCompoundCompoundLJForces<energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						neighborPositionsCurrent, n_particles_neighbor, neighborAtomstypesCurrent, bplutCurrent, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
+						neighborPositionsCurrent, n_particles_neighbor, neighborAtomstypesCurrent, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 						particleCharge, neighborParticleschargesCurrent);
 				}
 			}
@@ -489,7 +491,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 	if constexpr (ENABLE_ES_LR) {
 		if (simparams.enable_electrostatics) {
 			__syncthreads();
-			char* utilityBuffer = (char*)bplutBuffer;
+			char* utilityBuffer = (char*)(&bpLUT);
 			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], sim->box->compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utilityBuffer);
 		}
 	}

@@ -66,7 +66,7 @@ namespace Electrostatics {
 		}
 		__syncthreads();
 
-		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27];
+		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27]; // TODO: assert that this buffer is big enough!
 		if (threadIdx.x < 27) {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
 			PeriodicBoundaryCondition::applyBC(absIndex3d);	

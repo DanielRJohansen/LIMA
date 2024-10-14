@@ -100,79 +100,79 @@ namespace Electrostatics {
 
 
 
-	__global__ static void HandleShortrangeElectrostatics(SimulationDevice* simDev) {
-		__shared__ Float3 positionsBuffer[ChargeNode::maxParticlesInNode];
-		__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];
+	//__global__ static void HandleShortrangeElectrostatics(SimulationDevice* simDev) {
+	//	__shared__ Float3 positionsBuffer[ChargeNode::maxParticlesInNode];
+	//	__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];
 
-		const int index1D = blockIdx.x;
-		const NodeIndex index3D = BoxGrid::Get3dIndex(blockIdx.x);
-		ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, index1D);
-		const bool threadActive = threadIdx.x < myNode_GlobalMem->nParticles;
+	//	const int index1D = blockIdx.x;
+	//	const NodeIndex index3D = BoxGrid::Get3dIndex(blockIdx.x);
+	//	ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, index1D);
+	//	const bool threadActive = threadIdx.x < myNode_GlobalMem->nParticles;
 
-		const Float3 myPos = threadActive
-			? myNode_GlobalMem->positions[threadIdx.x]
-			: Float3(42.f);
+	//	const Float3 myPos = threadActive
+	//		? myNode_GlobalMem->positions[threadIdx.x]
+	//		: Float3(42.f);
 
-		const float myCharge = threadActive
-			? myNode_GlobalMem->charges[threadIdx.x]
-			: 0.f;
+	//	const float myCharge = threadActive
+	//		? myNode_GlobalMem->charges[threadIdx.x]
+	//		: 0.f;
 
-		Float3 force{}; // Accumulated as [GN/mol], converted to GigaN before writing to output
-		float potE = 0.f; // Accumulated as [J/mol], converted to GigaJ before writing to output
-
-
-		for (int xOff = -1; xOff <= 1; xOff++) {
-			for (int yOff = -1; yOff <= 1; yOff++) {
-				for (int zOff = -1; zOff <= 1; zOff++) {
-
-					const bool skipOwnIndex = xOff == 0 && yOff == 0 && zOff == 0;
-					NodeIndex queryNodeindex = index3D + NodeIndex(xOff, yOff, zOff);
-					PeriodicBoundaryCondition::applyBC(queryNodeindex);
-
-					if (threadIdx.x < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles) {
-						positionsBuffer[threadIdx.x] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(NodeIndex{xOff, yOff, zOff}, BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x]);
-						
-						chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
-					}
-					__syncthreads();
-
-					if (threadActive) {
-						for (int i = 0; i < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles; i++) {
-
-							if (skipOwnIndex && i == threadIdx.x)
-								continue;
-
-							const Float3 otherPos = positionsBuffer[i];
-							const float otherCharge = chargesBuffer[i];
-
-							const Float3 diff = myPos - otherPos;	
-								
-							force += PhysicsUtilsDevice::CalcCoulumbForce(myCharge, otherCharge, diff);
-							potE += PhysicsUtilsDevice::CalcCoulumbPotential(myCharge, otherCharge, diff) * 0.5f;	// 0.5 because the other particle is also calcing this
-						}
-					}
-				}
-			}
-		}
+	//	Float3 force{}; // Accumulated as [GN/mol], converted to GigaN before writing to output
+	//	float potE = 0.f; // Accumulated as [J/mol], converted to GigaJ before writing to output
 
 
+	//	for (int xOff = -1; xOff <= 1; xOff++) {
+	//		for (int yOff = -1; yOff <= 1; yOff++) {
+	//			for (int zOff = -1; zOff <= 1; zOff++) {
+
+	//				const bool skipOwnIndex = xOff == 0 && yOff == 0 && zOff == 0;
+	//				NodeIndex queryNodeindex = index3D + NodeIndex(xOff, yOff, zOff);
+	//				PeriodicBoundaryCondition::applyBC(queryNodeindex);
+
+	//				if (threadIdx.x < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles) {
+	//					positionsBuffer[threadIdx.x] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(NodeIndex{xOff, yOff, zOff}, BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x]);
+	//					
+	//					chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
+	//				}
+	//				__syncthreads();
+
+	//				if (threadActive) {
+	//					for (int i = 0; i < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles; i++) {
+
+	//						if (skipOwnIndex && i == threadIdx.x)
+	//							continue;
+
+	//						const Float3 otherPos = positionsBuffer[i];
+	//						const float otherCharge = chargesBuffer[i];
+
+	//						const Float3 diff = myPos - otherPos;	
+	//							
+	//						force += PhysicsUtilsDevice::CalcCoulumbForce(myCharge, otherCharge, diff);
+	//						potE += PhysicsUtilsDevice::CalcCoulumbPotential(myCharge, otherCharge, diff) * 0.5f;	// 0.5 because the other particle is also calcing this
+	//					}
+	//				}
+	//			}
+	//		}
+	//	}
 
 
-		if (threadActive) {
-			const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
-			const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
-			//printf("Resulting force %f potE %f \n", force.len(), potE);
 
-			simDev->boxState->compounds[cid].potE_interim[pid] += potE;
-			simDev->boxState->compounds[cid].forces_interim[pid] += force;
-		}
 
-		__syncthreads();
+	//	if (threadActive) {
+	//		const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
+	//		const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
+	//		//printf("Resulting force %f potE %f \n", force.len(), potE);
 
-		// Finally reset nParticles before next step
-		if (threadIdx.x == 0)
-			BoxGrid::GetNodePtr(simDev->chargeGrid, index3D)->nParticles = 0;
-	}
+	//		simDev->boxState->compounds[cid].potE_interim[pid] += potE;
+	//		simDev->boxState->compounds[cid].forces_interim[pid] += force;
+	//	}
+
+	//	__syncthreads();
+
+	//	// Finally reset nParticles before next step
+	//	if (threadIdx.x == 0)
+	//		BoxGrid::GetNodePtr(simDev->chargeGrid, index3D)->nParticles = 0;
+	//}
 
 
 
@@ -224,9 +224,8 @@ namespace Electrostatics {
 			const Float3 diff = -queryNodeindexRelative.toFloat3() * static_cast<float>(BoxGrid::blocksizeNM); // [nm]
 			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
 
-
-			forceInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbForce(1.f, queryCharge, diff);
-			potEInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbPotential(1.f, queryCharge, diff) * 0.5f;	// 0.5 because the other node is also calcing this
+			forceInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbForce_optim(1.f, queryCharge, diff) * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
+			potEInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbPotential_optim(1.f, queryCharge, diff) * 0.5f * PhysicsUtilsDevice::modifiedCoulombConstant_Potential;	// 0.5 because the other node is also calcing this
 		}
 
 		__syncthreads();

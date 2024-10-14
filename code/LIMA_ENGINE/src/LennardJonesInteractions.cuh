@@ -123,6 +123,7 @@ namespace LJ {
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
+		float electrostaticPotential{};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 
@@ -142,12 +143,13 @@ namespace LJ {
 			}
 
 			if constexpr (ENABLE_ES_SR) {
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
-				potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, charges[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
+				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff * LIMA_TO_NANO);
 			}
 		}
 
-		return force * 24.f + electrostaticForce;
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}
 
 	// For non bonded-to compounds
@@ -158,6 +160,7 @@ namespace LJ {
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
+		float electrostaticPotential{};
 
 		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
 		const Float3 selfRelOffset{
@@ -182,13 +185,14 @@ namespace LJ {
 			if constexpr (ENABLE_ES_SR) {
 				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM)*1.5f)
 				{
-					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-					potE_sum += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO) * 0.5f;
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
 				}
 			}
 		}
 
-		return force * 24.f + electrostaticForce;
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}
 
 	// Specific to solvent kernel

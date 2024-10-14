@@ -58,10 +58,10 @@ struct BoxParams {
 
 	int n_compounds = 0;
 	int n_bridges = 0;
-	int64_t n_solvents = 0;
-	int64_t total_particles_upperbound = 0;
-	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
-	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	int n_solvents = 0;
+	int total_particles_upperbound = 0;
+	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
+	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 };
 
 

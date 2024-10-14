@@ -6,25 +6,37 @@
 #include "ChargeOcttree.cuh"
 
 
-struct BoxDevice {
-	BoxDevice() {}
-	void CopyDataToHost(Box& boxDev) const;
-	void DeleteBox();
+struct BoxConfig {	
+	BoxConfig(uint8_t* compoundsAtomTypes, half* compoundsAtomCharges, 
+		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs, const Box* const boxHost);
+	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
+	void FreeMembers() const;// Free *this immediately after calling this function
 
-	BoxParams boxparams;
+	const BoxParams boxparams;
+
+
+	// CompoundData used ALOT, kept here for memory locality
+	const uint8_t* const compoundsAtomtypes;
+	const half* const compoundsAtomCharges;
+
+	const CompoundBridgeBundleCompact* const bridge_bundle;
+
+	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
+	const BondedParticlesLUT* const bpLUTs;
+
+	const UniformElectricField uniformElectricField;	
+};
+
+struct BoxState {
+	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
+	void CopyDataToHost(Box& boxDev) const;
+	void FreeMembers();// Free *this immediately after calling this function
 
 	Compound* compounds = nullptr;
 	CompoundCoords* compoundcoordsCircularQueue = nullptr;
 
 	Solvent* solvents = nullptr;
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue = nullptr;
-
-	CompoundBridgeBundleCompact* bridge_bundle = nullptr;
-
-	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
-	BondedParticlesLUT* bpLUTs = nullptr;
-
-	UniformElectricField uniformElectricField;	
 };
 
 
@@ -67,10 +79,11 @@ struct DatabuffersDeviceController {
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host, const DatabuffersDeviceController&);
+	SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
+	BoxState* boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
-	void deleteMembers();
+	void FreeMembers();
 
 	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
 	CompoundGridNode* compound_grid = nullptr;
@@ -81,10 +94,11 @@ struct SimulationDevice {
 	// Module used to move solvents to a new block, in parallel
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
-	SimParams* params;
+	const SimParams params;
 	SimSignals* signals;
 
-	BoxDevice* box;
+	const BoxConfig boxConfig;
+	BoxState* const boxState;
 
 	//ChargeOctTree* charge_octtree;
 	Electrostatics::ChargeNode* chargeGrid = nullptr;

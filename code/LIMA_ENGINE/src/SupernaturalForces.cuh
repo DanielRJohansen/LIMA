@@ -91,7 +91,7 @@ namespace SupernaturalForces {
 		relPosNm[threadIdx.x] = Float3{ 0 };
 		forcesZ[threadIdx.x] = 0;
 
-		int nParticles = simDev->box->compounds[blockIdx.x].n_particles;
+		int nParticles = simDev->boxState->compounds[blockIdx.x].n_particles;
 		Float3 force{};
 
 		__syncthreads();
@@ -99,7 +99,7 @@ namespace SupernaturalForces {
 
 		// Compute the avg position
 		{
-			const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->box->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
+			const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
 			LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
 			__syncthreads();
 			relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
@@ -114,7 +114,7 @@ namespace SupernaturalForces {
 		// Neutralize the Z force
 		{
 			if (threadIdx.x < nParticles) {
-				forcesZ[threadIdx.x] = simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x].z;
+				forcesZ[threadIdx.x] = simDev->boxState->compounds[blockIdx.x].forces_interim[threadIdx.x].z;
 			}
 			__syncthreads();				
 
@@ -132,10 +132,10 @@ namespace SupernaturalForces {
 
 		
 		if (threadIdx.x < nParticles) {
-			const float mass = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+			const float mass = forcefield_device.particle_parameters[simDev->boxState->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 			SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
 
-			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += force;
+			simDev->boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] += force;
 		}		
 	}
 	//__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
@@ -169,14 +169,14 @@ namespace SupernaturalForces {
 	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev) {
 		__shared__ Float3 origo;
 
-		const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->box->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
+		const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, simDev->signals->step, blockIdx.x);
 		const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
 		__syncthreads();
 		const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
-		const float massFactor = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		const float massFactor = forcefield_device.particle_parameters[simDev->boxState->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
-		if (threadIdx.x < simDev->box->compounds[blockIdx.x].n_particles)
-			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
+		if (threadIdx.x < simDev->boxState->compounds[blockIdx.x].n_particles)
+			simDev->boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
 	}
 
 	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev) {

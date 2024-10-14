@@ -178,22 +178,6 @@ struct CompoundInteractionBoundary {
 	int key_particle_indices[k];
 };
 
-struct TestClass {
-	//alignas(4) 
-	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	uint8_t var;
-
-	int n_singlebonds = 0;
-	int n_anglebonds = 0;
-	int n_dihedrals = 0;
-	int n_improperdihedrals = 0;
-
-	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
-	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
-	int n_bonded_compounds = 0;
-};
-
-
 struct alignas(4) CompoundCompact {
 	__host__ __device__ CompoundCompact() {}
 
@@ -328,7 +312,7 @@ struct CompoundBridge {
 
 
 	// -------------- Device functions ------------- //
-	__device__ void loadMeta(CompoundBridge* bridge) {
+	__device__ void loadMeta(const CompoundBridge* const bridge) {
 		n_particles = bridge->n_particles;
 		n_singlebonds = bridge->n_singlebonds;
 		n_anglebonds = bridge->n_anglebonds;
@@ -342,7 +326,7 @@ struct CompoundBridge {
 		//compound_id_left = bridge->compound_id_left;
 		//compound_id_right = bridge->compound_id_right;
 	}
-	__device__ void loadData(CompoundBridge* bridge) {
+	__device__ void loadData(const CompoundBridge* const bridge) {
 		if (threadIdx.x < n_particles) {
 			//atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
@@ -415,7 +399,7 @@ class UniformElectricField {
 	/// <summary></summary>
 	/// <param name="charge">[kC/mol]</param>
 	/// <returns>[gigaN/mol]</returns>
-	__device__ Float3 GetForce(float charge) {
+	__device__ Float3 GetForce(float charge) const {
 		return field * charge;
 	}
 };

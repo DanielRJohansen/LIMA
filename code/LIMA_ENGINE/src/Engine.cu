@@ -38,11 +38,12 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 		simulation->box_host->boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
 
 
-	// Create the Sim_dev
-	if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
-	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get(), *dataBuffersDevice);
-	sim_dev = genericMoveToDevice(sim_dev, 1);
-
+	// Create the Sim_dev {
+	{
+		if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
+		sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get(), BoxConfig::Create(*simulation->box_host), BoxState::Create(*simulation->box_host), *dataBuffersDevice);
+		sim_dev = genericMoveToDevice(sim_dev, 1);
+	}
 	setDeviceConstantMemory();
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
@@ -54,7 +55,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 Engine::~Engine() {
 	if (sim_dev != nullptr) {
-		sim_dev->deleteMembers();
+		sim_dev->FreeMembers();
 		cudaFree(sim_dev);
 	}
 
@@ -93,7 +94,7 @@ void Engine::setDeviceConstantMemory() {
 
 std::unique_ptr<Simulation> Engine::takeBackSim() {
 	assert(sim_dev);
-	sim_dev->box->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
 	return std::move(simulation);
 }
 
@@ -164,7 +165,7 @@ void Engine::terminateSimulation() {
 	const int stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 
-	sim_dev->box->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
@@ -228,7 +229,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->box_host->boxparams.n_compounds);
-	cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue, sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost); // TODO DO i need to do this really?
+	cudaMemcpy(compoundcoords_array.data(), sim_dev->boxState->compoundcoordsCircularQueue, sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost); // TODO DO i need to do this really?
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// We need to bootstrap step-0 which is used for traj-buffer

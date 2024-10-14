@@ -442,7 +442,7 @@ namespace BondedParticlesLUTHelpers {
 		return 1u << index;
 	}
 
-	__device__ inline BondedParticlesLUT* get(BondedParticlesLUT* bpLutCollection, int id_self, int id_other) {
+	__device__ inline const BondedParticlesLUT* const get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
 		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];

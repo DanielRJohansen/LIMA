@@ -163,8 +163,8 @@ namespace Electrostatics {
 			const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
 			//printf("Resulting force %f potE %f \n", force.len(), potE);
 
-			simDev->box->compounds[cid].potE_interim[pid] += potE;
-			simDev->box->compounds[cid].forces_interim[pid] += force; 
+			simDev->boxState->compounds[cid].potE_interim[pid] += potE;
+			simDev->boxState->compounds[cid].forces_interim[pid] += force;
 		}
 
 		__syncthreads();

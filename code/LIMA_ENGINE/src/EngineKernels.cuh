@@ -57,7 +57,7 @@ __device__ BondType* LoadBonds(char* utility_buffer, BondType* source, int nBond
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
+__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -82,7 +82,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 
-		const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, sim->signals->step, blockIdx.x);
+		const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		compound_coords->loadData(compoundcoords_global);
 		__syncthreads();
 
@@ -163,7 +163,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		}
 		//compound_coords->rel_positions[threadIdx.x] = Coord{ compound_positions[threadIdx.x] };	// Alternately load from global again? Will be more precise
 
-		const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
+		const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		compound_coords->rel_positions[threadIdx.x] = compoundcoords_global.rel_positions[threadIdx.x];
 		__syncthreads();
 
@@ -216,24 +216,24 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim) {
 		__syncthreads();
 
 		Float3 force_LJ_sol{};	// temp
-		EngineUtils::LogCompoundData(compound, sim->boxConfig.boxparams.total_particles_upperbound, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, *signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed);
+		EngineUtils::LogCompoundData(compound, sim->boxConfig.boxparams.total_particles_upperbound, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, *signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
 
 
 		// Push positions for next step
-		auto* coordarray_next_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step + 1, blockIdx.x);
+		auto* coordarray_next_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step + 1, blockIdx.x);
 		coordarray_next_ptr->loadData(*compound_coords);
 	}
 }
-template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
-template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
-template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
-template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int step);
+template __global__ void compoundBondsAndIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int step);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int step);
+template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int step);
 
 
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundLJKernel(SimulationDevice* sim) {
+__global__ void compoundLJKernel(SimulationDevice* sim, const int step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 	__shared__ NeighborList neighborlist;		
@@ -262,7 +262,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		auto block = cooperative_groups::this_thread_block();
 		cooperative_groups::memcpy_async(block, &neighborlist, &sim->compound_neighborlists[blockIdx.x], sizeof(NeighborList));
 
-		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, blockIdx.x);
+		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		compound_origo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 
@@ -347,14 +347,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 			if (indexInBatch == batchsize) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
 					const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
-					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, query_compound_id);
+					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, query_compound_id);
 					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, querycompound->origo);
 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
 
 					// calc Relative LimaPosition Shift from the origo-shift
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
 					neighbor_n_particles[threadIdx.x] = boxState->compounds[query_compound_id].n_particles;
-					coords_ptrs[threadIdx.x] = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, query_compound_id);
+					coords_ptrs[threadIdx.x] = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, query_compound_id);
 					compoundPairLUTs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, query_compound_id);					
 				}
 				indexInBatch = 0;
@@ -425,7 +425,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
 
-		const SolventBlock* solventblock = boxState->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, signals->step);
+		const SolventBlock* solventblock = boxState->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, step);
 		const int nsolvents_neighbor = solventblock->n_solvents;
 
 
@@ -454,7 +454,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 
 //	// Electrostatic
 //#ifdef ENABLE_ELECTROSTATICS
-//	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(signals->step)) {
+//	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(step)) {
 //		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
 //		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
 //		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
@@ -478,10 +478,10 @@ __global__ void compoundLJKernel(SimulationDevice* sim) {
 		sim->boxState->compounds[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
-template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
-template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int step);
 #undef compound_index
 
 
@@ -490,7 +490,7 @@ template __global__ void compoundLJKernel<NoBoundaryCondition, false>(Simulation
 #define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(SimulationDevice* sim) {
+__global__ void solventForceKernel(SimulationDevice* sim, int step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ SolventBlock solventblock;
@@ -505,7 +505,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 	BoxState* boxState = sim->boxState;
 	const SimParams& simparams = sim->params;
 	SimSignals* signals = sim->signals;
-	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, signals->step);
+	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
 	// Init queue, otherwise it will contain wierd values // TODO: only do this on transferstep?
 	if (threadIdx.x < 6) { 
@@ -548,7 +548,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
-			const CompoundCoords* coordarray_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, signals->step, neighborcompound_index);
+			const CompoundCoords* coordarray_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompound_index);
 			EngineUtils::getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
 
 
@@ -595,7 +595,7 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 				const int blockindex_neighbor = EngineUtils::getNewBlockId<BoundaryCondition>(dir, block_origo);
 				KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
 
-				const SolventBlock* solventblock_neighbor = boxState->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, signals->step);
+				const SolventBlock* solventblock_neighbor = boxState->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 				const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
 
@@ -638,15 +638,15 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		// Save pos locally, but only push to box as this kernel ends
 		relpos_next = pos_now;
 
-		EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, vel_now, signals->step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+		EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 	}
 
 
 
 	// Push new SolventCoord to global mem
-	SolventBlock* solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, signals->step + 1);
+	SolventBlock* solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
 
-	if (SolventBlocksCircularQueue::isTransferStep(signals->step)) {
+	if (SolventBlocksCircularQueue::isTransferStep(step)) {
 		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
 	}
 	else {
@@ -657,10 +657,10 @@ __global__ void solventForceKernel(SimulationDevice* sim) {
 		}
 	}
 }
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim);
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim);
-template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice* sim);
-template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice* sim);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int);
+template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice*, int);
+template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice*, int);
 
 #undef solvent_index
 #undef solvent_mass
@@ -672,13 +672,13 @@ template __global__ void solventForceKernel<NoBoundaryCondition, false>(Simulati
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice* sim) {
+__global__ void solventTransferKernel(SimulationDevice* sim, int step) {
 	BoxState* boxState = sim->boxState;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_current = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, sim->signals->step);
-	SolventBlock* solventblock_next = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, sim->signals->step + 1);
+	SolventBlock* solventblock_current = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+	SolventBlock* solventblock_next = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
 
 	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
 
@@ -708,14 +708,14 @@ __global__ void solventTransferKernel(SimulationDevice* sim) {
 		solventblock_next->n_solvents = n_solvents_next;
 	}
 }
-template __global__ void solventTransferKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
-template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDevice* sim);
+template __global__ void solventTransferKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int step);
+template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDevice* sim, int step);
 
 
 
 #define particle_id_bridge threadIdx.x
 template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice* sim) {
+__global__ void compoundBridgeKernel(SimulationDevice* sim, int step) {
 	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
@@ -735,7 +735,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
 	if (threadIdx.x < bridge.n_compounds) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(boxState->compoundcoordsCircularQueue, sim->signals->step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
+		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(boxState->compoundcoordsCircularQueue, step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
 	}
 
 
@@ -747,7 +747,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 
 		BridgeWarnings::verifyPRefValid(p_ref, bridge);
 
-		const CompoundCoords* coordarray = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, sim->signals->step, p_ref.compound_id);
+		const CompoundCoords* coordarray = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, p_ref.compound_id);
 
 		Coord relpos = coordarray->rel_positions[p_ref.local_id_compound];
 		relpos += utility_coord[p_ref.compoundid_local_to_bridge];
@@ -779,7 +779,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim) {
 		boxState->compounds[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}
 }
-template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim);
-template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim);
+template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int step);
+template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int step);
 #pragma warning (pop)
 #pragma warning (pop)

@@ -46,7 +46,6 @@ struct SimParams {
 };
 
 struct SimSignals {
-	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
 	float thermostat_scalar = 1.f;
 };
@@ -200,6 +199,7 @@ struct Box {
 
 // This stays on host
 class Simulation {
+	int64_t step=0;
 public:
 	// Empty simulation, i dont like this very much
 	Simulation(const SimParams& simparams);
@@ -207,10 +207,11 @@ public:
 	
 	void PrepareDataBuffers();
 
-	inline int64_t getStep() const { return simsignals_host.step; }
+	inline int64_t getStep() const { return step; }
 	
 	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
 
+	
 	bool ready_to_run = false;
 	bool finished = false;
 
@@ -235,6 +236,8 @@ public:
 	SimParams simparams_host;
 
 	ForceField_NB forcefield;
+
+	friend class Engine;
 };
 
 namespace SimUtils {

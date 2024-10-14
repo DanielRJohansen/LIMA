@@ -86,13 +86,13 @@ namespace EngineUtils {
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, int totalParticlesUpperbound, CompoundCoords& compound_coords, 
 		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
-		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed)
+		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed, int step)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (simsignals.step % simparams.data_logging_interval != 0) { return; }
+		if (step % simparams.data_logging_interval != 0) { return; }
 
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(threadIdx.x, blockIdx.x, simsignals.step, simparams.data_logging_interval, totalParticlesUpperbound);
+		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(threadIdx.x, blockIdx.x, step, simparams.data_logging_interval, totalParticlesUpperbound);
 		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
 		poteBuffer[index] = *potE_sum;
 		velBuffer[index] = speed;

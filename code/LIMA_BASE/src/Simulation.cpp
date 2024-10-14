@@ -188,10 +188,10 @@ std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{
 	auto trrFile = std::make_unique<MDFiles::TrrFile>(Float3{ box_host->boxparams.boxSize });
 
 	assert(simparams_host.data_logging_interval == traj_buffer->GetLoggingInterval());
-	const int nLoggedSteps = simsignals_host.step / simparams_host.data_logging_interval;
+	const int nLoggedSteps = step / simparams_host.data_logging_interval;
 	trrFile->positions.reserve(nLoggedSteps);
 
-	for (int step = 0; step < simsignals_host.step; step += simparams_host.data_logging_interval) {
+	for (int step = 0; step < step; step += simparams_host.data_logging_interval) {
 
 		std::vector<Float3> row(box_host->boxparams.total_particles);
 	    int index = 0; 

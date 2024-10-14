@@ -49,7 +49,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -114,8 +114,7 @@ void Engine::step() {
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
 	assert(simulation);
 	assert(sim_dev);
-	simulation->simsignals_host.step++;
-	sim_dev->signals->step++;	// UNSAFE
+	simulation->step++;
 
 	hostMaster();
 
@@ -146,7 +145,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		
 		HandleEarlyStoppingInEM();
 
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+		NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	}
 
 	// Handle status
@@ -278,7 +277,7 @@ void Engine::deviceMaster() {
 
 
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
@@ -294,16 +293,16 @@ void Engine::deviceMaster() {
 	const auto t0b = std::chrono::high_resolution_clock::now();
 
 	if (boxparams.n_bridges > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
+		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev, simulation->getStep());
 	}
 
 	if (simulation->simparams_host.snf_select != None) {
-		SupernaturalForces::SnfHandler(simulation.get(), sim_dev);
+		SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
 	}
 
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();
@@ -311,13 +310,13 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (boxparams.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev, simulation->getStep());
 		}
 	}
 	cudaDeviceSynchronize();

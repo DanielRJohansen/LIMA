@@ -317,8 +317,8 @@ namespace TestUtils {
 			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 		}
 		ASSERT(env->getSimPtr()->simsignals_host.critical_error_encountered == false, "Critical error encountered");
-		ASSERT(env->getSimPtr()->simsignals_host.step == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
-			env->getSimPtr()->simsignals_host.step, env->getSimPtr()->simparams_host.n_steps));
+		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
+			env->getSimPtr()->getStep(), env->getSimPtr()->simparams_host.n_steps));
 
 		const auto result = evaluateTest({ varcoff }, max_vc, {analytics.energy_gradient}, max_gradient);
 

@@ -74,7 +74,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 
 	simulation.reset(new Simulation(params));
-	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.simsignals_host.step);
+	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.getStep());
 
 	simulation->forcefield = simulation_src.forcefield;
 }
@@ -241,14 +241,14 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile) {
 	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;
 		const int pid = boximage->particleinfos[i].localIdInCompound;
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, simulation->simsignals_host.step - 1);
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, simulation->getStep() - 1);
 		grofile.atoms[i].position = new_position;
 	}
 
 	// Handle solvents 
 	const int firstSolventIndex = boximage->total_compound_particles;
 	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, simulation->simsignals_host.step - 1);
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, simulation->getStep() - 1);
 		grofile.atoms[firstSolventIndex + solventId].position = new_position;
 	}
 }

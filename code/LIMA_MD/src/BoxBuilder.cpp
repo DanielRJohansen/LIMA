@@ -181,7 +181,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 	for (int cid = 0; cid < sim.box_host->boxparams.n_compounds; cid++) {
 		for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
 		{
-			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
+			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
 			BoundaryConditionPublic::applyBCNM(pos, (float) sim.box_host->boxparams.boxSize, sim.simparams_host.bc_select);

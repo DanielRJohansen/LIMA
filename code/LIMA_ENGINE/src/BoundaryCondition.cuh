@@ -71,15 +71,15 @@ public:
 };
 
 // This macro functions calls the correct kernel, depending on the BoundaryCondition select
-#define LAUNCH_GENERIC_KERNEL(kernel, grid_size, block_size, bc_select, kernel_arg) \
+#define LAUNCH_GENERIC_KERNEL(kernel, grid_size, block_size, bc_select, kernel_arg1, kernel_arg2) \
 	do { \
 		switch (bc_select) { \
 			case NoBC: \
-			kernel<NoBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+			kernel<NoBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 			break; \
 	\
 			case PBC: \
-			kernel<PeriodicBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg); \
+			kernel<PeriodicBoundaryCondition> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 			break; \
 	\
 			default: \
@@ -89,22 +89,22 @@ public:
 	while(0);	// Dont question the do-while, its safer for some reason i barely understand
 
 // This macro functions calls the correct kernel, depending on the BoundaryCondition select and the doEM flag
-#define LAUNCH_GENERIC_KERNEL_2(kernel, grid_size, block_size, bc_select, doEM, kernel_arg) \
+#define LAUNCH_GENERIC_KERNEL_2(kernel, grid_size, block_size, bc_select, doEM, kernel_arg1, kernel_arg2) \
 	do { \
 		switch (bc_select) { \
 			case NoBC: \
 				if (doEM) { \
-					kernel<NoBoundaryCondition, true> <<<grid_size, block_size>>> (kernel_arg); \
+					kernel<NoBoundaryCondition, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 				} else { \
-					kernel<NoBoundaryCondition, false> <<<grid_size, block_size>>> (kernel_arg); \
+					kernel<NoBoundaryCondition, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 				} \
 				break; \
 			\
 			case PBC: \
 				if (doEM) { \
-					kernel<PeriodicBoundaryCondition, true> <<<grid_size, block_size>>> (kernel_arg); \
+					kernel<PeriodicBoundaryCondition, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 				} else { \
-					kernel<PeriodicBoundaryCondition, false> <<<grid_size, block_size>>> (kernel_arg); \
+					kernel<PeriodicBoundaryCondition, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
 				} \
 				break; \
 			\

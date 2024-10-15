@@ -134,13 +134,12 @@ namespace LJ {
 
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {	// TODO: no need to do check for intracompound
-				force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
-					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
-					ljorigin,
-					threadIdx.x, neighborparticle_id
-				);
-			}
+
+			force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+				ljorigin,
+				threadIdx.x, neighborparticle_id
+			);
 
 			if constexpr (ENABLE_ES_SR) {
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);

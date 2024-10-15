@@ -56,7 +56,7 @@ namespace TestMDStability {
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.36e-3, 2e-5);
+		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.19e-3, 2e-5);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

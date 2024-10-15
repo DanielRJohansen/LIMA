@@ -119,12 +119,29 @@ namespace EngineUtils {
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
-			const float threshold = cutoffLmSquaredReciprocal_device;//  1. / (CUTOFF_LM * CUTOFF_LM);
-			return dist_sq_reciprocal < threshold;
+			return dist_sq_reciprocal < cutoffLmSquaredReciprocal_device;	//  1. / (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
 
+	//template <bool useDefault>
+	//__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal);
+
+	//template <>
+	//__device__ constexpr bool isOutsideCutoff<true>(const float dist_sq_reciprocal) {
+	//	if constexpr (HARD_CUTOFF) {
+	//		const float threshold = cutoffLmSquaredReciprocal_device;
+	//		return dist_sq_reciprocal < 1.2f;	//  1. / (CUTOFF_LM * CUTOFF_LM);
+	//	}
+	//	return false;
+	//}
+	//template <>
+	//__device__ constexpr bool isOutsideCutoff<false>(const float dist_sq_reciprocal) {
+	//	if constexpr (HARD_CUTOFF) {			
+	//		return dist_sq_reciprocal < cutoffLmSquaredReciprocal_device; //  1. / (CUTOFF_LM * CUTOFF_LM);
+	//	}
+	//	return false;
+	//}
 
 
 

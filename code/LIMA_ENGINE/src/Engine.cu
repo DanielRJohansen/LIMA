@@ -12,6 +12,8 @@
 
 #include "EngineKernels.cuh"
 
+#include "Thermostat.cuh"
+
 #include "SupernaturalForces.cuh"
 
 
@@ -45,6 +47,9 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 		sim_dev = genericMoveToDevice(sim_dev, 1);
 	}
 	setDeviceConstantMemory();
+
+	auto boxparams = simulation->box_host->boxparams;
+	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
@@ -138,9 +143,12 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
-			const float temp_scalar = HandleBoxtemp();
+			auto [temperature, thermostatScalar] = thermostat->Temperature(sim_dev, simulation->box_host->boxparams, simulation->simparams_host);
+			simulation->temperature_buffer.push_back(temperature);
+			runstatus.current_temperature = temperature;
+
 			if (simulation->simparams_host.apply_thermostat)
-				sim_dev->signals->thermostat_scalar = temp_scalar;	// UNSAFE TODO: Find a better solution			
+				sim_dev->signals->thermostat_scalar = thermostatScalar;	// UNSAFE TODO: Find a better solution			
 		}
 		
 		HandleEarlyStoppingInEM();

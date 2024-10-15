@@ -17,6 +17,7 @@
 
 class SimulationDevice;
 class DatabuffersDeviceController;
+class Thermostat;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
@@ -98,10 +99,6 @@ private:
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
 
-	// Measures temperature aswell as the maximum kinE measured in a particle
-	// Returns thermostat scalar, for the engine to push to device
-	float HandleBoxtemp();
-
 	void HandleEarlyStoppingInEM();
 	int64_t stepAtLastEarlystopCheck = 0;
 
@@ -121,6 +118,8 @@ private:
 	SimulationDevice* sim_dev = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
+
+	std::unique_ptr<Thermostat> thermostat;
 
 	const BoundaryConditionSelect bc_select;
 };

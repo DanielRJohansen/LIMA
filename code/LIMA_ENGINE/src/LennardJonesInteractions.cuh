@@ -7,25 +7,6 @@
 #include "PhysicsUtilsDevice.cuh"
 
 
-
-
-
-namespace ShortRangeElectrostatics {
-
-	/// <summary>
-	/// 
-	/// </summary>
-	/// <param name="posA">Relative to it's node</param>
-	/// <param name="posB">Relative to A's node</param>
-	/// <returns></returns>
-	__device__ inline bool withinRange(const Float3& posA, const Float3& posB) {
-		const Int3 nodeDiff = LIMAPOSITIONSYSTEM::PositionToNodeIndex(posA) - LIMAPOSITIONSYSTEM::PositionToNodeIndex(posB);
-
-		return nodeDiff.MaxAbsElement() <= 2;
-	}
-
-} // namespace ShortRangeElectrostatics
-
 namespace LJ {
 	// __constant__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
@@ -75,7 +56,6 @@ namespace LJ {
 	/// <param name="sigma">[lm]</param>
 	/// <param name="epsilon">[J/mol]</param>
 	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
-	template <bool energyMinimize>
 	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
@@ -85,11 +65,6 @@ namespace LJ {
 		float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
 		s = s * s * s;
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
-
-		if constexpr (energyMinimize) { // TODO Prolly remove this, now we use ActivationFunction for EM?
-			if (force_scalar * 24.f * diff.len() < -1.f)
-				force_scalar = -1.f / 24.f/diff.len(); // In EM dont let repellent force be above this value
-		}
 
 		const Float3 force = diff * force_scalar;
 
@@ -114,8 +89,7 @@ namespace LJ {
 
 
 
-	// For intraCompound or bonded-to compounds
-	template <bool energyMinimize>
+	// For intraCompound or bonded-to compounds	
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
@@ -135,7 +109,7 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
-			force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,
 				threadIdx.x, neighborparticle_id
@@ -152,7 +126,7 @@ namespace LJ {
 	}
 
 	// For non bonded-to compounds
-	template <bool energyMinimize>
+	
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
 		const float chargeSelf, const half* const chargeNeighbors)
@@ -174,7 +148,7 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-				force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+				force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
@@ -195,8 +169,7 @@ namespace LJ {
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}
 
-	// Specific to solvent kernel
-	template <bool energyMinimize>
+	// Specific to solvent kernel	
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {
 		Float3 force{};
 
@@ -209,7 +182,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 				exclude_own_index ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
@@ -219,7 +192,7 @@ namespace LJ {
 		return force * 24.f;
 	}
 
-	template <bool energyMinimize>
+	
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
 		const ForceField_NB& forcefield) {	// Specific to solvent kernel
 		Float3 force{};
@@ -229,7 +202,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 				calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 				CalcLJOrigin::SolCom,
@@ -238,19 +211,18 @@ namespace LJ {
 		}
 		return force * 24.f;
 	}
-
-	template <bool energyMinimize>
+	
 	__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
 		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id)
 	{
 		Float3 force(0.f);
 		for (int i = 0; i < n_particles; i++) {
-
+			 
 			const Float3 diff = (positions[i] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<energyMinimize>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 				calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 				CalcLJOrigin::ComSol,

@@ -92,13 +92,8 @@ int main() {
 		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
-				
-
-
+						
 		//Benchmarks::Psome(envmode);				
-		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
-
 		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

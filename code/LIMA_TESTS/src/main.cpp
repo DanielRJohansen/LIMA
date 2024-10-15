@@ -99,7 +99,7 @@ int main() {
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
 
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

@@ -236,7 +236,11 @@ template <typename BoundaryCondition, bool energyMinimize>
 __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
-	__shared__ NeighborList neighborlist;		
+	//__shared__ NeighborList neighborlist;	
+	//Neighborlist
+	__shared__ int nCompoundNeighbors;
+	__shared__ int nGridnodes;
+
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
 	__shared__ Float3 utility_float3;
 
@@ -260,7 +264,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 
 	{
 		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, &neighborlist, &sim->compound_neighborlists[blockIdx.x], sizeof(NeighborList));
+		//cooperative_groups::memcpy_async(block, &neighborlist, &sim->compound_neighborlists[blockIdx.x], sizeof(NeighborList));
 
 		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		compound_origo = compoundcoords_global->origo;
@@ -279,6 +283,8 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	// Load positions
 	if (threadIdx.x == 0) {
 		compound.loadMeta(&boxState->compounds[blockIdx.x]);
+		nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
+		nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
 	}
 	__syncthreads();
 	compound.loadData(&boxState->compounds[blockIdx.x]);
@@ -318,6 +324,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		__shared__ int neighbor_n_particles[batchsize];
 		__shared__ const CompoundCoords* coords_ptrs[batchsize];
 		__shared__ const BondedParticlesLUT* compoundPairLUTs[batchsize];
+		__shared__ int neighborcompoundIds[batchsize];
 
 		__shared__ uint8_t atomtypesBuffer[MAX_COMPOUND_PARTICLES*2];
 
@@ -328,7 +335,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		__syncthreads();
 		int indexInBatch = batchsize;
-		for (int i = 0; i < neighborlist.n_compound_neighbors; i++) {
+		for (int i = 0; i < nCompoundNeighbors; i++) {
 			__syncthreads();
 
 			static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
@@ -339,27 +346,32 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 			half* neighborParticleschargesCurrent = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * (i & 1));
 			half* neighborParticleschargesNext = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * !(i & 1));
 
-
+			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (indexInBatch == batchsize) {
-				if (threadIdx.x < batchsize && threadIdx.x + i < neighborlist.n_compound_neighbors) {
-					const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
-					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, query_compound_id);
+				if (threadIdx.x < batchsize && threadIdx.x + i < nCompoundNeighbors) {
+					neighborcompoundIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].neighborcompound_ids[i + threadIdx.x];
+
+					HMM UT fail, commit changes to new branch, then go back to prev changes and make sure it wasnt them that broke the tests.
+
+					//const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
+					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompoundIds[threadIdx.x]);
 					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, querycompound->origo);
 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
 
 					// calc Relative LimaPosition Shift from the origo-shift
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
-					neighbor_n_particles[threadIdx.x] = boxState->compounds[query_compound_id].n_particles;
-					coords_ptrs[threadIdx.x] = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, query_compound_id);
-					compoundPairLUTs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, query_compound_id);					
+					neighbor_n_particles[threadIdx.x] = boxState->compounds[neighborcompoundIds[threadIdx.x]].n_particles;
+					coords_ptrs[threadIdx.x] = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompoundIds[threadIdx.x]);
+					compoundPairLUTs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, neighborcompoundIds[threadIdx.x]);
+					
 				}
 				indexInBatch = 0;
 				__syncthreads();
 
 				{
 					// Load first element in batch and sync				
-					const int currentNeighborId = neighborlist.neighborcompound_ids[i];
+					const int currentNeighborId = neighborcompoundIds[indexInBatch];
 					const int currentNeighborNParticles = neighbor_n_particles[indexInBatch];
 					
 					cooperative_groups::memcpy_async(block, neighborAtomstypesCurrent, boxConfig.compoundsAtomtypes + currentNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES);
@@ -373,9 +385,9 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 				}
 			}
 
-			if (i + 1 < neighborlist.n_compound_neighbors && indexInBatch+1 < batchsize) {
+			if (i + 1 < nCompoundNeighbors && indexInBatch+1 < batchsize) {
 				static_assert(sizeof(Coord) == sizeof(Float3));
-				const int nextNeighborId = neighborlist.neighborcompound_ids[i + 1];
+				const int nextNeighborId = neighborcompoundIds[indexInBatch + 1];
 				const int nextNeighborNParticles = neighbor_n_particles[indexInBatch + 1];
 
 				cooperative_groups::memcpy_async(block, neighborAtomstypesNext, boxConfig.compoundsAtomtypes + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);
@@ -416,11 +428,11 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
-	for (int i = 0; i < neighborlist.n_gridnodes; i++) {
-		const int solventblock_id = neighborlist.gridnode_ids[i];
+	for (int i = 0; i < nGridnodes; i++) {
+		const int solventblock_id = sim->compound_neighborlists->gridnode_ids[i]; // TODO: use one of the buffers, to read 64 vals at a time instead
 		const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(solventblock_id, boxSize_device.boxSizeNM_i));
 
-		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this
+		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this // also compute 64 of these at a time
 
 		const SolventBlock* solventblock = boxState->solventblockgrid_circularqueue->getBlockPtr(solventblock_id, step);
 		const int nsolvents_neighbor = solventblock->n_solvents;

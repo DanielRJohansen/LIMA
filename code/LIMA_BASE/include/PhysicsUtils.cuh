@@ -22,9 +22,13 @@ namespace PhysicsUtils {
 		return static_cast<float>(temperature);
 	}
 
-	// For single particle
+	// For single particle - this is only correct for IDEAL GAS, make obsolete!
 	__device__ __host__ inline constexpr float kineticEnergyToTemperature(float kineticEnergy /*[J/mol]*/) {
 		return kineticEnergy * (2.0f / 3.0f) / (BOLTZMANNCONSTANT * AVOGADROSNUMBER);
+	}
+	
+	__device__ __host__ inline constexpr float kineticEnergyToTemperature(double totalKineticEnergy /*[J/mol]*/, int64_t degreesOfFreedom) {
+		return totalKineticEnergy * (2.0 / static_cast<double>(degreesOfFreedom)) / (BOLTZMANNCONSTANT * AVOGADROSNUMBER);
 	}
 
 	/// <summary>Slow host version, faster version in PhysicsUtilsDevice</summary>

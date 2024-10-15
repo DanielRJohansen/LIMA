@@ -85,6 +85,9 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
 
+	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
+	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;
+
 	return box;
 }
 

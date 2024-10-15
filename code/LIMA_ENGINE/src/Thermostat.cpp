@@ -30,8 +30,8 @@ float GetBoxTemperature(Simulation* simulation) {
 		)
 		: 0.0;
 
-	const long double totalKinEnergyAveraged = (sum_kinE_compound + sumKineSolvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
-	return PhysicsUtils::kineticEnergyToTemperature(totalKinEnergyAveraged);
+	const double totalKinE = (sum_kinE_compound + sumKineSolvents) / static_cast<long double>(simulation->box_host->boxparams.total_particles);
+	return PhysicsUtils::kineticEnergyToTemperature(totalKinE, simulation->box_host->boxparams.degreesOfFreedom);
 }
 
 

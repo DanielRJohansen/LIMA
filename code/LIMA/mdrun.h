@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 struct MdrunSetup {
     MdrunSetup(int argc, char** argv) : work_dir(fs::current_path()) {
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
             if (arg == "-conf") {
@@ -100,7 +100,6 @@ Example:
 };
 
 int mdrun(int argc, char** argv) {
-    std::cout << "LIMA is preparing simulation in dir " << fs::current_path().string() << "\n";
     MdrunSetup setup(argc, argv);
     auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 

@@ -95,7 +95,7 @@ int main() {
 				
 
 
-		//Benchmarks::Psome(envmode);				
+		Benchmarks::Psome(envmode);				
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 		//UserinterfaceTests::TestBuildmembranesInterface(envmode);
 

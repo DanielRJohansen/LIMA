@@ -17,16 +17,14 @@ public:
 class PeriodicBoundaryCondition {
 public:
 	__device__ void static applyBC(NodeIndex& origo) {
-		origo.x += boxSize_device.blocksPerDim * (origo.x < 0);
-		origo.x -= boxSize_device.blocksPerDim * (origo.x >= boxSize_device.blocksPerDim);
-		origo.y += boxSize_device.blocksPerDim * (origo.y < 0);
-		origo.y -= boxSize_device.blocksPerDim * (origo.y >= boxSize_device.blocksPerDim);
-		origo.z += boxSize_device.blocksPerDim * (origo.z < 0);
-		origo.z -= boxSize_device.blocksPerDim * (origo.z >= boxSize_device.blocksPerDim);
+		origo.x += boxSize_device.blocksPerDim * ((origo.x < 0) - (origo.x >= boxSize_device.blocksPerDim));
+		origo.y += boxSize_device.blocksPerDim * ((origo.y < 0) - (origo.y >= boxSize_device.blocksPerDim));
+		origo.z += boxSize_device.blocksPerDim * ((origo.z < 0) - (origo.z >= boxSize_device.blocksPerDim));
+
 	}
 
 	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
-		const NodeIndex difference = static_index - movable_index;		
+		const NodeIndex difference = static_index - movable_index;
 		movable_index.x += boxSize_device.blocksPerDim * (difference.x > (boxSize_device.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
 		movable_index.x -= boxSize_device.blocksPerDim * (difference.x < -(boxSize_device.blocksPerDim / 2));
 		movable_index.y += boxSize_device.blocksPerDim * (difference.y > (boxSize_device.blocksPerDim / 2));
@@ -37,14 +35,12 @@ public:
 
 	__device__ static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) {
 		NodeIndex hyperIndex = movable_index;
-
+		const int halfBox = boxSize_device.blocksPerDim / 2;
 		const NodeIndex difference = static_index - movable_index;
-		hyperIndex.x += boxSize_device.blocksPerDim * (difference.x > (boxSize_device.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
-		hyperIndex.x -= boxSize_device.blocksPerDim * (difference.x < -(boxSize_device.blocksPerDim / 2));
-		hyperIndex.y += boxSize_device.blocksPerDim * (difference.y > (boxSize_device.blocksPerDim / 2));
-		hyperIndex.y -= boxSize_device.blocksPerDim * (difference.y < -(boxSize_device.blocksPerDim / 2));
-		hyperIndex.z += boxSize_device.blocksPerDim * (difference.z > (boxSize_device.blocksPerDim / 2));
-		hyperIndex.z -= boxSize_device.blocksPerDim * (difference.z < -(boxSize_device.blocksPerDim / 2));
+
+		hyperIndex.x += boxSize_device.blocksPerDim * ((difference.x > halfBox) - (difference.x < -halfBox));
+		hyperIndex.y += boxSize_device.blocksPerDim * ((difference.y > halfBox) - (difference.y < -halfBox));
+		hyperIndex.z += boxSize_device.blocksPerDim * ((difference.z > halfBox) - (difference.z < -halfBox));
 
 		return hyperIndex;
 	}

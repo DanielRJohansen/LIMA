@@ -267,6 +267,12 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		compound_origo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
+			
+		if (threadIdx.x == 0) {
+			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
+			nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
+			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
+		}
 
 		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
 
@@ -277,21 +283,12 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		cooperative_groups::wait(block);
 		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();
 	}
-
-	// Load positions
-	if (threadIdx.x == 0) {
-		compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-		nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
-		nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
-	}
-	__syncthreads();
 	compound.loadData(&boxConfig.compounds[blockIdx.x]);
 
 
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
-		__syncthreads();
 		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT), "Utilitybuffer not large enough for BondedParticlesLUT");
 
 		const BondedParticlesLUT* const bplut_global = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, compound_index);
@@ -309,8 +306,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
 			particleCharge, particleChargesCompound);
 		}
-
-		__syncthreads();
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -328,7 +323,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 		auto block = cooperative_groups::this_thread_block();		
 
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
-		__syncthreads();
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nCompoundNeighbors; i++) {
 			__syncthreads();

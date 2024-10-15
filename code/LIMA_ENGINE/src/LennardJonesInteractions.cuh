@@ -164,7 +164,6 @@ namespace LJ {
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
 					if constexpr (computePotE && ENABLE_POTE)
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
-					//electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
 				}
 			}
 		}

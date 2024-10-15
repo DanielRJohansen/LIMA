@@ -232,7 +232,7 @@ template __global__ void compoundBondsAndIntegrationKernel<NoBoundaryCondition, 
 
 
 #define compound_index blockIdx.x
-template <typename BoundaryCondition, bool energyMinimize>
+template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
@@ -305,7 +305,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-			force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
+			force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
 				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
 			particleCharge, particleChargesCompound);
 		}
@@ -395,14 +395,14 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 				bpLUT.load(*compoundPairLUTs[indexInBatch]);
 				__syncthreads();
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+					force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 						neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 						particleCharge, neighborParticleschargesCurrent);
 				}
 			}
 			else {
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+					force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 						neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 				}
 			}
@@ -462,16 +462,6 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-//	// Electrostatic
-//#ifdef ENABLE_ELECTROSTATICS
-//	if ( simparams.enable_electrostatics && threadIdx.x < compound.n_particles && SCA::DoRecalc(step)) {
-//		Float3 abspos = LIMAPOSITIONSYSTEM::getAbsolutePositionNM(compound_origo, Coord{ compound_positions[threadIdx.x] });
-//		PeriodicBoundaryCondition::applyBCNM(abspos);	// TODO: Use generic BC
-//		sim->charge_octtree->pushChargeToLeaf(abspos, box->compounds[blockIdx.x].atom_charges[threadIdx.x]);
-//	}
-//#endif
-
-
 	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
 	if constexpr (ENABLE_ES_LR) {
 		if (simparams.enable_electrostatics) {
@@ -484,14 +474,19 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
-		sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
+		if constexpr (computePotE)
+			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundLJKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundLJKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundLJKernel<PeriodicBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundLJKernel<NoBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
 #undef compound_index
 
 

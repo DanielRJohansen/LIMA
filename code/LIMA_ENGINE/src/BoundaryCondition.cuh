@@ -114,6 +114,49 @@ public:
 	} \
 	while(0);	// Dont question the do-while, its safer for some reason i barely understand
 
+// This macro functions calls the correct kernel, depending on the BoundaryCondition select, the doEM flag, and defaultCutoff
+#define LAUNCH_GENERIC_KERNEL_3(kernel, grid_size, block_size, bc_select, doEM, logData, kernel_arg1, kernel_arg2) \
+	do { \
+		switch (bc_select) { \
+			case NoBC: \
+				if (doEM) { \
+					if (logData) { \
+						kernel<NoBoundaryCondition, true, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} else { \
+						kernel<NoBoundaryCondition, true, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} \
+				} else { \
+					if (logData) { \
+						kernel<NoBoundaryCondition, false, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} else { \
+						kernel<NoBoundaryCondition, false, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} \
+				} \
+				break; \
+			\
+			case PBC: \
+				if (doEM) { \
+					if (logData) { \
+						kernel<PeriodicBoundaryCondition, true, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} else { \
+						kernel<PeriodicBoundaryCondition, true, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} \
+				} else { \
+					if (logData) { \
+						kernel<PeriodicBoundaryCondition, false, true> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} else { \
+						kernel<PeriodicBoundaryCondition, false, false> <<<grid_size, block_size>>> (kernel_arg1, kernel_arg2); \
+					} \
+				} \
+				break; \
+			\
+			default: \
+				throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL"); \
+		} \
+	} \
+	while(0);
+
+
 // Macro that calls the correct function, depending on the boundarycondition select
 #define CALL_FUNCTION_WITH_BC(func, bc_select, ...) \
     do { \

@@ -31,8 +31,8 @@ namespace ForceCorrectness {
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-			box_host->compounds[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
+			box_host->compoundInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+			box_host->compoundInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
 			env.run();
 
@@ -78,7 +78,7 @@ namespace ForceCorrectness {
 
 
 				Box* box_host = env.getSimPtr()->box_host.get();
-				box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+				box_host->compoundInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
 			}
 
 			// Give the solvent a velocty
@@ -142,7 +142,7 @@ namespace ForceCorrectness {
 		const auto sim = env.getSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
 		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
-		const Float3 actualForce = sim->box_host->compounds[0].forces_prev[0];
+		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[0];
 
 
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();

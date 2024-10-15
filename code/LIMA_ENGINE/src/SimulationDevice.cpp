@@ -2,7 +2,8 @@
 
 
 
-BoxConfig::BoxConfig(uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridgeBundleCompact* bridgeBundle, BondedParticlesLUT* bpLUTs, const Box* boxHost) : 
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridgeBundleCompact* bridgeBundle, BondedParticlesLUT* bpLUTs, const Box* boxHost) :
+	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
 	bridge_bundle(bridgeBundle),
@@ -20,7 +21,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(half) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
-	BoxConfig boxTemp(compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bridge_bundle.get(), 1), GenericCopyToDevice(boxHost.bpLutCollection), &boxHost);
+	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bridge_bundle.get(), 1), GenericCopyToDevice(boxHost.bpLutCollection), &boxHost);
 	BoxConfig* devPtr;
 	cudaMallocManaged(&devPtr, sizeof(BoxConfig));
 	cudaMemcpy(devPtr, &boxTemp, sizeof(BoxConfig), cudaMemcpyHostToDevice);
@@ -28,7 +29,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 	return devPtr;
 }
 void BoxConfig::FreeMembers() const {
-	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
+	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
@@ -38,16 +39,16 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(Compound* compounds, CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
-	SolventBlocksCircularQueue* solventblockgrid_circularqueue) :
-	compounds(compounds), compoundcoordsCircularQueue(compoundcoordsCircularQueue), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue)
+BoxState::BoxState(CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
+	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
+	compoundcoordsCircularQueue(compoundcoordsCircularQueue), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
-	BoxState boxState(
-		GenericCopyToDevice(boxHost.compounds), 
+	BoxState boxState(		
 		boxHost.compoundcoordsCircularQueue->CopyToDevice(), 
 		GenericCopyToDevice(boxHost.solvents), 
-		boxHost.solventblockgrid_circularqueue->CopyToDevice());
+		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
+		GenericCopyToDevice(boxHost.compoundInterimStates));
 
 	BoxState* boxStateDev;
 	cudaMallocManaged(&boxStateDev, sizeof(BoxState)); // TODO not managed
@@ -60,7 +61,8 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
-	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost);
+//	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost); // This should NOT be necessary since the state dont change
+	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxHost.solvents.data(), boxtemp.solvents, sizeof(Solvent) * boxHost.solvents.size(), cudaMemcpyDeviceToHost);
 
 	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
@@ -70,7 +72,6 @@ void BoxState::FreeMembers() {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
-	cudaFree(boxtemp.compounds);
 	cudaFree(boxtemp.compoundcoordsCircularQueue);
 	cudaFree(boxtemp.solvents);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
@@ -144,6 +145,8 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
 	chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
 	chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
+
+	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
 }
 
 void SimulationDevice::FreeMembers() {

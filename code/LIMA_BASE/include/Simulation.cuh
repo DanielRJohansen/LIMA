@@ -175,7 +175,6 @@ public:
 };
 
 
-// This goes on Device
 struct Box {
 	Box() {}
 	Box(int boxSize);
@@ -184,6 +183,7 @@ struct Box {
 
 
 	std::vector<Compound> compounds;
+	std::vector<CompoundInterimState> compoundInterimStates;
 	std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 
 	std::vector<Solvent> solvents;

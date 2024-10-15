@@ -198,7 +198,7 @@ struct alignas(4) CompoundCompact {
 	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
 	int n_bonded_compounds = 0;
 
-	__device__ void loadMeta(CompoundCompact* compound) {
+	__device__ void loadMeta(const CompoundCompact* const compound) {
 		n_particles = compound->n_particles;
 		n_singlebonds = compound->n_singlebonds;
 		n_anglebonds = compound->n_anglebonds;
@@ -207,7 +207,7 @@ struct alignas(4) CompoundCompact {
 		n_bonded_compounds = compound->n_bonded_compounds;
 	}
 
-	__device__ void loadData(CompoundCompact* compound) {
+	__device__ void loadData(const CompoundCompact* const compound) {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
 
@@ -223,20 +223,20 @@ const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
 const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64 + 64 + 32;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
-// Rather large unique structures in global memory, that can be partly loaded when needed
-struct Compound : public CompoundCompact {
-	__host__ __device__ Compound() {}
 
-
-	
+struct CompoundInterimState {
 	// Interims from the bridgekernel to compoundkernel
-	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 	float potE_interim[MAX_COMPOUND_PARTICLES];
 	Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+};
+
+// Rather large unique structures in global memory, that can be partly loaded when needed
+struct Compound : public CompoundCompact {
+	__host__ __device__ Compound() {}
 
 	// Bonds
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
@@ -252,6 +252,8 @@ struct Compound : public CompoundCompact {
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
+
+	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 
 	int absoluteIndexOfFirstParticle = 0;
 };

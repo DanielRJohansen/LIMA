@@ -7,18 +7,18 @@
 
 
 struct BoxConfig {	
-	BoxConfig(uint8_t* compoundsAtomTypes, half* compoundsAtomCharges, 
+	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomCharges,
 		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs, const Box* const boxHost);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
 	const BoxParams boxparams;
 
-
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
 	const half* const compoundsAtomCharges;
-
+	
+	const Compound* const compounds;
 	const CompoundBridgeBundleCompact* const bridge_bundle;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
@@ -28,17 +28,17 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(Compound* compounds, CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
-		SolventBlocksCircularQueue* solventblockgrid_circularqueue);
+	BoxState(CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
+		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers();// Free *this immediately after calling this function
 
-	Compound* const compounds = nullptr;
-	CompoundCoords* const compoundcoordsCircularQueue = nullptr;
+	CompoundInterimState* const compoundsInterimState;
+	CompoundCoords* const compoundcoordsCircularQueue;
 
-	Solvent* const solvents = nullptr;
-	SolventBlocksCircularQueue* const solventblockgrid_circularqueue = nullptr;
+	Solvent* const solvents;
+	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
 };
 
 

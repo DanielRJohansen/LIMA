@@ -97,6 +97,7 @@ namespace ElectrostaticsTests {
 			Simulation* sim = env.getSimPtr();
 
 			const Compound& compoundSelf = sim->box_host->compounds[0];
+			const CompoundInterimState& compoundInterimSelf = sim->box_host->compoundInterimStates[0];
 			const float chargeSelf = compoundSelf.atom_charges[0];
 
 			// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -114,12 +115,12 @@ namespace ElectrostaticsTests {
 			float potE = PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, diff.len()) * 0.5f;
 			Float3 force = PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeOther, diff);
 
-			const float potEError = std::abs(compoundSelf.potE_interim[0] - potE) / potE;
-			const float forceError = std::abs((compoundSelf.forces_interim[0] - force).len()) / force.len();
+			const float potEError = std::abs(compoundInterimSelf.potE_interim[0] - potE) / potE;
+			const float forceError = std::abs((compoundInterimSelf.forces_interim[0] - force).len()) / force.len();
 
 
-			ASSERT(potEError < 1e-6, std::format("Actual PotE {:.7e} Expected potE: {:.7e}", compoundSelf.potE_interim[0], potE));
-			ASSERT(forceError < 1e-6, std::format("Actual Force {:.7e} Expected force {:.7e}", compoundSelf.forces_interim[0].len(), force.len()));
+			ASSERT(potEError < 1e-6, std::format("Actual PotE {:.7e} Expected potE: {:.7e}", compoundInterimSelf.potE_interim[0], potE));
+			ASSERT(forceError < 1e-6, std::format("Actual Force {:.7e} Expected force {:.7e}", compoundInterimSelf.forces_interim[0].len(), force.len()));
 		}
 
 
@@ -219,11 +220,11 @@ namespace ElectrostaticsTests {
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
 		for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
 			const auto& compound = sim->box_host->compounds[cid];
+			const auto& compoundInterimState = sim->box_host->compoundInterimStates[cid];
 
 			for (int pid = 0; pid < compound.n_particles; pid++) {
-
 				const float charge = static_cast<float>(compound.atom_charges[pid]);
-				const float velHorizontal = compound.vels_prev[pid].x;
+				const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
 				velDistributions[charge].push_back(velHorizontal);
 			}
@@ -301,6 +302,7 @@ namespace ElectrostaticsTests {
 			Float3 forceSum{};
 
 			const Compound& compoundSelf = sim->box_host->compounds[cidSelf];
+			const CompoundInterimState& compoundInterimSelf = sim->box_host->compoundInterimStates[cidSelf];
 			const float chargeSelf = compoundSelf.atom_charges[0];
 
 			// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -327,8 +329,8 @@ namespace ElectrostaticsTests {
 			// Need a expected error because in the test we do true hyperdist, but in sim we do no hyperdist
 			// The error arises because a particle is moved 1 boxlen, not when it is correct for hyperPos, but when it moves into the next node in the boxgrid
 			// Thus this error arises only when the box is so small that a particle go directly from nodes such as (-1, 0 0) to (1,0,0)
-			const float potEError = std::abs(compoundSelf.potE_interim[0] - potESum) / potESum;
-			const float forceError = std::abs((compoundSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
+			const float potEError = std::abs(compoundInterimSelf.potE_interim[0] - potESum) / potESum;
+			const float forceError = std::abs((compoundInterimSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
 			maxForceError = std::max(maxForceError, forceError);
 
 			//ASSERT(potEError < 1e-4, std::format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));

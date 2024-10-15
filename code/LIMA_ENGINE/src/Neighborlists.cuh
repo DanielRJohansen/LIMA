@@ -55,7 +55,7 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 	const NodeIndex compound_origo = compound_coords.origo;
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
-		const int particle_index = sim_dev.boxState->compounds[compound_id].interaction_boundary.key_particle_indices[i];
+		const int particle_index = sim_dev.boxConfig.compounds[compound_id].interaction_boundary.key_particle_indices[i];
 		const Float3 abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
 		result[i] = abspos;
 	}
@@ -152,15 +152,15 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 		getCompoundAbspositions<BoundaryCondition>(*sim_dev, compound_id, key_positions_self, step);
 
 	const CompoundInteractionBoundary boundary_self = compound_active
-		? sim_dev->boxState->compounds[compound_id].interaction_boundary
+		? sim_dev->boxConfig.compounds[compound_id].interaction_boundary
 		: CompoundInteractionBoundary{};
 
 	int bonded_compound_ids[Compound::max_bonded_compounds];
 	const int n_bonded_compounds = compound_active
-		? sim_dev->boxState->compounds[compound_id].n_bonded_compounds
+		? sim_dev->boxConfig.compounds[compound_id].n_bonded_compounds
 		: 0;
 	for (int i = 0; i < n_bonded_compounds; i++) {
-		bonded_compound_ids[i] = sim_dev->boxState->compounds[compound_id].bonded_compound_ids[i];
+		bonded_compound_ids[i] = sim_dev->boxConfig.compounds[compound_id].bonded_compound_ids[i];
 	}
 	// First add all the bonded compounds to the list
 	{
@@ -182,7 +182,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 		if (query_compound_id < n_compounds) {
 			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
 			getCompoundAbspositions<BoundaryCondition>(*sim_dev, query_compound_id, positionsbegin, step);
-			boundaries[threadIdx.x] = sim_dev->boxState->compounds[query_compound_id].interaction_boundary;
+			boundaries[threadIdx.x] = sim_dev->boxConfig.compounds[query_compound_id].interaction_boundary;
 		}
 		__syncthreads();
 
@@ -268,7 +268,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 
 			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
 			getCompoundAbspositions<BoundaryCondition>(*sim_dev, compound_id, positionsbegin, step);
-			boundaries[threadIdx.x] = sim_dev->boxState->compounds[compound_id].interaction_boundary;
+			boundaries[threadIdx.x] = sim_dev->boxConfig.compounds[compound_id].interaction_boundary;
 		}
 		__syncthreads();
 

@@ -1,3 +1,4 @@
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <assert.h>  
@@ -212,7 +213,7 @@ void Environment::run(bool doPostRunEvents) {
 		}
 		
 		// Deadspin to slow down rendering for visual debugging :)
-		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
+		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
 	simulationTimer->stop();
 
@@ -298,7 +299,7 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
 
-		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - time0).count();
+		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0).count();
 
 		// First clear the current line
 		printf("\r\033[K");

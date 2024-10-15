@@ -631,12 +631,18 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 
-
-	const int totalIncoming = std::reduce(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) { 
+// This doesnt compile with GCC, but it enables execution:par, no?
+/*	const int totalIncoming = std::reduce(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) {
 		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
 		const int nLipids = pair.second.size();
-		return sum + nLipids*atomsPerLipid; 
-		});
+		return sum + nLipids*atomsPerLipid;
+		});*/
+	const int totalIncoming = std::accumulate(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) {
+		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
+		const int nLipids = pair.second.size();
+    return sum + nLipids * atomsPerLipid;
+});
+
 	grofile.atoms.reserve(grofile.atoms.size() + totalIncoming);
 
 	for (const auto& [_, lipidType] : queuedInsertions) {

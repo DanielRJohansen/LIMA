@@ -352,7 +352,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < nCompoundNeighbors) {
 					neighborcompoundIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].neighborcompound_ids[i + threadIdx.x];
 
-					HMM UT fail, commit changes to new branch, then go back to prev changes and make sure it wasnt them that broke the tests.
+					//HMM UT fail, commit changes to new branch, then go back to prev changes and make sure it wasnt them that broke the tests.
 
 					//const int query_compound_id = neighborlist.neighborcompound_ids[i + threadIdx.x];
 					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompoundIds[threadIdx.x]);
@@ -429,7 +429,7 @@ __global__ void compoundLJKernel(SimulationDevice* sim, const int64_t step) {
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
 	for (int i = 0; i < nGridnodes; i++) {
-		const int solventblock_id = sim->compound_neighborlists->gridnode_ids[i]; // TODO: use one of the buffers, to read 64 vals at a time instead
+		const int solventblock_id = sim->compound_neighborlists[blockIdx.x].gridnode_ids[i]; // TODONOW: use one of the buffers, to read 64 vals at a time instead
 		const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(solventblock_id, boxSize_device.boxSizeNM_i));
 
 		const Float3 relpos_shift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).toFloat3();	// TODO: Only t0 needs to do this // also compute 64 of these at a time

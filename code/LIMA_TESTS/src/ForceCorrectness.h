@@ -25,6 +25,7 @@ namespace ForceCorrectness {
 			int64_t steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 			SimParams params{};
+			params.enable_electrostatics = false;
 			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };

@@ -203,6 +203,7 @@ namespace ElectrostaticsTests {
 		SimParams simparams;
 		simparams.dt = 20;
 		//simparams.em_variant = true;
+		simparams.enable_electrostatics = false;//this seems silly..
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;

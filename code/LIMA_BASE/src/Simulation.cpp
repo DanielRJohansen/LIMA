@@ -95,9 +95,9 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 	file << "// Main params" << "\n";
 	file << "n_steps=" << n_steps << "\n";
-	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
+	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [fs]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
-	file << "em_force_tolerance=" << em_force_tolerance << "\n"; // TODO add units
+	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm]\n"; // TODO add units
 
 	file << "// Physics params" << "\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
@@ -114,7 +114,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "// Temperature params" << "\n";
 	file << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
 	file << "apply_thermostat=" << (apply_thermostat ? "true" : "false") << " # will speed up or slow down particles to achieve the desired temperature\n";
-	file << "# desired_temperatued - not currently available forced to be 300 [k]\n";
+	file << "# desired_temperature - not currently available forced to be 300 [k]\n";
 
 	file.close();
 }

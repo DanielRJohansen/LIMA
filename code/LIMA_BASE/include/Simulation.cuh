@@ -29,7 +29,7 @@ struct SimParams {
 
 	// Physics params
 	BoundaryConditionSelect bc_select{ PBC };
-	bool enable_electrostatics = false;
+	bool enable_electrostatics = true;
 	float cutoff_nm = 1.2f;
 	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
 

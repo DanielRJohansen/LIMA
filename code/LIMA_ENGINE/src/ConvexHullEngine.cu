@@ -77,13 +77,13 @@ __device__ void FindMinimaxPoint(Float3& sharedDownGradient, float& sharedMaxDis
 
 
 		if (threadIdx.x == 0) {
-			sharedDownGradient = { 0, 0, 0 };
+			sharedDownGradient = Float3{};
 			sharedMaxDist = 0.0f;
 			sharedSecondMaxDist = 0.0f;
 		}
 		__syncthreads();
 
-		Float3 localDownGradient = { 0, 0, 0 };
+		Float3 localDownGradient{};
 		float localMaxDist = 0.0f;
 		float localSecondMaxDist = 0.0f;
 

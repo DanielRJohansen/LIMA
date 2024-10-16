@@ -16,7 +16,7 @@ add_library(LIMA_BASE STATIC
     src/MoleculeHull.cpp
     src/TimeIt.cpp
     src/Geometry.cpp
-  "include/MoleculeUtils.h" "src/MoleculeUtils.cpp")
+    src/MoleculeUtils.cpp)
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal
@@ -31,11 +31,16 @@ target_include_directories(LIMA_BASE PUBLIC
 )
 
 #target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
-  
-target_link_libraries(LIMA_BASE 
-    LIMA_DEPENDS
-)
-
+if (UNIX)  
+    target_link_libraries(LIMA_BASE PUBLIC
+        LIMA_DEPENDS
+        TBB::tbb
+    )
+else()
+target_link_libraries(LIMA_BASE PUBLIC
+        LIMA_DEPENDS
+    )
+endif()
 
 if (UNIX)
     target_compile_options(LIMA_BASE PRIVATE -use_fast_math -O3)

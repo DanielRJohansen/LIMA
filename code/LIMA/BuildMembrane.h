@@ -12,37 +12,48 @@ namespace fs = std::filesystem;
 struct BuildMembraneSetup{
 	BuildMembraneSetup(int argc, char** argv) : work_dir(std::filesystem::current_path())
     {		
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
             if (arg == "-lipids") {
                 // If we have atleasat 2 more args, and next arg is not a keyword, and second arg is a float
                 while (i + 2 < argc && argv[i + 1][0] != '-' && isFloatingpoint(argv[i + 2])) {
-                    lipids.emplace_back(argv[i+1], std::stod(argv[i+2]));
-                    i+=2;
+                    lipids.emplace_back(argv[i + 1], std::stod(argv[i + 2]));
+                    i += 2;
                 }
-                if ((i + 1 < argc && argv[i + 1][0] != '-') || (lipids.size() * 2 != argc - i - 1)) {
+                if ((i + 1 < argc && argv[i + 1][0] != '-')) {
                     std::cerr << "Invalid -lipids argument. It must have a multiple of two values." << std::endl;
                 }
             }
-            else if (arg== "-centerz") {
-				if (i + 1 < argc) {
-					membraneCenterZ = std::stof(argv[i + 1]);
-					i++;
-				}
-				else {
-					std::cerr << "-centerZ expected an argument." << std::endl;
-				}
-			}
-            else if (arg == "-boxsize") {
-                if (i+1 < argc) {
-					boxsize = std::stof(argv[i+1]);
-					i++;
-				}
-				else {
-					std::cerr << "boxsize expected an argument." << std::endl;
-				}
+            else if (arg == "-centerz") {
+                if (i + 1 < argc) {
+                    membraneCenterZ = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "-centerZ expected an argument." << std::endl;
+                }
             }
+            else if (arg == "-boxsize") {
+                if (i + 1 < argc) {
+                    boxsize = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "boxsize expected an argument." << std::endl;
+                }
+            }
+            else if (arg == "-emtol") {
+                if (i + 1 < argc) {
+                    emtol = std::stof(argv[i + 1]);
+                    i++;
+                }
+                else {
+                    std::cerr << "emtol expected an argument." << std::endl;
+                }
+            }
+            else if (arg == "-display" || arg == "-d")
+                envmode = Full;
             else if (arg == "-help" || arg == "-h") {
                 std::cout << helpText;
                 exit(0);
@@ -53,13 +64,13 @@ struct BuildMembraneSetup{
         }
 	}
 
-	EnvMode envmode = Full;
+	EnvMode envmode = ConsoleOnly;
 	const fs::path work_dir;
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
-    float membraneCenterZ = 0.0f;
+    std::optional<float> membraneCenterZ = std::nullopt;
     float boxsize = -1.f;
-
+    float emtol = 100.f;
 private:
     bool isFloatingpoint(const std::string& s) {
         std::istringstream iss(s);
@@ -88,6 +99,13 @@ Options:
     -boxsize [value]    
         Defines the size (nm) of the simulation box. Non-cubic boxes are not yet supported
         Example: -boxsize 10.0
+    
+    -emtol [value]
+        Sets the force tolerance (kJ/mol/nm) for the energy minimization. Default is 100.
+		Example: -emtol 100
+
+    -display, -d    
+		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
 
     -help, -h    
         Displays this help text and exits.
@@ -102,16 +120,25 @@ Example:
 int buildMembrane(int argc, char** argv) {
 	BuildMembraneSetup setup(argc, argv);
 
-    const SimParams params{ SimParams::defaultPath() };
+    const SimParams params{};
 
 	Lipids::Selection lipidselection;
 	for (const auto& lipid : setup.lipids) {
 		lipidselection.emplace_back(Lipids::Select{ lipid.first, setup.work_dir, lipid.second });
 	}
-    auto [grofile, topfile] = Programs::CreateMembrane(setup.work_dir, lipidselection, setup.membraneCenterZ, true, setup.envmode);
+    
+    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
+    auto sim = Programs::EnergyMinimize(*grofile, *topfile, true, setup.work_dir, setup.envmode, true, setup.emtol);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");
     topfile->printToFile(setup.work_dir / "membrane.top");
-   
+        
+    auto [step, force] = *std::min_element(sim->maxForceBuffer.begin(), sim->maxForceBuffer.end(),
+        [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
+            return a.second < b.second;
+        }
+    );
+    std::cout << std::format("buildmembrane finished with a min max-force of {:.3f}\n", force);
+
 	return 0;
 }

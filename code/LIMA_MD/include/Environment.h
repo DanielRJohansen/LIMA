@@ -24,7 +24,7 @@ class Environment
 public:
 	Environment() = delete;
 	Environment(const Environment&) = delete;
-	Environment(const fs::path& workdir, EnvMode mode, bool save_output);
+	Environment(const fs::path& workdir, EnvMode mode);
 
 	~Environment();
 
@@ -60,8 +60,6 @@ public:
 	/// </summary>
 	void createSimulationFiles(float boxlen);
 
-
-
 	// Run a standard MD sim
 	void run(bool doPostRunEvents=true);
 
@@ -71,7 +69,8 @@ public:
 	/// </summary>
 	/// <param name="filename">New name of the file. Defaults to same name as it was as input</param>
 	/// <returns></returns>
-	GroFile writeBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
+	GroFile WriteBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
+	void WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> step=std::nullopt);
 
 	void RenderSimulation();
 	
@@ -85,22 +84,12 @@ public:
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	std::unique_ptr<Simulation> getSim();
 	Simulation* getSimPtr();
-	Analyzer::AnalyzedPackage* getAnalyzedPackage();
+	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 	SolventBlocksCircularQueue* getSolventBlocks();
 
 	std::string getWorkdir() { return work_dir.string(); }
 
-#ifdef __linux__
-	std::chrono::system_clock::time_point time0;
-	std::string main_dir = "/opt/LIMA";
-#else
 	std::chrono::steady_clock::time_point time0;
-
-	// Main folder of the lima package, contains code/lib/resources and more
-	const std::string main_dir = "C:/Users/Daniel/git_repo/LIMA/";
-#endif
-
-	const fs::path mainDir = Filehandler::GetLimaDir();
 
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
@@ -116,7 +105,7 @@ private:
 	void handleStatus(int64_t step, int64_t n_steps);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant);
 
 	void sayHello();
 
@@ -124,9 +113,8 @@ private:
 
 
 	EnvMode m_mode;
-	const bool save_output;
 
-	int step_at_last_render = 0;
+	int64_t step_at_last_render = 0;
 
 
 	//std::unique_ptr<BoxBuilder> boxbuilder;
@@ -145,5 +133,5 @@ private:
 
 	std::unique_ptr<BoxImage> boximage;
 
-	Analyzer::AnalyzedPackage postsim_anal_package;
+	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
 };

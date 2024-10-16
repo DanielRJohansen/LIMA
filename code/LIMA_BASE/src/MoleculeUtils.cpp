@@ -1,7 +1,7 @@
 #include "MoleculeUtils.h"
 #include "BoundaryConditionPublic.h"
-
-
+#include "MoleculeGraph.h"
+#include <unordered_set>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
@@ -14,22 +14,35 @@ Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	return (bbMin + bbMax) / 2;
 }
 
-void MoleculeUtils::SetMoleculeCenter(GroFile& grofile, Float3 targetCenter) {
 
-	// First make sure the molecule is not split due to PBC ;; TODO We are not currently checking that
-	for (auto& particle : grofile.atoms) {
-		//const Float3 center{ 0, 0, 0 };
-		const Float3 center = grofile.atoms[0].position;
-		//BoundaryConditionPublic::applyHyperposNM(center, particle.position, grofile.box_size.x, BoundaryConditionSelect::PBC);
+void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile) {
+	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::createGraph(topfile);
+
+	std::unordered_set<int> visited{};
+
+	for (auto& node : graph.BFS(1)) {
+		const Float3 nodePostion = grofile.atoms[node.atomid].position;
+
+		for (const auto& neighbor : node.getNeighbors()) {
+			if (visited.contains(neighbor->atomid))
+				continue;
+
+			Float3& neighborPosition = grofile.atoms[neighbor->atomid].position;
+			BoundaryConditionPublic::applyHyperposNM(nodePostion, neighborPosition, grofile.box_size.x, BoundaryConditionSelect::PBC);
+
+			visited.insert(neighbor->atomid);
+		}
+
+		visited.insert(node.atomid);
 	}
+}
 
-	Double3 sum = { 0,0,0 };
-	for (auto& particle : grofile.atoms)
-		sum += particle.position;
 
-	//TODO This is WRONG, we should not use CoM, but geometric center
-	const Double3 currentCenter = sum / static_cast<double>(grofile.atoms.size());
-	const Float3 diff = targetCenter - Float3{ currentCenter.x, currentCenter.y, currentCenter.z };
+void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile& topfile, std::optional<Float3> targetCenter) {
+	MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
+
+	const Float3 currentCenter = GeometricCenter(grofile);
+	const Float3 diff = targetCenter.value_or(grofile.box_size/2.f) - Float3{currentCenter.x, currentCenter.y, currentCenter.z};
 
 	for (auto& particle : grofile.atoms) {
 		particle.position += diff;

@@ -457,7 +457,7 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0, 3))
 				throw std::runtime_error(std::format("Atom names do not match between .gro ({}) and topology file ({})", grofile.atoms[globalIndex].atomName, atom.atomname));
 
-			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(topology.topology.GetForcefieldPaths(), atom.type);
+			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(topology.topology.GetForcefieldPath(), atom.type);
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, activeLJParamIndex, uniqueResId };
 			atomRefs[globalIndex].sourceLine = grofile.atoms[globalIndex].sourceLine;
 			
@@ -486,7 +486,7 @@ std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
 
 template <int n, typename GenericBond, typename BondtypeFactory>
 void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOffset, ForcefieldManager& forcefield,
-	const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology, const std::vector<fs::path>& forcefieldNames, std::string sourceLine = "")
+	const std::vector<ParticleInfo>& atomRefs, std::vector<BondtypeFactory>& topology, const std::optional<fs::path>& forcefieldName, std::string sourceLine = "")
 {
 	std::array<uint32_t, n> globalIds{};
 	for (int i = 0; i < n; i++) {
@@ -506,7 +506,7 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 	//if (forcefield.BondHasZeroParameter<typename GenericBond::Parameters>(atomTypenames))
 	//	return;
 
-	auto bondParams = forcefield.GetBondParameters<GenericBond>(forcefieldNames, atomTypenames);
+	auto bondParams = forcefield.GetBondParameters<GenericBond>(forcefieldName, atomTypenames);
 
 	for (const auto& param : bondParams) {
 		topology.emplace_back(BondtypeFactory{ globalIds, param });
@@ -540,22 +540,22 @@ Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, Forcefi
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			
 			LoadBondIntoTopology<2, SingleBond, SingleBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds, topologyFile.topology.GetForcefieldPaths(), bondTopol.sourceLine);
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds, topologyFile.topology.GetForcefieldPath(), bondTopol.sourceLine);
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			
 			LoadBondIntoTopology<3, AngleUreyBradleyBond, AngleBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds, topologyFile.topology.GetForcefieldPaths());
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds, topologyFile.topology.GetForcefieldPath());
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalDihedralbonds()) {			
 			LoadBondIntoTopology<4, DihedralBond, DihedralBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, topologyFile.topology.GetForcefieldPaths());
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, topologyFile.topology.GetForcefieldPath());
 		}
 
 		for (const auto& bondTopol : topologyFile.topology.GetLocalImproperDihedralbonds()) {
 			LoadBondIntoTopology<4, ImproperDihedralBond, ImproperDihedralBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, topologyFile.topology.GetForcefieldPaths());
+				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, topologyFile.topology.GetForcefieldPath());
 		}
 	}
 

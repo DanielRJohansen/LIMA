@@ -1,6 +1,7 @@
 #include "Engine.cuh"
 #include "Utilities.h"
 #include "Neighborlists.cuh"
+#include "Statistics.h"
 
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
@@ -11,9 +12,9 @@
 
 #include "EngineKernels.cuh"
 
-#include "SupernaturalForces.cuh"
+#include "Thermostat.cuh"
 
-#include <assert.h>
+#include "SupernaturalForces.cuh"
 
 
 //const int compound_size = sizeof(CompoundCompact);
@@ -35,24 +36,31 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 	verifyEngine();
 
-	// Create the Sim_dev
-	if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
-	sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get());
-	sim_dev = genericMoveToDevice(sim_dev, 1);
+	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->boxparams.total_particles_upperbound, 
+		simulation->box_host->boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
 
-	//this->forcefield_host = forcefield_host;
+
+	// Create the Sim_dev {
+	{
+		if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
+		sim_dev = new SimulationDevice(simulation->simparams_host, simulation->box_host.get(), BoxConfig::Create(*simulation->box_host), BoxState::Create(*simulation->box_host), *dataBuffersDevice);
+		sim_dev = genericMoveToDevice(sim_dev, 1);
+	}
 	setDeviceConstantMemory();
+
+	auto boxparams = simulation->box_host->boxparams;
+	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
 Engine::~Engine() {
 	if (sim_dev != nullptr) {
-		sim_dev->deleteMembers();
+		sim_dev->FreeMembers();
 		cudaFree(sim_dev);
 	}
 
@@ -83,6 +91,9 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(cutoffLmSquaredReciprocal_device, &cutoffLmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 
+	const float initialThermostatScalar = 1.f;
+	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+
 	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
 
 
@@ -91,7 +102,7 @@ void Engine::setDeviceConstantMemory() {
 
 std::unique_ptr<Simulation> Engine::takeBackSim() {
 	assert(sim_dev);
-	sim_dev->box->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
 	return std::move(simulation);
 }
 
@@ -100,6 +111,9 @@ void Engine::verifyEngine() {
 
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
 	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
+
+	assert(simulation->simparams_host.steps_per_temperature_measurement % simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer == 0);
+	assert(simulation->simparams_host.steps_per_temperature_measurement >= simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer);
 }
 
 void Engine::step() {
@@ -108,40 +122,49 @@ void Engine::step() {
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
 	assert(simulation);
 	assert(sim_dev);
-	simulation->simsignals_host.step++;
-	sim_dev->signals->step++;	// UNSAFE
+	simulation->step++;
 
 	hostMaster();
 
 	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
+float HighestValue(const float* const arr, const int n) {
+	float max = 0.f;
+	for (int i = 0; i < n; i++) {
+		if (arr[i] > max) {
+			max = arr[i];
+		}
+	}
+	return max;
+}
+
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
-	if (DatabuffersDevice::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
-		offloadLoggingData();
-		offloadTrajectory();
+	if (DatabuffersDeviceController::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {
+		offloadLoggingData(DatabuffersDeviceController::nStepsInBuffer);
 		runstatus.stepForMostRecentData = simulation->getStep();
 
-		if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 0 && ENABLE_BOXTEMP) {
-			handleBoxtemp();
-		}
+		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
+			auto [temperature, thermostatScalar] = thermostat->Temperature(sim_dev, simulation->box_host->boxparams, simulation->simparams_host);
+			simulation->temperature_buffer.push_back(temperature);
+			runstatus.current_temperature = temperature;
 
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+			if (simulation->simparams_host.apply_thermostat)
+				cudaMemcpyToSymbol(thermostatScalar_device, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+		}
+		
+		HandleEarlyStoppingInEM();
+
+		NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
 	}
-	//if ((simulation->getStep() % STEPS_PER_TRAINDATATRANSFER) == 0) {
-	//	offloadTrainData();
-	//}
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();
 	runstatus.critical_error_occured = sim_dev->signals->critical_error_encountered;	// TODO: Can i get this from simparams_host? UNSAFE
-	// most recent positions are handled automaticall by transfer_traj
-	runstatus.simulation_finished = runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured;
+	if (runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured)
+		runstatus.simulation_finished = true;
 
-	//if ((simulation->getStep() % STEPS_PER_THERMOSTAT) == 1) {	// So this runs 1 step AFTER handleBoxtemp
-	//	simulation->box->thermostat_scalar = 1.f;
-	//}
 
 	const auto t1 = std::chrono::high_resolution_clock::now();
 	const int cpu_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -149,19 +172,17 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 }
 
 void Engine::terminateSimulation() {
-	const int stepsReadyToTransfer = DatabuffersDevice::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+	const int64_t stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
-	offloadTrajectory(stepsReadyToTransfer);	
 
-	//simulation->box_host->CopyDataFromDevice(sim_dev->box);
-	sim_dev->box->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
 
-void Engine::offloadLoggingData(const int steps_to_transfer) {
+void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
 	if (steps_to_transfer == 0) { return; }
 
@@ -170,56 +191,35 @@ void Engine::offloadLoggingData(const int steps_to_transfer) {
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
-		//&simulation->potE_buffer[step_relative * simulation->boxparams_host.total_particles_upperbound],
-		sim_dev->databuffers->potE_buffer, 
+		dataBuffersDevice->potE_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->vel_buffer,
+		dataBuffersDevice->vel_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->forceBuffer,
+		dataBuffersDevice->forceBuffer,
 		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
-#ifdef GENERATETRAINDATA
-	cudaMemcpy(	// THIS IS PROLLY WRONG NOW
-		&simulation->loggingdata[startindex * 10],
-		sim_dev->databuffers->outdata, 
-		sizeof(float) * 10 * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
-#endif
-	cudaDeviceSynchronize();
-}
-
-void Engine::offloadTrajectory(const int steps_to_transfer) {
-#ifndef DONTGENDATA
-	if (steps_to_transfer == 0) { return; }
-
-	const int64_t startstep = simulation->getStep() - steps_to_transfer;
-	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
-	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
-
-	cudaMemcpy(
+	cudaMemcpyAsync(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
-		sim_dev->databuffers->traj_buffer,
-		sizeof(Float3) * simulation->box_host->boxparams.total_particles_upperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost
-	);
+		dataBuffersDevice->traj_buffer,
+		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
+		cudaMemcpyDeviceToHost);
+
+	step_at_last_traj_transfer = simulation->getStep();
+	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep() - 1, simulation->simparams_host.data_logging_interval));
 
 	cudaDeviceSynchronize();
-#endif
-	step_at_last_traj_transfer = simulation->getStep();
-	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep()-1, simulation->simparams_host.data_logging_interval));
 }
-
 
 void Engine::offloadTrainData() {
 #ifdef GENERATETRAINDATA
@@ -229,7 +229,7 @@ void Engine::offloadTrainData() {
 	}
 
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
-	cudaMemcpy(&simulation->trainingdata[step_offset], sim_dev->databuffers->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&simulation->trainingdata[step_offset], dataBuffersDevice->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
 	LIMA_UTILS::genericErrorCheck("Cuda error during traindata offloading\n");
 #endif
 }
@@ -239,10 +239,8 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 
 	std::vector<CompoundCoords> compoundcoords_array(simulation->box_host->boxparams.n_compounds);
-	cudaMemcpy(compoundcoords_array.data(), sim_dev->box->compoundcoordsCircularQueue->data(), sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost);
+	cudaMemcpy(compoundcoords_array.data(), sim_dev->boxState->compoundcoordsCircularQueue, sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost); // TODO DO i need to do this really?
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
-
-
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
@@ -259,6 +257,24 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
+void Engine::HandleEarlyStoppingInEM() {
+	if (!simulation->simparams_host.em_variant || simulation->getStep() == simulation->simparams_host.n_steps)
+		return;
+	
+	const int minStepsPerCheck = 100;
+	if (simulation->getStep() > stepAtLastEarlystopCheck + minStepsPerCheck) {
+		const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()-1), simulation->forceBuffer->EntriesPerStep());
+		runstatus.greatestForce = greatestForce / LIMA * NANO / KILO; // Convert to [kJ/mol/nm]
+		simulation->maxForceBuffer.emplace_back(std::pair<int64_t,float>{ simulation->getStep(), runstatus.greatestForce });
+
+		if (runstatus.greatestForce <= simulation->simparams_host.em_force_tolerance) {
+			runstatus.simulation_finished = true;
+		}
+
+		stepAtLastEarlystopCheck = simulation->getStep();
+	}
+}
+
 
 
 
@@ -270,21 +286,18 @@ void Engine::deviceMaster() {
 
 	const BoxParams& boxparams = simulation->box_host->boxparams;
 
+	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
-		//compoundLJKernel<BoundaryCondition> << < simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL_3(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 
 	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
-//#ifdef ENABLE_ELECTROSTATICS
-//	if (simulation->simparams_host.enable_electrostatics && SCA::DoRecalc(simulation->getStep()))
-//		timings.electrostatics += SCA::handleElectrostatics(sim_dev, simulation->boxparams_host);
-//#endif
-	if constexpr (ENABLE_ELECTROSTATICS) {
+
+	if constexpr (ENABLE_ES_LR) {
 		if (simulation->simparams_host.enable_electrostatics) {
 			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
 		}
@@ -292,18 +305,16 @@ void Engine::deviceMaster() {
 	const auto t0b = std::chrono::high_resolution_clock::now();
 
 	if (boxparams.n_bridges > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev);
-		//compoundBridgeKernel<BoundaryCondition> <<< simulation->boxparams_host.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev);	// Must come before compoundKernel()
+		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev, simulation->getStep());
 	}
 
 	if (simulation->simparams_host.snf_select != None) {
-		SupernaturalForces::SnfHandler(simulation.get(), sim_dev);
+		SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
 	}
 
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
-		//compoundBondsAndIntegrationKernel<BoundaryCondition> << <simulation->boxparams_host.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();
@@ -311,15 +322,13 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (boxparams.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev);
-		//solventForceKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlock::MAX_SOLVENTS_IN_BLOCK>> > (sim_dev);
+		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev);
-			//solventTransferKernel<BoundaryCondition> << < SolventBlocksCircularQueue::blocks_per_grid, SolventBlockTransfermodule::max_queue_size >> > (sim_dev);
+			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev, simulation->getStep());
 		}
 	}
 	cudaDeviceSynchronize();

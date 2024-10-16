@@ -61,7 +61,7 @@ namespace ElectrostaticsTests {
 	// Additionally check that the final force and potential energy is as we would expect if calculate it manually
 	LimaUnittestResult doPoolBenchmarkES(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const int nSteps = 2;
 
@@ -90,13 +90,14 @@ namespace ElectrostaticsTests {
 		env.run();
 
 		const auto analytics = env.getAnalyzedPackage();
-		if (envmode != Headless) { Analyzer::printEnergy(analytics); }
+		if (envmode != Headless) { analytics.Print(); }
 
 		// Check if engine calculates the force and POTE we expect
 		{
 			Simulation* sim = env.getSimPtr();
 
 			const Compound& compoundSelf = sim->box_host->compounds[0];
+			const CompoundInterimState& compoundInterimSelf = sim->box_host->compoundInterimStates[0];
 			const float chargeSelf = compoundSelf.atom_charges[0];
 
 			// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -114,12 +115,12 @@ namespace ElectrostaticsTests {
 			float potE = PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, diff.len()) * 0.5f;
 			Float3 force = PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeOther, diff);
 
-			const float potEError = std::abs(compoundSelf.potE_interim[0] - potE) / potE;
-			const float forceError = std::abs((compoundSelf.forces_interim[0] - force).len()) / force.len();
+			const float potEError = std::abs(compoundInterimSelf.potE_interim[0] - potE) / potE;
+			const float forceError = std::abs((compoundInterimSelf.forces_interim[0] - force).len()) / force.len();
 
 
-			ASSERT(potEError < 1e-6, std::format("Actual PotE {:.7e} Expected potE: {:.7e}", compoundSelf.potE_interim[0], potE));
-			ASSERT(forceError < 1e-6, std::format("Actual Force {:.7e} Expected force {:.7e}", compoundSelf.forces_interim[0].len(), force.len()));
+			ASSERT(potEError < 1e-6, std::format("Actual PotE {:.7e} Expected potE: {:.7e}", compoundInterimSelf.potE_interim[0], potE));
+			ASSERT(forceError < 1e-6, std::format("Actual Force {:.7e} Expected force {:.7e}", compoundInterimSelf.forces_interim[0].len(), force.len()));
 		}
 
 
@@ -130,7 +131,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestAttractiveParticlesInteractingWithESandLJ(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 
 		const int nSteps = 1000;
@@ -161,7 +162,7 @@ namespace ElectrostaticsTests {
 
 		//LIMA_Print::printPythonVec("potE", env.getAnalyzedPackage()->pot_energy);
 
-		const float actualVC = env.getAnalyzedPackage()->variance_coefficient;
+		const float actualVC = env.getAnalyzedPackage().variance_coefficient;
 		const float maxVC = 1e-3;
 		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
@@ -169,13 +170,16 @@ namespace ElectrostaticsTests {
 	}
 
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		Environment env(simulations_dir / dirName, EnvMode::Headless, false);
+		Environment env(simulations_dir / dirName, EnvMode::Headless);
 
 		env.createSimulationFiles(boxLen);
 
 		auto a = env.getWorkdir();
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.24f, particlesPerNm3);
+
+		// Overwrite the forcefield
+		simfiles.topfile->forcefieldInclude = TopologyFile::ForcefieldInclude{ "lima_custom_forcefield.itp", simfiles.topfile->path.parent_path()};
 
 		simfiles.grofile->title = "ElectroStatic Field Test";
 		simfiles.topfile->title = "ElectroStatic Field Test";
@@ -186,23 +190,26 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
 		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "C", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
 			}, 
 			5.f
 			);
 
 
-		SimParams simparams{ 1000, 20, true, PBC };
+		SimParams simparams;
+		simparams.dt = 20;
+		//simparams.em_variant = true;
+		simparams.enable_electrostatics = false;//this seems silly..
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, 4.f};
+		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 4.f};
 	
 		env->run();	
 
@@ -214,11 +221,11 @@ namespace ElectrostaticsTests {
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
 		for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
 			const auto& compound = sim->box_host->compounds[cid];
+			const auto& compoundInterimState = sim->box_host->compoundInterimStates[cid];
 
 			for (int pid = 0; pid < compound.n_particles; pid++) {
-
 				const float charge = static_cast<float>(compound.atom_charges[pid]);
-				const float velHorizontal = compound.vels_prev[pid].x;
+				const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
 				velDistributions[charge].push_back(velHorizontal);
 			}
@@ -228,7 +235,7 @@ namespace ElectrostaticsTests {
 			for (const auto& pair : velDistributions) {
 				const int charge = pair.first;
 				const auto& velocities = pair.second;
-				std::cout << "Charge: " << charge << " | Mean Velocity: " << getMean(velocities) << " | Standard Deviation: " << getStdDev(velocities) << std::endl;
+				std::cout << "Charge: " << charge << " | Mean Velocity: " << Statistics::Mean(velocities) << " | Standard Deviation: " << Statistics::StdDev(velocities) << std::endl;
 			}
 		}
 
@@ -271,7 +278,8 @@ namespace ElectrostaticsTests {
 
 		const int nSteps = 1000;
 
-		SimParams simparams{ nSteps, 20, false, PBC };
+		SimParams simparams;
+		simparams.n_steps = nSteps;
 		simparams.dt = 100;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
@@ -291,10 +299,11 @@ namespace ElectrostaticsTests {
 		// First check that the potential energy is calculated as we would expect if we do it the simple way
 		float maxForceError = 0.f;
 		for (int cidSelf = 0; cidSelf < sim->box_host->boxparams.n_compounds; cidSelf++) {
-			double potESum = 0.f;
-			Float3 forceSum = 0.f;
+			double potESum{};
+			Float3 forceSum{};
 
 			const Compound& compoundSelf = sim->box_host->compounds[cidSelf];
+			const CompoundInterimState& compoundInterimSelf = sim->box_host->compoundInterimStates[cidSelf];
 			const float chargeSelf = compoundSelf.atom_charges[0];
 
 			// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -321,8 +330,8 @@ namespace ElectrostaticsTests {
 			// Need a expected error because in the test we do true hyperdist, but in sim we do no hyperdist
 			// The error arises because a particle is moved 1 boxlen, not when it is correct for hyperPos, but when it moves into the next node in the boxgrid
 			// Thus this error arises only when the box is so small that a particle go directly from nodes such as (-1, 0 0) to (1,0,0)
-			const float potEError = std::abs(compoundSelf.potE_interim[0] - potESum) / potESum;
-			const float forceError = std::abs((compoundSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
+			const float potEError = std::abs(compoundInterimSelf.potE_interim[0] - potESum) / potESum;
+			const float forceError = std::abs((compoundInterimSelf.forces_interim[0] - forceSum).len()) / forceSum.len();
 			maxForceError = std::max(maxForceError, forceError);
 
 			//ASSERT(potEError < 1e-4, std::format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
@@ -331,21 +340,21 @@ namespace ElectrostaticsTests {
 
 		// Now do the normal VC check
 		const float targetVarCoeff = 8e-3f;
-		auto analytics = env->getAnalyzedPackage();
+		auto analytics = SimAnalysis::analyzeEnergy(sim.get());
 
 
-		ASSERT(analytics->variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics->variance_coefficient, targetVarCoeff));
+		ASSERT(analytics.variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
 
 		return LimaUnittestResult{ 
 			true, 
-			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics->variance_coefficient, targetVarCoeff, maxForceError),
+			std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
 			envmode == Full };
 	}
 
 
 	LimaUnittestResult TestLongrangeEsNoLJ(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
 		{

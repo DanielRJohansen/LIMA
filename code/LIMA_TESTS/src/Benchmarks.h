@@ -1,6 +1,7 @@
 #include "Programs.h"
 #include "TestUtils.h"
 #include "TimeIt.h"
+#include "MoleculeUtils.h"
 
 namespace Benchmarks {
 
@@ -73,7 +74,7 @@ namespace Benchmarks {
 		////const auto analytics = env->getAnalyzedPackage();
 
 		////if (envmode != Headless) {
-		////	Analyzer::printEnergy(analytics);
+		////	analytics.Print();
 		////	LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
 		////	LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
 		////}
@@ -88,23 +89,18 @@ namespace Benchmarks {
 			// envmode = ConsoleOnly;	// Cant go fast in Full
 
 		const fs::path work_dir = simulations_dir / "psome";
-		float boxlen = 23.f;
-		Environment env{ work_dir, envmode, false };
 		
 		bool em = false;
 		if (em) {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
-			grofile.box_size = Float3{ boxlen, boxlen, boxlen };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
-			Programs::SetMoleculeCenter(grofile, Float3{ boxlen / 2.f, boxlen / 2.f, boxlen / 2.f });
-			SimulationBuilder::SolvateGrofile(grofile);
-			Programs::EnergyMinimize(env, grofile, topfile, true, boxlen);
+			MoleculeUtils::CenterMolecule(grofile, topfile);
+			//SimulationBuilder::SolvateGrofile(grofile);
+			auto sim = Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
+			grofile.printToFile(std::string{ "em.gro" });
 
-			SimAnalysis::PlotPotentialEnergyDistribution(*env.getSimPtr(), env.work_dir, { 0,1000, 2000, 3000, 4000 - 1 });
-
-			GroFile emGro = env.writeBoxCoordinatesToFile();
-			emGro.printToFile(std::string{ "em.gro" });
+			SimAnalysis::PlotPotentialEnergyDistribution(*sim, work_dir, {0,1000, 2000, 3000, 4000 - 1});
 		}
 
 		GroFile grofile{ work_dir / "molecule" / "em.gro" };
@@ -113,6 +109,7 @@ namespace Benchmarks {
 		ip.data_logging_interval = 20;
 		ip.dt = 50;
 		ip.enable_electrostatics = true;
+		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false);
 

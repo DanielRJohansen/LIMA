@@ -10,7 +10,7 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 	lipidname(lipidname),
 	percentage(percentage)
 {
-	const fs::path defaultLipidsDir = Filehandler::GetLimaDir() / ("resources/Slipids");
+	const fs::path defaultLipidsDir = FileUtils::GetLimaDir() / ("resources/Slipids");
 
 	if (!userSupplied && !fs::exists(defaultLipidsDir / (lipidname + ".itp"))) {
 		throw std::runtime_error(std::format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
@@ -191,7 +191,7 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 
 	if (grofile.box_size == Float3{0})
 		grofile.box_size = Float3{ 10.f };
-	MoleculeUtils::SetMoleculeCenter(grofile, grofile.box_size / 2.f);
+	MoleculeUtils::CenterMolecule(grofile, topfile);
 	OrientLipidhead(grofile);
 
 	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
@@ -217,31 +217,18 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 #include "Environment.h"
 
 void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
-	std::string path = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
-	std::vector<std::string> targets;
+	fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
 
-	//std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr;
+	std::vector<std::array<fs::path, 2>> lipidFiles = FileUtils::GetAllGroItpFilepairsInDir(dir);
 
-	for (const auto& entry : fs::directory_iterator(path)) {
-		if (entry.path().extension() == ".gro") {
-			std::string base_name = entry.path().stem().string();
-			std::string itp_file = path + base_name + ".itp";
-			if (fs::exists(itp_file)) {
-
-				targets.push_back(base_name);
-			}
-		}
-	}
-
-	for (const auto& target : targets) {
-		printf("Organizing %s\n", target.c_str());
-		GroFile grofile{ path + target + ".gro" };
-		TopologyFile topfile{ path + target + ".itp" };
+	for (auto [gropath, itppath] : lipidFiles) {
+		printf("Organizing %s\n", gropath.stem().string().c_str());
+		GroFile grofile{ gropath};
+		TopologyFile topfile{ itppath };
 
 		// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
-		assert(topfile.forcefieldIncludes.size() ==1);
-		topfile.forcefieldIncludes.resize(1);
-		topfile.forcefieldIncludes[0] = { TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp", "Slipids_2020.ff/forcefield.itp"} };
+		assert(topfile.forcefieldInclude);
+		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude(TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp"} );
 
 		grofile.box_size = Float3{ 5.f };
 	/*	if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
@@ -252,7 +239,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 
 		// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
 		{
-			Environment env{ grofile.m_path.parent_path(), Headless, false };
+			Environment env{ grofile.m_path.parent_path(), Headless};
 			SimParams params;
 			params.n_steps = 2;
 			params.dt = 0;
@@ -265,7 +252,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 			if (displayEachLipidAndHalt) {
 				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr; // TODO: move to top so we dont reinit every time
 				display->Render(
-					std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, 0, 0.f, ColoringMethod::GradientFromCompoundId),
+					std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
 					true);
 			}
 		}

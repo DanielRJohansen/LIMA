@@ -14,11 +14,11 @@
 #error These are mutually exclusive
 #endif
 
-//#define ENABLE_ELECTROSTATICS
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
-const bool ENABLE_ELECTROSTATICS = true;
+const bool ENABLE_ES_SR = true;
+const bool ENABLE_ES_LR = true;
 
 //#define GENERATETRAINDATA
 
@@ -81,25 +81,6 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 
-// ------------------------------------------------ Box Parameters ---------------------------------------------- //
-// -------------------------------------------------------------------------------------------------------------- //
-
-
-
-
-
-
-// -------------------------------------------- Simulation Parameters ------------------------------------------- //
-const bool print_compound_positions = false;		// what is tihs?
-const bool DUMP_TRAJ = false;		// Make sure this is correct with DONTGETDATA flag
-const bool DUMP_POTE = true;
-const bool POSTSIM_ANAL = true;
-// -------------------------------------------------------------------------------------------------------------- //
-
-
-
-
-
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
@@ -118,7 +99,7 @@ const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
-const bool CALC_POTE = true;
+const bool ENABLE_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
@@ -164,10 +145,10 @@ const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 
 
 // ------------------------------------------- Temperature Parameters ------------------------------------------- //
-const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
-constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
-constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
+//const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
+//const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
+//constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
+//constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
 // -------------------------------------------------------------------------------------------------------------- //
 
 // -------------------------------------------- Neighborlist Parameters ----------------------------------------- //

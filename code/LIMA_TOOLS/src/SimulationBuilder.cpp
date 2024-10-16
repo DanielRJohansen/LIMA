@@ -9,7 +9,7 @@
 #include <functional>
 #include <algorithm>
 #include <random>
-
+#include <numeric>
 
 
 
@@ -26,21 +26,6 @@ void centerMoleculeAroundOrigo(GroFile& grofile) {
 	}
 }
 
-Float3 calcDimensions(const GroFile& grofile)
-{
-	BoundingBox bb{};
-
-	for (const auto& atom : grofile.atoms) {
-		for (int dim = 0; dim < 3; dim++) {
-			bb.min[dim] = std::min(bb.min[dim], atom.position[dim]);
-			bb.max[dim] = std::max(bb.max[dim], atom.position[dim]);
-		}		
-	}
-
-	const Float3 dims{ bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z };
-	return dims;
-}
-
 float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
@@ -55,7 +40,7 @@ float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection
 float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselection, int dim) {
 	float minPos = FLT_MAX;
 	for (const auto& lipid : lipidselection) {
-		for (const auto& atom : lipid.grofile->atoms) {
+		for (const auto& atom : lipid.grofile->atoms) {			
 			minPos = std::min(minPos, atom.position[dim]);
 		}
 	}
@@ -532,22 +517,6 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
-	validateLipidselection(lipidselection);
-
-	for (auto& lipid : lipidselection) {
-		centerMoleculeAroundOrigo(*lipid.grofile);
-	}
-
-	
-	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
-	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
-	const float n_lipids_total = lipid_density * boxSize.x * boxSize.y;
-	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
-	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
-
-	const float distPerX = boxSize.x / static_cast<float>(lipidsPerDimx);
-	const float distPerY = boxSize.y / static_cast<float>(lipidsPerDimy);
-
 	auto outputgrofile = std::make_unique<GroFile>();
 	outputgrofile->box_size = boxSize;
 	outputgrofile->title = "Membrane consisting of ";
@@ -555,13 +524,49 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->name = "monolayer";
+	outputtopologyfile->name = "Membrane";
+	outputtopologyfile->system = "Membrane";
+
+	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
+
+	return { std::move(outputgrofile), std::move(outputtopologyfile) };
+}
+
+
+struct QueuedInsertion {
+	GroFile& grofile;
+	std::function<void(Float3&)> positionTransform;
+	std::shared_ptr<TopologyFile> topfile;
+};
+
+void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter) {
+
+	validateLipidselection(lipidselection);
+
+	for (auto& lipid : lipidselection) {
+		centerMoleculeAroundOrigo(*lipid.grofile);
+	}
+
+	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
+	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
+	const float n_lipids_total = lipid_density * grofile.box_size.x * grofile.box_size.y;
+	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
+	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
+
+	const float distPerX = grofile.box_size.x / static_cast<float>(lipidsPerDimx);
+	const float distPerY = grofile.box_size.y / static_cast<float>(lipidsPerDimy);
+
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
 	srand(1238971);
 
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+
+	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
+	for (auto& lipid : lipidselection) {
+		queuedInsertions[lipid.lipidname] = std::vector<QueuedInsertion>();
+	}
 
 	int nLipidsInserted = 0;
 	for (int x = 0; x < lipidsPerDimx; x++) {
@@ -593,8 +598,10 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
-					*outputtopologyfile, inputlipid.topfile);
+				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+				//	topfile, inputlipid.topfile);
+
+				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}
 
 			// Insert bottom lipid
@@ -615,13 +622,33 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 					pos += randomTopDownTranslation;
 					};
 
-				AddGroAndTopToGroAndTopfile(*outputgrofile, *inputlipid.grofile, position_transform,
-					*outputtopologyfile, inputlipid.topfile);
+				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
+				//	topfile, inputlipid.topfile);
+				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}
 
 			nLipidsInserted++;
 		}
 	}
 
-	return { std::move(outputgrofile), std::move(outputtopologyfile) };
+// This doesnt compile with GCC, but it enables execution:par, no?
+/*	const int totalIncoming = std::reduce(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) {
+		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
+		const int nLipids = pair.second.size();
+		return sum + nLipids*atomsPerLipid;
+		});*/
+	const int totalIncoming = std::accumulate(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) {
+		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
+		const int nLipids = pair.second.size();
+    return sum + nLipids * atomsPerLipid;
+});
+
+	grofile.atoms.reserve(grofile.atoms.size() + totalIncoming);
+
+	for (const auto& [_, lipidType] : queuedInsertions) {
+		for (const QueuedInsertion& queuedElement : lipidType) {
+			AddGroAndTopToGroAndTopfile(grofile, queuedElement.grofile, queuedElement.positionTransform, topfile, queuedElement.topfile);
+		}
+	}
+
 }

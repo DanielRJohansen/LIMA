@@ -4,6 +4,7 @@
 #include "DeviceAlgorithms.cuh"
 #include "Constants.h"
 #include "Filehandling.h"
+#include "Statistics.h"
 
 #include <algorithm>
 #include <numeric>
@@ -69,9 +70,9 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 
 
 	const int solvent_index = threadIdx.x + blockIdx.y * THREADS_PER_SOLVENTBLOCK_ANALYZER;
-	const int step = blockIdx.x;
+	const int64_t step = blockIdx.x;
 	const int compounds_offset = boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	const int step_offset = step * boxparams.total_particles_upperbound;
+	const int64_t step_offset = step * boxparams.total_particles_upperbound;
 
 	energy[threadIdx.x] = Float3(0.f);
 	if (threadIdx.x == 0) {
@@ -103,7 +104,7 @@ __device__ int getBinIndex(float value) {
 	return std::min(std::max(binIndex, 0), NUM_BINS - 1);  // Clamp to valid range
 }
 
-__global__ void potEHistogramKernel(Compound* compounds, int total_particles_upperbound, float* potE_buffer, int* histogramData, int step) {
+__global__ void potEHistogramKernel(Compound* compounds, int total_particles_upperbound, float* potE_buffer, int* histogramData, int64_t step) {
 	__shared__ int shared_histogram[NUM_BINS];
 
 	const int compound_index = blockIdx.x;   // Unique index for each compound
@@ -147,68 +148,8 @@ __global__ void potEHistogramKernel(Compound* compounds, int total_particles_upp
 
 
 
-Analyzer::AnalyzedPackage Analyzer::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
-	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
-	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
-
-	if (n_entryindices < 2) { return Analyzer::AnalyzedPackage(); }
-
-
-	// First set up some stuff needed on device, that is currently on host
-	cudaMalloc(&forcefield_device, sizeof(ForceField_NB));
-	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
-
-	if (simulation->box_host->boxparams.n_compounds > 0) {
-		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);
-		cudaMemcpy(compounds_device, simulation->box_host->compounds.data(), sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
-	}
-	
-
-
-	std::vector<Float3> average_energy;
-	average_energy.resize(n_entryindices - 2);	// Ignore first and last step	// TODO: Rework this, no longer necessary as we use VVS
-
-	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
-	int64_t max_steps_per_kernel = 100;
-	int64_t particles_per_step = simulation->box_host->boxparams.total_particles_upperbound;
-	int64_t max_values_per_kernel = max_steps_per_kernel * particles_per_step;							// Pad steps with 2 for vel calculation
-
-	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
-	m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
-	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
-	cudaMalloc(&vel_buffer_device, sizeof(float) * max_values_per_kernel);
-
-	for (int64_t i = 0; i < ceil((double)n_entryindices / (double)max_steps_per_kernel); i++) {
-		const int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
-		const int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_entryindices - step_offset);
-
-		cudaMemcpy(potE_buffer_device, &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
-		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
-		LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
-
-		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel);
-		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel);
-
-		for (int64_t ii = 0; ii < steps_in_kernel; ii++) {
-			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
-			if (step == -1 || step >= n_entryindices -2u) { continue; }	// Dont save first step, as the kinE is slightly wrong
-			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);
-		}
-	}
-
-	cudaFree(potE_buffer_device);
-	cudaFree(vel_buffer_device);
-	cudaFree(forcefield_device);
-	if (simulation->box_host->boxparams.n_compounds > 0) {
-		cudaFree(compounds_device);
-	}
-
-	m_logger->finishSection("Finished analyzing energies");
-	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
-}
-
-std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps) {
+std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps, float* potE_buffer_device, float* vel_buffer_device, ForceField_NB* forcefield_device) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
@@ -242,8 +183,7 @@ std::vector<Float3> Analyzer::analyzeSolvateEnergy(Simulation* simulation, uint6
 	return average_solvent_energy;
 }
 
-
-std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel) {
+std::vector<Float3> analyzeCompoundEnergy(Simulation* simulation, uint64_t steps_in_kernel, float* potE_buffer_device, float* vel_buffer_device, Compound* compounds_device, ForceField_NB* forcefield_device) {
 	const uint64_t n_datapoints = simulation->box_host->boxparams.n_compounds * steps_in_kernel;
 
 	std::vector<Float3> total_compound_energy(steps_in_kernel);
@@ -274,6 +214,73 @@ std::vector<Float3> Analyzer::analyzeCompoundEnergy(Simulation* simulation, uint
 	return total_compound_energy;
 }
 
+SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
+	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
+
+	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+
+	if (n_entryindices < 2) { return AnalyzedPackage(); }
+
+
+
+
+	// First set up some stuff needed on device, that is currently on host
+	float* potE_buffer_device = nullptr;
+	float* vel_buffer_device = nullptr;
+	Compound* compounds_device = nullptr;	
+	ForceField_NB* forcefield_device = nullptr;
+	cudaMalloc(&forcefield_device, sizeof(ForceField_NB));
+	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
+
+	if (simulation->box_host->boxparams.n_compounds > 0) {
+		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);
+		cudaMemcpy(compounds_device, simulation->box_host->compounds.data(), sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
+	}
+
+
+
+	std::vector<Float3> average_energy;
+	average_energy.resize(n_entryindices - 2);	// Ignore first and last step	// TODO: Rework this, no longer necessary as we use VVS
+
+	// We need to split up the analyser into steps, as we cannot store all positions traj on device at once.
+	int64_t max_steps_per_kernel = 100;
+	int64_t particles_per_step = simulation->box_host->boxparams.total_particles_upperbound;
+	int64_t max_values_per_kernel = max_steps_per_kernel * particles_per_step;							// Pad steps with 2 for vel calculation
+
+	const std::string bytesize = std::to_string((sizeof(Float3) + sizeof(double)) * (max_values_per_kernel) * 1e-6);
+	//m_logger->print("Analyzer malloc " + bytesize + " MB on device\n");
+	cudaMalloc(&potE_buffer_device, sizeof(float) * max_values_per_kernel);
+	cudaMalloc(&vel_buffer_device, sizeof(float) * max_values_per_kernel);
+
+	for (int64_t i = 0; i < ceil((double)n_entryindices / (double)max_steps_per_kernel); i++) {
+		const int64_t step_offset = i * max_steps_per_kernel;												// offset one since we can't analyse step 1
+		const int64_t steps_in_kernel = std::min(max_steps_per_kernel, n_entryindices - step_offset);
+
+		cudaMemcpy(potE_buffer_device, &simulation->potE_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
+		LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
+
+		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel, potE_buffer_device, vel_buffer_device, forcefield_device);
+		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel, potE_buffer_device, vel_buffer_device, compounds_device, forcefield_device);
+
+		for (int64_t ii = 0; ii < steps_in_kernel; ii++) {
+			int64_t step = step_offset + ii - 1;	// -1 because index 0 is unused
+			if (step == -1 || step >= n_entryindices - 2u) { continue; }	// Dont save first step, as the kinE is slightly wrong
+			average_energy[step] = (average_solvent_energy[ii] + average_compound_energy[ii]);
+		}
+	}
+
+	cudaFree(potE_buffer_device);
+	cudaFree(vel_buffer_device);
+	cudaFree(forcefield_device);
+	if (simulation->box_host->boxparams.n_compounds > 0) {
+		cudaFree(compounds_device);
+	}
+
+	//m_logger->finishSection("Finished analyzing energies");
+	return AnalyzedPackage(average_energy, simulation->temperature_buffer);
+}
+
 float getMin(const std::vector<float>& vec) {
 	return *std::min_element(vec.begin(), vec.end());
 }
@@ -284,28 +291,28 @@ float getMax(const std::vector<float>& vec) {
 
 float getVarianceCoefficient(const std::vector<float>& vec) {
 	if (vec.empty()) { return 0.f; } 
-	const float stddev = getStdDev(vec);
-	const float mean = getMean(vec);
+	const float stddev = Statistics::StdDev(vec);
+	const float mean = Statistics::Mean(vec);
 
 	if (stddev == 0.f && mean == 0.f) { return 0.f; }
 	return  stddev / std::abs(mean);
 }
 
-void printRow(string title, std::vector<float>& vec) {
+void printRow(string title, const std::vector<float>& vec) {
 	if (vec.empty()) { return; }
 	LIMA_Printer::printTableRow(
 		title, { 
 			getMin(vec), 
 			getMax(vec), 
-			getStdDev(vec),
+			Statistics::StdDev(vec),
 			(vec.back() - vec.front()) / vec.front() });
 }
 
-void Analyzer::printEnergy(AnalyzedPackage* package) {
+void SimAnalysis::AnalyzedPackage::Print() const {
 	LIMA_Printer::printTableRow({ "", "min", "max", "Std. deviation", "Change 0->n"});
-	printRow("potE", package->pot_energy);
-	printRow("kinE", package->kin_energy);
-	printRow("totalE", package->total_energy);
+	printRow("potE", pot_energy);
+	printRow("kinE", kin_energy);
+	printRow("totalE", total_energy);
 }
 
 
@@ -331,7 +338,7 @@ float calculateSlopeLinearRegression(const std::vector<float>& y_values, const f
 	return slope_coefficient;
 }
 
-Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
+SimAnalysis::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature) {
 	energy_data = avg_energy;
 	//auto e_cnt = energy_data.size();
 
@@ -348,7 +355,7 @@ Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std:
 		total_energy[i] = energy_data[i].z;
 	}
 
-	mean_energy = getMean(total_energy);
+	mean_energy = Statistics::Mean(total_energy);
 
 	energy_gradient = calculateSlopeLinearRegression(total_energy, mean_energy);
 	variance_coefficient = getVarianceCoefficient(total_energy);
@@ -375,45 +382,45 @@ Analyzer::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, std:
 
 
 
-
-
-
-
-void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir) {
-	std::vector<float> energies;
-	
-	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simparams_host.data_logging_interval); entryindex++) {
-
-		for (int compound_id = 0; compound_id < sim.box_host->boxparams.n_compounds; compound_id++) {
-			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-				
-				const float potE = sim.potE_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
-
-				const uint8_t& atom_type = sim.box_host->compounds[compound_id].atom_types[particle_id];
-				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
-				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
-				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
-				
-				energies.emplace_back(potE);
-				energies.emplace_back(kinE);
-			}
-		}
-
-		for (int solvent_id = 0; solvent_id < sim.box_host->boxparams.n_solvents; solvent_id++) {
-
-			const float potE = sim.potE_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
-
-			const float mass = sim.forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-			const float vel = sim.vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
-			const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
-
-			energies.emplace_back(potE);
-			energies.emplace_back(kinE);
-		}
-	}
-
-	Filehandler::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
-}
+//
+//
+//
+//
+//void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir) {
+//	std::vector<float> energies;
+//	
+//	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simparams_host.data_logging_interval); entryindex++) {
+//
+//		for (int compound_id = 0; compound_id < sim.box_host->boxparams.n_compounds; compound_id++) {
+//			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+//				
+//				const float potE = sim.potE_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
+//
+//				const uint8_t& atom_type = sim.box_host->compounds[compound_id].atom_types[particle_id];
+//				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
+//				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
+//				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
+//				
+//				energies.emplace_back(potE);
+//				energies.emplace_back(kinE);
+//			}
+//		}
+//
+//		for (int solvent_id = 0; solvent_id < sim.box_host->boxparams.n_solvents; solvent_id++) {
+//
+//			const float potE = sim.potE_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
+//
+//			const float mass = sim.forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
+//			const float vel = sim.vel_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
+//			const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
+//
+//			energies.emplace_back(potE);
+//			energies.emplace_back(kinE);
+//		}
+//	}
+//
+//	FileUtils::dumpToFile(energies.data(), energies.size(), workdir + "/PiecewiseEnergy.bin");
+//}
 
 
 
@@ -455,7 +462,7 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 	std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
 	int nPlots = stepsToPlot.size();
 	out_file.write(reinterpret_cast<char*>(&nPlots), sizeof(int));
-	for (int step : stepsToPlot) {
+	for (int64_t step : stepsToPlot) {
 		cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
 		cudaMemset(histogramDataDevice, 0, NUM_BINS * sizeof(int));
 

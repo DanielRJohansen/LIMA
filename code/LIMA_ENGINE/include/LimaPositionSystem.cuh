@@ -245,7 +245,7 @@ namespace LIMAPOSITIONSYSTEM {
 		return (p1 - temp).len();
 	}
 
-	__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue& coords, int step, int compoundIndex, int particleIndex) {
+	__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue_Host& coords, int64_t step, int compoundIndex, int particleIndex) {
 		return GetAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
 	}
 
@@ -290,9 +290,9 @@ public:
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
 	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
 	template <typename BoundaryCondition>
-	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundcoordsCircularQueue* coordarray_circular_queue, int step, int compound_index_left, int compound_index_right) {
-		NodeIndex& nodeindex_left = coordarray_circular_queue->getCoordarrayRef(step, compound_index_left)->origo;
-		NodeIndex& nodeindex_right = coordarray_circular_queue->getCoordarrayRef(step, compound_index_right)->origo;
+	__device__ static Coord getRelativeShiftBetweenCoordarrays(CompoundCoords* coordarray_circular_queue, int64_t step, int compound_index_left, int compound_index_right) {
+		NodeIndex& nodeindex_left = CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
+		NodeIndex& nodeindex_right = CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
 
 		const NodeIndex hypernodeindex_right = BoundaryCondition::applyHyperpos_Return(nodeindex_left, nodeindex_right);
 		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;

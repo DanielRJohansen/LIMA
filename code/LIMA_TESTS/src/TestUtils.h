@@ -51,18 +51,63 @@ namespace TestUtils {
 		}
 	}
 
+	void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
+		if (dir.string().find("LIMA_data") == std::string::npos) {
+			throw std::runtime_error("LIMA is not allowed to clean this directory");
+		}
+
+		if (!fs::exists(dir) || !fs::is_directory(dir)) {
+			std::cerr << "Path does not exist or is not a directory: " << dir << std::endl;
+			return;
+		}
+
+		// Remove all files that do not contain "reference" in their name
+		for (auto& p : fs::recursive_directory_iterator(dir)) {
+			if (fs::is_regular_file(p) && p.path().filename().string().find(except) == std::string::npos) {
+				try {
+					fs::remove(p);
+				}
+				catch (const fs::filesystem_error& e) {
+					std::cerr << "Error removing " << p.path() << ": " << e.what() << '\n';
+				}
+			}
+		}
+
+		// Collect all directories in a vector
+		std::vector<fs::path> directories;
+		for (auto& p : fs::recursive_directory_iterator(dir)) {
+			if (fs::is_directory(p)) {
+				directories.push_back(p);
+			}
+		}
+
+		// Sort directories in reverse order to remove from the deepest level first
+		std::sort(directories.rbegin(), directories.rend());
+
+		// Remove empty directories
+		for (const auto& p : directories) {
+			if (fs::is_empty(p)) {
+				try {
+					fs::remove(p);
+				}
+				catch (const fs::filesystem_error& e) {
+					std::cerr << "Error removing " << p << ": " << e.what() << '\n';
+				}
+			}
+		}
+	}
+
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<SimParams> simparams, EnvMode envmode) {
 		
 		const fs::path work_folder = simulations_dir / foldername;
-		//const std::string conf = work_folder / "molecule/conf.gro";
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
 		const TopologyFile topol {work_folder / "molecule/topol.top"};
 		const fs::path simpar = work_folder / "sim_params.txt";
 
-		auto env = std::make_unique<Environment>(work_folder, envmode, false);
+		auto env = std::make_unique<Environment>(work_folder, envmode);
 
 		const SimParams ip = simparams.hasValue()
 			? simparams.value()
@@ -90,11 +135,11 @@ namespace TestUtils {
 
 	bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
 		if (overwriteFile) {
-			Filehandler::WriteVectorToBinaryFile(path, vec);
+			FileUtils::WriteVectorToBinaryFile(path, vec);
 			return true;
 		}
 
-		const std::vector<Float3> fileVec = Filehandler::ReadBinaryFileIntoVector<Float3>(path);
+		const std::vector<Float3> fileVec = FileUtils::ReadBinaryFileIntoVector<Float3>(path);
 		if (vec.size() != fileVec.size()) {
 			return false;
 		}
@@ -261,21 +306,21 @@ namespace TestUtils {
 
 		const auto analytics = env->getAnalyzedPackage();
 		
-		float varcoff = analytics->variance_coefficient;
+		float varcoff = analytics.variance_coefficient;
 		
 
 		if (envmode != Headless) {
-			Analyzer::printEnergy(analytics);
-			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics->pot_energy});
-			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics->kin_energy});
-			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics->total_energy});
-			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
+			analytics.Print();
+			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics.pot_energy});
+			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics.kin_energy});
+			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics.total_energy});
+			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 		}
 		ASSERT(env->getSimPtr()->simsignals_host.critical_error_encountered == false, "Critical error encountered");
-		ASSERT(env->getSimPtr()->simsignals_host.step == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
-			env->getSimPtr()->simsignals_host.step, env->getSimPtr()->simparams_host.n_steps));
+		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
+			env->getSimPtr()->getStep(), env->getSimPtr()->simparams_host.n_steps));
 
-		const auto result = evaluateTest({ varcoff }, max_vc, {analytics->energy_gradient}, max_gradient);
+		const auto result = evaluateTest({ varcoff }, max_vc, {analytics.energy_gradient}, max_gradient);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

@@ -1,10 +1,13 @@
 #pragma once
 
 #include "Statistics.h"
-
+#include <numeric>
 #include <assert.h>
 #include <cmath>
 #include <math.h>
+#include <algorithm>
+#include <execution>
+
 
 std::pair<float, float> Statistics::linearFit(const std::vector<float>& x, const std::vector<float>& y) {
     assert(x.size() == y.size());
@@ -43,12 +46,23 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
     return explainedVar / totalVar;
 }
 
+//Float3 Statistics::Mean(const std::span<const Float3>& values) {
+//    Float3 sum = std::reduce(std::execution::par, values.begin(), values.end(), Float3{ 0, 0, 0 },
+//        [](const Float3& a, const Float3& b) -> Float3 {
+//            return { a.x + b.x, a.y + b.y, a.z + b.z };
+//        });
+//    return sum / values.size();
+//}
+
 Float3 Statistics::Mean(const std::span<const Float3>& values) {
-	Float3 sum = { 0, 0, 0 };
-	for (auto val : values) {
-		sum += val;
-	}
-	return sum / values.size();
+    // Use Double3 for more precision in the accumulation
+    Double3 sum = std::reduce(std::execution::par, values.begin(), values.end(), Double3{ 0, 0, 0 },
+        [](const Double3& a, const Double3& b) -> Double3 {
+            return { a.x + b.x, a.y + b.y, a.z + b.z };
+        });
+
+    // Convert back to Float3 for the final result
+    return (sum / static_cast<double>(values.size()) ).toFloat3();
 }
 
 Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) {
@@ -62,7 +76,7 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
 
     const int maxIterations = 5;
     for (int i = 0; i < maxIterations; i++) {
-        Float3 downGradient = { 0, 0, 0 };
+        Float3 downGradient{};
         float maxDist = 0.0f;
         float secondMaxDist = 0.0f;
 
@@ -87,4 +101,42 @@ Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) 
     }
 
     return currentPoint;
+}
+
+float Statistics::Mean(const std::vector<float>& vec)
+{
+    double sum = std::accumulate(vec.begin(), vec.end(), 0.0);
+    return static_cast<float>(sum / static_cast<double>(vec.size()));
+}
+
+float Statistics::StdDev(const std::vector<float>& vec) {
+    if (vec.empty()) { return 0.f; }
+
+    const double mean = Mean(vec);
+
+    double variance = std::accumulate(vec.begin(), vec.end(), 0.0,
+        [mean](double acc, float elem) {
+            double diff = elem - mean;
+            return acc + diff * diff;
+        });
+
+    const double deviation = variance / static_cast<double>(vec.size());
+    return static_cast<float>(std::sqrt(deviation));
+}
+
+float Statistics::Max(const float* const data, size_t n) {
+    return *std::max_element(std::execution::par, data, data + n);
+}
+
+float Statistics::MaxLen(const Float3* const data, size_t n) {
+    const Float3 maxElem = *std::max_element(std::execution::par, data, data + n,
+        [](const Float3& a, const Float3& b) {
+            return a.lenSquared() < b.lenSquared();
+        }
+    );
+    return maxElem.len();
+}
+
+double Statistics::Sumd(const float* const data, size_t n) {
+	return std::reduce(std::execution::par, data, data + n, 0.0);
 }

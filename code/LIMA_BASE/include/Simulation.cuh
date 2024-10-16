@@ -6,10 +6,9 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 
+namespace MDFiles { struct TrrFile; }
 
 enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
-
-
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
@@ -18,82 +17,51 @@ enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, Bo
 struct SimParams {
 	SimParams() {}
 	SimParams(const std::filesystem::path& path);
-	SimParams(uint64_t ns, float dt, bool ev, BoundaryConditionSelect bc) 
-		: n_steps(ns), dt(dt), em_variant(ev), bc_select(bc) {}
+	SimParams(std::initializer_list<int>) = delete;
 
 	void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
 
+	// Main params
 	uint64_t n_steps = 1000;
 	float dt = 100.f;									// [ls]
 	bool em_variant = false;
+	float em_force_tolerance = 1000; // [kJ/mol/nm]
+
+	// Physics params
 	BoundaryConditionSelect bc_select{ PBC };
+	bool enable_electrostatics = true;
+	float cutoff_nm = 1.2f;
 	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
-	bool enable_electrostatics = false;
 
-
+	// Output params
+	int data_logging_interval = 5;
+	bool save_trajectory = false;
+	bool save_energy = false;
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
 
-	int data_logging_interval = 5;
+	// Thermostat
+	int64_t steps_per_temperature_measurement = 200;
+	bool apply_thermostat = false;
 
-	float cutoff_nm = 1.2f;
-
-	static std::string defaultPath() { return "sim_params.txt"; };
 };
 
 struct SimSignals {
-	int64_t step = 0;
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
-	float thermostat_scalar = 1.f;
 };
 
 
 
 struct BoxParams {
 	int boxSize = 0;	// [nm]
-
 	int n_compounds = 0;
 	int n_bridges = 0;
-	int64_t n_solvents = 0;
-	int64_t total_particles_upperbound = 0;
-	uint32_t total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
-	uint32_t total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	int n_solvents = 0;
+	int total_particles_upperbound = 0;
+	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
+	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	int64_t degreesOfFreedom;
 };
 
-struct DatabuffersDevice {
-	DatabuffersDevice(const DatabuffersDevice&) = delete;
-	DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval);
-	void freeMembers();
-
-	static const int nStepsInBuffer = 10;
-
-	static bool IsBufferFull(size_t step, int loggingInterval) {
-		return step % (nStepsInBuffer * loggingInterval) == 0;
-	}
-	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
-		const int stepsSinceTransfer = step % (nStepsInBuffer * loggingInterval);
-		return stepsSinceTransfer / loggingInterval;
-	}
-
-	__device__ int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int step, int loggingInterval) const {
-		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
-		
-		//const int64_t step_offset = LIMALOGSYSTEM::getDataentryIndex(steps_since_transfer, loggingInterval) * total_particles_upperbound;
-		const int stepOffset = steps_since_transfer / loggingInterval * total_particles_upperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return stepOffset + compound_offset + particleIdLocal;
-	}
-
-	float* potE_buffer = nullptr;				// For total energy summation
-	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
-	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
-	Float3* forceBuffer = nullptr;				// [1/l N/mol] // For debug only
-	const int total_particles_upperbound;
-#ifdef GENERATETRAINDATA
-	float* outdata = nullptr;					// Temp, for longging values to whatever
-	Float3* data_GAN = nullptr;					// Only works if theres 1 compounds right now.
-#endif
-	//Float3* debugdataf3 = nullptr;
-};
 
 template <typename T>
 class ParticleDataBuffer {
@@ -103,12 +71,7 @@ public:
 		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
 		buffer(n_particles_upperbound* n_indices, T{}),
 		loggingInterval(loggingInterval)
-	{
-		//buffer.resize(n_particles_upperbound * n_indices);
-		//for (size_t i = 0; i < n_particles_upperbound * n_indices; i++) {
-		//	buffer[i] = T{};
-		//}
-	}
+	{}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
 
@@ -148,6 +111,8 @@ public:
 		return getSolventparticleDatapointAtIndex(solvent_id, entryIndex);
 	}
 
+	size_t GetLoggingInterval() const { return loggingInterval; }
+	size_t EntriesPerStep() const { return n_particles_upperbound; }
 private:
 	const size_t loggingInterval;
 	const size_t n_particles_upperbound;
@@ -168,7 +133,47 @@ namespace LIMALOGSYSTEM {
 	}
 }
 
-// This goes on Device
+class CompoundcoordsCircularQueue_Host {
+	std::vector<CompoundCoords> queue;
+
+	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
+public:
+	static const int nElementsInQueue = CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS;
+
+	static std::unique_ptr<CompoundcoordsCircularQueue_Host> CreateQueue() {
+		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue_Host>();
+		coordQueue->queue.resize(nElementsInQueue);
+		return coordQueue;
+	}
+
+	CompoundCoords* CopyToDevice() const {
+		return GenericCopyToDevice(queue);
+	}
+	void CopyDataFromDevice(const CompoundCoords* const src) {
+		cudaMemcpy(this->queue.data(), src, queueBytesize, cudaMemcpyDeviceToHost);
+	}
+
+	const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
+		const int index0_of_currentstep_coordarray = (step % CompoundcoordsCircularQueueUtils::queueLen) * MAX_COMPOUNDS;
+		return queue[index0_of_currentstep_coordarray + compound_index];
+	}
+
+	CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
+		return CompoundcoordsCircularQueueUtils::getCoordarrayRef(queue.data(), step, compound_index);
+	}
+
+	// ----- Host Only Functions ----- //
+	void Flush() {
+		for (size_t i = 0; i < CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS; i++) {
+			queue[i] = CompoundCoords{};
+		}
+	}
+
+	// Get raw ptr. Try to avoid using
+	CompoundCoords* data() { return queue.data(); }
+};
+
+
 struct Box {
 	Box() {}
 	Box(int boxSize);
@@ -177,7 +182,8 @@ struct Box {
 
 
 	std::vector<Compound> compounds;
-	std::unique_ptr<CompoundcoordsCircularQueue> compoundcoordsCircularQueue = nullptr;
+	std::vector<CompoundInterimState> compoundInterimStates;
+	std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 
 	std::vector<Solvent> solvents;
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
@@ -192,6 +198,7 @@ struct Box {
 
 // This stays on host
 class Simulation {
+	int64_t step=0;
 public:
 	// Empty simulation, i dont like this very much
 	Simulation(const SimParams& simparams);
@@ -199,7 +206,10 @@ public:
 	
 	void PrepareDataBuffers();
 
-	inline int64_t getStep() const { return simsignals_host.step; }
+	inline int64_t getStep() const { return step; }
+	
+	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
+
 	
 	bool ready_to_run = false;
 	bool finished = false;
@@ -210,7 +220,8 @@ public:
 	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [1/l N/mol] // For debug only
 
-	std::vector<float> temperature_buffer;
+	std::vector<float> temperature_buffer;	
+	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system
 
 #ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;
@@ -224,6 +235,8 @@ public:
 	SimParams simparams_host;
 
 	ForceField_NB forcefield;
+
+	friend class Engine;
 };
 
 namespace SimUtils {

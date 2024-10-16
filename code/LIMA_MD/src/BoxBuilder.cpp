@@ -33,6 +33,7 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 	}
 
 	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
+	box.compoundInterimStates.emplace_back(CompoundInterimState{compound});
 	box.boxparams.n_compounds++;
 }
 
@@ -63,6 +64,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	auto box = std::make_unique<Box>(static_cast<int>(boxImage.box_size));
 
 	box->compounds.reserve(boxImage.compounds.size());
+	box->compoundInterimStates.reserve(boxImage.compounds.size());
 	for (const CompoundFactory& compound : boxImage.compounds) {
 		InsertCompoundInBox(compound, *box, simparams);
 	}	
@@ -82,6 +84,9 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
 	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
+
+	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
+	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;
 
 	return box;
 }
@@ -149,6 +154,8 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 			CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
 			memcpy(dest_t0, coords_t0.data(), bytesize);
 		}
+
+		// TODO ERROR: we dont copy CompoundInterimState, so it is not a true state copy
 	}
 
 	// Do the same for solvents
@@ -181,7 +188,7 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 	for (int cid = 0; cid < sim.box_host->boxparams.n_compounds; cid++) {
 		for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
 		{
-			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.simsignals_host.step - 1, sim.simparams_host.data_logging_interval);
+			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
 			BoundaryConditionPublic::applyBCNM(pos, (float) sim.box_host->boxparams.boxSize, sim.simparams_host.bc_select);

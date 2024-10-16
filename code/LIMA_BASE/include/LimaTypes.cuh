@@ -51,55 +51,53 @@ struct Int3 {
 struct Float3 {
 	float x = 0, y = 0, z = 0;
 
-	__host__ __device__ Float3() {}
-	__host__ __device__ Float3(float a) : x(a), y(a), z(a) {}
-	__host__ __device__ Float3(float x, float y, float z) : x(x), y(y), z(z) {}
-	__host__ __device__ Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
-	__host__ __device__ explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
-	__host__ __device__ Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
-	__host__ Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	__host__ __device__ constexpr Float3() {}
+	__host__ __device__ constexpr explicit Float3(float a) : x(a), y(a), z(a) {}
+	__host__ __device__ constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
+	__host__ __device__ constexpr Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
+	__host__ __device__ constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
+	__host__ __device__ constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	__host__ constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-	__host__ __device__ inline Float3 operator - () const { return Float3(-x, -y, -z); }
-	__host__ __device__ inline Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
-	__host__ __device__ inline Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
-	__host__ __device__ inline Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
-	__host__ __device__ inline Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
-	__host__ __device__ inline Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ inline Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ inline bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
-	__host__ __device__ inline void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ inline void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
-	__host__ __device__ inline void operator *= (const float a) { x *= a; y *= a; z *= a; }
-
-	__host__ __device__ inline bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
-	__host__ __device__ inline bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
+	__host__ __device__ constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
+	__host__ __device__ constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
+	__host__ __device__ constexpr Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
+	__host__ __device__ constexpr Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
+	__host__ __device__ constexpr Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
+	__host__ __device__ constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
+	__host__ __device__ constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
+	__host__ __device__ constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	__host__ __device__ constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
+	__host__ __device__ constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
+	__host__ __device__ constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
+	__host__ __device__ constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
+	__host__ __device__ constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
 	__host__ __device__ glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
 	__host__ __device__ glm::vec4 ToVec4(float w) const { return glm::vec4(x, y, z, w); }
 
-	float* begin() { return &x; }
-	const float* begin() const { return &x; }
-	float* end() { return &x + 3; }
-	const float* end() const { return &x + 3; }
 
-	__host__ __device__ inline float operator[] (int index) const {
+
+
+	__host__ inline float operator[] (int index) const {
 		switch (index) {
-			case 0:
-				return x;
-			case 1:
-				return y;
-			case 2:
-				return z;
-			default:
-				return -404;
+		default:
+			throw std::runtime_error("Illegal index in operator");
+		case 0:
+			return x;
+		case 1:
+			return y;
+		case 2:
+			return z;
 		}
 	}
 
-	__host__ __device__ inline float& operator[] (int index) {
+	__host__ inline float& operator[] (int index) {
 		switch (index) {
-		default:			// Sadly it is not reasonable to catch this in release
+		default:
+			throw std::runtime_error("Illegal index in operator");
 		case 0:
 			return x;
 		case 1:
@@ -121,7 +119,7 @@ struct Float3 {
 			return *this * (1.f / l);
 		return Float3{};
 	}
-	__device__ Float3 norm_fast() const {		// Unsafe, may divide by 0
+	__device__ constexpr Float3 norm_fast() const {		// Unsafe, may divide by 0
 		return *this * (1.f / len());
 	}
 
@@ -132,7 +130,7 @@ struct Float3 {
 	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
-	__host__ __device__ inline float lenSquared() const { return (float)(x * x + y * y + z * z); }
+	__host__ __device__ constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 
@@ -202,9 +200,9 @@ struct Float3 {
 	}
 
 	__device__ __host__ inline float LargestMagnitudeElement() const {
-		return std::max(
-			std::max(std::abs(x), std::abs(y)),
-			std::abs(z)
+		return fmaxf(
+			fmaxf(fabsf(x), fabsf(y)),
+			fabsf(z)
 		);
 	}
 
@@ -396,21 +394,21 @@ public:
 	__device__ BondedParticlesLUT() {}
 	__host__ BondedParticlesLUT(bool val) {
 		for (int i = 0; i < m_size; i++) {
-			matrix[i] = val ? 0xFF : 0;
+			matrix[i] = val ? UINT32_MAX : 0;
 		}
 	}
 
 	__host__ __device__ bool get(int i1, int i2) const {
 		int index = i1 + i2 * m_len;
-		int byteIndex = index / 8;
-		int bitIndex = index % 8;
+		int byteIndex = index / 32;
+		int bitIndex = index % 32;
 		return (matrix[byteIndex] >> bitIndex) & 1U;
 	}
 
 	__host__ void set(int i1, int i2, bool val) {
 		int index = i1 + i2 * m_len;
-		int byteIndex = index / 8;
-		int bitIndex = index % 8;
+		int byteIndex = index / 32;
+		int bitIndex = index % 32;
 		if (val)
 			matrix[byteIndex] |= (1U << bitIndex);
 		else
@@ -427,8 +425,8 @@ public:
 
 private:
 	const static int m_len = MAX_COMPOUND_PARTICLES;
-	const static int m_size = (m_len * m_len + 7) / 8; // Ceil division
-	uint8_t matrix[m_size]{};
+	const static int m_size = (m_len * m_len + 31) / 32; // Ceil division
+	uint32_t matrix[m_size]{};
 };
 
 namespace BondedParticlesLUTHelpers {
@@ -444,7 +442,7 @@ namespace BondedParticlesLUTHelpers {
 		return 1u << index;
 	}
 
-	__device__ inline BondedParticlesLUT* get(BondedParticlesLUT* bpLutCollection, int id_self, int id_other) {
+	__device__ inline const BondedParticlesLUT* const get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
 		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
@@ -473,23 +471,7 @@ T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocMa
 		delete data_ptr;
 	else
 		delete[] data_ptr;
-
-	//data_ptr = gpu_ptr;
-
-	//printf("Moved %.2f MB to device\n", bytesize*1e-6);
 	return gpu_ptr;
-}
-
-// TODO MEMLEAK: this function is not freeing the memory of the original data
-// Assumes data is a ptr to device memory. Will copy what was in data, allocate new memory for data and move the copied data into that
-template<typename T>
-void genericCopyToHost(T** data, uint32_t n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	T* data_host = new T[n_elements];
-
-	size_t bytesize = sizeof(T) * n_elements;
-	cudaMemcpy(data_host, *data, bytesize, cudaMemcpyDeviceToHost);
-
-	*data = data_host;
 }
 
 template<typename T>

@@ -17,7 +17,10 @@ namespace TestMDStability {
 	using namespace TestUtils;
 
 	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
-		SimParams emparams{ 2000, 20, true, PBC };
+		SimParams emparams;// { 2000, 20, true, PBC };
+		emparams.n_steps = 5000;
+		emparams.dt = 100;
+		emparams.em_variant = true;
 		auto env = basicSetup(folder_name, { emparams }, envmode);
 
 		// Do em
@@ -37,23 +40,23 @@ namespace TestMDStability {
 		const auto analytics = env->getAnalyzedPackage();
 		
 		if (envmode != Headless) {
-			Analyzer::printEnergy(analytics);
-			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics->variance_coefficient});
-			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics->energy_gradient});
+			analytics.Print();
+			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics.variance_coefficient});
+			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics.energy_gradient});
 		}		
 
-		//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
-		//LIMA_Print::printPythonVec("kinE", analytics->kin_energy);
-		//LIMA_Print::printPythonVec("totE", analytics->total_energy);
-		//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
+		//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
+		//LIMA_Print::printPythonVec("kinE", analytics.kin_energy);
+		//LIMA_Print::printPythonVec("totE", analytics.total_energy);
+		//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 
-		const auto result = evaluateTest({ analytics->variance_coefficient }, max_vc, { analytics->energy_gradient }, max_gradient);
+		const auto result = evaluateTest({ analytics.variance_coefficient }, max_vc, { analytics.energy_gradient }, max_gradient);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.36e-3, 2e-5);
+		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.19e-3, 2e-5);
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

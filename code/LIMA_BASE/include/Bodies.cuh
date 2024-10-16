@@ -114,56 +114,14 @@ struct CompoundCoords {
 	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
 };
 
-class CompoundcoordsCircularQueue {
-	CompoundCoords* queue = nullptr;
 
-	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
-public:
+namespace CompoundcoordsCircularQueueUtils {
 	static const int queueLen = 3;
-	static const int nElementsInQueue = queueLen * MAX_COMPOUNDS;
 
-	__host__ static std::unique_ptr<CompoundcoordsCircularQueue> CreateQueue() {
-		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue>();		
-		coordQueue->queue = new CompoundCoords[nElementsInQueue];
-		return coordQueue;
-	}
-
-	__host__ CompoundcoordsCircularQueue* CopyToDevice() const {
-		CompoundcoordsCircularQueue queueTemp = *this;
-		queueTemp.queue = GenericCopyToDevice(queue, nElementsInQueue);
-		return GenericCopyToDevice(&queueTemp, 1);
-	}
-	__host__ void CopyDataFromDevice(const CompoundcoordsCircularQueue* const queue) {
-		cudaMemcpy(this->queue, queue->queue, queueBytesize, cudaMemcpyDeviceToHost);
-	}
-	__host__ CompoundcoordsCircularQueue* copyToHost() {
-		CompoundcoordsCircularQueue* this_host = new CompoundcoordsCircularQueue();
-		this_host->queue = new CompoundCoords[MAX_COMPOUNDS * queueLen];
-		cudaMemcpy(this_host->queue, queue, queueBytesize, cudaMemcpyDeviceToHost);
-		return this_host;
-	}
-
-	__host__ const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
-		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
-		return queue[index0_of_currentstep_coordarray + compound_index];
-	}
-
-	__host__ __device__ CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
+	__host__ __device__ inline CompoundCoords* getCoordarrayRef(CompoundCoords* queue, uint32_t step, uint32_t compound_index) {
 		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
 		return &queue[index0_of_currentstep_coordarray + compound_index];
 	}
-
-
-	// ----- Host Only Functions ----- //
-
-	__host__ void Flush() {
-		for (size_t i = 0; i < queueLen * MAX_COMPOUNDS; i++) {
-			queue[i] = CompoundCoords{};
-		}
-	}
-
-	// Get raw ptr. Try to avoid using
-	__host__ CompoundCoords* data() { return queue; }	
 };
 
 
@@ -220,11 +178,11 @@ struct CompoundInteractionBoundary {
 	int key_particle_indices[k];
 };
 
-struct CompoundCompact {
+struct alignas(4) CompoundCompact {
 	__host__ __device__ CompoundCompact() {}
 
-	uint8_t n_particles = 0;			
-	uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	int n_particles = 0;
 
 #ifdef LIMAKERNELDEBUGMODE
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
@@ -240,7 +198,7 @@ struct CompoundCompact {
 	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
 	int n_bonded_compounds = 0;
 
-	__device__ void loadMeta(CompoundCompact* compound) {
+	__device__ void loadMeta(const CompoundCompact* const compound) {
 		n_particles = compound->n_particles;
 		n_singlebonds = compound->n_singlebonds;
 		n_anglebonds = compound->n_anglebonds;
@@ -249,7 +207,7 @@ struct CompoundCompact {
 		n_bonded_compounds = compound->n_bonded_compounds;
 	}
 
-	__device__ void loadData(CompoundCompact* compound) {
+	__device__ void loadData(const CompoundCompact* const compound) {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
 
@@ -265,20 +223,20 @@ const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
 const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64 + 64 + 32;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
-// Rather large unique structures in global memory, that can be partly loaded when needed
-struct Compound : public CompoundCompact {
-	__host__ __device__ Compound() {}
 
-
-	
+struct CompoundInterimState {
 	// Interims from the bridgekernel to compoundkernel
-	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 	float potE_interim[MAX_COMPOUND_PARTICLES];
 	Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+};
+
+// Rather large unique structures in global memory, that can be partly loaded when needed
+struct Compound : public CompoundCompact {
+	__host__ __device__ Compound() {}
 
 	// Bonds
 	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
@@ -290,10 +248,12 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol]
+	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
+
+	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 
 	int absoluteIndexOfFirstParticle = 0;
 };
@@ -354,7 +314,7 @@ struct CompoundBridge {
 
 
 	// -------------- Device functions ------------- //
-	__device__ void loadMeta(CompoundBridge* bridge) {
+	__device__ void loadMeta(const CompoundBridge* const bridge) {
 		n_particles = bridge->n_particles;
 		n_singlebonds = bridge->n_singlebonds;
 		n_anglebonds = bridge->n_anglebonds;
@@ -368,7 +328,7 @@ struct CompoundBridge {
 		//compound_id_left = bridge->compound_id_left;
 		//compound_id_right = bridge->compound_id_right;
 	}
-	__device__ void loadData(CompoundBridge* bridge) {
+	__device__ void loadData(const CompoundBridge* const bridge) {
 		if (threadIdx.x < n_particles) {
 			//atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
 			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
@@ -441,7 +401,7 @@ class UniformElectricField {
 	/// <summary></summary>
 	/// <param name="charge">[kC/mol]</param>
 	/// <returns>[gigaN/mol]</returns>
-	__device__ Float3 GetForce(float charge) {
+	__device__ Float3 GetForce(float charge) const {
 		return field * charge;
 	}
 };

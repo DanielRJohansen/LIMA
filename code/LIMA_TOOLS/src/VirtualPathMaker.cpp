@@ -33,7 +33,7 @@ Float3** VirtualPathMaker::generateAllPaths(Float3* particle_positions, Float3* 
     delete[] initial_positions;
 
 
-    for (int step = 1; step < n_steps; step++) {
+    for (int64_t step = 1; step < n_steps; step++) {
         Float3* possible_positions = generateAllPositions(particle_positions[step], forces[step]);
 
         for (int j = 0; j < 8; j++) {

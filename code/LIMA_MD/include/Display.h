@@ -47,26 +47,15 @@ public:
 
 };
 
-
-//struct FacetTask {
-//	std::vector<Facet> facets;
-//	std::optional<Float3> facetsColor;
-//	bool drawFacetNormals;
-//	FacetDrawMode facetDrawMode;
-//};
-//
-//struct PointsTask {
-//	std::vector<Float3> points;
-//	std::optional<Float3> pointsColor;
-//};
-
 namespace Rendering {
 	struct SimulationTask {
 		const Float3* positions;
 		const std::vector<Compound> compounds;
 		const BoxParams boxparams;
-		int64_t step;
-		float temperature;
+
+		std::string siminfo; // Will be output in the window header
+		/*int64_t step;
+		float temperature;*/
 		ColoringMethod coloringMethod;
 	};
 

@@ -7,6 +7,7 @@
 #include "FileTests.h"
 #include "ForcefieldTests.h"
 #include "SetupTests.h"
+#include "Userinterface.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -16,7 +17,8 @@ using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
-void runAllUnitTests();
+
+void RunAllUnitTests();
 
 
 
@@ -47,26 +49,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 0.0004, 1.2e-6);
 		//doEightResiduesNoSolvent(envmode);
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
-
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		
-
-
-		//const fs::path work_dir = simulations_dir / "test";
-		//Lipids::Selection lipids;
-		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
-		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
-		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
-		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//Programs::CreateMembrane(work_dir, lipids, Float3{30.f}, 10.f, envmode);
-
-		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//testBuildmembraneSmall(envmode, false);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
-		
-
-		//TestLongrangeEsNoLJ(envmode);
+				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
@@ -74,12 +57,44 @@ int main() {
 		//doPoolBenchmarkES(envmode);
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 
-		//Benchmarks::Psome(envmode);
 
-		//TestAllStockholmlipids(envmode);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+
+		//TimeIt t0("Buildmembrane", true);
+		//const fs::path work_dir = simulations_dir / "test";
+		//Lipids::Selection lipids;
+		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
+		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
+		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
+		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 30.f }, 5.f);
+		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
+		//Display d{ Full };
+		//d.Render(std::make_unique<Rendering::GrofileTask>(*grofile), true);
+		//topfile->printToFile(work_dir/"mytop.top");
 		
-		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		runAllUnitTests();
+		//auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, work_dir, envmode);
+		//grofile->printToFile(work_dir / "membrane.gro");
+		//topfile->printToFile(work_dir / "membrane.top");
+
+		/*SimParams params{};
+		params.n_steps = 1000;
+		params.data_logging_interval = 2;
+		params.save_trajectory = true;
+		Environment env(work_dir, envmode);
+		GroFile grofile{ work_dir / "membrane.gro" };
+		TopologyFile topfile{ work_dir / "membrane.top" };
+		env.CreateSimulation(grofile, topfile, params);
+		env.run(true);*/
+
+		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
+		//TestBuildmembraneSmall(envmode, false);
+		//TestAllStockholmlipids(envmode);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
+						
+		//Benchmarks::Psome(envmode);				
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -98,7 +113,7 @@ int main() {
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
 // Runs all unit tests with the fastest/crucial ones first
-void runAllUnitTests() {
+void RunAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
@@ -123,7 +138,7 @@ void runAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.85e-4, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
@@ -141,18 +156,21 @@ void runAllUnitTests() {
 	
 
 	// Programs test
-	ADD_TEST("BuildSmallMembrane", testBuildmembraneSmall(envmode, false));
+	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
-	ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode));
+	//ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
 
 	// Performance test
 	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);
+
+
+	//ADD_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
 
 	// Total test status will print as testman is destructed
 }

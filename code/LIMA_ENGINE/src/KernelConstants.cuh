@@ -27,7 +27,7 @@ __constant__ ForceField_NB forcefield_device;
 __constant__ BoxSize boxSize_device;
 __constant__ float cutoffNm_device;
 __constant__ float cutoffLmSquaredReciprocal_device;
-
+__constant__ float thermostatScalar_device;
 
 
 

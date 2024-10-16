@@ -1,0 +1,33 @@
+; RUN CONTROL PARAMETERS
+integrator        = steep   ; steepest descent algorithm
+nsteps            = 1000    ; maximum number of steps for minimization
+emtol             = 500.0  ; minimization tolerance (in kJ/mol/nm)
+emstep            = 0.01    ; minimization step size
+
+; OUTPUT CONTROL OPTIONS
+nstenergy         = 10      ; save energies every 10 steps
+nstxout           = 10      ; save coordinates every 10 steps
+
+; NEIGHBOR SEARCHING PARAMETERS
+nstlist           = 10
+rlist             = 1.0
+
+; ELECTROSTATICS
+coulombtype       = PME
+rcoulomb          = 1.2
+
+; VDW
+vdwtype           = cut-off
+rvdw              = 1.2
+
+; TEMPERATURE COUPLING (disabled for energy minimization)
+tcoupl            = no
+
+; PRESSURE COUPLING (disabled for energy minimization)
+pcoupl            = no
+
+; PERIODIC BOUNDARY CONDITIONS
+pbc               = xyz
+
+; CONSTRAINTS
+constraints       = none   ; usually no constraints during energy minimization

@@ -178,7 +178,7 @@
 //	if (threadIdx.x == 0) {
 //		compound = &simdev->box->compounds[blockIdx.x];
 //		n_particles = compound->n_particles;
-//		compoundcoords = simdev->box->compoundcoordsCircularQueue->getCoordarrayRef(simdev->signals->step, blockIdx.x);
+//		compoundcoords = simdev->CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->box->compoundcoordsCircularQueue, simdev->step, blockIdx.x);
 //	}
 //	__syncthreads();
 //

@@ -14,36 +14,12 @@
 #include <gtx/rotate_vector.hpp>
 #undef GLM_ENABLE_EXPERIMENTAL
 
-void Programs::EnergyMinimize(Environment& env, GroFile& grofile, const TopologyFile& topfile, bool solvate, float boxlen_nm) 
-{
-	SimParams simparams;
-	simparams.em_variant = true;
-	simparams.n_steps = 4000;
-	simparams.dt = 10.f;	// 0.5 ls
-
-	grofile.box_size = Float3{ boxlen_nm };
-
-	env.CreateSimulation(grofile, topfile, simparams);
-	env.run();
-
-	GroFile EnergyMinimizedGro = env.writeBoxCoordinatesToFile();
-	
-	// Now save the new positions to the original gro file, sans any eventually newly added solvents
-	assert(grofile.atoms.size() <= EnergyMinimizedGro.atoms.size());
-	for (int i = 0; i < grofile.atoms.size(); i++) {
-		assert(grofile.atoms[i].atomName == EnergyMinimizedGro.atoms[i].atomName);	// Sanity check the name is unchanged
-		grofile.atoms[i].position = EnergyMinimizedGro.atoms[i].position;
-	}
-}
-
-
-
 void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
 	ForcefieldManager forcefield{};
 	
 	std::vector<int> ljtypeIndices;
 	for (auto& atom : topfile.GetAllAtoms()) {
-		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPaths(), atom.type));
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPath(), atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
 
@@ -181,33 +157,42 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-
-
-MDFiles::FilePair Programs::CreateMembrane(const fs::path& workDir, Lipids::Selection& lipidsSelection, Float3 boxSize, float membraneCenterZ, EnvMode envmode) {
-
-	auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidsSelection, boxSize, membraneCenterZ);
-
-	Environment env{ workDir, envmode, false};
+std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 
+	const fs::path& workDir, EnvMode envmode, bool mayOverlapEdges, float emtol) {
+	Environment env{ workDir, envmode};
 	SimParams params;
-	params.em_variant = true;
-	params.bc_select = BoundaryConditionSelect::NoBC;
-	params.dt = 1.f;
-	params.n_steps = 1000;
-	params.snf_select = BoxEdgePotential;
-	env.CreateSimulation(*grofile, *topfile, params);
-	env.run(false);
-	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
+	params.em_variant = true;	
+	params.dt = 200.f;
+	params.em_force_tolerance = emtol;
 
-	params.dt = 20;
-	env.CreateSimulation(*env.getSim(), params);
-	env.run(false);
-	grofile = std::make_shared<GroFile>(env.writeBoxCoordinatesToFile(std::nullopt));
+	if (mayOverlapEdges) {
+		params.n_steps = 2000;
+		params.bc_select = BoundaryConditionSelect::NoBC;
+		params.snf_select = BoxEdgePotential;
+		env.CreateSimulation(grofile, topfile, params);
+		env.run(false);
+	}
 
+	params.n_steps = 40000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
-	env.CreateSimulation(*env.getSim(), params);
+
+	if (mayOverlapEdges)
+		env.CreateSimulation(*env.getSim(), params);
+	else
+		env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
+	if (writePositionsToGrofile) {
+		const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
 
-	return {grofile, topfile};
+		auto [step, force] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
+			[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
+				return a.second < b.second;
+			}
+		);
+
+		env.WriteBoxCoordinatesToFile(grofile, step);
+	}
+	
+	return env.getSim();
 }
-

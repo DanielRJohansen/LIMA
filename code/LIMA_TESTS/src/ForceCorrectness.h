@@ -12,7 +12,7 @@ namespace ForceCorrectness {
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
 		const fs::path work_folder = simulations_dir / "Pool/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 		std::vector<float> particle_temps{ 400 };
@@ -22,24 +22,25 @@ namespace ForceCorrectness {
 
 		for (auto temp : particle_temps) {
 			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-			int steps_for_full_interaction = 3000000 / static_cast<int>(vel);
+			int64_t steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 			SimParams params{};
+			params.enable_electrostatics = false;
 			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-			box_host->compounds[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
+			box_host->compoundInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+			box_host->compoundInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
-			if (envmode != Headless) { Analyzer::printEnergy(analytics); }
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
+			if (envmode != Headless) { analytics.Print(); }
 		}
 
 		if (envmode != Headless) {
@@ -55,7 +56,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
 
@@ -69,7 +70,7 @@ namespace ForceCorrectness {
 			{
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
-				const int steps_for_full_interaction = 6000000 / static_cast<int>(vel);
+				const int64_t steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
 				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
 				GroFile grofile{ work_folder / "molecule/conf.gro" };
@@ -78,7 +79,7 @@ namespace ForceCorrectness {
 
 
 				Box* box_host = env.getSimPtr()->box_host.get();
-				box_host->compounds[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+				box_host->compoundInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
 			}
 
 			// Give the solvent a velocty
@@ -92,11 +93,11 @@ namespace ForceCorrectness {
 
 			auto analytics = env.getAnalyzedPackage();
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 			
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 		}
 
 		if (envmode != Headless) {
@@ -113,7 +114,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 1;
@@ -142,7 +143,7 @@ namespace ForceCorrectness {
 		const auto sim = env.getSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
 		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
-		const Float3 actualForce = sim->box_host->compounds[0].forces_prev[0];
+		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[0];
 
 
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
@@ -162,7 +163,7 @@ namespace ForceCorrectness {
 		const fs::path conf = work_folder / "molecule/conf.gro";
 		const fs::path topol = work_folder / "molecule/topol.top";
 		const fs::path simpar = work_folder / "sim_params.txt";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
@@ -226,7 +227,7 @@ namespace ForceCorrectness {
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f * 1e-3f;
 
@@ -257,15 +258,15 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 
-			//LIMA_Print::plotEnergies(analytics->pot_energy, analytics->kin_energy, analytics->total_energy);
-			//LIMA_Print::printPythonVec("potE", analytics->pot_energy);
+			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
+			//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
 		}
 
 		if (envmode != Headless) {
@@ -283,7 +284,7 @@ namespace ForceCorrectness {
 	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
 		const fs::path work_folder = simulations_dir / "Anglebond/";
 
-		Environment env{ work_folder, envmode, false};
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
 
 		const float relaxed_angle = 1.8849f; // [rad]
@@ -313,11 +314,11 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 			}
 		}
 
@@ -339,7 +340,7 @@ namespace ForceCorrectness {
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {
 		const fs::path work_folder = simulations_dir / "Improperbond/";
 
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
 		//params.n_steps = 5000;
 		//params.data_logging_interval = 1;
@@ -392,11 +393,11 @@ namespace ForceCorrectness {
 			env.run();
 
 			const auto analytics = env.getAnalyzedPackage();
-			varcoffs.push_back(analytics->variance_coefficient);
-			energy_gradients.push_back(analytics->energy_gradient);
+			varcoffs.push_back(analytics.variance_coefficient);
+			energy_gradients.push_back(analytics.energy_gradient);
 
 			if (envmode != Headless) {
-				Analyzer::printEnergy(analytics);
+				analytics.Print();
 				//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
 
 			}
@@ -443,7 +444,7 @@ namespace VerletintegrationTesting {
 	LimaUnittestResult TestIntegration(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
 
-		Environment env{ work_folder, envmode, false };
+		Environment env{ work_folder, envmode};
 
 		SimParams params{};
 		params.n_steps = 1000;
@@ -460,7 +461,7 @@ namespace VerletintegrationTesting {
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]
-		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ {-1, 0, 0 }, electricFieldStrength };
+		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, electricFieldStrength };
 
 
 
@@ -474,7 +475,7 @@ namespace VerletintegrationTesting {
 
 
 
-		const float actualKineticEnergy = env.getAnalyzedPackage()->kin_energy.back();
+		const float actualKineticEnergy = env.getAnalyzedPackage().kin_energy.back();
 
 		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
 

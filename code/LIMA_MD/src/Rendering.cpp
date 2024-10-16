@@ -67,7 +67,7 @@ void Display::_RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles) {
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
-    camera.Update(task.boxparams.boxSize);
+    camera.Update(Float3{ task.boxparams.boxSize });
 
     if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
         throw std::runtime_error("Invalid number of compounds");
@@ -80,8 +80,9 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
     if (!drawAtomsShader)
         drawAtomsShader = std::make_unique<DrawAtomsShader>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
 
-    std::string window_text = std::format("{}        Step: {}    Temperature: {:.1f}[k]", window_title, task.step, task.temperature);
-    glfwSetWindowTitle(window, window_text.c_str());
+
+    std::string windowText = window_title + "\n" + task.siminfo;
+    glfwSetWindowTitle(window, windowText.c_str());
 
     // Preprocess the renderAtoms
     {

@@ -122,7 +122,7 @@ void Display::Setup() {
 
 Display::Display(EnvMode envmode) :
     logger(LimaLogger::LogMode::compact, envmode, "display"),
-    camera(2.f)
+    camera(Float3{ 2.f })
 {
     renderThread = std::jthread([this] {
         try {
@@ -201,7 +201,7 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->boxparams.boxSize, taskPtr->boxparams.total_particles);
+                    _RenderAtomsFromCudaresource(Float3{ taskPtr->boxparams.boxSize }, taskPtr->boxparams.total_particles);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
@@ -214,8 +214,6 @@ void Display::Mainloop() {
     }
 }
 
-#include "RenderUtilities.cuh"
-
 void Display::Render(Rendering::Task task, bool blocking) {
     incomingRenderTaskMutex.lock();
     incomingRenderTask = std::move(task);
@@ -223,7 +221,7 @@ void Display::Render(Rendering::Task task, bool blocking) {
 
     if (blocking) {
         while (1) {
-            if (debugValue) {
+            if (debugValue || displaySelfTerminated) {
                 debugValue = 0;
                 return;
             }
@@ -285,7 +283,9 @@ bool Display::initGLFW() {
         glfwTerminate();
         return 0;
     }
+#ifndef __linux__
     glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
+#endif
     logger.print("done\n");
 
     // Make the window's context current
@@ -349,5 +349,5 @@ void Display::TestDisplay() {
 	params.total_compound_particles = 1;
 	params.total_particles = 1;
 	params.total_particles_upperbound = 1;
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, 0, 0.f, Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
 }

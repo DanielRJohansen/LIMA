@@ -19,7 +19,7 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	const Float3 difference = pos_a - pos_b;						// [lm]
 	const float error = difference.len() - bondParams.b0;				// [lm]
 
-	if constexpr (CALC_POTE) {
+	if constexpr (ENABLE_POTE) {
 		potE = 0.5f * bondParams.kb * (error * error);				// [J/mol]
 	}
 	float force_scalar = -bondParams.kb * error;				// [J/(mol*lm)] = [1/lima N/mol]
@@ -60,7 +60,7 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	const float error = angle - angletype.params.theta0;				// [rad]
 
 	// Simple implementation
-	if constexpr (CALC_POTE) {
+	if constexpr (ENABLE_POTE) {
 		potE = angletype.params.kTheta * error * error * 0.5f;		// Energy [J/mol]
 	}
 	const float torque = angletype.params.kTheta * (error);				// Torque [J/(mol*rad)]
@@ -78,7 +78,7 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	//	const Float3 difference = pos_left - pos_right;						// [lm]
 	//	const float error = difference.len() - angletype.params.ub0;				// [lm]
 
-	//	if constexpr (CALC_POTE) {
+	//	if constexpr (ENABLE_POTE) {
 	//		potE = 0.5f * angletype.params.kUB * (error * error);				// [J/mol]
 	//	}
 	//	float force_scalar = -angletype.params.kUB * error;				// [J/(mol*lm)] = [1/lima N/mol]
@@ -125,13 +125,13 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 	const float sin_phi = C.dot(B) * (rCinv * rBinv);
 	const float torsion = -atan2(sin_phi, cos_phi);
 
-	//if constexpr (CALC_POTE) {
+	//if constexpr (ENABLE_POTE) {
 	//	potE = __half2float(dihedral.params.k_phi) * (1. + cos(__half2float(dihedral.params.n) * torsion - __half2float(dihedral.params.phi_0)));
 	//}
 	//const float torque = __half2float(dihedral.params.k_phi) * (__half2float(dihedral.params.n) * sin(__half2float(dihedral.params.n) * torsion 
 	//	- __half2float(dihedral.params.phi_0))) / NANO_TO_LIMA;
 
-	if constexpr (CALC_POTE) {
+	if constexpr (ENABLE_POTE) {
 		potE = dihedral.params.k_phi * (1. + cos(dihedral.params.n * torsion - dihedral.params.phi_0));
 	}
 	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion
@@ -223,7 +223,7 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 
 	const float error = angle - improper.params.psi_0;
 
-	if constexpr (CALC_POTE) {
+	if constexpr (ENABLE_POTE) {
 		potE = 0.5f * improper.params.k_psi * (error * error);
 	}
 	const float torque = improper.params.k_psi * (angle - improper.params.psi_0) * LIMA_TO_NANO;

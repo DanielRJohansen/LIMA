@@ -1,14 +1,18 @@
 #include "Simulation.cuh"
 
-#include <map>
 #include <functional>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
 #include <filesystem>
 #include "Filehandling.h"
+#include "MDFiles.h"
 #include <fstream>
+
+#include <concepts>
 
 using std::string;
 namespace fs = std::filesystem;
+
+using Dictionary = std::unordered_map<string, string>;
 
 template <typename T>
 constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
@@ -20,50 +24,65 @@ constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, c
 
 	throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_str + " " + val_str);
 }
-
 // Helper function for overwriting templates
 template <typename T>
-constexpr void overwriteParamNonNumbers(std::map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
+constexpr void overwriteParamNonNumbers(std::unordered_map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
 	if (dict.count(key)) {
 		val = transform(dict[key]);
 	}
 }
 
-template <typename T>
-constexpr void overloadParamNumber(std::map<std::string, std::string>& dict, T& param,
-	std::string key, std::function<T(const T&)> transform = [](const T& v) {return v; })
-{
-	static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>, "T must be an integral or floating-point type.");
+void Readb(const Dictionary& dict, bool& value, const std::string& key_name) {
+	if (!dict.contains(key_name))
+		return;
 
+	std::string value_str = dict.at(key_name);
+	if (value_str != "true" && value_str != "false") {
+		throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_name + " " + value_str);
+	}
+	
+	value = (value_str == "true");
+}
+template <std::integral T>
+constexpr void Readi(std::unordered_map<std::string, std::string>& dict, T& param,
+	const std::string& key, std::function<T(const T&)> transform = [](const T& v) { return v; })
+{
 	if (dict.count(key)) {
-		if constexpr (std::is_integral_v<T>) {
-			// For integral types (e.g., int)
-			param = static_cast<T>(std::stoi(dict[key]));
-		}
-		else if constexpr (std::is_floating_point_v<T>) {
-			// For floating-point types (e.g., float, double)
-			param = static_cast<T>(transform(std::stof(dict[key])));
-		}
+		param = static_cast<T>(transform(std::stoll(dict[key])));
+	}
+}
+template <std::floating_point T, typename Transform = std::function<T(const T&)>>
+constexpr void Readf(std::unordered_map<std::string, std::string>& dict, T& param,
+	const std::string& key, Transform transform = [](const T& v) { return v; })
+{
+	if (dict.count(key)) {
+		param = static_cast<T>(transform(std::stod(dict[key])));
 	}
 }
 
 SimParams::SimParams(const fs::path& path) {
-	auto dict = Filehandler::parseINIFile(path.string());
-	overloadParamNumber<float>(dict, dt, "dt", [](const float& val) {return val * FEMTO_TO_LIMA; });
-	overloadParamNumber(dict, n_steps, "n_steps");
-	overloadParamNumber(dict, data_logging_interval, "data_logging_interval");
+	const bool forceKeysAndValuesLowercase = true;
+	auto dict = FileUtils::parseINIFile(path.string(), forceKeysAndValuesLowercase);
 
-	overwriteParamNonNumbers<bool>(dict, "em", em_variant, 
-		[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "em", value); }
-	);
-	overwriteParamNonNumbers<bool>(dict, "enable_electrostatics", enable_electrostatics,
-				[](const string& value) {return convertStringvalueToValue<bool>({ {"true", true }, {"false", false}}, "enable_electrostatics", value); }
-	);
-
+	Readi(dict, n_steps, "n_steps");
+	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_LIMA; });
+	Readb(dict, em_variant, "em");
+	Readf(dict, em_force_tolerance, "em_force_tolerance");
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
-		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"PBC", PBC }, {"NoBC", NoBC}}, "boundarycondition", value); }
+		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"pbc", PBC }, {"nobc", NoBC} }, "boundarycondition", value); }
 	);
+	Readb(dict, enable_electrostatics, "enable_electrostatics");
+	Readf(dict, cutoff_nm, "cutoff_nm");
+	// Skip SNF for now	
+
+	Readi(dict, data_logging_interval, "data_logging_interval");	
+	Readb(dict, save_trajectory, "save_trajectory");
+	Readb(dict, save_energy, "save_energy");
+	// Skip colormethod for now
+
+	Readi(dict, steps_per_temperature_measurement, "steps_per_temperature_measurement");
+	Readb(dict, apply_thermostat, "apply_thermostat");
 }
 
 
@@ -74,13 +93,29 @@ void SimParams::dumpToFile(const fs::path& filename) {
 		throw std::runtime_error("Unable to open file: " + filename.string());
 	}
 
+	file << "// Main params" << "\n";
 	file << "n_steps=" << n_steps << "\n";
-	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [femto seconds]\n";
+	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [fs]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
+	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm]\n"; // TODO add units
+
+	file << "// Physics params" << "\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
-	//file << "Supernatural Forces: " << (snf_select == HorizontalSqueeze ? "Horizontal Squeeze" : "None") << "\n";
-	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
 	file << "enable_electrostatics=" << (enable_electrostatics ? "true" : "false") << "\n";
+	file << "cutoff_nm=" << cutoff_nm << " # [nm]\n";
+	// Skip SNF for now
+
+	file << "// Output params" << "\n";
+	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
+	file << "save_trajectory=" << (save_trajectory ? "true" : "false") << "\n";
+	file << "save_energy=" << (save_energy ? "true" : "false") << " # (Save kinetic and potential energy to file)" << "\n";
+	// Skip colormethod for now
+	
+	file << "// Temperature params" << "\n";
+	file << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
+	file << "apply_thermostat=" << (apply_thermostat ? "true" : "false") << " # will speed up or slow down particles to achieve the desired temperature\n";
+	file << "# desired_temperature - not currently available forced to be 300 [k]\n";
+
 	file.close();
 }
 
@@ -95,7 +130,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 Box::Box(int boxSizeNM) {
 	boxparams.boxSize = boxSizeNM;
-	compoundcoordsCircularQueue = CompoundcoordsCircularQueue::CreateQueue();
+	compoundcoordsCircularQueue = CompoundcoordsCircularQueue_Host::CreateQueue();
 	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxSizeNM);
 }
 
@@ -131,8 +166,8 @@ void Simulation::PrepareDataBuffers() {
 		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
 		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
 		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
-
-		temperature_buffer.reserve(n_steps / STEPS_PER_THERMOSTAT + 1);
+		
+		temperature_buffer.reserve(n_steps / simparams_host.steps_per_temperature_measurement + 1);
 	}
 
 	// Trainingdata buffers
@@ -149,68 +184,31 @@ void Simulation::PrepareDataBuffers() {
 	}
 }
 
-//void InputSimParams::overloadParams(std::map<std::string, double>& dict) {
-//	overloadParam(dict, &dt, "dt", FEMTO_TO_LIMA);	// convert [fs] to [ls]
-//	overloadParam(dict, &n_steps, "n_steps");
-//}
+std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{	
+	auto trrFile = std::make_unique<MDFiles::TrrFile>(Float3{ box_host->boxparams.boxSize });
 
+	assert(simparams_host.data_logging_interval == traj_buffer->GetLoggingInterval());
+	const int nLoggedSteps = step / simparams_host.data_logging_interval;
+	trrFile->positions.reserve(nLoggedSteps);
 
+	for (int64_t step = 0; step < step; step += simparams_host.data_logging_interval) {
 
-//SimParams::SimParams(const InputSimParams& ip) : 
-//	n_steps(ip.n_steps), dt(ip.dt),em_variant(ip.em_variant), bc_select(ip.boundarycondition)
-//{}
+		std::vector<Float3> row(box_host->boxparams.total_particles);
+	    int index = 0; 
 
-DatabuffersDevice::DatabuffersDevice(int total_particles_upperbound, int n_compounds, int loggingInterval) :
-	total_particles_upperbound{ total_particles_upperbound }
-{
-	// Permanent Outputs for energy & trajectory analysis
-	{
-		const size_t n_datapoints = total_particles_upperbound * nStepsInBuffer;
-		const size_t bytesize_mb = (sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) / 1'000'000;
-		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
-		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
+	    // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
+	    for (int compound_id = 0; compound_id < box_host->boxparams.n_compounds; compound_id++) {
+	        for (int pid = 0; pid < box_host->compounds[compound_id].n_particles; pid++) {
+				row[index++] = traj_buffer->GetMostRecentCompoundparticleDatapoint(compound_id, pid, step);
+	        }
+	    }
 
-		
-		cudaMallocManaged(&potE_buffer, sizeof(*potE_buffer) * n_datapoints);
-		cudaMallocManaged(&traj_buffer, sizeof(*traj_buffer) * n_datapoints);
-		cudaMallocManaged(&vel_buffer, sizeof(*vel_buffer) * n_datapoints);
-		cudaMallocManaged(&forceBuffer, sizeof(*forceBuffer) * n_datapoints);
+	    for (int solvent_index = 0; solvent_index < box_host->boxparams.n_solvents; solvent_index++) {
+	        row[index++] = traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solvent_index, step);
+	    }
 
-		//cudaMemset // TODO: switch to memset
-		std::vector<float>potE_zero(n_datapoints, 0);
-		std::vector<Float3>traj_zero(n_datapoints, Float3{});
-
-		cudaMemcpy(potE_buffer, potE_zero.data(), sizeof(float) * n_datapoints, cudaMemcpyHostToDevice);
-		cudaMemcpy(traj_buffer, traj_zero.data(), sizeof(Float3) * n_datapoints, cudaMemcpyHostToDevice);
+		trrFile->positions.emplace_back(std::move(row));
 	}
-	
 
-	// TRAINING DATA and TEMPRARY OUTPUTS
-	{
-#ifdef GENERATETRAINDATA
-		size_t n_outdata = 10 * STEPS_PER_LOGTRANSFER;
-		size_t n_traindata = std::max(static_cast<size_t>(N_DATAGAN_VALUES) * MAX_COMPOUND_PARTICLES * n_compounds * STEPS_PER_TRAINDATATRANSFER, size_t{ 1 });	// This is a hack; can't allocate 0 bytes.
-		assert(n_outdata && "Tried to create outdata buffer with 0 datapoints");
-		assert(n_traindata && "Tried to create traindata buffer with 0 datapoints");
-		
-		size_t bytesize_mb = (sizeof(float) * n_outdata + sizeof(Float3) * n_traindata) / 1'000'000;
-		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");
-
-		cudaMallocManaged(&outdata, sizeof(float) * n_outdata);	// 10 data streams for 10k steps. 1 step at a time.
-		cudaMallocManaged(&data_GAN, sizeof(Float3) * n_traindata);
-#endif
-	}
-	
-}
-
-void DatabuffersDevice::freeMembers() {
-	cudaFree(potE_buffer);
-	cudaFree(traj_buffer);
-	cudaFree(vel_buffer);
-	cudaFree(forceBuffer);
-
-#ifdef GENERATETRAINDATA
-	cudaFree(outdata);
-	cudaFree(data_GAN);
-#endif
+	return std::move(trrFile);
 }

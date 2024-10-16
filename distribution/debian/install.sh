@@ -1,3 +1,10 @@
+curl --version || exit 1 # install curl
+debuild --version || exit 1 # install devscripts
+#install debhelper-compat
+#debhelper-compat --version || exit 1
+#install libtbb12
+
+
 # First cleanup from previous builds
 rm -rf resources
 rm lima license.md README.md
@@ -7,6 +14,8 @@ sudo rm -rf /usr/share/LIMA
 
 rm debian/lima.substvars debian/debhelper-build-stamp
 rm -rf debian/lima
+
+set -e
 
 # Now download files and move to debian dir
 curl -L https://github.com/DanielRJohansen/LIMAMD/archive/main.tar.gz -o source.tar.gz
@@ -32,4 +41,5 @@ echo -e "\n\n### Installing from deb package"
 sudo dpkg -i ./build/lima_*.deb
 sudo apt-get install -f
 
-
+lima -help
+lima selftest

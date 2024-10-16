@@ -83,7 +83,7 @@ struct ParticleInfo {
 	std::string sourceLine;
 };
 
-class CompoundFactory : public Compound {
+class CompoundFactory : public Compound, public CompoundInterimState {
 public:
 	CompoundFactory() {}
 	CompoundFactory(const int id) : 

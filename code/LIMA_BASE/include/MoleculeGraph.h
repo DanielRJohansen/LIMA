@@ -10,6 +10,10 @@
 #include <filesystem>
 #include "MDFiles.h"
 
+#include <ranges>
+#include <iterator>
+#include <unordered_set>
+
 namespace LimaMoleculeGraph {
 	namespace fs = std::filesystem;
 
@@ -51,22 +55,89 @@ namespace LimaMoleculeGraph {
 
 		std::unordered_map<int, Node> nodes;
 		int highestNodeId = -1;
+
+
+
+
+
+
+
+
+
+        struct BFSRange {
+            struct Iterator {
+                using iterator_category = std::input_iterator_tag;
+                using value_type = Node;
+                using difference_type = std::ptrdiff_t;
+                using pointer = Node*;
+                using reference = Node&;
+
+                Iterator(MoleculeGraph* graph, int start_node_id)
+                    : graph(graph), current(nullptr) {
+                    if (graph && graph->nodes.find(start_node_id) != graph->nodes.end()) {
+                        visited.insert(start_node_id);
+                        node_queue.push(&graph->nodes[start_node_id]);
+                        ++(*this); // Initialize to first valid node
+                    }
+                }
+
+                reference operator*() const { return *current; }
+                pointer operator->() const { return current; }
+
+                Iterator& operator++() {
+                    if (!node_queue.empty()) {
+                        current = node_queue.front();
+                        node_queue.pop();
+                        for (const auto neighbor : current->getNeighbors()) {
+                            if (visited.insert(neighbor->atomid).second) {
+                                node_queue.push(neighbor);
+                            }
+                        }
+                    }
+                    else {
+                        current = nullptr;
+                    }
+                    return *this;
+                }
+
+                Iterator operator++(int) {
+                    Iterator temp = *this;
+                    ++(*this);
+                    return temp;
+                }
+
+                bool operator==(const Iterator& other) const {
+                    return current == other.current;
+                }
+
+                bool operator!=(const Iterator& other) const {
+                    return !(*this == other);
+                }
+
+            private:
+                MoleculeGraph* graph;
+                Node* current;
+                std::unordered_set<int> visited;
+                std::queue<Node*> node_queue;
+            };
+
+            BFSRange(MoleculeGraph* graph, int start_node_id)
+                : graph(graph), start_node_id(start_node_id) {}
+
+            Iterator begin() { return Iterator(graph, start_node_id); }
+            Iterator end() { return Iterator(nullptr, -1); }
+
+        private:
+            MoleculeGraph* graph;
+            int start_node_id;
+        };
+
+        BFSRange BFS(int start_node_id) {
+            return BFSRange(this, start_node_id);
+        }
 	};
 
 	MoleculeGraph createGraph(const TopologyFile& topolfile);
-
-	/// <summary>
-	/// Reorders the particles so they are sequential inside of the subchains, and that particles of
-	/// touching subchains are in order aswell
-	/// TODO: This function should throw if trying to work with any files containing ; Residue in the itp
-	/// file, as that structure may not be kept.
-	/// </summary>
-	//void reorderoleculeParticlesAccoringingToSubchains(const fs::path& gro_path_in, const fs::path& top_path_in, 
-	//	const fs::path& gro_path_out, const fs::path& top_path_out);
-
-	//static void reorderoleculeParticlesAccoringingToSubchains(const fs::path& to_dir, const fs::path& from_dir, const std::string& name) {
-	//	reorderoleculeParticlesAccoringingToSubchains(from_dir / (name + ".gro"), from_dir / (name + ".itp"), to_dir / (name + ".gro"), to_dir / (name + ".itp"));
-	//}
 
 	void reorderoleculeParticlesAccoringingToSubchains(GroFile&, TopologyFile&);
 

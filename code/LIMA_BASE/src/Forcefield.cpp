@@ -10,7 +10,7 @@
 #include <tuple>
 
 using std::string;
-namespace lfs = Filehandler;
+namespace lfs = FileUtils;
 
 
 
@@ -485,15 +485,18 @@ LIMAForcefield& ForcefieldManager::GetForcefield(const fs::path& forcefieldPath)
 
 
 
-int ForcefieldManager::GetActiveLjParameterIndex(const std::vector<fs::path>& forcefieldNames, const std::string& query) {
-	for (const auto& forcefieldName : forcefieldNames) {
-		const int paramIndex = GetForcefield(forcefieldName).GetActiveLjParameterIndex(query);
-		if (paramIndex != -1)
-			return paramIndex;
-	}
+int ForcefieldManager::GetActiveLjParameterIndex(const std::optional<fs::path>& forcefieldName, const std::string& query) {
+	if (!forcefieldName)
+		return GetActiveLjParameterIndex(defaultForcefield, query);
+		//return GetActiveLjParameterIndex({ limaTestForcefield, defaultForcefield }, query);
 
-	if (forcefieldNames.empty())
-		return GetActiveLjParameterIndex({ limaTestForcefield, defaultForcefield }, query);
+	
+	const int paramIndex = GetForcefield(forcefieldName.value()).GetActiveLjParameterIndex(query);
+	if (paramIndex != -1)
+		return paramIndex;
+	
+
+	
 
 	throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
 }
@@ -507,20 +510,21 @@ ForceField_NB ForcefieldManager::GetActiveLjParameters() {
 
 
 template<typename GenericBond>
-const std::vector<typename GenericBond::Parameters>& ForcefieldManager::GetBondParameters(const std::vector<fs::path>& forcefieldNames, const auto& query) {
-	for (const auto& forcefieldName : forcefieldNames) {
-		const auto& parameters = GetForcefield(forcefieldName).GetBondParameters<GenericBond>(query);
-		if (!parameters.empty())
-			return parameters;
-	}
+const std::vector<typename GenericBond::Parameters>& ForcefieldManager::GetBondParameters(const std::optional<fs::path>& forcefieldName, const auto& query) {
+	//if (!forcefieldName)
+	//	return GetBondParameters<GenericBond>(defaultForcefield, query);
 
-	if (forcefieldNames.empty())
-		return GetBondParameters<GenericBond>({ defaultForcefield }, query);
+
+	const auto& parameters = GetForcefield(forcefieldName.value_or(defaultForcefield)).GetBondParameters<GenericBond>(query);
+	if (!parameters.empty())
+		return parameters;
+	
+
 
 	throw std::runtime_error("Failed to find bond parameters");
 }
-template const std::vector<SingleBond::Parameters>& ForcefieldManager::GetBondParameters<SingleBond>(const std::vector<fs::path>&, const std::array<std::string, SingleBond::nAtoms>&);
-template const std::vector<AngleUreyBradleyBond::Parameters>& ForcefieldManager::GetBondParameters<AngleUreyBradleyBond>(const std::vector<fs::path>&, const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
-template const std::vector<DihedralBond::Parameters>& ForcefieldManager::GetBondParameters<DihedralBond>(const std::vector<fs::path>&, const std::array<std::string, DihedralBond::nAtoms>&);
-template const std::vector<ImproperDihedralBond::Parameters>& ForcefieldManager::GetBondParameters<ImproperDihedralBond>(const std::vector<fs::path>&, const std::array<std::string, ImproperDihedralBond::nAtoms>&);
+template const std::vector<SingleBond::Parameters>& ForcefieldManager::GetBondParameters<SingleBond>(const std::optional<fs::path>&, const std::array<std::string, SingleBond::nAtoms>&);
+template const std::vector<AngleUreyBradleyBond::Parameters>& ForcefieldManager::GetBondParameters<AngleUreyBradleyBond>(const std::optional<fs::path>&, const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
+template const std::vector<DihedralBond::Parameters>& ForcefieldManager::GetBondParameters<DihedralBond>(const std::optional<fs::path>&, const std::array<std::string, DihedralBond::nAtoms>&);
+template const std::vector<ImproperDihedralBond::Parameters>& ForcefieldManager::GetBondParameters<ImproperDihedralBond>(const std::optional<fs::path>&, const std::array<std::string, ImproperDihedralBond::nAtoms>&);
 

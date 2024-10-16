@@ -3,23 +3,24 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <memory>
 
 #include "Constants.h"
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-//#include "SimulationDevice.cuh"
 #include "Utilities.h"
 
 
 
 
 
-#include <memory>
 
 class SimulationDevice;
+class DatabuffersDeviceController;
+class Thermostat;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
-constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords);
+constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
 static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
 	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
 static_assert(sizeof(int) * 3 * 3 * 3 * 2 <= cbkernel_utilitybuffer_size,
@@ -43,11 +44,13 @@ struct EngineTimings {
 
 struct RunStatus {
 	Float3* most_recent_positions = nullptr;
-	int stepForMostRecentData = 0;
+	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
 	float current_temperature = 0.f;
 
-
+	//int64_t stepsSinceEnergycheck = 0;
+	//float highestEnergy = 0.f; // measured in a single particle
+	float greatestForce = 0.f; // measured in a single particle
 
 	bool simulation_finished = false;
 	bool critical_error_occured = false;
@@ -90,15 +93,14 @@ private:
 	void verifyEngine();
 
 	// streams every n steps
-	void offloadLoggingData(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
-	void offloadTrajectory(const int steps_to_transfer = DatabuffersDevice::nStepsInBuffer);
+	void offloadLoggingData(const int64_t steps_to_transfer);
 	void offloadTrainData();
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
 
-
-	void handleBoxtemp();
+	void HandleEarlyStoppingInEM();
+	int64_t stepAtLastEarlystopCheck = 0;
 
 	std::unique_ptr<LimaLogger> m_logger;
 
@@ -115,15 +117,11 @@ private:
 
 	SimulationDevice* sim_dev = nullptr;
 
+	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
+
+	std::unique_ptr<Thermostat> thermostat;
+
 	const BoundaryConditionSelect bc_select;
 };
 
-
-
-struct TemperaturPackage {	// kinE is for a single particle in compound, not sum of particles in said compound. Temp in [k], energy in [J]
-	float temperature = 0;			// [k]
-	float avg_kinE_compound = 0;	// [J/mol]
-	float max_kinE_compound = 0;	// [J/mol]
-	float avg_kinE_solvent = 0;		// [J/mol]
-	float max_kinE_solvent = 0;		// [J/mol]
-};
+ 

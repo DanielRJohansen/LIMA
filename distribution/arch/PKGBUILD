@@ -1,15 +1,15 @@
 # Maintainer: Daniel <daniel@lima-dynamics.com>
 
 pkgname=lima
-pkgver=1.0
+pkgver=1.1
 pkgrel=1
 pkgdesc="The Molecular Dynamics engine for the Generative Era"
 arch=('x86_64')
 url="http://www.lima-dynamics.com"
 license=('LicenseRef-Proprietary')
-depends=('glibc' 'glu' 'bash' 'libglvnd')
+depends=('glibc' 'glu' 'bash' 'libglvnd' 'onetbb')
 source=("https://github.com/DanielRJohansen/LIMAMD/archive/main.tar.gz")
-sha256sums=('de536be7a3c2e3c2b4e746f423742298099047bffacefce9f8b9301d7885b6b6')
+sha256sums=('1da135c607bfa9566bfb8a8e0fc45a3d04d9da67ab9296b683dc193b3f937fd1')
 
 package() {
     cd "$srcdir/LIMAMD-main"

@@ -1,10 +1,5 @@
 #include <iostream>
-#include <format>
-#include <filesystem>
-#include <algorithm>
-#include <cctype>
-#include "Environment.h"
-
+#include "render.h"
 #include "selftest.h"
 
 #include "CommandlineUtils.h"
@@ -21,15 +16,16 @@ static const std::string helpText = R"(
 Usage: lima <program> [OPTIONS]
 
 Description:
-    LIMA is a suite of tools for molecular dynamics and membrane simulation tasks. 
+    LIMA is a suite of tools for molecular dynamics and membrane simulation tasks.
     Each program in the suite has its own set of options and parameters.
-	Input "lima <program> -help" for help on a specific program.
+    Input "lima <program> -help" for help on a specific program.
 
 Programs:
     mdrun               Runs the molecular dynamics simulation.
-    buildmembrane       Builds a membrane structure with specified lipid composition and box size. 
+    buildmembrane       Builds a membrane structure with specified lipid composition and box size.
     makesimparams       Generates default simulation parameters and writes them to a file.
     selftest            Runs internal self-tests to validate functionality.
+    render              Render a molecule in a 3D viewer.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -37,7 +33,7 @@ Options:
 Examples:
     lima buildmembrane -help
         Displays help for the buildmembrane program.
-        
+
     lima makesimparams
         Generates and outputs default simulation parameters to a file in the current directory
 )";
@@ -52,8 +48,9 @@ int main(int argc, char** argv)
 		if (program == "mdrun") { mdrun(argc, argv); }
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
-		else if (program == "-help" || program =="-h"||program == "help") { std::cout << helpText; }
+		else if (program == "-help" || program =="-h"|| program == "help") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
+		else if (program == "render") { render(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

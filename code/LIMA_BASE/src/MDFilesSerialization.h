@@ -12,14 +12,24 @@
 #include <format>
 #include <fstream>
 
-using namespace Filehandler;
+using namespace FileUtils;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
+int64_t TimeSinceEpoch(std::filesystem::file_time_type fileTime) {
+	// Convert file_time_type to system_clock time_point
+	auto sysTime = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+		fileTime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now()
+	);
 
+	// Convert to milliseconds since epoch
+	return std::chrono::duration_cast<std::chrono::milliseconds>(
+		sysTime.time_since_epoch()
+	).count();
+}
 
 constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 15;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 21;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 
@@ -105,8 +115,6 @@ namespace cereal {
 
 	template <class Archive>
 	void serialize(Archive& archive, TopologyFile::ForcefieldInclude& include) {
-		archive(include.isUserSupplied);
-		archive(include.path);
 		archive(include.name);
 	}
 
@@ -115,15 +123,6 @@ namespace cereal {
 		archive(strArr[0]);
 		archive(strArr[1]);
 	}
-
-	//template <class Archive>
-	//void serialize(Archive& archive, std::unordered_map<std::string, std::shared_ptr<TopologyFile>>& includeTopologies) {
-	//	for (auto& [key, value] : includeTopologies) {
-	//		archive(key);
-	//		archive(value->path);
-	//	}
-	//}
-
 } // namespace cereal
 
 
@@ -174,7 +173,7 @@ void readTopFileFromBinaryCache(const fs::path& path, TopologyFile& file) {
 	archive(file.lastModificationTimestamp);
 
 	archive(file.title);
-	archive(file.forcefieldIncludes);	
+	archive(file.forcefieldInclude);	
 
 	std::vector<std::array<std::string, 2>> includeTopologies; // name,path
 	archive(includeTopologies);
@@ -190,6 +189,9 @@ void readTopFileFromBinaryCache(const fs::path& path, TopologyFile& file) {
 	archive(file.GetLocalAnglebonds());
 	archive(file.GetLocalDihedralbonds());
 	archive(file.GetLocalImproperDihedralbonds());
+
+	if (path.extension() == ".top")
+		archive(file.system);
 	file.readFromCache = true;
 }
 
@@ -197,36 +199,41 @@ void WriteFileToBinaryCache(const TopologyFile& file, std::optional<fs::path> _p
 	const fs::path path = _path.value_or(file.path);
 	if (path.empty())
 		throw std::runtime_error("Tried to cache a Top file with no path");
-	std::ofstream os(path.string() + ".bin", std::ios::binary);
-	if (!os.is_open()) {
-		throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
+	{
+		std::ofstream os(path.string() + ".bin", std::ios::binary);
+		if (!os.is_open()) {
+			throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
+		}
+
+		cereal::BinaryOutputArchive archive(os);
+		archive(CacheVersionNumberValue());
+		archive(file.lastModificationTimestamp);
+
+		archive(file.title);
+		archive(file.forcefieldInclude);
+
+		std::vector<std::array<std::string, 2>> includeTopologies; // name,path
+		for (auto& [key, value] : file.includeTopologies) {
+			includeTopologies.push_back({ key, value->path.string() });
+		}
+		archive(includeTopologies);
+
+		archive(file.molecules);	// Only write the path of the file
+		archive(file.moleculetype);
+		archive(file.GetLocalAtoms());
+		archive(file.GetLocalSinglebonds());
+		archive(file.GetLocalPairs());
+		archive(file.GetLocalAnglebonds());
+		archive(file.GetLocalDihedralbonds());
+		archive(file.GetLocalImproperDihedralbonds());
+
+		if (path.extension() == ".top")
+			archive(file.system);
 	}
-
-	cereal::BinaryOutputArchive archive(os);
-	archive(CacheVersionNumberValue());
-	archive(file.lastModificationTimestamp);
-
-	archive(file.title);
-	archive(file.forcefieldIncludes);
-
-	std::vector<std::array<std::string, 2>> includeTopologies; // name,path
-	for (auto& [key, value] : file.includeTopologies) {
-		includeTopologies.push_back({ key, value->path.string()});
-	}
-	archive(includeTopologies);
-
-	archive(file.molecules);	// Only write the path of the file
-	archive(file.moleculetype);
-	archive(file.GetLocalAtoms());
-	archive(file.GetLocalSinglebonds());
-	archive(file.GetLocalPairs());
-	archive(file.GetLocalAnglebonds());
-	archive(file.GetLocalDihedralbonds());
-	archive(file.GetLocalImproperDihedralbonds());
 }
 
 // Checks if we have a valid cached binary of the file
-static bool UseCachedBinaryFile(const fs::path& path, fs::file_time_type requredModificationTime) {
+static bool UseCachedBinaryFile(const fs::path& path) {
 	if (!ENABLE_FILE_CACHING)
 		return false;
 
@@ -252,7 +259,20 @@ static bool UseCachedBinaryFile(const fs::path& path, fs::file_time_type requred
 		return false;
 
 
-	fs::file_time_type binaryModificationTime;;
-	file.read(reinterpret_cast<char*>(&binaryModificationTime), sizeof(fs::file_time_type));
-	return binaryModificationTime == requredModificationTime;
+
+
+	// Check if the file has been modified since the binary was created
+	// If we are on linux and in the resources dir, we will NOT do the check, since the files were made on windows
+	// and may mismatch AND we may not write to the resources dir
+#ifdef __linux__
+	if (path.parent_path().parent_path().parent_path() == FileUtils::GetLimaDir())
+		return true;
+#endif	
+
+	int64_t binaryModificationTime;
+	file.read(reinterpret_cast<char*>(&binaryModificationTime), sizeof binaryModificationTime);
+	const int64_t fileTime = TimeSinceEpoch(fs::last_write_time(path));
+
+	// Check if the difference is less than 100 millisecond 
+	return std::abs(fileTime - binaryModificationTime) < 100;
 }

@@ -81,7 +81,7 @@ namespace SupernaturalForces {
 	}
 
 	// Overwrites the force that is given as an argument to the function
-	__global__ void ApplyHorizontalSqueeze(SimulationDevice* simDev) {
+	__global__ void ApplyHorizontalSqueeze(SimulationDevice* simDev, int64_t step) {
 		__shared__ Float3 avg_abspos_nm;
 		__shared__ float avg_force_z;
 		__shared__ Float3 relPosNm[MAX_COMPOUND_PARTICLES];
@@ -91,7 +91,7 @@ namespace SupernaturalForces {
 		relPosNm[threadIdx.x] = Float3{ 0 };
 		forcesZ[threadIdx.x] = 0;
 
-		int nParticles = simDev->box->compounds[blockIdx.x].n_particles;
+		int nParticles = simDev->boxConfig.compounds[blockIdx.x].n_particles;
 		Float3 force{};
 
 		__syncthreads();
@@ -99,7 +99,7 @@ namespace SupernaturalForces {
 
 		// Compute the avg position
 		{
-			const auto const coords = simDev->box->compoundcoordsCircularQueue->getCoordarrayRef(simDev->signals->step, blockIdx.x);
+			const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 			LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
 			__syncthreads();
 			relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
@@ -114,7 +114,7 @@ namespace SupernaturalForces {
 		// Neutralize the Z force
 		{
 			if (threadIdx.x < nParticles) {
-				forcesZ[threadIdx.x] = simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x].z;
+				forcesZ[threadIdx.x] = simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].z;
 			}
 			__syncthreads();				
 
@@ -132,10 +132,10 @@ namespace SupernaturalForces {
 
 		
 		if (threadIdx.x < nParticles) {
-			const float mass = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+			const float mass = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 			SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
 
-			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += force;
+			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 		}		
 	}
 	//__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
@@ -154,9 +154,9 @@ namespace SupernaturalForces {
 
 
 	Float3 __device__ BoxEdgeForce(const Float3& positionNM) {
-		const Float3 boxSize = boxSize_device.boxSizeNM_f;
+		const Float3 boxSize{ boxSize_device.boxSizeNM_f };
 		Float3 force{};
-		float scalar = 10.f;
+		const float scalar = 20.f;
 		force.x += std::exp(scalar * (0.f - positionNM.x) - 2.f);
 		force.x -= std::exp(scalar * (positionNM.x - boxSize.x) - 2.f);
 		force.y += std::exp(scalar * (0.f - positionNM.y) - 2.f);
@@ -166,40 +166,43 @@ namespace SupernaturalForces {
 		return force;
 	}
 
-	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev) {
+	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev, int64_t step) {
 		__shared__ Float3 origo;
 
-		const auto const coords = simDev->box->compoundcoordsCircularQueue->getCoordarrayRef(simDev->signals->step, blockIdx.x);
+		const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
 		const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
 		__syncthreads();
 		const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
-		const float massFactor = forcefield_device.particle_parameters[simDev->box->compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		const float massFactor = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
-		if (threadIdx.x < simDev->box->compounds[blockIdx.x].n_particles)
-			simDev->box->compounds[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
+		if (threadIdx.x < simDev->boxConfig.compounds[blockIdx.x].n_particles)
+			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
 	}
 
-	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev) {
-		__shared__ SolventBlock solventblock;
+	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev, int64_t step) {
+		// TODONOW Implement
+		// 
+		// 
+		//__shared__ SolventBlock solventblock;
 
-		SolventBlock* solventblock_ptr = simDev->box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, simDev->signals->step);
+		//SolventBlock* solventblock_ptr = simDev->box->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
-		if (threadIdx.x == 0) {
-			solventblock.loadMeta(*solventblock_ptr);
-		}
-		__syncthreads();
-		solventblock.loadData(*solventblock_ptr);
-		__syncthreads();
+		//if (threadIdx.x == 0) {
+		//	solventblock.loadMeta(*solventblock_ptr);
+		//}
+		//__syncthreads();
+		//solventblock.loadData(*solventblock_ptr);
+		//__syncthreads();
 
 
-		Float3 force{};
-		float potE_sum{};
-		const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
+		//Float3 force{};
+		//float potE_sum{};
+		//const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
 	}
 
 
 
-	void SnfHandler(Simulation* simulation, SimulationDevice* simDev) {
+	void SnfHandler(Simulation* simulation, SimulationDevice* simDev, int64_t step) {
 		cudaDeviceSynchronize();
 
 
@@ -207,15 +210,15 @@ namespace SupernaturalForces {
 			case None:
 				break;
 			case HorizontalSqueeze:
-				SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev);
+				SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);
 				break;
 			case HorizontalChargeField:
 				break;
 			case BoxEdgePotential:
 				if (simulation->box_host->boxparams.n_compounds > 0)
-					BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev);	
+					BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);	
 				if (simulation->box_host->boxparams.n_solvents > 0) 
-					BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev);
+					BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev, step);
 				break;
 		}		
 		cudaDeviceSynchronize();

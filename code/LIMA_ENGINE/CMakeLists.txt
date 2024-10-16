@@ -4,7 +4,6 @@
 # in order to access __constant__ memory
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
-    src/Thermostat.cu       # TODO: Make .cpp file
     src/ChargeOcttree.cu
     src/ConvexHullEngine.cu
  "src/SimulationDevice.cpp")
@@ -22,4 +21,9 @@ target_link_libraries(LIMA_ENGINE LIMA_BASE)
 
 if (UNIX)
     target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)
+elseif (WIN32)
+       target_compile_options(LIMA_ENGINE PRIVATE 
+        $<$<CONFIG:Release>:/use_fast_math>
+        $<$<CONFIG:Release>:/O2>
+    )
 endif()

@@ -1,8 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <fstream>
-#include <algorithm>
 
 #include "TestUtils.h"
 #include "Programs.h"
@@ -11,23 +9,27 @@ namespace TestMembraneBuilder {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
 
-	static LimaUnittestResult testBuildmembraneSmall(EnvMode envmode, bool do_em)
-	{
+	// This test ensures that the membrane is built identical to the reference membrane, NOT considering EM
+	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
+	{		
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 		const fs::path mol_dir = work_dir / "molecule";
+		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
 		Lipids::Selection lipidselection;
 		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "Cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+
+		// Build the membrane, and write it to disk
+		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
+		// Test the topology is identical to reference
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		TopologyFile refTop{ mol_dir / "membrane_reference.top" };
-
 		ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
 		ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
 		ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
@@ -35,16 +37,22 @@ namespace TestMembraneBuilder {
 		ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
 		ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
 
+		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };
 		GroFile refGro{ mol_dir / "membrane_reference.gro" };
-
 		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
 		for (int i = 0; i < newGro.atoms.size(); i++) {
+			if (newGro.atoms[0].position != refGro.atoms[0].position)
+				int a=0;
 			ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
 		}
 
-		return LimaUnittestResult{ true , "No error", envmode == Full};
+		// Finally test if we can stabilize the simulation
+		const float emtol = 200.f;
+		auto sim = Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, emtol);
+
+		return LimaUnittestResult{ sim->maxForceBuffer.back().second < emtol, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
 	}
 
 	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
@@ -59,7 +67,9 @@ namespace TestMembraneBuilder {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
 		}
 
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 7.f }, 3.5f, envmode);
+		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
+		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true);
+
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
@@ -70,7 +80,7 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment env(work_dir, envmode, false);
+		Environment env(work_dir, envmode);
 		env.CreateSimulation(newGro, newTop, params);
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
@@ -79,7 +89,7 @@ namespace TestMembraneBuilder {
 	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
 		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
 
-		const fs::path path = Filehandler::GetLimaDir() / "resources/Slipids";
+		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
 		std::vector<std::string> targets;
 		for (const auto& entry : fs::directory_iterator(path)) {
 			if (entry.path().extension() == ".gro") {
@@ -95,7 +105,18 @@ namespace TestMembraneBuilder {
 		for (const auto& lipidname : targets) {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
 		}
-		auto [gro, top] = Programs::CreateMembrane(work_dir, lipidselection, Float3{ 15.f }, 5.f, envmode);
+
+		// The first test is pretty much just to see if this function throws
+		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
+		for (const auto& includeTop : topfile->GetAllSubMolecules()) {
+			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");
+		}
+
+		// The third test is to see if this function throws
+		const float emtol = 1000.f;
+		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, work_dir, envmode, true, emtol);
+
+		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 
 		return LimaUnittestResult{ true , "", envmode == Full };
 	}
@@ -108,7 +129,6 @@ namespace TestMembraneBuilder {
 		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"Cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
-
 		// Compare before relaxation
 		{
 			std::vector<Facet> facets;

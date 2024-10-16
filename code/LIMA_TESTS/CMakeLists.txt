@@ -22,8 +22,11 @@ target_include_directories(LIMA_TESTS PRIVATE
 target_link_libraries(LIMA_TESTS LIMA_BASE)
 target_link_libraries(LIMA_TESTS LIMA_MD)
 
+
 if (UNIX)
-    target_compile_options(LIMA_TESTS PRIVATE -use_fast_math -O3)
+    target_compile_options(LIMA_TESTS PRIVATE -O3)
+elseif (WIN32)
+    #target_compile_options(LIMA_TESTS PRIVATE /O2)
 endif()
 
 message(STATUS "\n Resource files: ${RESOURCE_FILES}")

@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <algorithm>
 #include <functional>
-#include <map>
 #include <array>
 #include <fstream>
 
@@ -44,13 +43,13 @@ bool ignoreRow(const std::vector<char>& ignores, const string& line) {
 	return false;
 }
 
-void Filehandler::removeWhitespace(std::string& str) {
+void FileUtils::removeWhitespace(std::string& str) {
 	str.erase(std::remove_if(str.begin(), str.end(), 
 		[](unsigned char ch) {return std::isspace(static_cast<int>(ch));}),
 		str.end());
 }
 
-bool Filehandler::firstNonspaceCharIs(const std::string& str, char query) {
+bool FileUtils::firstNonspaceCharIs(const std::string& str, char query) {
 	auto first_non_space = std::find_if(str.begin(), str.end(), [](unsigned char ch) {
 		return !std::isspace(static_cast<int>(ch));
 	});
@@ -59,13 +58,18 @@ bool Filehandler::firstNonspaceCharIs(const std::string& str, char query) {
 }
 
 // Reads "key=value" pairs from a file. Disregards all comments (#)
-std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& path) {
+std::unordered_map<std::string, std::string> FileUtils::parseINIFile(const std::string& path, bool forceLowercase) {
 	std::ifstream file(path);
 	if (!file.is_open()) {
 		throw std::runtime_error(std::format("Failed to open file {}\n", path));
 	}
 
-	std::map<std::string, std::string> dict;
+	auto ToLowercase = [](std::string& str) {
+		std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+	};
+	
+
+	std::unordered_map<std::string, std::string> dict;
 	std::string line;
 	while (getline(file, line)) {
 		// Sanitize line by removing everything after a '#' character
@@ -80,6 +84,12 @@ std::map<std::string, std::string> Filehandler::parseINIFile(const std::string& 
 			// Remove spaces from both key and value
 			key.erase(remove_if(key.begin(), key.end(), ::isspace), key.end());
 			value.erase(remove_if(value.begin(), value.end(), ::isspace), value.end());
+
+			if (forceLowercase) {
+				ToLowercase(key);
+				ToLowercase(value);
+			}
+
 			dict[key] = value;
 		}
 	}
@@ -100,155 +110,27 @@ void replaceTabs(std::string& str) {
 	}
 }
 
-SimpleParsedFile parseBasicFile(const std::string& path, bool verbose, SetSectionFunction setSection, std::vector<char> ignores = {';', '#'}, char delimiter = ' ')
-{
-	std::ifstream file;
-	file.open(path);
-	if (!file.is_open() || file.fail()) {
-        throw std::runtime_error(std::format("Failed to open file {}\n", path).c_str());
-    }
 
-	SimpleParsedFile parsedfile;
-
-	string current_section = "none";
-
-	int ignore_cnt = 0;
-
-	int skipCnt = 0;
-
-	// Forward declaring for optimization reasons
-	string line{}, word{};
-	while (getline(file, line)) {
-
-		if (skipCnt > 0) {
-			skipCnt--;
-			continue;
-		}
-
-		replaceTabs(line);
-
-		std::vector<string> row;
-		std::stringstream ss(line);
-		while (getline(ss, word, delimiter)) {
-			if (!word.empty()) {
-				if (ignoreRow(ignores, word)) {
-					break;
-				}
-				row.push_back(word);
-			}
-			
-		}
-
-		if (row.empty()) { continue; }	// This case happens when a line contains 1 or more spaces, but no words. Space are not regarded as comments, since the separate entries in a line
-
-		bool new_section = setSection(row, current_section, skipCnt);
-		if (new_section) { continue; }
-
-		parsedfile.rows.push_back({ current_section, row });
-	}
-
-	if (verbose) {
-		std::cout << path;
-		printf("\n\t%zu rows read. %d rows ignored\n", parsedfile.rows.size(), ignore_cnt);
-	}	
-	
-	return parsedfile;
-}
-SimpleParsedFile Filehandler::parseItpFile(const std::string& path, bool verbose) {
-	assert(path.substr(path.length() - 4) == ".itp");
-
-	SetSectionFunction setSectionFn = [](const std::vector<string>& row, string& current_section, int&) -> bool {
-		if (row.size() == 3 && row[0][0] == '[') {
-
-			// Need to handle a special case, because some fuckwits used the same keyword twice - straight to jail!
-			if (current_section == "dihedraltypes" && row[1] == "dihedraltypes") {	// Workaround for itp files
-				current_section = "improperdihedraltypes";
-			}
-			else {
-				current_section = row[1];
-			}
-
-			return true;
-		}
-		return false;
-	};	
-
-	return parseBasicFile(path, verbose, setSectionFn);
-}
-
-SimpleParsedFile Filehandler::parsePrmFile(const std::string& path, bool verbose)
-{
-	assert(path.substr(path.length() - 4) == ".prm");
-
-	std::vector<std::string> keywords{ "ATOMS", "BONDS", "ANGLES", "DIHEDRALS", "IMPROPER", "NONBONDED", "NBFIX", "CMAP", "END", "HBOND"};	// I despise the inventor of this fkin "system"
-
-	SetSectionFunction setSectionFn = [&](const std::vector<string>& row, string& current_section, int& skipCnt) -> bool {
-		if (row[0] == "NONBONDED") {
-			skipCnt = 1;	// special case with a line that is not commented - STRAIGHT TO JAIL!
-		}
-
-		if (std::find(keywords.begin(), keywords.end(), row[0]) != keywords.end()) {
-			current_section = row[0];
-			return true;
-		}
-		return false;
-	};
-
-	return parseBasicFile(path, verbose, setSectionFn, { '!' }, ' ');
-}
-
-
-void Filehandler::createDefaultSimFilesIfNotAvailable(const std::string& dir, float boxsize_nm) {
-	const string simparams_path = dir + "/sim_params.txt";
-	if (!std::filesystem::exists(simparams_path)) {	// TODO: Make this string a default-constant somewhere
-		const string contents = "";
-		std::ofstream file(simparams_path);
-		file << contents;
-		file.close();
-	}
-
-	const string gro_path = dir + "/conf.gro";
-	if (!std::filesystem::exists(gro_path)) {	// TODO: Make this string a default-constant somewhere
-		const string boxsize_str = std::to_string(boxsize_nm) + " ";	// add space between dims
-		const string contents = " \n0\n\t\t"+ boxsize_str + boxsize_str + boxsize_str;	// Title, nAtoms, box dimensions
-		std::ofstream file(gro_path);
-		file << contents;
-		file.close();
-	}
-
-	const string top_path = dir + "/topol.top";
-	if (!std::filesystem::exists(top_path)) {	// TODO: Make this string a default-constant somewhere
-		const string contents = "[ moleculetype ]\n[ atoms ]\n[ bonds ]\n[ angles ]\n[ dihedrals ]\n[dihedrals]\n";
-		std::ofstream file(top_path);
-		file << contents;
-		file.close();
-	}
-}
-
-fs::path Filehandler::GetLimaDir() {
+fs::path FileUtils::GetLimaDir() {
 #ifdef __linux__
 	return {"/usr/share/LIMA"};
 #else
-	const int maxPathLen = 2048;
-	char executablePath[maxPathLen];
-	GetModuleFileName(NULL, executablePath, maxPathLen);
+	return { R"(C:\Users\Daniel\git_repo\LIMA)" };
+#endif
+}
 
+std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const fs::path& dir) {
+	std::vector<std::array<fs::path, 2>> pairs;
 
-	// Start from the directory of the executable
-	fs::path execPath(executablePath);
-	fs::path currentPath = execPath.parent_path();
-
-	// Traverse up the directory tree until "LIMA" directory is found or root is reached
-	int count = 0;
-	while (currentPath.has_parent_path()) {
-		if (currentPath.filename() == "LIMA") {
-			return currentPath; // Return the path when "LIMA" is found
+	for (const auto& entry : fs::directory_iterator(dir)) {
+		if (entry.path().extension() == ".gro") {
+			std::string base_name = entry.path().stem().string();
+			fs::path itp_file = dir / (base_name + ".itp");
+			if (fs::exists(itp_file)) {
+				pairs.emplace_back(std::array<fs::path, 2>{ entry.path(), itp_file });
+			}
 		}
-		currentPath = currentPath.parent_path(); // Move one level up in the directory tree
-		if (count++ > 20)
-			break;
 	}
 
-	throw std::runtime_error("Could not find LIMA directory");
-#endif
+	return pairs;
 }

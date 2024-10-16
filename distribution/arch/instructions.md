@@ -2,7 +2,8 @@ How to update the distribution
 
 # Compile LIMA
 First compile LIMA using install.sh in the toplevel dir ../../install.sh.
-Then copy the executable and resources dir to the LIMAMD repo
+This updates the executable and resources dir in the Downloads/LIMAMD repo
+commit and push that update
 
 # Update PKGBUILD
 Update the SHA checksum in PKGBUILD. Use the cmd below to get the new checksum:

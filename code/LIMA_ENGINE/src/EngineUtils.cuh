@@ -35,37 +35,59 @@ namespace EngineUtils {
 		return pos;
 #endif
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
+		if (force.len() > 3.f)
+			printf("From %d %d %d To %d %d %d\n", pos.x, pos.y, pos.z, pos_tadd1.x, pos_tadd1.y, pos_tadd1.z);
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
-		//if (force.len() > 0.0000001f)
-		//	force.print('f');
 		return vel;
 	}
 
+
+	// ChatGPT magic. generates a float with elements between 0 and 1
+	__device__ inline Float3 GenerateRandomForce() {
+		unsigned int seed = threadIdx.x + blockIdx.x*blockDim.x;
+
+		// Simple LCG (Linear Congruential Generator) for pseudo-random numbers
+		seed = (1664525 * seed + 1013904223);
+		float randX = ((seed & 0xFFFF) / 32768.0f) - 1.0f;
+
+		seed = (1664525 * seed + 1013904223);
+		float randY = ((seed & 0xFFFF) / 32768.0f) - 1.0f;
+
+		seed = (1664525 * seed + 1013904223);
+		float randZ = ((seed & 0xFFFF) / 32768.0f) - 1.0f;
+
+		return Float3{randX, randY, randZ};
+	}
+
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force) {
+	__device__ static Float3 ForceActivationFunction(const Float3 force, float progress /*How far along the EM are we, 0..1*/) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
-		if (isinf(force.x) || isinf(force.y) || isinf(force.z)) {
-			return Float3{ 0.f,0.f, 0.89732f * (threadIdx.x + blockIdx.x * blockDim.x) / (blockDim.x * gridDim.x) };			
+		if (isinf(force.lenSquared())) {
+			//return Float3{ 0.f,0.f, 0.89732f * (threadIdx.x + blockIdx.x * blockDim.x) / (blockDim.x * gridDim.x) };
+			return GenerateRandomForce();
+			//printf("Force is inf id %d %d force %f %f %f\n", blockIdx.x, threadIdx.x, force.x, force.y, force.z);
+			//return Float3{0.f,0.f,5.f};
 		}
 
 
-		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 10
-		const float alpha = 10000. * LIMA / NANO * KILO; // [1/l N/mol]		
+		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200
+		const float scaleAbove = 1000.f + 30000.f * (1.f-progress);
+		const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		float scaledMagnitude = alpha * tanh(alpha * force.len());
-
+//		const float scaledMagnitude = alpha * tanh(alpha * force.len());
+		const float scaledMagnitude = alpha * tanh(force.len()/alpha);
 		// Scale the original force vector by the ratio of the new magnitude to the original magnitude
-		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-6)); // Avoid division by zero
-
+		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8)); // Avoid division by zero
+		//scaledForce.print();
 		return scaledForce;
 	}
 
-	__device__ static Float3 SlowHighEnergyParticle(const Float3& velocityNow, const float dt, const float mass, float thermostatScalar) {
+	/*__device__ static Float3 SlowHighEnergyParticle(const Float3& velocityNow, const float dt, const float mass, float thermostatScalar) {
 		const float kineticEnergy = PhysicsUtils::calcKineticEnergy(velocityNow.len(), mass);
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergy);
 
@@ -77,8 +99,7 @@ namespace EngineUtils {
 		else {
 			return velocityNow * thermostatScalar;
 		}
-
-	}
+	}*/
 
 
 

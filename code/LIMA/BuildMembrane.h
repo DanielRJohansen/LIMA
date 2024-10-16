@@ -128,10 +128,12 @@ int buildMembrane(int argc, char** argv) {
 	}
     
     auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ setup.boxsize }, setup.membraneCenterZ.value_or(setup.boxsize/2.f));
-    Programs::EnergyMinimize(*grofile, *topfile, true, setup.work_dir, setup.envmode, true, setup.emtol);
+    auto sim = Programs::EnergyMinimize(*grofile, *topfile, true, setup.work_dir, setup.envmode, true, setup.emtol);
 
     grofile->printToFile(setup.work_dir / "membrane.gro");
     topfile->printToFile(setup.work_dir / "membrane.top");
-   
+
+    std::cout << std::format("buildmembrane finished with a final max-force of {:.3f}\n", sim->maxForceBuffer.back());
+
 	return 0;
 }

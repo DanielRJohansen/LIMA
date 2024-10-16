@@ -100,6 +100,7 @@ Example:
 };
 
 int mdrun(int argc, char** argv) {
+    auto t0 = std::chrono::steady_clock::now();
     MdrunSetup setup(argc, argv);
     auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
@@ -112,6 +113,26 @@ int mdrun(int argc, char** argv) {
 
     env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
+
+
+    // TODO: Move this to a helper namespace somewhere
+
+    // Calculate total time simulated (in nanoseconds)
+    const double total_ns = static_cast<double>(ip.n_steps) * ip.dt * LIMA_TO_NANO;
+
+    // Measure elapsed time in seconds
+    auto t1 = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed_seconds = t1 - t0;
+    double elapsed_time_sec = elapsed_seconds.count();
+
+    // Calculate performance metrics
+    double ns_per_s = total_ns / elapsed_time_sec;
+    double ns_per_hr = ns_per_s * 3600.0;
+
+    // Print time and performance info
+    printf("Total simulation time: %.2f seconds\n", elapsed_time_sec);
+    printf("Performance: %.3f ns/s, %.3f ns/hr\n", ns_per_s, ns_per_hr);
+
 
     return 0;
 }

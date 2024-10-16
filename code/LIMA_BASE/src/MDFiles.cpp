@@ -662,7 +662,8 @@ void TopologyFile::printToFile(const std::filesystem::path& path, bool printForc
 
 		//if (!molecules.entries.empty()) { file << molecules.composeString(); }
 		// If we have the same submolecule multiple times in a row, we only print it once together with a count of how many there are
-		file << molecules.title << "\n" << molecules.legend << "\n";
+		if (!molecules.entries.empty())
+			file << molecules.title << "\n" << molecules.legend << "\n";
 		for (int i = 0; i < molecules.entries.size(); i++) {
 			std::ostringstream oss;
 			int count = 1;

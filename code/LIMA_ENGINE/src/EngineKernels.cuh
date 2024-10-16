@@ -174,29 +174,34 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 		__syncthreads();
 
 		if (threadIdx.x < compound.n_particles) {			
+			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
 
 			// Energy minimize
 			if constexpr (energyMinimize) {
-				force = EngineUtils::ForceActivationFunction(force);
+				const Float3 safeForce = EngineUtils::ForceActivationFunction(force, static_cast<float>(step)/static_cast<float>(simparams.n_steps));
+				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], Float3{}, safeForce, mass, simparams.dt);
+				compound_coords->rel_positions[threadIdx.x] = pos_now;
+//				if (safeForce.len() > 10.f)
+	//				safeForce.print();
 			}
+			else {
+				const Float3 force_prev = boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+				const Float3 vel_prev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+				const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
+				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.dt);
 
-			const float mass = forcefield_device.particle_parameters[compound.atom_types[threadIdx.x]].mass;
-			const Float3 force_prev = boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-			const Float3 vel_prev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.dt);
+				Float3 velScaled;
+				if constexpr (!energyMinimize)
+					velScaled = vel_now * signals->thermostat_scalar;
 
-			Float3 velScaled;
-			if constexpr (!energyMinimize)
-				velScaled = vel_now * signals->thermostat_scalar;				
-				
-			boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = force;
-			boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
+				boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = force;
+				boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 
-			speed = velScaled.len();
+				speed = velScaled.len();
 
-			// Save pos locally, but only push to box as this kernel ends
-			compound_coords->rel_positions[threadIdx.x] = pos_now;
+				// Save pos locally, but only push to box as this kernel ends
+				compound_coords->rel_positions[threadIdx.x] = pos_now;
+			}
 		}
 
 		__syncthreads();
@@ -619,7 +624,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	if (solvent_active) {
 
 		if constexpr (energyMinimize)
-			force = EngineUtils::ForceActivationFunction(force);
+			force = EngineUtils::ForceActivationFunction(force, static_cast<float>(step)/static_cast<float>(simparams.n_steps));
 
 		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
 		Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS

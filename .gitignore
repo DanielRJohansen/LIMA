@@ -50,3 +50,7 @@ out*
 /distribution/debian/build/*
 !/distribution/debian/build/*.deb
 *.debhelper*
+
+dev/VMDscripts/frames/*
+dev/VMDscripts/*.gro
+dev/VMDscripts/*.trr

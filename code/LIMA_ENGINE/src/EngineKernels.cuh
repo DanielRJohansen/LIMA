@@ -180,15 +180,14 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 			if constexpr (energyMinimize) {
 				const Float3 safeForce = EngineUtils::ForceActivationFunction(force, static_cast<float>(step)/static_cast<float>(simparams.n_steps));
 				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], Float3{}, safeForce, mass, simparams.dt);
-				compound_coords->rel_positions[threadIdx.x] = pos_now;
-//				if (safeForce.len() > 10.f)
-	//				safeForce.print();
+				compound_coords->rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 			}
 			else {
 				const Float3 force_prev = boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 				const Float3 vel_prev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
 				const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, simparams.dt, mass);
 				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], vel_now, force, mass, simparams.dt);
+				compound_coords->rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 				Float3 velScaled;
 				if constexpr (!energyMinimize)
@@ -197,10 +196,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 				boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = force;
 				boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 
-				speed = velScaled.len();
-
-				// Save pos locally, but only push to box as this kernel ends
-				compound_coords->rel_positions[threadIdx.x] = pos_now;
+				speed = velScaled.len();							
 			}
 		}
 
@@ -619,30 +615,31 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-
 	Coord relpos_next{};
 	if (solvent_active) {
-
-		if constexpr (energyMinimize)
-			force = EngineUtils::ForceActivationFunction(force, static_cast<float>(step)/static_cast<float>(simparams.n_steps));
-
 		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
-		Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
-
-		Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
-		const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
 		
-		if constexpr(!energyMinimize)
-			vel_now *= signals->thermostat_scalar;
+		if constexpr (energyMinimize) {
+			const Float3 safeForce = EngineUtils::ForceActivationFunction(force, static_cast<float>(step) / static_cast<float>(simparams.n_steps));
+			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], Float3{}, force, mass, simparams.dt);
+			relpos_next = pos_now;
+			EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+		}
+		else {
+			Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
+			Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
+			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
+			if constexpr (!energyMinimize)
+				vel_now *= signals->thermostat_scalar;
 
-		solventdata_ref.vel_prev = vel_now;
-		solventdata_ref.force_prev = force;
+			solventdata_ref.vel_prev = vel_now;
+			solventdata_ref.force_prev = force;
 
-		// Save pos locally, but only push to box as this kernel ends
-		relpos_next = pos_now;
-
-		EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+			// Save pos locally, but only push to box as this kernel ends
+			relpos_next = pos_now;
+			EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+		}
 	}
 
 

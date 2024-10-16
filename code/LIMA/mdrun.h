@@ -114,9 +114,6 @@ int mdrun(int argc, char** argv) {
     env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
-
-    // TODO: Move this to a helper namespace somewhere
-
     // Calculate total time simulated (in nanoseconds)
     const double total_ns = static_cast<double>(ip.n_steps) * ip.dt * LIMA_TO_NANO;
 

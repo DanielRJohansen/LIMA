@@ -35,8 +35,6 @@ namespace EngineUtils {
 		return pos;
 #endif
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
-		if (force.len() > 3.f)
-			printf("From %d %d %d To %d %d %d\n", pos.x, pos.y, pos.z, pos_tadd1.x, pos_tadd1.y, pos_tadd1.z);
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
@@ -45,7 +43,7 @@ namespace EngineUtils {
 	}
 
 
-	// ChatGPT magic. generates a float with elements between 0 and 1
+	// ChatGPT magic. generates a float with elements between -1 and 1
 	__device__ inline Float3 GenerateRandomForce() {
 		unsigned int seed = threadIdx.x + blockIdx.x*blockDim.x;
 
@@ -67,10 +65,7 @@ namespace EngineUtils {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
-			//return Float3{ 0.f,0.f, 0.89732f * (threadIdx.x + blockIdx.x * blockDim.x) / (blockDim.x * gridDim.x) };
 			return GenerateRandomForce();
-			//printf("Force is inf id %d %d force %f %f %f\n", blockIdx.x, threadIdx.x, force.x, force.y, force.z);
-			//return Float3{0.f,0.f,5.f};
 		}
 
 
@@ -79,11 +74,10 @@ namespace EngineUtils {
 		const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-//		const float scaledMagnitude = alpha * tanh(alpha * force.len());
+
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);
 		// Scale the original force vector by the ratio of the new magnitude to the original magnitude
-		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8)); // Avoid division by zero
-		//scaledForce.print();
+		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8)); // Avoid division by zero		
 		return scaledForce;
 	}
 

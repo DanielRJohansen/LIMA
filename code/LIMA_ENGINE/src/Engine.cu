@@ -91,6 +91,9 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(cutoffLmSquaredReciprocal_device, &cutoffLmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 
+	const float initialThermostatScalar = 1.f;
+	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+
 	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
 
 
@@ -148,7 +151,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			runstatus.current_temperature = temperature;
 
 			if (simulation->simparams_host.apply_thermostat)
-				sim_dev->signals->thermostat_scalar = thermostatScalar;	// UNSAFE TODO: Find a better solution			
+				cudaMemcpyToSymbol(thermostatScalar_device, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 		}
 		
 		HandleEarlyStoppingInEM();

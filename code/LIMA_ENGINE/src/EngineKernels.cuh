@@ -198,8 +198,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 				compound_coords->rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 				Float3 velScaled;
-				if constexpr (!energyMinimize)
-					velScaled = vel_now * signals->thermostat_scalar;
+				velScaled = vel_now * thermostatScalar_device;
 
 				boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = force;
 				boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
@@ -642,8 +641,8 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 		else {
 			Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
-			if constexpr (!energyMinimize)
-				vel_now *= signals->thermostat_scalar;
+			
+			vel_now = vel_now * thermostatScalar_device;
 
 			solventdata_ref.vel_prev = vel_now;
 			solventdata_ref.force_prev = force;

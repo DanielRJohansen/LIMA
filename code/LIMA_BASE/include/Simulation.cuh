@@ -47,7 +47,6 @@ struct SimParams {
 
 struct SimSignals {
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
-	float thermostat_scalar = 1.f;
 };
 
 

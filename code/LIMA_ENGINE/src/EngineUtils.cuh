@@ -41,6 +41,25 @@ namespace EngineUtils {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
 	}
+	 
+	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
+#ifndef ENABLE_INTEGRATEPOSITION
+		return pos;
+#endif
+		const float alpha = 0.15f;
+		const float stepsize = dt * (progress/alpha * expf(1 - progress/alpha)); // Skewed gaussian
+		
+		const float massPlaceholder = 0.01; // Since we dont use velocities, having a different masses would complicate finding the energy minima. We use this placeholder, so all particles have the same "inertia"
+		const Coord deltaCoord = Coord{ (force * (0.5 / massPlaceholder * stepsize*stepsize)).round() };
+
+		// For the final part of EM we regulate the movement heavily
+		const Float3 deltaPos = deltaCoord.toFloat3();
+		if (progress > 0.8f && deltaPos.len() > deltaPosPrev.len() * 0.9f) {
+			return pos + Coord{ deltaPos * (deltaPosPrev.len() * 0.9f) / (deltaPos.len() + 1e-6) };
+		}
+
+		return pos + deltaCoord;
+	}
 
 
 	// ChatGPT magic. generates a float with elements between -1 and 1
@@ -61,7 +80,7 @@ namespace EngineUtils {
 	}
 
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force, float progress /*How far along the EM are we, 0..1*/) {
+	__device__ static Float3 ForceActivationFunction(const Float3 force) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
@@ -70,14 +89,20 @@ namespace EngineUtils {
 
 
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200
-		const float scaleAbove = 1000.f + 30000.f * (1.f-progress);
-		const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
+		//const float scaleAbove = 1000.f + 30000.f * (1.f-progress);
+		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
+		const float alpha = 1000.f * LIMA / NANO * KILO; // [1/l N/mol]
 
+		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);
+
+		//const float scaledMagnitude = force.len() / (1.f + force.len() / (2.f * alpha));
 		// Scale the original force vector by the ratio of the new magnitude to the original magnitude
 		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8)); // Avoid division by zero		
+
+		//printf("Force %f %f %f ScaledF %f %f %f\n", force.x, force.y, force.z, scaledForce.x, scaledForce.y, scaledForce.z);
 		return scaledForce;
 	}
 

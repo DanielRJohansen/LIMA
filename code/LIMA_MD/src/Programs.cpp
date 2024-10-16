@@ -162,7 +162,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;	
-	params.dt = 100.f;
+	params.dt = 200.f;
 	params.em_force_tolerance = emtol;
 
 	if (mayOverlapEdges) {
@@ -173,7 +173,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 		env.run(false);
 	}
 
-	params.n_steps = 30000;
+	params.n_steps = 40000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 
@@ -182,8 +182,17 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	else
 		env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
-	if (writePositionsToGrofile)
-		env.WriteBoxCoordinatesToFile(grofile);
+	if (writePositionsToGrofile) {
+		const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
 
+		auto [step, force] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
+			[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
+				return a.second < b.second;
+			}
+		);
+
+		env.WriteBoxCoordinatesToFile(grofile, step);
+	}
+	
 	return env.getSim();
 }

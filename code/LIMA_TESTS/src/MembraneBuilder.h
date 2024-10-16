@@ -23,7 +23,7 @@ namespace TestMembraneBuilder {
 		}
 
 		// Build the membrane, and write it to disk
-		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 5.f }, 3.5f);
+		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
 
@@ -49,10 +49,10 @@ namespace TestMembraneBuilder {
 		}
 
 		// Finally test if we can stabilize the simulation
-		auto sim = Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, 1000.f);
-		ASSERT(sim->maxForceBuffer.back() < 1000.f, "Failed to energy minimize membrane");
+		const float emtol = 200.f;
+		auto sim = Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, emtol);
 
-		return LimaUnittestResult{ true , "No error", envmode == Full};
+		return LimaUnittestResult{ sim->maxForceBuffer.back().second < emtol, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
 	}
 
 	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
@@ -116,7 +116,7 @@ namespace TestMembraneBuilder {
 		const float emtol = 1000.f;
 		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, work_dir, envmode, true, emtol);
 
-		ASSERT(sim->maxForceBuffer.back() < emtol, "Failed to energy minimize membrane");
+		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 
 		return LimaUnittestResult{ true , "", envmode == Full };
 	}

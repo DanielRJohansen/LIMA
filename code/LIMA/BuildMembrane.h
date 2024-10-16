@@ -132,8 +132,13 @@ int buildMembrane(int argc, char** argv) {
 
     grofile->printToFile(setup.work_dir / "membrane.gro");
     topfile->printToFile(setup.work_dir / "membrane.top");
-
-    std::cout << std::format("buildmembrane finished with a final max-force of {:.3f}\n", sim->maxForceBuffer.back());
+        
+    auto [step, force] = *std::min_element(sim->maxForceBuffer.begin(), sim->maxForceBuffer.end(),
+        [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
+            return a.second < b.second;
+        }
+    );
+    std::cout << std::format("buildmembrane finished with a min max-force of {:.3f}\n", force);
 
 	return 0;
 }

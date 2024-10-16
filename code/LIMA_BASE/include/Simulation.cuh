@@ -221,8 +221,8 @@ public:
 	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [1/l N/mol] // For debug only
 
-	std::vector<float> temperature_buffer;
-	std::vector<float> maxForceBuffer; // The maximum force experienced by any particle in the system
+	std::vector<float> temperature_buffer;	
+	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system
 
 #ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;

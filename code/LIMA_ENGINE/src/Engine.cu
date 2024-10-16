@@ -257,12 +257,12 @@ void Engine::bootstrapTrajbufferWithCoords() {
 void Engine::HandleEarlyStoppingInEM() {
 	if (!simulation->simparams_host.em_variant || simulation->getStep() == simulation->simparams_host.n_steps)
 		return;
-
-	const int checkInterval = 100;
-	if (simulation->getStep() > stepAtLastEarlystopCheck + checkInterval) {
+	
+	const int minStepsPerCheck = 100;
+	if (simulation->getStep() > stepAtLastEarlystopCheck + minStepsPerCheck) {
 		const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()-1), simulation->forceBuffer->EntriesPerStep());
 		runstatus.greatestForce = greatestForce / LIMA * NANO / KILO; // Convert to [kJ/mol/nm]
-		simulation->maxForceBuffer.emplace_back(runstatus.greatestForce);
+		simulation->maxForceBuffer.emplace_back(std::pair<int64_t,float>{ simulation->getStep(), runstatus.greatestForce });
 
 		if (runstatus.greatestForce <= simulation->simparams_host.em_force_tolerance) {
 			runstatus.simulation_finished = true;

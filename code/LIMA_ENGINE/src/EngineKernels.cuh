@@ -178,9 +178,17 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 
 			// Energy minimize
 			if constexpr (energyMinimize) {
-				const Float3 safeForce = EngineUtils::ForceActivationFunction(force, static_cast<float>(step)/static_cast<float>(simparams.n_steps));
-				const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords->rel_positions[threadIdx.x], Float3{}, safeForce, mass, simparams.dt);
+				const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
+				const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
+				const Float3 deltaPosPrev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+				const Coord pos_now = EngineUtils::IntegratePositionEM(compound_coords->rel_positions[threadIdx.x], safeForce, mass, simparams.dt, progress, deltaPosPrev);
+				
+				// So these dont represent the same as they do in normal MD, but we can use the same buffers
+				const Float3 deltaPos = (pos_now - compound_coords->rel_positions[threadIdx.x]).toFloat3();
+				//speed = deltaPos.len();
+				boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = deltaPos;
 				compound_coords->rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+
 			}
 			else {
 				const Float3 force_prev = boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
@@ -618,16 +626,20 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	Coord relpos_next{};
 	if (solvent_active) {
 		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
-		
+		Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
+
 		if constexpr (energyMinimize) {
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(force, static_cast<float>(step) / static_cast<float>(simparams.n_steps));
-			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], Float3{}, force, mass, simparams.dt);
+			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
+			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
+			const Coord pos_now = EngineUtils::IntegratePositionEM(solventblock.rel_pos[threadIdx.x], force, mass, simparams.dt, progress, solventdata_ref.vel_prev);
+
+			const Float3 deltaPos = (pos_now - solventblock.rel_pos[threadIdx.x]).toFloat3();
+			solventdata_ref.vel_prev = deltaPos;
+
 			relpos_next = pos_now;
 			EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
-			Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
-
 			Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
 			if constexpr (!energyMinimize)

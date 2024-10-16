@@ -123,16 +123,18 @@ int mdrun(int argc, char** argv) {
     // Measure elapsed time in seconds
     auto t1 = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed_seconds = t1 - t0;
-    double elapsed_time_sec = elapsed_seconds.count();
+    double wall_time_sec = elapsed_seconds.count();
 
     // Calculate performance metrics
-    double ns_per_s = total_ns / elapsed_time_sec;
-    double ns_per_hr = ns_per_s * 3600.0;
+    double ns_per_day = total_ns / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+    double hr_per_ns = (wall_time_sec / total_ns) / 3600.0;    // convert to hours per ns
 
-    // Print time and performance info
-    printf("Total simulation time: %.2f seconds\n", elapsed_time_sec);
-    printf("Performance: %.3f ns/s, %.3f ns/hr\n", ns_per_s, ns_per_hr);
-
+    // Print time and performance info in the GROMACS-like format
+    printf("\n");
+    printf("               Wall t (s)\n");
+    printf("       Time:    %10.3f\n", wall_time_sec);
+    printf("                 (ns/day)    (hour/ns)\n");
+    printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
 
     return 0;
 }

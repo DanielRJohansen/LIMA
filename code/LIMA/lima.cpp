@@ -5,7 +5,7 @@
 #include "CommandlineUtils.h"
 
 
-#include "buildmembrane.h"
+#include "BuildMembrane.h"
 #include "mdrun.h"
 #include "GetForcefieldParams.h"
 #include "makebox.h"

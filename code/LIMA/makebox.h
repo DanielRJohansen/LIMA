@@ -35,8 +35,6 @@ Example:
     parser.AddOption({ "-boxsize" }, true, boxsize);
     parser.AddOption({ "-conf_name" }, false, confname);
     parser.AddOption({ "-top_name" }, false, topname);
-
-    // Parse the arguments
     parser.Parse(argc, argv);
 
     // Use the paths in your program

@@ -57,7 +57,7 @@ Example:
     parser.AddOption({ "-top_target", "-tt" }, false, topTgtPath);
     parser.AddOption({ "-num_insertions", "-n" }, true, nInsertions);
     parser.AddFlag({ "-rotate_randomly", "-rr" }, [&rotateRandomly]() {rotateRandomly = true; });
-
+    parser.Parse(argc, argv);
 
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);

@@ -51,7 +51,7 @@ Example:
     parser.AddOption({ "-conf_target", "-ct" }, false, confTgtPath);
     parser.AddOption({ "-top_target", "-tt" }, false, topTgtPath);
     parser.AddOption({ "-position", "-p" }, false, position);
-
+    parser.Parse(argc, argv);
 
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);

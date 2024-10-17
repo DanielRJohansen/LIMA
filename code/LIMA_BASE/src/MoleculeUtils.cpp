@@ -59,3 +59,17 @@ void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile& topfile
 		particle.position += diff;
 	}
 }
+
+void MoleculeUtils::RotateMolecule(GroFile& grofile, Float3 rotation) {
+	const Float3 center = GeometricCenter(grofile);
+
+	std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+		pos -= center;
+		Float3::rodriguesRotatation(pos, Float3(0, 0, 1), rotation.z);
+		Float3::rodriguesRotatation(pos, Float3(0, 1, 0), rotation.y);
+		Float3::rodriguesRotatation(pos, Float3(1, 0, 0), rotation.x);
+		pos += center;
+	};
+
+	std::for_each(grofile.atoms.begin(), grofile.atoms.end(), [&](auto& atom) { position_transform(atom.position); });
+}

@@ -11,6 +11,7 @@
 #include "makebox.h"
 #include "insertmolecule.h"
 #include "insertmolecules.h"
+#include "editconf.h"
 
 namespace fs = std::filesystem;
 
@@ -32,6 +33,7 @@ Programs:
     makebox             Makes an empty box (.gro & .top file)
     insertmolecule      Inserts a molecule into a box
 	insertmolecules     Inserts a molecule into a box multiple times
+	editconf			Edit a .gro file.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -59,6 +61,8 @@ int main(int argc, char** argv)
 		else if (program == "render") { render(argc, argv); }
 		else if (program == "makebox") { makebox(argc, argv); }
 		else if (program == "insertmolecule") { insertmolecule(argc, argv); }
+		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
+		else if (program == "editconf") { editconf(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

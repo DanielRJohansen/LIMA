@@ -6,6 +6,10 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+#undef STB_IMAGE_IMPLEMENTATION
+
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #elif defined(__linux__) || defined(__APPLE__)
@@ -25,12 +29,28 @@ void SetThreadName(const std::string& name) {
     pthread_setname_np(pthread_self(), name.c_str());
 #endif
 }
-
+void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
+    int width, height, channels;
+    unsigned char* pixels = stbi_load(iconPath, &width, &height, &channels, 4);
+    if (pixels) {
+        GLFWimage icon;
+        icon.width = width;
+        icon.height = height;
+        icon.pixels = pixels;
+        glfwSetWindowIcon(window, 1, &icon);
+        stbi_image_free(pixels);
+    }
+    else {
+        // Handle error if the image fails to load
+        fprintf(stderr, "Failed to load icon image\n");
+    }
+}
 
 
 void Display::Setup() {
     printf("Hello");
     int success = initGLFW();
+    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
 
     SetThreadName("RenderThread");
 

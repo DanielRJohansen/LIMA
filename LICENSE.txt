@@ -1,0 +1,4 @@
+LIMA Proprietary License
+
+    No Rights Granted: This software is proprietary and confidential. Unauthorized access, use, modification, reproduction, distribution, or sharing of the software is strictly prohibited.
+    Limited Access: Access to the software is provided solely for authorized personnel. If you have obtained this software without explicit permission, you must cease all activities and delete any copies in your possession.

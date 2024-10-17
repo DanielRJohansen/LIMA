@@ -2,6 +2,7 @@
 #include "BoundaryConditionPublic.h"
 #include "MoleculeGraph.h"
 #include <unordered_set>
+#include <numeric>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
@@ -12,6 +13,16 @@ Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	}
 
 	return (bbMin + bbMax) / 2;
+}
+
+float MoleculeUtils::Radius(const GroFile& grofile, const Float3& center) {
+	auto maxDistSq = std::transform_reduce(
+		grofile.atoms.begin(), grofile.atoms.end(), 0.f,
+		[](float a, float b) { return std::max(a, b); },
+		[&center](const auto& atom) { return (atom.position - center).lenSquared(); }
+	);
+
+	return std::sqrtf(maxDistSq);
 }
 
 

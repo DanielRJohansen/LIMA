@@ -25,13 +25,11 @@ namespace SimulationBuilder {
 
 	void SolvateGrofile(GroFile& grofile);
 
-	/// <summary>
-	/// Insert submolecules into a possibly empty simulation. The molecules will be spread randomly around in the box
-	/// The input grofile does NOT need to be centered around origo, but the grofile must have the atoms
-	/// in the correct position relative to eachother, as it uses raw positions, instead of hyperpos relative to index 0
-	/// </summary>
+	void InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter);
+
 	void InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert);
+		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly);
 	
 	void InsertSubmoleculesOnSphere(
 		GroFile& targetGrofile,

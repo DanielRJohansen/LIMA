@@ -4,7 +4,7 @@
 # Now compile rest
 add_executable(lima
     lima.cpp
- "render.h")
+ "render.h" "makebox.h" "argparser.h" "insertmolecules.h")
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}

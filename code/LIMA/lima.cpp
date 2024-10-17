@@ -5,9 +5,12 @@
 #include "CommandlineUtils.h"
 
 
-#include "BuildMembrane.h"
+#include "buildmembrane.h"
 #include "mdrun.h"
 #include "GetForcefieldParams.h"
+#include "makebox.h"
+#include "insertmolecule.h"
+#include "insertmolecules.h"
 
 namespace fs = std::filesystem;
 
@@ -26,6 +29,9 @@ Programs:
     makesimparams       Generates default simulation parameters and writes them to a file.
     selftest            Runs internal self-tests to validate functionality.
     render              Render a molecule in a 3D viewer.
+    makebox             Makes an empty box (.gro & .top file)
+    insertmolecule      Inserts a molecule into a box
+	insertmolecules     Inserts a molecule into a box multiple times
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -51,6 +57,8 @@ int main(int argc, char** argv)
 		else if (program == "-help" || program =="-h"|| program == "help") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
 		else if (program == "render") { render(argc, argv); }
+		else if (program == "makebox") { makebox(argc, argv); }
+		else if (program == "insertmolecule") { insertmolecule(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

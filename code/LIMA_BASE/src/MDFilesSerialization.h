@@ -264,9 +264,11 @@ static bool UseCachedBinaryFile(const fs::path& path) {
 	// Check if the file has been modified since the binary was created
 	// If we are on linux and in the resources dir, we will NOT do the check, since the files were made on windows
 	// and may mismatch AND we may not write to the resources dir
-#ifdef __linux__
+	// Actually lets just just not do the check at all in the resources dir, if we want to change these files
+	// we can just delete the binaries, and they will be remade automatically
 	if (path.parent_path().parent_path().parent_path() == FileUtils::GetLimaDir())
 		return true;
+#ifdef __linux__	
 #endif	
 
 	int64_t binaryModificationTime;

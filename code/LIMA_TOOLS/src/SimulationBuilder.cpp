@@ -4,6 +4,7 @@
 #include "EngineCore.h"
 #include "Statistics.h"
 #include "MoleculeGraph.h"
+#include "MoleculeUtils.h"
 
 #include <format>
 #include <functional>
@@ -390,28 +391,45 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	}
 }
 
+void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter)
+{
+	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
+
+	std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+		pos -= molCenter;
+		pos += targetCenter;
+	};
+
+	AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
+}
+
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert) 
+	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {
 	std::srand(123123123);
 
-	Float3 moleculeCenter{};
-	for (const auto& atom : submolGro.atoms) {
-		moleculeCenter += atom.position;
-	}
-	moleculeCenter *= 1.f/static_cast<float>(submolGro.atoms.size());
+	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
+	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;
+
+	targetGrofile.atoms.reserve(targetGrofile.atoms.size() + nMoleculesToInsert * submolGro.atoms.size());
 
 	for (int i = 0; i < nMoleculesToInsert; i++) {
 		Float3 randomTranslation = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.y,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.z
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.x - molRadius*2.f) + molRadius,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.y - molRadius*2.f) + molRadius,
+			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.z - molRadius*2.f) + molRadius
 		};
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
 		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			pos -= moleculeCenter;
-			pos.rotateAroundOrigo(randomRotation);
+			pos -= molCenter;
+			if (rotateRandomly) {
+				Float3::rodriguesRotatation(pos, Float3(0,0,1), randomRotation.z);
+				Float3::rodriguesRotatation(pos, Float3(0,1,0), randomRotation.y);
+				Float3::rodriguesRotatation(pos, Float3(1,0,0), randomRotation.x);
+			}
+			
 			pos += randomTranslation;
 			};
 

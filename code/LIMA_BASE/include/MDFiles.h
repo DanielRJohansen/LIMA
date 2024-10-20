@@ -166,9 +166,6 @@ public:
 	struct Moleculetype {
 		Moleculetype() = default;
 		Moleculetype(const std::string& name, int nrexcl) : name(name), nrexcl(nrexcl) {};
-		Moleculetype(const TopologyFile& top) {
-			*this = top.GetMoleculeType();
-		}
 		std::string name{};
 		int nrexcl{}; // How many consecutive bonds before LJ is enabled again
 
@@ -203,9 +200,6 @@ public:
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
 	};
-
-
-
 	struct ForcefieldInclude {
 		ForcefieldInclude(const std::string& name = "") : name(name) {};
 		ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
@@ -223,7 +217,17 @@ public:
 	private:
 		std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
 	};
+	struct MoleculeEntry {
+		std::string name{};
+		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
+		int count = 1;
+	};
+	struct System {
+		std::string title{ "noSystem" };
+		std::vector<MoleculeEntry> molecules;
 
+		bool IsInit() const { return title != "noSystem"; };
+	};
 
 	TopologyFile();										// Create an empty file	
 	TopologyFile(const fs::path& path, TopologyFile* parentTop=nullptr);	// Load a file from path	
@@ -245,18 +249,7 @@ public:
 	// ----------------------- Information kept in the actual files ----------------------- //
 	std::string title="";
 
-	struct MoleculeEntry {
-		std::string name{};
-		std::shared_ptr<Moleculetype> moleculetype = nullptr;
-		int count = 1;
-	};
 
-	struct System {
-		std::string title{ "noSystem" };
-		std::vector<MoleculeEntry> molecules;
-
-		bool IsInit() const { return title != "noSystem"; };
-	};
 
 
 
@@ -283,8 +276,8 @@ public:
 		// 1. First, transform each MoleculeEntry to get the vector of the desired element type.
 		// 2. The lambda function does the transformation by calling GetElements<T> on each molecule's Moleculetype.
 		return m_system.molecules
-			| std::views::transform([](const MoleculeEntry& entry) -> std::vector<T>&{
-			return entry.moleculetype->GetElements<T>(); // Retrieve the vector for the specific bond type
+			| std::views::transform(
+				[](const MoleculeEntry& entry) -> const std::vector<T>&{return entry.moleculetype->GetElements<T>(); // Retrieve the vector for the specific bond type
 				})
 			// 3. Join all the individual vectors into a single flattened range of elements (e.g., all SingleBonds from all molecules).
 					| std::views::join;
@@ -308,9 +301,18 @@ public:
 		}
 		return *moleculetypes.begin()->second;
 	}
+	const std::shared_ptr<const Moleculetype>& GetMoleculeTypePtr() const {
+		if (moleculetypes.size() != 1) {
+			throw std::runtime_error("Illegal call to GetMoleculeType");
+		}
+		return moleculetypes.begin()->second;
+	}
 
 	// Append a molecule of which the type is already known by the file
 	void AppendMolecule(const std::string& moleculename);
+	void AppendMoleculetype(const std::string& molname, const std::shared_ptr<const Moleculetype> moltype, 
+		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
+	void AppendMolecule(const MoleculeEntry&);
 	void AppendMolecules(const std::vector<MoleculeEntry>&);
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
@@ -327,21 +329,6 @@ private:
 	friend class GenericItpFile;
 
 	static const char commentChar = ';';
-
-	//Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
-	//Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
-	//Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
-	//Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
-	//Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
-	//Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
-
-	//static std::string generateLegend(const std::vector<std::string>& elements);
-
-	
-	// If this and all submolecules share the same forcefieldinclude, return it, even if this does not have a forcefieldinclude
-	// This is useful because GROMACS only allow a single forcefield to be included, and in cases where it is possible
-	// we will provide a topology that wont break in GROMACS
-	//std::optional<ForcefieldInclude> ThisAndAllSubmoleculesShareTheSameForcefieldinclude() const;
 
 	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath);
 
@@ -362,7 +349,7 @@ struct TopologyFile::AtomsEntry {
 	std::string type{};	// Atom type
 	int resnr{};
 	std::string residue{};
-	std::string atomname{};	// TODONOW SHould this be prioritized over type???<?>>?>>?<<?!!!!!!
+	std::string atomname{};
 	int cgnr{};
 	float charge{};// In elementary charges [e]. Convert to kilo C/mol before using
 	float mass{};
@@ -390,7 +377,7 @@ struct TopologyFile::GenericBond{
 		for (size_t i = 0; i < N; ++i) {
 			oss << std::setw(width) << std::right << ids[i] + 1; // convert back to 1-indexed
 		}
-		oss << std::setw(width) << std::right << funct;
+		oss << std::setw(width) << std::right << funct << "\n";
 	}
 
 	bool operator==(const GenericBond<N>& other) const {

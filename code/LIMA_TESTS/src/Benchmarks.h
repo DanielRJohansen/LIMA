@@ -95,7 +95,7 @@ namespace Benchmarks {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
-			MoleculeUtils::CenterMolecule(grofile, topfile);
+			MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
 			//SimulationBuilder::SolvateGrofile(grofile);
 			auto sim = Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
 			grofile.printToFile(std::string{ "em.gro" });

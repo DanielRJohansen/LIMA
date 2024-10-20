@@ -69,7 +69,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true);
+		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
 
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
@@ -77,7 +77,6 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		GroFile newGro{ mol_dir / "membrane.gro" };
 
-//		ASSERT(newTop.GetAllElements<TopologyFile::AtomsEntry>() == top->GetAllElements<TopologyFile::AtomsEntry>(), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top->GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 
 

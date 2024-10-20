@@ -195,11 +195,11 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
 		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -1.f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, -0.f, 10.f}, 40},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 0.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lxx", 0, 1.f, 10.f},  15}
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx1", 0, -1.f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx2", 0, -.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx3", 0, -0.f, 10.f}, 40},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx4", 0, 0.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx5", 0, 1.f, 10.f},  15}
 			}, 
 			5.f
 			);
@@ -263,7 +263,7 @@ namespace ElectrostaticsTests {
 		}
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
-
+		ASSERT(!std::isnan(r2), "R2 value is nan");
 		if (r2 < 0.7) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);

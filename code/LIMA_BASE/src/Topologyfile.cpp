@@ -365,7 +365,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			if (!topology.moleculetypes.contains(molname))
 				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
 			
-			topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname) });
+			topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname), cnt });
 		}
 		default:
 			// Do nothing
@@ -609,24 +609,39 @@ void TopologyFile::AppendMolecule(const std::string& moleculename) {
 		m_system.molecules.back().count++;
 	}
 }
-void TopologyFile::AppendMolecules(const std::vector<MoleculeEntry>& molecules) {
-	if (!m_system.IsInit()) {
-		throw std::runtime_error("System is not initialized");
-	}
+void TopologyFile::AppendMoleculetype(const std::string& name, const std::shared_ptr<const Moleculetype> moleculetype, std::optional<ForcefieldInclude> inputForcefieldInclude) {
+	if (!moleculetypes.contains(name)) {
+		moleculetypes.insert({ moleculetype->name, std::make_shared<Moleculetype>(*moleculetype) });	//COPY
 
-	for (const auto& molecule : molecules) {
-		if (!moleculetypes.contains(molecule.name)) {
-			moleculetypes.insert({ molecule.name, molecule.moleculetype });
-		}
-
-		if (m_system.molecules.back().name == molecule.name) {
-			m_system.molecules.back().count += molecule.count;
-		}
-		else {
-			m_system.molecules.emplace_back(molecule);
+		if (inputForcefieldInclude.has_value()) {
+			if (!forcefieldInclude.has_value())
+				forcefieldInclude = inputForcefieldInclude.value();
+			else
+				assert(forcefieldInclude->name == inputForcefieldInclude->name);
 		}
 	}
+	AppendMolecule(name);
 }
+//void TopologyFile::AppendMolecule(const MoleculeEntry& molecule) {
+//	if (!m_system.IsInit()) {
+//		throw std::runtime_error("System is not initialized");
+//	}
+//
+//	if (!moleculetypes.contains(molecule.name)) {
+//		moleculetypes.insert({ molecule.name, molecule.moleculetype });
+//	}
+//
+//	if (m_system.molecules.back().name == molecule.name) {
+//		m_system.molecules.back().count += molecule.count;
+//	}
+//	else {
+//		m_system.molecules.emplace_back(molecule);
+//	}
+//}
+//void TopologyFile::AppendMolecules(const std::vector<MoleculeEntry>& molecules) {
+//	for (const auto& molecule : molecules)
+//		AppendMolecule(molecule);
+//}
 
 void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
@@ -711,6 +726,7 @@ std::string composeString(const std::vector<T>&elements) {
 	for (const auto& entry : elements) {
 		entry.composeString(oss);
 	}
+	oss << '\n';
 	return oss.str();
 }
 
@@ -731,7 +747,7 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 
 		file << "[ moleculetype ]\n";
 		file << generateLegend({ "name", "nrexcl" }) + "\n";
-		file << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n";
+		file << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n\n";
 		
 		
 		

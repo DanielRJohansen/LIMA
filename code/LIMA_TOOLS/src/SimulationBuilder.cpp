@@ -73,7 +73,7 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 		addAtomToFile(outputgrofile, atom, atomsOffset, residuenrOffset, position_transform);
 	}
 
-	outputTopologyFile.AppendMolecule(inputTopology->GetMoleculeType());
+	outputTopologyFile.AppendMoleculetype(inputTopology->name, inputTopology->GetMoleculeTypePtr(), inputTopology->forcefieldInclude);
 }
 
 

@@ -20,7 +20,7 @@ void MoleculeGraph::connectNodes(int left_id, int right_id) {
 	nodes[right_id].addNeighbor(&nodes[left_id]);
 }
 
-MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile::Moleculetype1& molecule) {
+MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile::Moleculetype& molecule) {
 	MoleculeGraph graph;
 
 	for (const auto& atom : molecule.atoms) {
@@ -207,7 +207,7 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 }
 
 
-void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& grofile, TopologyFile::Moleculetype1& molecule) {
+void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& grofile, TopologyFile::Moleculetype& molecule) {
 
 	std::vector<std::array<std::string, 2>> sbAtomtypesCheck;
 	for (const auto& sb : molecule.singlebonds) {

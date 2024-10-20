@@ -83,14 +83,14 @@ std::string composeGroLine(const GroRecord& record) {
 //	//oss << includeTopologyFile->name;// << " 1";
 //}
 
-std::string TopologyFile::Moleculetype::composeString() const {
-	std::ostringstream oss;
-	const std::string legend = generateLegend({ "Name", "nrexcl" });
-	oss << "[ moleculetype ]\n";
-	oss << legend << "\n";
-	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n";
-	return oss.str();
-}
+//std::string TopologyFile::Moleculetype::composeString() const {
+//	std::ostringstream oss;
+//	const std::string legend = generateLegend({ "Name", "nrexcl" });
+//	oss << "[ moleculetype ]\n";
+//	oss << legend << "\n";
+//	oss << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n";
+//	return oss.str();
+//}
 
 void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 	if (section_name) {
@@ -341,153 +341,9 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 
 
 
-std::string TopologyFile::generateLegend(const std::vector<std::string>& elements)
-{
-	std::ostringstream legend;
-	legend << ';'; // Start with a semicolon
-
-	for (const auto& element : elements) {
-		legend << std::setw(10) << std::right << element;
-	}
-	return legend.str();
-}
 
 
 
-void TopologyFile::printToFile(const std::filesystem::path& path, bool printForcefieldinclude) const {
-	//const auto ext = path.extension().string();
-	//if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expectec [.top/.itp]", ext)); }
-
-	//{
-	//	std::ofstream file(path);
-	//	if (!file.is_open()) {
-	//		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
-	//	}
-	//	
-	//	file << title << "\n\n";
-
-	//	if (printForcefieldinclude) {
-	//		std::optional<ForcefieldInclude> sharedff = ThisAndAllSubmoleculesShareTheSameForcefieldinclude();
-	//		if (sharedff.has_value()) {
-	//			sharedff.value().CopyToDirectory(path.parent_path(), path.parent_path());
-	//			file << ("#include \"" + sharedff->name.string() + "\"\n");
-	//			file << "\n";
-	//			printForcefieldinclude = false;
-	//		}
-	//		else if (forcefieldInclude) {
-	//			forcefieldInclude.value().CopyToDirectory(path.parent_path(), path.parent_path());
-	//			file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
-	//			file << "\n";
-	//		}
-	//	}
-
-	//	for (const auto& include : includeTopologies) {
-	//		file << ("#include \"topol_" + include.first + ".itp\"\n");
-	//	}
-	//	file << "\n";
-
-	//	if (moleculetype.has_value()) { file << moleculetype.value().composeString(); }
-
-	//	if (!atoms.entries.empty()) {
-	//		file << atoms.composeString();
-	//		file << singlebonds.composeString();
-	//		file << pairs.composeString();
-	//		file << anglebonds.composeString();
-	//		file << dihedralbonds.composeString();
-	//		file << improperdihedralbonds.composeString();
-	//	}
-
-	//	if (path.extension() == ".top")
-	//		file << "[ system ]\n" << system << "\n";
-
-	//	//if (!molecules.entries.empty()) { file << molecules.composeString(); }
-	//	// If we have the same submolecule multiple times in a row, we only print it once together with a count of how many there are
-	//	if (!molecules.entries.empty())
-	//		file << molecules.title << "\n" << molecules.legend << "\n";
-	//	for (int i = 0; i < molecules.entries.size(); i++) {
-	//		std::ostringstream oss;
-	//		int count = 1;
-	//		while (i + 1 < molecules.entries.size() && molecules.entries[i].name == molecules.entries[i + 1].name) {
-	//			count++;
-	//			i++;
-	//		}
-	//		file << molecules.entries[i].includeTopologyFile->name << " " << count << "\n";
-	//	}
-	//}
-
-	//// Also cache the file
-	//WriteFileToBinaryCache(*this, path);
-
-	//for (const auto& [name, include] : includeTopologies) {
-	//	include->printToFile(path.parent_path() / ("topol_" + name + ".itp"), printForcefieldinclude);
-	//}
-}
-void TopologyFile::AppendTopology(const std::shared_ptr<TopologyFile>& other) {
-
-	//if (!other->moleculetype.has_value()) {
-	//	throw std::runtime_error(std::format("Trying to append a topology file without a moleculetype section: {}", other->path.string()));
-	//}
-
-	//if (!includeTopologies.contains(other->moleculetype.value().name))
-	//	includeTopologies.insert({ other->moleculetype.value().name, other });
-
-	//const int globalIndexOfFirstParticle = molecules.entries.empty()
-	//	? 0 : molecules.entries.back().GlobalIndexOfFinalParticle() + 1;
-	//molecules.entries.emplace_back(other->name, includeTopologies.at(other->name), globalIndexOfFirstParticle);
-}
-//std::optional<TopologyFile::ForcefieldInclude> TopologyFile::ThisAndAllSubmoleculesShareTheSameForcefieldinclude() const {
-//
-//	//std::optional<TopologyFile::ForcefieldInclude> sharedff = std::nullopt;
-//
-//	//for (const auto& mol : GetAllSubMolecules()) {
-//	//	if (!mol.includeTopologyFile->forcefieldInclude)
-//	//		continue;
-//
-//	//	if (!sharedff)
-//	//		sharedff = mol.includeTopologyFile->forcefieldInclude;
-//	//	else if (sharedff.value().name != mol.includeTopologyFile->forcefieldInclude.value().name)
-//	//		return std::nullopt;
-//	//}
-//	//return sharedff;
-//}
-
-//
-//TopologyFile::SectionRange<TopologyFile::AtomsEntry> TopologyFile::GetAllElements<TopologyFile::AtomsEntry>() const {
-//	return TopologyFile::SectionRange<AtomsEntry>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::SingleBond> TopologyFile::GetAllSinglebonds() const {
-//	return TopologyFile::SectionRange<SingleBond>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::Pair> TopologyFile::GetAllPairs() const {
-//	return TopologyFile::SectionRange<Pair>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::AngleBond> TopologyFile::GetAllAnglebonds() const {
-//	return TopologyFile::SectionRange<AngleBond>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::DihedralBond> TopologyFile::GetAllDihedralbonds() const {
-//	return TopologyFile::SectionRange<DihedralBond>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::ImproperDihedralBond> TopologyFile::GetAllImproperDihedralbonds() const {
-//	return TopologyFile::SectionRange<ImproperDihedralBond>(this);
-//}
-//TopologyFile::SectionRange<TopologyFile::MoleculeEntry> TopologyFile::GetAllSubMolecules() const {
-//	return TopologyFile::SectionRange<MoleculeEntry>(this);
-//}
-
-
-void MDFiles::MergeFiles(GroFile& leftGro, TopologyFile& leftTop, GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop) 
-{
-	int newGroId = leftGro.atoms.back().gro_id + 1;
-	// First merge the GRO, and get a mapping to the new IDs
-	for (const GroRecord& atom : rightGro.atoms) {
-		leftGro.atoms.emplace_back(atom);
-		leftGro.atoms.back().gro_id = newGroId % 100'000;
-		newGroId++;
-	}
-
-	// To merge the top files, we simply need to add it as an include topology
-	leftTop.AppendTopology(rightTop);	
-}
 
 SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
 	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");

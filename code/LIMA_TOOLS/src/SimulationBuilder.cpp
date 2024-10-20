@@ -73,7 +73,7 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 		addAtomToFile(outputgrofile, atom, atomsOffset, residuenrOffset, position_transform);
 	}
 
-	outputTopologyFile.AppendTopology(inputTopology);
+	outputTopologyFile.AppendMolecule(inputTopology->GetMoleculeType());
 }
 
 
@@ -185,9 +185,10 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						//grofile.atoms.emplace(GroRecord{})
 
 						// Add first the basic atomtype, and then correct the IDs after
-						topfile.GetMoleculeType().atoms.emplace_back(atomtypeselect.atomtype);
+						topfile.AppendMolecule(atomtypeselect.atomtype.atomname);
+						/*topfile.GetMoleculeType().atoms.emplace_back(atomtypeselect.atomtype);
 						topfile.GetMoleculeType().atoms.back().id = groId;
-						topfile.GetMoleculeType().atoms.back().resnr = resNr;
+						topfile.GetMoleculeType().atoms.back().resnr = resNr;*/
 
 
 						//if (topfile.atoms.entries.size() > 1) {
@@ -544,7 +545,7 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
 	outputtopologyfile->name = "Membrane";
-	outputtopologyfile->system = TopologyFile::System("Membrane");
+	outputtopologyfile->SetSystem("Membrane");
 
 	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
 

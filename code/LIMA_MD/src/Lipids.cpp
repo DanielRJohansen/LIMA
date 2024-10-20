@@ -182,7 +182,7 @@ std::vector<int> DetermineAcceptableSectionsizesBasedOnAtomcount(int nAtoms) {
 
 
 
-void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFile::Moleculetype1& molecule) {
+void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFile::Moleculetype& molecule) {
 
 	/*if (!topfile.GetLocalMolecules().empty()) {
 		throw std::runtime_error("Cannot organise lipids with include molecules");

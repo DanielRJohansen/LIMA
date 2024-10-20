@@ -125,7 +125,7 @@ inline bool isOnlySpacesAndTabs(const std::string& str) {
 
 
 
-TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype1> moleculetype) {
+TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype> moleculetype) {
 
 	TopologySection current_section{ TopologySection::moleculetype };
 	TopologySectionGetter getTopolSection{};
@@ -337,38 +337,35 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			int nrexcl;
 			iss >> moleculetypename >> nrexcl;
 
-			auto moleculetype = std::make_shared<Moleculetype1>();
+			auto moleculetype = std::make_shared<Moleculetype>();
 			moleculetype->name = moleculetypename;
 			moleculetype->nrexcl = nrexcl;
 
 			auto nextSection = ParseMoleculetype(file, moleculetype);
-			assert(!topology.moleculetypes1.contains(moleculetypename));
-			topology.moleculetypes1.insert({ moleculetypename, moleculetype });
+			assert(!topology.moleculetypes.contains(moleculetypename));
+			topology.moleculetypes.insert({ moleculetypename, moleculetype });
 
 			current_section = nextSection;
 			break;
 		}		
 		case TopologySection::_system: {
-			std::string systemName;
-			iss >> systemName;
-
-			assert(!topology.system);
-			topology.system = System{ systemName };
-
+			topology.SetSystem(line);
 			break;
 		}
 		case TopologySection::molecules: {
 			std::string molname;
 			int cnt = 0;
 			iss >> molname >> cnt;
-			// TODO: actually add to system instead?
 
-			if (!topology.system)
+			if (molname == "SOL")
+				continue;
+
+			if (topology.m_system.title == "noSystem")
 				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
-			if (!topology.moleculetypes1.contains(molname))
+			if (!topology.moleculetypes.contains(molname))
 				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
 			
-			topology.system->molecules.emplace_back(MoleculeEntry1{ molname, topology.moleculetypes1.at(molname) });
+			topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname) });
 		}
 		default:
 			// Do nothing
@@ -595,4 +592,161 @@ std::optional<fs::path> TopologyFile::GetForcefieldPath() const {
 		return parentTopology->GetForcefieldPath();*/
 
 	return std::nullopt;
+}
+
+void TopologyFile::AppendMolecule(const std::string& moleculename) {
+	if (!m_system.IsInit()) {
+		throw std::runtime_error("System is not initialized");
+	}
+	if (!moleculetypes.contains(moleculename)) {
+		throw std::runtime_error(std::format("Moleculetype {} not found in topology", moleculename));
+	}
+
+	if (m_system.molecules.empty() || m_system.molecules.back().name != moleculename) {
+		m_system.molecules.emplace_back(MoleculeEntry{ moleculename, moleculetypes.at(moleculename) });
+	}
+	else {
+		m_system.molecules.back().count++;
+	}
+}
+void TopologyFile::AppendMolecules(const std::vector<MoleculeEntry>& molecules) {
+	if (!m_system.IsInit()) {
+		throw std::runtime_error("System is not initialized");
+	}
+
+	for (const auto& molecule : molecules) {
+		if (!moleculetypes.contains(molecule.name)) {
+			moleculetypes.insert({ molecule.name, molecule.moleculetype });
+		}
+
+		if (m_system.molecules.back().name == molecule.name) {
+			m_system.molecules.back().count += molecule.count;
+		}
+		else {
+			m_system.molecules.emplace_back(molecule);
+		}
+	}
+}
+
+void TopologyFile::printToFile(const std::filesystem::path& path) const {
+	const auto ext = path.extension().string();
+	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expected [.top/.itp]", ext)); }
+	{
+		std::ofstream file(path);
+		if (!file.is_open()) {
+			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+		}
+		
+		file << title << "\n\n";
+
+		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
+		if (forcefieldInclude) {
+			forcefieldInclude.value().CopyToDirectory(path.parent_path(), path.parent_path());
+			file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
+		}
+		file << "\n";
+
+		for (const auto& moleculetype : moleculetypes) {
+			moleculetype.second->ToFile(path.parent_path());
+			file << "#include \"" << moleculetype.second->name << ".itp\"\n";
+		}
+		file << "\n";
+
+		if (m_system.IsInit()) {
+			file << "[ system ]\n";
+			file << m_system.title << "\n\n";
+
+			file << "[ molecules ]\n";
+			for (const auto& molecule : m_system.molecules) {
+				file << molecule.name << " " << molecule.count << "\n";
+			}
+		}
+		file << "\n";
+
+		//if (!molecules.entries.empty()) { file << molecules.composeString(); }
+		// If we have the same submolecule multiple times in a row, we only print it once together with a count of how many there are
+
+		//if (!molecules.empty())
+		//	file << molecules.title << "\n" << molecules.legend << "\n";
+		//for (int i = 0; i < molecules.entries.size(); i++) {
+		//	std::ostringstream oss;
+		//	int count = 1;
+		//	while (i + 1 < molecules.entries.size() && molecules.entries[i].name == molecules.entries[i + 1].name) {
+		//		count++;
+		//		i++;
+		//	}
+		//	file << molecules.entries[i].includeTopologyFile->name << " " << count << "\n";
+		//}
+	}
+
+	// Also cache the file
+	WriteFileToBinaryCache(*this, path);
+
+	/*for (const auto& [name, include] : includeTopologies) {
+		include->printToFile(path.parent_path() / ("topol_" + name + ".itp"), printForcefieldinclude);
+	}*/
+}
+
+
+
+
+
+
+std::string generateLegend(const std::vector<std::string>& elements)
+{
+	std::ostringstream legend;
+	legend << ';'; // Start with a semicolon
+
+	for (const auto& element : elements) {
+		legend << std::setw(10) << std::right << element;
+	}
+	return legend.str();
+}
+
+
+
+template <typename T>
+std::string composeString(const std::vector<T>&elements) {
+	std::ostringstream oss;
+	for (const auto& entry : elements) {
+		entry.composeString(oss);
+	}
+	return oss.str();
+}
+
+void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
+
+	const fs::path path = dir / (name + ".itp");
+	
+	if (atoms.empty())
+		throw(std::runtime_error("Trying to print moleculetype to file, but it has no atoms"));
+
+	{
+		std::ofstream file(path);
+		if (!file.is_open()) {
+			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+		}
+
+		file << name << "\n\n";
+
+		file << "[ moleculetype ]\n";
+		file << generateLegend({ "name", "nrexcl" }) + "\n";
+		file << std::right << std::setw(10) << name << std::setw(10) << nrexcl << "\n";
+		
+		
+		
+		
+		file << "[ atoms ]\n" << generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) + "\n";
+		file << composeString(atoms);
+		file << "[ bonds ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+		file << composeString(singlebonds);
+		file << "[ pairs ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+		file << composeString(pairs);
+		file << "[ angles ]\n" << generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+		file << composeString(anglebonds);
+		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) + "\n";
+		file << composeString(dihedralbonds);
+		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+		file << composeString(improperdihedralbonds);		
+	}
 }

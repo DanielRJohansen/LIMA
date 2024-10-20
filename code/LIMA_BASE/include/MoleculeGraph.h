@@ -137,9 +137,9 @@ namespace LimaMoleculeGraph {
         }
 	};
 
-	MoleculeGraph createGraph(const TopologyFile::Moleculetype1&);
+	MoleculeGraph createGraph(const TopologyFile::Moleculetype&);
 
-    void reorderoleculeParticlesAccoringingToSubchains(GroFile&, TopologyFile::Moleculetype1&);
+    void reorderoleculeParticlesAccoringingToSubchains(GroFile&, TopologyFile::Moleculetype&);
 
 };
 

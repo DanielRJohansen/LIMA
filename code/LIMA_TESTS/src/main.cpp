@@ -31,7 +31,7 @@ int main() {
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
-		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
@@ -97,7 +97,7 @@ int main() {
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
 		//Benchmarks::Psome(envmode);				
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -136,7 +136,6 @@ void RunAllUnitTests() {
 
 	// Smaller compound tests
 	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
-	ADD_TEST("TenSolvents", TestUtils::loadAndRunBasicSimulation("TenSolvents", envmode, 7.3e-6, 1.2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests

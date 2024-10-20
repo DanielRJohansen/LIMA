@@ -418,21 +418,17 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {	// This can be ma
 
 // TODO: Change name
 struct MoleculeRef {
-	/*MoleculeRef(int offset, std::shared_ptr<const TopologyFile::Moleculetype1> moleculetype) 
-		: atomsOffset(offset), moleculetype(moleculetype) {}*/
 	int atomsOffset = 0;	// TODO this logic is being moved into the topology file
-	std::shared_ptr<const TopologyFile::Moleculetype1> moleculetype;//TODO: make const
-	fs::path forcefieldPath;
+	std::shared_ptr<const TopologyFile::Moleculetype> moleculetype;//TODO: make const
+	std::optional<fs::path> customForcefieldPath;
 };
 
 std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
 	std::vector<MoleculeRef> topologies;
 	int offset = 0;
 
-	//topologies.push_back({ offset, system });
-	//offset += topol.GetLocalAtoms().size();
 	for (const auto& molecule : topol.GetSystem().molecules) {
-		topologies.emplace_back(MoleculeRef{offset, molecule.moleculetype, *topol.GetForcefieldPath()});
+		topologies.emplace_back(MoleculeRef{offset, molecule.moleculetype, topol.GetForcefieldPath()});
 		offset += molecule.moleculetype->atoms.size();		
 	}
 	return topologies;
@@ -449,7 +445,6 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<MoleculeRef>& molecules
 		bool atomsAddedThisTop = false;
 		for (const auto& atom : mol.moleculetype->atoms) {
 			atomsAddedThisTop = true;
-			// TODO: Handle ignore atoms (H) somehow?			
 			// TODO: When accessing gro file, first check that it is not a solvent
 
 			if (globalIndex > 0 && atomRefs[globalIndex - 1].topAtom->resnr != atom.resnr) {
@@ -459,7 +454,7 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<MoleculeRef>& molecules
 			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0, 3))
 				throw std::runtime_error(std::format("Atom names do not match between .gro ({}) and topology file ({})", grofile.atoms[globalIndex].atomName, atom.atomname));
 
-			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(mol.forcefieldPath, atom.type);
+			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(mol.customForcefieldPath, atom.type);
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, activeLJParamIndex, uniqueResId };
 			atomRefs[globalIndex].sourceLine = grofile.atoms[globalIndex].sourceLine;
 			
@@ -542,22 +537,22 @@ Topology LoadTopology(const std::vector<MoleculeRef>& molecules, ForcefieldManag
 
 		for (const auto& bondTopol : mol.moleculetype->singlebonds) {			
 			LoadBondIntoTopology<2, SingleBond, SingleBondFactory>(
-				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.singlebonds, mol.forcefieldPath, bondTopol.sourceLine);
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.singlebonds, mol.customForcefieldPath, bondTopol.sourceLine);
 		}
 
 		for (const auto& bondTopol : mol.moleculetype->anglebonds) {			
 			LoadBondIntoTopology<3, AngleUreyBradleyBond, AngleBondFactory>(
-				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.anglebonds, mol.forcefieldPath);
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.anglebonds, mol.customForcefieldPath);
 		}
 
 		for (const auto& bondTopol : mol.moleculetype->dihedralbonds) {			
 			LoadBondIntoTopology<4, DihedralBond, DihedralBondFactory>(
-				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, mol.forcefieldPath);
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, mol.customForcefieldPath);
 		}
 
 		for (const auto& bondTopol : mol.moleculetype->improperdihedralbonds) {
 			LoadBondIntoTopology<4, ImproperDihedralBond, ImproperDihedralBondFactory>(
-				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, mol.forcefieldPath);
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, mol.customForcefieldPath);
 		}
 	}
 

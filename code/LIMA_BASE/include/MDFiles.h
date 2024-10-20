@@ -176,6 +176,10 @@ public:
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 
+		// Info not in the actual file
+		//bool readFromCache = false;
+		//int64_t lastModificationTimestamp;
+
 		void ToFile(const fs::path& dir) const;
 
 		template <typename T>
@@ -188,7 +192,6 @@ public:
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
-
 		template <typename T>
 		const std::vector<T>& GetElements() const {
 			if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
@@ -220,7 +223,6 @@ public:
 	struct MoleculeEntry {
 		std::string name{};
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
-		int count = 1;
 	};
 	struct System {
 		std::string title{ "noSystem" };
@@ -310,16 +312,14 @@ public:
 
 	// Append a molecule of which the type is already known by the file
 	void AppendMolecule(const std::string& moleculename);
-	void AppendMoleculetype(const std::string& molname, const std::shared_ptr<const Moleculetype> moltype, 
+	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
 	void AppendMolecules(const std::vector<MoleculeEntry>&);
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
-	std::string name;
 	fs::path path;
-	int64_t lastModificationTimestamp;
-	bool readFromCache = false;
+	//bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 
 	std::unordered_map<std::string, std::shared_ptr<Moleculetype>> moleculetypes;

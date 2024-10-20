@@ -94,10 +94,10 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
 			
 
-		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
+		TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
 		//Benchmarks::Psome(envmode);				
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

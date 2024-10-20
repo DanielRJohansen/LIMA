@@ -73,7 +73,7 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 		addAtomToFile(outputgrofile, atom, atomsOffset, residuenrOffset, position_transform);
 	}
 
-	outputTopologyFile.AppendMoleculetype(inputTopology->name, inputTopology->GetMoleculeTypePtr(), inputTopology->forcefieldInclude);
+	outputTopologyFile.AppendMoleculetype(inputTopology->GetMoleculeTypePtr(), inputTopology->forcefieldInclude);
 }
 
 
@@ -544,7 +544,6 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->name = "Membrane";
 	outputtopologyfile->SetSystem("Membrane");
 
 	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);

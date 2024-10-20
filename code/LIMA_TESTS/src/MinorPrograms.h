@@ -20,6 +20,7 @@ namespace TestMinorPrograms {
 		GroFile grofile{};
 		grofile.box_size = Float3{ boxSize, boxSize, boxSize };
 		TopologyFile topfile{};
+		topfile.SetSystem("Many T4");
 
 		SimulationBuilder::InsertSubmoleculesInSimulation(grofile, topfile, groSrc, topSrc, nInsertions, true);		
 		ASSERT(grofile.atoms.size() == groSrc.atoms.size() * nInsertions, "Number of atoms in grofile is not correct");

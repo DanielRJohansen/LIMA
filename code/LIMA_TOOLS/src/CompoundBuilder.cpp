@@ -428,10 +428,8 @@ std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
 	int offset = 0;
 
 	for (const auto& molecule : topol.GetSystem().molecules) {
-		for (int i = 0; i < molecule.count; i++) {
-			topologies.emplace_back(MoleculeRef{ offset, molecule, topol.GetForcefieldPath() });
-			offset += molecule.moleculetype->atoms.size();
-		}
+		topologies.emplace_back(MoleculeRef{ offset, molecule, topol.GetForcefieldPath() });
+		offset += molecule.moleculetype->atoms.size();
 	}
 	return topologies;
 }
@@ -962,7 +960,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 ) 
 {
 	// Solvents are not present in top file, so we can't require these to match
-	const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.count * mol.moleculetype->atoms.size(); });
+	const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
 	assert(gro_file.atoms.size() >= nNonsolventAtoms);
 	const std::vector<MoleculeRef> preparedTopologyFiles = PrepareTopologies(topol_file);
 

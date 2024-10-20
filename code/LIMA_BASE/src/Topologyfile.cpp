@@ -364,8 +364,8 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
 			if (!topology.moleculetypes.contains(molname))
 				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
-			
-			topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname), cnt });
+			for (int i = 0; i < cnt; i++)
+				topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname) });
 		}
 		default:
 			// Do nothing
@@ -377,57 +377,14 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 
 TopologyFile::TopologyFile() {}
-TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path(path), name(GetCleanFilename(path))
+TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path(path)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
 		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
 
-	lastModificationTimestamp = TimeSinceEpoch(fs::last_write_time(path));
-
-	if (UseCachedBinaryFile(path)) {
-		readTopFileFromBinaryCache(path, *this);
-
-		// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
-		//for (auto& molecule : molecules.entries) {
-		//	assert(molecule.includeTopologyFile == nullptr);
-		//	assert(molecule.name != "");
-
-		//	if (!includeTopologies.contains(molecule.name)) {
-		//		throw std::runtime_error(std::format("Could not find include topology file: {}", molecule.name));
-		//	}
-
-		//	molecule.includeTopologyFile = includeTopologies.at(molecule.name);
-
-		//	molecule.includeTopologyFile->parentTopology = this;
-
-		//	if (molecule.includeTopologyFile->forcefieldInclude)
-		//		molecule.includeTopologyFile->forcefieldInclude->LoadFullPath(path.parent_path());
-		//}
-		if (forcefieldInclude)
-			forcefieldInclude->LoadFullPath(path.parent_path());
-	}
-	else {
-		ParseFileIntoTopology(*this, path);
-
-		WriteFileToBinaryCache(*this);
-	}
-
-
-	//// Verify that atoms id's are a sequence starting at 1
-	//for (int i = 0; i < atoms.entries.size(); i++) {
-	//	if (atoms.entries[i].nr != i+1) {
-	//		throw std::runtime_error("Atoms are not in sequence starting at 1");
-	//	}
-	//}
-	//for (const auto& mol : molecules.entries) {
-	//	for (int i = 0; i < mol.includeTopologyFile->atoms.entries.size(); i++) {
-	//		if (mol.includeTopologyFile->atoms.entries[i].nr != i+1) {
-	//			throw std::runtime_error("Atoms are not in sequence starting at 1");
-	//		}
-	//	}
-	//}
+	ParseFileIntoTopology(*this, path);
 }
 
 
@@ -602,15 +559,10 @@ void TopologyFile::AppendMolecule(const std::string& moleculename) {
 		throw std::runtime_error(std::format("Moleculetype {} not found in topology", moleculename));
 	}
 
-	if (m_system.molecules.empty() || m_system.molecules.back().name != moleculename) {
-		m_system.molecules.emplace_back(MoleculeEntry{ moleculename, moleculetypes.at(moleculename) });
-	}
-	else {
-		m_system.molecules.back().count++;
-	}
+	m_system.molecules.emplace_back(MoleculeEntry{ moleculename, moleculetypes.at(moleculename) });
 }
-void TopologyFile::AppendMoleculetype(const std::string& name, const std::shared_ptr<const Moleculetype> moleculetype, std::optional<ForcefieldInclude> inputForcefieldInclude) {
-	if (!moleculetypes.contains(name)) {
+void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> moleculetype, std::optional<ForcefieldInclude> inputForcefieldInclude) {
+	if (!moleculetypes.contains(moleculetype->name)) {
 		moleculetypes.insert({ moleculetype->name, std::make_shared<Moleculetype>(*moleculetype) });	//COPY
 
 		if (inputForcefieldInclude.has_value()) {
@@ -620,7 +572,7 @@ void TopologyFile::AppendMoleculetype(const std::string& name, const std::shared
 				assert(forcefieldInclude->name == inputForcefieldInclude->name);
 		}
 	}
-	AppendMolecule(name);
+	AppendMolecule(moleculetype->name);
 }
 //void TopologyFile::AppendMolecule(const MoleculeEntry& molecule) {
 //	if (!m_system.IsInit()) {
@@ -672,8 +624,14 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 			file << m_system.title << "\n\n";
 
 			file << "[ molecules ]\n";
-			for (const auto& molecule : m_system.molecules) {
-				file << molecule.name << " " << molecule.count << "\n";
+			for (int i = 0; i < m_system.molecules.size(); i++) {
+				std::ostringstream oss;
+				int count = 1;
+				while (i + 1 < m_system.molecules.size() && m_system.molecules[i].name == m_system.molecules[i + 1].name) {
+					count++;
+					i++;
+				}
+				file << m_system.molecules[i].name << " " << count << "\n";
 			}
 		}
 		file << "\n";
@@ -695,7 +653,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	}
 
 	// Also cache the file
-	WriteFileToBinaryCache(*this, path);
+	//WriteFileToBinaryCache(*this, path);
 
 	/*for (const auto& [name, include] : includeTopologies) {
 		include->printToFile(path.parent_path() / ("topol_" + name + ".itp"), printForcefieldinclude);

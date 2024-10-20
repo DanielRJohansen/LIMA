@@ -110,9 +110,9 @@ namespace TestMembraneBuilder {
 
 		// The first test is pretty much just to see if this function throws
 		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-		for (const auto& molecule : topfile->GetSystem().molecules) {
-			//ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");)
-		}
+		/*for (const auto& molecule : topfile->GetSystem().molecules) {
+			ASSERT(molecule.moleculetype->readFromCache, "This lipid top should have been read from a cached file");
+		}*/
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;

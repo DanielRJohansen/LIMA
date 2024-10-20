@@ -106,14 +106,12 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 
 
 
-	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
+	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize), true);
 
 	ConvexHullEngine chEngine{};
-
 	auto renderCallback = [&d, &mhCol, &boxSize]() {
 		d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 	};
-
 	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, renderCallback);
 	
 	TimeIt::PrintTaskStats("FindIntersect");
@@ -199,19 +197,21 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 
 
 void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile) {
+	std::vector<MoleculeHullFactory> moleculeContainers;
+	int globalParticleIndex = 0;
 
-	//std::vector<MoleculeHullFactory> moleculeContainers;
-	//for (const auto& molecule : topfile.GetAllSubMolecules()) {
-	//	moleculeContainers.push_back({});
+	for (const auto& molecule : topfile.GetSystem().molecules) {
+		moleculeContainers.push_back({});
 
-	//	for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
-	//		moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
-	//	}
+		for (const auto& atom : molecule.moleculetype->atoms) {			
+			moleculeContainers.back().AddParticle(grofile.atoms[globalParticleIndex].position, atom.atomname[0]);
+			globalParticleIndex++;
+		}
 
-	//	moleculeContainers.back().CreateConvexHull();
-	//}
+		moleculeContainers.back().CreateConvexHull();
+	}
 
-	//MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	//MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
 }

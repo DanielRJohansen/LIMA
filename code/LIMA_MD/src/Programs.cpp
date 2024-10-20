@@ -18,7 +18,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	ForcefieldManager forcefield{};
 	
 	std::vector<int> ljtypeIndices;
-	for (auto& atom : topfile.GetAllAtoms()) {
+	for (const auto& atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPath(), atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
@@ -35,7 +35,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		file << "[ atoms ]\n";
 		file << "; type mass sigma[nm] epsilon[J/mol] \n";
 		int atomIndex = 0;
-		for (auto atom : topfile.GetAllAtoms()) {
+		for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 			const int ljtypeIndex = ljtypeIndices[atomIndex++];
 			file << atom.type << " "
 				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma * LIMA_TO_NANO
@@ -49,7 +49,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false, params);
 
 	std::vector<std::string> atomNames;
-	for (auto atom : topfile.GetAllAtoms()) {
+	for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 		atomNames.emplace_back(atom.type);
 	}
 
@@ -141,15 +141,15 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 
 	std::vector<MoleculeHullFactory> moleculeContainers;
 
-	for (const auto& molecule : topfile.GetAllSubMolecules()) {
-		moleculeContainers.push_back({});
+	//for (const auto& molecule : topfile.GetAllSubMolecules()) {
+	//	moleculeContainers.push_back({});
 
-		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
-			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
-		}
-		
-		moleculeContainers.back().CreateConvexHull();
-	}
+	//	for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
+	//		moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
+	//	}
+	//	
+	//	moleculeContainers.back().CreateConvexHull();
+	//}
 
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
@@ -200,18 +200,18 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 
 void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile) {
 
-	std::vector<MoleculeHullFactory> moleculeContainers;
-	for (const auto& molecule : topfile.GetAllSubMolecules()) {
-		moleculeContainers.push_back({});
+	//std::vector<MoleculeHullFactory> moleculeContainers;
+	//for (const auto& molecule : topfile.GetAllSubMolecules()) {
+	//	moleculeContainers.push_back({});
 
-		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
-			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
-		}
+	//	for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
+	//		moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
+	//	}
 
-		moleculeContainers.back().CreateConvexHull();
-	}
+	//	moleculeContainers.back().CreateConvexHull();
+	//}
 
-	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+	//MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+	//MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
 }

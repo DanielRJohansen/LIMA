@@ -8,10 +8,10 @@ namespace MoleculeUtils {
 
 	float Radius(const GroFile& grofile, const Float3& center);
 
-	void MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile);
+	void MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype1& topfile);
 
 	// Center molecule around targetCenter. Defaults to grofile.boxlen/2
-	void CenterMolecule(GroFile& grofile, const TopologyFile& topfile, std::optional<Float3> targetCenter=std::nullopt);
+	void CenterMolecule(GroFile& grofile, const TopologyFile::Moleculetype1& topfile, std::optional<Float3> targetCenter=std::nullopt);
 
 
 	/// <summary>

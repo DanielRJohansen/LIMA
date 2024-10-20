@@ -89,7 +89,7 @@ int render(int argc, char** argv) {
 
     if (setup.whole) {
         TopologyFile topfile{ setup.topol };
-        MoleculeUtils::CenterMolecule(grofile, topfile);
+        MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
     }
     Display d{ Full };
     d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);

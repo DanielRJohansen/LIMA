@@ -69,11 +69,11 @@ Example:
     bool rotateChosen = rotate.x != FLT_MAX;
 
     if (makeWhole || setCenterChosen || rotateChosen) {
-        MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
+        MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile.GetMoleculeType());
     }
 
     if (setCenterChosen) {
-        MoleculeUtils::CenterMolecule(grofile, topfile, setCenter);
+        MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType(), setCenter);
     }
 
     if (rotateChosen) {

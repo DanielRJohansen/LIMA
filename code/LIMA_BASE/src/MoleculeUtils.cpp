@@ -26,8 +26,8 @@ float MoleculeUtils::Radius(const GroFile& grofile, const Float3& center) {
 }
 
 
-void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile) {
-	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::createGraph(topfile);
+void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype1& moltype) {
+	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::createGraph(moltype);
 
 	std::unordered_set<int> visited{};
 
@@ -49,7 +49,7 @@ void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, con
 }
 
 
-void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile& topfile, std::optional<Float3> targetCenter) {
+void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile::Moleculetype1& topfile, std::optional<Float3> targetCenter) {
 	MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
 
 	const Float3 currentCenter = GeometricCenter(grofile);

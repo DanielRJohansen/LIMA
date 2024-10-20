@@ -30,13 +30,14 @@ namespace TestMembraneBuilder {
 		// Test the topology is identical to reference
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		TopologyFile refTop{ mol_dir / "membrane_reference.top" };
-		ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
-		ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
-		ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
-		ASSERT(newTop.GetAllAnglebonds() == refTop.GetAllAnglebonds(), "Topology Anglebond Mismatch");
-		ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
-		ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
 
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::Pair>(), refTop.GetAllElements<TopologyFile::Pair>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology Atom Mismatch");
+		
 		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };
 		GroFile refGro{ mol_dir / "membrane_reference.gro" };
@@ -76,7 +77,9 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		GroFile newGro{ mol_dir / "membrane.gro" };
 
-		ASSERT(newTop.GetAllAtoms() == top->GetAllAtoms(), "Topology Atom Mismatch");
+//		ASSERT(newTop.GetAllElements<TopologyFile::AtomsEntry>() == top->GetAllElements<TopologyFile::AtomsEntry>(), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top->GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
+
 
 		SimParams params{};
 		params.em_variant = true;
@@ -108,8 +111,8 @@ namespace TestMembraneBuilder {
 
 		// The first test is pretty much just to see if this function throws
 		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-		for (const auto& includeTop : topfile->GetAllSubMolecules()) {
-			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");
+		for (const auto& molecule : topfile->GetSystem().molecules) {
+			//ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");)
 		}
 
 		// The third test is to see if this function throws

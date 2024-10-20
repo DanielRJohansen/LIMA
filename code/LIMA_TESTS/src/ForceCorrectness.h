@@ -457,7 +457,7 @@ namespace VerletintegrationTesting {
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 		grofile.atoms.pop_back();
-		topfile.GetLocalAtoms().pop_back();
+		topfile.GetMoleculeType().atoms.pop_back();
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]

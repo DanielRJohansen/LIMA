@@ -87,7 +87,8 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 	}
 
 	for (const auto& lipid : lipidselection) {
-		if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
+		//if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
+		if (lipid.grofile->atoms.size() != lipid.topfile->GetMoleculeType().atoms.size()) {
 			throw std::runtime_error(std::format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
 				lipid.grofile->m_path.string(), lipid.topfile->path.string())
 			);
@@ -184,9 +185,9 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						//grofile.atoms.emplace(GroRecord{})
 
 						// Add first the basic atomtype, and then correct the IDs after
-						topfile.GetLocalAtoms().emplace_back(atomtypeselect.atomtype);
-						topfile.GetLocalAtoms().back().id = groId;
-						topfile.GetLocalAtoms().back().resnr = resNr;
+						topfile.GetMoleculeType().atoms.emplace_back(atomtypeselect.atomtype);
+						topfile.GetMoleculeType().atoms.back().id = groId;
+						topfile.GetMoleculeType().atoms.back().resnr = resNr;
 
 
 						//if (topfile.atoms.entries.size() > 1) {
@@ -543,7 +544,7 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
 	outputtopologyfile->name = "Membrane";
-	outputtopologyfile->system = "Membrane";
+	outputtopologyfile->system = TopologyFile::System("Membrane");
 
 	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
 

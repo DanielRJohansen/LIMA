@@ -20,14 +20,14 @@ void MoleculeGraph::connectNodes(int left_id, int right_id) {
 	nodes[right_id].addNeighbor(&nodes[left_id]);
 }
 
-MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile& topolfile) {
+MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile::Moleculetype1& molecule) {
 	MoleculeGraph graph;
 
-	for (const auto& atom : topolfile.GetAllAtoms()) {
+	for (const auto& atom : molecule.atoms) {
 		graph.addNode(atom.id, atom.atomname);
 	}
 
-	for (const auto& bond : topolfile.GetAllSinglebonds()) {
+	for (const auto& bond : molecule.singlebonds) {
 		graph.connectNodes(bond.ids[0], bond.ids[1]);
 	}
 
@@ -207,14 +207,15 @@ void overwriteParticleIds(std::vector<T>& bonds, const std::vector<int>& map) {
 }
 
 
-void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& grofile, TopologyFile& topfile) {
+void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& grofile, TopologyFile::Moleculetype1& molecule) {
 
 	std::vector<std::array<std::string, 2>> sbAtomtypesCheck;
-	for (const auto& sb : topfile.GetLocalSinglebonds()) {
-		sbAtomtypesCheck.push_back({ topfile.GetLocalAtoms()[sb.ids[0]].atomname, topfile.GetLocalAtoms()[sb.ids[1]].atomname });
+	for (const auto& sb : molecule.singlebonds) {
+		//sbAtomtypesCheck.push_back({ topfile.GetLocalAtoms()[sb.ids[0]].atomname, topfile.GetLocalAtoms()[sb.ids[1]].atomname });
+		sbAtomtypesCheck.push_back({ molecule.atoms[sb.ids[0]].atomname, molecule.atoms[sb.ids[1]].atomname });
 	}
 
-	const MoleculeGraph molgraph = createGraph(topfile);
+	const MoleculeGraph molgraph = createGraph(molecule);
 
 	const std::vector<int> map = MakeParticleReorderMapping(molgraph);
 
@@ -225,49 +226,47 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 		atom.gro_id = map[atom.gro_id-1] + 1;  // +1 to convert from lima id to groID
 	}
 	// We can only do this part if the topol does NOT have includes
-	if (topfile.GetLocalMolecules().size() > 0)
-		throw std::runtime_error("Cannot reorder topol with includes");
-	for (auto& atom : topfile.GetLocalAtoms()) {
+	/*if (molecule.GetLocalMolecules().size() > 0)
+		throw std::runtime_error("Cannot reorder topol with includes");*/
+	for (auto& atom : molecule.atoms) {
 		atom.id = map[atom.id];
 	}
 
-	overwriteParticleIds<>(topfile.GetLocalSinglebonds(), map);
-	overwriteParticleIds<>(topfile.GetLocalPairs(), map);
-	overwriteParticleIds<>(topfile.GetLocalAnglebonds(), map);
-	overwriteParticleIds<>(topfile.GetLocalDihedralbonds(), map);
-	overwriteParticleIds<>(topfile.GetLocalImproperDihedralbonds(), map);
-
-
+	overwriteParticleIds<>(molecule.singlebonds, map);
+	overwriteParticleIds<>(molecule.pairs, map);
+	overwriteParticleIds<>(molecule.anglebonds, map);
+	overwriteParticleIds<>(molecule.dihedralbonds, map);
+	overwriteParticleIds<>(molecule.improperdihedralbonds, map);
 
 
 
 	// Re-sort all entries with the new groids
 	std::sort(grofile.atoms.begin(), grofile.atoms.end(), [](const GroRecord& a, const GroRecord& b) {return a.gro_id < b.gro_id; });
 
-	std::sort(topfile.GetLocalAtoms().begin(), topfile.GetLocalAtoms().end(), [](const auto& a, const auto& b) {return a.id < b.id; });
+	std::sort(molecule.atoms.begin(), molecule.atoms.end(), [](const auto& a, const auto& b) {return a.id < b.id; });
 
 	// Check that we didn't mess up the singlebonds. If all these are identical, the other bonds must be aswell
-	for (int i = 0; i < topfile.GetLocalSinglebonds().size(); i++) {
+	for (int i = 0; i < molecule.singlebonds.size(); i++) {
 		if (
-			sbAtomtypesCheck[i][0] != topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[0]].atomname ||
-			sbAtomtypesCheck[i][1] != topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[1]].atomname
+			sbAtomtypesCheck[i][0] != molecule.atoms[molecule.singlebonds[i].ids[0]].atomname ||
+			sbAtomtypesCheck[i][1] != molecule.atoms[molecule.singlebonds[i].ids[1]].atomname
 			)
 		{
-			auto a = topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[0]].atomname;
-			auto b = topfile.GetLocalAtoms()[topfile.GetLocalSinglebonds()[i].ids[1]].atomname;
+			auto a = molecule.atoms[molecule.singlebonds[i].ids[0]].atomname;
+			auto b = molecule.atoms[molecule.singlebonds[i].ids[1]].atomname;
 			throw std::runtime_error("Reordering of particles messed up singlebonds" + std::to_string(i));
 		}
 	}
 
-	std::sort(topfile.GetLocalSinglebonds().begin(), topfile.GetLocalSinglebonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
-	std::sort(topfile.GetLocalPairs().begin(), topfile.GetLocalPairs().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
-	std::sort(topfile.GetLocalAnglebonds().begin(), topfile.GetLocalAnglebonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
-	std::sort(topfile.GetLocalDihedralbonds().begin(), topfile.GetLocalDihedralbonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
-	std::sort(topfile.GetLocalImproperDihedralbonds().begin(), topfile.GetLocalImproperDihedralbonds().end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.singlebonds.begin(), molecule.singlebonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.pairs.begin(), molecule.pairs.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.anglebonds.begin(), molecule.anglebonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.dihedralbonds.begin(), molecule.dihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.improperdihedralbonds.begin(), molecule.improperdihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 
 
-	for (int i = 0; i < topfile.GetLocalAtoms().size(); i++) {
-		if (topfile.GetLocalAtoms()[i].id != i)
+	for (int i = 0; i < molecule.atoms.size(); i++) {
+		if (molecule.atoms[i].id != i)
 			throw std::runtime_error("Reordering of particles messed up atoms" + std::to_string(i));
 	}
 

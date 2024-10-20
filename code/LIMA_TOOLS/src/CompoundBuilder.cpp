@@ -416,36 +416,38 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {	// This can be ma
 
 
 
-
-struct TopologyFileRef {
-	TopologyFileRef(int offset, const TopologyFile& topol) : atomsOffset(offset), topology(topol) {}
+// TODO: Change name
+struct MoleculeRef {
+	/*MoleculeRef(int offset, std::shared_ptr<const TopologyFile::Moleculetype1> moleculetype) 
+		: atomsOffset(offset), moleculetype(moleculetype) {}*/
 	int atomsOffset = 0;	// TODO this logic is being moved into the topology file
-	const TopologyFile& topology;
+	std::shared_ptr<const TopologyFile::Moleculetype1> moleculetype;//TODO: make const
+	fs::path forcefieldPath;
 };
 
-std::vector<TopologyFileRef> PrepareTopologies(const TopologyFile& topol) {
-	std::vector<TopologyFileRef> topologies;
+std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
+	std::vector<MoleculeRef> topologies;
 	int offset = 0;
 
-	topologies.push_back({ offset, topol });
-	offset += topol.GetLocalAtoms().size();
-	for (const auto& molecule : topol.GetAllSubMolecules()) {
-		topologies.emplace_back(TopologyFileRef{offset, *molecule.includeTopologyFile });
-		offset += molecule.includeTopologyFile->GetLocalAtoms().size();
+	//topologies.push_back({ offset, system });
+	//offset += topol.GetLocalAtoms().size();
+	for (const auto& molecule : topol.GetSystem().molecules) {
+		topologies.emplace_back(MoleculeRef{offset, molecule.moleculetype, *topol.GetForcefieldPath()});
+		offset += molecule.moleculetype->atoms.size();		
 	}
 	return topologies;
 }
 
 
 
-std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topologyFiles, const GroFile& grofile, ForcefieldManager& forcefield, int nNonsolventAtoms) {
+std::vector<ParticleInfo> PrepareAtoms(const std::vector<MoleculeRef>& molecules, const GroFile& grofile, ForcefieldManager& forcefield, int nNonsolventAtoms) {
 	std::vector<ParticleInfo> atomRefs(nNonsolventAtoms);
 	
 	int globalIndex = 0;
 	int uniqueResId = 0;
-	for (const auto& topology : topologyFiles) {
+	for (const auto& mol: molecules) {
 		bool atomsAddedThisTop = false;
-		for (const auto& atom : topology.topology.GetLocalAtoms()) {
+		for (const auto& atom : mol.moleculetype->atoms) {
 			atomsAddedThisTop = true;
 			// TODO: Handle ignore atoms (H) somehow?			
 			// TODO: When accessing gro file, first check that it is not a solvent
@@ -457,7 +459,7 @@ std::vector<ParticleInfo> PrepareAtoms(const std::vector<TopologyFileRef>& topol
 			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0, 3))
 				throw std::runtime_error(std::format("Atom names do not match between .gro ({}) and topology file ({})", grofile.atoms[globalIndex].atomName, atom.atomname));
 
-			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(topology.topology.GetForcefieldPath(), atom.type);
+			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(mol.forcefieldPath, atom.type);
 			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, activeLJParamIndex, uniqueResId };
 			atomRefs[globalIndex].sourceLine = grofile.atoms[globalIndex].sourceLine;
 			
@@ -514,16 +516,16 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 	}
 }
 
-void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileRef>& topologyFiles) {
+void ReserveSpaceForAllBonds(Topology& topology, const std::vector<MoleculeRef>& molecules) {
 	int expectedSinglebonds = 0;
 	int expectedAnglebonds = 0;
 	int expectedDihedralbonds = 0;
 	int expectedImproperDihedralbonds = 0;
-	for (const auto& topologyFile : topologyFiles) {
-		expectedSinglebonds += topologyFile.topology.GetLocalSinglebonds().size();
-		expectedAnglebonds += topologyFile.topology.GetLocalAnglebonds().size();
-		expectedDihedralbonds += topologyFile.topology.GetLocalDihedralbonds().size();
-		expectedImproperDihedralbonds += topologyFile.topology.GetLocalImproperDihedralbonds().size();
+	for (const auto& mol : molecules) {
+		expectedSinglebonds += mol.moleculetype->singlebonds.size();
+		expectedAnglebonds += mol.moleculetype->anglebonds.size();
+		expectedDihedralbonds += mol.moleculetype->dihedralbonds.size();
+		expectedImproperDihedralbonds += mol.moleculetype->improperdihedralbonds.size();
 	}
 	topology.singlebonds.reserve(expectedSinglebonds);
 	topology.anglebonds.reserve(expectedAnglebonds);
@@ -531,31 +533,31 @@ void ReserveSpaceForAllBonds(Topology& topology, const std::vector<TopologyFileR
 	topology.improperdihedralbonds.reserve(expectedImproperDihedralbonds);
 }
 
-Topology LoadTopology(const std::vector<TopologyFileRef>& topologyFiles, ForcefieldManager& forcefield, const std::vector<ParticleInfo>& atomRefs) {
+Topology LoadTopology(const std::vector<MoleculeRef>& molecules, ForcefieldManager& forcefield, const std::vector<ParticleInfo>& atomRefs) {
 	Topology topology;	
 
-	ReserveSpaceForAllBonds(topology, topologyFiles);
+	ReserveSpaceForAllBonds(topology, molecules);
 
-	for (const auto& topologyFile : topologyFiles) {
+	for (const auto& mol : molecules) {
 
-		for (const auto& bondTopol : topologyFile.topology.GetLocalSinglebonds()) {			
+		for (const auto& bondTopol : mol.moleculetype->singlebonds) {			
 			LoadBondIntoTopology<2, SingleBond, SingleBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.singlebonds, topologyFile.topology.GetForcefieldPath(), bondTopol.sourceLine);
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.singlebonds, mol.forcefieldPath, bondTopol.sourceLine);
 		}
 
-		for (const auto& bondTopol : topologyFile.topology.GetLocalAnglebonds()) {			
+		for (const auto& bondTopol : mol.moleculetype->anglebonds) {			
 			LoadBondIntoTopology<3, AngleUreyBradleyBond, AngleBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.anglebonds, topologyFile.topology.GetForcefieldPath());
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.anglebonds, mol.forcefieldPath);
 		}
 
-		for (const auto& bondTopol : topologyFile.topology.GetLocalDihedralbonds()) {			
+		for (const auto& bondTopol : mol.moleculetype->dihedralbonds) {			
 			LoadBondIntoTopology<4, DihedralBond, DihedralBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, topologyFile.topology.GetForcefieldPath());
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.dihedralbonds, mol.forcefieldPath);
 		}
 
-		for (const auto& bondTopol : topologyFile.topology.GetLocalImproperDihedralbonds()) {
+		for (const auto& bondTopol : mol.moleculetype->improperdihedralbonds) {
 			LoadBondIntoTopology<4, ImproperDihedralBond, ImproperDihedralBondFactory>(
-				bondTopol.ids, topologyFile.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, topologyFile.topology.GetForcefieldPath());
+				bondTopol.ids, mol.atomsOffset, forcefield, atomRefs, topology.improperdihedralbonds, mol.forcefieldPath);
 		}
 	}
 
@@ -952,6 +954,7 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 }
 
 
+#include <numeric>
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const GroFile& gro_file,
 	const TopologyFile& topol_file,
@@ -962,9 +965,9 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 ) 
 {
 	// Solvents are not present in top file, so we can't require these to match
-	const int nNonsolventAtoms = topol_file.GetElementCount<TopologyFile::AtomsEntry>();
+	const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
 	assert(gro_file.atoms.size() >= nNonsolventAtoms);
-	const std::vector<TopologyFileRef> preparedTopologyFiles = PrepareTopologies(topol_file);
+	const std::vector<MoleculeRef> preparedTopologyFiles = PrepareTopologies(topol_file);
 
 	ForcefieldManager forcefieldManager{};
 

@@ -5,14 +5,14 @@
 #include <filesystem>
 #include "Bodies.cuh"
 #include "Filehandling.h"
-
+#include <ranges>
 #include <optional>
 
 #include <stack>
 #include <unordered_map>
 #include <queue>
 
-const bool ENABLE_FILE_CACHING = true;
+const bool ENABLE_FILE_CACHING = false;
 
 
 namespace fs = std::filesystem;
@@ -169,6 +169,47 @@ public:
 		int nrexcl{};
 		std::string composeString() const;
 	};
+	struct Moleculetype1 {
+		Moleculetype1() = default;
+		Moleculetype1(const TopologyFile& top) {
+			*this = top.GetMoleculeType();
+		}
+		std::string name{};
+		int nrexcl{}; // How many consecutive bonds before LJ is enabled again
+
+		std::vector<AtomsEntry> atoms;
+		std::vector<SingleBond> singlebonds;
+		std::vector<Pair> pairs;
+		std::vector<AngleBond> anglebonds;
+		std::vector<DihedralBond> dihedralbonds;
+		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
+
+
+		template <typename T>
+		std::vector<T>& GetElements() {
+			if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
+			else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
+			else if constexpr (std::is_same_v<T, Pair>) return pairs;
+			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
+			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
+			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else static_assert(std::is_same_v<T, void>, "Unknown section type");
+		}
+
+		template <typename T>
+		const std::vector<T>& GetElements() const {
+			if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
+			else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
+			else if constexpr (std::is_same_v<T, Pair>) return pairs;
+			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
+			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
+			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else static_assert(std::is_same_v<T, void>, "Unknown section type");
+		}
+	};
+
+
+
 	struct ForcefieldInclude {
 		ForcefieldInclude(const std::string& name = "") : name(name) {};
 		ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
@@ -185,27 +226,6 @@ public:
 
 	private:
 		std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
-	};
-
-	template <typename EntryType> struct Section {
-		std::string title;	// or "directive" in gromacs terms
-		const std::string legend;
-		std::vector<EntryType> entries;
-
-		std::string composeString() const {
-			std::ostringstream oss;
-
-			oss << title << '\n';
-			if (!legend.empty());
-				oss << legend << "\n";
-			for (const EntryType& entry : entries) {
-				entry.composeString(oss);
-				oss << '\n';
-			}
-
-			oss << '\n';
-			return oss.str();
-		}
 	};
 
 
@@ -228,70 +248,57 @@ public:
 
 	// ----------------------- Information kept in the actual files ----------------------- //
 	std::string title="";
-	Section<MoleculeEntry> molecules{ "[ molecules ]", generateLegend({}) };
-	std::optional<Moleculetype> moleculetype;
+	//Section<MoleculeEntry> molecules{ "[ molecules ]", generateLegend({}) };
+	//std::optional<Moleculetype> moleculetype;
+	struct MoleculeEntry1 {
+		std::string name;
+		std::shared_ptr<Moleculetype1> moleculetype;
+	};
+
+	struct System {
+		std::string title;
+		std::vector<MoleculeEntry1> molecules;
+	};
+
+	const System& GetSystem() const { return system.value();}
+	System& GetSystem() { return system.value(); }
 
 
-	std::vector<AtomsEntry>& GetLocalAtoms() { return atoms.entries; }
-	const std::vector<AtomsEntry>& GetLocalAtoms() const { return atoms.entries; }
-	std::vector<SingleBond>& GetLocalSinglebonds() { return singlebonds.entries; }
-	const std::vector<SingleBond>& GetLocalSinglebonds() const { return singlebonds.entries; }
-	std::vector<Pair>& GetLocalPairs() { return pairs.entries; }
-	const std::vector<Pair>& GetLocalPairs() const { return pairs.entries; }
-	std::vector<AngleBond>& GetLocalAnglebonds() { return anglebonds.entries; }
-	const std::vector<AngleBond>& GetLocalAnglebonds() const { return anglebonds.entries; }
-	std::vector<DihedralBond>& GetLocalDihedralbonds() { return dihedralbonds.entries; }
-	const std::vector<DihedralBond>& GetLocalDihedralbonds() const { return dihedralbonds.entries; }
-	std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() { return improperdihedralbonds.entries; }
-	const std::vector<ImproperDihedralBond>& GetLocalImproperDihedralbonds() const { return improperdihedralbonds.entries; }
-	const std::vector<MoleculeEntry>& GetLocalMolecules() const { return molecules.entries; }
 
 	std::optional<ForcefieldInclude> forcefieldInclude = std::nullopt;
 	std::unordered_map<std::string, std::shared_ptr<TopologyFile>> includeTopologies;
 	std::vector<std::string> otherIncludes;
 
-	std::string system = "noname";	// [ system ] section
+	template <typename T>
+	auto GetAllElements() const {
+		// 1. First, transform each MoleculeEntry1 to get the vector of the desired element type.
+		// 2. The lambda function does the transformation by calling GetElements<T> on each molecule's Moleculetype1.
+		return system->molecules
+			| std::views::transform([](const MoleculeEntry1& entry) -> std::vector<T>&{
+			return entry.moleculetype->GetElements<T>(); // Retrieve the vector for the specific bond type
+				})
+			// 3. Join all the individual vectors into a single flattened range of elements (e.g., all SingleBonds from all molecules).
+					| std::views::join;
+	}
+
 
 	// Returns the top's forcefield IF it exists.
 	// If not, tries to return it's parents IF, if those exists
 	// Otherwise, returns nullopt
 	std::optional<fs::path> GetForcefieldPath() const;
 
-	template <typename T>
-	Section<T>& GetSection() {
-		if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
-		else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
-		else if constexpr (std::is_same_v<T, Pair>) return pairs;
-		else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
-		else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
-		else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
-		else if constexpr (std::is_same_v<T, MoleculeEntry>) return molecules;
-		else static_assert(std::is_same_v<T, void>, "Unknown section type");
+	const Moleculetype1& GetMoleculeType() const {
+		if (moleculetypes1.size() != 1) {
+			throw std::runtime_error("Illegal call to GetMoleculeType");
+		}
+		return *moleculetypes1.begin()->second;
 	}
-
-	template <typename T>
-	const Section<T>& GetSection() const {
-		if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
-		else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
-		else if constexpr (std::is_same_v<T, Pair>) return pairs;
-		else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
-		else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
-		else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
-		else if constexpr (std::is_same_v<T, MoleculeEntry>) return molecules;
-		else static_assert(std::is_same_v<T, void>, "Unknown section type");
+	Moleculetype1& GetMoleculeType() {
+		if (moleculetypes1.size() != 1) {
+			throw std::runtime_error("Illegal call to GetMoleculeType");
+		}
+		return *moleculetypes1.begin()->second;
 	}
-	// ------------------------------------------------------------------------------------ //
-
-	template<typename T>
-	class SectionRange;
-
-	SectionRange<AtomsEntry> GetAllAtoms() const;
-	SectionRange<SingleBond> GetAllSinglebonds() const;
-	SectionRange<Pair> GetAllPairs() const;
-	SectionRange<AngleBond> GetAllAnglebonds() const;
-	SectionRange<DihedralBond> GetAllDihedralbonds() const;
-	SectionRange<ImproperDihedralBond> GetAllImproperDihedralbonds() const;
-	SectionRange<MoleculeEntry> GetAllSubMolecules() const;
 
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
@@ -301,33 +308,25 @@ public:
 	bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 
-	template <typename T>
-	size_t GetElementCount() const {
-		size_t count = 0;
-		count += GetSection<T>().entries.size();
-		for (const auto& mol : molecules.entries) {
-			count += mol.includeTopologyFile->template GetElementCount<T>();
-		}
-		return count;
-	}
-
+	std::unordered_map<std::string, std::shared_ptr<Moleculetype1>> moleculetypes1;
+	std::optional<System> system = std::nullopt;
 
 private:
 	friend class GenericItpFile;
 
 	static const char commentChar = ';';
 
-	Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
-	Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
-	Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
-	Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
-	Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
-	Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
+	//Section<AtomsEntry> atoms{ "[ atoms ]", generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) };
+	//Section<SingleBond> singlebonds{ "[ bonds ]", generateLegend({ "ai","aj", "funct","c0","c1","c2","c3" }) };
+	//Section<Pair> pairs{ "[ pairs ]", generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) };
+	//Section<AngleBond> anglebonds{ "[ angles ]", generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) };
+	//Section<DihedralBond> dihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) };
+	//Section<ImproperDihedralBond> improperdihedralbonds{ "[ dihedrals ]", generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) };
 
-	TopologyFile* parentTopology = nullptr; // USE WITH CARE!
+	//TopologyFile* parentTopology = nullptr; // USE WITH CARE!
 
 	// Private copy constructor, since this should be avoided when possible
-	TopologyFile& operator=(const TopologyFile&) = default;
+	//TopologyFile& operator=(const TopologyFile&) = default;
 
 	static std::string generateLegend(const std::vector<std::string>& elements);
 
@@ -336,30 +335,15 @@ private:
 	// This is useful because GROMACS only allow a single forcefield to be included, and in cases where it is possible
 	// we will provide a topology that wont break in GROMACS
 	std::optional<ForcefieldInclude> ThisAndAllSubmoleculesShareTheSameForcefieldinclude() const;
+
+	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath);
+
+	// Packs atoms and bond information in the moleculetype ptr
+	// Returns the next section in the topologyfile
+	static TopologySection ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype1>);
+	
 };
 
-struct TopologyFile::MoleculeEntry {
-	MoleculeEntry() {}
-	MoleculeEntry(const std::string& name, int globalIndexOfFirstParticle = 0)
-		: name(name), globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
-	MoleculeEntry(const std::string& name, std::shared_ptr<TopologyFile> includeTopologyFile,
-		int globalIndexOfFirstParticle)
-		: name(name), includeTopologyFile(includeTopologyFile),
-		globalIndexOfFirstParticle(globalIndexOfFirstParticle) {}
-
-	void composeString(std::ostringstream& oss) const;
-
-	int GlobalIndexOfFinalParticle() const {
-		if (includeTopologyFile == nullptr)
-			throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile is nullptr");
-		if (includeTopologyFile->atoms.entries.empty())
-			throw std::runtime_error("MoleculeEntry::GlobalIndexOfFinalParticle: includeTopologyFile has no atoms");
-		return globalIndexOfFirstParticle + includeTopologyFile->atoms.entries.size() - 1;
-	}
-	int globalIndexOfFirstParticle = 0; // Determined for each molecule when loading the file
-	std::string name{};	// Name of file without extension and path
-	std::shared_ptr<TopologyFile> includeTopologyFile = nullptr;
-};
 
 // Variable names are from .itp file
 struct TopologyFile::AtomsEntry {
@@ -410,123 +394,3 @@ struct TopologyFile::Pair : GenericBond<2> {};
 struct TopologyFile::AngleBond : GenericBond<3> {};
 struct TopologyFile::DihedralBond : GenericBond<4> {};
 struct TopologyFile::ImproperDihedralBond : GenericBond<4> {};
-
-
-template <typename T>
-class TopologyFile::SectionRange {
-public:
-	template <typename TopolPointerType, typename ReturnReferenceType>
-	class _Iterator {
-	public:
-		_Iterator() = default;
-
-		explicit _Iterator(TopolPointerType root)
-			: currentTopology(root) {
-			moveToNextEntry();
-		}
-
-		_Iterator& operator++() {
-			moveToNextEntry();
-			return *this;
-		}
-
-		ReturnReferenceType& operator*()  {
-			return currentTopology->template GetSection<T>().entries[elementIndex];
-		}
-
-		bool operator==(const _Iterator& other) const {
-			return currentTopology == other.currentTopology &&
-				elementIndex == other.elementIndex;
-		}
-
-		bool operator!=(const _Iterator& other) const {
-			return !(*this == other);
-		}
-
-	private:
-		std::stack<std::queue<TopolPointerType>> topologyStack;
-		TopolPointerType currentTopology = nullptr;
-		int elementIndex = -1;
-
-		void moveToNextEntry() {
-			while (true) {
-
-				// If we have no topology file, go to the next
-				if (currentTopology == nullptr) {
-					if (topologyStack.empty()) {
-						*this = _Iterator();
-						return;
-					}
-					if (topologyStack.top().empty()) {
-						topologyStack.pop();
-						continue;
-					}
-					currentTopology = topologyStack.top().front();
-					topologyStack.top().pop();
-					elementIndex = -1;
-				}
-
-				// If our current topology has no more elements, add all include files
-				if (elementIndex + 1 == currentTopology->template GetSection<T>().entries.size()) {
-
-					if (currentTopology->molecules.entries.size() > 0) {
-						topologyStack.push({});
-						for (auto& mol : currentTopology->molecules.entries) {
-							topologyStack.top().push(mol.includeTopologyFile.get());
-						}
-
-						elementIndex = -1;
-						currentTopology = topologyStack.top().front();
-
-						topologyStack.top().pop();
-						continue;
-					}
-
-					currentTopology = nullptr;
-					continue;
-				}
-
-				elementIndex++;
-				return;
-			}
-		}
-	};
-	using Iterator = _Iterator<TopologyFile*, T>;
-	using ConstIterator = _Iterator<const TopologyFile*, const T>;
-
-	explicit SectionRange(TopologyFile* const topology) : topology(topology) {
-		//topology->LoadAllSubMolecules();
-	}
-
-	explicit SectionRange(const TopologyFile* const topology) : topology(const_cast<TopologyFile*>(topology)) {
-		//topology->LoadAllTopologies();
-	}
-
-	Iterator begin() { return Iterator(topology); }
-	Iterator end() { return Iterator(); }
-	ConstIterator begin() const { return ConstIterator(topology); }
-	ConstIterator end() const { return ConstIterator(); }
-
-	bool operator==(const SectionRange& other) const {
-		auto thisIter = begin();
-		auto otherIter = other.begin();
-		while (thisIter != end() && otherIter != other.end()) {
-			const T& thisElement = *thisIter;
-			const T& otherElement = *otherIter;
-
-			if (thisElement != otherElement) {
-				return false;
-			}
-			++thisIter;
-			++otherIter;
-		}
-		if (thisIter != end() || otherIter != other.end()) {
-			return false;
-		}
-		return true;
-	}
-
-
-private:
-	TopologyFile* const topology = nullptr;
-};

@@ -21,4 +21,6 @@ namespace Programs {
 	/// <returns>Can be discarded if not needed. Only makes sense to discard if overwriting grofile</returns>
 	std::unique_ptr<Simulation> EnergyMinimize(GroFile&, const TopologyFile&,
 		bool writePositionsToGrofile, const fs::path& workDir, EnvMode, bool mayOverlapEdges, float emtol=100.f);
+
+	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&);
 }

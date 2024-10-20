@@ -177,6 +177,8 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 			while (std::getline(ss, word, ' ')) {
 				if (!word.empty()) {
 					box_size[dim++] = std::stof(word);
+					if (dim == 3)
+						break;
 				}
 			}
 		}
@@ -420,6 +422,8 @@ TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path
 						continue;
 
 					if (!includeTopologies.contains(include_name)) {
+						// TODO CRITICAL: We need to fix it such that a topologyfile can read itself as an include topology, 
+						// if both moleculetype and molecule sections are present
 						throw std::runtime_error(std::format("Could not find include topology file: {}", include_name));
 					}
 

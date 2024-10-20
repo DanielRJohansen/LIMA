@@ -196,3 +196,22 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	
 	return env.getSim();
 }
+
+
+void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile) {
+
+	std::vector<MoleculeHullFactory> moleculeContainers;
+	for (const auto& molecule : topfile.GetAllSubMolecules()) {
+		moleculeContainers.push_back({});
+
+		for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
+			moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
+		}
+
+		moleculeContainers.back().CreateConvexHull();
+	}
+
+	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+
+	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+}

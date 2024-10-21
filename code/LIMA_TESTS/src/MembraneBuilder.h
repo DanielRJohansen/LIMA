@@ -60,7 +60,9 @@ namespace TestMembraneBuilder {
 		const fs::path work_dir = simulations_dir / "BuildMembraneCustom";
 		const fs::path mol_dir = work_dir / "molecule";
 
-		TestUtils::CleanDirectory(mol_dir);
+		//TestUtils::CleanDirectory(mol_dir);
+		fs::remove_all(mol_dir);
+		fs::create_directory(mol_dir);
 
 		Lipids::Selection lipidselection;
 		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };

@@ -605,7 +605,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
 		}
 		
-		file << title << "\n\n";
+		file << "; " << title << "\n\n";
 
 		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
 		if (forcefieldInclude) {

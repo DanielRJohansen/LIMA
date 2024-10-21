@@ -50,7 +50,18 @@ public:
             }
             });
     }
-
+    void AddOption(const std::vector<std::string>& aliases, bool required, float& target) {
+        const std::string argMainName = aliases[0];
+        AddOption(aliases, required, [&target, argMainName](int indexOfOption, char** argv, int) {
+            try {
+                target = std::stof(argv[indexOfOption]);
+            }
+            catch (std::invalid_argument) {
+                std::cerr << std::string("Argument ") + argMainName + "expected a float, got value: " + argv[indexOfOption] + "\n";
+                exit(1);
+            }
+        });
+    }
     void AddOption(const std::vector<std::string>& aliases, bool required, Float3& target) {
         const std::string argMainName = aliases[0];
         AddOption(aliases, required, [&target, argMainName](int indexOfOption, char** argv, int argc) {

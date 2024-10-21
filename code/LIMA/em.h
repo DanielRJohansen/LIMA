@@ -21,6 +21,15 @@ Options:
     -top, -t [path]
         Path to the source .top file. Defaults to ./topol.top
 
+    -conf_output, -co [path]
+        Path to the output .gro file. Defaults to ./conf.gro
+
+    -top_output, -to [path]
+        Path to the output .top file. Defaults to ./topol.top
+
+    -emtol [value]
+        Sets the force tolerance (kJ/mol/nm) for the energy minimization. Default is 100.
+
     -display -d
         Render the simulation during em
 
@@ -36,21 +45,27 @@ Example:
 
     fs::path confPath{"conf.gro"};
     fs::path topPath{"topol.top"};
+    fs::path confPathOut{"conf.gro"};
+    fs::path topPathOut{"topol.top"};
 
     bool render = false;
+    float emtol = 100.f;
 
     parser.AddOption({ "-conf", "-c" }, false, confPath);
     parser.AddOption({ "-top", "-t" }, false, topPath);
+    parser.AddOption({ "-conf_output", "-co" }, false, confPathOut);
+    parser.AddOption({ "-top_output", "-to" }, false, topPathOut);
+    parser.AddOption({"-emtol"}, false, emtol);
     parser.AddFlag({ "-display", "-d" }, [&render](){render=true;});
     parser.Parse(argc, argv);
 
-    GroFile grofile{ confPath };
-    TopologyFile topfile{ topPath };
+    GroFile grofile{ fs::canonical(confPath) };
+    TopologyFile topfile{ fs::canonical(topPath) };
 
-    Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), render ? Full : ConsoleOnly, false);
+    Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), render ? Full : ConsoleOnly, false, emtol);
 
-    grofile.printToFile();
-    topfile.printToFile();
+    grofile.printToFile(fs::absolute(confPathOut));
+    topfile.printToFile(fs::absolute(topPathOut));
 
     return 0;
 }

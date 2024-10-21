@@ -58,7 +58,7 @@ int main(int argc, char** argv)
 		if (program == "mdrun") { mdrun(argc, argv); }
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
-		else if (program == "-help" || program =="-h"|| program == "help") { std::cout << helpText; }
+		else if (program == "-help" || program =="-h"|| program == "help" || program == "h") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
 		else if (program == "render") { render(argc, argv); }
 		else if (program == "makebox") { makebox(argc, argv); }

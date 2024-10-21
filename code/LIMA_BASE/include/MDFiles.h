@@ -303,7 +303,7 @@ public:
 		}
 		return *moleculetypes.begin()->second;
 	}
-	const std::shared_ptr<const Moleculetype>& GetMoleculeTypePtr() const {
+	const std::shared_ptr<const Moleculetype> GetMoleculeTypePtr() const {
 		if (moleculetypes.size() != 1) {
 			throw std::runtime_error("Illegal call to GetMoleculeType");
 		}

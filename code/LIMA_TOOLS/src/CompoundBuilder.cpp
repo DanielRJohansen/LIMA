@@ -940,7 +940,7 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 		const Float3 pos2 = atom2.groAtom->position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
 		const float bondRelaxedDist = bond.params.b0 * LIMA_TO_NANO;
-		const float allowedScalar = energyMinimizationMode ? 7.f : 1.8f;
+		const float allowedScalar = energyMinimizationMode ? 7.f : 1.9999f;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
 			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());

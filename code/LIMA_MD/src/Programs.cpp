@@ -160,7 +160,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	params.em_variant = true;	
 	params.dt = 200.f;
 	params.em_force_tolerance = emtol;
-	params.data_logging_interval = 200;
+	params.data_logging_interval = 100;
 
 	if (mayOverlapEdges) {
 		params.n_steps = 2000;

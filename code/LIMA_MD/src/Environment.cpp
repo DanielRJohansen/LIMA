@@ -301,16 +301,29 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0).count();
 
-		// First clear the current line
-		printf("\r\033[K");
+		//// First clear the current line
+		//printf("\r\033[K");
 
-		printf("\rStep #%06llu", step);
-		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
+		//printf("\rStep #%06llu", step);
+		//printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
+		//	duration / STEPS_PER_UPDATE,
+		//	engine->timings.compound_kernels / STEPS_PER_UPDATE,
+		//	engine->timings.solvent_kernels / STEPS_PER_UPDATE,
+		//	engine->timings.cpu_master/ STEPS_PER_UPDATE,
+		//	engine->timings.nlist/ STEPS_PER_UPDATE,
+		//	engine->timings.electrostatics / STEPS_PER_UPDATE,
+		//	0);
+
+		// Move cursor to the beginning of the line and clear it
+		printf("\033[1000D\033[K");
+
+		printf("Step #%06llu", step);
+		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ",
 			duration / STEPS_PER_UPDATE,
 			engine->timings.compound_kernels / STEPS_PER_UPDATE,
 			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
-			engine->timings.cpu_master/ STEPS_PER_UPDATE,
-			engine->timings.nlist/ STEPS_PER_UPDATE,
+			engine->timings.cpu_master / STEPS_PER_UPDATE,
+			engine->timings.nlist / STEPS_PER_UPDATE,
 			engine->timings.electrostatics / STEPS_PER_UPDATE,
 			0);
 
@@ -332,7 +345,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 	}
 
 	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
-
+		
 		const std::string info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
@@ -341,6 +354,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
 		));
 		step_at_last_render = engine->runstatus.current_step;
+		engine->runstatus.most_recent_positions = nullptr;
 	}
 
 	return !display.DisplaySelfTerminated();

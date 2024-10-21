@@ -47,7 +47,7 @@ struct DatabuffersDeviceController {
 	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 10;
+	static const int nStepsInBuffer = 5;
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		return step % (nStepsInBuffer * loggingInterval) == 0;

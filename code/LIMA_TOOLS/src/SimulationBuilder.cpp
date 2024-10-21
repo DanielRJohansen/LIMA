@@ -427,7 +427,7 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 		};
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
-		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+		std::function<void(Float3&)> position_transform = [=](Float3& pos) {
 			pos -= molCenter;
 			if (rotateRandomly) {
 				Float3::rodriguesRotatation(pos, Float3(0,0,1), randomRotation.z);

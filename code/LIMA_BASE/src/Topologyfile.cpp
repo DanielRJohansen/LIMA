@@ -1,6 +1,9 @@
 #include "MDFiles.h" 
 #include "Filehandling.h"
 
+#include <format>
+#include <algorithm>
+
 using namespace FileUtils;
 
 class TopologySectionGetter {

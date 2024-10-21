@@ -1,8 +1,10 @@
 #include "MoleculeUtils.h"
 #include "BoundaryConditionPublic.h"
 #include "MoleculeGraph.h"
+
 #include <unordered_set>
 #include <numeric>
+#include <algorithm>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };

@@ -126,16 +126,6 @@ void Engine::step() {
 	LIMA_UTILS::genericErrorCheck("Error after step!");
 }
 
-float HighestValue(const float* const arr, const int n) {
-	float max = 0.f;
-	for (int i = 0; i < n; i++) {
-		if (arr[i] > max) {
-			max = arr[i];
-		}
-	}
-	return max;
-}
-
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
 	auto t0 = std::chrono::high_resolution_clock::now();
 	if (DatabuffersDeviceController::IsBufferFull(simulation->getStep(), simulation->simparams_host.data_logging_interval)) {

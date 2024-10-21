@@ -421,6 +421,8 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 {
 	RandomAngleGenerator genRandomAngle;
 
+	// TODO Should we can CenterMol, so it is whole here?
+
 	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;
 
@@ -437,9 +439,9 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 		std::function<void(Float3&)> position_transform = [=](Float3& pos) {
 			pos -= molCenter;
 			if (rotateRandomly) {
-				Float3::rodriguesRotatation(pos, Float3(0,0,1), randomRotation.z);
-				Float3::rodriguesRotatation(pos, Float3(0,1,0), randomRotation.y);
-				Float3::rodriguesRotatation(pos, Float3(1,0,0), randomRotation.x);
+				pos = Float3::rodriguesRotatation(pos, Float3(0,0,1), randomRotation.z);
+				pos = Float3::rodriguesRotatation(pos, Float3(0,1,0), randomRotation.y);
+				pos = Float3::rodriguesRotatation(pos, Float3(1,0,0), randomRotation.x);
 			}
 			
 			pos += randomTranslation;

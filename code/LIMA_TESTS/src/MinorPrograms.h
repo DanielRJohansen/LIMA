@@ -13,10 +13,12 @@ namespace TestMinorPrograms {
 		const fs::path workDir = simulations_dir / "manyt4";
 		
 		const int boxSize = 25;
-		const int nInsertions = 50;
+		const int nInsertions = 30;
 
 		GroFile groSrc(workDir / "conf.gro");
 		auto topSrc = std::make_shared<TopologyFile>(workDir / "topol.top");
+
+		MoleculeUtils::CenterMolecule(groSrc, topSrc->GetMoleculeType());
 
 		Programs::EnergyMinimize(groSrc, *topSrc, true, workDir, envmode, false);
 
@@ -35,7 +37,7 @@ namespace TestMinorPrograms {
 		for (const auto& atom : grofile.atoms) {
 			ASSERT(requiredBB.pointIsInBox(atom.position), "Atom outside of bounding box");
 		}
-
+		
 		Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, false);
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };

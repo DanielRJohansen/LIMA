@@ -237,7 +237,7 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
 	}
 
-	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep() - 1);
+	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
 
 	for (int i = 0; i < boximage->total_compound_particles; i++) {
 		const int cid = boximage->particleinfos[i].compoundId;

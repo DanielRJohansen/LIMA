@@ -95,6 +95,10 @@ public:
 	std::exception_ptr displayThreadException{ nullptr };
 
 	static void TestDisplay();
+	static void RenderGrofile(const GroFile& grofile) {
+		Display d;
+		d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
+	}
 
 private:
 	// The renderThread will be spawned during construction, and run this indefinitely

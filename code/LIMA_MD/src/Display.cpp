@@ -366,3 +366,8 @@ void Display::TestDisplay() {
 	params.total_particles_upperbound = 1;
 	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
 }
+
+//void Display::RenderGrofile(const GroFile& grofile) {
+//    Display d;
+//    d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
+//}

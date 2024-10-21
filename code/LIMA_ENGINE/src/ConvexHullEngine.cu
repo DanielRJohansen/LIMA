@@ -22,7 +22,7 @@
 //#include "matplotlib-cpp/matplotlibcpp.h"
 //#undef WITHOUT_NUMPY
 
-const int maxFacetsInCH = 256;
+const int maxFacetsInCH = 256 + 128;
 const int maxCollisionsPerMH = 32;
 
 struct Overlap {

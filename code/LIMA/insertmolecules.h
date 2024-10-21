@@ -32,6 +32,9 @@ Options:
 
     -rotate_randomly, -rr 
 		Apply a random rotation to each molecule.
+    
+    -display, -d
+        Render the box as Staticbody Energyminimization is carried out
 
     -help, -h
         Display this help text and exit.
@@ -50,6 +53,7 @@ Example:
 
     bool rotateRandomly = false;
     int nInsertions{};
+    bool display = false;
 
     parser.AddOption({ "-conf_source", "-cs" }, true, confSrcPath);
     parser.AddOption({ "-top_source", "-ts" }, true, topSrcPath);
@@ -57,6 +61,7 @@ Example:
     parser.AddOption({ "-top_target", "-tt" }, false, topTgtPath);
     parser.AddOption({ "-num_insertions", "-n" }, true, nInsertions);
     parser.AddFlag({ "-rotate_randomly", "-rr" }, [&rotateRandomly]() {rotateRandomly = true; });
+    parser.AddFlag({ "-display", "-d" }, [&display]() {display = true; });
     parser.Parse(argc, argv);
 
     GroFile groSrc{ confSrcPath };
@@ -66,7 +71,10 @@ Example:
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
 
-    // TODO: Implement the staticbody EM
+    Programs::StaticbodyEnergyMinimize(groTgt, topTgt, display);
+
+    groTgt.printToFile(confTgtPath);
+    topTgt.printToFile(topTgtPath);
 
     return 0;
 }

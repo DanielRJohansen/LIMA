@@ -190,7 +190,7 @@ void Environment::run(bool doPostRunEvents) {
 	std::unique_ptr<Display> display = nullptr;
 
 	if (m_mode == Full) {
-		display = std::make_unique<Display>(m_mode);
+		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 	}
 

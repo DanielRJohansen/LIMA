@@ -22,7 +22,7 @@
 //#include "matplotlib-cpp/matplotlibcpp.h"
 //#undef WITHOUT_NUMPY
 
-const int maxFacetsInCH = 128;
+const int maxFacetsInCH = 256;
 const int maxCollisionsPerMH = 32;
 
 struct Overlap {
@@ -221,6 +221,9 @@ __global__ void FindIntersectionConvexhullFrom2Convexhulls(MoleculeHull* hullsBu
 	// First initialize the facets which vertices we are clipping
 	for (int facetIdOffset = threadIdx.x; facetIdOffset < mh2.nFacets; facetIdOffset += blockDim.x) {
 		const int facetId = mh2.indexOfFirstFacetInBuffer + facetIdOffset;
+
+		if (facetIdOffset >= maxFacetsInCH)
+			printf("Too many facets: %d\n", facetIdOffset);
 
 		for (int vertexId = 0; vertexId < 3; vertexId++) 
 			clippedFacets.triVertices[facetIdOffset * 3 + vertexId] = facets[facetId].vertices[vertexId];

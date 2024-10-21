@@ -255,7 +255,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 			auto sim = env.getSim();
 
 			if (displayEachLipidAndHalt) {
-				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr; // TODO: move to top so we dont reinit every time
+				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
 				display->Render(
 					std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
 					true);

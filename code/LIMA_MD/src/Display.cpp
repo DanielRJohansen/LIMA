@@ -48,7 +48,6 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
 
 
 void Display::Setup() {
-    printf("Hello");
     int success = initGLFW();
     SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
 
@@ -131,7 +130,6 @@ void Display::Setup() {
         }
         });
 
-    logger.finishSection("Display initialized");
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -140,8 +138,7 @@ void Display::Setup() {
     }
 }
 
-Display::Display(EnvMode envmode) :
-    logger(LimaLogger::LogMode::compact, envmode, "display"),
+Display::Display() :
     camera(Float3{ 2.f })
 {
     renderThread = std::jthread([this] {
@@ -287,16 +284,12 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 }
 
 bool Display::initGLFW() {
-    
-    logger.print("Initializing display...\n");
-
     // Initialize the library
     if (!glfwInit()) {
         throw std::runtime_error("\nGLFW failed to initialize");
     }
 
     // Create a windowed mode window and its OpenGL context
-    logger.print("Loading window --->");
     window = glfwCreateWindow(screenWidth, screenHeight, window_title.c_str(), NULL, NULL);
     if (!window)
     {
@@ -306,7 +299,6 @@ bool Display::initGLFW() {
 #ifndef __linux__
     glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
 #endif
-    logger.print("done\n");
 
     // Make the window's context current
     glfwMakeContextCurrent(window);
@@ -358,7 +350,7 @@ int FPS::GetFps() const {
 }
 
 void Display::TestDisplay() {
-	Display display{ Full};
+	Display display{};
 	
 	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
 	Compound compound;

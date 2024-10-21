@@ -148,7 +148,7 @@ namespace TestMembraneBuilder {
 		}
 
 
-		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, envmode==Full);
 		
 		// Compare after relaxation
 		{

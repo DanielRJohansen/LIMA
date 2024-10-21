@@ -78,7 +78,7 @@ namespace Rendering {
 class Display {
 public:
 	// Functions called by main thread only
-	Display(EnvMode);
+	Display();
 	~Display();
 	void WaitForDisplayReady();
 
@@ -97,8 +97,6 @@ public:
 	static void TestDisplay();
 
 private:
-	LimaLogger logger;
-
 	// The renderThread will be spawned during construction, and run this indefinitely
 	void Mainloop();
 

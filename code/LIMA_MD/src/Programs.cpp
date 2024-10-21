@@ -101,24 +101,22 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 }
 
 
-void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize) {
-	Display d(Full);
-
-
-
-	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize), true);
+void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize, bool renderProgress) {
 
 	ConvexHullEngine chEngine{};
-	auto renderCallback = [&d, &mhCol, &boxSize]() {
-		d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
+
+	auto d = renderProgress ? std::make_shared<Display>() : nullptr;
+	auto renderCallback = [&d, &mhCol, &boxSize]() mutable {
+		if (d != nullptr)
+			d->Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 	};
-	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, renderCallback);
-	
-	TimeIt::PrintTaskStats("FindIntersect");
-	TimeIt::PrintTaskStats("FindIntersectIteration");
+	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, std::ref(renderCallback));
 
 	
-	d.Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
+	if (renderProgress) {
+		TimeIt::PrintTaskStats("FindIntersect");
+		TimeIt::PrintTaskStats("FindIntersectIteration");
+	}
 }
 
 
@@ -196,7 +194,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 }
 
 
-void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile) {
+void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool render) {
 	std::vector<MoleculeHullFactory> moleculeContainers;
 	int globalParticleIndex = 0;
 
@@ -213,5 +211,5 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, render);
 }

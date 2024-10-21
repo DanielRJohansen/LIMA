@@ -35,7 +35,7 @@ glm::mat4 Camera::Projection() {
     double aspectRatio = 1.f;
     double fovY = 45.0;
     double nearPlane = 0.1;
-    double farPlane = 100.0;
+    double farPlane = 1000.0;
     double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
     double fW = fH * aspectRatio;
 

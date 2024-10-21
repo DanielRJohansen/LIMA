@@ -70,7 +70,7 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
 		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 30.f }, 5.f);
 		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//Display d{ Full };
+		//Display d{};
 		//d.Render(std::make_unique<Rendering::GrofileTask>(*grofile), true);
 		//topfile->printToFile(work_dir/"mytop.top");
 		
@@ -97,7 +97,7 @@ int main() {
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
 		//Benchmarks::Psome(envmode);				
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

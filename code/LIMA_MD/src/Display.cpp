@@ -5,11 +5,14 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <algorithm>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 #undef STB_IMAGE_IMPLEMENTATION
 
+
+#define NOMINMAX
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #elif defined(__linux__) || defined(__APPLE__)
@@ -310,7 +313,7 @@ Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}
 void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
     yaw += deltaYaw;
     pitch += deltaPitch;
-    dist += deltaDist;
+    dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
 }
 void Camera::Update(Float3 boxSize) {
     if (center != boxSize / 2.f)

@@ -95,27 +95,6 @@ cp /usr/bin/lima ~/Downloads/LIMAMD/
 rm -rf ~/Downloads/LIMAMD/resources
 cp -r /usr/share/LIMA/resources ~/Downloads/LIMAMD
 
-lima selftest
-
-
-# Run small sim
 if [ "$1" != "-notest" ] && [ "$2" != "-notest" ]; then    SIMS_DIR=/$HOME/LIMA/simulations
-    echo "Running self test in dir $SIMS_DIR"
-    mkdir -p "$SIMS_DIR"
-
-    # Clone the data repository only if the directory doesn't exist
-    cd /$HOME/Downloads
-    [ ! -d "LIMA_data" ] && git clone --quiet https://github.com/DanielRJohansen/LIMA_data 2>/dev/null
-
-    cp -r ./LIMA_data/* $SIMS_DIR/ #exclude .gitignore
-
-
-    cd "$SIMS_DIR/T4Lysozyme"
-    lima makesimparams
-    sed -i 's/n_steps=[0-9]*/n_steps=50000/' sim_params.txt
-    lima mdrun
-    #cd "$sims_dir"/manyt4
-
-    #lima mdrun # doesnt work, because this scrip has sudo, and the program must run as normal user
-    #$SUDO_USER -u lima mdrun  # Doesnt work, because 2nd arg must be mdrun, otherwise the program doesnt know what to do
+    lima selftest
 fi

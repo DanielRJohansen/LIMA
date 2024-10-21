@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 struct RenderSetup {
     RenderSetup(int argc, char** argv) {
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
             if (arg == "-conf") {

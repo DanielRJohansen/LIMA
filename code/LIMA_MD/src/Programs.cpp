@@ -114,7 +114,7 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 
 	
 	if (renderProgress) {
-		TimeIt::PrintTaskStats("FindIntersect");
+		//TimeIt::PrintTaskStats("FindIntersect");
 		TimeIt::PrintTaskStats("FindIntersectIteration");
 	}
 }

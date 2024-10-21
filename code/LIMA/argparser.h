@@ -14,12 +14,16 @@ public:
     using Callback = std::function<void(int& indexOfOption, char** argv, int argc)>;
     using FlagCallback = std::function<void()>;
 
-    ArgParser(const std::string& helpText) : helpText(helpText) {}
+    ArgParser(const std::string& helpText) : helpText(helpText) {
+        aliasMap.insert({"-h", "-help"});
+        aliasMap.insert({"-Help", "-help"});
+    }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, Callback callback) {
         for (const auto& alias : aliases) {
-            options[alias] = { required, std::move(callback) };
+            aliasMap.insert({alias, aliases[0]});
         }
+        options[aliases[0]] = { required, callback };
     }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, std::string& target) {
@@ -69,23 +73,30 @@ public:
 
     void AddFlag(const std::vector<std::string>& aliases, FlagCallback callback) {
         for (const auto& alias : aliases) {
-            flags[alias] = std::move(callback);
+            aliasMap.insert({alias, aliases[0]});
         }
+        flags[aliases[0]] = callback;
     }
 
     void Parse(int argc, char** argv) {
         std::unordered_map<std::string, bool> matchedOptions;
         for (int i = 2; i < argc; ++i) {
-            std::string arg = argv[i];
+            const std::string argAlias = argv[i];
+            if (!aliasMap.contains(argAlias)) {
+                std::cerr << "Unknown argument: " << argAlias << "\n";
+                std::cout << helpText;
+                exit(1);
+            }
+            const std::string arg = aliasMap[argAlias];
 
-            if (arg == "-h" || arg == "-help" || arg == "-Help") {
+            if (arg == "-help") {
                 std::cout << helpText;
                 exit(0);
             }
 
+
             auto optIt = options.find(arg);
             auto flagIt = flags.find(arg);
-
             if (optIt != options.end()) {
                 matchedOptions[arg] = true;
                 if (i + 1 < argc && argv[i + 1][0] != '-') {
@@ -101,9 +112,7 @@ public:
                 flagIt->second();
             }
             else {
-                std::cerr << "Unknown argument: " << arg << "\n";
-                std::cout << helpText;
-                exit(1);
+                std::cerr << "Unknown error encountered";
             }
         }
 
@@ -122,6 +131,8 @@ private:
         bool required;
         Callback callback;
     };
+
+    std::unordered_map<std::string, std::string> aliasMap;
 
     std::unordered_map<std::string, Option> options;
     std::unordered_map<std::string, FlagCallback> flags;

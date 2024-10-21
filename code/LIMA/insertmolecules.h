@@ -64,15 +64,19 @@ Example:
     parser.AddFlag({ "-display", "-d" }, [&display]() {display = true; });
     parser.Parse(argc, argv);
 
+    if (!fs::exists(confSrcPath)) {printf("Invalid conf src");}//TODO make standard,prettier
+    if (!fs::exists(topSrcPath)) {printf("Invalid top src");}
+    if (!fs::exists(confTgtPath)) {printf("Invalid conf tgt");}
+
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);
     GroFile groTgt{ confTgtPath };
-    TopologyFile topTgt{ topTgtPath };
+    TopologyFile topTgt{};
+    topTgt.SetSystem(topSrc->GetSystem().title + " " + std::to_string(nInsertions));
+
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
-
     Programs::StaticbodyEnergyMinimize(groTgt, topTgt, display);
-
     groTgt.printToFile(confTgtPath);
     topTgt.printToFile(topTgtPath);
 

@@ -225,7 +225,7 @@ public:
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
 	};
 	struct System {
-		std::string title{ "noSystem" };
+		std::string title{ "noSystem" }; // TODO: Rename to name instead
 		std::vector<MoleculeEntry> molecules;
 
 		bool IsInit() const { return title != "noSystem"; };

@@ -72,6 +72,9 @@ int main(int argc, char** argv)
 		std::cerr << "LIMA encountered an exception:\n\t " << ex.what() << std::endl;
 		return 1;
 	}
+	catch (const std::exception& ex) {
+		std::cerr << "Caught exception: " << ex.what() << std::endl;
+	}
 	catch (...) {
 		std::cerr << "LIMA caught an unknown exception\n";
 		return 1;

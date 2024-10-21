@@ -496,14 +496,13 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 	// Create the target path for the main file
 	const fs::path toplevelForcefieldTargetPath = directory / name;
 
-	if (toplevelForcefieldTargetPath == path)
+	if (fs::canonical(toplevelForcefieldTargetPath) == fs::canonical(Path()))
 		return; // This forcefield has already been copied to the target location
 
 	// Copy the main file
 	if (!fs::exists(toplevelForcefieldTargetPath.parent_path())) {
 		fs::create_directories(toplevelForcefieldTargetPath.parent_path()); // Create parent directories if they don't exist
 	}
-
 	fs::copy_file(Path(), toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
 
 

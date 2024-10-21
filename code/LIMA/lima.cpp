@@ -12,6 +12,7 @@
 #include "insertmolecule.h"
 #include "insertmolecules.h"
 #include "editconf.h"
+#include "em.h"
 
 namespace fs = std::filesystem;
 
@@ -34,6 +35,7 @@ Programs:
     insertmolecule      Inserts a molecule into a box
     insertmolecules     Inserts a molecule into a box multiple times
     editconf            Edit a .gro file.
+    em                  Energy minimize a simulation with default parameters.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -63,6 +65,7 @@ int main(int argc, char** argv)
 		else if (program == "insertmolecule") { insertmolecule(argc, argv); }
 		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
 		else if (program == "editconf") { editconf(argc, argv); }
+		else if (program == "em") { em(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

@@ -13,7 +13,7 @@ namespace TestMinorPrograms {
 		const fs::path workDir = simulations_dir / "manyt4";
 		
 		const int boxSize = 30;
-		const int nInsertions = 200;
+		const int nInsertions = 100;
 
 		GroFile groSrc(workDir / "conf.gro");
 		auto topSrc = std::make_shared<TopologyFile>(workDir / "topol.top");

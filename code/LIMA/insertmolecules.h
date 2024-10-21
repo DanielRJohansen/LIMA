@@ -40,7 +40,7 @@ Options:
         Display this help text and exit.
 
 Example:
-    insertmolecules -conf_source mysource.gro -top_source mytopology.top 
+    insertmolecules -conf_source mysource.gro -top_source mytopology.top -num_insertions 150 -rr -d
     )";
 
 

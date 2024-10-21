@@ -1,6 +1,5 @@
 #include "MDFiles.h" 
 #include "Filehandling.h"
-#include "MDFilesSerialization.h"
 
 using namespace FileUtils;
 
@@ -723,4 +722,19 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) + "\n";
 		file << composeString(improperdihedralbonds);		
 	}
+}
+void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
+	if (section_name) {
+		oss << section_name.value() << "\n";
+	}
+	oss << std::right
+		<< std::setw(10) << id + 1 // convert back to 1-indexed
+		<< std::setw(10) << type
+		<< std::setw(10) << resnr
+		<< std::setw(10) << residue
+		<< std::setw(10) << atomname
+		<< std::setw(10) << cgnr
+		<< std::setw(10) << std::fixed << std::setprecision(2) << charge
+		<< std::setw(10) << std::fixed << std::setprecision(3) << mass
+		<< '\n';
 }

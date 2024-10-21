@@ -39,7 +39,7 @@ struct GroFile {
 
 	// Meta data not in file
 	fs::path m_path;
-	int64_t lastModificationTimestamp;
+	int64_t lastModificationTimestamp=0;
 	bool readFromCache = false;
 	// --------------------- // 
 

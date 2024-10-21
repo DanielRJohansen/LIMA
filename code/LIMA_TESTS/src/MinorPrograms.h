@@ -12,11 +12,14 @@ namespace TestMinorPrograms {
 	LimaUnittestResult InsertMoleculesAndDoStaticbodyEM(EnvMode envmode) {
 		const fs::path workDir = simulations_dir / "manyt4";
 		
-		const int boxSize = 30;
+		const int boxSize = 25;
 		const int nInsertions = 50;
 
 		GroFile groSrc(workDir / "conf.gro");
 		auto topSrc = std::make_shared<TopologyFile>(workDir / "topol.top");
+
+		Programs::EnergyMinimize(groSrc, *topSrc, true, workDir, envmode, false);
+
 		GroFile grofile{};
 		grofile.box_size = Float3{ boxSize, boxSize, boxSize };
 		TopologyFile topfile{};

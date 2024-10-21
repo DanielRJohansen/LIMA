@@ -75,6 +75,8 @@ Example:
     topTgt.SetSystem(topSrc->GetSystem().title + " " + std::to_string(nInsertions));
 
 
+    Programs::EnergyMinimize(groSrc, *topSrc, true, fs::current_path(), display ? Full : Headless, false);
+
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
     Programs::StaticbodyEnergyMinimize(groTgt, topTgt, display);
     groTgt.printToFile(confTgtPath);

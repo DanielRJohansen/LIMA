@@ -29,7 +29,8 @@ namespace SimulationBuilder {
 		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter);
 
 	void InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly);
+		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, 
+		bool rotateRandomly);
 	
 	void InsertSubmoleculesOnSphere(
 		GroFile& targetGrofile,

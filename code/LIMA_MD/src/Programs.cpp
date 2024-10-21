@@ -127,30 +127,30 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 
 MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile& topfile, Lipids::Selection lipidsSelection, float vesicleRadius, Float3 vesicleCenter, std::optional<int> numLipids) {
 
-	const float area = 4.f * PI * vesicleRadius * vesicleRadius;
-	const int nLipids = numLipids.value_or(static_cast<int>(area * 0.9f));		
+	//const float area = 4.f * PI * vesicleRadius * vesicleRadius;
+	//const int nLipids = numLipids.value_or(static_cast<int>(area * 0.9f));		
 
-	SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
-		lipidsSelection,
-		nLipids, vesicleRadius, vesicleCenter
-	);
+	//SimulationBuilder::InsertSubmoleculesOnSphere(grofile, topfile,
+	//	lipidsSelection,
+	//	nLipids, vesicleRadius, vesicleCenter
+	//);
 
-	std::vector<MoleculeHullFactory> moleculeContainers;
+	//std::vector<MoleculeHullFactory> moleculeContainers;
 
-	//for (const auto& molecule : topfile.GetAllSubMolecules()) {
-	//	moleculeContainers.push_back({});
+	////for (const auto& molecule : topfile.GetAllSubMolecules()) {
+	////	moleculeContainers.push_back({});
 
-	//	for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
-	//		moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
-	//	}
-	//	
-	//	moleculeContainers.back().CreateConvexHull();
-	//}
+	////	for (int globalparticleIndex = molecule.globalIndexOfFirstParticle; globalparticleIndex <= molecule.GlobalIndexOfFinalParticle(); globalparticleIndex++) {
+	////		moleculeContainers.back().AddParticle(grofile.atoms[globalparticleIndex].position, grofile.atoms[globalparticleIndex].atomName[0]);
+	////	}
+	////	
+	////	moleculeContainers.back().CreateConvexHull();
+	////}
 
 
-	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
+	//MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
-	return mhCol;
+	//return mhCol;
 }
 
 std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 

@@ -48,9 +48,16 @@ float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselectio
 	return minPos;
 }
 
-float genRandomAngle() {
-	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI - PI;
-}
+class RandomAngleGenerator {
+	std::random_device rd; // obtain a random number from hardware
+	std::mt19937 generator;
+	std::uniform_real_distribution<float> distribution;
+public:
+	RandomAngleGenerator(int seed = 1238971) : generator(seed), distribution(-PI, PI) {}
+	float operator()() {
+		return distribution(generator);
+	}
+};
 
 void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
 	std::function<void(Float3&)> position_transform) 
@@ -412,7 +419,7 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {
-	std::srand(123123123);
+	RandomAngleGenerator genRandomAngle;
 
 	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;
@@ -451,7 +458,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 	const Float3& sphereCenter
 )
 {
-	std::srand(123123123);
+	RandomAngleGenerator genRandomAngle;
 
 	for (auto& lipid : lipidselection) {
 		centerMoleculeAroundOrigo(*lipid.grofile);
@@ -581,8 +588,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
-	srand(1238971);
-
+	RandomAngleGenerator genRandomAngle;
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
 
 	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;

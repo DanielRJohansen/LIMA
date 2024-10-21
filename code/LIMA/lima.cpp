@@ -32,8 +32,8 @@ Programs:
     render              Render a molecule in a 3D viewer.
     makebox             Makes an empty box (.gro & .top file)
     insertmolecule      Inserts a molecule into a box
-	insertmolecules     Inserts a molecule into a box multiple times
-	editconf			Edit a .gro file.
+    insertmolecules     Inserts a molecule into a box multiple times
+    editconf            Edit a .gro file.
 
 Options:
     -help, -h           Displays this help message and exits.

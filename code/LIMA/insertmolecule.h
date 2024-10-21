@@ -24,10 +24,10 @@ Options:
         Path to the target .gro file. Defaults to ./conf.gro
 
     -top_target, -tt [path]
-		Path to the target .top file. Defaults to ./topol.top
+        Path to the target .top file. Defaults to ./topol.top
     
     -position, -p [x y z]
-		Target position to insert the molecule. Defaults to the center of conf_target.
+        Target position to insert the molecule. Defaults to the center of conf_target.
 
     -help, -h
         Display this help text and exit.

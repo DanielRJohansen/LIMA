@@ -86,7 +86,7 @@ Options:
         Path to the simulation parameters file. Defaults to sim_params.txt.
 
     -display, -d
-		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
+        Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
 
     -structure_out [path]
         Output path for the resulting structure file. Defaults to out.gro.

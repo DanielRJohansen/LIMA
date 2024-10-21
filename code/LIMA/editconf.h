@@ -27,10 +27,10 @@ Options:
         Will make a molecule that was fragmented due to PBC whole again.
     
     -set_center, -sc [x y z]
-		Set the geometric center of the molecule.
+        Set the geometric center of the molecule.
 
     -rotate, -r [x y z]
-		Rotate the molecule around the z-axis, y-axis and finally x-axis. Angles in radians.
+        Rotate the molecule around the z-axis, y-axis and finally x-axis. Angles in radians.
 
     -help, -h
         Display this help text and exit.

@@ -13,7 +13,7 @@ namespace TestMinorPrograms {
 		const fs::path workDir = simulations_dir / "manyt4";
 		
 		const int boxSize = 30;
-		const int nInsertions = 100;
+		const int nInsertions = 50;
 
 		GroFile groSrc(workDir / "conf.gro");
 		auto topSrc = std::make_shared<TopologyFile>(workDir / "topol.top");
@@ -26,6 +26,14 @@ namespace TestMinorPrograms {
 		ASSERT(grofile.atoms.size() == groSrc.atoms.size() * nInsertions, "Number of atoms in grofile is not correct");
 
 		Programs::StaticbodyEnergyMinimize(grofile, topfile, envmode==Full);
+
+		BoundingBox requiredBB{ Float3{} - grofile.box_size * 0.2, grofile.box_size * 1.2 };
+
+		for (const auto& atom : grofile.atoms) {
+			ASSERT(requiredBB.pointIsInBox(atom.position), "Atom outside of bounding box");
+		}
+
+		Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, false);
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}

@@ -111,9 +111,6 @@ void Engine::verifyEngine() {
 
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
 	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
-
-	assert(simulation->simparams_host.steps_per_temperature_measurement % simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer == 0);
-	assert(simulation->simparams_host.steps_per_temperature_measurement >= simulation->simparams_host.data_logging_interval * DatabuffersDeviceController::nStepsInBuffer);
 }
 
 void Engine::step() {

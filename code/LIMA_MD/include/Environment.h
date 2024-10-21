@@ -114,7 +114,7 @@ private:
 
 	EnvMode m_mode;
 
-	int64_t step_at_last_render = 0;
+	int64_t step_at_last_render = INT64_MIN;
 
 
 	//std::unique_ptr<BoxBuilder> boxbuilder;

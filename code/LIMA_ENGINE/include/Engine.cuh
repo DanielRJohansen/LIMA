@@ -46,11 +46,11 @@ struct RunStatus {
 	Float3* most_recent_positions = nullptr;
 	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
-	float current_temperature = 0.f;
+	float current_temperature = NAN;
 
 	//int64_t stepsSinceEnergycheck = 0;
 	//float highestEnergy = 0.f; // measured in a single particle
-	float greatestForce = 0.f; // measured in a single particle
+	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;
 	bool critical_error_occured = false;

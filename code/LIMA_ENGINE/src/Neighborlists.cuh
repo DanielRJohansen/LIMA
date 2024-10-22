@@ -162,14 +162,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 	for (int i = 0; i < n_bonded_compounds; i++) {
 		bonded_compound_ids[i] = sim_dev->boxConfig.compounds[compound_id].bonded_compound_ids[i];
 	}
-	// First add all the bonded compounds to the list
-	{
-		// First add the compounds that we are bonded to
-		for (int i = 0; i < n_bonded_compounds; i++) {
-			if (!nlist.addCompound(static_cast<uint16_t>(bonded_compound_ids[i]))) { sim_dev->signals->critical_error_encountered = true; }
-		}
-	}
-
 
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];

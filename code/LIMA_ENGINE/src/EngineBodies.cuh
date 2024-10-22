@@ -146,49 +146,23 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 class NeighborList {
 public:
 	__device__ __host__ bool addCompound(uint16_t new_id) {
-		if (n_compound_neighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
+		if (nNonbondedNeighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
 			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
 			return false;
 			//throw std::runtime_error("Neighborlist overflow");
 		}
-		neighborcompound_ids[n_compound_neighbors++] = new_id;
+		nonbondedNeighborcompoundIds[nNonbondedNeighbors++] = new_id;
 		return true;
 	}
 
-	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
-		n_compound_neighbors = nl_ptr->n_compound_neighbors;
-#ifdef ENABLE_SOLVENTS
-		n_gridnodes = nl_ptr->n_gridnodes;
-#endif
-	}
-	__device__ void loadData(NeighborList* nl_ptr) {
-		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
-		//if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
-		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
-
-		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
-		for (int i = threadIdx.x; i < n_compound_neighbors; i += blockDim.x) {
-			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
-		}
-
-#ifdef ENABLE_SOLVENTS
-		for (int i = threadIdx.x; i < n_gridnodes; i += blockDim.x) {
-			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
-		}
-#endif
-	}
-
-	// It is guaranteed that the first compoudns are bonded_compounds. How many, that is something the compound
-	// itself keeps track of
 	static_assert(MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
-	int n_compound_neighbors = 0;
+	uint16_t nonbondedNeighborcompoundIds[NEIGHBORLIST_MAX_COMPOUNDS];
+	int nNonbondedNeighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured
 	__device__ __host__ bool addGridnode(int gridnode_id) {
 		if (n_gridnodes >= max_gridnodes) {
-			//throw std::runtime_error("No room for more nearby gridnodes"); }
 			printf("No room for more nearby gridnodes\n");
 			return false;
 		}
@@ -196,7 +170,6 @@ public:
 		return true;
 	}
 
-	//static const int max_gridnodes = 64 + 4;	// Arbitrary value
 	static const int max_gridnodes = 128;	// Arbitrary value
 	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;

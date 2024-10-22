@@ -62,7 +62,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 	//Neighborlist
-	__shared__ int nCompoundNeighbors;
+	__shared__ int nNonbondedCompoundNeighbors;
 	__shared__ int nGridnodes;
 
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
@@ -95,7 +95,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 			
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-			nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
+			nNonbondedCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].nNonbondedNeighbors;
 			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
 		}
 
@@ -127,7 +127,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		int indexInBatch = batchsize;
-		for (int i = 0; i < nCompoundNeighbors; i++) {
+		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
 
 			static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
@@ -141,8 +141,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (indexInBatch == batchsize) {
-				if (threadIdx.x < batchsize && threadIdx.x + i < nCompoundNeighbors) {
-					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].neighborcompound_ids[i + threadIdx.x];
+				if (threadIdx.x < batchsize && threadIdx.x + i < nNonbondedCompoundNeighbors) {
+					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].nonbondedNeighborcompoundIds[i + threadIdx.x];
 
 					neighborPtrs[threadIdx.x] = (void*)CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
 					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
@@ -175,7 +175,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 				}
 			}
 
-			if (i + 1 < nCompoundNeighbors && indexInBatch+1 < batchsize) {
+			if (i + 1 < nNonbondedCompoundNeighbors && indexInBatch+1 < batchsize) {
 				static_assert(sizeof(Coord) == sizeof(Float3));
 				const int nextNeighborId = neighborIds[indexInBatch + 1];
 				const int nextNeighborNParticles = neighborNParticles[indexInBatch + 1];
@@ -185,23 +185,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 				cooperative_groups::memcpy_async(block, neighborParticleschargesNext, boxConfig.compoundsAtomCharges + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * nextNeighborNParticles);
 			}
 			
-
-			// The bonded compounds always comes first in the list
-			if (i < compound.n_bonded_compounds)
-			{
-	/*			bpLUT.load(*compoundPairLUTs[indexInBatch]);
-				__syncthreads();
-				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
-						particleCharge, neighborParticleschargesCurrent);
-				}*/
-			}
-			else {
-				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
-						neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
-				}
+			if (threadIdx.x < compound.n_particles) {
+				force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+					neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 			}
 
 			cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
@@ -243,7 +229,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 	//Neighborlist
-	__shared__ int nCompoundNeighbors;
+	//__shared__ int nCompoundNeighbors;
 	__shared__ int nGridnodes;
 
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES * 2];
@@ -276,7 +262,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-			nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
+			//nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
 			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
 		}
 

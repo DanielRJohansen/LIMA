@@ -93,25 +93,25 @@ void SimParams::dumpToFile(const fs::path& filename) {
 		throw std::runtime_error("Unable to open file: " + filename.string());
 	}
 
-	file << "// Main params" << "\n";
+	file << "\n// Main params\n";
 	file << "n_steps=" << n_steps << "\n";
 	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [fs]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
-	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm]\n"; // TODO add units
+	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm] - only relevant if em=true\n";
 
-	file << "// Physics params" << "\n";
+	file << "\n// Physics params\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";
 	file << "enable_electrostatics=" << (enable_electrostatics ? "true" : "false") << "\n";
 	file << "cutoff_nm=" << cutoff_nm << " # [nm]\n";
 	// Skip SNF for now
 
-	file << "// Output params" << "\n";
+	file << "\n// Output params\n";
 	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
 	file << "save_trajectory=" << (save_trajectory ? "true" : "false") << "\n";
 	file << "save_energy=" << (save_energy ? "true" : "false") << " # (Save kinetic and potential energy to file)" << "\n";
 	// Skip colormethod for now
 	
-	file << "// Temperature params" << "\n";
+	file << "\n// Temperature params\n";
 	file << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
 	file << "apply_thermostat=" << (apply_thermostat ? "true" : "false") << " # will speed up or slow down particles to achieve the desired temperature\n";
 	file << "# desired_temperature - not currently available forced to be 300 [k]\n";

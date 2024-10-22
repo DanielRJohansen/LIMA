@@ -68,7 +68,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
 	__shared__ Float3 utility_float3;
 
-	__shared__ BondedParticlesLUT bpLUT;
 	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
 	__shared__ ForceField_NB forcefield_shared;
@@ -100,10 +99,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 		}
 
 		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
-
-		// Important to wipe these, or the bondkernel will add again to next step	- or is it still now?
-		boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = float{};
-		boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = Float3{};
 
 		cooperative_groups::wait(block);
 		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();

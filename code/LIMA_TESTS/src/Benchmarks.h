@@ -122,9 +122,6 @@ namespace Benchmarks {
 		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
 
-
-
-
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
 		if (envmode== Full)
 		    envmode = ConsoleOnly;	// Cant go fast in Full
@@ -161,5 +158,43 @@ namespace Benchmarks {
 
 		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
+
+	// Returns {avg microseconds/step, stdDev}
+	static std::pair<float, float> Benchmark(const fs::path& dir) {
+
+		const fs::path workDir = simulations_dir / "benchmarking"/dir;
+		fs::path topPath, groPath;
+
+		for (const auto& entry : fs::directory_iterator(workDir)) {
+			auto ext = entry.path().extension();
+			if (ext == ".top") {
+				if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
+				topPath = entry.path();
+			}
+			else if (ext == ".gro") {
+				if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
+				groPath = entry.path();
+			}
+		}
+		TopologyFile topfile(topPath);
+		GroFile grofile(groPath);
+
+		SimParams ip{ workDir / "sim_params.txt" };
+		Environment env{ workDir , ConsoleOnly };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run(false);
+
+		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {
+			throw std::runtime_error("Simulation did not run fully");
+		}
+
+		const float meanSteptime = Statistics::Mean(env.avgStepTimes);
+		const float stdDev = Statistics::StdDev(env.avgStepTimes);
+
+		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
+
+		return { meanSteptime, stdDev};
+	}
+
 
 }

@@ -61,32 +61,17 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
-		//TimeIt t0("Buildmembrane", true);
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
 		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 30.f }, 5.f);
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
 		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//Display d{};
-		//d.Render(std::make_unique<Rendering::GrofileTask>(*grofile), true);
-		//topfile->printToFile(work_dir/"mytop.top");
-		
-		//auto sim = Programs::EnergyMinimizeWithEdgeoverlap(*grofile, *topfile, true, work_dir, envmode);
+		//Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true);
 		//grofile->printToFile(work_dir / "membrane.gro");
 		//topfile->printToFile(work_dir / "membrane.top");
-
-		/*SimParams params{};
-		params.n_steps = 1000;
-		params.data_logging_interval = 2;
-		params.save_trajectory = true;
-		Environment env(work_dir, envmode);
-		GroFile grofile{ work_dir / "membrane.gro" };
-		TopologyFile topfile{ work_dir / "membrane.top" };
-		env.CreateSimulation(grofile, topfile, params);
-		env.run(true);*/
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//TestBuildmembraneSmall(envmode, false);
@@ -97,10 +82,11 @@ int main() {
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
 
-
+		
+		//Benchmarks::Benchmark("t4");
 		//Benchmarks::Psome(envmode);
 		//Benchmarks::ManyT4(envmode);
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

@@ -254,12 +254,11 @@ namespace Electrostatics {
 
 		static_assert(ChargeNode::maxParticlesInNode %32 == 0, "Chargenode charges size isn't optimal for this kernel");
 		SumChargesInGridnode<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), 32>>>(sim_dev);
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics SumChargesInGridnode");
 
 
 		CalcLongrangeElectrostaticForces<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), CalcLongrangeElectrostaticForces_nThreads>>>(sim_dev);
-
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics CalcLongrangeElectrostaticForces");
 
 
 		const auto t1 = std::chrono::high_resolution_clock::now();

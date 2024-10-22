@@ -42,6 +42,7 @@ namespace SimulationBuilder {
 	);
 
 
+	// TODO: Remove this one, require instead an empty box as input
 	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter);
 };

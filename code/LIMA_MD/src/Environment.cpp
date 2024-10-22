@@ -145,7 +145,6 @@ bool Environment::prepareForRun() {
 	}
 
 	m_logger.startSection("Simulation started");
-	time0 = std::chrono::steady_clock::now();
 
 	if (simulation->ready_to_run) { return true; }
 
@@ -153,6 +152,8 @@ bool Environment::prepareForRun() {
 	
 	verifyBox();
 	simulation->ready_to_run = true;
+
+	avgStepTimes.reserve((simulation->simparams_host.n_steps + 1) / STEPS_PER_UPDATE);
 
 	// TEMP, this is a bad solution ?? TODO NOW
 	this->compounds = simulation->box_host->compounds;
@@ -195,6 +196,7 @@ void Environment::run(bool doPostRunEvents) {
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
+	time0 = std::chrono::steady_clock::now();
 	while (true) {
 		auto stepStartTime = std::chrono::steady_clock::now();
 
@@ -204,7 +206,7 @@ void Environment::run(bool doPostRunEvents) {
 		
 		engine->step();
 
-		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
+		handleStatus(engine->runstatus.current_step);
 
 		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {
 			break; 
@@ -292,34 +294,23 @@ void Environment::postRunEvents() {
 
 
 
-void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
+void Environment::handleStatus(const int64_t step) {
 	if (m_mode == Headless) {
 		return;
 	}
 
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
-
-		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0).count();
+		const std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0);
+		const double duration_ms = duration.count();
 
 		//// First clear the current line
 		//printf("\r\033[K");
-
-		//printf("\rStep #%06llu", step);
-		//printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
-		//	duration / STEPS_PER_UPDATE,
-		//	engine->timings.compound_kernels / STEPS_PER_UPDATE,
-		//	engine->timings.solvent_kernels / STEPS_PER_UPDATE,
-		//	engine->timings.cpu_master/ STEPS_PER_UPDATE,
-		//	engine->timings.nlist/ STEPS_PER_UPDATE,
-		//	engine->timings.electrostatics / STEPS_PER_UPDATE,
-		//	0);
-
 		// Move cursor to the beginning of the line and clear it
 		printf("\033[1000D\033[K");
 
 		printf("Step #%06llu", step);
 		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ",
-			duration / STEPS_PER_UPDATE,
+			duration_ms / STEPS_PER_UPDATE,
 			engine->timings.compound_kernels / STEPS_PER_UPDATE,
 			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
 			engine->timings.cpu_master / STEPS_PER_UPDATE,
@@ -329,6 +320,7 @@ void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
 
 		engine->timings.reset();
 		time0 = std::chrono::steady_clock::now();
+		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
 	}
 }
 

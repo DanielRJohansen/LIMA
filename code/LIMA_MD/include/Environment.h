@@ -94,7 +94,7 @@ public:
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;
-
+	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 
 private:
 
@@ -102,7 +102,7 @@ private:
 	void verifyBox();							// Checks wheter the box will break
 	
 	void postRunEvents();
-	void handleStatus(int64_t step, int64_t n_steps);
+	void handleStatus(int64_t step);
 
 	// Returns false if display has been closed by user
 	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant);

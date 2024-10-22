@@ -61,6 +61,7 @@ template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // 
 __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
+
 	//Neighborlist
 	__shared__ int nNonbondedCompoundNeighbors;
 	__shared__ int nGridnodes;
@@ -83,7 +84,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	const float particleCharge = simparams.enable_electrostatics	// TODO: this is temporary
 		? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
 		: 0.f;
-
 
 	{
 		auto block = cooperative_groups::this_thread_block();
@@ -198,12 +198,12 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 
-	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
 
 	// This is the first kernel, so we overwrite
-	if (threadIdx.x < compound.n_particles) {
-		if constexpr (computePotE)
+	if (threadIdx.x < compound.n_particles || true) { // TEMP
+		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
+		}
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
@@ -257,7 +257,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-			//nCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].n_compound_neighbors;
 			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
 		}
 
@@ -328,17 +327,20 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			neighborAtomstypes[threadIdx.x] = boxConfig.compoundsAtomtypes[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 			neighborParticlescharges[threadIdx.x] = boxConfig.compoundsAtomCharges[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 			bpLUT.load(*compoundPairLutPtrs[i]);
-
 			__syncthreads();
+
 			if (threadIdx.x < compound.n_particles) {
 				force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles, neighborAtomstypes, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 					particleCharge, neighborParticlescharges);
 			}
+			__syncthreads();
 		}
 
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
@@ -396,8 +398,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
-		if constexpr (computePotE)
+		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
+		}
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 	}
 }

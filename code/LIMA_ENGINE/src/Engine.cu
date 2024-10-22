@@ -276,10 +276,19 @@ void Engine::deviceMaster() {
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_3(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL_3(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());		
+		LAUNCH_GENERIC_KERNEL_3(compoundFarneighborShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
+
+	if (boxparams.n_compounds > 0) {
+		//LAUNCH_GENERIC_KERNEL_3(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());		
+		LAUNCH_GENERIC_KERNEL_3(compoundImmediateneighborAndSelfShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
+	}
+
+	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
+
 
 	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();

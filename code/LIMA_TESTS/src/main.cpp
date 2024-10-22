@@ -96,7 +96,10 @@ int main() {
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
-		//Benchmarks::Psome(envmode);				
+
+
+		//Benchmarks::Psome(envmode);
+		//Benchmarks::ManyT4(envmode);
 		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

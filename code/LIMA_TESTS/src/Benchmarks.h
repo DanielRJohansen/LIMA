@@ -121,4 +121,45 @@ namespace Benchmarks {
 
 		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
+
+
+
+
+	static LimaUnittestResult ManyT4(EnvMode envmode) {
+		if (envmode== Full)
+		    envmode = ConsoleOnly;	// Cant go fast in Full
+
+		const fs::path workDir  = simulations_dir / "manyt4";		
+		TopologyFile topfile(workDir / "t4_many.top");
+		GroFile grofile(workDir / "t4_many_em.gro");
+
+		//bool em = false;
+		//if (em) {
+		//	GroFile grofile{ workDir  / "molecule" / "conf.gro" };
+		//	TopologyFile topfile{ workDir  / "molecule" / "topol.top" };
+
+		//	MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
+		//	//SimulationBuilder::SolvateGrofile(grofile);
+		//	auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir , envmode, false);
+		//	grofile.printToFile(std::string{ "em.gro" });
+
+		//	SimAnalysis::PlotPotentialEnergyDistribution(*sim, workDir , { 0,1000, 2000, 3000, 4000 - 1 });
+		//}
+		SimParams ip{ workDir  / "sim_params.txt" };
+		ip.data_logging_interval = 50;
+		ip.dt = 100;
+		ip.n_steps = 4000;
+		Environment env{ workDir , envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run(false);
+
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+
+		auto duration = env.simulationTimer->GetTiming();
+		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+		const std::chrono::microseconds allowedTimePerStep{ 4000 };
+
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+	}
+
 }

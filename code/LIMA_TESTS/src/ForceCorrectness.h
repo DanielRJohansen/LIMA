@@ -10,7 +10,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 1.e-4) {
 		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode};
 

@@ -159,7 +159,7 @@ namespace Benchmarks {
 		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
 
-	// Returns {avg microseconds/step, stdDev}
+	// Returns {avg ms/step, stdDev}
 	static std::pair<float, float> Benchmark(const fs::path& dir) {
 
 		const fs::path workDir = simulations_dir / "benchmarking"/dir;
@@ -179,7 +179,7 @@ namespace Benchmarks {
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
-		SimParams ip{ workDir / "sim_params.txt" };
+		SimParams ip{ workDir / "../sim_params.txt" };
 		Environment env{ workDir , ConsoleOnly };
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run(false);
@@ -196,5 +196,24 @@ namespace Benchmarks {
 		return { meanSteptime, stdDev};
 	}
 
+
+
+	static void Benchmark(const std::vector<fs::path>& dirs) {
+		// Header for the output table
+		std::cout << std::left << std::setw(20) << "Directory"
+			<< std::setw(15) << "Avg Time (ms)"
+			<< std::setw(15) << "Std Dev (ms)" << std::endl;
+		std::cout << std::string(50, '-') << std::endl;
+
+		for (const auto& dir : dirs) {
+			auto [meanTime, stdDev] = Benchmark(dir);
+
+			// Format the output
+			std::cout << std::left << std::setw(20) << dir.filename().string()
+				<< std::setw(15) << std::fixed << std::setprecision(2) << meanTime
+				<< std::setw(15) << std::fixed << std::setprecision(2) << stdDev
+				<< std::endl;
+		}
+	}	
 
 }

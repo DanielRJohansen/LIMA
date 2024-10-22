@@ -23,7 +23,7 @@ struct SimParams {
 
 	// Main params
 	uint64_t n_steps = 1000;
-	float dt = 100.f;									// [ls]
+	float dt = 200.f;									// [ls]
 	bool em_variant = false;
 	float em_force_tolerance = 1000; // [kJ/mol/nm]
 

@@ -191,7 +191,7 @@ namespace Benchmarks {
 
 		const float meanSteptime = Statistics::Mean(env.avgStepTimes);
 		const float stdDev = Statistics::StdDev(env.avgStepTimes);
-
+		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.simulationTimer->GetTiming()).count() / (float)params.n_steps);
 		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
 
 		return { meanSteptime, stdDev};

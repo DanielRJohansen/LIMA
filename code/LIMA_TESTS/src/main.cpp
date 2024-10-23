@@ -93,13 +93,16 @@ int main() {
 		env.CreateSimulation(grofile, topfile, simparams);
 		env.run(false);*/
 
+		/*GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.gro)");
+		TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.top)");
+		Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20)", envmode, false);
+		grofile.printToFile(std::string("membrane_em.gro"));*/
 
-		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });
-		
-		//Benchmarks::Benchmark("membrane20");
-		//Benchmarks::Psome(envmode);
-		//Benchmarks::ManyT4(envmode);
-		RunAllUnitTests();
+
+		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
+		//Benchmarks::Benchmark({ "t4", "manyt4" });
+		Benchmarks::Benchmark("manyt4"); 
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

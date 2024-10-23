@@ -252,6 +252,7 @@ namespace Electrostatics {
 	// Returns timing in [ys]
 	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
 	{
+		LIMA_UTILS::genericErrorCheck("Error Before Electrostatics SumChargesInGridnode");
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
 		// First handle short range

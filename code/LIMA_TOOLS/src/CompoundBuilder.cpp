@@ -416,19 +416,24 @@ void BridgeFactory::addParticle(ParticleInfo& particle_info) {	// This can be ma
 
 
 
-// TODO: Change name
+
 struct MoleculeRef {
-	int atomsOffset = 0;	// TODO this logic is being moved into the topology file
-	const TopologyFile::MoleculeEntry& molecule;//TODO: make const
+	int atomsOffset = 0;
+	const TopologyFile::MoleculeEntry& molecule;
 	std::optional<fs::path> customForcefieldPath;
 };
-
 std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
 	std::vector<MoleculeRef> topologies;
 	int offset = 0;
 
 	for (const auto& molecule : topol.GetSystem().molecules) {
-		topologies.emplace_back(MoleculeRef{ offset, molecule, topol.GetForcefieldPath() });
+		// TODO Fix this
+		if (molecule.moleculetype->name == "SOL" || molecule.moleculetype->name == "TIP3" || molecule.moleculetype->name == "POT" || molecule.moleculetype->name == "CLA") {
+			// DO nothing
+		}
+		else {
+			topologies.emplace_back(MoleculeRef{ offset, molecule, topol.GetForcefieldPath() });
+		}
 		offset += molecule.moleculetype->atoms.size();
 	}
 	return topologies;
@@ -437,35 +442,30 @@ std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
 
 
 std::vector<ParticleInfo> PrepareAtoms(const std::vector<MoleculeRef>& molecules, const GroFile& grofile, ForcefieldManager& forcefield, int nNonsolventAtoms) {
-	std::vector<ParticleInfo> atomRefs(nNonsolventAtoms);
-	
-	int globalIndex = 0;
-	int uniqueResId = 0;
-	for (const auto& mol: molecules) {
-		bool atomsAddedThisTop = false;
-		for (const auto& atom : mol.molecule.moleculetype->atoms) {
-			atomsAddedThisTop = true;
-			// TODO: When accessing gro file, first check that it is not a solvent
+	std::vector<ParticleInfo> atomRefs(grofile.atoms.size());// (nNonsolventAtoms);
 
-			if (globalIndex > 0 && atomRefs[globalIndex - 1].topAtom->resnr != atom.resnr) {
+	int uniqueResId = -1;
+	for (const auto& mol: molecules) {
+		int currentResId = -1;
+
+		
+		for (int idInMolecule = 0; idInMolecule < mol.molecule.moleculetype->atoms.size(); idInMolecule++) {
+			const TopologyFile::AtomsEntry& atom = mol.molecule.moleculetype->atoms[idInMolecule];
+
+			if (atom.resnr != currentResId) {
+				currentResId = atom.resnr;
 				uniqueResId++;
 			}
+			const int grofileAtomIndex = mol.atomsOffset + idInMolecule;
 
-			if (grofile.atoms[globalIndex].atomName != atom.atomname || grofile.atoms[globalIndex].residueName.substr(0, 3) != atom.residue.substr(0, 3))
-				throw std::runtime_error(std::format("Atom names do not match between .gro ({}) and topology file ({})", grofile.atoms[globalIndex].atomName, atom.atomname));
+			if (grofile.atoms[grofileAtomIndex].atomName != atom.atomname || grofile.atoms[grofileAtomIndex].residueName.substr(0, 3) != atom.residue.substr(0, 3))
+				throw std::runtime_error(std::format("Atom names do not match between .gro ({}) and topology file ({})", grofile.atoms[grofileAtomIndex].atomName, atom.atomname));
 
 			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(mol.customForcefieldPath, atom.type);
-			atomRefs[globalIndex] = ParticleInfo{ &grofile.atoms[globalIndex], &atom, activeLJParamIndex, uniqueResId };
-			atomRefs[globalIndex].sourceLine = grofile.atoms[globalIndex].sourceLine;
-			
-			globalIndex++;		
+			atomRefs[grofileAtomIndex] = ParticleInfo{ &grofile.atoms[grofileAtomIndex], &atom, activeLJParamIndex, uniqueResId };
+			atomRefs[grofileAtomIndex].sourceLine = grofile.atoms[grofileAtomIndex].sourceLine;			
 		}
-
-		if (atomsAddedThisTop) { uniqueResId++; }
 	}
-
-	// TODO: At this point we still need to load the solvents, they should come now
-	assert(globalIndex == atomRefs.size());
 
 	return atomRefs;
 }
@@ -489,8 +489,7 @@ void LoadBondIntoTopology(const int bondIdsRelativeToTopolFile[n], int atomIdOff
 	for (int i = 0; i < n; i++) {
 		globalIds[i] = bondIdsRelativeToTopolFile[i] + atomIdOffset;
 		if (globalIds[i] >= atomRefs.size())
-			return;
-			//throw std::runtime_error("Bond refers to atom that has not been loaded");
+			return;//throw std::runtime_error("Bond refers to atom that has not been loaded");			
 	}
 
 	std::array<std::string, n> atomTypenames{};
@@ -589,6 +588,7 @@ std::vector<AtomGroup> GroupAtoms(const std::vector<ParticleInfo>& preparedAtoms
 
 	for (int particleId = 0; particleId < preparedAtoms.size(); particleId++) {
 		const ParticleInfo& atom = preparedAtoms[particleId];
+		if (!atom.inUse) continue; // TODO: i dont like this, we should not iterate over all prepared atoms, only the ones in the MoleculeRefs
 		if (atomGroups.empty() || atom.topAtom->section_name.has_value() || atom.uniqueResId != preparedAtoms[particleId-1].uniqueResId)
 			atomGroups.push_back(AtomGroup{});
 		atomGroups.back().atomIds.push_back(particleId);
@@ -960,13 +960,13 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 ) 
 {
 	// Solvents are not present in top file, so we can't require these to match
-	const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
-	assert(gro_file.atoms.size() >= nNonsolventAtoms);
+	//const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
+	//assert(gro_file.atoms.size() >= nNonsolventAtoms);
 	const std::vector<MoleculeRef> preparedTopologyFiles = PrepareTopologies(topol_file);
 
 	ForcefieldManager forcefieldManager{};
 
-	std::vector<ParticleInfo> preparedAtoms = PrepareAtoms(preparedTopologyFiles, gro_file, forcefieldManager, nNonsolventAtoms);
+	std::vector<ParticleInfo> preparedAtoms = PrepareAtoms(preparedTopologyFiles, gro_file, forcefieldManager, 0);
 
 	Topology topology = LoadTopology(preparedTopologyFiles, forcefieldManager, preparedAtoms);
 
@@ -993,10 +993,11 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 
 	const std::vector<Float3> solventPositions = LoadSolventPositions(gro_file);
+	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 	auto boxImage = std::make_unique<BoxImage>(
 		std::move(compounds),
-		static_cast<int>(preparedAtoms.size()),
+		static_cast<int>(totalCompoundParticles),
 		bpLutManager->Finish(),
 		std::move(bridges_compact),
 		std::move(solventPositions),

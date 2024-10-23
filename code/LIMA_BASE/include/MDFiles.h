@@ -172,10 +172,6 @@ public:
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 
-		// Info not in the actual file
-		//bool readFromCache = false;
-		//int64_t lastModificationTimestamp;
-
 		void ToFile(const fs::path& dir) const;
 
 		template <typename T>
@@ -200,9 +196,6 @@ public:
 		}
 	};
 	struct ForcefieldInclude {
-		//ForcefieldInclude(const std::string& name = "") : name(name) {};
-		//ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
-		//void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
 		ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
 
 
@@ -211,7 +204,6 @@ public:
 		/// </summary>
 		/// <param name="directory"></param>
 		void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
-		//const fs::path& Path() const;
 
 		std::string name; // Either name in resources/forcefields, or a path relative to the topologyfile
 		fs::path path; // NEVER SAVE/READ THIS TO DISK
@@ -315,7 +307,6 @@ public:
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	fs::path path;
-	//bool readFromCache = false;
 	// ------------------------------------------------------------------------------ //
 
 	std::unordered_map<std::string, std::shared_ptr<Moleculetype>> moleculetypes;

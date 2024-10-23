@@ -81,13 +81,13 @@ int main() {
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 
-		/*GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\conf.gro)");
-		TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\topol.top)");
-		SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
+		//GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\conf.gro)");
+		//TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\topol.top)");
+		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
 
-		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
-		env.CreateSimulation(grofile, topfile, simparams);
-		env.run(false);*/
+		//Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
+		//env.CreateSimulation(grofile, topfile, simparams);
+		//env.run(false);
 
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });

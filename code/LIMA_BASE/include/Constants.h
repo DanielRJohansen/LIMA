@@ -117,7 +117,7 @@ const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
 // Related to compound bridges
 const int MAX_COMPOUNDBRIDGES = MAX_COMPOUNDS;	// Wtf is this param?
 const int MAX_PARTICLES_IN_BRIDGE = 32;	// Limited to 255 by getBridgelocalIdOfParticle, since id 255 is invalid
-const int MAX_SINGLEBONDS_IN_BRIDGE = 4;
+const int MAX_SINGLEBONDS_IN_BRIDGE = 8;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
 const int MAX_DIHEDRALBONDS_IN_BRIDGE = 64 + 16;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;

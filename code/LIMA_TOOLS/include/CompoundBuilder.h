@@ -66,7 +66,7 @@ struct ParticleInfo {
 
 	ParticleInfo() = default;
 	ParticleInfo(const GroRecord* groAtom, const TopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
-		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId) {}
+		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId), inUse(true) {}
 	const GroRecord* groAtom = nullptr;
 	const TopologyFile::AtomsEntry* topAtom = nullptr;
 	int activeLjtypeParameterIndex = -1;
@@ -79,6 +79,8 @@ struct ParticleInfo {
 	// Only available once the bridges have been created
 	int bridgeId = -1;
 	int localIdInBridge = -1;
+
+	bool inUse = false;
 
 	std::string sourceLine;
 };

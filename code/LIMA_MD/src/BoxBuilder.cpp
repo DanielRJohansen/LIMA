@@ -61,7 +61,7 @@ Float3 get3RandomSigned() {	// returns 3 numbers between -0.5->0.5
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
 	srand(290128309);
 
-	auto box = std::make_unique<Box>(static_cast<int>(boxImage.box_size));
+	auto box = std::make_unique<Box>(static_cast<int>(boxImage.grofile.box_size.x));
 
 	box->compounds.reserve(boxImage.compounds.size());
 	box->compoundInterimStates.reserve(boxImage.compounds.size());

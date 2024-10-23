@@ -389,6 +389,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	if constexpr (ENABLE_ES_LR) {
 		if (simparams.enable_electrostatics) {
 			__syncthreads();
+			static_assert(sizeof bpLUT > (sizeof(int) * (27*2 + MAX_COMPOUND_PARTICLES)));
 			char* utilityBuffer = (char*)(&bpLUT);
 			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], 
 				sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utilityBuffer);
@@ -485,7 +486,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 			NodeIndex nodeindex = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
 			BoundaryCondition::applyBC(nodeindex);
 			const float myCharge = compound_global->atom_charges[threadIdx.x];
-			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());
+			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());			
 			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
 			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
 		}

@@ -428,7 +428,15 @@ std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
 
 	for (const auto& molecule : topol.GetSystem().molecules) {
 		// TODO Fix this
-		if (molecule.moleculetype->name == "SOL" || molecule.moleculetype->name == "TIP3" || molecule.moleculetype->name == "POT" || molecule.moleculetype->name == "CLA") {
+		if (molecule.moleculetype->name == "SOL" || molecule.moleculetype->name == "TIP3" 
+			//|| molecule.moleculetype->name == "POT" || molecule.moleculetype->name == "CLA"
+			// || molecule.moleculetype->name == "PROA"|| molecule.moleculetype->name == "PROB"|| molecule.moleculetype->name == "PROC" || molecule.moleculetype->name == "PROD"
+			// || molecule.moleculetype->name == "PROE" || molecule.moleculetype->name == "PROF" || molecule.moleculetype->name == "PROG"|| molecule.moleculetype->name == "PROH" 
+			//|| molecule.moleculetype->name == "HETA" || molecule.moleculetype->name == "HETB"
+			//|| molecule.moleculetype->name == "POT" 
+		//if (molecule.moleculetype->name != "POPC" || molecule.moleculetype->name != "PROA"
+			//|| molecule.moleculetype->name == "POPC"
+			) {
 			// DO nothing
 		}
 		else {
@@ -943,7 +951,7 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 		const float allowedScalar = energyMinimizationMode ? 7.f : 1.9999f;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			//throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());
 		}
 	}
 }
@@ -1001,7 +1009,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		bpLutManager->Finish(),
 		std::move(bridges_compact),
 		std::move(solventPositions),
-		gro_file.box_size.x,	// TODO: Find a better way..
 		std::move(preparedAtoms),
 		GroFile{ gro_file },	// TODO: wierd ass copy here
 		forcefieldManager.GetActiveLjParameters(), 

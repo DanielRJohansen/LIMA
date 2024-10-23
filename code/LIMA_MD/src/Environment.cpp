@@ -198,20 +198,21 @@ void Environment::run(bool doPostRunEvents) {
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	time0 = std::chrono::steady_clock::now();
 	while (true) {
-		auto stepStartTime = std::chrono::steady_clock::now();
 
-		if (engine->runstatus.simulation_finished) { 
-			break; 
+		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {			
+			break;
 		}
+
+		auto stepStartTime = std::chrono::steady_clock::now();
 		
 		engine->step();
 
 		handleStatus(engine->runstatus.current_step);
-
-		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {
-			break; 
-		}
 		
+		if (engine->runstatus.simulation_finished) {
+			break;
+		}
+
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
@@ -342,7 +343,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
-		display.Render(std::make_unique<Rendering::SimulationTask>( 
+		display.Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
 		));
 		step_at_last_render = engine->runstatus.current_step;

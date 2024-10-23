@@ -83,7 +83,7 @@ namespace EngineUtils {
 	__device__ static Float3 ForceActivationFunction(const Float3 force) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
-		if (isinf(force.lenSquared())) {
+		if (isinf(force.lenSquared()) || isnan(force.lenSquared())) {
 			return GenerateRandomForce();
 		}
 

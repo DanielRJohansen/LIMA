@@ -179,9 +179,10 @@ namespace Benchmarks {
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
-		SimParams ip{ workDir / "../sim_params.txt" };
+		SimParams params{ workDir / "../sim_params.txt" };
+		params.dt = 100.f; 
 		Environment env{ workDir , ConsoleOnly };
-		env.CreateSimulation(grofile, topfile, ip);
+		env.CreateSimulation(grofile, topfile, params);
 		env.run(false);
 
 		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {

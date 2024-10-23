@@ -36,9 +36,8 @@ namespace Electrostatics {
 		return nodeIndex;
 	}
 
+	// Utilitybuffer min size = sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)
 	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposLM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
-		
-
 		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
 
 		// First clean the memory
@@ -48,7 +47,7 @@ namespace Electrostatics {
 		}
 		__syncthreads();
 
-
+		// First each particle figure out which node it belongs to RELATIVE TO ITS COMPOUNDS ORIGO
 		int localOffset = 0;
 		NodeIndex relativeLocalIndex;
 		if (threadIdx.x < nParticles) {
@@ -66,16 +65,22 @@ namespace Electrostatics {
 		}
 		__syncthreads();
 
-		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27]; // TODO: assert that this buffer is big enough!
+		// Fetch the current particles in the global node counts, and figure out where to push our counts
+		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27];
 		if (threadIdx.x < 27) {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
-			PeriodicBoundaryCondition::applyBC(absIndex3d);	
+			PeriodicBoundaryCondition::applyBC(absIndex3d);
 
 			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
+
 			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
+			if (numParticlesInNodeGlobal[threadIdx.x] > ChargeNode::maxParticlesInNode) {
+				printf("Error: Too many particles in node from other kernels: %d\n", numParticlesInNodeGlobal[threadIdx.x]);
+			}
 		}
 		__syncthreads();
 
+		// Finally compute the correct index to insert our data, and push that data
 		if (threadIdx.x < nParticles) {
 			NodeIndex absoluteTargetIndex = compoundOrigo + relativeLocalIndex;
 			PeriodicBoundaryCondition::applyBC(absoluteTargetIndex);

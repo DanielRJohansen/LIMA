@@ -174,8 +174,6 @@ struct BoxImage {
 
 	const std::vector<Float3> solvent_positions;
 
-	const float box_size;
-
 	const std::vector<ParticleInfo> particleinfos;
 
 	GroFile grofile;

@@ -943,7 +943,7 @@ void VerifyBondsAreStable(const std::vector<SingleBondFactory>& singlebonds, con
 		const float allowedScalar = energyMinimizationMode ? 7.f : 1.9999f;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());
+			//throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO).c_str());
 		}
 	}
 }

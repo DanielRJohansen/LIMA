@@ -72,6 +72,12 @@ namespace FileUtils {
 			throw std::runtime_error("Error writing to file: " + path.string());
 		}
 	}
+
+	//Steps through the file untill it finds a #endif, throws if it reaches EoF
+	void SkipIfdefBlock(std::ifstream& file);
+
+	// Returns true if the caller should move on to the next line
+	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line);
 };
 
 

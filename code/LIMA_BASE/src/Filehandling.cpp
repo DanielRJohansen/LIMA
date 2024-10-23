@@ -134,3 +134,27 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 
 	return pairs;
 }
+
+void FileUtils::SkipIfdefBlock(std::ifstream& file) {
+	std::string line;
+	while (getline(file, line)) {
+		if (line.size() > 5 && line.substr(0, 7) == "#endif") {			
+			return;
+		}
+	}
+
+	throw std::runtime_error(std::format("Failed to find #endif in file\n"));
+}
+
+
+bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line) {
+	if (line.size() > 5 && line.substr(0, 6) == "#ifdef") {
+		SkipIfdefBlock(file);
+		return true;
+	}
+	if (line.size() > 6 && line.substr(0, 7) == "#ifndef") {
+		SkipIfdefBlock(file);
+		return true;
+	}
+	return false;
+}

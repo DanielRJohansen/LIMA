@@ -197,7 +197,6 @@ namespace Benchmarks {
 	}
 
 
-
 	static void Benchmark(const std::vector<fs::path>& dirs) {
 		// Header for the output table
 		std::cout << std::left << std::setw(20) << "Directory"

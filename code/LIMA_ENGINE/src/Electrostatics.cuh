@@ -39,7 +39,7 @@ namespace Electrostatics {
 	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposLM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
 		
 
-		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem;
+		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
 
 		// First clean the memory
 		static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");

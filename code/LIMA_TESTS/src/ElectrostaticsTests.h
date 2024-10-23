@@ -184,7 +184,7 @@ namespace ElectrostaticsTests {
 		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.24f, particlesPerNm3);
 
 		// Overwrite the forcefield
-		simfiles.topfile->forcefieldInclude = TopologyFile::ForcefieldInclude{ "lima_custom_forcefield.itp", simfiles.topfile->path.parent_path()};
+		simfiles.topfile->forcefieldInclude = TopologyFile::ForcefieldInclude{ "lima_custom_forcefield.itp", FileUtils::GetLimaDir()/"resources"/"forcefields"/"lima_custom_forcefield.itp"};
 
 		simfiles.grofile->title = "ElectroStatic Field Test";
 		simfiles.topfile->title = "ElectroStatic Field Test";

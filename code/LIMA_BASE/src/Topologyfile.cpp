@@ -38,6 +38,11 @@ public:
 		if (directive == "defaults") return defaults;
 		if (directive == "cmaptypes") return cmaptypes;
 
+
+		if (directive == "settles") return notimplemented;
+		if (directive == "exclusions") return notimplemented;
+		if (directive == "nonbond_params") return notimplemented; // TODO implement this: https://manual.gromacs.org/current/reference-manual/topologies/parameter-files.html
+
 		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
 	}
 };
@@ -136,7 +141,6 @@ TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared
 
 	std::string line, atomsSectionName;
 	while (getline(file, line)) {
-		bool exit = false;
 		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
 			if (current_section != TopologySection::atoms && current_section != TopologySection::bonds && current_section != TopologySection::pairs
 				&& current_section != TopologySection::angles && current_section != TopologySection::dihedrals && current_section != TopologySection::impropers)
@@ -152,6 +156,9 @@ TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared
 		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
 			continue;
 		}	// Only title-sections + atoms reads the comments
+
+		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line))
+			continue;
 
 		std::istringstream iss(line);
 
@@ -263,7 +270,7 @@ TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared
 
 
 
-void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path) {
+void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path, std::optional<std::string> includefileName) {
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
@@ -278,6 +285,19 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 	while (getline(file, line)) {
 		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
+
+			// Directives where the directive itself is enough
+			if (current_section == defaults) {
+				// This file is a forcefield. We add it to the includes, and return to parent topol
+				if (topology.forcefieldInclude != std::nullopt)
+					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
+				if (!includefileName.has_value())
+					throw std::runtime_error("Forcefield ([ default ] directive) encountered in toplevel topology file, this is not supported");
+				topology.forcefieldInclude = ForcefieldInclude(*includefileName, path);
+				return;
+			}
+
+
 			continue;
 		}
 
@@ -288,11 +308,15 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
 			continue;
 		}	// Only title-sections + atoms reads the comments
+		
+		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line))
+			continue;
 
 		std::istringstream iss(line);
 
 
 		if (line[0] == '#') {
+
 			if (line.size() > 8 && line.substr(0, 8) == "#include") {
 				// take second word, remove "
 
@@ -305,34 +329,28 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 				// TODO: Check that we havent' already parsed this file
 
-				if (filename.find("forcefield.itp") != std::string::npos) {
-					assert(!topology.forcefieldInclude);
-					topology.forcefieldInclude = ForcefieldInclude(filename, path.parent_path());
-					//ParseFileIntoTopology(topology, path.parent_path() / filename);
-				}
-				else if (filename.find("charmm27.ff") != std::string::npos) {
-					// This is when including ions.itp or top3p.itp or other structures which we dont yet support!
-					// TODO Warn user here!
-				}
-				else if (filename.find("posre") != std::string::npos) {
+				if (filename.find("posre") != std::string::npos) {
 					// Do nothing, not yet supported
 				}
-				else if (filename.find("topol_") != std::string::npos || filename.find(".itp") != std::string::npos) {
-					ParseFileIntoTopology(topology, path.parent_path() / filename);
+				else if (filename.find(".itp") != std::string::npos) {
+					const fs::path filepath(path.parent_path() / filename);
+					if (fs::exists(filepath))
+						ParseFileIntoTopology(topology, path.parent_path() / filename, filename);
+					else if (fs::exists(FileUtils::GetLimaDir() / "resources/forcefields" / filename))
+						ParseFileIntoTopology(topology, FileUtils::GetLimaDir() / "resources/forcefields" / filename, filename);
+					else
+						throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", filename, path.parent_path().string()));
 				}
 			}
 			continue;
 		}
 
-
+		// Directives where w eread the contents
 		switch (current_section)
 		{
 		case TopologySection::title:
 			topology.title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
-		case TopologySection::defaults: {
-
-		}
 		case TopologySection::moleculetype:
 		{
 			std::string moleculetypename;
@@ -400,24 +418,6 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 	}
 
-	//lastModificationTimestamp = fs::last_write_time(path);
-
-	//if (UseCachedBinaryFile(path, lastModificationTimestamp) && ENABLE_FILE_CACHING) {
-	//	readTopFileFromBinaryCache(path, *this);
-
-	//	// Any include topologies will not be in this particular cached binary, so iterate through them, and load them
-	//	for (auto& molecule : molecules.entries) {
-	//		assert(molecule.includeTopologyFile == nullptr);
-	//		assert(molecule.name != "");
-
-	//		if (includedFiles.count(molecule.name) == 0)
-	//			includedFiles.emplace(molecule.name, SearchForFile(path.parent_path(), molecule.name));
-	//		molecule.includeTopologyFile = includedFiles.at(molecule.name).Get();
-	//	}
-	//}
-	//else {
-
-
 	TopologySection current_section{ TopologySection::title };
 	TopologySectionGetter getTopolSection{};
 	bool newSection = true;
@@ -480,14 +480,6 @@ std::optional<std::string> extractStringBetweenQuotationMarks(const std::string&
 	return in.substr(first_quote + 1, second_quote - first_quote - 1);
 }
 
-// If a forcefield with the specified name is available relative to the topology's path, then we take that user supplied path and use
-// Otherwise we assume the name is simply pointing to a LIMA forcefield.
-TopologyFile::ForcefieldInclude::ForcefieldInclude(const std::string& name, const fs::path& ownerDir) :
-	name(name),
-	path(fs::exists(ownerDir / name)
-		? ownerDir / name
-		: FileUtils::GetLimaDir() / "resources" / "forcefields" / name)
-{}
 void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const {
 	if (!fs::is_directory(directory)) {
 		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
@@ -496,25 +488,25 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 	// Create the target path for the main file
 	const fs::path toplevelForcefieldTargetPath = directory / name;
 	
-	if (fs::exists(toplevelForcefieldTargetPath) && fs::canonical(toplevelForcefieldTargetPath) == fs::canonical(Path()))
+	if (fs::exists(toplevelForcefieldTargetPath) && fs::canonical(toplevelForcefieldTargetPath) == fs::canonical(path))
 		return; // This forcefield has already been copied to the target location
 
 	// Copy the main file
 	if (!fs::exists(toplevelForcefieldTargetPath.parent_path())) {
 		fs::create_directories(toplevelForcefieldTargetPath.parent_path()); // Create parent directories if they don't exist
 	}
-	fs::copy_file(Path(), toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
+	fs::copy_file(path, toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
 
 
 	std::vector<fs::path> subIncludes;
-	GenericItpFile ffInclude(Path());
+	GenericItpFile ffInclude(path);
 
 	for (const std::string& subInclude : ffInclude.GetSection(includes)) {
 		auto subIncludeName = extractStringBetweenQuotationMarks(subInclude);
 		if (!subIncludeName.has_value()) {
 			throw std::runtime_error("Could not extract include name from include directive: " + subInclude);
 		}
-		subIncludes.emplace_back(Path().parent_path() / subIncludeName.value());
+		subIncludes.emplace_back(path.parent_path() / subIncludeName.value());
 	}
 
 	// Copy sub-includes
@@ -527,27 +519,12 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 		fs::copy_file(include, includeTargetPath, fs::copy_options::overwrite_existing);
 	}
 }
-void TopologyFile::ForcefieldInclude::LoadFullPath(const fs::path& ownerDir) {
-	path = fs::exists(ownerDir / name)
-		? ownerDir / name
-		: FileUtils::GetLimaDir() / "resources" / "forcefields" / name;
-}
-const fs::path& TopologyFile::ForcefieldInclude::Path() const {
-	if (!path.has_value())
-		throw std::runtime_error("Path has not been set");
-	return path.value();
-}
-
-
-
 
 
 
 std::optional<fs::path> TopologyFile::GetForcefieldPath() const {
 	if (forcefieldInclude)
-		return forcefieldInclude->Path();
-	/*else if (parentTopology != nullptr)
-		return parentTopology->GetForcefieldPath();*/
+		return forcefieldInclude->path;
 
 	return std::nullopt;
 }
@@ -575,26 +552,6 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 	}
 	AppendMolecule(moleculetype->name);
 }
-//void TopologyFile::AppendMolecule(const MoleculeEntry& molecule) {
-//	if (!m_system.IsInit()) {
-//		throw std::runtime_error("System is not initialized");
-//	}
-//
-//	if (!moleculetypes.contains(molecule.name)) {
-//		moleculetypes.insert({ molecule.name, molecule.moleculetype });
-//	}
-//
-//	if (m_system.molecules.back().name == molecule.name) {
-//		m_system.molecules.back().count += molecule.count;
-//	}
-//	else {
-//		m_system.molecules.emplace_back(molecule);
-//	}
-//}
-//void TopologyFile::AppendMolecules(const std::vector<MoleculeEntry>& molecules) {
-//	for (const auto& molecule : molecules)
-//		AppendMolecule(molecule);
-//}
 
 void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
@@ -610,7 +567,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
 		if (forcefieldInclude) {
 			forcefieldInclude.value().CopyToDirectory(path.parent_path(), path.parent_path());
-			file << ("#include \"" + forcefieldInclude->name.string() + "\"\n");
+			file << ("#include \"" + forcefieldInclude->name + "\"\n");
 		}
 		file << "\n";
 

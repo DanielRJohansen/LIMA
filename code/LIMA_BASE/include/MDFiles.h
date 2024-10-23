@@ -59,7 +59,7 @@ enum TopologySection {
 	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
 
 	// custom one i defined to do some workarounds
-	includes
+	includes, notimplemented
 };
 
 // .itp files follow a simple ruleset. Here we can read such a file, that is NOT a topology file
@@ -127,10 +127,6 @@ namespace MDFiles {
 		std::shared_ptr<GroFile> grofile;
 		std::shared_ptr<TopologyFile> topfile;
 	};
-
-	// Takes the gro and top of "right" and inserts it into left
-	void MergeFiles(GroFile& leftGro, TopologyFile& leftTop,
-		GroFile& rightGro, std::shared_ptr<TopologyFile> rightTop);
 
 	// Maybe add simparams here too?
 	struct SimulationFilesCollection {
@@ -204,21 +200,21 @@ public:
 		}
 	};
 	struct ForcefieldInclude {
-		ForcefieldInclude(const std::string& name = "") : name(name) {};
-		ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
-		void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
+		//ForcefieldInclude(const std::string& name = "") : name(name) {};
+		//ForcefieldInclude(const std::string& name, const fs::path& ownerDir);
+		//void LoadFullPath(const fs::path& ownerDir); // Necessary when we read from bin files
+		ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
+
 
 		/// <summary>
 		/// Copies the forcefieldfile AND any include files to a target directory
 		/// </summary>
 		/// <param name="directory"></param>
 		void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
-		const fs::path& Path() const;
+		//const fs::path& Path() const;
 
-		fs::path name; // Either name in resources/forcefields, or a path relative to the topologyfile
-
-	private:
-		std::optional<fs::path> path = std::nullopt; // NEVER SAVE/READ THIS TO DISK
+		std::string name; // Either name in resources/forcefields, or a path relative to the topologyfile
+		fs::path path; // NEVER SAVE/READ THIS TO DISK
 	};
 	struct MoleculeEntry {
 		std::string name{};
@@ -330,7 +326,11 @@ private:
 
 	static const char commentChar = ';';
 
-	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath);
+	/// <summary> Load a .top or .itp into a TopologyFile </summary>
+	/// <param name="name">If this is called on an include file, 
+	/// this is the name of that include file in the parent file</param>
+	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
+		std::optional<std::string> includefileName =std::nullopt);
 
 	// Packs atoms and bond information in the moleculetype ptr
 	// Returns the next section in the topologyfile

@@ -21,7 +21,7 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_UPDATE = 50;
+const int STEPS_PER_UPDATE = 1;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -234,27 +234,30 @@ void Environment::run(bool doPostRunEvents) {
 	}
 }
 
-
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {
-	if (boximage->total_compound_particles + boximage->solvent_positions.size() != grofile.atoms.size()) {
-		throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
-	}
+	// TODO THis funciton no longer works with the new compoundibolder
+	// 
+	// 
+	// 
+	//if (boximage->total_compound_particles + boximage->solvent_positions.size() != grofile.atoms.size()) {
+	//	throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
+	//}
 
-	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
+	//const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
 
-	for (int i = 0; i < boximage->total_compound_particles; i++) {
-		const int cid = boximage->particleinfos[i].compoundId;
-		const int pid = boximage->particleinfos[i].localIdInCompound;
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
-		grofile.atoms[i].position = new_position;
-	}
+	//for (int i = 0; i < boximage->total_compound_particles; i++) {
+	//	const int cid = boximage->particleinfos[i].compoundId;
+	//	const int pid = boximage->particleinfos[i].localIdInCompound;
+	//	const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
+	//	grofile.atoms[i].position = new_position;
+	//}
 
-	// Handle solvents 
-	const int firstSolventIndex = boximage->total_compound_particles;
-	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, stepToLoadFrom);
-		grofile.atoms[firstSolventIndex + solventId].position = new_position;
-	}
+	//// Handle solvents 
+	//const int firstSolventIndex = boximage->total_compound_particles;
+	//for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
+	//	const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, stepToLoadFrom);
+	//	grofile.atoms[firstSolventIndex + solventId].position = new_position;
+	//}
 }
 GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {
 	GroFile outputfile{ boximage->grofile };

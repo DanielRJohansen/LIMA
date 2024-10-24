@@ -68,7 +68,7 @@ namespace LJ {
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 		const Float3 force = diff * force_scalar;
-
+		
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}

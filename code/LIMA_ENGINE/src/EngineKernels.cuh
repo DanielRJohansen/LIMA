@@ -204,6 +204,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		}
+		if (isnan(force.lenSquared()) || isnan(force.len()))
+			printf("Force is nan2\n");
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
@@ -403,6 +405,10 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
 		}
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
+		if (isnan(force.lenSquared()) || isnan(force.len()))
+			printf("Force is nan1\n");
+		if (isnan(sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].lenSquared()) || isnan(sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].len()))
+			printf("Force is plusEq\n");
 	}
 }
 template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
@@ -474,7 +480,12 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 
 	// Fetch interims from other kernels
 	if (threadIdx.x < compound.n_particles) {
+		if (isnan(boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].lenSquared()) || isnan(boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].len()))
+			boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].print('P');
+			//printf("Force is nan preInt\n");
 		force += boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x];
+		if (isnan(force.lenSquared()) || isnan(force.len()))
+			printf("Force is nan postInt\n");
 		potE_sum += boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x];
 	}
 
@@ -487,7 +498,11 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 			BoundaryCondition::applyBC(nodeindex);
 			const float myCharge = compound_global->atom_charges[threadIdx.x];
 			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());			
+			if (isnan(force.lenSquared()) || isnan(force.len()))
+				printf("Force is nan5\n");
 			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
+			if (isnan(force.lenSquared()) || isnan(force.len()))
+				printf("Force is nan3\n");
 			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
 		}
 	}
@@ -538,6 +553,8 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 			// Energy minimize
 			if constexpr (energyMinimize) {
 				const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
+				if (isnan(force.lenSquared()) || isnan(force.len()))
+					printf("Force is nan4\n");
 				const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
 				const Float3 deltaPosPrev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
 				const Coord pos_now = EngineUtils::IntegratePositionEM(compound_coords->rel_positions[threadIdx.x], safeForce, mass, simparams.dt, progress, deltaPosPrev);
@@ -583,7 +600,8 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 		__syncthreads();
 
 		Float3 force_LJ_sol{};	// temp
-		EngineUtils::LogCompoundData(compound, sim->boxConfig.boxparams.total_particles_upperbound, *compound_coords, &potE_sum, force, force_LJ_sol, simparams, *signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
+		EngineUtils::LogCompoundData(compound, sim->boxConfig.boxparams.total_particles_upperbound, *compound_coords, &potE_sum, force, 
+			force_LJ_sol, simparams, *signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
 
 
 		// Push positions for next step
@@ -884,9 +902,18 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 		else 
 			force += LimaForcecalc::computeSinglebondForces<false>(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
 
+		if (force.isNan())
+			force.print('s');
+
 		force += LimaForcecalc::computeAnglebondForces(bridge.anglebonds, bridge.n_anglebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
+		if (force.isNan())
+			force.print('a');
 		force += LimaForcecalc::computeDihedralForces(bridge.dihedrals, bridge.n_dihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
+		if (force.isNan())
+			force.print('d');
 		force += LimaForcecalc::computeImproperdihedralForces(bridge.impropers, bridge.n_improperdihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
+		if (force.isNan())
+			force.print('i');
 	}
 	__syncthreads();
 	// --------------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -894,6 +921,9 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	// This is 2nd kernel so we add to the interims
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
+
+		if (isnan(force.lenSquared()) || isnan(force.len()))
+			printf("Force is nan bridge\n");
 		boxState->compoundsInterimState[p_ref->compound_id].forces_interim[p_ref->local_id_compound] += force;
 		boxState->compoundsInterimState[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}

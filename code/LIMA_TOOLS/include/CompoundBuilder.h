@@ -32,15 +32,37 @@ struct BondFactory {
 	std::string sourceLine;
 };
 
+struct ParticleFactory {	
+	const int activeLjtypeParameterIndex = -1;
+	const TopologyFile::AtomsEntry* topAtom = nullptr;
+	//const GroRecord* groAtom = nullptr;
+	const Float3 position;
+	const int uniqueResId;
+};
+
 
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
 using AngleBondFactory = BondFactory<3, AngleUreyBradleyBond::Parameters>;
 using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
 
+struct ParticleToCompoundMapping {
+	int compoundId = -1;
+	int localIdInCompound = -1;
+};
+struct ParticleToBridgeMapping {
+	int bridgeId = -1;
+	int localIdInBridge = -1;
+	void* aaa;
+};
+
+using ParticleToCompoundMap = std::vector<ParticleToCompoundMapping>;
+using ParticleToBridgeMap = std::vector<std::optional<ParticleToBridgeMapping>>;
 
 namespace LIMA_MOLECULEBUILD {
 	struct Topology {
+		std::vector<ParticleFactory> particles;
+
 		std::vector<SingleBondFactory> singlebonds;
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
@@ -60,30 +82,31 @@ namespace LIMA_MOLECULEBUILD {
 }
 
 
-
-struct ParticleInfo {
-
-
-	ParticleInfo() = default;
-	ParticleInfo(const GroRecord* groAtom, const TopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
-		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId), inUse(true) {}
-	const GroRecord* groAtom = nullptr;
-	const TopologyFile::AtomsEntry* topAtom = nullptr;
-	int activeLjtypeParameterIndex = -1;
-	int uniqueResId = -1;
-
-	// Only available once the compounds have been created
-	int compoundId = -1;
-	int localIdInCompound = -1;
-
-	// Only available once the bridges have been created
-	int bridgeId = -1;
-	int localIdInBridge = -1;
-
-	bool inUse = false;
-
-	std::string sourceLine;
-};
+//struct ParticleInfo {
+//
+//
+//	ParticleInfo() = default;
+//	ParticleInfo(const GroRecord* groAtom, const TopologyFile::AtomsEntry* topAtom, int activeLjTypeParameterIndex, int uniqueResId)
+//		: groAtom(groAtom), topAtom(topAtom), activeLjtypeParameterIndex(activeLjTypeParameterIndex), uniqueResId(uniqueResId), inUse(true) {}
+//	const GroRecord* groAtom = nullptr;
+//	const TopologyFile::AtomsEntry* topAtom = nullptr;
+//	int activeLjtypeParameterIndex = -1;
+//	int uniqueResId = -1;
+//
+//	// Only available once the compounds have been created
+//	int compoundId = -1;
+//	int localIdInCompound = -1;
+//
+//	// Only available once the bridges have been created
+//	int bridgeId = -1;
+//	int localIdInBridge = -1;
+//
+//	bool inUse = false;
+//
+//	int globalId = -1; // used for debugging
+//	
+//	std::string sourceLine;
+//};
 
 class CompoundFactory : public Compound, public CompoundInterimState {
 public:
@@ -91,19 +114,18 @@ public:
 	CompoundFactory(const int id) : 
 		id(id), local_atomtype_to_LATID_map(MAX_ATOM_TYPES, -1)
 	{
-		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			potE_interim[i] = 0.f;
-		}
+		memset(forces_interim, 0, sizeof(forces_interim));
+		memset(potE_interim, 0, sizeof(potE_interim));
 	}
 
 	void addParticle(const Float3& position, int atomtype_id, char atomLetter,
 		int global_id, float boxlen_nm, BoundaryConditionSelect bc, float charge);
 
 
-	void AddBond(const std::vector<ParticleInfo>&, const SingleBondFactory&);
-	void AddBond(const std::vector<ParticleInfo>&, const AngleBondFactory&);
-	void AddBond(const std::vector<ParticleInfo>&, const DihedralBondFactory&);
-	void AddBond(const std::vector<ParticleInfo>&, const ImproperDihedralBondFactory&);
+	void AddBond(const std::vector<ParticleToCompoundMapping>&, const SingleBondFactory&);
+	void AddBond(const std::vector<ParticleToCompoundMapping>&, const AngleBondFactory&);
+	void AddBond(const std::vector<ParticleToCompoundMapping>&, const DihedralBondFactory&);
+	void AddBond(const std::vector<ParticleToCompoundMapping>&, const ImproperDihedralBondFactory&);
 
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -118,14 +140,14 @@ public:
 
 	std::vector<int> local_atomtype_to_LATID_map;
 
-	std::vector<int> indicesOfBondconnectedCompounds;
+	//std::unordered_set<int> connectedCompoundIds;
 };
 
 
 class BridgeFactory : public CompoundBridge {
 public:
 	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) : bridge_id(bridge_id)
-	{
+	{ 
 		if (_compound_ids.size() > MAX_COMPOUNDS_IN_BRIDGE) {	// TODO: Move to .cpp and use format here
 			throw std::runtime_error("Cannot add more compounds to a single bridge");
 		}
@@ -135,32 +157,27 @@ public:
 		n_compounds = _compound_ids.size();
 	}
 
-	void AddBond(std::vector<ParticleInfo>&, const SingleBondFactory&);
-	void AddBond(std::vector<ParticleInfo>&, const AngleBondFactory&);
-	void AddBond(std::vector<ParticleInfo>&, const DihedralBondFactory&);
-	void AddBond(std::vector<ParticleInfo>&, const ImproperDihedralBondFactory&);
-
-	bool containsCompound(int compound_id) const {
-		for (int i = 0; i < n_compounds; i++) {
-			if (compound_ids[i] == compound_id)
-				return true;
-		}
-		return false;
-	}
-
+	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const SingleBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const AngleBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const DihedralBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const ImproperDihedralBondFactory&);
 
 	const int bridge_id;
 private:
+//	std::vector<int> globalIdsOfParticlesInBridge;
+
 	// Integrates the particle if it is not already, and returns its index relative to this bridge
-	uint8_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
+	//uint8_t getBridgelocalIdOfParticle(ParticleInfo& particle_info);
 
 	// Add particle to bridge and augment its particle info with the references to its position in this bridge
 	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge
-	void addParticle(ParticleInfo&);
+	void addParticle(const ParticleToCompoundMapping& p2cMapping, std::optional<ParticleToBridgeMapping>& p2bMapping);
 
 	template <typename BondFactory_type>
-	std::array<uint8_t, BondFactory_type::nAtoms> ConvertGlobalIdsToCompoundlocalIds(
-		std::vector<ParticleInfo>& particle_info, const BondFactory_type& bond);
+	std::array<uint8_t, BondFactory_type::nAtoms> ConvertGlobalIdsToBridgelocalIds(
+		const std::vector<ParticleToCompoundMapping>& p2cMap, 
+		std::vector<std::optional<ParticleToBridgeMapping>>& p2bMap, 
+		const BondFactory_type& bond);
 };
 
 // A translation unit between Gro file representation, and LIMA Box representation
@@ -174,7 +191,7 @@ struct BoxImage {
 
 	const std::vector<Float3> solvent_positions;
 
-	const std::vector<ParticleInfo> particleinfos;
+	//const std::vector<ParticleInfo> particleinfos;
 
 	GroFile grofile;
 
@@ -182,3 +199,4 @@ struct BoxImage {
 
 	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
 };
+ 

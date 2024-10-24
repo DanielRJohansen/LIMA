@@ -33,7 +33,7 @@ struct SingleBond {
 	};
 
 	SingleBond(){}
-	SingleBond(std::array<uint8_t, 2> ids, float b0, float kb);
+	SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
 	Parameters params;
 	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
@@ -53,7 +53,7 @@ struct AngleUreyBradleyBond {
 	};
 
 	AngleUreyBradleyBond() {}
-	AngleUreyBradleyBond(std::array<uint8_t, 3> ids, float t0, float kT, float ub0, float kUB);
+	AngleUreyBradleyBond(std::array<uint8_t, 3> ids, const Parameters&);
 
 	Parameters params;
 	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
@@ -71,7 +71,7 @@ struct DihedralBond {
 	};
 	const static int nAtoms = 4;
 	DihedralBond() {}
-	DihedralBond(std::array<uint8_t, 4> ids, float phi0, float kphi, float n);
+	DihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
 	
 	Parameters params;
 	uint8_t atom_indexes[4] = {0,0,0,0};
@@ -87,7 +87,7 @@ struct ImproperDihedralBond {
 	};
 
 	ImproperDihedralBond() {}
-	ImproperDihedralBond(std::array<uint8_t, 4> ids, float psi_0, float k_psi);
+	ImproperDihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
 
 	Parameters params;
 
@@ -268,20 +268,12 @@ struct Compound : public CompoundCompact {
 struct ParticleReference {
 	ParticleReference() {}	// TODO: i dont think i need this.
 
-#ifdef LIMAKERNELDEBUGMODE
-	// Used by moleculebuilder only
-	ParticleReference(int compound_id, int local_id_compound, int gro_id, uint8_t compoundid_local_to_bridge) :
-		compound_id(compound_id), local_id_compound(local_id_compound), 
-		gro_id(gro_id), compoundid_local_to_bridge(compoundid_local_to_bridge)
-	{}
-	int gro_id = -1;
-#else
+
 	// Used by moleculebuilder only
 	ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
 		compound_id(compound_id), local_id_compound(local_id_compound),
 		compoundid_local_to_bridge(compoundid_local_to_bridge) 
 	{}
-#endif
 
 	int compound_id;	// global
 	int local_id_compound;	// id of particle

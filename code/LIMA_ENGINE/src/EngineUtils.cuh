@@ -83,10 +83,12 @@ namespace EngineUtils {
 	__device__ static Float3 ForceActivationFunction(const Float3 force) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
-		if (isinf(force.lenSquared()) || isnan(force.lenSquared())) {
+		if (isinf(force.lenSquared())) {
 			return GenerateRandomForce();
 		}
 
+		if (isnan(force.lenSquared()))
+			force.print('n');
 
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200
 		//const float scaleAbove = 1000.f + 30000.f * (1.f-progress);

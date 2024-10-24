@@ -134,7 +134,8 @@ namespace SupernaturalForces {
 		if (threadIdx.x < nParticles) {
 			const float mass = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 			SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
-
+			if (isnan(force.len()) || isnan(force.lenSquared()))
+				printf("Force is nan squeeze\n");
 			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 		}		
 	}
@@ -175,8 +176,13 @@ namespace SupernaturalForces {
 		const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
 		const float massFactor = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
+		const Float3 force = BoxEdgeForce(positionNM) * massFactor;
+
+		if (isnan(force.len()) || isnan(force.lenSquared()))
+			printf("Force is nan squeeze\n");
+
 		if (threadIdx.x < simDev->boxConfig.compounds[blockIdx.x].n_particles)
-			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
+			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 	}
 
 	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev, int64_t step) {

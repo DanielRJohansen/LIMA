@@ -124,16 +124,18 @@ namespace ForceCorrectness {
 
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+
+		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM, 0.f, 0.f }; // Just so we dont get an 0 dist error
+
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + box_host.compounds[0].singlebonds[0].params.b0);
 
-
 		// Now figure the expected force and potential
 		const double kB = box_host.compounds[0].singlebonds[0].params.kb / 2.; // [J/(mol lm^2)]
-		const Float3 dir = (coordarray_ptr[0].rel_positions[1].toFloat3() - coordarray_ptr[0].rel_positions[0].toFloat3()).norm();
+		const Float3 dir{ 1,0,0 };
 		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
 		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
 
@@ -177,12 +179,13 @@ namespace ForceCorrectness {
 			
 
 		GroFile grofile{ conf };
+		grofile.atoms[0].position.x += 0.1f; // Just so we dont get an 0 dist error
 		TopologyFile topfile{ topol };
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
 
 
 
@@ -213,7 +216,7 @@ namespace ForceCorrectness {
 		const float errorThreshold = 1e-2;
 
 		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs], Error: {:.2e}", expectedFrequency, actualFrequency, error),
+			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs]", expectedFrequency, actualFrequency, error),
 			envmode == Full };
 	}
 

@@ -197,7 +197,6 @@ namespace ElectrostaticsTests {
 			5.f
 			);
 
-
 		SimParams simparams;
 		simparams.dt = 20;
 		//simparams.em_variant = true;
@@ -208,7 +207,7 @@ namespace ElectrostaticsTests {
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
 		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 4.f};
-	
+
 		env->run();	
 
 		auto sim = env->getSim();

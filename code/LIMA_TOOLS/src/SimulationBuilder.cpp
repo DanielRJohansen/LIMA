@@ -419,6 +419,7 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {
+	srand(1238971);
 	RandomAngleGenerator genRandomAngle;
 
 	// TODO Should we can CenterMol, so it is whole here?
@@ -463,6 +464,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 	const Float3& sphereCenter
 )
 {
+	srand(1238971 + nMoleculesToInsert);
 	RandomAngleGenerator genRandomAngle;
 
 	for (auto& lipid : lipidselection) {
@@ -593,6 +595,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
+	srand(1238971);
 	RandomAngleGenerator genRandomAngle;
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
 

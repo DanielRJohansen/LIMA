@@ -133,6 +133,8 @@ struct Float3 {
 	__host__ __device__ constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
+	__device__ Float3 constexpr sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
+
 
 	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
 

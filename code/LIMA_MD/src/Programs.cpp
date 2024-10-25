@@ -158,25 +158,25 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;	
-	params.dt = 200.f;
+	//params.dt = 150.f;
 	params.em_force_tolerance = emtol;
-	params.data_logging_interval = 100;
+	params.data_logging_interval = 5;
 
-	if (mayOverlapEdges) {
-		params.n_steps = 2000;
-		params.bc_select = BoundaryConditionSelect::NoBC;
-		params.snf_select = BoxEdgePotential;
-		params.enable_electrostatics = false;
-		env.CreateSimulation(grofile, topfile, params);
-		env.run(false);
-	}
+	//if (mayOverlapEdges) {
+	//	params.n_steps = 2000;
+	//	params.bc_select = BoundaryConditionSelect::NoBC;
+	//	params.snf_select = BoxEdgePotential;
+	//	params.enable_electrostatics = false;
+	//	env.CreateSimulation(grofile, topfile, params);
+	//	env.run(false);
+	//}
 
 	params.enable_electrostatics = true;
-	params.n_steps = 40000;
+	params.n_steps = 20000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 
-	if (mayOverlapEdges)
+	if (mayOverlapEdges && false)
 		env.CreateSimulation(*env.getSim(), params);
 	else
 		env.CreateSimulation(grofile, topfile, params);

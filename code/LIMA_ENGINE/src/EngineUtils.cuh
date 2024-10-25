@@ -41,7 +41,28 @@ namespace EngineUtils {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
 	}
-	 
+	
+
+	__device__ static Coord IntegratePositionADAM(const Coord& pos, const Float3 force, AdamState* const adamState, int step) {
+		const float alpha = 8000.f;        // Learning rate (can be tuned)
+		const float beta1 = 0.9f;          // Decay rate for first moment
+		const float beta2 = 0.999f;        // Decay rate for second moment
+		const float epsilon = 1e-8f;
+
+		// 2. Update Moment Estimates
+		const Float3 firstMoment = adamState->firstMoment * beta1 + force * (1 - beta1);
+		const Float3 secondMoment = adamState->secondMoment * beta2 + force * force * (1 - beta2);
+		adamState->firstMoment = firstMoment;
+		adamState->secondMoment = secondMoment;
+
+		// 4. Compute Bias-Corrected Estimates
+		const Float3 firstMomentCorrected = firstMoment / (1 - powf(beta1, step));
+		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step));
+
+		const Float3 deltaPos = (firstMomentCorrected / (secondMomentCorrected.sqrtElementwise() + Float3{ epsilon })) * alpha;
+		return pos + Coord{ deltaPos };
+	}
+
 	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
 #ifndef ENABLE_INTEGRATEPOSITION
 		return pos;
@@ -54,7 +75,7 @@ namespace EngineUtils {
 
 		// For the final part of EM we regulate the movement heavily
 		const Float3 deltaPos = deltaCoord.toFloat3();
-		if (progress > 0.8f && deltaPos.len() > deltaPosPrev.len() * 0.9f) {
+		if (progress > 0.95f && deltaPos.len() > deltaPosPrev.len() * 0.9f) {
 			return pos + Coord{ deltaPos * (deltaPosPrev.len() * 0.9f) / (deltaPos.len() + 1e-6) };
 		}
 

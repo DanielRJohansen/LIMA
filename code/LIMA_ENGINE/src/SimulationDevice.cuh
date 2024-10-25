@@ -39,8 +39,14 @@ struct BoxState {
 
 	Solvent* const solvents;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
+
+
 };
 
+struct AdamState {
+	Float3 firstMoment;
+	Float3 secondMoment;
+};
 
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
@@ -114,4 +120,7 @@ struct SimulationDevice {
 	Float3 * traj_buffer = nullptr;
 	float* vel_buffer = nullptr;
 	Float3 * forceBuffer = nullptr;
+
+	// Only used in EM
+	AdamState* adamState = nullptr;
 };

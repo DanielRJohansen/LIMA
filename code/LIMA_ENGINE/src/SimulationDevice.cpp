@@ -146,6 +146,11 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
 	chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
 
+	if (params_host.em_variant) {
+		cudaMalloc(&adamState, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
+		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
+	}
+
 	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
 }
 
@@ -165,5 +170,8 @@ void SimulationDevice::FreeMembers() {
 	cudaFree(chargeGrid);
 	cudaFree(chargeGridChargeSums);
 	cudaFree(chargeGridOutputForceAndPot);
+
+	if (adamState != nullptr)
+		cudaFree(adamState);
 }
 

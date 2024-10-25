@@ -547,8 +547,12 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 			if constexpr (energyMinimize) {
 				const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
 				const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
-				const Float3 deltaPosPrev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
-				const Coord pos_now = EngineUtils::IntegratePositionEM(compound_coords->rel_positions[threadIdx.x], safeForce, mass, simparams.dt, progress, deltaPosPrev);
+
+				AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+				const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords->rel_positions[threadIdx.x], safeForce, adamState, step);
+
+				//const Float3 deltaPosPrev = boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+				//const Coord pos_now = EngineUtils::IntegratePositionEM(compound_coords->rel_positions[threadIdx.x], safeForce, mass, simparams.dt, progress, deltaPosPrev);
 
 				// So these dont represent the same as they do in normal MD, but we can use the same buffers
 				const Float3 deltaPos = (pos_now - compound_coords->rel_positions[threadIdx.x]).toFloat3();

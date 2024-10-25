@@ -232,12 +232,9 @@ namespace ForceCorrectness {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
-		const float particle_mass = 12.011000f * 1e-3f;
-
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.data_logging_interval = 1;
 		params.n_steps = 5000;
-		//params.dt = 50.f;
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
@@ -247,16 +244,13 @@ namespace ForceCorrectness {
 
 		for (auto bond_len_error : bond_len_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			grofile.atoms[1].position.x += bondEquilibrium + bond_len_error;
+
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
 			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-
-			coordarray_ptr[0].rel_positions[1].x += static_cast<int32_t>((bondEquilibrium + bond_len_error) * NANO_TO_LIMA);
-
-			//box_host->compounds[0].singlebonds[0].b0 = bondEquilibrium * NANO_TO_LIMA;
-			//box_host->compounds[0].singlebonds[0].kb = 502080 * KILO / (NANO_TO_LIMA * NANO_TO_LIMA);
 
 			env.run();
 

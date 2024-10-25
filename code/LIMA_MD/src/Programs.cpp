@@ -166,10 +166,12 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 		params.n_steps = 2000;
 		params.bc_select = BoundaryConditionSelect::NoBC;
 		params.snf_select = BoxEdgePotential;
+		params.enable_electrostatics = false;
 		env.CreateSimulation(grofile, topfile, params);
 		env.run(false);
 	}
 
+	params.enable_electrostatics = true;
 	params.n_steps = 40000;
 	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;

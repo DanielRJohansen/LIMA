@@ -71,6 +71,9 @@ namespace Electrostatics {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
 			PeriodicBoundaryCondition::applyBC(absIndex3d);
 
+			if (BoxGrid::GetNodePtr(chargeGrid, absIndex3d) == nullptr)
+				printf("nullptr 6");
+
 			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
 
 			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
@@ -84,6 +87,10 @@ namespace Electrostatics {
 		if (threadIdx.x < nParticles) {
 			NodeIndex absoluteTargetIndex = compoundOrigo + relativeLocalIndex;
 			PeriodicBoundaryCondition::applyBC(absoluteTargetIndex);
+
+			if (BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex) == nullptr)
+				printf("nullptr 5");
+
 
 			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)] + localOffset;
 			if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
@@ -208,6 +215,8 @@ namespace Electrostatics {
 		potEInterims[threadIdx.x] = 0.f;
 
 		const NodeIndex myNodeindex = BoxGrid::Get3dIndex(blockIdx.x);
+		if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex) == nullptr)
+			printf("nullptr 1");
 		if (BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles == 0)
 			return;
 
@@ -226,6 +235,9 @@ namespace Electrostatics {
 			NodeIndex queryNodeindexAbsolute = myNodeindex + queryNodeindexRelative;
 			PeriodicBoundaryCondition::applyBC(queryNodeindexAbsolute);
 
+			if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, queryNodeindexAbsolute) == nullptr)
+				printf("nullptr 2");
+
 			const Float3 diff = -queryNodeindexRelative.toFloat3() * static_cast<float>(BoxGrid::blocksizeNM); // [nm]
 			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
 
@@ -241,6 +253,7 @@ namespace Electrostatics {
 		if (threadIdx.x == 0) {
 			// TODO: this potential should be split between all particles in the chargenode, RIIIIIIIIIIIIIIIIGHT?? Josiah??
 			//printf("Force out: %f pot out %f\n", forceInterims[0].len(), potEInterims[0]);
+
 			const float nParticles = static_cast<float>(BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles);
 			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->forcePart = forceInterims[0];
 			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->potentialPart = potEInterims[0];

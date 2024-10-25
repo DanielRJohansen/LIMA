@@ -49,11 +49,6 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 }
 
 __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleUreyBradleyBond& angletype, Float3* results, float& potE) {
-	if (pos_left == pos_middle || pos_right == pos_middle || pos_left == pos_right) {// This should only be allowed in EM...
-		//printf("Anglebond: Atoms are in the same position\n");
-		printf("Pos %f %f %f %f %f %f %f %f %f\n", pos_left.x, pos_left.y, pos_left.z, pos_middle.x, pos_middle.y, pos_middle.z, pos_right.x, pos_right.y, pos_right.z);
-		return;
-	}
 	const Float3 v1 = (pos_left - pos_middle).norm();
 	const Float3 v2 = (pos_right - pos_middle).norm();
 	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
@@ -347,9 +342,6 @@ __device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* cons
 
 		if (bond_index < n_anglebonds) {
 			ab = &anglebonds[bond_index];
-
-			if (positions[ab->atom_indexes[1]] == positions[ab->atom_indexes[2]] )
-				printf("Indices %d %d\n", ab->atom_indexes[1], ab->atom_indexes[2]);
 
 			LimaForcecalc::calcAnglebondForces(
 				positions[ab->atom_indexes[0]],

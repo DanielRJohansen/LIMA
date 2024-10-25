@@ -44,9 +44,10 @@ namespace TestMembraneBuilder {
 		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
 		for (int i = 0; i < newGro.atoms.size(); i++) {
-			if (newGro.atoms[0].position != refGro.atoms[0].position)
+			auto b = (newGro.atoms[i].position - refGro.atoms[i].position).len();
+			if (newGro.atoms[i].position != refGro.atoms[i].position)
 				int a=0;
-			ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
+			ASSERT(newGro.atoms[i].position == refGro.atoms[i].position, "Atom position mismatch");
 		}
 
 		// Finally test if we can stabilize the simulation

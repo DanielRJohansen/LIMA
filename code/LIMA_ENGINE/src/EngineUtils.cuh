@@ -63,24 +63,24 @@ namespace EngineUtils {
 		return pos + Coord{ deltaPos };
 	}
 
-	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
-#ifndef ENABLE_INTEGRATEPOSITION
-		return pos;
-#endif
-		const float alpha = 0.15f;
-		const float stepsize = dt * (progress/alpha * expf(1 - progress/alpha)); // Skewed gaussian
-		
-		const float massPlaceholder = 0.01; // Since we dont use velocities, having a different masses would complicate finding the energy minima. We use this placeholder, so all particles have the same "inertia"
-		const Coord deltaCoord = Coord{ (force * (0.5 / massPlaceholder * stepsize*stepsize)).round() };
-
-		// For the final part of EM we regulate the movement heavily
-		const Float3 deltaPos = deltaCoord.toFloat3();
-		if (progress > 0.95f && deltaPos.len() > deltaPosPrev.len() * 0.9f) {
-			return pos + Coord{ deltaPos * (deltaPosPrev.len() * 0.9f) / (deltaPos.len() + 1e-6) };
-		}
-
-		return pos + deltaCoord;
-	}
+//	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
+//#ifndef ENABLE_INTEGRATEPOSITION
+//		return pos;
+//#endif
+//		const float alpha = 0.15f;
+//		const float stepsize = dt * (progress/alpha * expf(1 - progress/alpha)); // Skewed gaussian
+//		
+//		const float massPlaceholder = 0.01; // Since we dont use velocities, having a different masses would complicate finding the energy minima. We use this placeholder, so all particles have the same "inertia"
+//		const Coord deltaCoord = Coord{ (force * (0.5 / massPlaceholder * stepsize*stepsize)).round() };
+//
+//		// For the final part of EM we regulate the movement heavily
+//		const Float3 deltaPos = deltaCoord.toFloat3();
+//		if (progress > 0.95f && deltaPos.len() > deltaPosPrev.len() * 0.9f) {
+//			return pos + Coord{ deltaPos * (deltaPosPrev.len() * 0.9f) / (deltaPos.len() + 1e-6) };
+//		}
+//
+//		return pos + deltaCoord;
+//	}
 
 
 	// ChatGPT magic. generates a float with elements between -1 and 1
@@ -116,7 +116,7 @@ namespace EngineUtils {
 		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		const float alpha = 1000.f * LIMA / NANO * KILO; // [1/l N/mol]
+		const float alpha = 1000.f * LIMA / NANO * KILO * 10.f; // [1/l N/mol]
 
 		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);

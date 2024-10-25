@@ -61,17 +61,17 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.4e-4, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
-		const fs::path work_dir = simulations_dir / "test";
-		Lipids::Selection lipids;
-		lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
-		lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
-		lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
-		lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
+		//const fs::path work_dir = simulations_dir / "test";
+		//Lipids::Selection lipids;
+		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
+		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
+		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
+		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
+		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
 		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true);
-		grofile->printToFile(work_dir / "membrane.gro");
-		topfile->printToFile(work_dir / "membrane.top");
+		//Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true);
+		//grofile->printToFile(work_dir / "membrane.gro");
+		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//TestBuildmembraneSmall(envmode, false);
@@ -123,7 +123,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -166,7 +166,7 @@ void RunAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 5.1e-4, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

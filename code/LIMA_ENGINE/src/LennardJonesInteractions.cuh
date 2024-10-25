@@ -56,7 +56,7 @@ namespace LJ {
 	/// <param name="sigma">[lm]</param>
 	/// <param name="epsilon">[J/mol]</param>
 	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
-	template<bool computePotE>
+	template<bool computePotE, bool emvariant>
 	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
@@ -73,6 +73,9 @@ namespace LJ {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}
 
+		if constexpr (emvariant)
+			return EngineUtils::ForceActivationFunction(force);
+		
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
@@ -91,7 +94,7 @@ namespace LJ {
 
 
 	// For intraCompound or bonded-to compounds	
-	template<bool computePotE>
+	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
@@ -111,7 +114,7 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
-			force += calcLJForceOptim<computePotE>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,
 				threadIdx.x, neighborparticle_id
@@ -128,7 +131,7 @@ namespace LJ {
 	}
 
 	// For non bonded-to compounds
-	template<bool computePotE>
+	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
 		const float chargeSelf, const half* const chargeNeighbors)
@@ -150,7 +153,7 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-				force += calcLJForceOptim<computePotE>(diff, dist_sq_reciprocal, potE_sum,
+				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
@@ -166,13 +169,24 @@ namespace LJ {
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
 				}
 			}
+
+			if (isinf((force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force).lenSquared())) {
+				printf("Force is inf in LJ logistic. Force %f %f %f   dist %f\n forcefromthis %f", force.x, force.y, force.z, diff.len() * LIMA_TO_NANO,
+					calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+						calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield), CalcLJOrigin::ComComInter).len()
+				);
+				int a = atom_types[2321321];
+			}
 		}
+
+		
 
 		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}
 
 	// Specific to solvent kernel	
+	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {
 		Float3 force{};
 
@@ -185,7 +199,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<true>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 				exclude_own_index ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
@@ -195,7 +209,8 @@ namespace LJ {
 		return force * 24.f;
 	}
 
-	
+	// False fix the hardcoded template params here
+	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
 		const ForceField_NB& forcefield) {	// Specific to solvent kernel
 		Float3 force{};
@@ -205,7 +220,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<true>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 				calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
 				CalcLJOrigin::SolCom,
@@ -215,6 +230,7 @@ namespace LJ {
 		return force * 24.f;
 	}
 	
+	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
 		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id)
 	{
@@ -225,7 +241,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<true>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 				calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
 				CalcLJOrigin::ComSol,

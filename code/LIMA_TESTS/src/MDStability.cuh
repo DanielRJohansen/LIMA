@@ -3,41 +3,33 @@
 #include "TestUtils.h"
 #include "Environment.h"
 #include "Printer.h"
-#include "Utilities.h"
 #include "LimaTypes.cuh"
+#include "Programs.h"
 
-
-
-#include <iostream>
 #include <string>
-#include <algorithm>
 
 
 namespace TestMDStability {
 	using namespace TestUtils;
 
 	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
-		SimParams emparams;// { 2000, 20, true, PBC };
-		emparams.n_steps = 5000;
-		emparams.dt = 100;
-		emparams.em_variant = true;
-		auto env = basicSetup(folder_name, { emparams }, envmode);
+		const fs::path workDir= simulations_dir / folder_name;
 
-		// Do em
-		env->run();
+		GroFile grofile{ workDir / "molecule"/"conf.gro" };
+		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
+		auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
+
+		SimParams params{ workDir/"sim_params.txt"};
+		Environment env{ workDir, envmode };
+
+
+
+		env.CreateSimulation(*sim, params);
+		//env.CreateSimulation(grofile, topfile, params);
+		env.run();
 		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
-		// Do sim
-		//InputSimParams simparams{ 100, 2000 };
-		const fs::path work_folder = simulations_dir / folder_name;
-		const fs::path simpar_path = work_folder / "sim_params.txt";
-		SimParams params{ simpar_path };
-		auto sim = env->getSim();
-		env->CreateSimulation(*sim, params);
-		env->run();
-		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
-
-		const auto analytics = env->getAnalyzedPackage();
+		const auto analytics = env.getAnalyzedPackage();
 		
 		if (envmode != Headless) {
 			analytics.Print();

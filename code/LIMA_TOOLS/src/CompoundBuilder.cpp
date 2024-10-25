@@ -850,7 +850,10 @@ void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen
 }
 
 void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select) {
-	for (CompoundFactory& compound : compounds) {
+//#pragma omp parallel for // TODO Add OMP here, 
+	//for (CompoundFactory& compound : compounds) {
+	for (int cid = 0; cid < compounds.size(); cid++) {
+		CompoundFactory& compound = compounds[cid];
 
 		const int k = CompoundInteractionBoundary::k;
 		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles, boxlen_nm, bc_select);

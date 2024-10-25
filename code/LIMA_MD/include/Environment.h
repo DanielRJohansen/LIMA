@@ -4,7 +4,6 @@
 #include <chrono>
 
 #include "Analyzer.cuh"
-#include "SimulationBuilder.h"
 #include "Bodies.cuh"
 #include "Display.h"
 #include "TimeIt.h"
@@ -47,13 +46,6 @@ public:
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
 	void CreateSimulation(Simulation& simulation_src, SimParams);
-
-	/// <summary>
-	/// Create a lipid bi-layer in the x-y plane.
-	/// </summary>
-	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
-	/// which ensures all particles are inside the box</param>
-	//void createMembrane(Lipids::Selection& lipidselection, bool carryout_em = true);
 
 	/// <summary>
 	/// Create .gro .top and simparams.txt files in the current directory

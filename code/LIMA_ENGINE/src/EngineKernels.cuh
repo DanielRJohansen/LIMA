@@ -181,7 +181,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 			}
 			
 			if (threadIdx.x < compound.n_particles) {
-				force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 			}
 
@@ -201,6 +201,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles || true) { // TEMP
+
+		if (isinf(force.lenSquared()))
+			printf("Far nei %d\n", threadIdx.x < compound.n_particles);
 		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		}
@@ -284,7 +287,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
-			force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
+			force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
 				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
 				particleCharge, particleChargesCompound);
 		}
@@ -330,7 +333,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			__syncthreads();
 
 			if (threadIdx.x < compound.n_particles) {
-				force += LJ::computeCompoundCompoundLJForces<computePotE>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles, neighborAtomstypes, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
 					particleCharge, neighborParticlescharges);
 			}
@@ -374,7 +377,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 				__syncthreads();
 
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeSolventToCompoundLJForces(compound_positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared);
+					force += LJ::computeSolventToCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], n_elements_this_stride, utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared);
 				}
 				__syncthreads();
 			}
@@ -399,6 +402,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
+		if (isinf(force.lenSquared()))
+			printf("ImNei inf\n");
+
 		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
 		}
@@ -492,7 +498,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 				auto a = compound_origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_positions[threadIdx.x]);
 				printf("abs %d %d %d hyper %d %d %d  BPD %d\n", a.x, a.y, a.z, nodeindex.x, nodeindex.y, nodeindex.z, boxSize_device.blocksPerDim);
 			}
-				
+			
 
 			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
 			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
@@ -512,7 +518,7 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 
 
 
-	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {
+	if (simparams.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {		
 		force += sim->boxConfig.uniformElectricField.GetForce(sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x]);
 	}
 	__syncthreads();
@@ -555,9 +561,9 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 				//const Coord pos_now = EngineUtils::IntegratePositionEM(compound_coords->rel_positions[threadIdx.x], safeForce, mass, simparams.dt, progress, deltaPosPrev);
 
 				// So these dont represent the same as they do in normal MD, but we can use the same buffers
-				const Float3 deltaPos = (pos_now - compound_coords->rel_positions[threadIdx.x]).toFloat3();
+				//const Float3 deltaPos = (pos_now - compound_coords->rel_positions[threadIdx.x]).toFloat3();
 				//speed = deltaPos.len();
-				boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = deltaPos;
+				//boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = deltaPos;
 				compound_coords->rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 			}
@@ -686,8 +692,8 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 			__syncthreads();
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
-			if (solvent_active) {
-				force += LJ::computeCompoundToSolventLJForces(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
+			if (solvent_active) {// TODO: use computePote template param here
+				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum, utility_buffer_small, solventblock.ids[threadIdx.x]);
 			}
 			__syncthreads();
 		}
@@ -704,7 +710,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 		}
 		__syncthreads();
 		if (solvent_active) {
-			force += LJ::computeSolventToSolventLJForces(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
+			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -734,7 +740,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 				__syncthreads();
 
 				if (solvent_active) {
-					force += LJ::computeSolventToSolventLJForces(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
+					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
 				}
 				__syncthreads();
 			}
@@ -750,10 +756,11 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 		if constexpr (energyMinimize) {
 			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
 			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
-			const Coord pos_now = EngineUtils::IntegratePositionEM(solventblock.rel_pos[threadIdx.x], force, mass, simparams.dt, progress, solventdata_ref.vel_prev);
-
-			const Float3 deltaPos = (pos_now - solventblock.rel_pos[threadIdx.x]).toFloat3();
-			solventdata_ref.vel_prev = deltaPos;
+			//const Coord pos_now = EngineUtils::IntegratePositionEM(solventblock.rel_pos[threadIdx.x], force, mass, simparams.dt, progress, solventdata_ref.vel_prev);
+			//const Float3 deltaPos = (pos_now - solventblock.rel_pos[threadIdx.x]).toFloat3();
+			//solventdata_ref.vel_prev = deltaPos;
+			AdamState* const adamStatePtr = &sim->adamState[sim->boxConfig.boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
+			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
 
 			relpos_next = pos_now;
 			EngineUtils::LogSolventData(sim->boxConfig.boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
@@ -907,6 +914,8 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
 
+		if (isinf(force.lenSquared()))
+			printf("Bridge inf\n");
 		boxState->compoundsInterimState[p_ref->compound_id].forces_interim[p_ref->local_id_compound] += force;
 		boxState->compoundsInterimState[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
 	}

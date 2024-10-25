@@ -63,7 +63,7 @@ namespace BoxGrid {
 		if (index3d.x >= boxSize_device.boxSizeNM_i || index3d.y >= boxSize_device.boxSizeNM_i 
 			|| index3d.z >= boxSize_device.boxSizeNM_i
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
-			//printf("Bad 3d index for blockptr %d %d %d\n", index3d.x, index3d.y, index3d.z);
+			printf("Bad 3d index for blockptr %d %d %d\n", index3d.x, index3d.y, index3d.z);
 			return nullptr;
 		}
 

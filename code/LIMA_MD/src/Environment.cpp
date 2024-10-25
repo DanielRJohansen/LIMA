@@ -1,18 +1,13 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
-#include <assert.h>  
-
 
 #include "Environment.h"
-#include "Printer.h"
 #include "MDFiles.h"
 #include "CompoundBuilder.h"
-#include "VirtualPathMaker.h"
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
-#include "Forcefield.h"
 
 using namespace LIMA_Print;
 
@@ -235,7 +230,7 @@ void Environment::run(bool doPostRunEvents) {
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
-	if (boximage->total_compound_particles + boximage->solvent_positions.size() != grofile.atoms.size()) {
+	if (boximage->total_compound_particles + boximage->solvent_positions.size()*3 != grofile.atoms.size()) {
 		throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
 	}
 
@@ -248,11 +243,19 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		}
 	}
 
-	// Handle solvents 
+	// TODO: Handle this in a safer way
+	// Handle solvents. Since we only load O, we pray to g that O always comes first, and then 2 h's
 	const int firstSolventIndex = boximage->total_compound_particles;
 	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
 		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, stepToLoadFrom);
-		grofile.atoms[firstSolventIndex + solventId].position = new_position;
+		const int indexOfOxygen = firstSolventIndex + solventId*3;
+		assert(grofile.atoms[indexOfOxygen].atomName[0] == 'O');
+
+		const Float3 deltaPos = new_position - grofile.atoms[indexOfOxygen].position;
+
+		grofile.atoms[indexOfOxygen].position += deltaPos;
+		grofile.atoms[indexOfOxygen + 1].position += deltaPos;
+		grofile.atoms[indexOfOxygen + 2].position += deltaPos;
 	}
 }
 GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {

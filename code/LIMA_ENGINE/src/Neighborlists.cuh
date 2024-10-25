@@ -1,18 +1,13 @@
 #pragma once
 
 #include "Simulation.cuh"
-
-
-//#include "Neighborlists.cuh"
 #include "BoundaryCondition.cuh"
-#include "SimulationDevice.cuh"
-#include "EngineUtils.cuh"
 #include "KernelConstants.cuh"
+#include "SimulationDevice.cuh"
+#include "LimaPositionSystem.cuh"
 
 #include <chrono>
 
-
-class SimulationDevice;
 
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev);
@@ -21,10 +16,14 @@ template <typename BoundaryCondition>
 __global__ void updateBlockgridKernel(SimulationDevice* sim_dev);
 
 
-
 namespace NeighborLists {
 	void updateNlists(SimulationDevice*, int64_t step, BoundaryConditionSelect, const BoxParams&, int& timing);
 };
+
+
+
+
+
 
 
 

@@ -2,20 +2,13 @@
 
 #include "TestUtils.h"
 #include "Environment.h"
-#include "Printer.h"
-#include "Utilities.h"
 #include "LimaTypes.cuh"
-//#include "EngineUtils.cuh"
 #include "LimaPositionSystem.cuh"
 #include "Statistics.h"
-
-#include "EngineCore.h"
 #include "PhysicsUtils.cuh"
-#include <unordered_map>
 
 #include <iostream>
 #include <string>
-#include <algorithm>
 #include <map>
 
 namespace ElectrostaticsTests {

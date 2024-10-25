@@ -420,7 +420,7 @@ __global__ void ApplyTransformations(MoleculeHull* moleculeHulls, Facet* facetsB
 
 
 		if (threadIdx.x == 0) {
-			const glm::vec4 transformedCenter = transformMatrix * moleculeHull.center.ToVec4(1.f);
+			const glm::vec4 transformedCenter = transformMatrix * ToVec4(moleculeHull.center,1.f);
 			moleculeHulls[blockIdx.x].center = Float3{ transformedCenter.x, transformedCenter.y, transformedCenter.z };
 		}
 

@@ -1,18 +1,16 @@
 #pragma once
 
-#include <memory>
-#include <chrono>
-
 #include "Analyzer.cuh"
 #include "Bodies.cuh"
-#include "Display.h"
 #include "TimeIt.h"
+#include "MDFiles.h"
+
+#include <memory>
+#include <chrono>
 
 class Display;
 struct BoxImage;
 class Engine;
-
-
 
 
 namespace fs = std::filesystem;
@@ -97,7 +95,7 @@ private:
 	void handleStatus(int64_t step);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant);
 
 	void sayHello();
 

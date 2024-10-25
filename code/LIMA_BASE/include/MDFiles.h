@@ -2,15 +2,15 @@
 // Provides special functionality for MD files such as .gro .itp .top .pdb and more
 #pragma once
 
-#include <filesystem>
 #include "Bodies.cuh"
 #include "Filehandling.h"
-#include <ranges>
-#include <optional>
 
+#include <optional>
+#include <filesystem>
 #include <stack>
 #include <unordered_map>
 #include <queue>
+#include <ranges>
 
 const bool ENABLE_FILE_CACHING = true;
 

@@ -5,13 +5,11 @@
 #include "Constants.h"
 #include "Simulation.cuh"
 #include "EngineUtilsWarnings.cuh"
-#include "BoundaryConditionPublic.h"
 #include "LimaPositionSystem.cuh"
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
-#include "PhysicsUtils.cuh"
 #include "SimulationDevice.cuh"
 #include "KernelWarnings.cuh"
 #include "KernelConstants.cuh"
@@ -129,23 +127,6 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	/*__device__ static Float3 SlowHighEnergyParticle(const Float3& velocityNow, const float dt, const float mass, float thermostatScalar) {
-		const float kineticEnergy = PhysicsUtils::calcKineticEnergy(velocityNow.len(), mass);
-		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergy);
-
-		const float temperatureThreshold = 400.f; // [K]
-
-		if (temperature > temperatureThreshold) {
-			return velocityNow * 0.9995f;
-		}
-		else {
-			return velocityNow * thermostatScalar;
-		}
-	}*/
-
-
-
-
 
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, int totalParticlesUpperbound, CompoundCoords& compound_coords, 
 		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
@@ -187,24 +168,6 @@ namespace EngineUtils {
 		return false;
 	}
 
-	//template <bool useDefault>
-	//__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal);
-
-	//template <>
-	//__device__ constexpr bool isOutsideCutoff<true>(const float dist_sq_reciprocal) {
-	//	if constexpr (HARD_CUTOFF) {
-	//		const float threshold = cutoffLmSquaredReciprocal_device;
-	//		return dist_sq_reciprocal < 1.2f;	//  1. / (CUTOFF_LM * CUTOFF_LM);
-	//	}
-	//	return false;
-	//}
-	//template <>
-	//__device__ constexpr bool isOutsideCutoff<false>(const float dist_sq_reciprocal) {
-	//	if constexpr (HARD_CUTOFF) {			
-	//		return dist_sq_reciprocal < cutoffLmSquaredReciprocal_device; //  1. / (CUTOFF_LM * CUTOFF_LM);
-	//	}
-	//	return false;
-	//}
 
 
 
@@ -255,65 +218,5 @@ namespace EngineUtils {
 		}
 	}
 
-	//__device__ inline void LoadNextTaskAsync(int taskIndex, int indexInBatch, const NeighborList& neighborlist, 
-	//	int neighbor_n_particles[32], uint8_t* neighborAtomstypesNext, BoxDevice* box, thread_block block) {
-	//	//static_assert(sizeof(Coord) == sizeof(Float3));
-	//	const int nextNeighborIndex = neighborlist.neighborcompound_ids[taskIndex + 1];
-	//	const int nextNeighborNParticles = neighbor_n_particles[indexInBatch + 1];
-	//	neighborAtomstypesNext[threadIdx.x] = box->compounds[nextNeighborIndex].atom_types[threadIdx.x];// TODO figure out how to make this async. Probably by having all atomstypes in a single global buffer...
-	//	//neighborParticleschargesNext[threadIdx.x] = box->compounds[nextNeighborIndex].atom_charges[threadIdx.x];
-
-	//	cooperative_groups::memcpy_async(block, (Coord*)neighborPositionsNext, coords_ptrs[indexInBatch + 1]->rel_positions, sizeof(Coord) * nextNeighborNParticles);
-	//	cooperative_groups::memcpy_async(block, neighborParticleschargesNext, box->compounds[nextNeighborIndex].atom_charges, sizeof(half) * nextNeighborNParticles);
-	//	if (i + 1 >= compound.n_bonded_compounds)
-	//		cooperative_groups::memcpy_async(block, bplutNext, (BondedParticlesLUT*)compoundPairLUTs[indexInBatch + 1], sizeof(BondedParticlesLUT));
-	//	//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, (uint8_t*)box->compounds[nextNeighborIndex].atom_types, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);				
-
-	//}
-
-	
-
 };
-
-
-namespace LIMAKERNELDEBUG {
-
-	//__device__ void static compoundIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered) {
-	//	const auto dif = (relpos_next - relpos_prev);
-	//	const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
-	//	if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff || force.len() > 3.f) {
-	//		//printf("\nParticle %d in compound %d is moving too fast\n", threadIdx.x, blockIdx.x);
-	//		printf("\nParticle is moving too fast\n");
-	//		dif.printS('D');
-	//		force.print('F');
-	//		relpos_next.printS('R');
-	//		critical_error_encountered = true;
-	//	}
-	//}
-
-	//__device__ void static solventIntegration(const Coord& relpos_prev, const Coord& relpos_next, const Float3& force, bool& critical_error_encountered, int id) {
-	//	const auto dif = (relpos_next - relpos_prev);
-	//	const int32_t max_diff = BOXGRID_NODE_LEN_i / 20;
-	//	if (std::abs(dif.x) > max_diff || std::abs(dif.y) > max_diff || std::abs(dif.z) > max_diff) {
-	//		printf("\nSolvent %d moving too fast\n", id);
-	//		dif.printS('D');
-	//		force.print('F');
-	//		critical_error_encountered = true;
-	//	}
-	//}
-
-	// 
-	//__device__ bool static forceTooLarge(const Float3& force, const float threshold=0.5) { // 
-
-	//}
-
-};
-
-namespace DEBUGUTILS {
-
-	/// <summary>
-	/// Puts the nearest solvent of each solvent in the out vector.
-	/// </summary>
-	//void findAllNearestSolventSolvent(SolventBlocksCircularQueue* queue, size_t n_solvents, std::vector<float>& out);
-}
 

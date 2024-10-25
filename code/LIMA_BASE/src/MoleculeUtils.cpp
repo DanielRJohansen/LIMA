@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <numeric>
 #include <algorithm>
+#include <functional>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };

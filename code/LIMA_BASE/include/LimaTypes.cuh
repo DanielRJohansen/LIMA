@@ -12,9 +12,6 @@
 
 #include <array>
 
-#include <glm.hpp>
-
-
 struct Int3 {
 	__host__ __device__ constexpr Int3() {}
 	__host__ __device__ constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
@@ -75,8 +72,7 @@ struct Float3 {
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
-	__host__ __device__ glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
-	__host__ __device__ glm::vec4 ToVec4(float w) const { return glm::vec4(x, y, z, w); }
+
 
 
 

@@ -25,7 +25,7 @@ glm::mat4 Camera::View() {
     view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
 
     // Translate the world to the opposite direction of the camera position to look at the center
-    view = glm::translate(view, -center.ToVec3());
+    view = glm::translate(view, ToVec3(-center));
 
     return view;
 }

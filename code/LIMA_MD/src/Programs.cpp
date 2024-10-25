@@ -1,13 +1,12 @@
 #pragma once
 
+#include "Display.h"
 #include "Programs.h"
 #include "SimulationBuilder.h"
 #include "Environment.h"
-#include "BoxBuilder.cuh"
 #include "Forcefield.h"
-#include "Statistics.h"
-#include "MoleculeGraph.h"
 #include "ConvexHullEngine.cuh"
+#include "CompoundBuilder.h"
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL

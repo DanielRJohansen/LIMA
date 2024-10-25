@@ -4,6 +4,7 @@
 
 #include "TestUtils.h"
 #include "Programs.h"
+#include "MoleculeHull.cuh"
 
 namespace TestMembraneBuilder {
 	using namespace TestUtils;

@@ -9,14 +9,12 @@
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 
-using namespace LIMA_Print;
-
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_UPDATE = 1;
+const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -194,7 +192,7 @@ void Environment::run(bool doPostRunEvents) {
 	time0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {			
+		if (!handleDisplay(compounds, boxparams, display.get(), emVariant)) {
 			break;
 		}
 
@@ -329,12 +327,12 @@ void Environment::handleStatus(const int64_t step) {
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant) {
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant) {
 	if (m_mode != Full) {
 		return true;
 	}
 
-	auto displayException = display.displayThreadException;
+	auto displayException = display->displayThreadException;
 	if (displayException) {
 		std::rethrow_exception(displayException);
 	}
@@ -345,70 +343,17 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
-		display.Render(std::make_unique<Rendering::SimulationTask>(
+		display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
 		));
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;
 	}
 
-	return !display.DisplaySelfTerminated();
+	return !display->DisplaySelfTerminated();
 }
-
-
-
-
-
-
-void Environment::renderTrajectory(std::string trj_path)
-{
-	/*
-	Trajectory* trj = new Trajectory(trj_path);
-	for (int i = 0; i < trj->n_particles; i++) {
-		trj->particle_type[i] = 0;
-	}
-	trj->particle_type[0] = 1;
-
-	display->animate(trj);
-	*/
-}
-
-void Environment::makeVirtualTrajectory(std::string trj_path, std::string waterforce_path) {
-	//Trajectory* trj = new Trajectory(trj_path);
-	//Trajectory* force_buffer = new Trajectory(waterforce_path);
-	//int n_steps = trj->n_steps;
-
-	//printf(" part: %d\n", trj->n_particles);
-
-
-	//Float3* particle_position = new Float3[n_steps];
-	//for (int64_t step = 0; step < n_steps; step++)
-	//	particle_position[step] = trj->positions[0 + step * trj->n_particles];
-	//Float3* forces = force_buffer->positions;
-	//
-
-	//VirtualPathMaker VPM;
-	//Float3* vp_path = VPM.makeVirtualPath(particle_position, forces, n_steps);
-
-	//std::ofstream myfile("D:\\Quantom\\virtrj.csv");
-	//for (int64_t step = 0; step < n_steps; step++) {
-
-	//	for (int k = 0; k < 3; k++) {
-	//		myfile << particle_position[step].at(k) << ";";
-	//	}
-	//	for (int k = 0; k < 3; k++) {
-	//		myfile << vp_path[step].at(k) << ";";
-	//	}
-
-	//	myfile << "\n";
-	//}
-	//myfile.close();
-}
-
 
 std::unique_ptr<Simulation> Environment::getSim() {
-	// Should we delete the forcefield here?
-	//boxbuilder.reset();
 	engine.reset();
 	return std::move(simulation);
 }

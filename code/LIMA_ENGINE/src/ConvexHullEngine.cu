@@ -1,5 +1,4 @@
 #include "ConvexHullEngine.cuh"
-#include "Statistics.h"
 #include "Utilities.h"
 
 #include <glm.hpp>
@@ -16,7 +15,6 @@
 #include "Utilities.h"
 
 #include "TimeIt.h"
-#include<span>
 
 //#define WITHOUT_NUMPY
 //#include "matplotlib-cpp/matplotlibcpp.h"
@@ -164,9 +162,8 @@ __global__ void CalculateIntersectionCenterAndDepth(const Float3* const triVerti
 	if (nVertices < 4)
 		return;
 
-
-	const float epsilon = 1e-4;
 	const Float3* const triVertices = &(triVerticesBuffer[blockIdx.x * maxFacetsInCH * 3]);
+
 
 	if (threadIdx.x == 0) {
 		overlap.intersectionCenter = triVertices[0];
@@ -556,8 +553,6 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	const int maxIterations = 1000;
 	for (int iteration = 0; iteration < maxIterations; iteration++) {
 		TimeIt timer{ "FindIntersectIteration", false };
-
-		bool anyIntersecting = false;
 
 		// We set this to 0, so we can count the total sum in an iteration without accounting for some molecules not having all collisions filled
 		cudaMemset(forceMagnitudes, 0, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(float)); 

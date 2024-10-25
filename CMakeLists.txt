@@ -34,6 +34,8 @@ if (UNIX)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
 else()
 	set(set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++20 /W4" ))
+	#set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
+	#add_compile_options(/external:W0 /external:anglebrackets)
 endif()
 
 

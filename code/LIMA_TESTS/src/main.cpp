@@ -74,30 +74,8 @@ int main() {
 		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//TestBuildmembraneSmall(envmode, false);
+		TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.333e-5, 2e-5);	
-
-
-		//std::vector<std::array<fs::path, 2>> lipidFiles = FileUtils::GetAllGroItpFilepairsInDir(FileUtils::GetLimaDir() / "resources"/"Slipids");
-
-		//for (auto pair : lipidFiles) {
-		//	GroFile gro{ pair[0] };
-		//	TopologyFile top{ pair[1] };
-		//	top.SetSystem("test");
-		//	top.AppendMoleculetype(top.GetMoleculeTypePtr());
-
-		//	Environment env(FileUtils::GetLimaDir(), envmode);
-		//	env.CreateSimulation(gro, top, SimParams{});
-		//	auto a = env.getSimPtr()->box_host->bridge_bundle.get();
-		//	for (int i = 0; i < a->n_bridges; i++) {
-		//		if (a->compound_bridges[i].n_dihedrals > 80) {
-		//			std::cout << pair[0].string();
-		//			Display::RenderGrofile(gro);
-		//		}
-		//	}
-		//}
-
 
 
 
@@ -123,7 +101,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

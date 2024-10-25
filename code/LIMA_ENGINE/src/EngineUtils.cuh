@@ -107,21 +107,21 @@ namespace EngineUtils {
 		}
 
 		if (isnan(force.lenSquared()))
-			force.print('n');
+			force.print('A');
 
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200
 		//const float scaleAbove = 1000.f + 30000.f * (1.f-progress);
 		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		const float alpha = 1000.f * LIMA / NANO * KILO * 10.f; // [1/l N/mol]
+		const float alpha = 1000.f * LIMA / NANO * KILO * 100.f; // [1/l N/mol]
 
 		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);
 
 		//const float scaledMagnitude = force.len() / (1.f + force.len() / (2.f * alpha));
 		// Scale the original force vector by the ratio of the new magnitude to the original magnitude
-		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8)); // Avoid division by zero		
+		Float3 scaledForce = force * (scaledMagnitude / (force.len() + 1e-8f)); // Avoid division by zero		
 
 		//printf("Force %f %f %f ScaledF %f %f %f\n", force.x, force.y, force.z, scaledForce.x, scaledForce.y, scaledForce.z);
 		return scaledForce;

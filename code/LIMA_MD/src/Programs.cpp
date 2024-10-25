@@ -159,7 +159,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	params.em_variant = true;	
 	//params.dt = 150.f;
 	params.em_force_tolerance = emtol;
-	params.data_logging_interval = 5;
+	params.data_logging_interval = 50;
 
 	//if (mayOverlapEdges) {
 	//	params.n_steps = 2000;
@@ -180,18 +180,21 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	else
 		env.CreateSimulation(grofile, topfile, params);
 	env.run(false);
+
+	const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
+	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
+		[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
+			return a.second < b.second;
+		}
+	);
+
 	if (writePositionsToGrofile) {
-		const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
-
-		auto [step, force] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
-			[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
-				return a.second < b.second;
-			}
-		);
-
-		env.WriteBoxCoordinatesToFile(grofile, step);
+		env.WriteBoxCoordinatesToFile(grofile, minForceStep);
 	}
 	
+	if (envmode == Full)
+		printf("Min force reached: %f\n", minForce);
+
 	return env.getSim();
 }
 

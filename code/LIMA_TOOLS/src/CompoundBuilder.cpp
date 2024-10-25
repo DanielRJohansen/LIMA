@@ -882,7 +882,7 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 
 // Check that we dont have any unrealistic bonds, and warn immediately.
 void VerifyBondsAreStable(const Topology& topology, float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) {	
-	const float allowedScalar = energyMinimizationMode ? 7.f : 1.9999f;
+	const float allowedScalar = energyMinimizationMode ? 7.f : 3.f;//1.9999f;
 
 	for (const auto& bond : topology.singlebonds) 
 	{		

@@ -181,7 +181,7 @@ namespace Benchmarks {
 
 		SimParams params{ workDir / "../sim_params.txt" };
 		params.dt = 100.f; 
-		Environment env{ workDir , Full };
+		Environment env{ workDir , ConsoleOnly };
 		env.CreateSimulation(grofile, topfile, params);
 		env.run(false);
 

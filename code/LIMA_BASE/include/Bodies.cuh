@@ -109,7 +109,7 @@ struct CompoundCoords {
 		if (threadIdx.x == 0) { origo = coords.origo; };
 		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
 	}
-
+	
 	NodeIndex origo{};								// [nm]
 	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
 };

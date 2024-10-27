@@ -79,8 +79,8 @@ namespace LJ {
 		//}
 		
 
-		if constexpr (emvariant)
-			return EngineUtils::ForceActivationFunction(force);
+		//if constexpr (emvariant)
+		//	return EngineUtils::ForceActivationFunction(force);
 		
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
@@ -176,13 +176,13 @@ namespace LJ {
 				}
 			}
 
-			if (isinf((force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force).lenSquared())) {
-				printf("Force is inf in LJ logistic. Force %f %f %f   dist %f\n forcefromthis %f", force.x, force.y, force.z, diff.len() * LIMA_TO_NANO,
-					calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-						calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield), CalcLJOrigin::ComComInter).len()
-				);
-				int a = atom_types[2321321];
-			}
+			//if (isinf((force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force).lenSquared())) {
+			//	printf("Force is inf in LJ logistic. Force %f %f %f   dist %f\n forcefromthis %f", force.x, force.y, force.z, diff.len() * LIMA_TO_NANO,
+			//		calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+			//			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield), CalcLJOrigin::ComComInter).len()
+			//	);
+			//	int a = atom_types[2321321];
+			//}
 		}
 
 		

@@ -74,7 +74,7 @@ int main() {
 		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		TestBuildmembraneSmall(envmode, false);
+		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 
@@ -100,7 +100,7 @@ int main() {
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		//Benchmarks::Benchmark("membrane20"); 
+		Benchmarks::Benchmark("membrane20"); 
 		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

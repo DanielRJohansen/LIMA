@@ -16,8 +16,6 @@ namespace PhysicsUtilsDevice {
 	{		
 		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
-		if (isnan(invLen))
-			printf("nan here %f", diff.lenSquared());
 		return diff * myCharge * otherCharge * invLenCubed;
 	}
 

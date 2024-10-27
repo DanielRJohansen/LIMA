@@ -71,15 +71,15 @@ namespace Electrostatics {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
 			PeriodicBoundaryCondition::applyBC(absIndex3d);
 
-			if (BoxGrid::GetNodePtr(chargeGrid, absIndex3d) == nullptr)
-				printf("nullptr 6");
+			//if (BoxGrid::GetNodePtr(chargeGrid, absIndex3d) == nullptr)
+			//	printf("nullptr 6");
 
 			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
 
 			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
-			if (numParticlesInNodeGlobal[threadIdx.x] > ChargeNode::maxParticlesInNode) {
+		/*	if (numParticlesInNodeGlobal[threadIdx.x] > ChargeNode::maxParticlesInNode) {
 				printf("Error: Too many particles in node from other kernels: %d\n", numParticlesInNodeGlobal[threadIdx.x]);
-			}
+			}*/
 		}
 		__syncthreads();
 
@@ -88,8 +88,8 @@ namespace Electrostatics {
 			NodeIndex absoluteTargetIndex = compoundOrigo + relativeLocalIndex;
 			PeriodicBoundaryCondition::applyBC(absoluteTargetIndex);
 
-			if (BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex) == nullptr)
-				printf("nullptr 5");
+		/*	if (BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex) == nullptr)
+				printf("nullptr 5");*/
 
 
 			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)] + localOffset;

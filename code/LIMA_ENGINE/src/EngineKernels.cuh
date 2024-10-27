@@ -67,20 +67,21 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	__shared__ int nGridnodes;
 
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
-	__shared__ Float3 utility_float3;
 
 	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
 	__shared__ ForceField_NB forcefield_shared;
 
+	//__shared__ NodeIndex compoundOrigo;
+	NodeIndex compoundOrigo;
+
 	BoxState* const boxState = sim->boxState;
 	const BoxConfig& boxConfig = sim->boxConfig;
 	const SimParams& simparams = sim->params;
-	SimSignals* signals = sim->signals;
 
 	float potE_sum{};
 	Float3 force{};
-	NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
+	//NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
 	const float particleCharge = simparams.enable_electrostatics	// TODO: this is temporary
 		? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
 		: 0.f;
@@ -89,19 +90,24 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 		auto block = cooperative_groups::this_thread_block();
 
 		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
-		compound_origo = compoundcoords_global->origo;
+		compoundOrigo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 			
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
 			nNonbondedCompoundNeighbors = sim->compound_neighborlists[blockIdx.x].nNonbondedNeighbors;
 			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
+			//compoundOrigo = compoundcoords_global->origo;
 		}
 
 		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
 
 		cooperative_groups::wait(block);
 		compound_positions[threadIdx.x] = ((Coord*)compound_positions)[threadIdx.x].toFloat3();
+
+
+		/*if (compoundcoords_global->origo != compoundOrigo)
+			printf("wtf");*/
 	}
 	compound.loadData(&boxConfig.compounds[blockIdx.x]);
 
@@ -140,12 +146,12 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].nonbondedNeighborcompoundIds[i + threadIdx.x];
 
 					neighborPtrs[threadIdx.x] = (void*)CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
-					const CompoundCoords* const querycompound = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
-					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, ((CompoundCoords*)neighborPtrs[threadIdx.x])->origo);
-					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compound_origo);
+					const CompoundCoords* const querycompound = (CompoundCoords*)neighborPtrs[threadIdx.x];
+					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, ((CompoundCoords*)neighborPtrs[threadIdx.x])->origo);
+					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
 
 					// calc Relative LimaPosition Shift from the origo-shift
-					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
+					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compoundOrigo).toFloat3();
 					neighborNParticles[threadIdx.x] = boxConfig.compounds[neighborIds[threadIdx.x]].n_particles;
 					
 					compoundPairLUTs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, neighborIds[threadIdx.x]);
@@ -197,13 +203,11 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-
-
 	// This is the first kernel, so we overwrite
-	if (threadIdx.x < compound.n_particles || true) { // TEMP
+	if (threadIdx.x < compound.n_particles) { 
 
-		if (isinf(force.lenSquared()))
-			printf("Far nei %d\n", threadIdx.x < compound.n_particles);
+		//if (isinf(force.lenSquared()))
+		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);
 		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		}
@@ -402,9 +406,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
-		if (isinf(force.lenSquared()))
-			printf("ImNei inf\n");
-
 		if constexpr (computePotE) {
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
 		}

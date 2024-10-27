@@ -19,9 +19,10 @@ set(CMAKE_CUDA_STANDARD 20)
 set(CUDA_SEPARABLE_COMPILATION ON)
 
 
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_89,code=sm_89")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
-
+#set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_89,code=sm_89")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_89,code=sm_89")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr") # --ptxas-options=-v")
+#set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -maxrregcount=64 -O2")
 # Only gcc v13 and newer can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
 #find_program(GCC_13_FOUND g++-13)
 #if(GCC_13_FOUND)
@@ -37,6 +38,7 @@ else()
 	#set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
 	#add_compile_options(/external:W0 /external:anglebrackets)
 endif()
+
 
 
 find_package(OpenGL REQUIRED)

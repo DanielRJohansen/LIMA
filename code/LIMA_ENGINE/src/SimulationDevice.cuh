@@ -28,14 +28,14 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
+	BoxState(CompoundCoords* compoundCoordsBuffer, Solvent* solvents,
 		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers();// Free *this immediately after calling this function
 
 	CompoundInterimState* const compoundsInterimState;
-	CompoundCoords* const compoundcoordsCircularQueue;
+	CompoundCoords* const compoundCoordsBuffer;
 
 	Solvent* const solvents;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;

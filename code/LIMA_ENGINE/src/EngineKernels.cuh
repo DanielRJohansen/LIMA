@@ -88,7 +88,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 	{
 		auto block = cooperative_groups::this_thread_block();
 
-		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		//const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		const CompoundCoords* const compoundcoords_global = &sim->boxState->compoundCoordsBuffer[blockIdx.x];
+
 		compoundOrigo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 			
@@ -142,7 +144,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 				if (threadIdx.x < batchsize && threadIdx.x + i < nNonbondedCompoundNeighbors) {
 					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].nonbondedNeighborcompoundIds[i + threadIdx.x];
 
-					neighborPtrs[threadIdx.x] = (void*)CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
+					//neighborPtrs[threadIdx.x] = (void*)CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborIds[threadIdx.x]);
+					neighborPtrs[threadIdx.x] = (void*)&boxState->compoundCoordsBuffer[neighborIds[threadIdx.x]];
 					const CompoundCoords* const querycompound = (CompoundCoords*)neighborPtrs[threadIdx.x];
 					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, ((CompoundCoords*)neighborPtrs[threadIdx.x])->origo);
 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
@@ -255,7 +258,8 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	{
 		auto block = cooperative_groups::this_thread_block();
 
-		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+//		const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		const CompoundCoords* const compoundcoords_global = &boxState->compoundCoordsBuffer[blockIdx.x];
 		compound_origo = compoundcoords_global->origo;
 		cooperative_groups::memcpy_async(block, (Coord*)compound_positions, compoundcoords_global->rel_positions, sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 
@@ -315,7 +319,8 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		if (threadIdx.x < compound.n_bonded_compounds) {
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[threadIdx.x];
 
-			const CompoundCoords* neighborCoordsptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborId);
+//			const CompoundCoords* neighborCoordsptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborId);
+			const CompoundCoords* neighborCoordsptr = &boxState->compoundCoordsBuffer[neighborId];
 			neighborPtrs[threadIdx.x] = (void*)neighborCoordsptr;
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, neighborCoordsptr->origo);
 			relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).toFloat3();
@@ -442,8 +447,9 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
 		CompoundCoords* compound_coords = (CompoundCoords*)utility_buffer;
 
-		const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
-		compound_coords->loadData(compoundcoords_global);
+		//const CompoundCoords& compoundcoords_global = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		const CompoundCoords* const compoundcoords_global = &boxState->compoundCoordsBuffer[blockIdx.x];
+		compound_coords->loadData(*compoundcoords_global);
 		__syncthreads();
 
 		if (threadIdx.x == 0)
@@ -494,7 +500,8 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim->boxState->compoundcoordsCircularQueue, step, blockIdx.x);	
+	//const CompoundCoords* const compoundcoords_global = CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim->boxState->compoundcoordsCircularQueue, step, blockIdx.x);	
+	const CompoundCoords* const compoundcoords_global = &sim->boxState->compoundCoordsBuffer[blockIdx.x];
 	const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
 	if (threadIdx.x == 0) {
 		compound_coords.origo = compoundcoords_global->origo;
@@ -585,8 +592,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 
 
 	// Push positions for next step
-	auto* coordarray_next_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim->boxState->compoundcoordsCircularQueue, step + 1, blockIdx.x);
-	coordarray_next_ptr->loadData(compound_coords);
+//	auto* coordarray_next_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim->boxState->compoundcoordsCircularQueue, step + 1, blockIdx.x);
+	sim->boxState->compoundCoordsBuffer[blockIdx.x].loadData(compound_coords);
+	
 }
 template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
 template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
@@ -657,7 +665,8 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
-			const CompoundCoords* coordarray_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompound_index);
+//			const CompoundCoords* coordarray_ptr = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, neighborcompound_index);
+			const CompoundCoords* const coordarray_ptr = &boxState->compoundCoordsBuffer[neighborcompound_index];
 			EngineUtils::getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, coordarray_ptr, utility_buffer, utility_float3, n_compound_particles);
 
 
@@ -732,9 +741,6 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 		if constexpr (energyMinimize) {
 			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
 			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
-			//const Coord pos_now = EngineUtils::IntegratePositionEM(solventblock.rel_pos[threadIdx.x], force, mass, simparams.dt, progress, solventdata_ref.vel_prev);
-			//const Float3 deltaPos = (pos_now - solventblock.rel_pos[threadIdx.x]).toFloat3();
-			//solventdata_ref.vel_prev = deltaPos;
 			AdamState* const adamStatePtr = &sim->adamState[sim->boxConfig.boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
 
@@ -850,7 +856,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
 	if (threadIdx.x < bridge.n_compounds) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(boxState->compoundcoordsCircularQueue, step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
+		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(boxState->compoundCoordsBuffer, step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
 	}
 
 
@@ -862,7 +868,8 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 
 		BridgeWarnings::verifyPRefValid(p_ref, bridge);
 
-		const CompoundCoords* coordarray = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, p_ref.compound_id);
+//		const CompoundCoords* coordarray = CompoundcoordsCircularQueueUtils::getCoordarrayRef(boxState->compoundcoordsCircularQueue, step, p_ref.compound_id);
+		const CompoundCoords* const coordarray = &boxState->compoundCoordsBuffer[p_ref.compound_id];
 
 		Coord relpos = coordarray->rel_positions[p_ref.local_id_compound];
 		relpos += utility_coord[p_ref.compoundid_local_to_bridge];

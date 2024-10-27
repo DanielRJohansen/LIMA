@@ -320,7 +320,6 @@ struct Coord {
 	__host__ __device__ Float3 toFloat3() const { 
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
 	}
-
 };
 
 struct NodeIndex : public Int3 {

@@ -115,14 +115,14 @@ struct CompoundCoords {
 };
 
 
-namespace CompoundcoordsCircularQueueUtils {
-	static const int queueLen = 3;
-
-	__host__ __device__ inline CompoundCoords* getCoordarrayRef(CompoundCoords* queue, uint32_t step, uint32_t compound_index) {
-		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
-		return &queue[index0_of_currentstep_coordarray + compound_index];
-	}
-};
+//namespace CompoundcoordsCircularQueueUtils {
+//	static const int queueLen = 3;
+//
+//	__host__ __device__ inline CompoundCoords* getCoordarrayRef(CompoundCoords* queue, uint32_t step, uint32_t compound_index) {
+//		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
+//		return &queue[index0_of_currentstep_coordarray + compound_index];
+//	}
+//};
 
 
 

@@ -246,25 +246,25 @@ void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cM
 	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add singlebond to compound");
 	}
-	singlebonds[n_singlebonds++] = SingleBond(ConvertGlobalAtomidsToCompoundlocalIds(p2cMap, bond.global_atom_indexes), bond.params);
+	singlebonds[n_singlebonds++] = SingleBond(ConvertGlobalAtomidsToCompoundlocalIds<2>(p2cMap, bond.global_atom_indexes), bond.params);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const AngleBondFactory& bond) {
 	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add anglebond to compound");
 	}
-	anglebonds[n_anglebonds++] = AngleUreyBradleyBond(ConvertGlobalAtomidsToCompoundlocalIds(p2cMap, bond.global_atom_indexes), bond.params);
+	anglebonds[n_anglebonds++] = AngleUreyBradleyBond(ConvertGlobalAtomidsToCompoundlocalIds<3>(p2cMap, bond.global_atom_indexes), bond.params);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const DihedralBondFactory& bond) {
 	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add dihedralbond to compound");
 	}
-	dihedrals[n_dihedrals++] = DihedralBond(ConvertGlobalAtomidsToCompoundlocalIds(p2cMap, bond.global_atom_indexes), bond.params);
+	dihedrals[n_dihedrals++] = DihedralBond(ConvertGlobalAtomidsToCompoundlocalIds<4>(p2cMap, bond.global_atom_indexes), bond.params);
 }
 void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const ImproperDihedralBondFactory& bond) {
 	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) {
 		throw std::runtime_error("Failed to add improperdihedralbond to compound");
 	}
-	impropers[n_improperdihedrals++] = ImproperDihedralBond(ConvertGlobalAtomidsToCompoundlocalIds(p2cMap, bond.global_atom_indexes), bond.params);
+	impropers[n_improperdihedrals++] = ImproperDihedralBond(ConvertGlobalAtomidsToCompoundlocalIds<4>(p2cMap, bond.global_atom_indexes), bond.params);
 }
 
 void CompoundFactory::addIdOfBondedCompound(int id) {

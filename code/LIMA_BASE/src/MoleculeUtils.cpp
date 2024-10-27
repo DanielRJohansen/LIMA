@@ -6,9 +6,11 @@
 #include <numeric>
 #include <algorithm>
 #include <functional>
+#include <cfloat>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
-	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
+	Float3 bbMin{ FLT_MAX };
+	Float3 bbMax{ -FLT_MAX };
 
 	for (const auto& atom : grofile.atoms) {
 		bbMin = Float3::ElementwiseMin(bbMin, atom.position);

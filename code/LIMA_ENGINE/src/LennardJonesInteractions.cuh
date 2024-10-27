@@ -73,6 +73,9 @@ namespace LJ {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}		
 
+		/*if (force.isNan())
+			printf("LJ nan");*/
+
 		if constexpr (emvariant)
 			return EngineUtils::ForceActivationFunction(force);
 		

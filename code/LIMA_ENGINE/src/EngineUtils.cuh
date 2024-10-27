@@ -114,7 +114,7 @@ namespace EngineUtils {
 		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		const float alpha = 1000.f * LIMA / NANO * KILO * 10.f; // [1/l N/mol]
+		const float alpha = 1000.f * LIMA / NANO * KILO * 100.f; // [1/l N/mol]
 
 		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);

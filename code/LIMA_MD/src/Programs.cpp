@@ -157,7 +157,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;	
-	//params.dt = 150.f;
+	params.dt = 150.f;
 	params.em_force_tolerance = emtol;
 	params.data_logging_interval = 50;
 

@@ -71,16 +71,10 @@ namespace LJ {
 		
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
-		}
-		
-		//if (force.isNan()) {
-		//	force.print('B');
-		//	diff.print('D');
-		//}
-		
+		}		
 
-		//if constexpr (emvariant)
-		//	return EngineUtils::ForceActivationFunction(force);
+		if constexpr (emvariant)
+			return EngineUtils::ForceActivationFunction(force);
 		
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);

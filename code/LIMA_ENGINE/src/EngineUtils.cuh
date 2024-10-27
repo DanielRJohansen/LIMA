@@ -127,9 +127,9 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-
+	// TODO: Clean this up, used args
 	__device__ inline void LogCompoundData(const CompoundCompact& compound, int totalParticlesUpperbound, CompoundCoords& compound_coords, 
-		float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
+		const float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
 		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed, int64_t step)
 	{
 		if (threadIdx.x >= compound.n_particles) { return; }

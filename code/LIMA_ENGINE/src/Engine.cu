@@ -335,6 +335,12 @@ void Engine::deviceMaster() {
 	cudaDeviceSynchronize();
 	LIMA_UTILS::genericErrorCheck("Error after solventTransferKernel");
 #endif
+
+	if (boxparams.n_compounds > 0) {
+		LAUNCH_GENERIC_KERNEL_2(CompoundIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+	}
+	LIMA_UTILS::genericErrorCheck("Error after CompoundIntegrationKernel");
+
 	const auto t2 = std::chrono::high_resolution_clock::now();
 
 	const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0b + t0a - t0).count();

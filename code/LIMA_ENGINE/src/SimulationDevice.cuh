@@ -12,7 +12,7 @@ struct BoxConfig {
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
-	const BoxParams boxparams;
+
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
@@ -25,6 +25,8 @@ struct BoxConfig {
 	const BondedParticlesLUT* const bpLUTs;
 
 	const UniformElectricField uniformElectricField;	
+
+	const BoxParams boxparams;
 };
 
 struct BoxState {

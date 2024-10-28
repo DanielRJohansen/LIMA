@@ -18,6 +18,7 @@
 class SimulationDevice;
 class DatabuffersDeviceController;
 class Thermostat;
+class BoxState;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
@@ -87,6 +88,8 @@ private:
 
 	void hostMaster();
 	void deviceMaster();
+	template <typename BoundaryCondition, bool emvariant, bool computePotE>
+	void _deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void setDeviceConstantMemory();
@@ -116,6 +119,7 @@ private:
 	std::unique_ptr<Simulation> simulation = nullptr;
 
 	SimulationDevice* sim_dev = nullptr;
+	std::unique_ptr<BoxState> boxStateCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 

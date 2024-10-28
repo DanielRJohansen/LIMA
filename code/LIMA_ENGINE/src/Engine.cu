@@ -48,6 +48,28 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	}
 	setDeviceConstantMemory();
 
+
+
+	std::vector<NodeIndex> compoundsOrigos;
+	std::vector<Float3> compoundsRelPos;
+	for (const auto& compoundCoords : simulation->box_host->compoundCoordsBuffer) {
+		compoundsOrigos.push_back(compoundCoords.origo);
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].toFloat3());
+		}
+	}
+	boxStateCopy = std::make_unique<BoxState>(
+		GenericCopyToDevice(compoundsOrigos),
+		GenericCopyToDevice(compoundsRelPos),
+		GenericCopyToDevice(simulation->box_host->solvents),
+		simulation->box_host->solventblockgrid_circularqueue->CopyToDevice(),
+		GenericCopyToDevice(simulation->box_host->compoundInterimStates));
+
+
+
+
+
+
 	auto boxparams = simulation->box_host->boxparams;
 	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
 
@@ -269,8 +291,8 @@ void Engine::HandleEarlyStoppingInEM() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-
-void Engine::deviceMaster() {
+template <typename BoundaryCondition, bool emvariant, bool computePotE>
+void Engine::_deviceMaster() {
 	const auto t0 = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
@@ -279,14 +301,16 @@ void Engine::deviceMaster() {
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_3(compoundFarneighborShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
+		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), *boxStateCopy);
+		//LAUNCH_GENERIC_KERNEL_3(compoundFarneighborShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 
 	if (boxparams.n_compounds > 0) {
 		//LAUNCH_GENERIC_KERNEL_3(compoundLJKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());		
-		LAUNCH_GENERIC_KERNEL_3(compoundImmediateneighborAndSelfShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL_3(compoundImmediateneighborAndSelfShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
+		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
@@ -303,7 +327,8 @@ void Engine::deviceMaster() {
 	const auto t0b = std::chrono::high_resolution_clock::now();
 
 	if (boxparams.n_bridges > 0) {
-		LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL(compoundBridgeKernel, boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE, bc_select, sim_dev, simulation->getStep());
+		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep());
 	}
 
 	if (simulation->simparams_host.snf_select != None) {
@@ -312,7 +337,8 @@ void Engine::deviceMaster() {
 
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		compoundBondsAndIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();
@@ -320,13 +346,15 @@ void Engine::deviceMaster() {
 
 #ifdef ENABLE_SOLVENTS
 	if (boxparams.n_solvents > 0) {
-		LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL_2(solventForceKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		solventForceKernel<BoundaryCondition, emvariant> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (sim_dev, simulation->getStep());
 
 
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
 		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
-			LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev, simulation->getStep());
+			//LAUNCH_GENERIC_KERNEL(solventTransferKernel, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, bc_select, sim_dev, simulation->getStep());
+			solventTransferKernel<BoundaryCondition> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size >> > (sim_dev, simulation->getStep());
 		}
 	}
 	cudaDeviceSynchronize();
@@ -334,7 +362,8 @@ void Engine::deviceMaster() {
 #endif
 
 	if (boxparams.n_compounds > 0) {
-		LAUNCH_GENERIC_KERNEL_2(CompoundIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		//LAUNCH_GENERIC_KERNEL_2(CompoundIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
+		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
 	}
 	LIMA_UTILS::genericErrorCheck("Error after CompoundIntegrationKernel");
 
@@ -345,4 +374,60 @@ void Engine::deviceMaster() {
 
 	timings.compound_kernels += compounds_duration;
 	timings.solvent_kernels += solvents_duration;
+}
+template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
+template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();
+template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, true>();
+template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, false>();
+template void Engine::_deviceMaster<NoBoundaryCondition, true, true>();
+template void Engine::_deviceMaster<NoBoundaryCondition, true, false>();
+template void Engine::_deviceMaster<NoBoundaryCondition, false, true>();
+template void Engine::_deviceMaster<NoBoundaryCondition, false, false>();
+
+
+
+void Engine::deviceMaster() {
+
+	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
+
+	switch (simulation->simparams_host.bc_select) {
+	case NoBC:
+		if (simulation->simparams_host.em_variant) {
+			if (logData) {
+				_deviceMaster<NoBoundaryCondition, true, true>();
+			}
+			else {
+				_deviceMaster<NoBoundaryCondition, true, false>();
+			}
+		}
+		else {
+			if (logData) {
+				_deviceMaster<NoBoundaryCondition, false, true>();
+			}
+			else {
+				_deviceMaster<NoBoundaryCondition, false, false>();
+			}
+		}
+		break;
+	case PBC:
+		if (simulation->simparams_host.em_variant) {
+			if (logData) {
+				_deviceMaster<PeriodicBoundaryCondition, true, true>();
+			}
+			else {
+				_deviceMaster<PeriodicBoundaryCondition, true, false>();
+			}
+		}
+		else {
+			if (logData) {
+				_deviceMaster<PeriodicBoundaryCondition, false, true>();
+			}
+			else {
+				_deviceMaster<PeriodicBoundaryCondition, false, false>();
+			}
+		}
+		break;
+	default:
+		throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL");
+	}
 }

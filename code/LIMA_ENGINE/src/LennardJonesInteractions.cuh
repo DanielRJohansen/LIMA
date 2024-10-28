@@ -135,7 +135,7 @@ namespace LJ {
 
 	// For non bonded-to compounds
 	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
+	__device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
 		const float chargeSelf, const half* const chargeNeighbors)
 	{
@@ -152,8 +152,14 @@ namespace LJ {
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
-
+			
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
+
+			//force += -diff * 0.0000000001f;
+			//potE_sum += 0.000001f;
+			//electrostaticForce += -diff * 0.0000000001f * chargeSelf * (float)chargeNeighbors[neighborparticle_id];
+			//electrostaticPotential += 0.00001f * chargeSelf * (float)chargeNeighbors[neighborparticle_id];
+
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
@@ -172,18 +178,9 @@ namespace LJ {
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
 				}
 			}
-
-			//if (isinf((force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force).lenSquared())) {
-			//	printf("Force is inf in LJ logistic. Force %f %f %f   dist %f\n forcefromthis %f", force.x, force.y, force.z, diff.len() * LIMA_TO_NANO,
-			//		calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-			//			calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield), CalcLJOrigin::ComComInter).len()
-			//	);
-			//	int a = atom_types[2321321];
-			//}
 		}
 
 		
-
 		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}

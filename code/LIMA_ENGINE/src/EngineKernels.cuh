@@ -58,7 +58,7 @@ __device__ BondType* LoadBonds(char* utility_buffer, const BondType* const sourc
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step) {
+__global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step, const BoxState _boxState) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 
@@ -108,9 +108,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 
 
 
-
-	// For neighborcompound and neighbor solventblocks we utilize a batching system
-	const int batchsize = 64;
+	const int batchsize = 32;
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
@@ -123,7 +121,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
-
 			static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
 			Float3* neighborPositionsCurrent = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * (i & 1));
 			Float3* neighborPositionsNext = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * !(i & 1));
@@ -153,12 +150,18 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 					const int currentNeighborId = neighborIds[indexInBatch];
 					const int currentNeighborNParticles = neighborNParticles[indexInBatch];
 					
-					cooperative_groups::memcpy_async(block, neighborAtomstypesCurrent, boxConfig.compoundsAtomtypes + currentNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES);
-					cooperative_groups::memcpy_async(block, neighborPositionsCurrent, &boxState->compoundsRelposLm[currentNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Float3) * currentNeighborNParticles);
-					cooperative_groups::memcpy_async(block, neighborParticleschargesCurrent, boxConfig.compoundsAtomCharges + currentNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * currentNeighborNParticles);
-					cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
+					if (threadIdx.x < currentNeighborNParticles) {
+						neighborAtomstypesCurrent[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+						neighborParticleschargesCurrent[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+						neighborPositionsCurrent[threadIdx.x] = boxState->compoundsRelposLm[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch];
+					}
 
-					neighborPositionsCurrent[threadIdx.x] += relshifts[indexInBatch];
+					//cooperative_groups::memcpy_async(block, neighborAtomstypesCurrent, boxConfig.compoundsAtomtypes + currentNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES);
+					//cooperative_groups::memcpy_async(block, neighborParticleschargesCurrent, boxConfig.compoundsAtomCharges + currentNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * MAX_COMPOUND_PARTICLES);
+					//cooperative_groups::memcpy_async(block, neighborPositionsCurrent, &boxState->compoundsRelposLm[currentNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
+					//cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
+
+					//neighborPositionsCurrent[threadIdx.x] += relshifts[indexInBatch];
 					__syncthreads();
 				}
 			}
@@ -166,14 +169,17 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 			if (i + 1 < nNonbondedCompoundNeighbors && indexInBatch+1 < batchsize) {
 				static_assert(sizeof(Coord) == sizeof(Float3));
 				const int nextNeighborId = neighborIds[indexInBatch + 1];
-				const int nextNeighborNParticles = neighborNParticles[indexInBatch + 1];
+				//const int nextNeighborNParticles = neighborNParticles[indexInBatch + 1];
 
 				//neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
 				//neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
 
-				cooperative_groups::memcpy_async(block, neighborAtomstypesNext, boxConfig.compoundsAtomtypes + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);
-				cooperative_groups::memcpy_async(block, neighborPositionsNext, &boxState->compoundsRelposLm[nextNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Coord)* nextNeighborNParticles);
-				cooperative_groups::memcpy_async(block, neighborParticleschargesNext, boxConfig.compoundsAtomCharges + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * nextNeighborNParticles);
+				neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+				neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+
+				//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, boxConfig.compoundsAtomtypes + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);
+				//cooperative_groups::memcpy_async(block, neighborParticleschargesNext, boxConfig.compoundsAtomCharges + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * MAX_COMPOUND_PARTICLES);
+				cooperative_groups::memcpy_async(block, neighborPositionsNext, &boxState->compoundsRelposLm[nextNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Coord)* MAX_COMPOUND_PARTICLES);
 			}			
 					
 			if (threadIdx.x < compound.n_particles) {
@@ -181,11 +187,11 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 					neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 			}
 
-			cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
 			// Process the positions
 			if (indexInBatch + 1 < batchsize) {
+				cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
 				neighborPositionsNext[threadIdx.x] += relshifts[indexInBatch + 1];
-				__syncthreads();
+				//__syncthreads();
 			}	
 			indexInBatch++;
 		}
@@ -201,16 +207,17 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(SimulationDevice
 			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		}
 		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
+		//_boxState.compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
 	}
 }
-template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
+//template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step, const BoxState);
+//template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step, const BoxState);
+//template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step, const BoxState);
+//template  __global__ void compoundFarneighborShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step, const BoxState);
+//template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step, const BoxState);
+//template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step, const BoxState);
+//template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step, const BoxState);
+//template __global__ void compoundFarneighborShortrangeInteractionsKernel<NoBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step, const BoxState);
 #undef compound_index
 
 

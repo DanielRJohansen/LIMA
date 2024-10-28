@@ -21,6 +21,16 @@ struct BoxImage;
 
 
 // --------------------------------- Bond Factories --------------------------------- //
+
+struct ParticleFactory {
+	const int activeLjtypeParameterIndex = -1;
+	const TopologyFile::AtomsEntry* topAtom = nullptr;
+	//const GroRecord* groAtom = nullptr;
+	const Float3 position;
+	const int uniqueResId;
+	const int indexInGrofile; // 0-indexed
+};
+
 template <int n_Atoms, typename ParamsType>
 struct BondFactory {
 	static const int nAtoms = n_Atoms;
@@ -31,17 +41,6 @@ struct BondFactory {
 	std::array<uint32_t, nAtoms> global_atom_indexes;
 	std::string sourceLine;
 };
-
-struct ParticleFactory {	
-	const int activeLjtypeParameterIndex = -1;
-	const TopologyFile::AtomsEntry* topAtom = nullptr;
-	//const GroRecord* groAtom = nullptr;
-	const Float3 position;
-	const int uniqueResId;
-	const int indexInGrofile; // 0-indexed
-};
-
-
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
 using AngleBondFactory = BondFactory<3, AngleUreyBradleyBond::Parameters>;
 using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;

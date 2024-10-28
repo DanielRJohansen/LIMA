@@ -39,13 +39,14 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
+BoxState::BoxState(CompoundCoords* compoundCoordsBuffer, Solvent* solvents,
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
-	compoundcoordsCircularQueue(compoundcoordsCircularQueue), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
+	compoundCoordsBuffer(compoundCoordsBuffer), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
 	BoxState boxState(		
-		boxHost.compoundcoordsCircularQueue->CopyToDevice(), 
+		//boxHost.compoundcoordsCircularQueue->CopyToDevice(), 
+		GenericCopyToDevice(boxHost.compoundCoordsBuffer),
 		GenericCopyToDevice(boxHost.solvents), 
 		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
 		GenericCopyToDevice(boxHost.compoundInterimStates));
@@ -65,14 +66,17 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxHost.solvents.data(), boxtemp.solvents, sizeof(Solvent) * boxHost.solvents.size(), cudaMemcpyDeviceToHost);
 
+	GenericCopyToHost(boxtemp.compoundCoordsBuffer, boxHost.compoundCoordsBuffer, boxHost.compoundCoordsBuffer.size());
+	//cudaMemcpy(boxHost.compoundCoordsBuffer.data(), )
+
 	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
-	boxHost.compoundcoordsCircularQueue->CopyDataFromDevice(boxtemp.compoundcoordsCircularQueue);
+	//boxHost.compoundcoordsCircularQueue->CopyDataFromDevice(boxtemp.compoundcoordsCircularQueue);
 }
 void BoxState::FreeMembers() {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
-	cudaFree(boxtemp.compoundcoordsCircularQueue);
+	cudaFree(boxtemp.compoundCoordsBuffer);
 	cudaFree(boxtemp.solvents);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
 }

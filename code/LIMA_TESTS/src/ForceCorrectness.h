@@ -130,7 +130,8 @@ namespace ForceCorrectness {
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
-		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + box_host.compounds[0].singlebonds[0].params.b0);
 
 		// Now figure the expected force and potential
@@ -184,7 +185,8 @@ namespace ForceCorrectness {
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
-		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
 
 
@@ -250,7 +252,6 @@ namespace ForceCorrectness {
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 
 			env.run();
 
@@ -295,7 +296,8 @@ namespace ForceCorrectness {
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+			//CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
 
 			// First rotate particle #3 to the relaxed position + the error angle
 			Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
@@ -357,7 +359,8 @@ namespace ForceCorrectness {
 			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[2]].mass = 100000000.0f;*/
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+			//CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
 
 			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
 

@@ -26,10 +26,11 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		positions.push_back(extern_position);
 	}
 
-	CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-	if (simparams.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
-		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
+	/*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
+	coords_now = */
+	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select));
+	if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
+		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
 	}
 
 	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
@@ -65,6 +66,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	box->compounds.reserve(boxImage.compounds.size());
 	box->compoundInterimStates.reserve(boxImage.compounds.size());
+	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());
 	for (const CompoundFactory& compound : boxImage.compounds) {
 		InsertCompoundInBox(compound, *box, simparams);
 	}	
@@ -138,22 +140,24 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
-		// Create temporary storage
-		std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
-		const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
+		//simulation.box_host->compoundCoordsBuffer = boxsrc->compoundCoordsBuffer;
 
-		// Copy only the current step to temporary storage
-		CompoundCoords* src_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
-		memcpy(coords_t0.data(), src_t0, bytesize);
+		//// Create temporary storage
+		//std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
+		//const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
-		// Clear all of the data
-		simulation.box_host->compoundcoordsCircularQueue->Flush();
+		//// Copy only the current step to temporary storage
+		//CompoundCoords* src_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
+		//memcpy(coords_t0.data(), src_t0, bytesize);
 
-		// Copy the temporary storage back into the queue
-		for (int i = 0; i < 3; i++) {
-			CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
-			memcpy(dest_t0, coords_t0.data(), bytesize);
-		}
+		//// Clear all of the data
+		//simulation.box_host->compoundcoordsCircularQueue->Flush();
+
+		//// Copy the temporary storage back into the queue
+		//for (int i = 0; i < 3; i++) {
+		//	CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
+		//	memcpy(dest_t0, coords_t0.data(), bytesize);
+		//}
 
 		// TODO ERROR: we dont copy CompoundInterimState, so it is not a true state copy
 	}

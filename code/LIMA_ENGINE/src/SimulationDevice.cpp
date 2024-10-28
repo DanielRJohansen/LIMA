@@ -39,14 +39,25 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(CompoundCoords* compoundCoordsBuffer, Solvent* solvents,
+BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, Solvent* solvents,
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
-	compoundCoordsBuffer(compoundCoordsBuffer), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
+	compoundOrigos(compoundOrigos), compoundsRelposLm(compoundsRelpos), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
+	std::vector<NodeIndex> compoundsOrigos;
+	std::vector<Float3> compoundsRelPos;
+	for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
+		compoundsOrigos.push_back(compoundCoords.origo);
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].toFloat3());
+		}
+	}
+
+	
+
 	BoxState boxState(		
-		//boxHost.compoundcoordsCircularQueue->CopyToDevice(), 
-		GenericCopyToDevice(boxHost.compoundCoordsBuffer),
+		GenericCopyToDevice(compoundsOrigos),
+		GenericCopyToDevice(compoundsRelPos),
 		GenericCopyToDevice(boxHost.solvents), 
 		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
 		GenericCopyToDevice(boxHost.compoundInterimStates));
@@ -58,7 +69,7 @@ BoxState* BoxState::Create(const Box& boxHost) {
 	return boxStateDev;
 }
 void BoxState::CopyDataToHost(Box& boxHost) const {
-	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr);
+	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
@@ -66,17 +77,25 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxHost.solvents.data(), boxtemp.solvents, sizeof(Solvent) * boxHost.solvents.size(), cudaMemcpyDeviceToHost);
 
-	GenericCopyToHost(boxtemp.compoundCoordsBuffer, boxHost.compoundCoordsBuffer, boxHost.compoundCoordsBuffer.size());
-	//cudaMemcpy(boxHost.compoundCoordsBuffer.data(), )
+	std::vector<NodeIndex> compoundsOrigos;
+	std::vector<CompoundInterimState> compoundStates;
+	GenericCopyToHost(boxtemp.compoundOrigos, compoundsOrigos, boxHost.compounds.size());
+	GenericCopyToHost(boxtemp.compoundsInterimState, compoundStates, boxHost.compounds.size());
+	for (int cid = 0; cid < boxHost.compoundCoordsBuffer.size(); cid++) {
+		boxHost.compoundCoordsBuffer[cid].origo = compoundsOrigos[cid];
+		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++)
+			boxHost.compoundCoordsBuffer[cid].rel_positions[pid] = compoundStates[cid].coords[pid];
+	}
+
 
 	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
-	//boxHost.compoundcoordsCircularQueue->CopyDataFromDevice(boxtemp.compoundcoordsCircularQueue);
 }
 void BoxState::FreeMembers() {
-	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr);
+	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
-	cudaFree(boxtemp.compoundCoordsBuffer);
+	cudaFree(boxtemp.compoundOrigos);
+	cudaFree(boxtemp.compoundsRelposLm);
 	cudaFree(boxtemp.solvents);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
 }

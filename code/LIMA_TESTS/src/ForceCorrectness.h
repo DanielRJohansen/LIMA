@@ -292,23 +292,13 @@ namespace ForceCorrectness {
 
 		for (auto angle_error : angle_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			Float3& p3Pos = grofile.atoms[2].position;
+			p3Pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
+			for (auto& atom : grofile.atoms)
+				atom.position += Float3{ 3.f };
+
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
-
-			Box* box_host = env.getSimPtr()->box_host.get();
-			//CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
-
-			// First rotate particle #3 to the relaxed position + the error angle
-			Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
-			p3_pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
-
-			coordarray_ptr[0].rel_positions[2] = Coord{ p3_pos };		// Temp disabled, fix soon plz
-
-			// Now center all 3 particles
-			for (auto i = 0; i < 3; i++) {
-				coordarray_ptr->origo += NodeIndex{ 3, 3, 3 };
-			}
 
 			env.run();
 
@@ -351,34 +341,23 @@ namespace ForceCorrectness {
 		for (auto angle_error : angle_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-			env.CreateSimulation(grofile, topfile, params);
 
 
-		/*	env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[0]].mass = 100000000.0f;
-			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[1]].mass = 100000000.0f;
-			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[2]].mass = 100000000.0f;*/
 
-			Box* box_host = env.getSimPtr()->box_host.get();
-			//CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
+			auto atom_ids = topfile.GetMoleculeType().improperdihedralbonds[0].ids;			
+			Float3 i = grofile.atoms[atom_ids[0]].position;
+			Float3 j = grofile.atoms[atom_ids[1]].position;
+			Float3 k = grofile.atoms[atom_ids[2]].position;
+			Float3 l = grofile.atoms[atom_ids[3]].position;
 
-			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
-
-			Float3 i = coordarray_ptr[0].rel_positions[atom_ids[0]].toFloat3();
-			Float3 j = coordarray_ptr[0].rel_positions[atom_ids[1]].toFloat3();
-			Float3 k = coordarray_ptr[0].rel_positions[atom_ids[2]].toFloat3();
-			Float3 l = coordarray_ptr[0].rel_positions[atom_ids[3]].toFloat3();
-			
 			// Move i to origo
 			j -= i;
 			k -= i;
 			l -= i;
 			i -= i;	// Do this one last
 
-
-
-			const Float3 plane_normal = (j-i).cross(k-i).norm();
-			const Float3 l_vec = (l-i).norm();
+			const Float3 plane_normal = (j - i).cross(k - i).norm();
+			const Float3 l_vec = (l - i).norm();
 
 			const Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
 
@@ -386,9 +365,16 @@ namespace ForceCorrectness {
 			const Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
 
 
-			Float3 l_diff = (l_rotated - l_point) *l.len();
+			Float3 l_diff = (l_rotated - l_point) * l.len();
 
-			coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
+			//coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff };
+			grofile.atoms[atom_ids[3]].position += l_diff;
+
+
+			env.CreateSimulation(grofile, topfile, params);
+
+			Box* box_host = env.getSimPtr()->box_host.get();
+			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
 
 			env.run();
 

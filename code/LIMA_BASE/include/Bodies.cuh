@@ -232,6 +232,8 @@ struct CompoundInterimState {
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+
+	Coord coords[MAX_COMPOUND_PARTICLES];
 };
 
 // Rather large unique structures in global memory, that can be partly loaded when needed

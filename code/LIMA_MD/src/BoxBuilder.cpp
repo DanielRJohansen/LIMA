@@ -20,7 +20,6 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 	}
 	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
-
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
 		positions.push_back(extern_position);
@@ -33,8 +32,14 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
 	}
 
+	CompoundInterimState compoundState{};
+	memset(&compoundState, 0, sizeof(CompoundInterimState));
+	for (int i = 0; i < compound.n_particles; i++) {		
+		compoundState.coords[i] = Coord(box.compoundCoordsBuffer.back().rel_positions[i]);
+	}
+
 	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
-	box.compoundInterimStates.emplace_back(CompoundInterimState{compound});
+	box.compoundInterimStates.emplace_back(compoundState);
 	box.boxparams.n_compounds++;
 }
 

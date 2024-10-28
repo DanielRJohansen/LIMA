@@ -50,13 +50,12 @@ namespace NeighborLists {
 template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t step)
 {
-	//const CompoundCoords& compound_coords = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim_dev.boxState->compoundcoordsCircularQueue, step, compound_id);
-	const CompoundCoords& compound_coords = sim_dev.boxState->compoundCoordsBuffer[compound_id];
-	const NodeIndex compound_origo = compound_coords.origo;
+	const NodeIndex compoundOrigo = sim_dev.boxState->compoundOrigos[compound_id];
+	const Float3* const relPositions = &sim_dev.boxState->compoundsRelposLm[compound_id * MAX_COMPOUND_PARTICLES];
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = sim_dev.boxConfig.compounds[compound_id].interaction_boundary.key_particle_indices[i];
-		const Float3 abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
+		const Float3 abspos = compoundOrigo.toFloat3() + relPositions[particle_index] * LIMA_TO_NANO;
 		result[i] = abspos;
 	}
 }
@@ -192,10 +191,8 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
-//		const CompoundCoords& compound_coords = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim_dev->boxState->compoundcoordsCircularQueue, step, compound_id);
-		const CompoundCoords& compound_coords = sim_dev->boxState->compoundCoordsBuffer[compound_id];
 
-		const NodeIndex compound_origo = compound_coords.origo;
+		const NodeIndex compound_origo = sim_dev->boxState->compoundOrigos[compound_id];
 
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {

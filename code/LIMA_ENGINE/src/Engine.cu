@@ -231,17 +231,12 @@ void Engine::offloadTrainData() {
 void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 
-	std::vector<CompoundCoords> compoundcoords_array(simulation->box_host->boxparams.n_compounds);
-	//cudaMemcpy(compoundcoords_array.data(), sim_dev->boxState->compoundcoordsCircularQueue, sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost); // TODO DO i need to do this really?
-	// TODO: This can be done smarter now, just use the one already on boxhost
-	cudaMemcpy(compoundcoords_array.data(), sim_dev->boxState->compoundCoordsBuffer, sizeof(CompoundCoords) * simulation->box_host->boxparams.n_compounds, cudaMemcpyDeviceToHost); // TODO DO i need to do this really?
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// We need to bootstrap step-0 which is used for traj-buffer
 	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
 		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-
-			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundcoords_array[compound_id].origo, compoundcoords_array[compound_id].rel_positions[particle_id]);
+			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(simulation->box_host->compoundCoordsBuffer[compound_id].origo, simulation->box_host->compoundCoordsBuffer[compound_id].rel_positions[particle_id]);
 			simulation->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, 0) = particle_abspos;
 		}
 	}

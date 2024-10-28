@@ -169,36 +169,21 @@ namespace EngineUtils {
 	}
 
 
-
-
-
-
-
-
-
-
 	template <typename BoundaryCondition>
-	__device__ inline void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const CompoundCoords* const querycompound,
-		void* output_buffer, Float3& utility_float3, const int n_particles)
+	__device__ inline void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const NodeIndex& queryOrigo, const Float3* const queryRelpositions,
+		Float3* const output_buffer, Float3& utility_float3, const int n_particles)
 	{
 		if (threadIdx.x == 0) {
-			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(origo_self, querycompound->origo);
+			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(origo_self, queryOrigo);
 			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 			// calc Relative LimaPosition Shift from the origo-shift
 			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
 		}
-		//	__syncthreads();
-
-		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
-		cooperative_groups::wait(block);
 		__syncthreads();
 
-		// Eventually i could make it so i only copy the active particles in the compound
 		if (threadIdx.x < n_particles) {
-			const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
-			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + utility_float3;
+			output_buffer[threadIdx.x] = queryRelpositions[threadIdx.x] + utility_float3;
 		}
 		__syncthreads();
 	}

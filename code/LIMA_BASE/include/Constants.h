@@ -18,7 +18,7 @@
 #define ENABLE_INTEGRATEPOSITION
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = true;
+const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
 //#define GENERATETRAINDATA
 
@@ -63,7 +63,6 @@ constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;
 const float rminToSigma = 1.f / powf(2.f, (1.f / 6.f));
-//const float rminToSigma = powf(2.f, (1.f / 6.f));//wrong!
 
 
 const float DEG_TO_RAD = PI / 180.f;

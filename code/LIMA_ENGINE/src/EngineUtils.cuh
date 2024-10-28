@@ -203,20 +203,5 @@ namespace EngineUtils {
 		__syncthreads();
 	}
 
-	__device__ inline void getCompoundHyperpositionsAsFloat3Async(const CompoundCoords* const querycompound,
-		void* output_buffer, const int n_particles, const Float3& relshift)
-	{
-		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, (Coord*)output_buffer, querycompound->rel_positions, sizeof(Coord) * n_particles);
-		cooperative_groups::wait(block);
-
-		// Eventually i could make it so i only copy the active particles in the compound
-		if (threadIdx.x < n_particles) {
-			static_assert(sizeof(Float3) == sizeof(Coord), "Float3 and Coord must have same size");
-			/*const Coord queryparticle_coord = ((Coord*)output_buffer)[threadIdx.x];
-			((Float3*)output_buffer)[threadIdx.x] = queryparticle_coord.toFloat3() + relshift;*/
-		}
-	}
-
 };
 

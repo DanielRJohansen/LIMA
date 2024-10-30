@@ -70,8 +70,10 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 		
 #ifdef FORCE_NAN_CHECK
-		if (force.isNan())
-	printf("LJ nan");
+		if (force.isNan()) {
+			printf("LJ nan %f %f %f\n", dist_sq_reciprocal, sigma, epsilon);
+			diff.print('D');
+		}
 #endif
 
 		if constexpr (computePotE && ENABLE_POTE) {

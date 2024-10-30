@@ -14,7 +14,7 @@
 #error These are mutually exclusive
 #endif
 
-#define FORCE_NAN_CHECKS
+#define FORCE_NAN_CHECK
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
@@ -126,9 +126,7 @@ const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compound
 
 const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
 
-// Related to forcefield / constant memory
-const int MAX_ATOM_TYPES = 48;	// TODO: Make some checks we dont go above this in Active NB types
-// -------------------------------------------------------------------------------------------------------------- //
+
 
 
 

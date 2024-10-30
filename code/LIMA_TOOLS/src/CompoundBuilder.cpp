@@ -897,6 +897,14 @@ void VerifyBondsAreStable(const Topology& topology, float boxlen_nm, BoundaryCon
 		if (hyper_dist < bondRelaxedDist * 0.001)
 			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
 	}
+	for (const auto& bond : topology.anglebonds)
+	{
+		const Float3 pos1 = topology.particles[bond.global_atom_indexes[0]].position;
+		const Float3 pos2 = topology.particles[bond.global_atom_indexes[1]].position;
+		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
+		if (hyper_dist < 0.001)
+			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0 * LIMA_TO_NANO));
+	}
 }
 void VerifyBondsAreLegal(const std::vector<AngleBondFactory>& anglebonds, const std::vector<DihedralBondFactory>& dihedralbonds) {
 	for (const auto& bond : anglebonds) {

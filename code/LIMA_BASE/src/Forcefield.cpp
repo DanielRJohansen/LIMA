@@ -68,7 +68,8 @@ int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 			return i;
 		}
 	}
-
+	if (activeAtomTypes->size() == ForceField_NB::MAX_TYPES)
+		throw std::runtime_error("Cant handle so many unique atomtypes");
 	activeAtomTypes->push_back(parameter);
 	fastLookup.insert({ query, activeAtomTypes->size() - 1 });
 	return activeAtomTypes->size() - 1;
@@ -502,9 +503,11 @@ int ForcefieldManager::GetActiveLjParameterIndex(const std::optional<fs::path>& 
 }
 ForceField_NB ForcefieldManager::GetActiveLjParameters() {
 	ForceField_NB forcefield{};
-	const auto& activeParameters = activeLJParamtypes;
-	for (int i = 0; i < activeParameters->size(); i++)
-		forcefield.particle_parameters[i] = (*activeParameters)[i].parameters;
+	const std::vector<AtomType>& activeParameters = *activeLJParamtypes;
+	if (activeParameters.size() > ForceField_NB::MAX_TYPES)
+		throw std::runtime_error("Too many atom types");
+	for (int i = 0; i < activeParameters.size(); i++)
+		forcefield.particle_parameters[i] = activeParameters[i].parameters;
 	return forcefield;
 }
 

@@ -797,7 +797,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	BoxState* boxState = sim->boxState;
 
 	if (threadIdx.x == 0) {
-		bridge.loadMeta(&sim->boxConfig.bridge_bundle->compound_bridges[blockIdx.x]);
+		bridge.loadMeta(&sim->boxConfig.compoundBridges[blockIdx.x]);
 
 		
 	}
@@ -810,7 +810,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	}
 
 
-	bridge.loadData(&sim->boxConfig.bridge_bundle->compound_bridges[blockIdx.x]);
+	bridge.loadData(&sim->boxConfig.compoundBridges[blockIdx.x]);
 	__syncthreads();
 
 	if (particle_id_bridge < bridge.n_particles) {

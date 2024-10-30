@@ -349,19 +349,19 @@ struct CompoundBridge {
 	}
 };
 
-struct CompoundBridgeBundleCompact {
-	CompoundBridgeBundleCompact() {}
-	CompoundBridgeBundleCompact(const std::vector<CompoundBridge>& bridges) {
-		for (int i = 0; i < bridges.size(); i++) {
-			compound_bridges[i] = bridges[i];
-		}
-		n_bridges = static_cast<int>(bridges.size());
-	}
-
-
-	CompoundBridge compound_bridges[MAX_COMPOUNDBRIDGES];
-	int n_bridges = 0;
-};
+//struct CompoundBridgeBundleCompact {
+//	CompoundBridgeBundleCompact() {}
+//	CompoundBridgeBundleCompact(const std::vector<CompoundBridge>& bridges) {
+//		for (int i = 0; i < bridges.size(); i++) {
+//			compound_bridges[i] = bridges[i];
+//		}
+//		n_bridges = static_cast<int>(bridges.size());
+//	}
+//
+//
+//	CompoundBridge compound_bridges[MAX_COMPOUNDBRIDGES];
+//	int n_bridges = 0;
+//};
 
 
 

@@ -83,8 +83,8 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	box->bridge_bundle = std::move(boxImage.bridgebundle);					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
-	box->boxparams.n_bridges = box->bridge_bundle->n_bridges;
+	box->compoundBridges = boxImage.compoundBridges;
+	box->boxparams.n_bridges = boxImage.compoundBridges.size();
 
 	box->bpLutCollection = std::move(boxImage.bpLutCollection);
 

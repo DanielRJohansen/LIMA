@@ -69,8 +69,10 @@ namespace LJ {
 
 		const Float3 force = diff * force_scalar;
 		
-		/*if (force.isNan())
-	printf("LJ nan");*/
+#ifdef FORCE_NAN_CHECK
+		if (force.isNan())
+	printf("LJ nan");
+#endif
 
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles

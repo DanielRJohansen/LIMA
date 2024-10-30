@@ -964,19 +964,20 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 
-	auto bridges_compact = std::make_unique<CompoundBridgeBundleCompact>(
-		std::vector<CompoundBridge>(bridges.begin(), bridges.end())
-	);
-
-
 	const std::vector<Float3> solventPositions = LoadSolventPositions(grofile);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
+
+
+	std::vector<CompoundBridge> compoundBridges(bridges.size());
+	for (int i = 0; i < bridges.size(); i++) {
+		compoundBridges[i] = bridges[i];
+	}
 
 	return std::make_unique<BoxImage>(
 		std::move(compounds),
 		static_cast<int>(totalCompoundParticles),
 		bpLutManager->Finish(),
-		std::move(bridges_compact),
+		std::move(compoundBridges),
 		std::move(solventPositions),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefieldManager.GetActiveLjParameters(),

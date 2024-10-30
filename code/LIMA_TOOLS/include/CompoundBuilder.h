@@ -149,8 +149,8 @@ struct BoxImage {
 	const int32_t total_compound_particles;
 
 	std::vector<BondedParticlesLUT> bpLutCollection;
-
-	std::unique_ptr<CompoundBridgeBundleCompact> bridgebundle;
+	
+	std::vector<CompoundBridge> compoundBridges;
 
 	const std::vector<Float3> solvent_positions;
 

@@ -2,11 +2,11 @@
 
 
 
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridgeBundleCompact* bridgeBundle, BondedParticlesLUT* bpLUTs) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridge* bridges, BondedParticlesLUT* bpLUTs) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
-	bridge_bundle(bridgeBundle),
+	compoundBridges(bridges),
 	bpLUTs(bpLUTs)
 	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
@@ -21,7 +21,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(half) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
-	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bridge_bundle.get(), 1), GenericCopyToDevice(boxHost.bpLutCollection));
+	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.compoundBridges), GenericCopyToDevice(boxHost.bpLutCollection));
 	BoxConfig* devPtr;
 	cudaMallocManaged(&devPtr, sizeof(BoxConfig));
 	cudaMemcpy(devPtr, &boxTemp, sizeof(BoxConfig), cudaMemcpyHostToDevice);
@@ -34,7 +34,7 @@ void BoxConfig::FreeMembers() const {
 
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
 	cudaFree((void*)boxtemp.compoundsAtomCharges);
-	cudaFree((void*)boxtemp.bridge_bundle);
+	cudaFree((void*)boxtemp.compoundBridges);
 	cudaFree((void*)boxtemp.bpLUTs);
 }
 

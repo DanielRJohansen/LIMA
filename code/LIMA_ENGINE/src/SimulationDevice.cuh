@@ -8,7 +8,7 @@
 
 struct BoxConfig {	
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomCharges,
-		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs);
+		CompoundBridge* bridge_bundle,	BondedParticlesLUT* bpLUTs);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
@@ -17,7 +17,8 @@ struct BoxConfig {
 	const half* const compoundsAtomCharges;
 	
 	const Compound* const compounds;
-	const CompoundBridgeBundleCompact* const bridge_bundle;
+	//const CompoundBridgeBundleCompact* const bridge_bundle;
+	const CompoundBridge* const compoundBridges;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
 	const BondedParticlesLUT* const bpLUTs;

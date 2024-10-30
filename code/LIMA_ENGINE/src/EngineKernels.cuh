@@ -818,9 +818,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 
 		BridgeWarnings::verifyPRefValid(p_ref, bridge);
 
-		Coord relpos = Coord(boxState->compoundsRelposLm[p_ref.compound_id * MAX_COMPOUND_PARTICLES + p_ref.local_id_compound]); // TODONOW: Clean this up
-		relpos += utility_coord[p_ref.compoundid_local_to_bridge];
-		positions[threadIdx.x] = relpos.toFloat3();
+		positions[threadIdx.x] = boxState->compoundsRelposLm[p_ref.compound_id * MAX_COMPOUND_PARTICLES + p_ref.local_id_compound] + utility_coord[p_ref.compoundid_local_to_bridge].toFloat3();
 	}
 	__syncthreads();
 

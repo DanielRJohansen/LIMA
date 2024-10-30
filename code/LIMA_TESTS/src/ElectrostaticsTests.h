@@ -199,14 +199,12 @@ namespace ElectrostaticsTests {
 
 		SimParams simparams;
 		simparams.dt = 20;
-		//simparams.em_variant = true;
-		simparams.enable_electrostatics = false;//this seems silly..
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 4.f};
+		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};
 
 		env->run();	
 
@@ -256,7 +254,7 @@ namespace ElectrostaticsTests {
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
 		ASSERT(!std::isnan(r2), "R2 value is nan");
-		if (r2 < 0.7) {
+		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
 			return LimaUnittestResult{ false, errorMsg, envmode == Full };

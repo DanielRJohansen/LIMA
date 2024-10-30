@@ -41,6 +41,9 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
 	box.compoundInterimStates.emplace_back(compoundState);
 	box.boxparams.n_compounds++;
+
+	if (!simparams.enable_electrostatics)
+		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
 Float3 get3Random() {	// Returns 3 numbers between 0-1

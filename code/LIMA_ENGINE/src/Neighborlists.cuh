@@ -140,7 +140,7 @@ const int threads_in_compoundnlist_kernel = 256;
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t step) {
 
-	const int n_compounds = sim_dev->boxConfig.boxparams.n_compounds;
+	const int n_compounds = sim_dev->boxparams.n_compounds;
 	const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool compound_active = compound_id < n_compounds;
 
@@ -238,7 +238,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool block_active = block_id < BoxGrid::BlocksTotal(boxSize_device.blocksPerDim);
-	const int n_compounds = sim_dev->boxConfig.boxparams.n_compounds;
+	const int n_compounds = sim_dev->boxparams.n_compounds;
 
 	CompoundGridNode gridnode;
 

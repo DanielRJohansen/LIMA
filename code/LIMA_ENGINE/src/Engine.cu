@@ -17,6 +17,8 @@
 #include "SupernaturalForces.cuh"
 
 
+#include <unordered_set>
+
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
 //const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;
@@ -47,23 +49,23 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 		sim_dev = genericMoveToDevice(sim_dev, 1);
 	}
 	setDeviceConstantMemory();
+	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr, nullptr);
+	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr, nullptr);
+	cudaMemcpy(boxStateCopy.get(), sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
+	neighborlistsPtr = sim_dev->compound_neighborlists;
 
 
 
-	std::vector<NodeIndex> compoundsOrigos;
-	std::vector<Float3> compoundsRelPos;
-	for (const auto& compoundCoords : simulation->box_host->compoundCoordsBuffer) {
-		compoundsOrigos.push_back(compoundCoords.origo);
-		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].toFloat3());
-		}
-	}
-	boxStateCopy = std::make_unique<BoxState>(
-		GenericCopyToDevice(compoundsOrigos),
-		GenericCopyToDevice(compoundsRelPos),
-		GenericCopyToDevice(simulation->box_host->solvents),
-		simulation->box_host->solventblockgrid_circularqueue->CopyToDevice(),
-		GenericCopyToDevice(simulation->box_host->compoundInterimStates));
+
+
+	//std::unordered_set<std::string> unique_compounds;
+	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
+	//	char types[64];
+	//	memcpy(types, simulation->box_host->compounds[i].atom_types, 64);
+	//	unique_compounds.insert(std::string(types));
+	//}
+	//int a = 0;
 
 
 
@@ -301,7 +303,7 @@ void Engine::_deviceMaster() {
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
 	if (boxparams.n_compounds > 0) {
-		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), *boxStateCopy);
+		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics);
 		//LAUNCH_GENERIC_KERNEL_3(compoundFarneighborShortrangeInteractionsKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, logData, sim_dev, simulation->getStep());
 	}
 
@@ -338,7 +340,7 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		//LAUNCH_GENERIC_KERNEL_2(compoundBondsAndIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
-		compoundBondsAndIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
+		compoundBondsAndIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 	const auto t1 = std::chrono::high_resolution_clock::now();

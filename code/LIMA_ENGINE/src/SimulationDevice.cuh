@@ -8,11 +8,9 @@
 
 struct BoxConfig {	
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomCharges,
-		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs, const Box* const boxHost);
+		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
-
-
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
@@ -23,10 +21,6 @@ struct BoxConfig {
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
 	const BondedParticlesLUT* const bpLUTs;
-
-	const UniformElectricField uniformElectricField;	
-
-	const BoxParams boxparams;
 };
 
 struct BoxState {
@@ -108,6 +102,9 @@ struct SimulationDevice {
 
 	const BoxConfig boxConfig;
 	BoxState* const boxState;
+	const BoxParams boxparams;
+
+	//const UniformElectricField uniformElectricField;
 
 	//ChargeOctTree* charge_octtree;
 	Electrostatics::ChargeNode* chargeGrid = nullptr;

@@ -951,7 +951,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 			//for (const auto& bond : bridge.anglebonds) {
 			auto bond = bridge.anglebonds[bid];
 			std::unordered_set<int> ids;
-			for (auto& lid : bond.atom_indexes)	{
+			for (auto& lid : bond.atom_indexes) {
 				if (ids.contains(lid))
 					throw ("Angle bond contains the same index multiple times");
 				ids.insert(lid);
@@ -972,17 +972,15 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::vector<Float3> solventPositions = LoadSolventPositions(grofile);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
-	auto boxImage = std::make_unique<BoxImage>(
+	return std::make_unique<BoxImage>(
 		std::move(compounds),
 		static_cast<int>(totalCompoundParticles),
 		bpLutManager->Finish(),
 		std::move(bridges_compact),
 		std::move(solventPositions),
-		//std::move(preparedAtoms),
-		GroFile{ grofile },	// TODO: wierd ass copy here
-		forcefieldManager.GetActiveLjParameters(), 
-		std::move(topology)
+		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
+		forcefieldManager.GetActiveLjParameters(),
+		topology
 	);
 
-	return boxImage;
 }

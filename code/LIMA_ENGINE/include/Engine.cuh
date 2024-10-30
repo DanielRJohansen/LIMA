@@ -19,6 +19,8 @@ class SimulationDevice;
 class DatabuffersDeviceController;
 class Thermostat;
 class BoxState;
+class BoxConfig;
+class NeighborList;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
@@ -119,7 +121,11 @@ private:
 	std::unique_ptr<Simulation> simulation = nullptr;
 
 	SimulationDevice* sim_dev = nullptr;
+	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy = nullptr;
+	std::unique_ptr<BoxConfig> boxConfigCopy = nullptr;
+	NeighborList* neighborlistsPtr = nullptr; // dont own data!
+	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 

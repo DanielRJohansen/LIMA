@@ -86,8 +86,9 @@ int main() {
 
 		//GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\conf.gro)");
 		//grofile.box_size = Float3(std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z)));
-		//////Display::RenderGrofile(grofile);
+		////Display::RenderGrofile(grofile);
 		//TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\topol.top)");
+		//Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", envmode, false);
 		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
 		////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
 		//Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
@@ -103,7 +104,8 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
-		RunAllUnitTests();
+		//Benchmarks::Benchmark("manyt4"); 
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

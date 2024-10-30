@@ -69,15 +69,15 @@ namespace LJ {
 
 		const Float3 force = diff * force_scalar;
 		
+		/*if (force.isNan())
+	printf("LJ nan");*/
+
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}		
 
-		/*if (force.isNan())
-			printf("LJ nan");*/
-
 		if constexpr (emvariant)
-			return EngineUtils::ForceActivationFunction(force);
+			return EngineUtils::ForceActivationFunction(force, 100.f);
 		
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);

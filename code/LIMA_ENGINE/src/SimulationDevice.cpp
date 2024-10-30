@@ -2,14 +2,14 @@
 
 
 
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridgeBundleCompact* bridgeBundle, BondedParticlesLUT* bpLUTs, const Box* boxHost) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridgeBundleCompact* bridgeBundle, BondedParticlesLUT* bpLUTs) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
 	bridge_bundle(bridgeBundle),
-	bpLUTs(bpLUTs),
-	boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
-	uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
+	bpLUTs(bpLUTs)
+	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
+	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
 BoxConfig* BoxConfig::Create(const Box& boxHost) {
 	uint8_t* compoundsAtomtypes;
@@ -21,7 +21,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(half) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
-	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bridge_bundle.get(), 1), GenericCopyToDevice(boxHost.bpLutCollection), &boxHost);
+	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bridge_bundle.get(), 1), GenericCopyToDevice(boxHost.bpLutCollection));
 	BoxConfig* devPtr;
 	cudaMallocManaged(&devPtr, sizeof(BoxConfig));
 	cudaMemcpy(devPtr, &boxTemp, sizeof(BoxConfig), cudaMemcpyHostToDevice);
@@ -29,7 +29,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 	return devPtr;
 }
 void BoxConfig::FreeMembers() const {
-	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
@@ -145,7 +145,10 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
-	BoxState* boxState, const DatabuffersDeviceController& databuffers) : boxConfig(*boxConfig), boxState(boxState), params(params_host)
+	BoxState* boxState, const DatabuffersDeviceController& databuffers) : 
+	boxConfig(*boxConfig), boxState(boxState), params(params_host),
+	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
+	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
 	// Allocate structures for keeping track of solvents and compounds
 	compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);

@@ -99,7 +99,7 @@ namespace EngineUtils {
 	}
 
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force) {
+	__device__ static Float3 ForceActivationFunction(const Float3 force, float scalar=5.f) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
@@ -114,7 +114,7 @@ namespace EngineUtils {
 		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		const float alpha = 1000.f * LIMA / NANO * KILO * 100.f; // [1/l N/mol]
+		const float alpha = 1000.f * LIMA / NANO * KILO * scalar; // [1/l N/mol]
 
 		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);

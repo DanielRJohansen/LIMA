@@ -180,8 +180,9 @@ namespace Benchmarks {
 		GroFile grofile(groPath);
 
 		SimParams params{ workDir / "../sim_params.txt" };
-		params.dt = 100.f; 
-		Environment env{ workDir , ConsoleOnly };
+		params.dt = 100.f; 		
+		//Environment env{ workDir , ConsoleOnly };
+		Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);
 		env.run(false);
 

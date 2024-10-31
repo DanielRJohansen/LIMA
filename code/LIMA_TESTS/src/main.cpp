@@ -60,7 +60,7 @@ int main() {
 
 
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.442e-3, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 

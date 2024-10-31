@@ -189,11 +189,11 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
 		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx1", 0, -1.f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx2", 0, -.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx3", 0, -0.f, 10.f}, 40},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx4", 0, 0.5f, 10.f}, 15},
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "XXX", "lx5", 0, 1.f, 10.f},  15}
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx1", 0, -1.f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx2", 0, -.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx3", 0, -0.f, 10.f}, 40},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx4", 0, 0.5f, 10.f}, 15},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx5", 0, 1.f, 10.f},  15}
 			}, 
 			5.f
 			);
@@ -267,7 +267,7 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
 		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "XXX", "lxx", 0, 1.f, 12.011}, 100},
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 1.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			},
 			5.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
 		);

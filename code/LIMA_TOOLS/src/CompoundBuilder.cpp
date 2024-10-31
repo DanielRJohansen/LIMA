@@ -369,42 +369,39 @@ void BridgeFactory::addParticle(const ParticleToCompoundMapping& p2cMapping, std
 
 
 
-
+struct TinyMolRef {
+	int atomsOffsetInTinymols = 0;
+	int atomsOffsetInGrofile = 0;
+	const TopologyFile::MoleculeEntry& molecule;
+};
 struct MoleculeRef {
 	int atomsOffsetInMolecules = 0;
 	int atomsOffsetInGrofile = 0;
 	const TopologyFile::MoleculeEntry& molecule;
-	//std::optional<fs::path> customForcefieldPath;
 };
-std::vector<MoleculeRef> PrepareTopologies(const TopologyFile& topol) {
-	std::vector<MoleculeRef> topologies;
+std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> PrepareMolecules(const TopologyFile& topol) {
+	std::vector<MoleculeRef> molecules;
+	std::vector<TinyMolRef> tinyMolecules;
 
 	int atomsOffsetInMolecules = 0;
+	int atomsOffsetInTinyMolecules = 0;
 	int atomsOffsetInGrofile = 0;
 	for (const auto& molecule : topol.GetSystem().molecules) {
 		if (molecule.moleculetype->atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
 
-		// TODO Fix this
-		if (molecule.moleculetype->name == "SOL" || molecule.moleculetype->name == "TIP3" 
-			//|| molecule.moleculetype->name == "POT" || molecule.moleculetype->name == "CLA"
-			// || molecule.moleculetype->name == "PROA"|| molecule.moleculetype->name == "PROB"|| molecule.moleculetype->name == "PROC" || molecule.moleculetype->name == "PROD"
-			// || molecule.moleculetype->name == "PROE" || molecule.moleculetype->name == "PROF" || molecule.moleculetype->name == "PROG"|| molecule.moleculetype->name == "PROH" 
-			//|| molecule.moleculetype->name == "HETA" || molecule.moleculetype->name == "HETB"
-			//|| molecule.moleculetype->name == "POT" 
-		//if (molecule.moleculetype->name != "POPC" || molecule.moleculetype->name != "PROA"
-			//|| molecule.moleculetype->name == "POPC"
-			) 
+		if (molecule.moleculetype->atoms.size() <=3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
 		{
-			// DO nothing
+			tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
+			atomsOffsetInTinyMolecules += molecule.moleculetype->atoms.size();
 		}
 		else {
-			topologies.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule});
+			molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule});
 			atomsOffsetInMolecules += molecule.moleculetype->atoms.size();
 		}
 		atomsOffsetInGrofile += molecule.moleculetype->atoms.size();
 	}
-	return topologies;
+	return { molecules, tinyMolecules };
 }
 
 std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
@@ -935,11 +932,11 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	// Solvents are not present in top file, so we can't require these to match
 	//const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
 	//assert(gro_file.atoms.size() >= nNonsolventAtoms);
-	const std::vector<MoleculeRef> preparedTopologyFiles = PrepareTopologies(topol_file);
+	auto [molecules, tinyMolecules] = PrepareMolecules(topol_file);
 
 	ForcefieldManager forcefieldManager{topol_file.forcefieldInclude->contents};
 
-	const Topology topology = LoadTopology(preparedTopologyFiles, forcefieldManager, grofile);
+	const Topology topology = LoadTopology(molecules, forcefieldManager, grofile);
 	VerifyBondsAreStable(topology, grofile.box_size.x, simparams.bc_select, simparams.em_variant);
 	VerifyBondsAreLegal(topology.anglebonds, topology.dihedralbonds);
 

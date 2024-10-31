@@ -39,9 +39,9 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, Solvent* solvents,
+BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMol* tinyMols,
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
-	compoundOrigos(compoundOrigos), compoundsRelposLm(compoundsRelpos), solvents(solvents), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
+	compoundOrigos(compoundOrigos), compoundsRelposLm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
 	std::vector<NodeIndex> compoundsOrigos;
@@ -58,7 +58,7 @@ BoxState* BoxState::Create(const Box& boxHost) {
 	BoxState boxState(		
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
-		GenericCopyToDevice(boxHost.solvents), 
+		GenericCopyToDevice(boxHost.tinyMols),
 		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
 		GenericCopyToDevice(boxHost.compoundInterimStates));
 
@@ -75,7 +75,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
 //	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost); // This should NOT be necessary since the state dont change
 	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
-	cudaMemcpy(boxHost.solvents.data(), boxtemp.solvents, sizeof(Solvent) * boxHost.solvents.size(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxHost.tinyMols.data(), boxtemp.tinyMols, sizeof(TinyMol) * boxHost.tinyMols.size(), cudaMemcpyDeviceToHost);
 
 	std::vector<NodeIndex> compoundsOrigos;
 	std::vector<CompoundInterimState> compoundStates;
@@ -96,7 +96,7 @@ void BoxState::FreeMembers() {
 
 	cudaFree(boxtemp.compoundOrigos);
 	cudaFree(boxtemp.compoundsRelposLm);
-	cudaFree(boxtemp.solvents);
+	cudaFree(boxtemp.tinyMols);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
 }
 

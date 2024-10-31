@@ -6,6 +6,7 @@
 #include <string>
 
 #include <unordered_map>
+#include <unordered_set>
 #include <cassert>
 #include <cstdint>
 #include <limits>
@@ -79,7 +80,7 @@ namespace FileUtils {
 	void SkipIfdefBlock(std::ifstream& file);
 
 	// Returns true if the caller should move on to the next line
-	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line);
+	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines);
 };
 
 

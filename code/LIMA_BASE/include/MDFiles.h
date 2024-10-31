@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <stack>
 #include <unordered_map>
+#include <unordered_set>
 #include <queue>
 #include <ranges>
 
@@ -315,6 +316,8 @@ private:
 	friend class GenericItpFile;
 
 	static const char commentChar = ';';
+
+	std::unordered_set<std::string> defines; // keywords that are defined using #define in a top or itp file. Not fully implemented yet
 
 	/// <summary> Load a .top or .itp into a TopologyFile </summary>
 	/// <param name="name">If this is called on an include file, 

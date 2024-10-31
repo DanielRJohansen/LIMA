@@ -143,23 +143,53 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 void FileUtils::SkipIfdefBlock(std::ifstream& file) {
 	std::string line;
 	while (getline(file, line)) {
-		if (line.size() > 5 && line.substr(0, 7) == "#endif") {			
-			return;
-		}
+		line = line.substr(line.find_first_not_of(" ")); // Trim leading spaces
+		if (line.starts_with("#else") || line.starts_with("#endif")) return;
 	}
-
-	throw std::runtime_error(std::format("Failed to find #endif in file\n"));
+	throw std::runtime_error("Failed to find #endif in file\n");
 }
+bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines) {
+	auto pos = line.find_first_not_of(" ");
+	if (pos == std::string::npos) return false; // If no non-space character, skip
 
-
-bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line) {
-	if (line.size() > 5 && line.substr(0, 6) == "#ifdef") {
-		SkipIfdefBlock(file);
+	if (line.size() >= pos + 6 && line.substr(pos, 6) == "#ifdef") {
+		auto keyword = line.substr(pos + 6);
+		if (defines.find(keyword) == defines.end()) {
+			SkipIfdefBlock(file);
+		}
 		return true;
 	}
-	if (line.size() > 6 && line.substr(0, 7) == "#ifndef") {
-		SkipIfdefBlock(file);
+	else if (line.size() >= pos + 7 && line.substr(pos, 7) == "#ifndef") {
+		auto keyword = line.substr(pos + 7);
+		if (defines.find(keyword) != defines.end()) {
+			SkipIfdefBlock(file);
+		}
 		return true;
 	}
 	return false;
 }
+
+
+//void FileUtils::SkipIfdefBlock(std::ifstream& file) {
+//	std::string line;
+//	while (getline(file, line)) {
+//		if (line.size() > 5 && line.substr(0, 7) == "#endif") {			
+//			return;
+//		}
+//	}
+//
+//	throw std::runtime_error(std::format("Failed to find #endif in file\n"));
+//}
+//
+//
+//bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_map<std::string>& defines) {
+//	if (line.size() > 5 && line.substr(0, 6) == "#ifdef") {
+//		SkipIfdefBlock(file);
+//		return true;
+//	}
+//	if (line.size() > 6 && line.substr(0, 7) == "#ifndef") {
+//		SkipIfdefBlock(file);
+//		return true;
+//	}
+//	return false;
+//}

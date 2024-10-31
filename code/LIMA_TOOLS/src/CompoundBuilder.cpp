@@ -404,15 +404,18 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 	return { molecules, tinyMolecules };
 }
 
-std::vector<Float3> LoadSolventPositions(const GroFile& grofile) {
-	std::vector<Float3> solventPositions;// (grofile.atoms.size() - nNonsolventAtoms);
-	solventPositions.reserve(grofile.atoms.size());
+std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vector<TinyMolRef>& tinyMolsRefs, ForcefieldManager& forcefieldManager) {
+	std::vector<TinyMolFactory> tinyMols;// (grofile.atoms.size() - nNonsolventAtoms);
+	tinyMols.reserve(grofile.atoms.size());
 
-	for (const auto& atom : grofile.atoms)
-		if (atom.residueName == "SOL" && (atom.atomName[0] == 'O'))
-			solventPositions.emplace_back(atom.position);
-	
-	return solventPositions;
+	for (const TinyMolRef& tinyMolRef : tinyMolsRefs) {
+		// FOr now ignore that there are multiple atoms in a tinymol. LOOONG TODO
+		tinyMols.emplace_back(TinyMolFactory{});
+		tinyMols.back().position = grofile.atoms[tinyMolRef.atomsOffsetInGrofile].position;
+		tinyMols.back().LJTypeId = forcefieldManager.GetActiveLjParameterIndex(tinyMolRef.molecule.moleculetype->atoms[0].type);
+	}
+
+	return tinyMols;
 }
 
 
@@ -970,7 +973,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 
-	const std::vector<Float3> solventPositions = LoadSolventPositions(grofile);
+	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(grofile, tinyMolecules, forcefieldManager);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 
@@ -984,7 +987,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		static_cast<int>(totalCompoundParticles),
 		bpLutManager->Finish(),
 		std::move(compoundBridges),
-		std::move(solventPositions),
+		std::move(tinyMols),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefieldManager.GetActiveLjParameters(),
 		topology

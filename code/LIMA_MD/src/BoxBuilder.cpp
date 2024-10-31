@@ -105,14 +105,14 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 
 
-int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	for (Float3 sol_pos : solvent_positions) {
+	for (const auto& tinyMol: tinyMols) {
 		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
-
+		const Float3& sol_pos = tinyMol.position;
 
 		const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
 			sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
@@ -125,13 +125,13 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 	// Setup forces and vel's for VVS
 	//const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
-	box.solvents.reserve(box.boxparams.n_solvents);
+	box.tinyMols.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
 		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, SOLVENT_MASS);
 
-		box.solvents.emplace_back(Solvent{ direction * velocity, Float3{} });
+		box.tinyMols.emplace_back(TinyMol{ direction * velocity, Float3{} });
 	}
 
 

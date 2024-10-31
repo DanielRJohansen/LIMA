@@ -186,7 +186,7 @@ struct Box {
 	//std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 	std::vector<CompoundCoords> compoundCoordsBuffer;
 
-	std::vector<Solvent> solvents;
+	std::vector<TinyMol> tinyMols;
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
 
 	std::vector<CompoundBridge> compoundBridges;

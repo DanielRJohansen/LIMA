@@ -25,7 +25,7 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, Solvent* solvents,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMol* tinyMols,
 		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
@@ -35,7 +35,7 @@ struct BoxState {
 	NodeIndex* const compoundOrigos;
 	Float3* const compoundsRelposLm;
 
-	Solvent* const solvents;
+	TinyMol* const tinyMols;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
 };
 

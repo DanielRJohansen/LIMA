@@ -112,6 +112,10 @@ public:
 };
 
 
+struct TinyMolFactory : public TinyMol {
+	Float3 position;
+};
+
 class BridgeFactory : public CompoundBridge {
 public:
 	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) : bridge_id(bridge_id)
@@ -152,7 +156,7 @@ struct BoxImage {
 	
 	std::vector<CompoundBridge> compoundBridges;
 
-	const std::vector<Float3> solvent_positions;
+	const std::vector<TinyMolFactory> solvent_positions;
 
 	GroFile grofile;
 

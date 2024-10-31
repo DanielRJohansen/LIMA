@@ -116,7 +116,7 @@ inline bool isOnlySpacesAndTabs(const std::string& str) {
 
 
 
-
+// TODO: Redo this function, so the main line processing happens in the main top parse function
 TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype> moleculetype) {
 
 	TopologySection current_section{ TopologySection::moleculetype };
@@ -142,7 +142,7 @@ TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared
 			continue;
 		}	// Only title-sections + atoms reads the comments
 
-		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line))
+		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, {}))
 			continue;
 
 		std::istringstream iss(line);
@@ -293,7 +293,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			continue;
 		}	// Only title-sections + atoms reads the comments
 		
-		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line))
+		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
 			continue;
 
 		std::istringstream iss(line);
@@ -360,9 +360,6 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			std::string molname;
 			int cnt = 0;
 			iss >> molname >> cnt;
-
-			if (molname == "SOL")
-				continue;
 
 			if (topology.m_system.title == "noSystem")
 				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());

@@ -34,10 +34,10 @@ namespace _Thermostat {
 	};
 
 	struct TotalKineticEnergySolvents {
-		const Solvent* const states;
+		const TinyMol* const states;
 
 		__host__ __device__
-			TotalKineticEnergySolvents(const Solvent* const _states)
+			TotalKineticEnergySolvents(const TinyMol* const _states)
 			: states(_states){}
 
 		__host__ __device__
@@ -92,7 +92,7 @@ public:
 
 		// Step 2: Calculate kinetic energy for each solvent particle and store in the next segment of the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nSolvents),
-			intermediate + (nCompounds * MAX_COMPOUND_PARTICLES), _Thermostat::TotalKineticEnergySolvents(simDev->boxState->solvents));
+			intermediate + (nCompounds * MAX_COMPOUND_PARTICLES), _Thermostat::TotalKineticEnergySolvents(simDev->boxState->tinyMols));
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)
 		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + totalParticlesUpperbound, 0.0);

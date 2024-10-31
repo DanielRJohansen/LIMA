@@ -637,7 +637,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 
 
-	// --------------------------------------------------------------- Intrablock Solvent Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Intrablock TinyMol Interactions ----------------------------------------------------- //
 	{
 		__syncthreads(); // Sync since use of utility
 		if (solvent_active) {
@@ -651,7 +651,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	// --------------------------------------------------------------- Interblock Solvent Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Interblock TinyMol Interactions ----------------------------------------------------- //
 	const int query_range = 2;
 	for (int x = -query_range; x <= query_range; x++) {
 		for (int y = -query_range; y <= query_range; y++) {
@@ -686,7 +686,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	Coord relpos_next{};
 	if (solvent_active) {
 		const float mass = SOLVENT_MASS;
-		Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
+		TinyMol& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMol private data, for VVS
 
 		if constexpr (energyMinimize) {
 			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
@@ -698,13 +698,13 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 			EngineUtils::LogSolventData(sim->boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
-			Float3 vel_now = EngineUtils::integrateVelocityVVS(solventdata_ref.vel_prev, solventdata_ref.force_prev, force, simparams.dt, mass);
+			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref .force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
 			
 			vel_now = vel_now * thermostatScalar_device;
 
-			solventdata_ref.vel_prev = vel_now;
-			solventdata_ref.force_prev = force;
+			tinyMols_ref.vel_prev = vel_now;
+			tinyMols_ref.force_prev = force;
 
 			// Save pos locally, but only push to box as this kernel ends
 			relpos_next = pos_now;

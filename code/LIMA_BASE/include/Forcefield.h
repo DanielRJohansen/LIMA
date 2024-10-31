@@ -59,7 +59,7 @@ class ParameterDatabase;
 class LIMAForcefield {
 public:
 	LIMAForcefield();
-	LIMAForcefield(const fs::path& path, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
+	LIMAForcefield(const GenericItpFile& file, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
@@ -70,8 +70,6 @@ public:
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 
-	const fs::path path;
-
 private:
 	std::unique_ptr<LjParameterDatabase> ljParameters;
 
@@ -80,15 +78,16 @@ private:
 	std::unique_ptr<ParameterDatabase<DihedralbondType>> dihedralbondParameters;
 	std::unique_ptr<ParameterDatabase<ImproperDihedralbondType>> improperdihedralbondParameters;
 
-	void LoadFileIntoForcefield(const fs::path& path);
+	void LoadFileIntoForcefield(const GenericItpFile& file);
 };
 
 class ForcefieldManager {
 	std::shared_ptr<std::vector<AtomType>> activeLJParamtypes;
 
-	std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
+	//std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
+	std::unique_ptr<LIMAForcefield> forcefield;
 
-	LIMAForcefield& GetForcefield(const fs::path& forcefieldName);	
+	//LIMAForcefield& GetForcefield(const fs::path& forcefieldName);	
 
 	const fs::path internalForcefieldsDir = FileUtils::GetLimaDir() / "resources/forcefields";
 
@@ -97,13 +96,12 @@ class ForcefieldManager {
 
 public:
 
-	ForcefieldManager();
+	ForcefieldManager(const GenericItpFile& file);
 	~ForcefieldManager();
 
-	int GetActiveLjParameterIndex(const std::optional<fs::path>& forcefieldName, const std::string& query);
+	int GetActiveLjParameterIndex(const std::string& query);
 	ForceField_NB GetActiveLjParameters();
 
 	template<typename GenericBond>
-	const std::vector<typename GenericBond::Parameters>& GetBondParameters(
-		const std::optional<fs::path>& forcefieldName, const auto& query);
+	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 };

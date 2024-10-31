@@ -113,10 +113,10 @@ namespace cereal {
 		}
 	}
 
-	template <class Archive>
-	void serialize(Archive& archive, TopologyFile::ForcefieldInclude& include) {
-		archive(include.name);
-	}
+	//template <class Archive>
+	//void serialize(Archive& archive, TopologyFile::ForcefieldInclude& include) {
+	//	archive(include.name);
+	//}
 
 	template <class Archive>
 	void serialize(Archive& archive, std::array<std::string, 2>& strArr) {

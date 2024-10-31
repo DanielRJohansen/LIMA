@@ -71,9 +71,10 @@ class GenericItpFile {
 	using Section = std::vector<std::string>;
 
 	std::unordered_map<TopologySection, Section> sections;
-	const Section emptySection;  // Default empty section
+	Section emptySection;  // Default empty section
 
 public:
+	GenericItpFile() {}
 	GenericItpFile(const fs::path& path);
 
 	const Section& GetSection(TopologySection section) const {
@@ -196,17 +197,14 @@ public:
 		}
 	};
 	struct ForcefieldInclude {
-		ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
+		//ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
+		ForcefieldInclude(const fs::path& filename) : filename(filename) {};
 
+		void SaveToDir(const fs::path& dir) const;
+		void AddEntry(TopologySection section, const std::string& entry);
 
-		/// <summary>
-		/// Copies the forcefieldfile AND any include files to a target directory
-		/// </summary>
-		/// <param name="directory"></param>
-		void CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const;
-
-		std::string name; // Either name in resources/forcefields, or a path relative to the topologyfile
-		fs::path path; // NEVER SAVE/READ THIS TO DISK
+		const fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
+		GenericItpFile contents;
 	};
 	struct MoleculeEntry {
 		std::string name{};
@@ -273,11 +271,12 @@ public:
 					| std::views::join;
 	}
 
-
-	// Returns the top's forcefield IF it exists.
-	// If not, tries to return it's parents IF, if those exists
-	// Otherwise, returns nullopt
-	std::optional<fs::path> GetForcefieldPath() const;
+	const GenericItpFile& GetForcefield() const {
+		if (forcefieldInclude.has_value()) {
+			return forcefieldInclude->contents;
+		}
+		throw std::runtime_error("No forcefield include in this topology");
+	}
 
 	const Moleculetype& GetMoleculeType() const {
 		if (moleculetypes.size() != 1) {

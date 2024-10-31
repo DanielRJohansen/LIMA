@@ -82,21 +82,6 @@ inline std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::st
 	return std::nullopt;
 }
 
-inline fs::path SearchForFile(const fs::path& workDir, const std::string& includeName) {
-	// First look relative to the current topology file
-	std::optional<fs::path> includePath = _SearchForFile(workDir, includeName);
-
-	// If no value, look in the default includes dir
-	if (!includePath.has_value())
-		includePath = _SearchForFile(FileUtils::GetLimaDir() / "resources/Slipids", includeName);
-
-	if (!includePath.has_value())
-		throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", includeName, workDir.string()));
-
-	return includePath.value();
-}
-
-
 
 template <int n>
 inline bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int ids[n]) {
@@ -292,7 +277,8 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				if (topology.forcefieldInclude != std::nullopt)
 					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
 
-				topology.forcefieldInclude = ForcefieldInclude(includefileName.value_or(path.filename().string()), path);				
+				topology.forcefieldInclude.emplace(ForcefieldInclude(fs::path{includefileName.value_or("forcefield.itp")}));
+				//topology.forcefieldInclude = ForcefieldInclude(includefileName.value_or(path.filename().string()), path);				
 			}
 
 
@@ -384,7 +370,17 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
 			for (int i = 0; i < cnt; i++)
 				topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname) });
+			break;
 		}
+		case TopologySection::atomtypes:
+		case TopologySection::pairtypes:
+		case TopologySection::bondtypes:
+		case TopologySection::constainttypes:
+		case TopologySection::angletypes:
+		case TopologySection::dihedraltypes:
+		case TopologySection::impropertypes:
+			topology.forcefieldInclude->AddEntry(current_section, line);
+			break;
 		default:
 			// Do nothing
 			//throw std::runtime_error("Illegal state");
@@ -464,50 +460,61 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 	}
 }
 
-void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const {
+
+
+void TopologyFile::ForcefieldInclude::AddEntry(TopologySection section, const std::string& entry) {
+	contents.GetSection(section).emplace_back(entry);
+}
+
+
+void TopologyFile::ForcefieldInclude::SaveToDir(const fs::path& directory) const {
 	if (!fs::is_directory(directory)) {
 		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
 	}
-
-	// Create the target path for the main file
-	const fs::path toplevelForcefieldTargetPath = directory / name;
-	
-	if (fs::exists(toplevelForcefieldTargetPath) && fs::canonical(toplevelForcefieldTargetPath) == fs::canonical(path))
-		return; // This forcefield has already been copied to the target location
-
-	// Copy the main file
-	if (!fs::exists(toplevelForcefieldTargetPath.parent_path())) {
-		fs::create_directories(toplevelForcefieldTargetPath.parent_path()); // Create parent directories if they don't exist
-	}
-	fs::copy_file(path, toplevelForcefieldTargetPath, fs::copy_options::overwrite_existing);
-
-
-	std::vector<fs::path> subIncludes;
-	GenericItpFile ffInclude(path);
-
-	for (const std::string& subInclude : ffInclude.GetSection(includes)) {
-		subIncludes.emplace_back(path.parent_path() / subInclude);
+	if (filename.extension() != ".itp")
+		throw std::runtime_error("Forcefield include name must have .itp extension");	
+	std::ofstream file(directory / "forcefield.itp");
+	if (!file.is_open()) {
+		throw std::runtime_error(std::format("Failed to open file {}", (directory / "forcefield.itp").string()));
 	}
 
-	// Copy sub-includes
-	for (const auto& include : subIncludes) {
-		fs::path includeTargetPath = toplevelForcefieldTargetPath.parent_path() / include.filename();
-		if (!fs::exists(includeTargetPath.parent_path())) {
-			fs::create_directories(includeTargetPath.parent_path()); // Ensure directory structure exists
-		}
+	file << "[ defaults ]\n";
+	for (const auto& entry : contents.GetSection(defaults)) {
+		file << entry << '\n';
+	}
 
-		fs::copy_file(include, includeTargetPath, fs::copy_options::overwrite_existing);
+	file << "[ atomtypes ]\n";
+	for (const auto& entry : contents.GetSection(atomtypes)) {
+		file << entry << '\n';
+	}
+
+	file << "[ pairtypes ]\n";
+	for (const auto& entry : contents.GetSection(pairtypes)) {
+		file << entry << '\n';
+	}
+
+	file << "[ bondtypes ]\n";
+	for (const auto& entry : contents.GetSection(bondtypes)) {
+		file << entry << '\n';
+	}
+
+	file << "[ angletypes ]\n";
+	for (const auto& entry : contents.GetSection(angletypes)) {
+		file << entry << '\n';
+	}
+
+	file << "[ dihedraltypes ]\n";
+	for (const auto& entry : contents.GetSection(dihedraltypes)) {
+		file << entry << '\n';
+	}
+
+	file << "[ dihedraltypes ]\n";
+	for (const auto& entry : contents.GetSection(impropertypes)) {
+		file << entry << '\n';
 	}
 }
 
 
-
-std::optional<fs::path> TopologyFile::GetForcefieldPath() const {
-	if (forcefieldInclude)
-		return forcefieldInclude->path;
-
-	return std::nullopt;
-}
 
 void TopologyFile::AppendMolecule(const std::string& moleculename) {
 	if (!m_system.IsInit()) {
@@ -525,9 +532,9 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 
 		if (inputForcefieldInclude.has_value()) {
 			if (!forcefieldInclude.has_value())
-				forcefieldInclude = inputForcefieldInclude.value();
+				forcefieldInclude.emplace(inputForcefieldInclude.value());
 			else
-				assert(forcefieldInclude->name == inputForcefieldInclude->name);
+				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);
 		}
 	}
 	AppendMolecule(moleculetype->name);
@@ -546,8 +553,8 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 
 		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
 		if (forcefieldInclude) {
-			forcefieldInclude.value().CopyToDirectory(path.parent_path(), path.parent_path());
-			file << ("#include \"" + forcefieldInclude->name + "\"\n");
+			forcefieldInclude.value().SaveToDir(path.parent_path());
+			file << ("#include \"forcefield.itp\"\n");
 		}
 		file << "\n";
 

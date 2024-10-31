@@ -14,11 +14,11 @@
 #undef GLM_ENABLE_EXPERIMENTAL
 
 void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
-	ForcefieldManager forcefield{};
+	ForcefieldManager forcefield{topfile.forcefieldInclude->contents};
 	
 	std::vector<int> ljtypeIndices;
 	for (const auto& atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
-		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(topfile.GetForcefieldPath(), atom.type));
+		ljtypeIndices.push_back(forcefield.GetActiveLjParameterIndex(atom.type));
 	}
 	ForceField_NB forcefieldNB = forcefield.GetActiveLjParameters();
 

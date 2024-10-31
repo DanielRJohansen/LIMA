@@ -193,10 +193,9 @@ namespace ForceCorrectness {
 
 
 		// Now figure out how fast the bond should oscillate
-		const auto atomtypeA = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[0]];
-		const auto atomtypeB = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[1]];
-
-		const double reducedMass = atomtypeA.mass * atomtypeB.mass / (atomtypeA.mass + atomtypeB.mass); // [kg/mol]
+		const float massA = box_host.compounds[0].atomMasses[0];
+		const float massB = box_host.compounds[0].atomMasses[1];
+		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
 		const double kB = box_host.compounds[0].singlebonds[0].params.kb / LIMA / LIMA; // [J/(mol m^2)]
 
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
@@ -452,7 +451,7 @@ namespace VerletintegrationTesting {
 
 
 		const float particleCharge = static_cast<float>(env.getSimPtr()->box_host->compounds[0].atom_charges[0]) * KILO; // [C/mol]
-		const float particleMass = env.getSimPtr()->forcefield.particle_parameters[1].mass; // [kg/mol]
+		const float particleMass = env.getSimPtr()->box_host->compounds[0].atomMasses[0]; // [kg/mol]
 
 		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
 		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]

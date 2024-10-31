@@ -19,6 +19,7 @@ struct AtomType {
 	int atNum{};
 	ForceField_NB::ParticleParameters parameters{};
 	float charge{}; // [kilo C/mol]
+	float mass{}; // [kg/mol]
 	char ptype{};
 };
 

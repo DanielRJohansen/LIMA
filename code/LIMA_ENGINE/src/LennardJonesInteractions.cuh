@@ -57,7 +57,7 @@ namespace LJ {
 	/// <param name="epsilon">[J/mol]</param>
 	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
 	template<bool computePotE, bool emvariant>
-	__device__ static Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
+	__device__ inline Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
 

@@ -123,13 +123,13 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 	}
 
 	// Setup forces and vel's for VVS
-	const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
+	//const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
 	const float default_solvent_start_temperature = 310;	// [K]
 	box.solvents.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
-		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
+		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, SOLVENT_MASS);
 
 		box.solvents.emplace_back(Solvent{ direction * velocity, Float3{} });
 	}

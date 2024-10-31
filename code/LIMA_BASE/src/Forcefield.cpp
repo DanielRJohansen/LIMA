@@ -15,7 +15,6 @@ namespace lfs = FileUtils;
 
 
 
-const float water_mass = (15.999000f + 2.f * 1.008000f);	// [g]
 //const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
 const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
 const float water_epsilon = 0.1591f * kcalToJoule;
@@ -324,10 +323,10 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
 		std::istringstream iss(line);
-
+		//float massUnused; // we take the one from topology, not FF file
 		AtomType atomtype{};
 		iss >> atomtype.name >> atomtype.atNum
-			>> atomtype.parameters.mass		// [g]
+			>> atomtype.mass				// [g]
 			>> atomtype.charge				// [e]
 			>> atomtype.ptype
 			>> atomtype.parameters.sigma	// [nm]
@@ -335,7 +334,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
 
-		atomtype.parameters.mass /= static_cast<float>(KILO);
+		atomtype.mass /= static_cast<float>(KILO);
 		atomtype.parameters.sigma *= NANO_TO_LIMA;
 		atomtype.parameters.epsilon *= KILO;
 
@@ -461,7 +460,7 @@ template const std::vector<ImproperDihedralBond::Parameters>& LIMAForcefield::Ge
 ForcefieldManager::ForcefieldManager() {
 	activeLJParamtypes = std::make_shared<std::vector<AtomType>>();
 
-	activeLJParamtypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)
+	activeLJParamtypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)
 
 	forcefields.emplace_back(std::make_unique<LIMAForcefield>(limaTestForcefield, activeLJParamtypes));
 }

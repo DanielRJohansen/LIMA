@@ -266,7 +266,7 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
 		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "XXX", "lxx", 0, 1.f, 10.f}, 100},				
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "XXX", "lxx", 0, 1.f, 12.011}, 100},
 			},
 			5.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
 		);

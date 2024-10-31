@@ -255,6 +255,8 @@ struct Compound : public CompoundCompact {
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
 
+	float atomMasses[MAX_COMPOUND_PARTICLES];	// [kg/mol]
+
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 
 	int absoluteIndexOfFirstParticle = 0;
@@ -356,7 +358,7 @@ struct ForceField_NB {
 	static const int MAX_TYPES = 64;
 
 	struct ParticleParameters {	//Nonbonded
-		float mass = -1;		//[kg/mol]	or 
+		//float mass = -1;		//[kg/mol]	or 
 		float sigma = -1;		// [lm]
 		float epsilon = -1;		// [J/mol]
 	};

@@ -343,7 +343,7 @@ struct TopologyFile::AtomsEntry {
 	std::string atomname{};
 	int cgnr{};
 	float charge{};// In elementary charges [e]. Convert to kilo C/mol before using
-	float mass{};
+	float mass{}; // [g/mol]
 	//int chain_id{ -1 };
 
 	void composeString(std::ostringstream& oss) const;

@@ -16,18 +16,17 @@ namespace _Thermostat {
 
 	struct TotalKineticEnergyCompounds {
 		const CompoundInterimState* const states;
-		const uint8_t* const atomTypes;
+		const Compound* const compounds;
 
 		__host__ __device__
-			TotalKineticEnergyCompounds(const CompoundInterimState* const _states, const uint8_t* const atomTypes)
-			: states(_states), atomTypes(atomTypes){}
+			TotalKineticEnergyCompounds(const CompoundInterimState* const _states, const Compound* const compounds)
+			: states(_states), compounds(compounds){}
 
 		__host__ __device__
 			float operator()(int idx) const {
 			int compoundIdx = idx / MAX_COMPOUND_PARTICLES;
 			int particleIdx = idx % MAX_COMPOUND_PARTICLES;
-			uint8_t atomType = atomTypes[idx];
-			const float mass = forcefield_device.particle_parameters[atomType].mass;
+			const float mass = compounds[compoundIdx].atomMasses[particleIdx];
 
 			const Float3& velocity = states[compoundIdx].vels_prev[particleIdx];
 			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO: calcKineticEnergy can use lenSquared instead, save a sqrtf!!		
@@ -43,7 +42,7 @@ namespace _Thermostat {
 
 		__host__ __device__
 			float operator()(int idx) const {
-			const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
+			const float mass = SOLVENT_MASS;
 
 			const Float3& velocity = states[idx].vel_prev;
 			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO: calcKineticEnergy can use lenSquared instead, save a sqrtf!!
@@ -89,7 +88,7 @@ public:
 	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams) {
 		// Step 1: Calculate kinetic energy for each compound particle and store in the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nCompounds * MAX_COMPOUND_PARTICLES),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState->compoundsInterimState, simDev->boxConfig.compoundsAtomtypes));
+			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState->compoundsInterimState, simDev->boxConfig.compounds));
 
 		// Step 2: Calculate kinetic energy for each solvent particle and store in the next segment of the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nSolvents),

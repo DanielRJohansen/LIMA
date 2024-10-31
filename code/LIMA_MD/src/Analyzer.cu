@@ -29,7 +29,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 
 	if (particle_index == 0) {
 		data_out[compound_index + (step) * boxparams.n_compounds] = Float3{};
-		compound = compounds[compound_index];
+		compound = compounds[compound_index]; // TODO: this is silly, just use the global one directly
 	}
 	__syncthreads();
 
@@ -38,8 +38,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 	}
 	__syncthreads();
 
-	const uint8_t atom_type = compound.atom_types[particle_index];
-	const float mass = forcefield->particle_parameters[atom_type].mass;
+	const float mass = compound.atomMasses[particle_index];
 
 	const int64_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int64_t step_offset = step * boxparams.total_particles_upperbound;

@@ -227,6 +227,7 @@ void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id
 	atomLetters[n_particles] = particle.topAtom->type[0];
 
 	atom_charges[n_particles] = particle.topAtom->charge * elementaryChargeToKiloCoulombPerMole;
+	atomMasses[n_particles] = particle.topAtom->mass / KILO;
 
 	indicesInGrofile[n_particles] = particle.indexInGrofile;
 

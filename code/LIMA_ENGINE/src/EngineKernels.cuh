@@ -491,8 +491,8 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 	if (threadIdx.x < nParticles) {
-		const float mass = forcefield_device.particle_parameters[atom_types[threadIdx.x]].mass;
-		
+		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
+
 		// Energy minimize
 		if constexpr (emvariant) {
 			const float progress = static_cast<float>(step) / static_cast<float>(sim->params.n_steps);
@@ -685,7 +685,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 	Coord relpos_next{};
 	if (solvent_active) {
-		const float mass = forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass;
+		const float mass = SOLVENT_MASS;
 		Solvent& solventdata_ref = boxState->solvents[solventblock.ids[threadIdx.x]];	// Solvent private data, for VVS
 
 		if constexpr (energyMinimize) {

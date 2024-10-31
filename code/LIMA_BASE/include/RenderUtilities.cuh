@@ -5,7 +5,7 @@
 
 
 namespace RenderUtilities {
-	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, LIMA_CUSTOM };
+	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, M, LIMA_CUSTOM };
 
     __device__ __host__ inline ATOM_TYPE RAS_getTypeFromAtomletter(char atom) {
         switch (atom)
@@ -22,6 +22,8 @@ namespace RenderUtilities {
             return ATOM_TYPE::P;
         case 'S':
             return ATOM_TYPE::S;
+        case 'M':
+            return ATOM_TYPE::M;
         case 'l':
             return ATOM_TYPE::LIMA_CUSTOM;
         default:
@@ -47,6 +49,8 @@ namespace RenderUtilities {
             return float4{ 0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 1.0f };
         case ATOM_TYPE::S:
             return float4{ 0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 1.0f };
+        case ATOM_TYPE::M:
+			return float4{ 0xCC / 255.0f, 0xCC / 255.0f, 0xCC / 255.0f, 1.0f };
         case ATOM_TYPE::NONE:
             return float4{ 0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 1.0f };
         default:
@@ -72,6 +76,8 @@ namespace RenderUtilities {
             return 0.18f;
         case ATOM_TYPE::S:
             return 0.189f;
+        case ATOM_TYPE::M:
+            return 0.173f;
         case ATOM_TYPE::LIMA_CUSTOM:
             return 0.1f;
         case ATOM_TYPE::NONE:

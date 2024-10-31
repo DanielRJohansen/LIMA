@@ -96,6 +96,11 @@ std::unordered_map<std::string, std::string> FileUtils::parseINIFile(const std::
 	return dict;
 }
 
+std::string FileUtils::ExtractBetweenQuotemarks(const std::string& input) {
+	auto start = input.find('"') + 1;
+	return input.substr(start, input.find('"', start) - start);
+}
+
 void replaceTabs(std::string& str) {
 	// Find the first occurrence of '\t' in the string
 	size_t found = str.find('\t');

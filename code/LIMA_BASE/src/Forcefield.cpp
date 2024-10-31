@@ -309,16 +309,13 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 	GenericItpFile file{ path };
 
 	for (const auto& line : file.GetSection(TopologySection::includes)) {
-		std::string includedFile = line.substr(9); // Get the substring after '#include '
-		includedFile = includedFile.substr(1, includedFile.size() - 2); // Remove the quotation marks
-
 		// Temp to avoid duplicate types, need to find an elegant solution to this... Maybe only search for multiparams a couple elements ahead, untiill not more matches, instead of always searching entire file
-		if (includedFile.find("ffna") != std::string::npos) {
+		if (line.find("ffna") != std::string::npos) {
 			continue;
 		}
 
 		// Construct the new path
-		fs::path newPath = path.parent_path() / includedFile;
+		fs::path newPath = path.parent_path() / line;
 
 		// Recursively call the function with the new path
 		LoadFileIntoForcefield(newPath);

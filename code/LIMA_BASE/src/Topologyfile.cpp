@@ -291,10 +291,8 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				// This file is a forcefield. We add it to the includes, and return to parent topol
 				if (topology.forcefieldInclude != std::nullopt)
 					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
-				if (!includefileName.has_value())
-					throw std::runtime_error("Forcefield ([ default ] directive) encountered in toplevel topology file, this is not supported");
-				topology.forcefieldInclude = ForcefieldInclude(*includefileName, path);
-				return;
+
+				topology.forcefieldInclude = ForcefieldInclude(includefileName.value_or(path.filename().string()), path);				
 			}
 
 
@@ -409,7 +407,7 @@ TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path
 
 
 GenericItpFile::GenericItpFile(const fs::path& path) {
-	if (path.extension().string() != ".itp") { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
+	if (!(path.extension().string() == ".itp" || path.extension().string() == ".top")) { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
 	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
 
 	std::ifstream file;
@@ -436,7 +434,7 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 			if (!sections.contains(includes))
 				sections.insert({ includes, {} });
 
-			sections.at(includes).emplace_back(line);
+			sections.at(includes).emplace_back(FileUtils::ExtractBetweenQuotemarks(line));
 			continue;
 		}
 
@@ -466,20 +464,6 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 	}
 }
 
-std::optional<std::string> extractStringBetweenQuotationMarks(const std::string& in) {
-	size_t first_quote = in.find('"');
-	if (first_quote == std::string::npos) {
-		return std::nullopt;
-	}
-
-	size_t second_quote = in.find('"', first_quote + 1);
-	if (second_quote == std::string::npos) {
-		return std::nullopt;
-	}
-
-	return in.substr(first_quote + 1, second_quote - first_quote - 1);
-}
-
 void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory, const fs::path& ownerDir) const {
 	if (!fs::is_directory(directory)) {
 		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
@@ -502,11 +486,7 @@ void TopologyFile::ForcefieldInclude::CopyToDirectory(const fs::path& directory,
 	GenericItpFile ffInclude(path);
 
 	for (const std::string& subInclude : ffInclude.GetSection(includes)) {
-		auto subIncludeName = extractStringBetweenQuotationMarks(subInclude);
-		if (!subIncludeName.has_value()) {
-			throw std::runtime_error("Could not extract include name from include directive: " + subInclude);
-		}
-		subIncludes.emplace_back(path.parent_path() / subIncludeName.value());
+		subIncludes.emplace_back(path.parent_path() / subInclude);
 	}
 
 	// Copy sub-includes

@@ -227,7 +227,7 @@ void Display::Mainloop() {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
                 }
                 else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->grofile.atoms.size());
+                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->nAtoms);
 				}
                 }, currentRenderTask);
         }

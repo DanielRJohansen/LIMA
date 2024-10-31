@@ -66,7 +66,9 @@ namespace Rendering {
 
 	struct GrofileTask {
 		const GroFile& grofile;
+		bool drawSolvent = true;
 		ColoringMethod coloringMethod = Atomname;
+		int nAtoms;
 	};
 
 	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
@@ -95,9 +97,9 @@ public:
 	std::exception_ptr displayThreadException{ nullptr };
 
 	static void TestDisplay();
-	static void RenderGrofile(const GroFile& grofile) {
+	static void RenderGrofile(const GroFile& grofile, bool drawSolvent=true) {
 		Display d;
-		d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
+		d.Render(std::make_unique<Rendering::GrofileTask>(grofile, drawSolvent), true);
 	}
 
 private:
@@ -115,7 +117,7 @@ private:
 
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
-	void PrepareNewRenderTask(const Rendering::GrofileTask&);
+	void PrepareNewRenderTask(Rendering::GrofileTask&);
 
 
 	// Interfacing

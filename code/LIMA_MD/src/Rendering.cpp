@@ -197,24 +197,38 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 }
 
 
-void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
+void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
+    int nAtoms = task.grofile.atoms.size();
+    if (!task.drawSolvent) {
+        for (int i = 0; i < task.grofile.atoms.size(); i++) {
+            auto resname = task.grofile.atoms[i].residueName;
+            if (resname == "SOL" || resname == "TIP3") {
+                nAtoms = i;
+                break;
+            }
+        }
+    }
+    task.nAtoms = nAtoms;
+
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsShader)
-		drawAtomsShader = std::make_unique<DrawAtomsShader>(task.grofile.atoms.size(), &renderAtomsBufferCudaResource);
+		drawAtomsShader = std::make_unique<DrawAtomsShader>(nAtoms, &renderAtomsBufferCudaResource);
+
+
 
     camera.Update(task.grofile.box_size);
 
 	// Preprocess the renderAtoms
 	{
-		renderAtomsTemp.resize(task.grofile.atoms.size());
+		renderAtomsTemp.resize(nAtoms);
 
-        for (int i = 0; i < task.grofile.atoms.size(); i++) {
+        for (int i = 0; i < nAtoms; i++) {
 			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
             if (task.coloringMethod == GradientFromAtomid)
-                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.grofile.atoms.size());
+                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
             else 
 			    renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
 		}
@@ -228,7 +242,7 @@ void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
 		size_t num_bytes = 0;
 		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
 
-		if (num_bytes != task.grofile.atoms.size() * sizeof(RenderAtom)) {
+		if (num_bytes != nAtoms * sizeof(RenderAtom)) {
 			throw std::runtime_error("RenderAtom buffer size mismatch");
 		}
 

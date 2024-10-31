@@ -26,6 +26,8 @@ namespace FileUtils {
 
 	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
 
+	std::string ExtractBetweenQuotemarks(const std::string& input);
+
 	// Return the top level LIMA dir
 	fs::path GetLimaDir();
 

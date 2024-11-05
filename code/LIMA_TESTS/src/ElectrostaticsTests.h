@@ -75,9 +75,9 @@ namespace ElectrostaticsTests {
 		Box* box_host = env.getSimPtr()->box_host.get();
 
 		// Disable LJ force
-		ASSERT(box_host->compounds[0].atom_types[0] == 1, "Expected atom type 1");
-		ASSERT(box_host->compounds[1].atom_types[0] == 1, "Expected atom type 1");
-		env.getSimPtr()->forcefield.particle_parameters[1].epsilon = 0.f;
+		ASSERT(box_host->compounds[0].atom_types[0] == 0, "Expected atom type 0");
+		ASSERT(box_host->compounds[1].atom_types[0] == 0, "Expected atom type 0");
+		env.getSimPtr()->forcefield.particle_parameters[0].epsilon = 0.f;
 
 
 		env.run();

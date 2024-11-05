@@ -32,6 +32,13 @@ namespace LJ {
 		return sqrtf(forcefield.types[tinymolType1].epsilon * forcefield.types[tinymolType2].epsilon);
 	}
 
+	__device__ inline float CalcSigma(float s1, float s2) {
+		return (s1 + s2) * 0.5f;
+	}
+	__device__ inline float CalcEpsilon(float e1, float e2) {
+		return sqrtf(e1 * e2);
+	}
+
 	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };
 
 
@@ -211,10 +218,8 @@ namespace LJ {
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
-				/*CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),*/
-				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
-				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
+				CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
 				exclude_own_index ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
 				threadIdx.x, i
 			);
@@ -225,19 +230,25 @@ namespace LJ {
 	// False fix the hardcoded template params here
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
-		const ForceField_NB& forcefield) {	// Specific to solvent kernel
+		const ForceField_NB& forcefield, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
 		Float3 force{};
+
+		const float mySigma = forcefield.particle_parameters[atomtype_self].sigma;
+		const float myEps = forcefield.particle_parameters[atomtype_self].epsilon;		
+
 		for (int i = 0; i < n_particles; i++) {
 
 			const Float3 diff = (positions[i] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
+
+
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
-				calcEpsilon(atomtype_self, ATOMTYPE_SOLVENT, forcefield),
+				CalcSigma(mySigma, forcefieldTinymol_shared.types[tinymolTypeIds[i]].sigma),
+				CalcEpsilon(myEps, forcefieldTinymol_shared.types[tinymolTypeIds[i]].epsilon),
 				CalcLJOrigin::SolCom,
-				atomtype_self, ATOMTYPE_SOLVENT
+				atomtype_self, -1
 			);
 		}
 		return force * 24.f;
@@ -245,9 +256,10 @@ namespace LJ {
 	
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
-		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id)
+		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t tinymolTypeId)
 	{
 		Float3 force(0.f);
+
 		for (int i = 0; i < n_particles; i++) {
 			 
 			const Float3 diff = (positions[i] - self_pos);
@@ -255,8 +267,8 @@ namespace LJ {
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				calcSigma(ATOMTYPE_SOLVENT, atomtypes_others[i]),
-				calcEpsilon(ATOMTYPE_SOLVENT, atomtypes_others[i]),
+				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, forcefield_device.particle_parameters[atomtypes_others[i]].sigma),
+				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, forcefield_device.particle_parameters[atomtypes_others[i]].epsilon),
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);

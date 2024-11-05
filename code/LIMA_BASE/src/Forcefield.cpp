@@ -8,15 +8,6 @@
 
 using std::string;
 
-
-
-//const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
-const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
-const float water_epsilon = 0.1591f * kcalToJoule;
-
-const float waterSigma = 3.16557e-01;
-const float waterEpsilon = 6.50194e-01;
-
 class AtomtypeDatabase {
 	std::unordered_map<std::string, AtomType> atomTypes;
 
@@ -28,9 +19,6 @@ class AtomtypeDatabase {
 public:
 	AtomtypeDatabase() {
 		activeAtomTypes = std::make_shared<std::vector<AtomType>>();
-
-		//activeAtomTypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)	
-		activeAtomTypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{waterSigma * NANO_TO_LIMA, waterEpsilon * KILO}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)	
 	}
 	void insert(AtomType element);
 	int GetActiveIndex(const std::string& query);

@@ -14,7 +14,7 @@
 #undef GLM_ENABLE_EXPERIMENTAL
 
 void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& topfile, const fs::path& workdir) {
-	ForcefieldManager forcefield{topfile.forcefieldInclude->contents};
+	LIMAForcefield forcefield{topfile.forcefieldInclude->contents};
 	
 	std::vector<int> ljtypeIndices;
 	for (const auto& atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {

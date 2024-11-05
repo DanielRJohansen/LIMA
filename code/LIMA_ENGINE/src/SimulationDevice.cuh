@@ -14,10 +14,8 @@ struct BoxConfig {
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
-	const half* const compoundsAtomCharges;
-	
+	const half* const compoundsAtomCharges;	
 	const Compound* const compounds;
-	//const CompoundBridgeBundleCompact* const bridge_bundle;
 	const CompoundBridge* const compoundBridges;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
@@ -25,7 +23,7 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMol* tinyMols,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
 		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
@@ -35,7 +33,7 @@ struct BoxState {
 	NodeIndex* const compoundOrigos;
 	Float3* const compoundsRelposLm;
 
-	TinyMol* const tinyMols;
+	TinyMolState* const tinyMols;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
 };
 

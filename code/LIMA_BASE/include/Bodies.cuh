@@ -115,42 +115,15 @@ struct CompoundCoords {
 };
 
 
-//namespace CompoundcoordsCircularQueueUtils {
-//	static const int queueLen = 3;
-//
-//	__host__ __device__ inline CompoundCoords* getCoordarrayRef(CompoundCoords* queue, uint32_t step, uint32_t compound_index) {
-//		const int index0_of_currentstep_coordarray = (step % queueLen) * MAX_COMPOUNDS;
-//		return &queue[index0_of_currentstep_coordarray + compound_index];
-//	}
-//};
-
-
-
-
-
-
-
-
-
-
-
-struct SolventCoord {
-	__device__ __host__ SolventCoord() {}
-	__device__ __host__ SolventCoord(NodeIndex ori , Coord rel) : origo(ori ), rel_position(rel) {}
-	NodeIndex origo{};									// [nm]
-	Coord rel_position{};							// [lm]
-
-	__host__ void static copyInitialCoordConfiguration(SolventCoord* coords,
-		SolventCoord* coords_prev, SolventCoord* coordarray_circular_queue);
-};
 
 
 // struct with data that only the solvent itself needs
-struct TinyMol {
+struct TinyMolState {
 	Float3 vel_prev{};
 	Float3 force_prev{};
-	int LJTypeId = -1;
+	int tinymolTypeIndex = -1; // wrong place to have this
 };
+
 
 
 
@@ -364,6 +337,20 @@ struct ForceField_NB {
 	};
 
 	ParticleParameters particle_parameters[MAX_TYPES];
+};
+
+struct ForcefieldTinymol {
+	static const int MAX_TYPES = 16;
+
+	// Can make mass and epsilon half
+	struct TinyMolType {
+		float sigma = -1;		// [lm]
+		float epsilon = -1;		// [J/mol]
+		float mass = -1;		// [kg/mol]
+		float charge = -1;		// [kC/mol]
+	};
+
+	TinyMolType types[MAX_TYPES];
 };
 
 

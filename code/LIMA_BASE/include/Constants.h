@@ -88,9 +88,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 const int ATOMTYPE_SOLVENT = 0;
 constexpr float SOLVENT_MASS = (15.999000f + 2.f * 1.008000f) * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
-
-const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
-const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 // -------------------------------------------------------------------------------------------------------------- //
 
 

@@ -214,23 +214,6 @@ namespace LIMAPOSITIONSYSTEM {
 		return getOnehotDirection(relpos, blocklen_half);
 	}
 
-	/// <summary>NListManager
-	/// Shifts the position 1/2 blocklen so we can find the appropriate origo.
-	/// Applies PBC to the solvent
-	/// </summary>
-	/// <param name="position">Absolute position of solvent [nm] </param>
-	__host__ static SolventCoord createSolventcoordFromAbsolutePosition(Float3 position, float boxlen_nm, BoundaryConditionSelect bc) {	// Find a way to do this without the the BC
-		BoundaryConditionPublic::applyBCNM(position, boxlen_nm, bc);
-
-
-		NodeIndex nodeindex; Coord relpos;
-		std::tie(nodeindex, relpos) = absolutePositionPlacement(position, boxlen_nm, bc);
-
-		SolventCoord solventcoord{ nodeindex, relpos };
-		BoundaryConditionPublic::applyBC(solventcoord.origo, boxlen_nm, bc);
-		return solventcoord;
-	}
-
 	template <typename BoundaryCondition>
 	__host__ static float calcHyperDist(const NodeIndex& left, const NodeIndex& right) {
 		const NodeIndex right_hyper = getHyperNodeIndex<BoundaryCondition>(left, right);

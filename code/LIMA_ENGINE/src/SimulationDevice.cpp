@@ -39,7 +39,7 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMol* tinyMols,
+BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
 	compoundOrigos(compoundOrigos), compoundsRelposLm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
@@ -75,7 +75,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
 //	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost); // This should NOT be necessary since the state dont change
 	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
-	cudaMemcpy(boxHost.tinyMols.data(), boxtemp.tinyMols, sizeof(TinyMol) * boxHost.tinyMols.size(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxHost.tinyMols.data(), boxtemp.tinyMols, sizeof(TinyMolState) * boxHost.tinyMols.size(), cudaMemcpyDeviceToHost);
 
 	std::vector<NodeIndex> compoundsOrigos;
 	std::vector<CompoundInterimState> compoundStates;

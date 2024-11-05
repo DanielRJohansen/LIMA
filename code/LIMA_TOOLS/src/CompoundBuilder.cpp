@@ -404,15 +404,16 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 	return { molecules, tinyMolecules };
 }
 
-std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vector<TinyMolRef>& tinyMolsRefs, ForcefieldManager& forcefieldManager) {
+std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vector<TinyMolRef>& tinyMolsRefs, LIMAForcefield& forcefieldManager) {
 	std::vector<TinyMolFactory> tinyMols;// (grofile.atoms.size() - nNonsolventAtoms);
 	tinyMols.reserve(grofile.atoms.size());
 
 	for (const TinyMolRef& tinyMolRef : tinyMolsRefs) {
 		// FOr now ignore that there are multiple atoms in a tinymol. LOOONG TODO
-		tinyMols.emplace_back(TinyMolFactory{});
-		tinyMols.back().position = grofile.atoms[tinyMolRef.atomsOffsetInGrofile].position;
-		tinyMols.back().LJTypeId = forcefieldManager.GetActiveLjParameterIndex(tinyMolRef.molecule.moleculetype->atoms[0].type);
+		tinyMols.emplace_back(TinyMolFactory{ 
+			grofile.atoms[tinyMolRef.atomsOffsetInGrofile].position,  
+			forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.molecule.moleculetype->atoms[0].type) 
+			});
 	}
 
 	return tinyMols;
@@ -420,7 +421,7 @@ std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vect
 
 
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-void LoadBondIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile,	int atomIdOffset, ForcefieldManager& forcefield,
+void LoadBondIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile,	int atomIdOffset, LIMAForcefield& forcefield,
 	const std::vector<ParticleFactory>& particles, std::vector<BondtypeFactory>& topology)
 {
 	for (const auto& bondTopol : bondsInTopfile) {
@@ -440,7 +441,7 @@ void LoadBondIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfil
 	}
 }
 
-const Topology LoadTopology(const std::vector<MoleculeRef>& molecules, ForcefieldManager& forcefield, const GroFile& grofile) {
+const Topology LoadTopology(const std::vector<MoleculeRef>& molecules, LIMAForcefield& forcefield, const GroFile& grofile) {
 	Topology topology;	
 	if (molecules.empty())
 		return topology;
@@ -937,9 +938,9 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//assert(gro_file.atoms.size() >= nNonsolventAtoms);
 	auto [molecules, tinyMolecules] = PrepareMolecules(topol_file);
 
-	ForcefieldManager forcefieldManager{topol_file.forcefieldInclude->contents};
+	LIMAForcefield forcefield{topol_file.forcefieldInclude->contents};
 
-	const Topology topology = LoadTopology(molecules, forcefieldManager, grofile);
+	const Topology topology = LoadTopology(molecules, forcefield, grofile);
 	VerifyBondsAreStable(topology, grofile.box_size.x, simparams.bc_select, simparams.em_variant);
 	VerifyBondsAreLegal(topology.anglebonds, topology.dihedralbonds);
 
@@ -973,7 +974,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 
-	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(grofile, tinyMolecules, forcefieldManager);
+	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(grofile, tinyMolecules, forcefield);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 
@@ -989,7 +990,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		std::move(compoundBridges),
 		std::move(tinyMols),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
-		forcefieldManager.GetActiveLjParameters(),
+		forcefield.GetActiveLjParameters(),
+		forcefield.GetTinymolTypes(),
 		topology
 	);
 

@@ -637,7 +637,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 
 
-	// --------------------------------------------------------------- Intrablock TinyMol Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
 	{
 		__syncthreads(); // Sync since use of utility
 		if (solvent_active) {
@@ -651,7 +651,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	// --------------------------------------------------------------- Interblock TinyMol Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Interblock TinyMolState Interactions ----------------------------------------------------- //
 	const int query_range = 2;
 	for (int x = -query_range; x <= query_range; x++) {
 		for (int y = -query_range; y <= query_range; y++) {
@@ -686,7 +686,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	Coord relpos_next{};
 	if (solvent_active) {
 		const float mass = SOLVENT_MASS;
-		TinyMol& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMol private data, for VVS
+		TinyMolState& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
 
 		if constexpr (energyMinimize) {
 			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
@@ -723,6 +723,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	else {
 		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
 		solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
+		solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
 		if (threadIdx.x == 0) {
 			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
 		}
@@ -762,6 +763,7 @@ __global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
 
 			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
 			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];
+			solventblock_next->atomtypeIds[incoming_index] = queue->atomtypeIds[threadIdx.x];
 		}
 		n_solvents_next += queue->n_elements;
 

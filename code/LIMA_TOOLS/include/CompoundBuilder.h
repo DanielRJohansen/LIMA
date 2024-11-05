@@ -112,8 +112,13 @@ public:
 };
 
 
-struct TinyMolFactory : public TinyMol {
+struct TinyMolFactory {
+	TinyMolFactory() {}
+	TinyMolFactory(const Float3& pos, int tinymolTypeIndex, Float3 velocity = Float3{})
+		: position(pos), state(TinyMolState{ state.vel_prev,Float3{},tinymolTypeIndex }) 
+	{}
 	Float3 position;
+	TinyMolState state;
 };
 
 class BridgeFactory : public CompoundBridge {
@@ -161,6 +166,8 @@ struct BoxImage {
 	GroFile grofile;
 
 	const ForceField_NB forcefield;
+
+	const ForcefieldTinymol tinymolTypes;
 
 	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
 };

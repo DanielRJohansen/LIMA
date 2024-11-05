@@ -88,6 +88,7 @@ template <int size>
 struct SolventTransferqueue {
 	Coord rel_positions[size];
 	uint32_t ids[size];
+	uint8_t atomtypeIds[size];
 	int n_elements = 0;
 
 	// Do NOT call on queue residing in global memory
@@ -97,14 +98,16 @@ struct SolventTransferqueue {
 		}
 		rel_positions[n_elements] = pos;
 		ids[n_elements] = id;
+		atomtypeIds[n_elements] = 0;
 		n_elements++;
 		return true;
 	}
 
 	// Insert relative to thread calling.
-	__device__ void fastInsert(const Coord& relpos, const int id) {
+	__device__ void fastInsert(const Coord& relpos, const int id, uint8_t atomtypeId) {
 		rel_positions[threadIdx.x] = relpos;
 		ids[threadIdx.x] = id;
+		atomtypeIds[threadIdx.x] = atomtypeId;
 	}
 };
 

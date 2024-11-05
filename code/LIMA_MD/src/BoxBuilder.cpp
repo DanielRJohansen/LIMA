@@ -79,7 +79,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 		InsertCompoundInBox(compound, *box, simparams);
 	}	
 
-	box->boxparams.total_compound_particles = boxImage.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
+	box->boxparams.total_compound_particles = boxImage.total_compound_particles;
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
@@ -112,26 +112,20 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
-		const Float3& sol_pos = tinyMol.position;
+		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
 
-		const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-			sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-
-		box.solventblockgrid_circularqueue->addSolventToGrid(solventcoord, box.boxparams.n_solvents, 0, box.boxparams.boxSize);
+		box.solventblockgrid_circularqueue->getBlockPtr(nodeIndex, 0, box.boxparams.boxSize)->addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
 		box.boxparams.n_solvents++;
-
 	}
 
 	// Setup forces and vel's for VVS
-	//const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-	const float default_solvent_start_temperature = 310;	// [K]
 	box.tinyMols.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
-		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, SOLVENT_MASS);
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, SOLVENT_MASS);
 
-		box.tinyMols.emplace_back(TinyMol{ direction * velocity, Float3{} });
+		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}
 
 

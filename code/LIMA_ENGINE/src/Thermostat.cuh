@@ -34,10 +34,10 @@ namespace _Thermostat {
 	};
 
 	struct TotalKineticEnergySolvents {
-		const TinyMol* const states;
+		const TinyMolState* const states;
 
 		__host__ __device__
-			TotalKineticEnergySolvents(const TinyMol* const _states)
+			TotalKineticEnergySolvents(const TinyMolState* const _states)
 			: states(_states){}
 
 		__host__ __device__

@@ -42,8 +42,7 @@ namespace _Thermostat {
 
 		__host__ __device__
 			float operator()(int idx) const {
-			const float mass = SOLVENT_MASS;
-
+			const float mass = tinymolForcefield_device.types[states[idx].tinymolTypeIndex].mass;
 			const Float3& velocity = states[idx].vel_prev;
 			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO: calcKineticEnergy can use lenSquared instead, save a sqrtf!!
 		}

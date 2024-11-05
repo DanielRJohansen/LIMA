@@ -28,6 +28,7 @@ struct SolventBlock {
 
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
+			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
 		}
 	}
 
@@ -35,7 +36,7 @@ struct SolventBlock {
 		const int newIndex, const Coord& relposNext) {
 		dst->rel_pos[newIndex] = relposNext;
 		dst->ids[newIndex] = src.ids[threadIdx.x];
-		//dst->atomtypeIds[newIndex] = src.atomtypeIds[threadIdx.x];
+		dst->atomtypeIds[newIndex] = src.atomtypeIds[threadIdx.x];
 	}
 
 	__host__ bool addSolvent(const Coord& rel_position, uint32_t id, uint8_t atomtypeId) {

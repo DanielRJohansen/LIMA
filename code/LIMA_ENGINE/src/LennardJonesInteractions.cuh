@@ -25,6 +25,13 @@ namespace LJ {
 		return __fsqrt_rn(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
 	}
 
+	__device__ inline float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+		return (forcefield.types[tinymolType1].sigma + forcefield.types[tinymolType2].sigma) * 0.5f;
+	}
+	__device__ inline float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+		return sqrtf(forcefield.types[tinymolType1].epsilon * forcefield.types[tinymolType2].epsilon);
+	}
+
 	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };
 
 
@@ -191,11 +198,11 @@ namespace LJ {
 
 	// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum) {
+	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum,
+		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {
 		Float3 force{};
 
 		for (int i = 0; i < n_elements; i++) {
-
 			// If computing within block, dont compute force against thread's solvent
 			if (exclude_own_index && threadIdx.x == i) { continue; }
 
@@ -203,7 +210,9 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
+				/*CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),*/
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].sigma,
 				forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].epsilon,
 				exclude_own_index ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,

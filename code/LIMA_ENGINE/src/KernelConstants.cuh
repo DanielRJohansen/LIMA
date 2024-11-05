@@ -24,6 +24,7 @@ struct BoxSize {
 
 
 __constant__ ForceField_NB forcefield_device;
+__constant__ ForcefieldTinymol tinymolForcefield_device;
 __constant__ BoxSize boxSize_device;
 __constant__ float cutoffNm_device;
 __constant__ float cutoffLmSquaredReciprocal_device;

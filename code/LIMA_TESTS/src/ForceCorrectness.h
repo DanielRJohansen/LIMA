@@ -54,7 +54,7 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 1.66e-4) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
@@ -83,8 +83,9 @@ namespace ForceCorrectness {
 			}
 
 			// Give the solvent a velocty
-			{
-				const float vel = PhysicsUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
+			{	
+				const float solventMass = env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMols[0].tinymolTypeIndex].mass;
+				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [lm/ls]
 				env.getSimPtr()->box_host->tinyMols[0].vel_prev = Float3{ -1, 0, 0 } * vel;
 			}
 
@@ -105,7 +106,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 2e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 3e-7);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

@@ -190,22 +190,10 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						positionsInThisBlock[relativeParticleIndex] = position;
 						const int groId = grofile.atoms.empty() ? 1 : grofile.atoms.back().gro_id + 1;
 						const int resNr = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
+
 						grofile.atoms.emplace_back(GroRecord{ resNr, "XXX", atomtypeselect.atomtype.atomname, groId, position, std::nullopt });
-
-						//grofile.addEntry("XXX", atomtypeselect.atomtype.atomname, position);
-						//grofile.atoms.emplace(GroRecord{})
-
-						// Add first the basic atomtype, and then correct the IDs after
 						topfile.AppendMolecule(atomtypeselect.atomtype.atomname);
-						/*topfile.GetMoleculeType().atoms.emplace_back(atomtypeselect.atomtype);
-						topfile.GetMoleculeType().atoms.back().id = groId;
-						topfile.GetMoleculeType().atoms.back().resnr = resNr;*/
 
-
-						//if (topfile.atoms.entries.size() > 1) {
-						//	topfile.atoms.entries.back().nr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].nr + 1;
-						//	topfile.atoms.entries.back().resnr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].resnr +1;
-						//}
 						relativeParticleIndex++;
 					}
 				}

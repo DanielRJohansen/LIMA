@@ -14,7 +14,8 @@ using std::string;
 const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
 const float water_epsilon = 0.1591f * kcalToJoule;
 
-
+const float waterSigma = 3.16557e-01;
+const float waterEpsilon = 6.50194e-01;
 
 class AtomtypeDatabase {
 	std::unordered_map<std::string, AtomType> atomTypes;
@@ -28,13 +29,19 @@ public:
 	AtomtypeDatabase() {
 		activeAtomTypes = std::make_shared<std::vector<AtomType>>();
 
-		activeAtomTypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)	
+		//activeAtomTypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)	
+		activeAtomTypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{waterSigma * NANO_TO_LIMA, waterEpsilon * KILO}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)	
 	}
 	void insert(AtomType element);
 	int GetActiveIndex(const std::string& query);
 	std::vector<AtomType>& GetActiveParameters() {
 		finished = true;
 		return *activeAtomTypes;
+	}
+
+	// Debug only
+	std::unordered_map<std::string, AtomType>& _getAll() {
+		return atomTypes;
 	}
 };
 
@@ -270,6 +277,10 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
 
 	LoadFileIntoForcefield(file);
+
+	// TEMP while we force solvents to be singleparticle
+	if (tinymolTypes->_getAll().contains("OW"))
+		tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
 }
 
 LIMAForcefield::~LIMAForcefield() {}

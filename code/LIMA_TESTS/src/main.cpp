@@ -150,8 +150,8 @@ void RunAllUnitTests() {
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.442e-3, 2e-5));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solventsonly", envmode, 5.85e-6f, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.175e-3, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

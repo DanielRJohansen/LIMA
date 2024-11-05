@@ -95,7 +95,7 @@ Engine::~Engine() {
 void Engine::setDeviceConstantMemory() {
 	//const int forcefield_bytes = sizeof(ForceField_NB);
 	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
-
+	cudaMemcpyToSymbol(tinymolForcefield_device, &simulation->forcefieldTinymol, sizeof(ForcefieldTinymol), 0, cudaMemcpyHostToDevice);
 
 	BoxSize boxSize_host;
 	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
@@ -119,8 +119,6 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
-
-
 }
 
 

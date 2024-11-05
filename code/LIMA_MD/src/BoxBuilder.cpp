@@ -89,7 +89,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
 #ifdef ENABLE_SOLVENTS
-	SolvateBox(*box, boxImage.forcefield, simparams, boxImage.solvent_positions);
+	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
 #endif
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
@@ -105,7 +105,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 
 
-int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int BoxBuilder::SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	for (const auto& tinyMol: tinyMols) {
 		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
@@ -123,7 +123,7 @@ int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimP
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
 		const Float3 direction = get3RandomSigned().norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, SOLVENT_MASS);
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
 
 		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}

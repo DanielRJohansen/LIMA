@@ -555,7 +555,6 @@ template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(S
 
 
 #define solvent_active (threadIdx.x < solventblock.n_solvents)
-#define solvent_mass (forcefield_device.particle_parameters[ATOMTYPE_SOLVENT].mass)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
 __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
@@ -566,6 +565,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	__shared__ int utility_int;
 	__shared__ Coord utility_coord;
 	__shared__ Float3 utility_float3;
+	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
@@ -578,6 +578,9 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	// Init queue, otherwise it will contain wierd values // TODO: only do this on transferstep?
 	if (threadIdx.x < 6) { 
 		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
+	}
+	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
+		forcefieldTinymol_shared.types[threadIdx.x] = tinymolForcefield_device.types[threadIdx.x];
 	}
 
 
@@ -599,6 +602,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	Float3 force{};
 	float potE_sum{};
 	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
+	const uint8_t tinymolTypeId = solventblock.atomtypeIds[threadIdx.x];
 
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
@@ -638,14 +642,15 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 
 	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
-	{
+	{		
 		__syncthreads(); // Sync since use of utility
 		if (solvent_active) {
 			utility_buffer[threadIdx.x] = relpos_self;
+			utility_buffer_small[threadIdx.x] = tinymolTypeId;
 		}
 		__syncthreads();
 		if (solvent_active) {
-			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, utility_buffer, solventblock.n_solvents, true, potE_sum);
+			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, solventblock.n_solvents, true, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -671,11 +676,12 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 				__syncthreads();
 				if (threadIdx.x < nsolvents_neighbor) {
 					utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].toFloat3() + origoshift_offset;
+					utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
 				}
 				__syncthreads();
 
 				if (solvent_active) {
-					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, utility_buffer, nsolvents_neighbor, false, potE_sum);
+					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 				}
 				__syncthreads();
 			}
@@ -685,8 +691,8 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 	Coord relpos_next{};
 	if (solvent_active) {
-		const float mass = SOLVENT_MASS;
 		TinyMolState& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
+		const float mass = tinymolForcefield_device.types[tinyMols_ref.tinymolTypeIndex].mass;
 
 		if constexpr (energyMinimize) {
 			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
@@ -698,7 +704,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 			EngineUtils::LogSolventData(sim->boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
-			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref .force_prev, force, simparams.dt, mass);
+			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref.force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
 			
 			vel_now = vel_now * thermostatScalar_device;
@@ -718,6 +724,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	SolventBlock* solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
 
 	if (SolventBlocksCircularQueue::isTransferStep(step)) {
+		utility_buffer_small[threadIdx.x] = 0;
 		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
 	}
 	else {

@@ -51,7 +51,6 @@ void Environment::CreateSimulation(std::string gro_path, std::string topol_path,
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
@@ -63,6 +62,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
 	simulation->forcefield = boximage->forcefield;
+	simulation->forcefieldTinymol = boximage->tinymolTypes;
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
@@ -71,6 +71,7 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.getStep());
 
 	simulation->forcefield = simulation_src.forcefield;
+	simulation->forcefieldTinymol = simulation_src.forcefieldTinymol;
 }
 
 

@@ -17,7 +17,7 @@ namespace TestUtils {
 #ifndef __linux__
 	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
-	const fs::path simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
+	const fs::path simulations_dir = "/home/lima/Downloads/LIMA_data/";
 #endif
 
 	fs::path getMostSuitableGroFile(const fs::path& workdir) {

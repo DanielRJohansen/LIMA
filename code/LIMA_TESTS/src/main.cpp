@@ -85,19 +85,18 @@ int main() {
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\)";
-		fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\)";
-		GroFile grofile(dir/"conf.gro");
-		grofile.box_size = Float3(std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z)));
-		//Display::RenderGrofile(grofile, false);
-		TopologyFile topfile(dir / "topol.top");
-		//Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
-
-		SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
-		simparams.dt = 10.f;
-		////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
-		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
-		env.CreateSimulation(grofile, topfile, simparams);
-		env.run(false);
+		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\)";
+		//GroFile grofile(dir/"conf.gro");
+		//grofile.box_size = Float3(std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z)));
+		////Display::RenderGrofile(grofile, false);
+		//TopologyFile topfile(dir / "topol.top");
+		////Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
+		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
+		//simparams.dt = 10.f;
+		//////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
+		//Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
+		//env.CreateSimulation(grofile, topfile, simparams);
+		//env.run(false);
 
 		/*GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.gro)");
 		TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.top)");
@@ -109,7 +108,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

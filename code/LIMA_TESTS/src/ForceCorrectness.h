@@ -403,6 +403,36 @@ namespace ForceCorrectness {
 
 
 
+
+	void TestForces1To1(EnvMode envmode) {
+		const fs::path workDir = simulations_dir / "T4Lysozyme";
+		GroFile grofile{ workDir / "molecule" / "conf.gro" };
+		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
+		SimParams params{ workDir / "sim_params.txt" };
+		Environment env{ workDir, envmode };
+		params.n_steps = 11;
+		params.data_logging_interval = 1;
+		env.CreateSimulation(grofile, topfile, params);
+		env.run();
+
+		const ParticleDataBuffer<Float3>* forcebuffer = env.getSimPtr()->forceBuffer.get();
+		std::vector<Float3> forces(forcebuffer->GetBufferAtStep(0), forcebuffer->GetBufferAtStep(0) + forcebuffer->n_particles_upperbound);
+		//FileUtils::WriteVectorToBinaryFile(workDir/ "forces.bin", forces);
+
+		const std::vector<Float3> forcesRef = FileUtils::ReadBinaryFileIntoVector<Float3>(workDir / "forces.bin");
+
+		std::vector<float> errors(forces.size()); // Pre-allocate the vector
+		std::transform(forces.begin(), forces.end(), forcesRef.begin(), errors.begin(),
+			[](const Float3& a, const Float3& b) { return (a - b).len(); });
+
+
+
+		FileUtils::WriteVectorToBinaryFile(workDir / "errors.bin", errors);
+
+		std::string command = "python C:\\Users\\Daniel\\git_repo\\LIMA\\dev\\PyTools\\pdf.py \"" + (workDir / "errors.bin").string() + "\"";
+		std::system(command.c_str());
+	}
+
 }
 
 

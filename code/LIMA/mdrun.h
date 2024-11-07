@@ -63,8 +63,8 @@ struct MdrunSetup {
 
     EnvMode envmode = ConsoleOnly;
     fs::path work_dir;
-    fs::path conf = work_dir / "molecule/conf.gro";
-    fs::path topol = work_dir / "molecule/topol.top";
+    fs::path conf = work_dir / "conf.gro";
+    fs::path topol = work_dir / "topol.top";
     fs::path simpar = work_dir / "sim_params.txt";
     fs::path conf_out = work_dir / "out.gro";
 

@@ -93,7 +93,7 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
 
 		SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
-		simparams.dt = 200.f;
+		simparams.dt = 10.f;
 		////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
 		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
 		env.CreateSimulation(grofile, topfile, simparams);

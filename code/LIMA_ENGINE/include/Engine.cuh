@@ -122,8 +122,8 @@ private:
 
 	SimulationDevice* sim_dev = nullptr;
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
-	std::unique_ptr<BoxState> boxStateCopy = nullptr;
-	std::unique_ptr<BoxConfig> boxConfigCopy = nullptr;
+	std::unique_ptr<BoxState> boxStateCopy;
+	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 

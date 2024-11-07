@@ -380,9 +380,9 @@ void CorrectBondIds(std::array<int, N>& bondIds, int idOfFirstAtomInMolecule) {
 template <typename BondType>
 void AddBondsThatBelongsInMolecule(std::vector<BondType>& dst, const std::vector<BondType>& src, int idOfFirstAtomInMolecule, int idOfLastAtomInMolecule) {
 	for (const auto& bond : src) {
-		if (Belongs(bond.ids, idOfFirstAtomInMolecule, idOfLastAtomInMolecule)) {
+		if (Belongs<BondType::n>(bond.ids, idOfFirstAtomInMolecule, idOfLastAtomInMolecule)) {
 			dst.push_back(bond);
-			CorrectBondIds(dst.back().ids, idOfFirstAtomInMolecule);
+			CorrectBondIds<BondType::n>(dst.back().ids, idOfFirstAtomInMolecule);
 		}
 	}
 }

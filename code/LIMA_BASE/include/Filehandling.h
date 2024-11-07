@@ -10,7 +10,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
-
+#include <optional>
 #include <filesystem>
 #include <fstream>
 

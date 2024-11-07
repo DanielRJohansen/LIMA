@@ -174,6 +174,10 @@ public:
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 
+		// Only used during parsing!
+		std::string mostRecentAtomsSectionName{};
+		std::vector<int> groIdToLimaId;
+
 		void ToFile(const fs::path& dir) const;
 
 		template <typename T>
@@ -327,7 +331,8 @@ private:
 
 	// Packs atoms and bond information in the moleculetype ptr
 	// Returns the next section in the topologyfile
-	static TopologySection ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype>);
+	static void ParseMoleculetypeEntry(TopologySection section, 
+		const std::string& entry, std::shared_ptr<Moleculetype> moleculetype);
 
 	System m_system{};
 };

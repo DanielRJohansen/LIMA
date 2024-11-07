@@ -32,7 +32,7 @@ float MoleculeUtils::Radius(const GroFile& grofile, const Float3& center) {
 
 
 void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype& moltype) {
-	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::createGraph(moltype);
+	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::MoleculeGraph(moltype);
 
 	std::unordered_set<int> visited{};
 

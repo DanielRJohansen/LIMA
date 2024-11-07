@@ -1,5 +1,6 @@
 #include "CompoundBuilder.h"
 #include "Forcefield.h"
+#include "MoleculeGraph.h"
 
 #include <unordered_set>
 #include <format>
@@ -390,15 +391,28 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 		if (molecule.moleculetype->atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
 
-		if (molecule.moleculetype->atoms.size() <=3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
-		{
-			tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
-			atomsOffsetInTinyMolecules += molecule.moleculetype->atoms.size();
+
+		LimaMoleculeGraph::MoleculeGraph superGraph(*molecule.moleculetype);
+		if (!superGraph.GraphIsDisconnected() || molecule.moleculetype->atoms[0].residue == "lxx") {
+
+			if (molecule.moleculetype->atoms.size() <= 3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
+			{
+				tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
+				atomsOffsetInTinyMolecules += molecule.moleculetype->atoms.size();
+			}
+			else {
+				molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
+				atomsOffsetInMolecules += molecule.moleculetype->atoms.size();
+			}
 		}
 		else {
-			molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule});
-			atomsOffsetInMolecules += molecule.moleculetype->atoms.size();
+			auto subGraphs = superGraph.GetListOfConnectedGraphs();
+			int a = 0;
 		}
+
+
+
+
 		atomsOffsetInGrofile += molecule.moleculetype->atoms.size();
 	}
 	return { molecules, tinyMolecules };

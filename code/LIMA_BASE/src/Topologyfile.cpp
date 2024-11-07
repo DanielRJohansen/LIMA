@@ -114,146 +114,107 @@ inline bool isOnlySpacesAndTabs(const std::string& str) {
 
 
 
+void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::string& line, std::shared_ptr<Moleculetype> moleculetype) {
+	std::istringstream iss(line);
 
+	switch (section)
+	{
+	case TopologySection::atoms:
+	{
+		if (firstNonspaceCharIs(line, ';')) {
+			// TODO: Test for residue or lipid_section in the [1] position of the comment instead
 
-// TODO: Redo this function, so the main line processing happens in the main top parse function
-TopologySection TopologyFile::ParseMoleculetype(std::ifstream& file, std::shared_ptr<Moleculetype> moleculetype) {
-
-	TopologySection current_section{ TopologySection::moleculetype };
-	TopologySectionGetter getTopolSection{};
-
-	std::vector<int> groIdToLimaId;
-
-	std::string line, atomsSectionName;
-	while (getline(file, line)) {
-		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
-			if (current_section != TopologySection::atoms && current_section != TopologySection::bonds && current_section != TopologySection::pairs
-				&& current_section != TopologySection::angles && current_section != TopologySection::dihedrals && current_section != TopologySection::impropers)
-				return current_section;
-
-			continue;
-		}
-
-		if (line.empty() || isOnlySpacesAndTabs(line))
-			continue;
-
-		// Check if current line is commented
-		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
-			continue;
-		}	// Only title-sections + atoms reads the comments
-
-		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, {}))
-			continue;
-
-		std::istringstream iss(line);
-
-
-		switch (current_section)
-		{
-		case TopologySection::atoms:
-		{
-			if (firstNonspaceCharIs(line, ';')) {
-				// TODO: Test for residue or lipid_section in the [1] position of the comment instead
-
-				// Skip the very first line which is the legend
-				if (line.find("cgnr") != std::string::npos) {
-					break;
-
-				}
-				if (line.find("residue") != std::string::npos || line.find("lipid_section") != std::string::npos)
-					atomsSectionName= line;
-			}
-			else {
-				TopologyFile::AtomsEntry atom;
-				int groId;
-				iss >> groId >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
-
-				if (groIdToLimaId.size() < groId + 1)
-					groIdToLimaId.resize(groId + 1, -1);
-				groIdToLimaId[groId] = moleculetype->atoms.size();
-				atom.id = groIdToLimaId[groId];
-				moleculetype->atoms.emplace_back(atom);
-
-				if (atomsSectionName!= "") {
-					moleculetype->atoms.back().section_name = atomsSectionName;
-					atomsSectionName= "";
-				}
-				if (atom.type.empty() || atom.residue.empty() || atom.atomname.empty())
-					throw std::runtime_error("Atom type, residue or atomname is empty");
+			// Skip the very first line which is the legend
+			if (line.find("cgnr") != std::string::npos) {
+				break;
 
 			}
-			break;
+			if (line.find("residue") != std::string::npos || line.find("lipid_section") != std::string::npos)
+				moleculetype->mostRecentAtomsSectionName = line;
 		}
-		case TopologySection::bonds: {
-			TopologyFile::SingleBond singlebond{};
-			int groIds[2];
-			iss >> groIds[0] >> groIds[1] >> singlebond.funct;
-			if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
-				break;
-			for (int i = 0; i < 2; i++)
-				singlebond.ids[i] = groIdToLimaId[groIds[i]];
-			singlebond.sourceLine = line;
-			moleculetype->singlebonds.emplace_back(singlebond);
-			break;
+		else {
+			TopologyFile::AtomsEntry atom;
+			int groId;
+			iss >> groId >> atom.type >> atom.resnr >> atom.residue >> atom.atomname >> atom.cgnr >> atom.charge >> atom.mass;
+
+			if (moleculetype->groIdToLimaId.size() < groId + 1)
+				moleculetype->groIdToLimaId.resize(groId + 1, -1);
+			moleculetype->groIdToLimaId[groId] = moleculetype->atoms.size();
+			atom.id = moleculetype->groIdToLimaId[groId];
+			moleculetype->atoms.emplace_back(atom);
+
+			if (moleculetype->mostRecentAtomsSectionName != "") {
+				moleculetype->atoms.back().section_name = moleculetype->mostRecentAtomsSectionName;
+				moleculetype->mostRecentAtomsSectionName = "";
+			}
+			if (atom.type.empty() || atom.residue.empty() || atom.atomname.empty())
+				throw std::runtime_error("Atom type, residue or atomname is empty");
+
 		}
-		case TopologySection::pairs: {
-			TopologyFile::Pair pair{};
-			int groIds[2];
-			iss >> groIds[0] >> groIds[1] >> pair.funct;
-			if (!VerifyAllParticlesInBondExists<2>(groIdToLimaId, groIds))
-				break;
-			for (int i = 0; i < 2; i++)
-				pair.ids[i] = groIdToLimaId.at(groIds[i]);
-			moleculetype->pairs.emplace_back(pair);
-			break;
-		}
-		case TopologySection::angles: {
-			TopologyFile::AngleBond angle{};
-			int groIds[3];
-			iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
-			if (!VerifyAllParticlesInBondExists<3>(groIdToLimaId, groIds))
-				break;
-			for (int i = 0; i < 3; i++)
-				angle.ids[i] = groIdToLimaId.at(groIds[i]);
-			moleculetype->anglebonds.emplace_back(angle);
-			break;
-		}
-		case TopologySection::dihedrals: {
-			TopologyFile::DihedralBond dihedral{};
-			int groIds[4];
-			iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
-			if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
-				break;
-			for (int i = 0; i < 4; i++)
-				dihedral.ids[i] = groIdToLimaId.at(groIds[i]);
-			moleculetype->dihedralbonds.emplace_back(dihedral);
-			break;
-		}
-		case TopologySection::impropers: {
-			TopologyFile::ImproperDihedralBond improper{};
-			int groIds[4];
-			iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
-			if (!VerifyAllParticlesInBondExists<4>(groIdToLimaId, groIds))
-				break;
-			for (int i = 0; i < 4; i++)
-				improper.ids[i] = groIdToLimaId.at(groIds[i]);
-			moleculetype->improperdihedralbonds.emplace_back(improper);
-			moleculetype->improperdihedralbonds.back().sourceLine = line;
-			break;
-		}
-		default: {
-			// We shouldnt get here
-		}
-		}
+		break;
 	}
-	return current_section;
+	case TopologySection::bonds: {
+		TopologyFile::SingleBond singlebond{};
+		int groIds[2];
+		iss >> groIds[0] >> groIds[1] >> singlebond.funct;
+		if (!VerifyAllParticlesInBondExists<2>(moleculetype->groIdToLimaId, groIds))
+			break;
+		for (int i = 0; i < 2; i++)
+			singlebond.ids[i] = moleculetype->groIdToLimaId[groIds[i]];
+		singlebond.sourceLine = line;
+		moleculetype->singlebonds.emplace_back(singlebond);
+		break;
+	}
+	case TopologySection::pairs: {
+		TopologyFile::Pair pair{};
+		int groIds[2];
+		iss >> groIds[0] >> groIds[1] >> pair.funct;
+		if (!VerifyAllParticlesInBondExists<2>(moleculetype->groIdToLimaId, groIds))
+			break;
+		for (int i = 0; i < 2; i++)
+			pair.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+		moleculetype->pairs.emplace_back(pair);
+		break;
+	}
+	case TopologySection::angles: {
+		TopologyFile::AngleBond angle{};
+		int groIds[3];
+		iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
+		if (!VerifyAllParticlesInBondExists<3>(moleculetype->groIdToLimaId, groIds))
+			break;
+		for (int i = 0; i < 3; i++)
+			angle.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+		moleculetype->anglebonds.emplace_back(angle);
+		break;
+	}
+	case TopologySection::dihedrals: {
+		TopologyFile::DihedralBond dihedral{};
+		int groIds[4];
+		iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
+		if (!VerifyAllParticlesInBondExists<4>(moleculetype->groIdToLimaId, groIds))
+			break;
+		for (int i = 0; i < 4; i++)
+			dihedral.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+		moleculetype->dihedralbonds.emplace_back(dihedral);
+		break;
+	}
+	case TopologySection::impropers: {
+		TopologyFile::ImproperDihedralBond improper{};
+		int groIds[4];
+		iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
+		if (!VerifyAllParticlesInBondExists<4>(moleculetype->groIdToLimaId, groIds))
+			break;
+		for (int i = 0; i < 4; i++)
+			improper.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+		moleculetype->improperdihedralbonds.emplace_back(improper);
+		moleculetype->improperdihedralbonds.back().sourceLine = line;
+		break;
+	}
+	default: {
+		// We shouldnt get here
+	}
+	}
 }
-
-
-
-
-
-
 
 void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path, std::optional<std::string> includefileName) {
 	std::ifstream file;
@@ -262,8 +223,11 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 	}
 
+	topology.defines.insert("FLEXIBLE");// Cant handle gromacs definition of rigid water right now
+
 	TopologySection current_section{ TopologySection::title };
 	TopologySectionGetter getTopolSection{};
+	std::shared_ptr<Moleculetype> mostRecentMoleculetype = nullptr;
 
 	std::string line{};
 
@@ -293,6 +257,11 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			continue;
 		}	// Only title-sections + atoms reads the comments
 		
+		if (FileUtils::ChechlineForDefine(line)) {
+			topology.defines.insert(FileUtils::ChechlineForDefine(line).value());
+			continue;
+		}
+
 		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
 			continue;
 
@@ -341,15 +310,15 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			int nrexcl;
 			iss >> moleculetypename >> nrexcl;
 
-			auto moleculetype = std::make_shared<Moleculetype>();
-			moleculetype->name = moleculetypename;
-			moleculetype->nrexcl = nrexcl;
+			mostRecentMoleculetype = std::make_shared<Moleculetype>();
+			mostRecentMoleculetype->name = moleculetypename;
+			mostRecentMoleculetype->nrexcl = nrexcl;
 
-			auto nextSection = ParseMoleculetype(file, moleculetype);
+			//auto nextSection = ParseMoleculetype(file, moleculetype);
 			assert(!topology.moleculetypes.contains(moleculetypename));
-			topology.moleculetypes.insert({ moleculetypename, moleculetype });
+			topology.moleculetypes.insert({ moleculetypename, mostRecentMoleculetype });
 
-			current_section = nextSection;
+			//current_section = nextSection;
 			break;
 		}		
 		case TopologySection::_system: {
@@ -369,6 +338,16 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				topology.m_system.molecules.emplace_back(MoleculeEntry{ molname, topology.moleculetypes.at(molname) });
 			break;
 		}
+		case TopologySection::atoms:
+		case TopologySection::bonds:
+		case TopologySection::pairs:
+		case TopologySection::angles:
+		case TopologySection::dihedrals:
+		case TopologySection::impropers:
+			if (mostRecentMoleculetype == nullptr)
+				throw std::invalid_argument("Moleculetype not set before parsing atoms/bonds/pairs/angles/dihedrals/impropers");
+			ParseMoleculetypeEntry(current_section, line, mostRecentMoleculetype);
+			break;
 		case TopologySection::atomtypes:
 		case TopologySection::pairtypes:
 		case TopologySection::bondtypes:

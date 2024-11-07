@@ -143,7 +143,11 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 void FileUtils::SkipIfdefBlock(std::ifstream& file) {
 	std::string line;
 	while (getline(file, line)) {
-		line = line.substr(line.find_first_not_of(" ")); // Trim leading spaces
+		auto pos = line.find_first_not_of(" ");
+		if (pos == std::string::npos) continue; // Skip empty or whitespace-only lines
+
+		line = line.substr(pos);
+
 		if (line.starts_with("#else") || line.starts_with("#endif")) return;
 	}
 	throw std::runtime_error("Failed to find #endif in file\n");
@@ -167,6 +171,19 @@ bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::
 		return true;
 	}
 	return false;
+}
+
+std::optional<std::string> FileUtils::ChechlineForDefine(const std::string& line) {
+	auto pos = line.find_first_not_of(" ");
+
+	if (pos != std::string::npos) {
+		if (line.size() >= pos + 7 && line.substr(pos, 7) == "#define") {
+			std::string define = line.substr(pos + 7);
+			removeWhitespace(define);
+			return define;
+		}
+	}
+	return std::nullopt;
 }
 
 

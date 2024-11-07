@@ -16,22 +16,29 @@ void MoleculeGraph::Node::addNeighbor(Node* neighbor) {
 }
 
 void MoleculeGraph::connectNodes(int left_id, int right_id) {
-	nodes[left_id].addNeighbor(&nodes[right_id]);
-	nodes[right_id].addNeighbor(&nodes[left_id]);
+	nodes.at(left_id).addNeighbor(&nodes.at(right_id));
+	nodes.at(right_id).addNeighbor(&nodes.at(left_id));
 }
 
-MoleculeGraph LimaMoleculeGraph::createGraph(const TopologyFile::Moleculetype& molecule) {
-	MoleculeGraph graph;
+MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule) {
+	/*if (molecule.atoms.front().id != 0 || molecule.atoms.back() != molecule.atoms.size() - 1)
+		throw std::runtime_error("Atoms must be ordered from 0 to n-1");*/
+
+	//nodes.resize(molecule.atoms.size());
 
 	for (const auto& atom : molecule.atoms) {
-		graph.addNode(atom.id, atom.atomname);
+		addNode(atom.id, atom.atomname);
 	}
 
 	for (const auto& bond : molecule.singlebonds) {
-		graph.connectNodes(bond.ids[0], bond.ids[1]);
+		connectNodes(bond.ids[0], bond.ids[1]);
 	}
+}
 
-	return graph;
+MoleculeGraph::MoleculeGraph(const Node* root) {
+	for (const auto node : BFSRange(root)) {
+		nodes.insert({ node.atomid, node });
+	}
 }
 
 int GetNumNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::unordered_set<int>& visitedNodes) {
@@ -93,7 +100,8 @@ std::pair<const MoleculeGraph::Node*, int> FindFurthestNode(
 }
 
 const MoleculeGraph::Node* FindRootNodeInGraph(const MoleculeGraph& molgraph) {
-	const MoleculeGraph::Node* const initialGuessForRootnode = &molgraph.nodes.find(molgraph.highestNodeId)->second;
+	//const MoleculeGraph::Node* const initialGuessForRootnode = &molgraph.nodes.find(molgraph.highestNodeId)->second;
+	const MoleculeGraph::Node* const initialGuessForRootnode = &(molgraph.nodes.begin()->second);
 
 	auto [secondGuessForRootnode, depth1] = FindFurthestNode(molgraph, initialGuessForRootnode);
 
@@ -184,7 +192,7 @@ std::vector<int> MakeParticleReorderMapping(const MoleculeGraph& molgraph) {
 
 	//std::vector<bool> visitedNodes(molgraph.highestNodeId+1, false);
 	std::unordered_set<int> visitedNodes;
-	std::vector<int> mapping(molgraph.highestNodeId+1, -1);
+	std::vector<int> mapping(molgraph.nodes.size(), -1);
 	int next_new_id = 0;
 
 	AddSidechainToMapping(molgraph, visitedNodes, mapping, next_new_id, currentNode);
@@ -215,7 +223,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 		sbAtomtypesCheck.push_back({ molecule.atoms[sb.ids[0]].atomname, molecule.atoms[sb.ids[1]].atomname });
 	}
 
-	const MoleculeGraph molgraph = createGraph(molecule);
+	const MoleculeGraph molgraph(molecule);
 
 	const std::vector<int> map = MakeParticleReorderMapping(molgraph);
 
@@ -272,4 +280,41 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 
 
 
+}
+
+
+
+
+int MarkAllNodes(std::unordered_set<int>& visited, MoleculeGraph::BFSRange<const MoleculeGraph::Node*> nodes) {
+	int count = 0;
+	for (const auto& node : nodes) {
+		visited.insert(node.atomid);
+		count++;
+	}
+	return count;
+
+}
+
+bool MoleculeGraph::GraphIsDisconnected() const {
+	std::unordered_set<int> visited;
+	
+	MarkAllNodes(visited, BFSRange(&nodes.at(0)));
+
+	return visited.size() != nodes.size();
+}
+
+
+std::vector<MoleculeGraph> MoleculeGraph::GetListOfConnectedGraphs() const {
+	std::vector<MoleculeGraph> subGraphs;
+	std::unordered_set<int> visited;
+
+	for (int i = 0; i < nodes.size(); i++) {
+		if (visited.contains(i))
+			continue;
+		
+		MarkAllNodes(visited, BFS(i));
+		subGraphs.emplace_back(MoleculeGraph(&nodes.at(i)));		
+	}
+
+	return subGraphs;
 }

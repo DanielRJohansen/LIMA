@@ -26,20 +26,24 @@ MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule) {
 
 	//nodes.resize(molecule.atoms.size());
 
+	std::vector<std::pair<int, Node>> temp_nodes;
+	temp_nodes.reserve(molecule.atoms.size());
 	for (const auto& atom : molecule.atoms) {
-		addNode(atom.id, atom.atomname);
+		temp_nodes.emplace_back(atom.id, Node(atom.id, atom.atomname));
 	}
+	nodes.insert(temp_nodes.begin(), temp_nodes.end());
+	
 
 	for (const auto& bond : molecule.singlebonds) {
 		connectNodes(bond.ids[0], bond.ids[1]);
 	}
 }
 
-MoleculeGraph::MoleculeGraph(const Node* root) {
-	for (const auto node : BFSRange(root)) {
-		nodes.insert({ node.atomid, node });
-	}
-}
+//MoleculeGraph::MoleculeGraph(const Node* root) {
+//	for (const auto node : BFSRange(root)) {
+//		nodes.insert({ node.atomid, node });
+//	}
+//}
 
 int GetNumNonvisitedNonHydrogenNeighbors(const MoleculeGraph::Node* node, const std::unordered_set<int>& visitedNodes) {
 	int nNonvisitedNonHydrogenNeighbors = 0;
@@ -303,18 +307,36 @@ bool MoleculeGraph::GraphIsDisconnected() const {
 	return visited.size() != nodes.size();
 }
 
-
-std::vector<MoleculeGraph> MoleculeGraph::GetListOfConnectedGraphs() const {
-	std::vector<MoleculeGraph> subGraphs;
+std::vector<std::vector<int>> MoleculeGraph::GetListOfListsofConnectedNodeids() const {
+	std::vector<vector<int>> subGraphs;
 	std::unordered_set<int> visited;
 
 	for (int i = 0; i < nodes.size(); i++) {
 		if (visited.contains(i))
 			continue;
-		
-		MarkAllNodes(visited, BFS(i));
-		subGraphs.emplace_back(MoleculeGraph(&nodes.at(i)));		
+		// Start a new empty molecule
+		subGraphs.push_back({});
+		// Fill said molecule
+		for (const auto& node : BFS(i)) {
+			visited.insert(node.atomid);
+			subGraphs.back().emplace_back(node.atomid);
+		}
 	}
 
 	return subGraphs;
 }
+
+//std::vector<MoleculeGraph> MoleculeGraph::GetListOfConnectedGraphs() const {
+//	std::vector<MoleculeGraph> subGraphs;
+//	std::unordered_set<int> visited;
+//
+//	for (int i = 0; i < nodes.size(); i++) {
+//		if (visited.contains(i))
+//			continue;
+//		
+//		MarkAllNodes(visited, BFS(i));
+//		subGraphs.emplace_back(MoleculeGraph(&nodes.at(i)));		
+//	}
+//
+//	return subGraphs;
+//}

@@ -14,7 +14,7 @@
 #error These are mutually exclusive
 #endif
 
-//#define FORCE_NAN_CHECK
+#define FORCE_NAN_CHECK
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION

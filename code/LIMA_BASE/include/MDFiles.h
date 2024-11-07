@@ -365,7 +365,7 @@ struct TopologyFile::GenericBond{
 	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
-	int ids[N]{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
+	std::array<int,N> ids{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 	int funct{};
 
 	std::string sourceLine{};	// used for debugging	TODO: remove

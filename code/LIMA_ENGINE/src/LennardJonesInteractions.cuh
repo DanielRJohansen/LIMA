@@ -85,7 +85,7 @@ namespace LJ {
 		
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
-			printf("LJ nan %f %f %f\n", dist_sq_reciprocal, sigma, epsilon);
+			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);
 			diff.print('D');
 		}
 #endif

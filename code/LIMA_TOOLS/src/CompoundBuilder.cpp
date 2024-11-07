@@ -362,10 +362,67 @@ void BridgeFactory::addParticle(const ParticleToCompoundMapping& p2cMapping, std
 	n_particles++;
 }
 
+template <int N>
+bool Belongs(const std::array<int, N> bondIds, int idOfFirstAtomInMolecule, int idOfLastAtomInMolecule) {
+	for (const auto& id : bondIds) {
+		if (id<idOfFirstAtomInMolecule || id>idOfLastAtomInMolecule) {
+			return false;
+		}
+	}
+	return true;
+}
+template <int N>
+void CorrectBondIds(std::array<int, N>& bondIds, int idOfFirstAtomInMolecule) {
+	for (auto& id : bondIds) {
+		id -= idOfFirstAtomInMolecule;
+	}
+}
+template <typename BondType>
+void AddBondsThatBelongsInMolecule(std::vector<BondType>& dst, const std::vector<BondType>& src, int idOfFirstAtomInMolecule, int idOfLastAtomInMolecule) {
+	for (const auto& bond : src) {
+		if (Belongs(bond.ids, idOfFirstAtomInMolecule, idOfLastAtomInMolecule)) {
+			dst.push_back(bond);
+			CorrectBondIds(dst.back().ids, idOfFirstAtomInMolecule);
+		}
+	}
+}
 
 
+struct MoleculeTopology {
+	// When entire topology file belongs to the molecule
+	MoleculeTopology(const TopologyFile::Moleculetype& moltype) {
+		atoms = moltype.atoms;
+		singlebonds = moltype.singlebonds;
+		anglebonds = moltype.anglebonds;
+		dihedralbonds = moltype.dihedralbonds;
+		improperdihedralbonds = moltype.improperdihedralbonds;
+	}
 
+	// When only the provided id's belong to the molecule
+	MoleculeTopology(const TopologyFile::Moleculetype& moltype, std::vector<int> idsInMolecule) {
+		assert(std::is_sorted(idsInMolecule.begin(), idsInMolecule.end()));
 
+		const int idOfFirstAtomInMolecule = idsInMolecule.front();
+		const int idOfLastAtomInMolecule = idsInMolecule.back();
+
+		for (const auto& atom : moltype.atoms) {
+			if (atom.id >= idOfFirstAtomInMolecule && atom.id <= idOfLastAtomInMolecule) {
+				atoms.push_back(atom);
+				atoms.back().id -= idOfFirstAtomInMolecule;
+			}
+		}
+		AddBondsThatBelongsInMolecule(singlebonds, moltype.singlebonds, idOfFirstAtomInMolecule, idOfLastAtomInMolecule);
+		AddBondsThatBelongsInMolecule(anglebonds, moltype.anglebonds, idOfFirstAtomInMolecule, idOfLastAtomInMolecule);
+		AddBondsThatBelongsInMolecule(dihedralbonds, moltype.dihedralbonds, idOfFirstAtomInMolecule, idOfLastAtomInMolecule);
+		AddBondsThatBelongsInMolecule(improperdihedralbonds, moltype.improperdihedralbonds, idOfFirstAtomInMolecule, idOfLastAtomInMolecule);
+	}
+
+	std::vector<TopologyFile::AtomsEntry> atoms;
+	std::vector<TopologyFile::SingleBond> singlebonds;
+	std::vector<TopologyFile::AngleBond> anglebonds;
+	std::vector<TopologyFile::DihedralBond> dihedralbonds;
+	std::vector<TopologyFile::ImproperDihedralBond> improperdihedralbonds;
+};
 
 
 
@@ -373,12 +430,14 @@ void BridgeFactory::addParticle(const ParticleToCompoundMapping& p2cMapping, std
 struct TinyMolRef {
 	int atomsOffsetInTinymols = 0;
 	int atomsOffsetInGrofile = 0;
-	const TopologyFile::MoleculeEntry& molecule;
+	//const TopologyFile::MoleculeEntry& molecule;
+	MoleculeTopology topology;
 };
 struct MoleculeRef {
 	int atomsOffsetInMolecules = 0;
 	int atomsOffsetInGrofile = 0;
-	const TopologyFile::MoleculeEntry& molecule;
+	//const TopologyFile::MoleculeEntry& molecule;
+	MoleculeTopology topology;
 };
 std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> PrepareMolecules(const TopologyFile& topol) {
 	std::vector<MoleculeRef> molecules;
@@ -397,23 +456,35 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 
 			if (molecule.moleculetype->atoms.size() <= 3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
 			{
-				tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
+				tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype) });
 				atomsOffsetInTinyMolecules += molecule.moleculetype->atoms.size();
 			}
 			else {
-				molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, molecule });
+				molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype) });
 				atomsOffsetInMolecules += molecule.moleculetype->atoms.size();
 			}
+			atomsOffsetInGrofile += molecule.moleculetype->atoms.size();
 		}
 		else {
-			auto subGraphs = superGraph.GetListOfConnectedGraphs();
-			int a = 0;
+			auto subGraphs = superGraph.GetListOfListsofConnectedNodeids();
+			
+			for (auto& grapNodeIds : subGraphs) {
+				std::sort(grapNodeIds.begin(), grapNodeIds.end());
+				if (grapNodeIds.size() <= 3) {
+					tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
+					atomsOffsetInTinyMolecules += grapNodeIds.size();
+				}
+				else {
+					molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
+					atomsOffsetInMolecules += grapNodeIds.size();
+				}
+				atomsOffsetInGrofile += grapNodeIds.size();
+			}
 		}
 
 
 
 
-		atomsOffsetInGrofile += molecule.moleculetype->atoms.size();
 	}
 	return { molecules, tinyMolecules };
 }
@@ -426,7 +497,8 @@ std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vect
 		// FOr now ignore that there are multiple atoms in a tinymol. LOOONG TODO
 		tinyMols.emplace_back(TinyMolFactory{ 
 			grofile.atoms[tinyMolRef.atomsOffsetInGrofile].position,  
-			forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.molecule.moleculetype->atoms[0].type) 
+			//forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.molecule.moleculetype->atoms[0].type) 
+			forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.topology.atoms[0].type)
 			});
 	}
 
@@ -460,14 +532,14 @@ const Topology LoadTopology(const std::vector<MoleculeRef>& molecules, LIMAForce
 	if (molecules.empty())
 		return topology;
 
-	const int numParticles = molecules.back().atomsOffsetInMolecules + molecules.back().molecule.moleculetype->atoms.size();
+	const int numParticles = molecules.back().atomsOffsetInMolecules + molecules.back().topology.atoms.size();
 
 	topology.particles.reserve(numParticles);
 	int uniqueResId = -1;
 	for (const auto& mol : molecules) {
 		int currentResId = -1;
-		for (int atomIndex = 0; atomIndex < mol.molecule.moleculetype->atoms.size(); atomIndex++) {
-			const TopologyFile::AtomsEntry& atom = mol.molecule.moleculetype->atoms[atomIndex];
+		for (int atomIndex = 0; atomIndex < mol.topology.atoms.size(); atomIndex++) {
+			const TopologyFile::AtomsEntry& atom = mol.topology.atoms[atomIndex];
 
 			if (atom.resnr != currentResId) {
 				currentResId = atom.resnr;
@@ -480,25 +552,23 @@ const Topology LoadTopology(const std::vector<MoleculeRef>& molecules, LIMAForce
 		}
 	}
 
-	topology.singlebonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.molecule.moleculetype->singlebonds.size(); }));
-	topology.anglebonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.molecule.moleculetype->anglebonds.size(); }));
-	topology.dihedralbonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.molecule.moleculetype->dihedralbonds.size(); }));
-	topology.improperdihedralbonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.molecule.moleculetype->improperdihedralbonds.size(); }));
-	for (const auto& mol : molecules) {
-
-		const auto moltype = mol.molecule.moleculetype;
-
+	topology.singlebonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.topology.singlebonds.size(); }));
+	topology.anglebonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.topology.anglebonds.size(); }));
+	topology.dihedralbonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.topology.dihedralbonds.size(); }));
+	topology.improperdihedralbonds.reserve(std::accumulate(molecules.begin(), molecules.end(), 0, [](int sum, const MoleculeRef& mol) { return sum + mol.topology.improperdihedralbonds.size(); }));
+	for (const auto& mol : molecules) 
+	{
 		LoadBondIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(
-			moltype->singlebonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.singlebonds);
+			mol.topology.singlebonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.singlebonds);
 
 		LoadBondIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(
-			moltype->anglebonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.anglebonds);
+			mol.topology.anglebonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.anglebonds);
 
 		LoadBondIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(
-			moltype->dihedralbonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.dihedralbonds);
+			mol.topology.dihedralbonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.dihedralbonds);
 
 		LoadBondIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(
-			moltype->improperdihedralbonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.improperdihedralbonds);
+			mol.topology.improperdihedralbonds, mol.atomsOffsetInMolecules, forcefield, topology.particles, topology.improperdihedralbonds);
 	}
 
 	return topology;

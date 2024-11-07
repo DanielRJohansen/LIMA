@@ -16,6 +16,7 @@
 #include <queue>
 #include <optional>
 #include <type_traits>
+#include <map>
 
 
 namespace LimaMoleculeGraph {
@@ -124,18 +125,16 @@ namespace LimaMoleculeGraph {
 		MoleculeGraph(const TopologyFile::Moleculetype&);
 
 		// Create a connected graph from a node, and all nodes it is connected to
-		MoleculeGraph(const Node* root);
+		//MoleculeGraph(const Node* root);
 
 
 
-		void addNode(int node_id, const std::string& atomname) {
-
-			auto a = Node(node_id, atomname);
+	/*	void addNode(int node_id, const std::string& atomname) {
 			nodes.emplace(node_id, Node(node_id, atomname) );
-		}
+		}*/
 		void connectNodes(int left_id, int right_id);
 
-		std::unordered_map<int, Node> nodes;
+		std::map<int, Node> nodes;
 
 		auto BFS(int start_node_id) const {
 			return BFSRange(&nodes.at(start_node_id));
@@ -150,7 +149,8 @@ namespace LimaMoleculeGraph {
 
 		// A moleculeggraph may be disconnected. This function returns all subgraphs that are connected.
 		// This is not cheap..
-		std::vector<MoleculeGraph> GetListOfConnectedGraphs() const;
+		//std::vector<MoleculeGraph> GetListOfConnectedGraphs() const;
+		std::vector<std::vector<int>> GetListOfListsofConnectedNodeids() const;
 
 
 	};

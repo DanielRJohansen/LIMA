@@ -25,7 +25,7 @@ target_link_libraries(limatest LIMA_MD)
 
 if (UNIX)
     target_compile_options(limatest PRIVATE -O3)
-    install(TARGETS lima DESTINATION /usr/bin)
+    install(TARGETS limatest DESTINATION /usr/bin)
 elseif (WIN32)
     #target_compile_options(LIMA_TESTS PRIVATE /O2)
 endif()

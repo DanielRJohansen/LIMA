@@ -113,9 +113,10 @@ public:
 
 	size_t GetLoggingInterval() const { return loggingInterval; }
 	size_t EntriesPerStep() const { return n_particles_upperbound; }
+	const size_t n_particles_upperbound;
+
 private:
 	const size_t loggingInterval;
-	const size_t n_particles_upperbound;
 	const size_t n_compounds;
 	const size_t n_indices;
 	std::vector<T> buffer;

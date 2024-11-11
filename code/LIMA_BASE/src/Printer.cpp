@@ -2,9 +2,6 @@
 
 #include <math.h>
 
-#ifndef __linux__
-#include <Windows.h>
-#endif
 
 //using namespace LIMA_Printer;
 
@@ -69,10 +66,6 @@ static const int chars_per_elem = default_width / 6;
 
 void LIMA_Print::setScreenSize()
 {
-#ifndef __linux__
-	//HWND hwnd = GetConsoleWindow();
-	//if (hwnd != NULL) { MoveWindow(hwnd, 0, 0, default_width, default_height, TRUE); }
-#endif
 }
 
 void LIMA_Print::printH(std::string str, char c, bool ls, bool ts) {

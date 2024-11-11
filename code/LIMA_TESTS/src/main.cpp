@@ -52,7 +52,7 @@ int main() {
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
-		//TestChargedParticlesVelocityInUniformElectricField(envmode);
+		TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
 		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
@@ -103,7 +103,7 @@ int main() {
 		Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20)", envmode, false);
 		grofile.printToFile(std::string("membrane_em.gro"));*/
 
-		TestForces1To1(envmode);
+		//TestForces1To1(envmode);
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });

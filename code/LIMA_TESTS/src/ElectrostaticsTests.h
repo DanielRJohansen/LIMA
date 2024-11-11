@@ -209,6 +209,10 @@ namespace ElectrostaticsTests {
 
 		env->run();	
 
+
+		TestUtils::CompareForces1To1(simulations_dir / "ElectrostatidcField", *env, true);
+
+
 		auto sim = env->getSim();
 
 

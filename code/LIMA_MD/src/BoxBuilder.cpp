@@ -46,30 +46,12 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
-Float3 get3Random() {	// Returns 3 numbers between 0-1
-	return Float3(
-		(float) (rand() % RAND_MAX / (double) RAND_MAX),
-		(float) (rand() % RAND_MAX / (double) RAND_MAX),
-		(float) (rand() % RAND_MAX / (double) RAND_MAX)
-	);
-}
-Float3 get3RandomSigned() {	// returns 3 numbers between -0.5->0.5
-	return get3Random() - Float3(0.5f);
-}
-
-
-
-
-
-
 
 
 
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
 
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
-	srand(290128309);
-
 	auto box = std::make_unique<Box>(static_cast<int>(boxImage.grofile.box_size.x));
 
 	box->compounds.reserve(boxImage.compounds.size());
@@ -118,11 +100,14 @@ int BoxBuilder::SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const 
 		box.boxparams.n_solvents++;
 	}
 
+	std::mt19937 gen(1238971);
+	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
+
 	// Setup forces and vel's for VVS
 	box.tinyMols.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
 		// Give a random velocity
-		const Float3 direction = get3RandomSigned().norm();
+		const Float3 direction = Float3{distribution(gen), distribution(gen), distribution(gen) }.norm();
 		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
 
 		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });

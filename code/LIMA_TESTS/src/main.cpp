@@ -52,7 +52,7 @@ int main() {
 		//loadAndRunBasicSimulation("Solventsonly", envmode, 2.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
-		TestChargedParticlesVelocityInUniformElectricField(envmode);
+		//TestChargedParticlesVelocityInUniformElectricField(envmode);
 		//CoulombForceSanityCheck(envmode);
 		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
@@ -109,7 +109,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

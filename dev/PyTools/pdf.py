@@ -12,6 +12,7 @@ def plot_probability_density_function(filepath, num_bins=100):
     data_max = max(data)
     print(data_min, data_max)
     plt.hist(data, bins=100, range=(data_min, data_max), density=True)  # setting the range
+    plt.yscale('log')
     plt.xlabel("Value")
     plt.ylabel("Frequency")
     plt.title("PDF of Data (Unnormalized)")

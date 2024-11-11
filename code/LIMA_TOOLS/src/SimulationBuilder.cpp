@@ -49,12 +49,11 @@ float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselectio
 	return minPos;
 }
 
-class RandomAngleGenerator {
-	std::random_device rd; // obtain a random number from hardware
+class RandomUniformGenerator {
 	std::mt19937 generator;
 	std::uniform_real_distribution<float> distribution;
 public:
-	RandomAngleGenerator(int seed = 1238971) : generator(seed), distribution(-PI, PI) {}
+	RandomUniformGenerator(float min, float max, int seed = 1238971) : generator(seed), distribution(min, max) {}
 	float operator()() {
 		return distribution(generator);
 	}
@@ -153,9 +152,9 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 
 	const int particlesPerBlock = static_cast<int>(std::ceil(particlesPerNm3 * blockLen * blockLen * blockLen));
 
-	srand(1238971);
 
 	GetNextRandomParticle getNextRandomParticle{ particles };
+	RandomUniformGenerator randPos(minDistBetweenAnyParticle * 0.5f, usableBlocklen + minDistBetweenAnyParticle * 0.5f, 1238971);
 
 	std::vector<Float3> positionsInThisBlock(particlesPerBlock);
 
@@ -171,11 +170,9 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 				for (int relativeParticleIndex = 0; relativeParticleIndex < particlesPerBlock; ) {
 					AtomtypeSelect atomtypeselect = getNextRandomParticle();
 
-					const Float3 position = Float3{
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f
-					} + blockStart;
+					
+
+					const Float3 position = Float3{ randPos(), randPos(), randPos() } + blockStart;
 
 					bool collision = false;
 					for (int i = 0; i < relativeParticleIndex; i++) {
@@ -408,9 +405,6 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {
-	srand(1238971);
-	RandomAngleGenerator genRandomAngle;
-
 	// TODO Should we can CenterMol, so it is whole here?
 
 	if (submolTop->moleculetypes.size() > 1)
@@ -419,14 +413,14 @@ void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, T
 	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;
 
+	RandomUniformGenerator genRandomAngle(-PI, PI);	
+	RandomUniformGenerator genTranslation(molRadius, targetGrofile.box_size.x - molRadius);
+	assert(targetGrofile.box_size.x == targetGrofile.box_size.y && targetGrofile.box_size.x == targetGrofile.box_size.z);
+
 	targetGrofile.atoms.reserve(targetGrofile.atoms.size() + nMoleculesToInsert * submolGro.atoms.size());
 
 	for (int i = 0; i < nMoleculesToInsert; i++) {
-		Float3 randomTranslation = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.x - molRadius*2.f) + molRadius,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.y - molRadius*2.f) + molRadius,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * (targetGrofile.box_size.z - molRadius*2.f) + molRadius
-		};
+		Float3 randomTranslation = Float3{ genTranslation(), genTranslation() , genTranslation() };
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
 		std::function<void(Float3&)> position_transform = [=](Float3& pos) {
@@ -453,8 +447,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 	const Float3& sphereCenter
 )
 {
-	srand(1238971 + nMoleculesToInsert);
-	RandomAngleGenerator genRandomAngle;
+	RandomUniformGenerator genRandomAngle(-PI, PI);
 
 	for (auto& lipid : lipidselection) {
 		centerMoleculeAroundOrigo(*lipid.grofile);
@@ -462,7 +455,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 	GetNextRandomLipid genNextRandomLipid{ lipidselection };
-
+	RandomUniformGenerator genTranslation(-0.5f, 0.5f);
 
 	// Use Fibonacci lattice to evenly distribute points on a sphere
 	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f; // Golden ratio
@@ -510,11 +503,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 		//Float3 rotationNoise = Float3{ genRandomAngle(), genRandomAngle(), genRandomAngle() } / 2.f;
 		//rotationAxis = (rotationAxis + rotationNoise).norm();
 
-		Float3 translationNoise = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5
-		};
+		Float3 translationNoise = Float3{ genTranslation(), genTranslation(), genTranslation() };
 
 
 
@@ -584,9 +573,9 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
-	srand(1238971);
-	RandomAngleGenerator genRandomAngle;
+	RandomUniformGenerator genRandomAngle(-PI, PI);
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+	RandomUniformGenerator genRandomUpDownTranslation(-0.05f, 0.05f);
 
 	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
 	for (auto& lipid : lipidselection) {
@@ -603,7 +592,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 				break;
 
 
-			const Float3 randomTopDownTranslation{ 0.f,0.f,static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.1f - 0.05f };
+			const Float3 randomTopDownTranslation{ 0.f,0.f,genRandomUpDownTranslation()};
 
 			// Insert top lipid
 			{

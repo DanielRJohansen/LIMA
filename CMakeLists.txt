@@ -72,4 +72,5 @@ add_subdirectory(code/LIMA)
 if (UNIX)
 	# Copy the resources to the appropriate directory
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION /usr/share/LIMA/resources)
+	install(DIRECTORY ${CMAKE_SOURCE_DIR}/dev/ DESTINATION /usr/share/LIMA/dev)
 endif()

@@ -378,8 +378,7 @@ namespace TestUtils {
 
 
 		FileUtils::WriteVectorToBinaryFile(workDir / "errors.bin", errors);
-
-		std::string command = "python C:\\Users\\Daniel\\git_repo\\LIMA\\dev\\PyTools\\pdf.py \"" + (workDir / "errors.bin").string() + "\"";
+		std::string command = (FileUtils::GetLimaDir() / "dev/PyTools/pdf.py").string() + " \"" + (workDir / "errors.bin").string() + "\"";
 		std::system(command.c_str());
 	}
 

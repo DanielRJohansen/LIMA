@@ -46,7 +46,36 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
+int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+{
+	for (const auto& tinyMol : tinyMols) {
+		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
+			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
+		}
 
+		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+
+		box.solventblockgrid_circularqueue->getBlockPtr(nodeIndex, 0, box.boxparams.boxSize)->addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
+		box.boxparams.n_solvents++;
+	}
+
+	std::mt19937 gen(1238971);
+	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
+
+	// Setup forces and vel's for VVS
+	box.tinyMols.reserve(box.boxparams.n_solvents);
+	for (int i = 0; i < box.boxparams.n_solvents; i++) {
+		// Give a random velocity
+		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
+
+		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
+	}
+
+
+	box.boxparams.total_particles += box.boxparams.n_solvents;
+	return box.boxparams.n_solvents;
+}
 
 
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
@@ -87,37 +116,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 
 
-int BoxBuilder::SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
-{
-	return 0;
-	for (const auto& tinyMol: tinyMols) {
-		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
-			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
-		}
 
-		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-
-		box.solventblockgrid_circularqueue->getBlockPtr(nodeIndex, 0, box.boxparams.boxSize)->addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
-		box.boxparams.n_solvents++;
-	}
-
-	std::mt19937 gen(1238971);
-	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
-
-	// Setup forces and vel's for VVS
-	box.tinyMols.reserve(box.boxparams.n_solvents);
-	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
-		// Give a random velocity
-		const Float3 direction = Float3{distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
-
-		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
-	}
-
-
-	box.boxparams.total_particles += box.boxparams.n_solvents;
-	return box.boxparams.n_solvents;
-}
 
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
 void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsrc, uint32_t boxsrc_current_step)

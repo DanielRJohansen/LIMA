@@ -246,8 +246,6 @@ static bool UseCachedBinaryFile(const fs::path& path) {
 	// we can just delete the binaries, and they will be remade automatically
 	if (path.parent_path().parent_path().parent_path() == FileUtils::GetLimaDir())
 		return true;
-#ifdef __linux__	
-#endif	
 
 	int64_t binaryModificationTime;
 	file.read(reinterpret_cast<char*>(&binaryModificationTime), sizeof binaryModificationTime);

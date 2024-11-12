@@ -490,7 +490,7 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 }
 
 std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vector<TinyMolRef>& tinyMolsRefs, LIMAForcefield& forcefieldManager) {
-	std::vector<TinyMolFactory> tinyMols;// (grofile.atoms.size() - nNonsolventAtoms);
+	std::vector<TinyMolFactory> tinyMols;
 	tinyMols.reserve(grofile.atoms.size());
 
 	for (const TinyMolRef& tinyMolRef : tinyMolsRefs) {

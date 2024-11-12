@@ -173,11 +173,9 @@ namespace LJ {
 			
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 
-			//force += -diff * 0.0000000001f;
-			//potE_sum += 0.000001f;
-			//electrostaticForce += -diff * 0.0000000001f * chargeSelf * (float)chargeNeighbors[neighborparticle_id];
-			//electrostaticPotential += 0.00001f * chargeSelf * (float)chargeNeighbors[neighborparticle_id];
 
+
+			//const float dist_sq_reciprocal = __frcp_rn(diff.lenSquared());
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,

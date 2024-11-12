@@ -56,6 +56,147 @@ __device__ BondType* LoadBonds(char* utility_buffer, const BondType* const sourc
 
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
+// #define compound_index blockIdx.x
+// template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
+// __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
+// 	__shared__ CompoundCompact compound;				// Mostly bond information
+// 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
+//
+// 	//Neighborlist
+// 	__shared__ int nNonbondedCompoundNeighbors;
+//
+// 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
+//
+// 	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
+//
+// 	__shared__ ForceField_NB forcefield_shared;
+//
+// 	NodeIndex compoundOrigo;
+//
+// 	float potE_sum{};
+// 	Float3 force{};
+// 	//NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
+// 	const float particleCharge = enableES	// TODO: this is temporary
+// 		? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
+// 		: 0.f;
+//
+// 	{
+// 		auto block = cooperative_groups::this_thread_block();
+//
+// 		compoundOrigo = boxState.compoundOrigos[blockIdx.x];
+// 		cooperative_groups::memcpy_async(block, compound_positions, &boxState.compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
+// 		if (threadIdx.x == 0) {
+// 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
+// 			nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
+// 		}
+//
+// 		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
+//
+// 		cooperative_groups::wait(block);
+//
+//
+// 		/*if (compoundcoords_global->origo != compoundOrigo)
+// 			printf("wtf");*/
+// 	}
+// 	compound.loadData(&boxConfig.compounds[blockIdx.x]);
+//
+//
+//
+// 	const int batchsize = 32;
+// 	__shared__ Float3 relshifts[batchsize];	// [lm]
+// 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
+// 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
+// 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
+// 	{
+// 		__shared__ uint8_t atomtypesBuffer[MAX_COMPOUND_PARTICLES*2];
+// 		auto block = cooperative_groups::this_thread_block();
+// 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
+// 		int indexInBatch = batchsize;
+// 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
+// 			__syncthreads();
+// 			static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
+// 			Float3* neighborPositionsCurrent = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * (i & 1));
+// 			Float3* neighborPositionsNext = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * !(i & 1));
+// 			uint8_t* neighborAtomstypesCurrent = atomtypesBuffer + (MAX_COMPOUND_PARTICLES * (i & 1));
+// 			uint8_t* neighborAtomstypesNext = atomtypesBuffer + (MAX_COMPOUND_PARTICLES * !(i & 1));
+// 			half* neighborParticleschargesCurrent = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * (i & 1));
+// 			half* neighborParticleschargesNext = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * !(i & 1));
+//
+// 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
+// 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
+// 			if (indexInBatch == batchsize) {
+// 				if (threadIdx.x < batchsize && threadIdx.x + i < nNonbondedCompoundNeighbors) {
+// 					neighborIds[threadIdx.x] = compoundNeighborlists[blockIdx.x].nonbondedNeighborcompoundIds[i + threadIdx.x];
+//
+// 					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);
+// 					KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
+//
+// 					// calc Relative LimaPosition Shift from the origo-shift
+// 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compoundOrigo).toFloat3();
+// 					neighborNParticles[threadIdx.x] = boxConfig.compounds[neighborIds[threadIdx.x]].n_particles;
+// 				}
+// 				indexInBatch = 0;
+// 				__syncthreads();
+//
+// 				{
+// 					// Load first element in batch and sync
+// 					const int currentNeighborId = neighborIds[indexInBatch];
+// 					const int currentNeighborNParticles = neighborNParticles[indexInBatch];
+//
+// 					if (threadIdx.x < currentNeighborNParticles) {
+// 						neighborAtomstypesCurrent[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+// 						neighborParticleschargesCurrent[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+// 						neighborPositionsCurrent[threadIdx.x] = boxState.compoundsRelposLm[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch];
+// 					}
+// 					__syncthreads();
+// 				}
+// 			}
+//
+// 			if (i + 1 < nNonbondedCompoundNeighbors && indexInBatch+1 < batchsize) {
+// 				static_assert(sizeof(Coord) == sizeof(Float3));
+// 				const int nextNeighborId = neighborIds[indexInBatch + 1];
+// 				//const int nextNeighborNParticles = neighborNParticles[indexInBatch + 1];
+//
+// 				//neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
+// 				//neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
+//
+// 				neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+// 				neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+// 				neighborPositionsNext[threadIdx.x] = boxState.compoundsRelposLm[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch + 1];
+//
+// 				//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, boxConfig.compoundsAtomtypes + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);
+// 				//cooperative_groups::memcpy_async(block, neighborParticleschargesNext, boxConfig.compoundsAtomCharges + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * MAX_COMPOUND_PARTICLES);
+// 				//cooperative_groups::memcpy_async(block, neighborPositionsNext, &boxState.compoundsRelposLm[nextNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Coord)* MAX_COMPOUND_PARTICLES);
+// 			}
+//
+// 			if (threadIdx.x < compound.n_particles) {
+// 				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+// 					neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
+// 			}
+//
+// 			// Process the positions
+// 			if (indexInBatch + 1 < batchsize) {
+// 				//cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete
+// 				//neighborPositionsNext[threadIdx.x] += relshifts[indexInBatch + 1];
+// 			}
+// 			indexInBatch++;
+// 		}
+// 	}
+// 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
+//
+// 	// This is the first kernel, so we overwrite
+// 	if (threadIdx.x < compound.n_particles) {
+//
+// 		//if (isinf(force.lenSquared()))
+// 		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);
+// 		if constexpr (computePotE) {
+// 			boxState.compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
+// 		}
+// 		boxState.compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
+// 	}
+// }
+// #undef compound_index
+
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
@@ -65,9 +206,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	//Neighborlist
 	__shared__ int nNonbondedCompoundNeighbors;
 
-	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES*2];
+	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES];
 
-	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
+	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES];
 
 	__shared__ ForceField_NB forcefield_shared;
 
@@ -77,8 +218,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	Float3 force{};
 	//NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
 	const float particleCharge = enableES	// TODO: this is temporary
-		? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
-		: 0.f;
+	? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
+	: 0.f;
 
 	{
 		auto block = cooperative_groups::this_thread_block();
@@ -96,7 +237,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
 
 		/*if (compoundcoords_global->origo != compoundOrigo)
-			printf("wtf");*/
+		 p rintf("wtf");*/
 	}
 	compound.loadData(&boxConfig.compounds[blockIdx.x]);
 
@@ -108,19 +249,16 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
-		__shared__ uint8_t atomtypesBuffer[MAX_COMPOUND_PARTICLES*2];
+		__shared__ uint8_t atomtypesBuffer[MAX_COMPOUND_PARTICLES];
 		auto block = cooperative_groups::this_thread_block();
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
-			static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
-			Float3* neighborPositionsCurrent = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * (i & 1));
-			Float3* neighborPositionsNext = ((Float3*)utility_buffer_f3) + (MAX_COMPOUND_PARTICLES * !(i & 1));
-			uint8_t* neighborAtomstypesCurrent = atomtypesBuffer + (MAX_COMPOUND_PARTICLES * (i & 1));
-			uint8_t* neighborAtomstypesNext = atomtypesBuffer + (MAX_COMPOUND_PARTICLES * !(i & 1));
-			half* neighborParticleschargesCurrent = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * (i & 1));
-			half* neighborParticleschargesNext = particleChargesBuffers + (MAX_COMPOUND_PARTICLES * !(i & 1));
+			//static_assert(sizeof utility_buffer_f3 >= sizeof(Float3) * MAX_COMPOUND_PARTICLES * 2, "Utilitybuffer not large enough for neighbor positions");
+			Float3* neighborPositionsCurrent = utility_buffer_f3;
+			uint8_t* neighborAtomstypesCurrent = atomtypesBuffer;
+			half* neighborParticleschargesCurrent = particleChargesBuffers;
 
 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
@@ -138,54 +276,31 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 				indexInBatch = 0;
 				__syncthreads();
 
-				{
-					// Load first element in batch and sync				
-					const int currentNeighborId = neighborIds[indexInBatch];
-					const int currentNeighborNParticles = neighborNParticles[indexInBatch];
-
-					if (threadIdx.x < currentNeighborNParticles) {
-						neighborAtomstypesCurrent[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
-						neighborParticleschargesCurrent[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
-						neighborPositionsCurrent[threadIdx.x] = boxState.compoundsRelposLm[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch];
-					}
-					__syncthreads();
-				}
 			}
 
-			if (i + 1 < nNonbondedCompoundNeighbors && indexInBatch+1 < batchsize) {
-				static_assert(sizeof(Coord) == sizeof(Float3));
-				const int nextNeighborId = neighborIds[indexInBatch + 1];
-				//const int nextNeighborNParticles = neighborNParticles[indexInBatch + 1];
+			const int currentNeighborNParticles = neighborNParticles[indexInBatch];
+			if (threadIdx.x < currentNeighborNParticles) {
+				// Load first element in batch and sync
+				const int currentNeighborId = neighborIds[indexInBatch];
 
-				//neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
-				//neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[neighborIds[indexInBatch+1] * MAX_COMPOUND_PARTICLES + threadIdx.x];
-				
-				neighborAtomstypesNext[threadIdx.x] = boxConfig.compoundsAtomtypes[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
-				neighborParticleschargesNext[threadIdx.x] = boxConfig.compoundsAtomCharges[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];				
-				neighborPositionsNext[threadIdx.x] = boxState.compoundsRelposLm[nextNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch + 1];
+				neighborAtomstypesCurrent[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+				neighborParticleschargesCurrent[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
+				neighborPositionsCurrent[threadIdx.x] = boxState.compoundsRelposLm[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch];
+			}
+			__syncthreads();
 
-				//cooperative_groups::memcpy_async(block, neighborAtomstypesNext, boxConfig.compoundsAtomtypes + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(uint8_t)* MAX_COMPOUND_PARTICLES);
-				//cooperative_groups::memcpy_async(block, neighborParticleschargesNext, boxConfig.compoundsAtomCharges + nextNeighborId * MAX_COMPOUND_PARTICLES, sizeof(half) * MAX_COMPOUND_PARTICLES);
-				//cooperative_groups::memcpy_async(block, neighborPositionsNext, &boxState.compoundsRelposLm[nextNeighborId*MAX_COMPOUND_PARTICLES], sizeof(Coord)* MAX_COMPOUND_PARTICLES);
-			}			
-					
 			if (threadIdx.x < compound.n_particles) {
 				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositionsCurrent, neighborNParticles[indexInBatch], neighborAtomstypesCurrent, forcefield_shared, particleCharge, neighborParticleschargesCurrent);
 			}
 
-			// Process the positions
-			if (indexInBatch + 1 < batchsize) {
-				//cooperative_groups::wait(block); // Joins all threads, waits for all copies to complete		
-				//neighborPositionsNext[threadIdx.x] += relshifts[indexInBatch + 1];
-			}	
 			indexInBatch++;
 		}
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 	// This is the first kernel, so we overwrite
-	if (threadIdx.x < compound.n_particles) { 
+	if (threadIdx.x < compound.n_particles) {
 
 		//if (isinf(force.lenSquared()))
 		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);

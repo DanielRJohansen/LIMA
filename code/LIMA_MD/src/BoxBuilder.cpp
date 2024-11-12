@@ -89,6 +89,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 int BoxBuilder::SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
+	return 0;
 	for (const auto& tinyMol: tinyMols) {
 		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");

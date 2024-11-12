@@ -4,7 +4,7 @@
 #include "LimaTypes.cuh"
 #include "Bodies.cuh"
 
-static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64 + 32;
+static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64 + 32+32;
 
 
 // blocks are notcentered 

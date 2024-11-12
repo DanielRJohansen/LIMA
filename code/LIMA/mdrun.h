@@ -100,7 +100,6 @@ Example:
 };
 
 int mdrun(int argc, char** argv) {
-    auto t0 = std::chrono::steady_clock::now();
     MdrunSetup setup(argc, argv);
     auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
@@ -109,6 +108,9 @@ int mdrun(int argc, char** argv) {
     TopologyFile topfile{ setup.topol };
 
     env->CreateSimulation(grofile, topfile, ip);
+
+    auto t0 = std::chrono::steady_clock::now();
+
     env->run();
 
     //env->WriteBoxCoordinatesToFile(grofile);

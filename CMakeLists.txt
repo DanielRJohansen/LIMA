@@ -6,7 +6,7 @@ if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
 endif()
 
-set(CMAKE_CUDA_ARCHITECTURES "89" "75" "61")
+set(CMAKE_CUDA_ARCHITECTURES "89")
 
 project(lima LANGUAGES CXX CUDA C)
 

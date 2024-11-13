@@ -85,8 +85,12 @@ public:
 	CompoundFactory(const int id) : 
 		id(id)
 	{
-		memset(forces_interim, 0, sizeof(forces_interim));
-		memset(potE_interim, 0, sizeof(potE_interim));
+		memset(forceEnergyFarneighborShortrange, 0, sizeof(forceEnergyFarneighborShortrange));
+		memset(forceEnergyImmediateneighborShortrange, 0, sizeof(forceEnergyImmediateneighborShortrange));
+		memset(forceEnergyBonds, 0, sizeof(forceEnergyBonds));
+		memset(forceEnergyBridge, 0, sizeof(forceEnergyBridge));
+		/*memset(forces_interim, 0, sizeof(forces_interim));
+		memset(potE_interim, 0, sizeof(potE_interim));*/
 	}
 
 	void addParticle(const ParticleFactory&,int global_id, float boxlen_nm, BoundaryConditionSelect bc);

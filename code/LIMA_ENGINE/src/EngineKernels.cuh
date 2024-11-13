@@ -57,6 +57,7 @@ __device__ BondType* LoadBonds(char* utility_buffer, const BondType* const sourc
 
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
+
 // #define compound_index blockIdx.x
 // template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 // __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
@@ -198,7 +199,6 @@ __device__ BondType* LoadBonds(char* utility_buffer, const BondType* const sourc
 // }
 // #undef compound_index
 
-#define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
@@ -295,15 +295,15 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
 
+		boxState.compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 		//if (isinf(force.lenSquared()))
 		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);
-		if constexpr (computePotE) {
+		/*if constexpr (computePotE) {
 			boxState.compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
 		}
-		boxState.compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;
+		boxState.compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;*/
 	}
 }
-#undef compound_index
 
 
 #define compound_index blockIdx.x
@@ -482,6 +482,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			__syncthreads();
 			static_assert(sizeof bpLUT > (sizeof(int) * (27*2 + MAX_COMPOUND_PARTICLES)));
 			char* utilityBuffer = (char*)(&bpLUT);
+			// Shouldnt be called here, should be called upon SimDevice instantiation and after each compoundIntegration
 			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], 
 				sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utilityBuffer);
 		}
@@ -490,10 +491,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
-		if constexpr (computePotE) {
-			sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
-		}
-		sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
+		sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
 }
 template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
@@ -507,7 +505,7 @@ template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsK
 #undef compound_index
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField) {
+__global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -557,8 +555,9 @@ __global__ void compoundBondsAndIntegrationKernel(SimulationDevice* sim, int64_t
 
 	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
 	if (threadIdx.x < compound.n_particles) {
-		boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
-		boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;
+		boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		/*boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
+		boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;*/
 	}
 }
 
@@ -575,8 +574,22 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
 	// Fetch interims from other kernels
-	Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x];
-	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x];
+	/*Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x];
+	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x];*/
+
+	Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
+	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;
+
+	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].force;
+	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].potE;
+
+	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x].force;
+	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x].potE;
+
+	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBridge[threadIdx.x].force;
+	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBridge[threadIdx.x].potE;
+	
+
 	if (isnan(force.len()))
 		printf("NAN\n");
 
@@ -994,10 +1007,13 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	if (particle_id_bridge < bridge.n_particles) {
 		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
 
+#ifdef FORCE_NAN_CHECK
 		if (isinf(force.lenSquared()))
 			printf("Bridge inf\n");
-		boxState->compoundsInterimState[p_ref->compound_id].forces_interim[p_ref->local_id_compound] += force;
-		boxState->compoundsInterimState[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;
+#endif
+		boxState->compoundsInterimState[p_ref->compound_id].forceEnergyBridge[p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
+		/*boxState->compoundsInterimState[p_ref->compound_id].forces_interim[p_ref->local_id_compound] += force;
+		boxState->compoundsInterimState[p_ref->compound_id].potE_interim[p_ref->local_id_compound] += potE_sum;*/
 	}
 }
 template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step);

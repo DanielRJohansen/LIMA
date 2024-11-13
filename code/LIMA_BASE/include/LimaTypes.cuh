@@ -235,8 +235,8 @@ struct Float3 {
 };
 
 struct ForceEnergy {
-	Float3 force;
-	float potE;
+	Float3 force;	// [1/lima N/mol]
+	float potE;		// [GN/mol]
 };
 
 struct Double3 {

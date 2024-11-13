@@ -30,7 +30,7 @@ namespace LIMA_UTILS {
         }
     }
 
-    static void genericErrorCheckNosync(const char* text) {
+    static void genericErrorCheckNoSync(const char* text) {
         if constexpr (!LIMA_PUSH)
             cudaDeviceSynchronize();
 

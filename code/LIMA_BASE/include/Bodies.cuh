@@ -199,8 +199,15 @@ const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
 struct CompoundInterimState {
 	// Interims from the bridgekernel to compoundkernel
-	float potE_interim[MAX_COMPOUND_PARTICLES];
-	Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
+	//float potE_interim[MAX_COMPOUND_PARTICLES];
+	//Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
+	__host__ Float3 sumForce(int particleIndex) const;
+	__host__ float sumPotentialenergy(int particleIndex) const;
+
+	ForceEnergy forceEnergyFarneighborShortrange[MAX_COMPOUND_PARTICLES];
+	ForceEnergy forceEnergyImmediateneighborShortrange[MAX_COMPOUND_PARTICLES];
+	ForceEnergy forceEnergyBonds[MAX_COMPOUND_PARTICLES];
+	ForceEnergy forceEnergyBridge[MAX_COMPOUND_PARTICLES];
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[MAX_COMPOUND_PARTICLES];

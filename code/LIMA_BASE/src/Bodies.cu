@@ -24,3 +24,15 @@ ImproperDihedralBond::ImproperDihedralBond(std::array<uint8_t, nAtoms> ids, cons
 		atom_indexes[i] = ids[i];
 	}
 }
+__host__ Float3 CompoundInterimState::sumForce(int particleIndex) const {
+	return forceEnergyFarneighborShortrange[particleIndex].force 
+		+ forceEnergyImmediateneighborShortrange[particleIndex].force 
+		+ forceEnergyBonds[particleIndex].force 
+		+ forceEnergyBridge[particleIndex].force;
+}
+__host__ float CompoundInterimState::sumPotentialenergy(int particleIndex) const {
+	return forceEnergyFarneighborShortrange[particleIndex].potE
+		+ forceEnergyImmediateneighborShortrange[particleIndex].potE
+		+ forceEnergyBonds[particleIndex].potE
+		+ forceEnergyBridge[particleIndex].potE;
+}

@@ -295,7 +295,6 @@ void Engine::HandleEarlyStoppingInEM() {
 template <typename BoundaryCondition, bool emvariant, bool computePotE>
 void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
-	const auto t0 = std::chrono::high_resolution_clock::now();
 	
 	const BoxParams& boxparams = simulation->box_host->boxparams;
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
@@ -306,7 +305,7 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics);
 	}
 
-	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundForceKernel");
 
 	if (boxparams.n_compounds > 0) {
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
@@ -315,15 +314,14 @@ void Engine::_deviceMaster() {
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 
 
-	const auto t0a = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
 
 	if constexpr (ENABLE_ES_LR) {
 		if (simulation->simparams_host.enable_electrostatics) {
+			// Must occur after compoundImmediateneighborAndSelfShortrangeInteractionsKernel
 			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
 		}
 	}
-	const auto t0b = std::chrono::high_resolution_clock::now();
 
 	if (boxparams.n_bridges > 0) {
 		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep());
@@ -335,10 +333,9 @@ void Engine::_deviceMaster() {
 
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
-		compoundBondsAndIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
+		compoundBondsKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
 	}
 	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
-	const auto t1 = std::chrono::high_resolution_clock::now();
 
 
 	if (boxparams.n_solvents > 0) {
@@ -366,18 +363,17 @@ void Engine::_deviceMaster() {
 
 
 	if (boxparams.n_compounds > 0) {
-		//LAUNCH_GENERIC_KERNEL_2(CompoundIntegrationKernel, boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, bc_select, simulation->simparams_host.em_variant, sim_dev, simulation->getStep());
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
 	}
 	LIMA_UTILS::genericErrorCheck("Error after CompoundIntegrationKernel");
 
 	const auto t2 = std::chrono::high_resolution_clock::now();
 
-	const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0b + t0a - t0).count();
+	/*const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0b + t0a - t0).count();
 	const int solvents_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
 	timings.compound_kernels += compounds_duration;
-	timings.solvent_kernels += solvents_duration;
+	timings.solvent_kernels += solvents_duration;*/
 }
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();

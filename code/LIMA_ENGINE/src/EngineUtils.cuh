@@ -187,5 +187,17 @@ namespace EngineUtils {
 		__syncthreads();
 	}
 
+	template <typename BondType, int max_bondtype_in_compound>
+	__device__ BondType* LoadBonds(char* utility_buffer, const BondType* const source, int nBondsToLoad) {
+		static_assert(cbkernel_utilitybuffer_size >= sizeof(BondType) * max_bondtype_in_compound, "Utilitybuffer not large enough for bondtype");
+		BondType* bonds = (BondType*)utility_buffer;
+
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, bonds, source, sizeof(BondType) * nBondsToLoad);
+		cooperative_groups::wait(block);
+
+		return bonds;
+	}
+
 };
 

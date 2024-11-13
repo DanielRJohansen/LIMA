@@ -114,11 +114,12 @@ public:
 
 struct TinyMolFactory {
 	TinyMolFactory() {}
-	TinyMolFactory(const Float3& pos, int tinymolTypeIndex, Float3 velocity = Float3{})
-		: position(pos), state(TinyMolState{ state.vel_prev,Float3{},tinymolTypeIndex }) 
+    TinyMolFactory(const Float3& pos, int tinymolTypeIndex, const std::string& atomType="", Float3 velocity = Float3{})
+        : position(pos), state(TinyMolState{ state.vel_prev,Float3{},tinymolTypeIndex }), atomType(atomType)
 	{}
 	Float3 position;
 	TinyMolState state;
+    std::string atomType; // Debug only
 };
 
 class BridgeFactory : public CompoundBridge {

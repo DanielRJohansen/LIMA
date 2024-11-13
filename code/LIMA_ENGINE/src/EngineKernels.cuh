@@ -15,7 +15,10 @@
 
 
 #include "Electrostatics.cuh"
+#include "LennardJonesInteractions.cuh"
 
+
+#include <cfloat>
 
 #pragma warning(push)
 #pragma warning(disable:E0020)
@@ -25,8 +28,6 @@
 #pragma diag_suppress 20054
 
 
-
-#include "LennardJonesInteractions.cuh"
 
 // TODO: move to engine utils
 template <typename BondType, int max_bondtype_in_compound>

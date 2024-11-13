@@ -5,7 +5,7 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 #include "PhysicsUtilsDevice.cuh"
-
+#include <cfloat>
 
 namespace LJ {
 	// __constant__ mem version
@@ -87,6 +87,13 @@ namespace LJ {
 		if (force.isNan()) {
 			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);
 			diff.print('D');
+		}
+		if constexpr (!emvariant) {
+			if (force.lenSquared() > FLT_MAX) {
+				(diff * LIMA_TO_NANO).print('D');
+				printf("diff %f\n", diff.len() * LIMA_TO_NANO);
+				printf("%s", calcLJOriginString[originSelect]);
+			}
 		}
 #endif
 

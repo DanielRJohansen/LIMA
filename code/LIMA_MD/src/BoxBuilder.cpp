@@ -65,14 +65,13 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 	// Setup forces and vel's for VVS
 	box.tinyMols.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {
+		// TODO NOW: Remove this random vel, unless requested in simparams
 		// Give a random velocity
 		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
 		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
 
 		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
-	}
-
-
+	}    
 	box.boxparams.total_particles += box.boxparams.n_solvents;
 	return box.boxparams.n_solvents;
 }

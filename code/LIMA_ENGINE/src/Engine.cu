@@ -134,6 +134,10 @@ void Engine::verifyEngine() {
 	const int nBlocks = simulation->box_host->boxparams.boxSize;
 	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
 
+    // TODO Check for cubic and integer boxsize!! IMPORTANT
+    //const Float3 boxSize = simulation->boxHost.box
+    //if ()
+
 	if constexpr (ENABLE_ES_LR) {
 		if (simulation->simparams_host.enable_electrostatics && simulation->simparams_host.bc_select != PBC) {
 			throw std::invalid_argument("Electrostatics only supported with PBC at the current time");

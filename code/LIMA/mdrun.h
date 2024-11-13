@@ -107,6 +107,12 @@ int mdrun(int argc, char** argv) {
     GroFile grofile{ setup.conf };
     TopologyFile topfile{ setup.topol };
 
+    if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
+        const int newSize = std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z));
+        printf("Boxsize was not an integer, or was not cubic. Setting new boxsize to %d", newSize);
+        grofile.box_size = Float3(newSize, newSize, newSize);
+    }
+
     env->CreateSimulation(grofile, topfile, ip);
 
     auto t0 = std::chrono::steady_clock::now();

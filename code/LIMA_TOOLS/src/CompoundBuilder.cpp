@@ -498,7 +498,8 @@ std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vect
 		tinyMols.emplace_back(TinyMolFactory{ 
 			grofile.atoms[tinyMolRef.atomsOffsetInGrofile].position,  
 			//forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.molecule.moleculetype->atoms[0].type) 
-			forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.topology.atoms[0].type)
+            forcefieldManager.GetActiveTinymoltypeIndex(tinyMolRef.topology.atoms[0].type),
+            tinyMolRef.topology.atoms[0].type
 			});
 	}
 

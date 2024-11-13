@@ -57,7 +57,17 @@ __device__ BondType* LoadBonds(char* utility_buffer, const BondType* const sourc
 
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
+__global__ void DistributeCompoundchargesToGridKernel(SimulationDevice* sim) {
+	NodeIndex compound_origo = sim->boxState->compoundOrigos[blockIdx.x];
+	const Float3 relPos = sim->boxState->compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES];
+	const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
+	char utilityBuffer[sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)];
 
+
+	__syncthreads();
+	Electrostatics::DistributeChargesToChargegrid(compound_origo, relPos,
+		sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, nParticles, utilityBuffer);	
+}
 // #define compound_index blockIdx.x
 // template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 // __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
@@ -311,8 +321,7 @@ template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // 
 __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
-	//Neighborlist
-	//__shared__ int nCompoundNeighbors;
+
 	__shared__ int nGridnodes;
 
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES * 2];
@@ -475,21 +484,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 #endif
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-
-	// -------------------------------------------------------------- Distribute charges --------------------------------------------------------------- //	
-	if constexpr (ENABLE_ES_LR) {
-		if (simparams.enable_electrostatics) {
-			__syncthreads();
-			static_assert(sizeof bpLUT > (sizeof(int) * (27*2 + MAX_COMPOUND_PARTICLES)));
-			char* utilityBuffer = (char*)(&bpLUT);
-			// Shouldnt be called here, should be called upon SimDevice instantiation and after each compoundIntegration
-			Electrostatics::DistributeChargesToChargegrid(compound_origo, compound_positions[threadIdx.x], 
-				sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x], sim->chargeGrid, compound.n_particles, utilityBuffer);
-		}
-	}
-
-
-	// This is the first kernel, so we overwrite
 	if (threadIdx.x < compound.n_particles) {
 		sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
@@ -556,8 +550,6 @@ __global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const U
 	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
 	if (threadIdx.x < compound.n_particles) {
 		boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x] = ForceEnergy{ force, potE_sum };
-		/*boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
-		boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] += potE_sum;*/
 	}
 }
 
@@ -574,9 +566,6 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
 	// Fetch interims from other kernels
-	/*Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x];
-	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x];*/
-
 	Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
 	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;
 
@@ -590,11 +579,8 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBridge[threadIdx.x].potE;
 	
 
-	if (isnan(force.len()))
-		printf("NAN\n");
 
-	float speed = 0.f;
-	float forceLen = force.len();
+	
 	__syncthreads();
 
 	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
@@ -618,6 +604,11 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
+#ifdef FORCE_NAN_CHECK
+	if (isnan(force.len()))
+		printf("NAN\n");
+#endif
+	float speed = 0.f;
 	if (threadIdx.x < nParticles) {
 		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
 
@@ -647,7 +638,6 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 			speed = velScaled.len();
 		}
 	}
-
 	__syncthreads();
 
 	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	

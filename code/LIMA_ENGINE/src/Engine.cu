@@ -299,49 +299,61 @@ void Engine::_deviceMaster() {
 	const BoxParams& boxparams = simulation->box_host->boxparams;
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
-	// Initial round of force computations
 
+	// #### Pre force kernels
+	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics && boxparams.n_compounds > 0) {
+		DistributeCompoundchargesToGridKernel << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributeCompoundchargesToGridKernel");
+	}
+
+	// #### Initial round of force computations
+	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 	}
-
-	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundForceKernel");
-
+	
 	if (boxparams.n_compounds > 0) {
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 	}
-
-	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
-
-
-	cudaDeviceSynchronize();
-
-	if constexpr (ENABLE_ES_LR) {
-		if (simulation->simparams_host.enable_electrostatics) {
-			// Must occur after compoundImmediateneighborAndSelfShortrangeInteractionsKernel
-			timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
-		}
-	}
-
+	
 	if (boxparams.n_bridges > 0) {
 		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBridgeKernel");
+	}	
+
+	if (boxparams.n_solvents > 0) {
+		solventForceKernel<BoundaryCondition, emvariant> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+	}
+	
+	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+		// Must occur after DistributeCompoundchargesToGridKernel
+		timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
 
 	if (simulation->simparams_host.snf_select != None) {
 		SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
 	}
 
-	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		compoundBondsKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
 	}
-	LIMA_UTILS::genericErrorCheck("Error after compoundForceKernel");
 
+
+	// #### Integration and Transfer kernels
+	cudaDeviceSynchronize();
+
+	if (boxparams.n_compounds > 0) {
+		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
+	}
 
 	if (boxparams.n_solvents > 0) {
-		solventForceKernel<BoundaryCondition, emvariant> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
-		cudaDeviceSynchronize();
-
 		const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(simulation->getStep());
 		if (isTransferStep)
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, true> 
@@ -351,29 +363,17 @@ void Engine::_deviceMaster() {
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, false>
 				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >>>
 					(sim_dev, simulation->getStep());
-		cudaDeviceSynchronize();
+		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrationLoggingAndTransferout");
 
-		LIMA_UTILS::genericErrorCheck("Error after solventForceKernel");
-		if (SolventBlocksCircularQueue::isTransferStep(simulation->getStep())) {
+		if (isTransferStep) {
+			cudaDeviceSynchronize();
 			solventTransferKernel<BoundaryCondition> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size >> > (sim_dev, simulation->getStep());
+			LIMA_UTILS::genericErrorCheckNoSync("Error after solventTransferKernel");
 		}
 	}
+	
+
 	cudaDeviceSynchronize();
-	LIMA_UTILS::genericErrorCheck("Error after solventTransferKernel");
-
-
-	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
-	}
-	LIMA_UTILS::genericErrorCheck("Error after CompoundIntegrationKernel");
-
-	const auto t2 = std::chrono::high_resolution_clock::now();
-
-	/*const int compounds_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0b + t0a - t0).count();
-	const int solvents_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-
-	timings.compound_kernels += compounds_duration;
-	timings.solvent_kernels += solvents_duration;*/
 }
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();

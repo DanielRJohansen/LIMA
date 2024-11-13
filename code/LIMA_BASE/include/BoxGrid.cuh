@@ -54,6 +54,9 @@ struct SolventBlock {
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
+
+	// Not sure this is the ideal place, as it is an interim and never transferred.. 
+	ForceEnergy forceEnergies[MAX_SOLVENTS_IN_BLOCK];
 };
 
 

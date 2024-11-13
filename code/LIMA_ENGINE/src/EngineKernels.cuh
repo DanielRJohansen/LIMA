@@ -669,73 +669,56 @@ template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(S
 
 
 
-#define solvent_active (threadIdx.x < solventblock.n_solvents)
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
+__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
-	__shared__ SolventBlock solventblock;
-	__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
-	__shared__ int utility_int;
-	__shared__ Coord utility_coord;
+	__shared__ int neighborblockNumElements;
 	__shared__ Float3 utility_float3;
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
+	__shared__ int nElementsInBlock;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 
-	BoxState* boxState = sim->boxState;
-	const SimParams& simparams = sim->params;
-	SimSignals* signals = sim->signals;
-	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+	const SolventBlock* const solventblock_ptr = boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
-	// Init queue, otherwise it will contain wierd values // TODO: only do this on transferstep?
-	if (threadIdx.x < 6) { 
-		transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
-	}
+
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
-		forcefieldTinymol_shared.types[threadIdx.x] = tinymolForcefield_device.types[threadIdx.x];
+		forcefieldTinymol_shared.types[threadIdx.x] = tinymolForcefield_device.types[threadIdx.x]; // TODO Check that im using this and not the __constant??
 	}
-
-
-
-
-	// temp
-	utility_buffer[threadIdx.x] = Float3{0};
-	utility_buffer_small[threadIdx.x] = 0;
-
 
 	if (threadIdx.x == 0) {
-		solventblock.loadMeta(*solventblock_ptr);
+		nElementsInBlock = solventblock_ptr->n_solvents;
 	}
 	__syncthreads();
-	solventblock.loadData(*solventblock_ptr);
-	__syncthreads();	
+	
 
+	const bool threadActive = threadIdx.x < nElementsInBlock;
 
 	Float3 force{};
 	float potE_sum{};
-	const Float3 relpos_self = solventblock.rel_pos[threadIdx.x].toFloat3();
-	const uint8_t tinymolTypeId = solventblock.atomtypeIds[threadIdx.x];
-
+	const Float3 relpos_self = solventblock_ptr->rel_pos[threadIdx.x].toFloat3();
+	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
+	const uint32_t idSelf = solventblock_ptr->ids[threadIdx.x];
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
-		const CompoundGridNode* compoundgridnode = BoxGrid::GetNodePtr(sim->compound_grid, blockIdx.x);
-		if (threadIdx.x == 0) { utility_int = compoundgridnode->n_nearby_compounds; }
+		const CompoundGridNode* compoundgridnode = BoxGrid::GetNodePtr(compoundGrid, blockIdx.x);
+		if (threadIdx.x == 0) { neighborblockNumElements = compoundgridnode->n_nearby_compounds; }
 		__syncthreads();
 
 
 
-		for (int i = 0; i < utility_int; i++) {
+		for (int i = 0; i < neighborblockNumElements; i++) {
 			const uint16_t neighborcompound_index = compoundgridnode->compoundidsWithinLjCutoff[i];
-			const Compound* neighborcompound = &sim->boxConfig.compounds[neighborcompound_index];
+			const Compound* neighborcompound = &boxConfig.compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 
 			// All threads help loading the molecule
 			// First load particles of neighboring compound
-			EngineUtils::getCompoundHyperpositionsAsFloat3<BoundaryCondition>(solventblock.origo, boxState->compoundOrigos[neighborcompound_index], &boxState->compoundsRelposLm[neighborcompound_index * MAX_COMPOUND_PARTICLES],
+			EngineUtils::getCompoundHyperpositionsAsFloat3<BoundaryCondition>(block_origo, boxState.compoundOrigos[neighborcompound_index], &boxState.compoundsRelposLm[neighborcompound_index * MAX_COMPOUND_PARTICLES],
 				utility_buffer, utility_float3, n_compound_particles);
 
 
@@ -746,9 +729,9 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 			__syncthreads();
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
-			if (solvent_active) {// TODO: use computePote template param here
+			if (threadActive) {// TODO: use computePote template param here
 				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum, 
-					utility_buffer_small, solventblock.ids[threadIdx.x], tinymolForcefield_device, tinymolTypeId);
+					utility_buffer_small, idSelf, tinymolForcefield_device, tinymolTypeId);
 			}
 			__syncthreads();
 		}
@@ -760,13 +743,13 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
 	{		
 		__syncthreads(); // Sync since use of utility
-		if (solvent_active) {
+		if (threadActive) {
 			utility_buffer[threadIdx.x] = relpos_self;
 			utility_buffer_small[threadIdx.x] = tinymolTypeId;
 		}
 		__syncthreads();
-		if (solvent_active) {
-			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, solventblock.n_solvents, true, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
+		if (threadActive) {
+			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nElementsInBlock, true, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 		}
 		__syncthreads(); // Sync since use of utility
 	}	
@@ -784,7 +767,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 				const int blockindex_neighbor = EngineUtils::getNewBlockId<BoundaryCondition>(dir, block_origo);
 				KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
 
-				const SolventBlock* solventblock_neighbor = boxState->solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
+				const SolventBlock* solventblock_neighbor = boxState.solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
 				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 				const Float3 origoshift_offset = LIMAPOSITIONSYSTEM::nodeIndexToCoord(dir).toFloat3();
 
@@ -796,7 +779,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 				}
 				__syncthreads();
 
-				if (solvent_active) {
+				if (threadActive) {
 					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 				}
 				__syncthreads();
@@ -805,8 +788,44 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
+	// Finally push force and potE for next kernel
+	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergies[threadIdx.x] = ForceEnergy{ force, potE_sum };
+}
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
+template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
+template __global__ void solventForceKernel<NoBoundaryCondition, true>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
+template __global__ void solventForceKernel<NoBoundaryCondition, false>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
+
+
+template <typename BoundaryCondition, bool energyMinimize, bool transferOutThisStep>
+__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step) {
+	__shared__ SolventBlock solventblock;
+	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+
+	// Doubles as block_index_3d!
+	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
+
+	BoxState* boxState = sim->boxState;
+	const SimParams& simparams = sim->params;
+	SimSignals* signals = sim->signals;
+	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+
+	//const ForceEnergy forceEnergy = solventblock_ptr->forceEnergies[threadIdx.x];
+	const Float3 force = solventblock_ptr->forceEnergies[threadIdx.x].force;
+	const float potE = solventblock_ptr->forceEnergies[threadIdx.x].potE;
+	
+	if (threadIdx.x == 0) {
+		solventblock.loadMeta(*solventblock_ptr);
+	}
+	__syncthreads();
+	const bool solventActive = threadIdx.x < solventblock.n_solvents;
+	solventblock.loadData(*solventblock_ptr);
+	__syncthreads();
+
+
+
 	Coord relpos_next{};
-	if (solvent_active) {
+	if (solventActive) {
 		TinyMolState& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
 		const float mass = tinymolForcefield_device.types[tinyMols_ref.tinymolTypeIndex].mass;
 
@@ -817,7 +836,8 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
 
 			relpos_next = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, potE_sum, solventblock, solvent_active, force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+				force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
 			if (force.isNan() || force.lenSquared() >= FLT_MAX)
@@ -825,7 +845,7 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref.force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
-			
+
 			vel_now = vel_now * thermostatScalar_device;
 
 			tinyMols_ref.vel_prev = vel_now;
@@ -833,17 +853,24 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 
 			// Save pos locally, but only push to box as this kernel ends
 			relpos_next = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, potE_sum, solventblock, solvent_active, force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+				force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 	}
 
 
 
 	// Push new SolventCoord to global mem
-	SolventBlock* solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
+	SolventBlock* const solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
 
-	if (SolventBlocksCircularQueue::isTransferStep(step)) {
+	if constexpr (transferOutThisStep) {
+		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
+		// Init queue, otherwise it will contain wierd values 
+		if (threadIdx.x < 6) {
+			transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
+		}
 		utility_buffer_small[threadIdx.x] = 0;
+		__syncthreads();
 		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
 	}
 	else {
@@ -855,17 +882,14 @@ __global__ void solventForceKernel(SimulationDevice* sim, int64_t step) {
 		}
 	}
 }
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int64_t);
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int64_t);
-template __global__ void solventForceKernel<NoBoundaryCondition, true>(SimulationDevice*, int64_t);
-template __global__ void solventForceKernel<NoBoundaryCondition, false>(SimulationDevice*, int64_t);
-
-#undef solvent_index
-#undef solvent_mass
-#undef solvent_active
-#undef solventblock_ptr
-
-
+template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, true, true>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, true, false>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, false, true>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, false, false>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, true, true>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, true, false>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, false, true>(SimulationDevice*, int64_t);
+template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, false, false>(SimulationDevice*, int64_t);
 
 
 // This is run before step.inc(), but will always publish results to the first array in grid!

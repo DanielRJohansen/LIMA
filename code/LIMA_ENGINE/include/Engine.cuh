@@ -21,6 +21,7 @@ class Thermostat;
 class BoxState;
 class BoxConfig;
 class NeighborList;
+class CompoundGridNode;
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
@@ -125,6 +126,8 @@ private:
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
+	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
+
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;

@@ -234,6 +234,10 @@ struct Float3 {
 
 };
 
+struct ForceEnergy {
+	Float3 force;
+	float potE;
+};
 
 struct Double3 {
 	__host__ __device__ Double3() {}

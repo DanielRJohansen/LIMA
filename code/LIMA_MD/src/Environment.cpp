@@ -39,7 +39,7 @@ Environment::~Environment() {}
 
 void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
-	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(boxsize_nm));
+	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm)));
 	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 

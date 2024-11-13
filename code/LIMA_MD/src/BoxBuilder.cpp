@@ -65,8 +65,8 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 	// Setup forces and vel's for VVS
 	box.tinyMols.reserve(box.boxparams.n_solvents);
 	for (int i = 0; i < box.boxparams.n_solvents; i++) {
-		// TODO NOW: Remove this random vel, unless requested in simparams
-		// Give a random velocity
+		
+		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
 		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
 		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
 
@@ -80,7 +80,7 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
 
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
-	auto box = std::make_unique<Box>(static_cast<int>(boxImage.grofile.box_size.x));
+	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
 	box->compounds.reserve(boxImage.compounds.size());
 	box->compoundInterimStates.reserve(boxImage.compounds.size());

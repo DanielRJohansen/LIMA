@@ -128,10 +128,14 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 
 
-Box::Box(int boxSizeNM) {
-	boxparams.boxSize = boxSizeNM;
-	//compoundcoordsCircularQueue = CompoundcoordsCircularQueue_Host::CreateQueue();
-	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxSizeNM);
+Box::Box(Float3 boxSizeNM) {
+	if ((NodeIndex(boxSizeNM.ToInt3()).toFloat3() - boxSizeNM).len() > 0.0000001
+		|| boxSizeNM.x != boxSizeNM.y || boxSizeNM.y != boxSizeNM.z) {
+		throw std::invalid_argument("Boxsize was not an integer, or was not cubic");
+	}
+
+	boxparams.boxSize = static_cast<int>(boxSizeNM.x);
+	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(static_cast<int>(boxSizeNM.x));
 }
 
 

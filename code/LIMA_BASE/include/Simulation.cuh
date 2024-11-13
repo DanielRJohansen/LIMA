@@ -136,7 +136,7 @@ namespace LIMALOGSYSTEM {
 
 struct Box {
 	Box() {}
-	Box(int boxSize);
+	Box(Float3 boxSize);
 
 	BoxParams boxparams;
 

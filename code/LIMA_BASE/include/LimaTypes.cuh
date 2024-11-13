@@ -72,7 +72,7 @@ struct Float3 {
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
-    __host__ Int3 ToInt3() const {return Int3{x, y , z};}
+	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
 
 
 

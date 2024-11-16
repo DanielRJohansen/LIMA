@@ -311,11 +311,12 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
-	}
-	
-	if (boxparams.n_compounds > 0) {
+
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
+
+		compoundBondsKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
 	}
 	
 	if (boxparams.n_bridges > 0) {
@@ -338,12 +339,6 @@ void Engine::_deviceMaster() {
 		SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
 	}
-
-	if (boxparams.n_compounds > 0) {
-		compoundBondsKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
-	}
-
 
 	// #### Integration and Transfer kernels
 	cudaDeviceSynchronize();

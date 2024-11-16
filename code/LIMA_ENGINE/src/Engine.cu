@@ -119,7 +119,10 @@ void Engine::setDeviceConstantMemory() {
 	const float initialThermostatScalar = 1.f;
 	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 
-	LIMA_UTILS::genericErrorCheck("Error while setting Global Constants\n");
+	assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
+	cudaMemcpyToSymbol(nonbondedInteractionParams_device, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
+
+	LIMA_UTILS::genericErrorCheck("Error while setting CUDA __constant__ memory\n");
 }
 
 

@@ -198,6 +198,8 @@ public:
 
 	ForceField_NB forcefield;
 	ForcefieldTinymol forcefieldTinymol;
+	std::vector<NonbondedInteractionParams> forcefieldTest;
+
 
 	friend class Engine;
 };

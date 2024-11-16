@@ -142,6 +142,12 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
+			//float a = calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield);
+			//float b = __half2float(nonbondedInteractionParams_device[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
+			//if (std::abs(a - b) / a > 1e-5) {
+			//	printf("Epsilon mismatch %f %f\n", a, b);
+			//}
+
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,

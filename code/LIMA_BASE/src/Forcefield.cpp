@@ -286,6 +286,23 @@ ForceField_NB LIMAForcefield::GetActiveLjParameters() {
 	return forcefieldNB;
 }
 
+std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionParams() const {
+	std::vector<NonbondedInteractionParams> nonbondedInteractionParams(ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES, NonbondedInteractionParams{0,0,0});
+
+	const std::vector<AtomType>& activeParameters = ljParameters->GetActiveParameters();
+	for (int i = 0; i < activeParameters.size(); i++) {
+		for (int j = 0; j < activeParameters.size(); j++) {
+			nonbondedInteractionParams[i * ForceField_NB::MAX_TYPES + j] = NonbondedInteractionParams{
+				(activeParameters[i].parameters.sigma + activeParameters[j].parameters.sigma) * 0.5f,
+				sqrt(activeParameters[i].parameters.epsilon * activeParameters[j].parameters.epsilon),
+				activeParameters[i].charge* activeParameters[j].charge
+			};
+		}
+	}
+	return nonbondedInteractionParams;
+}
+
+
 int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
 	return tinymolTypes->GetActiveIndex(query);
 }

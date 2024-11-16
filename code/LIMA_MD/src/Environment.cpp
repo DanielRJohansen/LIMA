@@ -63,6 +63,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
 	simulation->forcefield = boximage->forcefield;
 	simulation->forcefieldTinymol = boximage->tinymolTypes;
+	simulation->forcefieldTest = boximage->nonbondedInteractionParams;
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
@@ -72,6 +73,7 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 
 	simulation->forcefield = simulation_src.forcefield;
 	simulation->forcefieldTinymol = simulation_src.forcefieldTinymol;
+	simulation->forcefieldTest = simulation_src.forcefieldTest;
 }
 
 

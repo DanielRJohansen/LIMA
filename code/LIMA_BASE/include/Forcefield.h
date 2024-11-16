@@ -51,6 +51,8 @@ struct ImproperDihedralbondType : public ImproperDihedralBond {
 ///-----------------------------------------------------------------------------------///
 
 
+
+
 class AtomtypeDatabase;
 
 template <typename GenericBondType>
@@ -65,6 +67,7 @@ public:
 
 	int GetActiveLjParameterIndex(const std::string& query);
 	ForceField_NB GetActiveLjParameters();
+	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
 	int GetActiveTinymoltypeIndex(const std::string& query);
 	ForcefieldTinymol GetTinymolTypes();

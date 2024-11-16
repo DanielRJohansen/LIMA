@@ -26,6 +26,20 @@ namespace PhysicsUtilsDevice {
 		return force;
 	}
 
+	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff)
+	{
+		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
+		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
+
+		const Float3 force = diff * chargeProduct * invLenCubed;
+#ifdef FORCE_NAN_CHECK
+		if (force.isNan())
+			force.print('E');
+#endif
+
+		return force;
+	}
+
 	// <summary>Calculate the potential without multiplying the coulumbConstant, so called must do that!!</summary>
 	// <param name="myCharge">[kilo C/mol]</param>
 	// <param name="otherCharge">[kilo C/mol]</param>

@@ -331,7 +331,12 @@ struct CompoundBridge {
 	}
 };
 
-
+// Precomputed values for pairs of atomtypes
+struct NonbondedInteractionParams {
+	float sigma;
+	half epsilon;
+	half chargeProduct;
+};
 
 
 struct ForceField_NB {

@@ -1172,7 +1172,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		forcefield.GetTinymolTypes(),
-		topology
+		topology,
+		forcefield.GetNonbondedInteractionParams()
 	);
 
 }

@@ -5,7 +5,7 @@
 #include "Bodies.cuh"
 
 // Highest concentration in smtv test is only 48 tinymols, but could be larger with more ions and less solvent
-static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64 + 32+32;
+static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 
 // blocks are notcentered 

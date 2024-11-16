@@ -30,6 +30,7 @@ __constant__ float cutoffNm_device;
 __constant__ float cutoffLmSquaredReciprocal_device;
 __constant__ float thermostatScalar_device;
 
+__constant__ NonbondedInteractionParams nonbondedInteractionParams_device[ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES];
 
 
 

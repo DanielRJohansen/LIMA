@@ -175,5 +175,7 @@ struct BoxImage {
 	const ForcefieldTinymol tinymolTypes;
 
 	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
+
+	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
 };
  

@@ -27,7 +27,6 @@ void RunAllUnitTests();
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
-		int a = 0;
 		//Lipids::_MakeLipids(true, false);
 
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -84,6 +83,9 @@ int main() {
 
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
+		
+
+
 		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\)";
 		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\)";
 		//GroFile grofile(dir/"conf.gro");
@@ -91,8 +93,8 @@ int main() {
 		////Display::RenderGrofile(grofile, false);
 		//TopologyFile topfile(dir / "topol.top");
 		////Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
-		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\sim_params.txt)");
-		//simparams.dt = 10.f;
+		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\sim_params.txt)");
+		//simparams.dt = 100.f;
 		//////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
 		//Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
 		//env.CreateSimulation(grofile, topfile, simparams);

@@ -22,6 +22,26 @@
 namespace LimaMoleculeGraph {
 	namespace fs = std::filesystem;
 
+	class MoleculeTree {
+		std::unordered_map<int, std::vector<int>> tree;
+	public:
+		MoleculeTree(int rootId);
+		void AddChild(int parentId, int childId) {
+			tree.insert({ childId, {} });
+			tree.at(parentId).emplace_back(childId);
+		}
+
+		// Get immediate children
+		const std::vector<int>& GetChildIds(int parentId) const {
+			return tree.at(parentId);
+		}
+
+		// Get all children recursively
+		std::vector<int> GetAllChildIdsAndSelf(int parentId, std::unordered_map<int,int> nodeIdsNumDownstreamNodes) const;
+	};
+
+
+
 	struct MoleculeGraph {
 		struct Node {
 			Node() {}
@@ -124,10 +144,16 @@ namespace LimaMoleculeGraph {
 		// Create a (possibly disconnected) graph from a MolType
 		MoleculeGraph(const TopologyFile::Moleculetype&);
 
+		MoleculeGraph() {};
+
+
 		// Create a connected graph from a node, and all nodes it is connected to
 		//MoleculeGraph(const Node* root);
 
+		// Uses a BFS approach to construct a molecule without cycles
+		MoleculeTree ConstructMoleculeTree() const;
 
+		std::unordered_map<int, int> ComputeNumDownstreamNodes() const;
 
 	/*	void addNode(int node_id, const std::string& atomname) {
 			nodes.emplace(node_id, Node(node_id, atomname) );
@@ -135,6 +161,7 @@ namespace LimaMoleculeGraph {
 		void connectNodes(int left_id, int right_id);
 
 		std::map<int, Node> nodes;
+		Node* root = nullptr;
 
 		auto BFS(int start_node_id) const {
 			return BFSRange(&nodes.at(start_node_id));

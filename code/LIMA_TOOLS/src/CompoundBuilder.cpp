@@ -9,6 +9,7 @@
 #include <set>
 
 using namespace LIMA_MOLECULEBUILD;
+using namespace LimaMoleculeGraph;
 
 class BondedParticlesLUTManagerFactory {
 	std::vector<BondedParticlesLUT> luts;
@@ -22,7 +23,7 @@ public:
 
 	BondedParticlesLUT& get(int id_self, int id_other) {
 		if (std::abs(id_self - id_other > 2)) {
-			throw std::runtime_error("Cannot get BPLUT for compounds with distanecs > 2 in id-space");
+			throw std::runtime_error(std::format("Cannot get BPLUT for compounds with distances > 2 in id-space {} {}", id_self, id_other));
 		}
 		if (id_self >= nCompounds || id_other >= nCompounds) {
 			throw std::runtime_error("Cannot get BPLUT for compounds with id >= nCompounds");
@@ -390,7 +391,9 @@ void AddBondsThatBelongsInMolecule(std::vector<BondType>& dst, const std::vector
 
 struct MoleculeTopology {
 	// When entire topology file belongs to the molecule
-	MoleculeTopology(const TopologyFile::Moleculetype& moltype) {
+	MoleculeTopology(const TopologyFile::Moleculetype& moltype) 
+		: moleculeTypeName(moltype.name)
+	{
 		atoms = moltype.atoms;
 		singlebonds = moltype.singlebonds;
 		anglebonds = moltype.anglebonds;
@@ -417,6 +420,7 @@ struct MoleculeTopology {
 		AddBondsThatBelongsInMolecule(improperdihedralbonds, moltype.improperdihedralbonds, idOfFirstAtomInMolecule, idOfLastAtomInMolecule);
 	}
 
+	std::string moleculeTypeName;
 	std::vector<TopologyFile::AtomsEntry> atoms;
 	std::vector<TopologyFile::SingleBond> singlebonds;
 	std::vector<TopologyFile::AngleBond> anglebonds;
@@ -438,6 +442,7 @@ struct MoleculeRef {
 	int atomsOffsetInGrofile = 0;
 	//const TopologyFile::MoleculeEntry& molecule;
 	MoleculeTopology topology;
+	std::shared_ptr<MoleculeGraph> graph;
 };
 std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> PrepareMolecules(const TopologyFile& topol) {
 	std::vector<MoleculeRef> molecules;
@@ -451,8 +456,8 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 			throw std::runtime_error("Molecule has no atoms");
 
 
-		LimaMoleculeGraph::MoleculeGraph superGraph(*molecule.moleculetype);
-		if (!superGraph.GraphIsDisconnected() || molecule.moleculetype->atoms[0].residue == "lxx") {
+		auto superGraph = std::make_shared<MoleculeGraph> (*molecule.moleculetype);
+		if (!superGraph->GraphIsDisconnected() || molecule.moleculetype->atoms[0].residue == "lxx") {
 
 			if (molecule.moleculetype->atoms.size() <= 3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
 			{
@@ -460,13 +465,13 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 				atomsOffsetInTinyMolecules += molecule.moleculetype->atoms.size();
 			}
 			else {
-				molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype) });
+				molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype), superGraph });
 				atomsOffsetInMolecules += molecule.moleculetype->atoms.size();
 			}
 			atomsOffsetInGrofile += molecule.moleculetype->atoms.size();
 		}
 		else {
-			auto subGraphs = superGraph.GetListOfListsofConnectedNodeids();
+			auto subGraphs = superGraph->GetListOfListsofConnectedNodeids();
 			
 			for (auto& grapNodeIds : subGraphs) {
 				std::sort(grapNodeIds.begin(), grapNodeIds.end());
@@ -475,8 +480,9 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 					atomsOffsetInTinyMolecules += grapNodeIds.size();
 				}
 				else {
-					molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
-					atomsOffsetInMolecules += grapNodeIds.size();
+					throw std::runtime_error("Disconnected molecule with more than 3 atoms is not supported yet.");
+					/*molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
+					atomsOffsetInMolecules += grapNodeIds.size();*/
 				}
 				atomsOffsetInGrofile += grapNodeIds.size();
 			}
@@ -640,6 +646,93 @@ const std::vector<AtomGroup> GroupAtoms(const Topology& topology) {
 	return atomGroups;
 }	
 
+std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unordered_map<int,int> nodeIdToNumDownstream, int spaceLeft) {
+	std::vector<int> bestOrder = ids;
+	int maxElements = 0;
+
+	// Start with the initial permutation of ids
+	std::vector<int> currentOrder = ids;
+
+	do {
+		int currentElements = 0;
+
+		// Try to fit as many elements as possible in the current permutation
+		for (int id : currentOrder) {
+			if (currentElements + nodeIdToNumDownstream.at(id) <= spaceLeft)
+				currentElements += nodeIdToNumDownstream.at(id);
+		}
+
+		// Update the best order if this permutation fits more elements
+		if (currentElements > maxElements) {
+			maxElements = currentElements;
+			bestOrder = currentOrder;
+		}
+	} while (std::next_permutation(currentOrder.begin(), currentOrder.end()));
+
+	// Update the original ids to reflect the best order found
+	return bestOrder;
+}
+
+const std::vector<AtomGroup> GroupAtoms1(const std::vector<MoleculeRef>& molecules, const Topology& topology) {
+	std::vector<AtomGroup> atomGroups;
+
+	for (const auto& mol : molecules) {
+		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = mol.graph->ComputeNumDownstreamNodes();
+		const MoleculeTree moleculeTree = mol.graph->ConstructMoleculeTree();
+
+		std::stack<const MoleculeGraph::Node*> nodeStack;
+		nodeStack.push(mol.graph->root);
+
+		atomGroups.push_back({});		
+
+		while (!nodeStack.empty()) {			
+			const MoleculeGraph::Node* node = nodeStack.top();
+			nodeStack.pop();		
+
+			if (MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size() == 0)
+				atomGroups.push_back({});
+			atomGroups.back().atomIds.emplace_back(node->atomid);
+
+			std::vector<int> nodeChildren = moleculeTree.GetChildIds(node->atomid);
+
+			if (nodeChildren.empty()) {
+				// finished
+			}
+			else {
+				// Add the longest childchain to our stack, and remove it from the current children
+				const int indexOfLongestChain = std::max_element(nodeChildren.begin(), nodeChildren.end(), 
+					[&nodeIdNumDownstreamNodes](const int& a, const int& b) { return nodeIdNumDownstreamNodes.at(a) < nodeIdNumDownstreamNodes.at(b);}
+				) - nodeChildren.begin();
+				nodeStack.push(&mol.graph->nodes[nodeChildren[indexOfLongestChain]]);
+				nodeChildren[indexOfLongestChain] = nodeChildren.back();
+				nodeChildren.pop_back();
+
+				const std::vector<int> nodeChildrenIdsIdealOrder = ReorderSubchains(nodeChildren, nodeIdNumDownstreamNodes, MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size());
+
+				for (int id : nodeChildrenIdsIdealOrder) {
+					if (nodeIdNumDownstreamNodes.at(id) > MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size())
+						atomGroups.push_back({});
+
+					std::vector<int> allChildIds = moleculeTree.GetAllChildIdsAndSelf(id, nodeIdNumDownstreamNodes);
+					for (int childId : allChildIds) {
+						atomGroups.back().atomIds.emplace_back(childId);
+					}
+				}
+			}
+		}
+	}
+
+	// Now figure out which groups are bonded to others
+	const auto particleToSinglebondMap = MapAtomsToSinglebonds(topology);
+	for (int i = 1; i < atomGroups.size(); i++) {
+		if (AreBonded(atomGroups[i - 1], atomGroups[i], particleToSinglebondMap)) {
+			atomGroups[i].idsOfBondedAtomgroups.insert(i - 1);
+			atomGroups[i - 1].idsOfBondedAtomgroups.insert(i);
+		}
+	}
+
+	return atomGroups;
+}
 
 
 
@@ -1018,10 +1111,9 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 ) 
 {
-	// Solvents are not present in top file, so we can't require these to match
-	//const int nNonsolventAtoms = std::accumulate(topol_file.GetSystem().molecules.begin(), topol_file.GetSystem().molecules.end(), 0, [](int sum, const auto& mol) { return sum + mol.moleculetype->atoms.size(); });
-	//assert(gro_file.atoms.size() >= nNonsolventAtoms);
 	auto [molecules, tinyMolecules] = PrepareMolecules(topol_file);
+
+
 
 	LIMAForcefield forcefield{topol_file.forcefieldInclude->contents};
 
@@ -1029,8 +1121,11 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	VerifyBondsAreStable(topology, grofile.box_size.x, simparams.bc_select, simparams.em_variant);
 	VerifyBondsAreLegal(topology.anglebonds, topology.dihedralbonds);
 
+	// Separate molecules into Compound-sized groups. Each group tracks which other groups it is bonded to
 	const std::vector<AtomGroup> atomGroups = GroupAtoms(topology);
+	//const std::vector<AtomGroup> atomGroups = GroupAtoms1(molecules, topology);	
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, grofile.box_size.x, atomGroups, simparams.bc_select);
+	//printf("%d compounds\n", compounds.size());
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, topology.particles.size());
 	std::vector<BridgeFactory> bridges = CreateBridges(topology, compounds, particleToCompoundidMap);

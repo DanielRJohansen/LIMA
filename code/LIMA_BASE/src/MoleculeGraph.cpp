@@ -5,9 +5,41 @@
 #include <stack>
 #include <algorithm>
 
+#include <unordered_map>
+
 using namespace LimaMoleculeGraph;
 using std::string;
 using std::vector;
+
+
+
+MoleculeTree::MoleculeTree(int rootId) {
+	tree.insert({ rootId, {} });
+}
+std::vector<int> MoleculeTree::GetAllChildIdsAndSelf(int parentId, std::unordered_map<int, int> nodeIdsNumDownstreamNodes) const {
+	std::vector<int> ids;
+	ids.reserve(nodeIdsNumDownstreamNodes.at(parentId));
+
+	std::stack<int> nodeStack;
+	nodeStack.push(parentId);
+
+	while (!nodeStack.empty()) {
+		int currentId = nodeStack.top();
+		nodeStack.pop();
+
+		ids.push_back(currentId);
+
+		for (const int childId : tree.at(currentId)) {
+			nodeStack.push(childId);
+		}
+	}
+
+	if (ids.size() != nodeIdsNumDownstreamNodes.at(parentId))
+		throw std::runtime_error("Number of nodes in tree does not match number of nodes in numDownstreamNodes");
+
+	return ids;
+}
+
 
 void MoleculeGraph::Node::addNeighbor(Node* neighbor) {
 	if (!neighbor->isHydrogen())
@@ -33,11 +65,64 @@ MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule) {
 	}
 	nodes.insert(temp_nodes.begin(), temp_nodes.end());
 	
+	root = &nodes.at(molecule.atoms[0].id);
 
 	for (const auto& bond : molecule.singlebonds) {
 		connectNodes(bond.ids[0], bond.ids[1]);
 	}
 }
+
+
+MoleculeTree MoleculeGraph::ConstructMoleculeTree() const {
+	std::unordered_set<int> visited;
+	MoleculeTree moleculeTree(root->atomid);
+
+	std::queue<const Node*> nodeQueue;
+	nodeQueue.push(root);
+	visited.insert(root->atomid);
+	
+
+	while (!nodeQueue.empty()) {
+		const Node* current = nodeQueue.front();
+		nodeQueue.pop();
+
+		for (const Node* neighbor : current->getNeighbors()) {
+			const Node* neighbor_ptr = neighbor; // Assign Node* to NodePtr
+			if (visited.insert(neighbor->atomid).second) {
+				nodeQueue.push(neighbor_ptr);
+				moleculeTree.AddChild(current->atomid, neighbor->atomid);
+			}
+		}
+	}
+
+	return moleculeTree;
+}
+
+
+std::unordered_map<int, int> MoleculeGraph::ComputeNumDownstreamNodes() const 
+{
+	MoleculeTree moleculeTree = ConstructMoleculeTree();
+
+	std::stack<const Node*> processStack; // The order in which to actually process NumDownstreamNodes
+	for (const Node& node : BFS(root->atomid)) {
+		processStack.push(&node);
+	}
+
+	std::unordered_map<int, int> nodeIdToNumDownstreamnodes;
+
+	while (!processStack.empty()) {
+		const Node& current = *processStack.top();
+		processStack.pop();
+		int numDownstreamnodes = 1;
+		for (const int& neighborId : moleculeTree.GetChildIds(current.atomid)) {
+			numDownstreamnodes += nodeIdToNumDownstreamnodes.at(neighborId);
+		}
+		nodeIdToNumDownstreamnodes.insert({ current.atomid, numDownstreamnodes });
+	}
+
+	return nodeIdToNumDownstreamnodes;
+}
+
 
 //MoleculeGraph::MoleculeGraph(const Node* root) {
 //	for (const auto node : BFSRange(root)) {

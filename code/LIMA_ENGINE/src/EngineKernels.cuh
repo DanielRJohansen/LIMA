@@ -200,20 +200,20 @@ __global__ void DistributeCompoundchargesToGridKernel(SimulationDevice* sim) {
 
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
-	__shared__ CompoundCompact compound;				// Mostly bond information
-	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm] // TODO: maybe only keep these in register mem
+	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm] // TODO: maybe only keep these in register mem    
+    __shared__ uint8_t atomTypes[MAX_COMPOUND_PARTICLES];
 
-	//Neighborlist
-	__shared__ int nNonbondedCompoundNeighbors;
+    const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
+    const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
 
 	__shared__ Float3 neighborPositions[MAX_COMPOUND_PARTICLES];
 
-	__shared__ half neighborParticlescharges[MAX_COMPOUND_PARTICLES];
+	__shared__ float neighborParticlescharges[MAX_COMPOUND_PARTICLES];
 
 	__shared__ ForceField_NB forcefield_shared;
 	__shared__ uint8_t neighborAtomstypes[MAX_COMPOUND_PARTICLES];
 
-	NodeIndex compoundOrigo;
+    const NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x];
 
 	float potE_sum{};
 	Float3 force{};
@@ -222,31 +222,22 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
 	: 0.f;
 
+    atomTypes[threadIdx.x] = boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 	{
 		auto block = cooperative_groups::this_thread_block();
-
-		compoundOrigo = boxState.compoundOrigos[blockIdx.x];
 		cooperative_groups::memcpy_async(block, compound_positions, &boxState.compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
-		if (threadIdx.x == 0) {
-			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-			nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
-		}
-
 		cooperative_groups::memcpy_async(block, &forcefield_shared, &forcefield_device, sizeof(ForceField_NB));
-
 		cooperative_groups::wait(block);
 	}
-	compound.loadData(&boxConfig.compounds[blockIdx.x]);
 
 
 
-	const int batchsize = 32;
+    const int batchsize = 32;
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
-		//auto block = cooperative_groups::this_thread_block();
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
@@ -281,8 +272,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 			}
 			__syncthreads();
 
-			if (threadIdx.x < compound.n_particles) {
-				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
+            if (threadIdx.x < nParticles) {
+                force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges);
 			}
 
@@ -292,7 +283,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 	// This is the first kernel, so we overwrite
-	if (threadIdx.x < compound.n_particles) {
+    if (threadIdx.x < nParticles) {
 
 		boxState.compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 		//if (isinf(force.lenSquared()))
@@ -317,7 +308,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	__shared__ Float3 utility_float3;
 
 	__shared__ BondedParticlesLUT bpLUT;
-	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
+	__shared__ float particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
 	__shared__ ForceField_NB forcefield_shared;
 
@@ -362,9 +353,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		const BondedParticlesLUT* const bplut_global = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, compound_index);
 		bpLUT.load(*bplut_global);	// A lut always exists within a compound
 
-		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(float) * MAX_COMPOUND_PARTICLES,
 			"Utilitybuffer not large enough for neighbor charges");
-		half* particleChargesCompound = &particleChargesBuffers[0];
+		float* particleChargesCompound = &particleChargesBuffers[0];
 		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
@@ -390,7 +381,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		__shared__ const BondedParticlesLUT* compoundPairLutPtrs[Compound::max_bonded_compounds];
 
 		Float3* neighborPositions = utility_buffer_f3;
-		half* neighborParticlescharges = particleChargesBuffers;
+		float* neighborParticlescharges = particleChargesBuffers;
 
 		if (threadIdx.x < compound.n_bonded_compounds) {
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[threadIdx.x];
@@ -970,7 +961,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	Float3 force{};
 
 	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
-	{											// So for the very first step, these ´should all be 0, but they are not??										TODO: Look into this at some point!!!! 
+	{											// So for the very first step, these ï¿½should all be 0, but they are not??										TODO: Look into this at some point!!!! 
 		if (simparams.em_variant)
 			force += LimaForcecalc::computeSinglebondForces<true>(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
 		else 

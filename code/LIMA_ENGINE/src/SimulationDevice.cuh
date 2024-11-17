@@ -7,14 +7,14 @@
 
 
 struct BoxConfig {	
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomCharges,
+	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges,
 		CompoundBridge* bridge_bundle,	BondedParticlesLUT* bpLUTs);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
-	const half* const compoundsAtomCharges;	
+	const float* const compoundsAtomCharges;	
 	const Compound* const compounds;
 	const CompoundBridge* const compoundBridges;
 

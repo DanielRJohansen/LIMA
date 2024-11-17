@@ -230,7 +230,7 @@ struct Compound : public CompoundCompact {
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-	half atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
+    float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
 
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
@@ -334,8 +334,8 @@ struct CompoundBridge {
 // Precomputed values for pairs of atomtypes
 struct NonbondedInteractionParams {
 	float sigma;
-	half epsilon;
-	half chargeProduct;
+    float epsilon;
+    //float chargeProduct;
 };
 
 

@@ -2,7 +2,7 @@
 
 
 
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomcharges, CompoundBridge* bridges, BondedParticlesLUT* bpLUTs) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, CompoundBridge* bridges, BondedParticlesLUT* bpLUTs) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
@@ -13,12 +13,12 @@ BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* com
 {}
 BoxConfig* BoxConfig::Create(const Box& boxHost) {
 	uint8_t* compoundsAtomtypes;
-	half* compoundsAtomCharges;
+	float* compoundsAtomCharges;
 	cudaMalloc(&compoundsAtomtypes, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
-	cudaMalloc(&compoundsAtomCharges, sizeof(half) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
+	cudaMalloc(&compoundsAtomCharges, sizeof(float) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
 	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) {
 		cudaMemcpy(compoundsAtomtypes + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_types, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
-		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(half) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
+		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(float) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
 	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.compoundBridges), GenericCopyToDevice(boxHost.bpLutCollection));

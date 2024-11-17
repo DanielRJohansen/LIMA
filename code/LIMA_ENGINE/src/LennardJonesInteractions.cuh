@@ -126,7 +126,7 @@ namespace LJ {
 	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
-		float chargeSelf, const half* const charges)
+        float chargeSelf, const float* const charges)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -168,7 +168,7 @@ namespace LJ {
 	template<bool computePotE, bool emvariant>
 	__device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
-		const float chargeSelf, const half* const chargeNeighbors)
+        const float chargeSelf, const float* const chargeNeighbors)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -185,14 +185,17 @@ namespace LJ {
 			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 			
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
-
-
-
 			//const float dist_sq_reciprocal = __frcp_rn(diff.lenSquared());
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
+
+                //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-					calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+                    calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
+                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
+                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
+                    //params.sigma, params.epsilon,
 					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
 					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
@@ -202,7 +205,7 @@ namespace LJ {
 			if constexpr (ENABLE_ES_SR) {
 				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM) * 1.5f)
 				{
-					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
 					if constexpr (computePotE && ENABLE_POTE)
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
 				}

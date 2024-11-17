@@ -208,7 +208,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
 	__shared__ Float3 neighborPositions[MAX_COMPOUND_PARTICLES];
 
-	__shared__ half neighborParticlescharges[MAX_COMPOUND_PARTICLES];
+	__shared__ float neighborParticlescharges[MAX_COMPOUND_PARTICLES];
 
 	__shared__ ForceField_NB forcefield_shared;
 	__shared__ uint8_t neighborAtomstypes[MAX_COMPOUND_PARTICLES];
@@ -240,7 +240,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
 
 
-	const int batchsize = 32;
+    const int batchsize = 32;
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
@@ -317,7 +317,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	__shared__ Float3 utility_float3;
 
 	__shared__ BondedParticlesLUT bpLUT;
-	__shared__ half particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
+	__shared__ float particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
 
 	__shared__ ForceField_NB forcefield_shared;
 
@@ -362,9 +362,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		const BondedParticlesLUT* const bplut_global = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, compound_index);
 		bpLUT.load(*bplut_global);	// A lut always exists within a compound
 
-		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(half) * MAX_COMPOUND_PARTICLES,
+		static_assert(clj_utilitybuffer_bytes >= sizeof(BondedParticlesLUT) + sizeof(float) * MAX_COMPOUND_PARTICLES,
 			"Utilitybuffer not large enough for neighbor charges");
-		half* particleChargesCompound = &particleChargesBuffers[0];
+		float* particleChargesCompound = &particleChargesBuffers[0];
 		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
@@ -390,7 +390,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		__shared__ const BondedParticlesLUT* compoundPairLutPtrs[Compound::max_bonded_compounds];
 
 		Float3* neighborPositions = utility_buffer_f3;
-		half* neighborParticlescharges = particleChargesBuffers;
+		float* neighborParticlescharges = particleChargesBuffers;
 
 		if (threadIdx.x < compound.n_bonded_compounds) {
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[threadIdx.x];
@@ -970,7 +970,7 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 	Float3 force{};
 
 	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
-	{											// So for the very first step, these ´should all be 0, but they are not??										TODO: Look into this at some point!!!! 
+	{											// So for the very first step, these ï¿½should all be 0, but they are not??										TODO: Look into this at some point!!!! 
 		if (simparams.em_variant)
 			force += LimaForcecalc::computeSinglebondForces<true>(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
 		else 

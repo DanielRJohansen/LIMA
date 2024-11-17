@@ -199,7 +199,7 @@ __global__ void DistributeCompoundchargesToGridKernel(SimulationDevice* sim) {
 // #undef compound_index
 
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES) {
+__global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, bool enableES, ForceEnergy* const forceEnergy) {
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm] // TODO: maybe only keep these in register mem    
     __shared__ uint8_t atomTypes[MAX_COMPOUND_PARTICLES];
 
@@ -285,7 +285,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	// This is the first kernel, so we overwrite
     if (threadIdx.x < nParticles) {
 
-		boxState.compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
+
+		//boxState.compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 		//if (isinf(force.lenSquared()))
 		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);
 		/*if constexpr (computePotE) {
@@ -534,7 +536,7 @@ __global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const U
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, ForceEnergy* const forceEnergyFNSR) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -546,8 +548,11 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
 	// Fetch interims from other kernels
-	Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
-	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;
+	/*Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
+	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;*/
+
+	Float3 force = forceEnergyFNSR[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x].force;
+	float potE_sum = forceEnergyFNSR[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x].potE;
 
 	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].force;
 	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].potE;
@@ -645,10 +650,10 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step) {
 	sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
 	sim->boxState->compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].toFloat3();
 }
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step);
+template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
 
 
 

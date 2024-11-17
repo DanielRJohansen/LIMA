@@ -204,7 +204,7 @@ struct CompoundInterimState {
 	__host__ Float3 sumForce(int particleIndex) const;
 	__host__ float sumPotentialenergy(int particleIndex) const;
 
-	ForceEnergy forceEnergyFarneighborShortrange[MAX_COMPOUND_PARTICLES];
+	//ForceEnergy forceEnergyFarneighborShortrange[MAX_COMPOUND_PARTICLES];
 	ForceEnergy forceEnergyImmediateneighborShortrange[MAX_COMPOUND_PARTICLES];
 	ForceEnergy forceEnergyBonds[MAX_COMPOUND_PARTICLES];
 	ForceEnergy forceEnergyBridge[MAX_COMPOUND_PARTICLES];

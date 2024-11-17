@@ -32,7 +32,7 @@
 //	+ 4 + 4 * 3 * 2;
 
 Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
-	: bc_select(bc), m_logger(std::move(logger))
+	: bc_select(bc), m_logger(std::move(logger)), compoundForceEnergyInterims(sim->box_host->boxparams.n_compounds)
 {
 	simulation = std::move(sim);
 
@@ -312,7 +312,9 @@ void Engine::_deviceMaster() {
 	// #### Initial round of force computations
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
-		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics);
+		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
+			(simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
@@ -347,7 +349,7 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 
 	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
+		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyFarneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
@@ -428,4 +430,37 @@ void Engine::deviceMaster() {
 	default:
 		throw std::runtime_error("Unsupported boundary condition in LAUNCH_GENERIC_KERNEL");
 	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
+	cudaMalloc(&forceEnergyFarneighborShortrange, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMalloc(&forceEnergyImmediateneighborShortrange, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMalloc(&forceEnergyBonds, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMalloc(&forceEnergyBridge, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+
+	cudaMemset(forceEnergyFarneighborShortrange, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMemset(forceEnergyImmediateneighborShortrange, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMemset(forceEnergyBonds, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMemset(forceEnergyBridge, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+}
+
+CompoundForceEnergyInterims::~CompoundForceEnergyInterims() {
+	cudaFree(forceEnergyFarneighborShortrange);
+	cudaFree(forceEnergyImmediateneighborShortrange);
+	cudaFree(forceEnergyBonds);
+	cudaFree(forceEnergyBridge);
 }

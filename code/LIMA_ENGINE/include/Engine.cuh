@@ -22,6 +22,15 @@ class BoxState;
 class BoxConfig;
 class NeighborList;
 class CompoundGridNode;
+struct CompoundForceEnergyInterims {
+	CompoundForceEnergyInterims(int nCompounds);
+	~CompoundForceEnergyInterims();
+
+	ForceEnergy* forceEnergyFarneighborShortrange;
+	ForceEnergy* forceEnergyImmediateneighborShortrange;
+	ForceEnergy* forceEnergyBonds;
+	ForceEnergy* forceEnergyBridge;
+};
 
 const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
@@ -128,6 +137,7 @@ private:
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
+	CompoundForceEnergyInterims compoundForceEnergyInterims;
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;

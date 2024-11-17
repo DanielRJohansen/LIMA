@@ -85,7 +85,7 @@ public:
 	CompoundFactory(const int id) : 
 		id(id)
 	{
-		memset(forceEnergyFarneighborShortrange, 0, sizeof(forceEnergyFarneighborShortrange));
+		//memset(forceEnergyFarneighborShortrange, 0, sizeof(forceEnergyFarneighborShortrange));
 		memset(forceEnergyImmediateneighborShortrange, 0, sizeof(forceEnergyImmediateneighborShortrange));
 		memset(forceEnergyBonds, 0, sizeof(forceEnergyBonds));
 		memset(forceEnergyBridge, 0, sizeof(forceEnergyBridge));

@@ -58,6 +58,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 
 
+    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(sim->box_host.box_params.n_compounds, ForceField_NB::ParticleParameters{0,0});
 
 
 	//std::unordered_set<std::string> unique_compounds;

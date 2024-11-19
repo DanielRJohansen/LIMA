@@ -57,7 +57,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	compoundgridPtr = sim_dev->compound_grid;
 
 
-
+	cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
 
 
 	//std::unordered_set<std::string> unique_compounds;
@@ -89,6 +89,7 @@ Engine::~Engine() {
 		cudaFree(sim_dev);
 	}
 	compoundForceEnergyInterims.Free();
+	cudaFree(compoundLjParameters);
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	assert(simulation == nullptr);

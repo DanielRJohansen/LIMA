@@ -145,6 +145,9 @@ private:
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
 	CompoundForceEnergyInterims compoundForceEnergyInterims;
+
+	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;

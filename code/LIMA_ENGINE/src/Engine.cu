@@ -58,7 +58,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 
 
-    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host.box_params.n_compounds, ForceField_NB::ParticleParameters{0,0});
+    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host->boxparams.n_compounds, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
         const Compound& compound = simulation->box_host->compounds[cid];
         for (int pid = 0; pid < compound.n_particles; pid++) {
@@ -66,7 +66,8 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
         }
 
     }
-	cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
+    compoundLjParameters = GenericCopyToDevice(compoundParticleParams);
+    //cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
 
 
 	//std::unordered_set<std::string> unique_compounds;
@@ -233,7 +234,7 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 		dataBuffersDevice->vel_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
-sim->box_host.compounds
+
 	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->forceBuffer,
@@ -326,7 +327,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
-			(simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange);
+            (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 

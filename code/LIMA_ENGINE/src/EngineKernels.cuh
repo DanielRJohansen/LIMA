@@ -234,14 +234,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
     //const float myEpsilon = forcefield_shared.particle_parameters[atomTypes[threadIdx.x]].epsilon;
     //const float mySigma = forcefield_shared.particle_parameters[atomTypes[threadIdx.x]].sigma;
 
-    const ForceField_NB::ParticleParameters myParams = forcefield_shared.particle_parameters[atomTypes[threadIdx.x]];
 
     const int batchsize = 32;
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
 
-	ForceField_NB::ParticleParameters myParams = forcefield_shared.getParticleParameters(atomTypes[threadIdx.x]);
+    const ForceField_NB::ParticleParameters myParams = forcefield_shared.particle_parameters[atomTypes[threadIdx.x]];
 	__shared__ ForceField_NB::ParticleParameters neighborLjParams[MAX_COMPOUND_PARTICLES];
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
@@ -282,7 +281,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
             if (threadIdx.x < nParticles) {
                 force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
-					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, neighborLjParams);
+                    neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges,
+                    myParams, neighborLjParams);
 			}
 
 			indexInBatch++;

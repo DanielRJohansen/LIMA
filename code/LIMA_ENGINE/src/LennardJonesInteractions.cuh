@@ -191,10 +191,10 @@ namespace LJ {
 
                 //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-                    (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
-                    __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
-                    //calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
-                    //calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+        //            (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
+        //            __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
+                    calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
+                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
                     //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
                     //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
                     //params.sigma, params.epsilon,

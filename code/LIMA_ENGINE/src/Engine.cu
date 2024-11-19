@@ -58,7 +58,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 
 
-    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host->boxparams.n_compounds, ForceField_NB::ParticleParameters{0,0});
+    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
         const Compound& compound = simulation->box_host->compounds[cid];
         for (int pid = 0; pid < compound.n_particles; pid++) {

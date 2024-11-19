@@ -282,25 +282,15 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	}
 	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-	// This is the first kernel, so we overwrite
     if (threadIdx.x < nParticles) {
-
 		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
-
-		//boxState.compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
-		//if (isinf(force.lenSquared()))
-		//	printf("Far nei %d\n", threadIdx.x < compound.n_particles);
-		/*if constexpr (computePotE) {
-			boxState.compoundsInterimState[blockIdx.x].potE_interim[threadIdx.x] = potE_sum;
-		}
-		boxState.compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] = force;*/
 	}
 }
 
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step) {
+__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step, ForceEnergy* const forceEnergy) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [lm]
 
@@ -467,21 +457,22 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 	if (threadIdx.x < compound.n_particles) {
-		sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		//sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
 }
-template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
-template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step);
+template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template  __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<PeriodicBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, true, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, true, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, false, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel<NoBoundaryCondition, false, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
 #undef compound_index
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField) {
+__global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
 	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
@@ -531,12 +522,13 @@ __global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const U
 
 	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
 	if (threadIdx.x < compound.n_particles) {
-		boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		//boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x] = ForceEnergy{ force, potE_sum };
+		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, ForceEnergy* const forceEnergyFNSR) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -551,18 +543,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 	/*Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
 	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;*/
 
-	Float3 force = forceEnergyFNSR[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x].force;
-	float potE_sum = forceEnergyFNSR[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x].potE;
-
-	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].force;
-	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x].potE;
-
-	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x].force;
-	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x].potE;
-
-	force += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBridge[threadIdx.x].force;
-	potE_sum += sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyBridge[threadIdx.x].potE;
-	
+	ForceEnergy forceEnergy = forceEnergies.Sum(blockIdx.x, threadIdx.x);	
 
 
 	
@@ -582,15 +563,15 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 			}
 
 
-			force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
-			potE_sum += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
+			forceEnergy.force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
+			forceEnergy.potE += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
 		}
 	}
 
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 #ifdef FORCE_NAN_CHECK
-	if (isnan(force.len()))
+	if (isnan(forceEnergy.force.len()))
 		printf("NAN\n");
 #endif
 	float speed = 0.f;
@@ -600,7 +581,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 		// Energy minimize
 		if constexpr (emvariant) {
 			const float progress = static_cast<float>(step) / static_cast<float>(sim->params.n_steps);
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
+			const Float3 safeForce = EngineUtils::ForceActivationFunction(forceEnergy.force);
 
 			AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords.rel_positions[threadIdx.x], safeForce, adamState, step);
@@ -610,14 +591,14 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 		else {
 			const Float3 force_prev = sim->boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
 			const Float3 vel_prev = sim->boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, force, sim->params.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, force, mass, sim->params.dt);
+			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, forceEnergy.force, sim->params.dt, mass);
+			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, forceEnergy.force, mass, sim->params.dt);
 			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 			Float3 velScaled;
 			velScaled = vel_now * thermostatScalar_device;
 
-			sim->boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = force;
+			sim->boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
 			sim->boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 
 			speed = velScaled.len();
@@ -640,7 +621,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 	__syncthreads();
 
 	Float3 force_LJ_sol{};	// temp
-	EngineUtils::LogCompoundData(sim->boxConfig.compounds[blockIdx.x], sim->boxparams.total_particles_upperbound, compound_coords, &potE_sum, force,
+	EngineUtils::LogCompoundData(sim->boxConfig.compounds[blockIdx.x], sim->boxparams.total_particles_upperbound, compound_coords, &forceEnergy.potE, forceEnergy.force,
 		force_LJ_sol, sim->params, *sim->signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
 
 
@@ -650,10 +631,10 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, F
 	sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
 	sim->boxState->compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].toFloat3();
 }
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
+template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
+template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
+template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
 
 
 
@@ -926,7 +907,7 @@ template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDe
 
 #define particle_id_bridge threadIdx.x
 template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
+__global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step, ForceEnergy* const forceEnergy) {
 	__shared__ CompoundBridge bridge;
 	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
 	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
@@ -986,10 +967,11 @@ __global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step) {
 		if (isinf(force.lenSquared()))
 			printf("Bridge inf\n");
 #endif
-		boxState->compoundsInterimState[p_ref->compound_id].forceEnergyBridge[p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
+		//boxState->compoundsInterimState[p_ref->compound_id].forceEnergyBridge[p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
+		forceEnergy[p_ref->compound_id * MAX_COMPOUND_PARTICLES + p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
 	}
 }
-template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step);
-template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int64_t step);
+template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
 #pragma warning (pop)
 #pragma warning (pop)

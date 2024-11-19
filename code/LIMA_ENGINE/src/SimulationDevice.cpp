@@ -89,6 +89,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 
 
 	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
+	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);

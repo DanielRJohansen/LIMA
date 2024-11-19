@@ -237,6 +237,10 @@ struct Float3 {
 struct ForceEnergy {
 	Float3 force;	// [1/lima N/mol]
 	float potE;		// [GN/mol]
+
+	__host__ __device__ inline ForceEnergy operator+ (const ForceEnergy& a) const {
+		return ForceEnergy{ force + a.force, potE + a.potE };
+	}		
 };
 
 struct Double3 {

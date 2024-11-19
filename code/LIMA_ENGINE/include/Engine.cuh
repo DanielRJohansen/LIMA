@@ -24,7 +24,14 @@ class NeighborList;
 class CompoundGridNode;
 struct CompoundForceEnergyInterims {
 	CompoundForceEnergyInterims(int nCompounds);
-	~CompoundForceEnergyInterims();
+	void Free();
+
+	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
+		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyBridge[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+	}
 
 	ForceEnergy* forceEnergyFarneighborShortrange;
 	ForceEnergy* forceEnergyImmediateneighborShortrange;

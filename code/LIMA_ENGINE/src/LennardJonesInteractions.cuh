@@ -168,7 +168,8 @@ namespace LJ {
 	template<bool computePotE, bool emvariant>
 	__device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
-        const float chargeSelf, const float* const chargeNeighbors, const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams)
+        const float chargeSelf, const float* const chargeNeighbors,
+        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};

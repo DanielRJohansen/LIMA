@@ -58,7 +58,15 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 
 
 
-    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(sim->box_host.box_params.n_compounds, ForceField_NB::ParticleParameters{0,0});
+    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host.box_params.n_compounds, ForceField_NB::ParticleParameters{0,0});
+    for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
+        const Compound& compound = simulation->box_host->compounds[cid];
+        for (int pid = 0; pid < compound.n_particles; pid++) {
+            compoundParticleParams[cid*MAX_COMPOUND_PARTICLES + pid] = simulation->forcefield.particle_parameters[compound.atom_types[pid]];
+        }
+
+    }
+	cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
 
 
 	//std::unordered_set<std::string> unique_compounds;
@@ -89,7 +97,10 @@ Engine::~Engine() {
 		sim_dev->FreeMembers();
 		cudaFree(sim_dev);
 	}
+	compoundForceEnergyInterims.Free();
+	cudaFree(compoundLjParameters);
 
+	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	assert(simulation == nullptr);
 }
 
@@ -222,7 +233,7 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 		dataBuffersDevice->vel_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
-
+sim->box_host.compounds
 	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->forceBuffer,
@@ -318,15 +329,18 @@ void Engine::_deviceMaster() {
 			(simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
-		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep());
+		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 
-		compoundBondsKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField);
+		compoundBondsKernel<BoundaryCondition, emvariant> 
+			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
+			(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
 	}
 	
 	if (boxparams.n_bridges > 0) {
-		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep());
+		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyBridge);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBridgeKernel");
 	}	
 
@@ -350,7 +364,7 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 
 	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyFarneighborShortrange);
+		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
@@ -448,20 +462,23 @@ void Engine::deviceMaster() {
 
 
 CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
-	cudaMalloc(&forceEnergyFarneighborShortrange, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMalloc(&forceEnergyImmediateneighborShortrange, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMalloc(&forceEnergyBonds, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMalloc(&forceEnergyBridge, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
+	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
+	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
+	cudaMalloc(&forceEnergyBonds, byteSize);
+	cudaMalloc(&forceEnergyBridge, byteSize);
 
-	cudaMemset(forceEnergyFarneighborShortrange, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMemset(forceEnergyImmediateneighborShortrange, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMemset(forceEnergyBonds, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
-	cudaMemset(forceEnergyBridge, 0, sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES);
+	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
+	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
+	cudaMemset(forceEnergyBonds, 0, byteSize);
+	cudaMemset(forceEnergyBridge, 0, byteSize);
 }
 
-CompoundForceEnergyInterims::~CompoundForceEnergyInterims() {
+void CompoundForceEnergyInterims::Free() {
 	cudaFree(forceEnergyFarneighborShortrange);
 	cudaFree(forceEnergyImmediateneighborShortrange);
 	cudaFree(forceEnergyBonds);
 	cudaFree(forceEnergyBridge);
+
+	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
 }

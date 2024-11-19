@@ -113,7 +113,7 @@ namespace ForceCorrectness {
 
 
 
-	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
+	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {		
 		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
@@ -143,10 +143,13 @@ namespace ForceCorrectness {
 
 
 		env.run();
+		LIMA_UTILS::genericErrorCheck("Error during test");
 
 		const auto sim = env.getSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
+
 		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
+
 		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[0];
 
 
@@ -156,6 +159,7 @@ namespace ForceCorrectness {
 
 		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
 		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
+
 
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}

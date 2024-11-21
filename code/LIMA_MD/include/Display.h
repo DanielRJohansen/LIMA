@@ -71,7 +71,14 @@ namespace Rendering {
 		int nAtoms;
 	};
 
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
+	struct CompoundsTask {
+		std::vector<Compound> compounds;
+		std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
+		Float3 boxSize;
+		int nAtoms;
+	};
+
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>, std::unique_ptr<CompoundsTask>>;
 }
 
 
@@ -118,6 +125,7 @@ private:
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
+	void PrepareNewRenderTask(Rendering::CompoundsTask&);
 
 
 	// Interfacing

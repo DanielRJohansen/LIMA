@@ -52,7 +52,7 @@ void MoleculeGraph::connectNodes(int left_id, int right_id) {
 	nodes.at(right_id).addNeighbor(&nodes.at(left_id));
 }
 
-MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule) {
+MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule, std::optional<const std::unordered_set<int>> allowedIds) {
 	/*if (molecule.atoms.front().id != 0 || molecule.atoms.back() != molecule.atoms.size() - 1)
 		throw std::runtime_error("Atoms must be ordered from 0 to n-1");*/
 
@@ -61,11 +61,14 @@ MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule) {
 	std::vector<std::pair<int, Node>> temp_nodes;
 	temp_nodes.reserve(molecule.atoms.size());
 	for (const auto& atom : molecule.atoms) {
+		if (allowedIds.has_value() && !allowedIds.value().contains(atom.id))
+			continue;
+
 		temp_nodes.emplace_back(atom.id, Node(atom.id, atom.atomname));
 	}
 	nodes.insert(temp_nodes.begin(), temp_nodes.end());
 	
-	root = &nodes.at(molecule.atoms[0].id);
+	root = &nodes.at(temp_nodes[0].second.atomid);
 
 	for (const auto& bond : molecule.singlebonds) {
 		connectNodes(bond.ids[0], bond.ids[1]);

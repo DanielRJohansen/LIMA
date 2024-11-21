@@ -528,8 +528,9 @@ enum EnvMode { Full, ConsoleOnly, Headless };
 
 struct RenderAtom {
 
-	__device__ __host__ RenderAtom() {}
+	RenderAtom() {}
 	RenderAtom(Float3 positionNM, Float3 boxSize, char atomLetter);
+	RenderAtom(float4 pos, float4 color) : position(pos), color(color) {};
 
 	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	

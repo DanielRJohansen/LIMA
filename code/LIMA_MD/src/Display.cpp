@@ -187,6 +187,12 @@ void Display::PrepareTask(Task& task) {
         else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
 			PrepareNewRenderTask(*taskPtr);
 		}
+		else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
+			PrepareNewRenderTask(*taskPtr);
+		}
+		else {
+			throw std::runtime_error("Unknown task type");
+		}
         }, task);
 }
 
@@ -229,6 +235,9 @@ void Display::Mainloop() {
                 else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
                     _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->nAtoms);
 				}
+                else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
+                    _RenderAtomsFromCudaresource(taskPtr->boxSize, taskPtr->nAtoms);
+                }
                 }, currentRenderTask);
         }
     }

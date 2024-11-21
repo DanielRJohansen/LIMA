@@ -240,13 +240,15 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 	
 	ForceField_NB::ParticleParameters myParams = ljParams[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 	__shared__ ForceField_NB::ParticleParameters neighborLjParams[MAX_COMPOUND_PARTICLES];
+	__shared__ int util;
+	
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
 		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
-
+			util = 0;
 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (indexInBatch == batchsize) {
@@ -279,7 +281,11 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
             if (threadIdx.x < nParticles) {
                 force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
-					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, myParams, neighborLjParams);
+					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, myParams, neighborLjParams, util);
+			}
+
+			if (threadIdx.x == 0) {
+				//printf("Hitrate %f\n", static_cast<float>(util) / (MAX_COMPOUND_PARTICLES * MAX_COMPOUND_PARTICLES));
 			}
 
 			indexInBatch++;

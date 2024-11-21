@@ -253,3 +253,51 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 	}
 
 }
+
+void Display::PrepareNewRenderTask(Rendering::CompoundsTask& task) {
+    /*std::vector<Float3> positions;
+
+			positions.push_back(task.compounds[i].positions[j]);
+		}
+	}*/
+    //const int nAtoms = positions.size();
+
+  //  renderAtomsTemp.resize(nAtoms);
+    renderAtomsTemp.resize(0);
+    for (int i = 0; i < task.compounds.size(); i++) {
+        for (int j = 0; j < task.compounds[i].n_particles; j++) {
+			float radius = RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.compounds[i].atomLetters[j]));
+            float4 position = task.positions[i][j].Tofloat4(radius);
+            float4 color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.compounds.size());
+            
+            renderAtomsTemp.push_back(RenderAtom{ position, color });
+        }
+    }
+    task.nAtoms = renderAtomsTemp.size();
+        
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(task.nAtoms, &renderAtomsBufferCudaResource);
+
+    camera.Update(task.boxSize);
+
+    // Move the renderAtoms to device
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+
+        if (num_bytes != task.nAtoms * sizeof(RenderAtom)) {
+            throw std::runtime_error("RenderAtom buffer size mismatch");
+        }
+
+        cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+}

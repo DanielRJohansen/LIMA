@@ -169,11 +169,12 @@ namespace LJ {
 	__device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
         const float chargeSelf, const float* const chargeNeighbors,
-        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams)
+        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams, int& util)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
+		int hits = 0;
 
 		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
 		const Float3 selfRelOffset{
@@ -188,13 +189,13 @@ namespace LJ {
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-
+				hits++;
                 //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-        //            (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
-        //            __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
-                    calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
-                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
+                    (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
+                    __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
+                    /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
+                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
                     //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
                     //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
                     //params.sigma, params.epsilon,
@@ -214,8 +215,10 @@ namespace LJ {
 				}
 			}
 		}
-
+		atomicAdd(&util, hits);
 		
+
+
 		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 	}

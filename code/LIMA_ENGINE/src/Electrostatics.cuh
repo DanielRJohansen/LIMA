@@ -41,8 +41,9 @@ namespace Electrostatics {
 		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
 
 		// First clean the memory
-		static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");
-		if (threadIdx.x < 27 * 2) {
+		//static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");
+		//if (threadIdx.x < 27 * 2) {
+		for (int i = threadIdx.x; i < 27 * 2; i += blockDim.x) {
 			numParticlesInNodeLocal[threadIdx.x] = 0;
 		}
 		__syncthreads();

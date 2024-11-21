@@ -8,6 +8,7 @@
 #include <numeric>
 #include <set>
 
+#include "Display.h"
 using namespace LIMA_MOLECULEBUILD;
 using namespace LimaMoleculeGraph;
 
@@ -457,7 +458,7 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 
 
 		auto superGraph = std::make_shared<MoleculeGraph> (*molecule.moleculetype);
-		if (!superGraph->GraphIsDisconnected() || molecule.moleculetype->atoms[0].residue == "lxx") {
+		if (!superGraph->GraphIsDisconnected()) {
 
 			if (molecule.moleculetype->atoms.size() <= 3 && molecule.moleculetype->atoms[0].residue != "lxx") // lxx is a lima code that forces it to be a normal compound
 			{
@@ -473,18 +474,20 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 		else {
 			auto subGraphs = superGraph->GetListOfListsofConnectedNodeids();
 			
-			for (auto& grapNodeIds : subGraphs) {
-				std::sort(grapNodeIds.begin(), grapNodeIds.end());
-				if (grapNodeIds.size() <= 3) {
-					tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
-					atomsOffsetInTinyMolecules += grapNodeIds.size();
+			for (auto& graphNodeIds : subGraphs) {
+				std::sort(graphNodeIds.begin(), graphNodeIds.end());
+				if (graphNodeIds.size() <= 3 && molecule.moleculetype->atoms[0].residue != "lxx") {
+					tinyMolecules.emplace_back(TinyMolRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, graphNodeIds) });
+					atomsOffsetInTinyMolecules += graphNodeIds.size();
 				}
 				else {
-					throw std::runtime_error("Disconnected molecule with more than 3 atoms is not supported yet.");
-					/*molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, grapNodeIds) });
-					atomsOffsetInMolecules += grapNodeIds.size();*/
+					
+					std::unordered_set<int> nodesSet(graphNodeIds.begin(), graphNodeIds.end());
+					molecules.emplace_back(MoleculeRef{ atomsOffsetInMolecules, atomsOffsetInGrofile, MoleculeTopology(*molecule.moleculetype, graphNodeIds), std::make_shared<MoleculeGraph>(*molecule.moleculetype, nodesSet)});
+					atomsOffsetInMolecules += graphNodeIds.size();
+					//throw std::runtime_error("Disconnected molecule with more than 3 atoms is not supported yet.");
 				}
-				atomsOffsetInGrofile += grapNodeIds.size();
+				atomsOffsetInGrofile += graphNodeIds.size();
 			}
 		}
 
@@ -1035,6 +1038,8 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 	for (int cid = 0; cid < compounds.size(); cid++) {
 		CompoundFactory& compound = compounds[cid];
 
+		//for (auto& p : compound.atomLetters) { p = 'C'; }
+
 		const int k = CompoundInteractionBoundary::k;
 		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles, boxlen_nm, bc_select);
 		std::array<Float3, k> key_positions;
@@ -1049,6 +1054,11 @@ void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compoun
 
 		const Float3 com = calcCOM(compound.positions, compound.n_particles, boxlen_nm, bc_select);
 		compound.centerparticle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com, boxlen_nm, bc_select);
+
+		//char letter[3] = { 'O', 'N', 'P' };
+
+		//for (auto index : key_indices)
+		//	compound.atomLetters[index] = letter[cid];
 	}
 
 	// Calc absolute ids of particles in compounds 
@@ -1125,6 +1135,21 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const std::vector<AtomGroup> atomGroups = GroupAtoms(topology);
 	//const std::vector<AtomGroup> atomGroups = GroupAtoms1(molecules, topology);	
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, grofile.box_size.x, atomGroups, simparams.bc_select);
+
+	/*Display d;
+	std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
+	for (const auto& compound : compounds) {
+		positions.push_back({});
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+			positions.back()[i] = compound.positions[i];
+		}
+	}
+	std::vector<Compound> compounds2;
+	for (const auto& compound : compounds) {
+		compounds2.push_back(compound);
+	}	
+	d.Render(std::make_unique<Rendering::CompoundsTask>(compounds2, positions, grofile.box_size), true);*/
+
 	//printf("%d compounds\n", compounds.size());
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, topology.particles.size());

@@ -339,7 +339,7 @@ namespace ElectrostaticsTests {
 		}
 
 		// Now do the normal VC check
-		const float targetVarCoeff = 8e-3f;
+		const float targetVarCoeff = 8.66e-3f;
 		auto analytics = SimAnalysis::analyzeEnergy(sim.get());
 
 

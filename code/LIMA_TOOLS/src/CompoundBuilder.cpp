@@ -936,28 +936,14 @@ std::array<int, 2> getTheTwoDifferentIds(const std::array<uint32_t, N>& particle
 }
 
 template <int N>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleToCompoundMapping>& p2cMap,
-	std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges
+BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleToCompoundMapping>& p2cMap
 )
 {
 	std::array<int, 2> compound_ids = getTheTwoDifferentIds<N>(particle_global_ids, p2cMap);
 
-	// Check if the compound_id is already associated with bridges
-	auto it = compoundToBridges.find(compound_ids[0]);
-	if (it != compoundToBridges.end()) {
-		for (BridgeFactory* bridge : it->second) {
-			if (bridgeContainsTheseTwoCompounds(*bridge, compound_ids)) {
-				return *bridge;
-			}
-		}
-	}
-
-
 	// If not found in the lookup or no matching bridge, search through all bridges
 	for (BridgeFactory& bridge : bridges) {
 		if (bridgeContainsTheseTwoCompounds(bridge, compound_ids)) {
-			// Cache the bridge reference for the first compound_id
-			compoundToBridges[compound_ids[0]].push_back(&bridge);
 			return bridge;
 		}
 	}
@@ -969,7 +955,7 @@ template <typename BondTypeFactory>
 void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds, 
 	const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap, ParticleToBridgeMap& p2bMap,
 	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges,
-	BondedParticlesLUTManagerFactory& bpLutManager, std::unordered_map<int, std::vector<BridgeFactory*>>& compoundToBridges) 
+	BondedParticlesLUTManagerFactory& bpLutManager) 
 {
 	
 
@@ -984,7 +970,7 @@ void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bo
 
 
 		if (SpansTwoCompounds<BondTypeFactory::nAtoms>(bond.global_atom_indexes, particlesToCompoundIdMap)) {
-			BridgeFactory& bridge = getBridge<BondTypeFactory::nAtoms>(bridges, bond.global_atom_indexes, particlesToCompoundIdMap, compoundToBridges);
+			BridgeFactory& bridge = getBridge<BondTypeFactory::nAtoms>(bridges, bond.global_atom_indexes, particlesToCompoundIdMap);
 			bridge.AddBond(particlesToCompoundIdMap, p2bMap, bond);
 		}
 		else {
@@ -999,14 +985,12 @@ void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bo
 void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen_nm, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap, BoundaryConditionSelect bc_select,
 	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges, BondedParticlesLUTManagerFactory& bpLutManager)
 {
-	std::unordered_map<int, std::vector<BridgeFactory*>> compoundToBridges{};
 	ParticleToBridgeMap particlesToBridgeMap(particlesToCompoundIdMap.size());
 
-	DistributeBondsToCompoundsAndBridges(topology.singlebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager, compoundToBridges);
-	DistributeBondsToCompoundsAndBridges(topology.anglebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager, compoundToBridges);
-	DistributeBondsToCompoundsAndBridges(topology.dihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager, compoundToBridges);
-	DistributeBondsToCompoundsAndBridges(topology.improperdihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager, compoundToBridges);
-
+	DistributeBondsToCompoundsAndBridges(topology.singlebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
+	DistributeBondsToCompoundsAndBridges(topology.anglebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
+	DistributeBondsToCompoundsAndBridges(topology.dihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
+	DistributeBondsToCompoundsAndBridges(topology.improperdihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
 
 	// While are particle is never bonded to itself, we are not allowed to calc LJ with itself
 	// so we can doubly use this lut to avoid doing that

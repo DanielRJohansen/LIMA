@@ -513,17 +513,17 @@ __global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const U
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
 	{
-		SingleBond* singlebonds = EngineUtils::LoadBonds<SingleBond, MAX_SINGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].singlebonds, compound.n_singlebonds);
-		force += LimaForcecalc::computeSinglebondForces<energyMinimize>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
+		//SingleBond* singlebonds = EngineUtils::LoadBonds<SingleBond, MAX_SINGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].singlebonds, compound.n_singlebonds);
+		//force += LimaForcecalc::computeSinglebondForces<energyMinimize>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
 
-		AngleUreyBradleyBond* anglebonds = EngineUtils::LoadBonds<AngleUreyBradleyBond, MAX_ANGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].anglebonds, compound.n_anglebonds);
-		force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+		//AngleUreyBradleyBond* anglebonds = EngineUtils::LoadBonds<AngleUreyBradleyBond, MAX_ANGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].anglebonds, compound.n_anglebonds);
+		//force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 
-		DihedralBond* dihedrals = EngineUtils::LoadBonds<DihedralBond, MAX_DIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].dihedrals, compound.n_dihedrals);
-		force += LimaForcecalc::computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+		//DihedralBond* dihedrals = EngineUtils::LoadBonds<DihedralBond, MAX_DIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].dihedrals, compound.n_dihedrals);
+		//force += LimaForcecalc::computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 
-		ImproperDihedralBond* impropers = EngineUtils::LoadBonds<ImproperDihedralBond, MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].impropers, compound.n_improperdihedrals);
-		force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
+		//ImproperDihedralBond* impropers = EngineUtils::LoadBonds<ImproperDihedralBond, MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].impropers, compound.n_improperdihedrals);
+		//force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
 	}
 
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
@@ -539,7 +539,7 @@ __global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const U
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -556,6 +556,14 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 	ForceEnergy forceEnergy = forceEnergies.Sum(blockIdx.x, threadIdx.x);	
 
+	{
+		const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
+		for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
+			const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
+			forceEnergy = forceEnergy + bondgroupForceenergies[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+		}
+	}
+	
 
 	
 	__syncthreads();
@@ -642,10 +650,6 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
 	sim->boxState->compoundsRelposLm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].toFloat3();
 }
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, true>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
-template __global__ void CompoundIntegrationKernel<PeriodicBoundaryCondition, false>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, true>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
-template __global__ void CompoundIntegrationKernel<NoBoundaryCondition, false>(SimulationDevice*, int64_t step, const CompoundForceEnergyInterims);
 
 
 
@@ -771,10 +775,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	// Finally push force and potE for next kernel
 	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergies[threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, true>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
-template __global__ void solventForceKernel<PeriodicBoundaryCondition, false>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
-template __global__ void solventForceKernel<NoBoundaryCondition, true>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
-template __global__ void solventForceKernel<NoBoundaryCondition, false>(const BoxState, const BoxConfig, const CompoundGridNode* const, int64_t);
 
 
 template <typename BoundaryCondition, bool energyMinimize, bool transferOutThisStep>
@@ -862,14 +862,6 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 		}
 	}
 }
-template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, true, true>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, true, false>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, false, true>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, false, false>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, true, true>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, true, false>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, false, true>(SimulationDevice*, int64_t);
-template __global__ void TinymolIntegrationLoggingAndTransferout<NoBoundaryCondition, false, false>(SimulationDevice*, int64_t);
 
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
@@ -916,73 +908,106 @@ template __global__ void solventTransferKernel<NoBoundaryCondition>(SimulationDe
 
 
 
-#define particle_id_bridge threadIdx.x
-template <typename BoundaryCondition>
-__global__ void compoundBridgeKernel(SimulationDevice* sim, int64_t step, ForceEnergy* const forceEnergy) {
-	__shared__ CompoundBridge bridge;
-	__shared__ Float3 positions[MAX_PARTICLES_IN_BRIDGE];
-	__shared__ Float3 utility_buffer[MAX_PARTICLES_IN_BRIDGE];
-	__shared__ float utility_buffer_f[MAX_PARTICLES_IN_BRIDGE];
-	__shared__ Coord utility_coord[MAX_COMPOUNDS_IN_BRIDGE];
-	
-	const SimParams& simparams = sim->params;
-	BoxState* boxState = sim->boxState;
+
+static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;
+template <typename BoundaryCondition, bool emVariant>
+__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut) {
+	__shared__ Float3 positions[BondGroup::maxParticles];
+
+
+	__shared__ Float3 forcesInterrim[BondGroup::maxParticles];
+	__shared__ float potEInterrim[BondGroup::maxParticles];
+
+	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
+	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
+	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
+	__shared__ NodeIndex origo;
+
+	const BondGroup* const bondGroup = &bondGroups[blockIdx.x];
+	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];
 
 	if (threadIdx.x == 0) {
-		bridge.loadMeta(&sim->boxConfig.compoundBridges[blockIdx.x]);
+		origo = boxState.compoundOrigos[pRef.compoundId];
+	}
+	__syncthreads();
 
+	if (threadIdx.x < bondGroup->nParticles) {
+		// Calculate necessary shift in relative positions for right, so right share the origo with left.
+		const NodeIndex myNodeindex = BoundaryCondition::applyHyperpos_Return(origo, boxState.compoundOrigos[pRef.compoundId]);
+		//KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
+
+		// calc Relative LimaPosition Shift from the origo-shift
+		const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(myNodeindex, origo).toFloat3();
+
+		positions[threadIdx.x] = boxState.compoundsRelposLm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
 		
 	}
-	__syncthreads();
-
-	// TODO: we dont need to do this for the first compound, as it will always be 0,0,0
-	if (threadIdx.x < bridge.n_compounds) {
-		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		utility_coord[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelativeShiftBetweenCoordarrays<BoundaryCondition>(boxState->compoundOrigos, step, bridge.compound_ids[0], bridge.compound_ids[threadIdx.x]);
-	}
+//	__syncthreads();
 
 
-	bridge.loadData(&sim->boxConfig.compoundBridges[blockIdx.x]);
-	__syncthreads();
-
-	if (particle_id_bridge < bridge.n_particles) {
-		ParticleReference& p_ref = bridge.particle_refs[particle_id_bridge];
-
-		BridgeWarnings::verifyPRefValid(p_ref, bridge);
-
-		positions[threadIdx.x] = boxState->compoundsRelposLm[p_ref.compound_id * MAX_COMPOUND_PARTICLES + p_ref.local_id_compound] + utility_coord[p_ref.compoundid_local_to_bridge].toFloat3();
-	}
-	__syncthreads();
-
-	float potE_sum = 0;
 	Float3 force{};
+	float potE{};
 
-	// ------------------------------------------------------------ Intercompund Operations ------------------------------------------------------------ //
-	{											// So for the very first step, these �should all be 0, but they are not??										TODO: Look into this at some point!!!! 
-		if (simparams.em_variant)
-			force += LimaForcecalc::computeSinglebondForces<true>(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
-		else 
-			force += LimaForcecalc::computeSinglebondForces<false>(bridge.singlebonds, bridge.n_singlebonds, positions, utility_buffer, utility_buffer_f, &potE_sum, 1);
-		force += LimaForcecalc::computeAnglebondForces(bridge.anglebonds, bridge.n_anglebonds, positions, utility_buffer, utility_buffer_f, &potE_sum);
-		force += LimaForcecalc::computeDihedralForces(bridge.dihedrals, bridge.n_dihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
-		force += LimaForcecalc::computeImproperdihedralForces(bridge.impropers, bridge.n_improperdihedrals, positions, utility_buffer, utility_buffer_f, &potE_sum);
+	
+	{
+		SingleBond* bondsBuffer = reinterpret_cast<SingleBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += blockDim.x) {
+			if (batchStart + threadIdx.x < bondGroup->nSinglebonds) {
+				const int bondIndex = batchStart + threadIdx.x;
+				bondsBuffer[threadIdx.x] = bondGroup->singlebonds[bondIndex];
+			}
+			__syncthreads();
+
+			force += LimaForcecalc::computeSinglebondForces<emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forcesInterrim, potEInterrim, &potE, 0);
+		}
 	}
-	__syncthreads();
-	// --------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	// This is 2nd kernel so we add to the interims
-	if (particle_id_bridge < bridge.n_particles) {
-		ParticleReference* p_ref = &bridge.particle_refs[particle_id_bridge];
+	{
+		AngleUreyBradleyBond* bondsBuffer = reinterpret_cast<AngleUreyBradleyBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += blockDim.x) {
+			if (batchStart + threadIdx.x < bondGroup->nAnglebonds) {
+				const int bondIndex = batchStart + threadIdx.x;
+				bondsBuffer[threadIdx.x] = bondGroup->anglebonds[bondIndex];
+			}
+			__syncthreads();
 
-#ifdef FORCE_NAN_CHECK
-		if (isinf(force.lenSquared()))
-			printf("Bridge inf\n");
-#endif
-		//boxState->compoundsInterimState[p_ref->compound_id].forceEnergyBridge[p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
-		forceEnergy[p_ref->compound_id * MAX_COMPOUND_PARTICLES + p_ref->local_id_compound] = ForceEnergy{ force, potE_sum };
+			force += LimaForcecalc::computeAnglebondForces(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+		}
 	}
+
+	{
+		DihedralBond* bondsBuffer = reinterpret_cast<DihedralBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += blockDim.x) {
+			if (batchStart + threadIdx.x < bondGroup->nDihedralbonds) {
+				const int bondIndex = batchStart + threadIdx.x;
+				bondsBuffer[threadIdx.x] = bondGroup->dihedralbonds[bondIndex];
+			}
+			__syncthreads();
+
+			force += LimaForcecalc::computeDihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+		}
+	}
+
+	{
+		ImproperDihedralBond* bondsBuffer = reinterpret_cast<ImproperDihedralBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += blockDim.x) {
+			if (batchStart + threadIdx.x < bondGroup->nImproperdihedralbonds) {
+				const int bondIndex = batchStart + threadIdx.x;
+				bondsBuffer[threadIdx.x] = bondGroup->improperdihedralbonds[bondIndex];
+			}
+			__syncthreads();
+
+			force += LimaForcecalc::computeImproperdihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+		}
+	}
+
+	forceEnergiesOut[blockIdx.x * BondGroup::maxParticles + threadIdx.x] = ForceEnergy{ force, potE };
 }
-template __global__ void compoundBridgeKernel<PeriodicBoundaryCondition>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
-template __global__ void compoundBridgeKernel<NoBoundaryCondition>(SimulationDevice* sim, int64_t step, ForceEnergy* const);
+template __global__ void BondgroupsKernel<PeriodicBoundaryCondition, true>(const BondGroup* const, const BoxState, ForceEnergy* const);
+template __global__ void BondgroupsKernel<PeriodicBoundaryCondition, false>(const BondGroup* const, const BoxState, ForceEnergy* const);
+template __global__ void BondgroupsKernel<NoBoundaryCondition, true>(const BondGroup* const, const BoxState, ForceEnergy* const);
+template __global__ void BondgroupsKernel<NoBoundaryCondition, false>(const BondGroup* const, const BoxState, ForceEnergy* const);
+
+
 #pragma warning (pop)
 #pragma warning (pop)

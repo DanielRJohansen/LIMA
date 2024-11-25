@@ -428,6 +428,13 @@ public:
 
 	__host__ void printMatrix(int n) const;
 
+	__host__ bool HasEntries() const {
+		for (int i = 0; i < m_size; i++) {
+			if (matrix[i] != 0) return true;
+		}
+		return false;
+	}
+
 private:
 	const static int m_len = MAX_COMPOUND_PARTICLES;
 	const static int m_size = (m_len * m_len + 31) / 32; // Ceil division
@@ -436,6 +443,7 @@ private:
 
 namespace BondedParticlesLUTHelpers {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
+	static const int maxDiff = (max_bonded_compounds - 1) / 2;
 
 	__device__ __host__ int inline getLocalIndex(int id_self, int id_other) {
 		return (max_bonded_compounds / 2) + (id_other - id_self);

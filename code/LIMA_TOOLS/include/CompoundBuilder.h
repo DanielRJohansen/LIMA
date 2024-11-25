@@ -14,6 +14,8 @@
 
 #include "MDFiles.h"
 
+#include "tuple"
+#include <set>
 struct BoxImage;
 
 
@@ -95,17 +97,13 @@ public:
 
 	void addParticle(const ParticleFactory&,int global_id, float boxlen_nm, BoundaryConditionSelect bc);
 
-
-	void AddBond(const std::vector<ParticleToCompoundMapping>&, const SingleBondFactory&);
-	void AddBond(const std::vector<ParticleToCompoundMapping>&, const AngleBondFactory&);
-	void AddBond(const std::vector<ParticleToCompoundMapping>&, const DihedralBondFactory&);
-	void AddBond(const std::vector<ParticleToCompoundMapping>&, const ImproperDihedralBondFactory&);
-
 	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
 	}
 
 	void addIdOfBondedCompound(int id);
+
+	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
 
 	int id = -1;	// unique lima id
 
@@ -126,36 +124,36 @@ struct TinyMolFactory {
     std::string atomType; // Debug only
 };
 
-class BridgeFactory : public CompoundBridge {
+
+class BondGroupFactory : public BondGroup {
+
+	
+	void AddBondParticles(const ParticleToCompoundMap&, std::span<const uint32_t> globalIds);
 public:
-	BridgeFactory(int bridge_id, const std::vector<int>& _compound_ids) : bridge_id(bridge_id)
-	{ 
-		if (_compound_ids.size() > MAX_COMPOUNDS_IN_BRIDGE) {	// TODO: Move to .cpp and use format here
-			throw std::runtime_error("Cannot add more compounds to a single bridge");
-		}
-		for (int i = 0; i < _compound_ids.size(); i++) {
-			compound_ids[i] = _compound_ids[i];
-		}
-		n_compounds = _compound_ids.size();
-	}
+	BondGroupFactory() {}
 
-	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const SingleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const AngleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const DihedralBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, ParticleToBridgeMap&, const ImproperDihedralBondFactory&);
+	bool HasSpaceForParticlesInBond(const std::span<const uint32_t>& particleIds) const;
 
-	const int bridge_id;
-private:
-	// Add particle to bridge and augment its particle info with the references to its position in this bridge
-	// Only called from addBond, when a bond contains a particle that does NOT already exist in bridge
-	void addParticle(const ParticleToCompoundMapping& p2cMapping, std::optional<ParticleToBridgeMapping>& p2bMapping);
+	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
-	template <typename BondFactory_type>
-	std::array<uint8_t, BondFactory_type::nAtoms> ConvertGlobalIdsToBridgelocalIds(
-		const std::vector<ParticleToCompoundMapping>& p2cMap, 
-		std::vector<std::optional<ParticleToBridgeMapping>>& p2bMap, 
-		const BondFactory_type& bond);
+	void AddBond(const ParticleToCompoundMap&, const SingleBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, const AngleBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, const DihedralBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, const ImproperDihedralBondFactory&);
+	
+	std::array<uint32_t, maxParticles> particleGlobalIds;
+	std::unordered_map<uint32_t, uint8_t> particleGlobalToLocalId;
+
+	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::Topology&,
+		const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap);
+
+	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
+		const std::vector<BondGroupFactory>&, int nParticlesTotal);
+
+	static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
 };
+
+
 
 // A translation unit between Gro file representation, and LIMA Box representation
 struct BoxImage {
@@ -164,8 +162,6 @@ struct BoxImage {
 
 	std::vector<BondedParticlesLUT> bpLutCollection;
 	
-	std::vector<CompoundBridge> compoundBridges;
-
 	const std::vector<TinyMolFactory> solvent_positions;
 
 	GroFile grofile;
@@ -177,5 +173,7 @@ struct BoxImage {
 	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
 
 	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
+
+	const std::vector<BondGroup> bondgroups;
 };
  

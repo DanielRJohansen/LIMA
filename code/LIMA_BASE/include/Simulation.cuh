@@ -149,9 +149,9 @@ struct Box {
 	std::vector<TinyMolState> tinyMols;
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
 
-	std::vector<CompoundBridge> compoundBridges;
-	//std::unique_ptr<CompoundBridgeBundleCompact> bridge_bundle = nullptr;
 	std::vector<BondedParticlesLUT> bpLutCollection;
+
+	std::vector<BondGroup> bondgroups;
 
 	UniformElectricField uniformElectricField;
 };

@@ -93,10 +93,9 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	box->compoundBridges = boxImage.compoundBridges;
-	box->boxparams.n_bridges = boxImage.compoundBridges.size();
-
 	box->bpLutCollection = std::move(boxImage.bpLutCollection);
+
+	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
 
 #ifdef ENABLE_SOLVENTS
 	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);

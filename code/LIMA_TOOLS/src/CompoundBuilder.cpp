@@ -12,18 +12,52 @@
 using namespace LIMA_MOLECULEBUILD;
 using namespace LimaMoleculeGraph;
 
+
+
 class BondedParticlesLUTManagerFactory {
 	std::vector<BondedParticlesLUT> luts;
 	const int nCompounds;
+
+	void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleToCompoundMapping>& particleToCompoundMap, std::span<const uint32_t> global_ids) {
+		for (auto gid_self : global_ids) {
+			for (auto gid_other : global_ids) {
+				if (gid_self == gid_other) { continue; }
+
+				const ParticleToCompoundMapping& mappingSelf = particleToCompoundMap[gid_self];
+				const ParticleToCompoundMapping& mappingOther = particleToCompoundMap[gid_other];
+
+				BondedParticlesLUT& lut = bplut_man->get(mappingSelf.compoundId, mappingOther.compoundId);
+				lut.set(mappingSelf.localIdInCompound, mappingOther.localIdInCompound, true);
+			}
+		}
+	}
+
 public:
-	BondedParticlesLUTManagerFactory(int nCompounds) : 
+	BondedParticlesLUTManagerFactory(int nCompounds, const Topology& topology, const std::vector<ParticleToCompoundMapping>& p2cMap) :
 		nCompounds(nCompounds) ,
 		luts(nCompounds * BondedParticlesLUTHelpers::max_bonded_compounds, BondedParticlesLUT(false)) 
-	{}
+	{
+		for (const auto& bond : topology.singlebonds)
+			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
+		for (const auto& bond : topology.anglebonds)
+			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
+		for (const auto& bond : topology.dihedralbonds)
+			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
+		for (const auto& bond : topology.improperdihedralbonds)
+			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
+
+		// Set LUT so no particle ever interacts with itself
+		for (int com_id = 0; com_id < nCompounds; com_id++) {
+			auto& lut = get(com_id, com_id);
+			for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
+				lut.set(pid, pid, true);
+			}
+		}
+	}
 
 
 	BondedParticlesLUT& get(int id_self, int id_other) {
-		if (std::abs(id_self - id_other > 2)) {
+		if (std::abs(id_self - id_other > BondedParticlesLUTHelpers::maxDiff)) {
 			throw std::runtime_error(std::format("Cannot get BPLUT for compounds with distances > 2 in id-space {} {}", id_self, id_other));
 		}
 		if (id_self >= nCompounds || id_other >= nCompounds) {
@@ -38,30 +72,21 @@ public:
 	std::vector<BondedParticlesLUT> Finish() {
 		return std::move(luts);
 	}
-};
 
+	// So actually returns ID's of compounds with which queryCompound has bonded interactions
+	std::vector<int> GetIdsOfCompoundsWithEntriesInLut(int queryCompoundId) {
+		std::vector<int> ids;
+		for (int relIndex = -BondedParticlesLUTHelpers::maxDiff; relIndex <= BondedParticlesLUTHelpers::maxDiff; relIndex++) {
+			const int otherIndex = queryCompoundId + relIndex;
+			if (otherIndex < 0 || otherIndex >= nCompounds || otherIndex == queryCompoundId) { continue; }
 
-bool bridgeContainsTheseTwoCompounds(const BridgeFactory& bridge, const std::array<int, 2> compound_ids) {
-	for (const int id : compound_ids) {
-		bool found = false;
-
-		for (auto compoundId : bridge.compound_ids) {
-			if (compoundId == id) {
-				found = true;
-				break;
+			if (get(queryCompoundId, otherIndex).HasEntries()) {
+				ids.push_back(otherIndex);
 			}
 		}
-
-		if (!found)
-			return false;
+		return ids;
 	}
-
-	return true;
-}
-
-
-
-
+};
 
 
 
@@ -246,31 +271,6 @@ std::array<uint8_t, n> ConvertGlobalAtomidsToCompoundlocalIds(const std::vector<
 	return localIds;
 }
 
-void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const SingleBondFactory& bond) {
-	if (n_singlebonds >= MAX_SINGLEBONDS_IN_COMPOUND) {
-		throw std::runtime_error("Failed to add singlebond to compound");
-	}
-	singlebonds[n_singlebonds++] = SingleBond(ConvertGlobalAtomidsToCompoundlocalIds<2>(p2cMap, bond.global_atom_indexes), bond.params);
-}
-void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const AngleBondFactory& bond) {
-	if (n_anglebonds >= MAX_ANGLEBONDS_IN_COMPOUND) {
-		throw std::runtime_error("Failed to add anglebond to compound");
-	}
-	anglebonds[n_anglebonds++] = AngleUreyBradleyBond(ConvertGlobalAtomidsToCompoundlocalIds<3>(p2cMap, bond.global_atom_indexes), bond.params);
-}
-void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const DihedralBondFactory& bond) {
-	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_COMPOUND) {
-		throw std::runtime_error("Failed to add dihedralbond to compound");
-	}
-	dihedrals[n_dihedrals++] = DihedralBond(ConvertGlobalAtomidsToCompoundlocalIds<4>(p2cMap, bond.global_atom_indexes), bond.params);
-}
-void CompoundFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, const ImproperDihedralBondFactory& bond) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND) {
-		throw std::runtime_error("Failed to add improperdihedralbond to compound");
-	}
-	impropers[n_improperdihedrals++] = ImproperDihedralBond(ConvertGlobalAtomidsToCompoundlocalIds<4>(p2cMap, bond.global_atom_indexes), bond.params);
-}
-
 void CompoundFactory::addIdOfBondedCompound(int id) {
 	if (n_bonded_compounds == max_bonded_compounds) { throw std::runtime_error("Failed to add bonded compound id to compound"); }
 
@@ -282,87 +282,13 @@ void CompoundFactory::addIdOfBondedCompound(int id) {
 	bonded_compound_ids[n_bonded_compounds++] = id;
 }
 
+void CompoundFactory::AddBondgroupReference(int particleId, const BondgroupRef& bgRef) {
+	if (bondgroupReferences[particleId].nBondgroupApperances >= bondgroupReferences[particleId].maxBondgroupApperances)
+		throw std::runtime_error("Failed to add bondgroup reference to compound");
 
-
-template <typename BondFactory_type>
-std::array<uint8_t, BondFactory_type::nAtoms> BridgeFactory::ConvertGlobalIdsToBridgelocalIds (const std::vector<ParticleToCompoundMapping>& p2cMap, 
-	ParticleToBridgeMap& p2bMap, const BondFactory_type& bond) 
-{
-	for (const auto& global_atom_id : bond.global_atom_indexes) {
-		if (!p2bMap[global_atom_id].has_value()) {
-			addParticle(p2cMap[global_atom_id], p2bMap[global_atom_id]);
-		}
-		const auto bridgeId = p2bMap[global_atom_id]->bridgeId;
-		if (bridgeId != this->bridge_id) {
-			throw std::runtime_error("Cannot add bond to bridge, as it contains atoms from another bridge");
-		}
-	}
-	
-	std::array<uint8_t, BondFactory_type::nAtoms> localIds;
-	std::unordered_set<int> usedIds;
-	for (int i = 0; i < BondFactory_type::nAtoms; i++) {
-		localIds[i] = p2bMap[bond.global_atom_indexes[i]]->localIdInBridge;
-		if (usedIds.contains(localIds[i])) {
-			throw std::runtime_error("Failed to add bond to bridge, as it contains multiple atoms from the same compound");
-		}
-		usedIds.insert(localIds[i]);
-	}
-	return localIds;
+	bondgroupReferences[particleId].bondgroupApperances[bondgroupReferences[particleId].nBondgroupApperances++] = bgRef;
 }
 
-void BridgeFactory::AddBond(const ParticleToCompoundMap& p2cMap, ParticleToBridgeMap& p2bMap, const SingleBondFactory& bond) {
-	if (n_singlebonds >= MAX_SINGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add singlebond to bridge"); }
-	singlebonds[n_singlebonds++] = SingleBond{
-		ConvertGlobalIdsToBridgelocalIds(p2cMap, p2bMap, bond),
-		bond.params
-	};
-}
-void BridgeFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, ParticleToBridgeMap& p2bMap, const AngleBondFactory& bond) {
-	if (n_anglebonds >= MAX_ANGLEBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add anglebond to bridge"); }
-	anglebonds[n_anglebonds++] = AngleUreyBradleyBond{
-		ConvertGlobalIdsToBridgelocalIds(p2cMap, p2bMap, bond),
-		bond.params
-	};
-}
-void BridgeFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, ParticleToBridgeMap& p2bMap, const DihedralBondFactory& bond) {
-	if (n_dihedrals >= MAX_DIHEDRALBONDS_IN_BRIDGE) {
-		throw std::runtime_error("Failed to add dihedralbond to bridge");
-	}
-	dihedrals[n_dihedrals++] = DihedralBond{
-		ConvertGlobalIdsToBridgelocalIds(p2cMap, p2bMap, bond),
-		bond.params
-	};
-}
-void BridgeFactory::AddBond(const std::vector<ParticleToCompoundMapping>& p2cMap, ParticleToBridgeMap& p2bMap, const ImproperDihedralBondFactory& bond) {
-	if (n_improperdihedrals >= MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE) { throw std::runtime_error("Failed to add improperdihedralbond to bridge"); }
-	impropers[n_improperdihedrals++] = ImproperDihedralBond{
-		ConvertGlobalIdsToBridgelocalIds(p2cMap, p2bMap, bond),
-		bond.params
-	};
-}
-
-void BridgeFactory::addParticle(const ParticleToCompoundMapping& p2cMapping, std::optional<ParticleToBridgeMapping>& p2bMapping) {	// This can be made const, and return it's iD in bridge
-	if (n_particles == MAX_PARTICLES_IN_BRIDGE) { throw std::runtime_error("Too many particles in bridge"); }
-
-	p2bMapping = ParticleToBridgeMapping{ bridge_id, n_particles };
-
-	int compoundlocalid_in_bridge = -1;
-	for (int i = 0; i < this->n_compounds; i++) {
-		if (p2cMapping.compoundId == compound_ids[i])
-			compoundlocalid_in_bridge = i;
-	}
-	if (compoundlocalid_in_bridge == -1) {
-		throw std::runtime_error("Could not find compoundlocalid_in_bridge");
-	}
-
-	particle_refs[n_particles] = ParticleReference{
-		p2cMapping.compoundId,
-		p2cMapping.localIdInCompound,
-		static_cast<uint8_t>(compoundlocalid_in_bridge)
-	};
-
-	n_particles++;
-}
 
 template <int N>
 bool Belongs(const std::array<int, N> bondIds, int idOfFirstAtomInMolecule, int idOfLastAtomInMolecule) {
@@ -845,45 +771,6 @@ std::vector<std::set<int>> TrimSetsForSubsets(const std::set<std::set<int>>& com
 
 
 
-std::vector<BridgeFactory> CreateBridges(const Topology& topology, const std::vector<CompoundFactory>& compounds, 
-	const std::vector<ParticleToCompoundMapping>& particleToCompoundidMap)
-{
-	const int nParticlesTotal = particleToCompoundidMap.size();
-
-	// First figure out which compounds each particle interacts with via bonds
-	std::vector<std::set<int>> compoundidsInteractedWithByAtoms(nParticlesTotal);
-	AddToSet(topology.singlebonds, compoundidsInteractedWithByAtoms, particleToCompoundidMap);
-	AddToSet(topology.anglebonds, compoundidsInteractedWithByAtoms, particleToCompoundidMap);
-	AddToSet(topology.dihedralbonds, compoundidsInteractedWithByAtoms, particleToCompoundidMap);
-
-	// Any particle interacting with > 1 compound, is a bridge candidate
-	std::set<std::set<int>> compoundsBridgeCandidates;
-	for (int i = 0; i < nParticlesTotal; i++) {
-		if (compoundidsInteractedWithByAtoms[i].size() > 1)
-			compoundsBridgeCandidates.insert(compoundidsInteractedWithByAtoms[i]);
-	}
-
-	// Now trim the candidates
-	const std::vector<std::set<int>> compoundsBridgeCandidatesTrimmed = TrimSetsForSubsets(compoundsBridgeCandidates);
-
-	std::vector<BridgeFactory> bridges;
-	bridges.reserve(compoundsBridgeCandidatesTrimmed.size());
-	for (const std::set<int>& compoundIdSet : compoundsBridgeCandidatesTrimmed) {
-		if (compoundIdSet.size() < 2)
-			throw std::runtime_error("Bridge must contain at least 2 compounds");
-		
-		const std::vector<int> compoundIdsInBridge{ compoundIdSet.begin(), compoundIdSet.end() };
-		bridges.push_back(BridgeFactory{ static_cast<int>(bridges.size()), compoundIdsInBridge });
-	}
-
-	for (int i = 0; i < bridges.size(); i++)
-		if (bridges[i].bridge_id != i)
-			throw std::runtime_error("Bridge id mismatch");
-
-	return bridges;
-}
-
-
 template <int n_ids>
 bool SpansTwoCompounds(const std::array<uint32_t, n_ids> bond_globalids, const std::vector<ParticleToCompoundMapping>& p2cMap) {
 	const int compoundid_left = p2cMap[bond_globalids[0]].compoundId;
@@ -896,20 +783,7 @@ bool SpansTwoCompounds(const std::array<uint32_t, n_ids> bond_globalids, const s
 	return false;
 }
 
-template <int n_ids>
-void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleToCompoundMapping>& particleToCompoundMap, const std::array<uint32_t, n_ids>& global_ids) {
-	for (auto gid_self : global_ids) {
-		for (auto gid_other : global_ids) {
-			if (gid_self == gid_other) { continue; }
-			
-			const ParticleToCompoundMapping& mappingSelf = particleToCompoundMap[gid_self];
-			const ParticleToCompoundMapping& mappingOther = particleToCompoundMap[gid_other];
 
-			BondedParticlesLUT& lut = bplut_man->get(mappingSelf.compoundId, mappingOther.compoundId);
-			lut.set(mappingSelf.localIdInCompound, mappingOther.localIdInCompound, true);
-		}
-	}
-}
 
 // Returns two compound id's of a bond in a bridge. The id's are sorted with lowest first
 template <int N>
@@ -935,86 +809,8 @@ std::array<int, 2> getTheTwoDifferentIds(const std::array<uint32_t, N>& particle
 	return compound_ids;
 }
 
-template <int N>
-BridgeFactory& getBridge(std::vector<BridgeFactory>& bridges, const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleToCompoundMapping>& p2cMap
-)
-{
-	std::array<int, 2> compound_ids = getTheTwoDifferentIds<N>(particle_global_ids, p2cMap);
-
-	// If not found in the lookup or no matching bridge, search through all bridges
-	for (BridgeFactory& bridge : bridges) {
-		if (bridgeContainsTheseTwoCompounds(bridge, compound_ids)) {
-			return bridge;
-		}
-	}
-
-	throw std::runtime_error(std::format("Failed to find the bridge ({})", N).c_str());
-}
-
-template <typename BondTypeFactory>
-void DistributeBondsToCompoundsAndBridges(const std::vector<BondTypeFactory>& bonds, 
-	const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap, ParticleToBridgeMap& p2bMap,
-	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges,
-	BondedParticlesLUTManagerFactory& bpLutManager) 
-{
-	
-
-	for (const BondTypeFactory& bond : bonds) {
-		
-		DistributeLJIgnores<BondTypeFactory::nAtoms>(&bpLutManager, particlesToCompoundIdMap, bond.global_atom_indexes);
-
-		// TODO Remove this once we switch to a graph based LJignores search
-		if (bond.params.HasZeroParam())
-			continue;
-		//
 
 
-		if (SpansTwoCompounds<BondTypeFactory::nAtoms>(bond.global_atom_indexes, particlesToCompoundIdMap)) {
-			BridgeFactory& bridge = getBridge<BondTypeFactory::nAtoms>(bridges, bond.global_atom_indexes, particlesToCompoundIdMap);
-			bridge.AddBond(particlesToCompoundIdMap, p2bMap, bond);
-		}
-		else {
-			const int compound_id = particlesToCompoundIdMap[bond.global_atom_indexes[0]].compoundId;	// Pick compound using first particle in bond
-			CompoundFactory& compound = compounds.at(compound_id);
-			compound.AddBond(particlesToCompoundIdMap, bond);
-		}
-
-	}
-}
-
-void DistributeBondsToCompoundsAndBridges(const Topology& topology, float boxlen_nm, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap, BoundaryConditionSelect bc_select,
-	std::vector<CompoundFactory>& compounds, std::vector<BridgeFactory>& bridges, BondedParticlesLUTManagerFactory& bpLutManager)
-{
-	ParticleToBridgeMap particlesToBridgeMap(particlesToCompoundIdMap.size());
-
-	DistributeBondsToCompoundsAndBridges(topology.singlebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
-	DistributeBondsToCompoundsAndBridges(topology.anglebonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
-	DistributeBondsToCompoundsAndBridges(topology.dihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
-	DistributeBondsToCompoundsAndBridges(topology.improperdihedralbonds, particlesToCompoundIdMap, particlesToBridgeMap, compounds, bridges, bpLutManager);
-
-	// While are particle is never bonded to itself, we are not allowed to calc LJ with itself
-	// so we can doubly use this lut to avoid doing that
-
-	for (int com_id = 0; com_id < compounds.size(); com_id++) {
-		auto& lut = bpLutManager.get(com_id, com_id);
-		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
-			lut.set(pid, pid, true);
-		}
-	}
-
-	// Finally tell each compound which other compounds they are bonded to for faster lookup of LUTs
-	for (const auto& bridge : bridges) {
-		for (int i = 0; i < bridge.n_compounds; i++) {
-			for (int ii = i + 1; ii < bridge.n_compounds; ii++) {
-				if (bridge.compound_ids[i] == bridge.compound_ids[ii]) {
-					throw std::runtime_error("A bridge contains the same compound twice");
-				}
-				compounds[bridge.compound_ids[i]].addIdOfBondedCompound(bridge.compound_ids[ii]);
-				compounds[bridge.compound_ids[ii]].addIdOfBondedCompound(bridge.compound_ids[i]);
-			}
-		}
-	}
-}
 
 void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select) {
 //#pragma omp parallel for // TODO Add OMP here, 
@@ -1137,26 +933,39 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//printf("%d compounds\n", compounds.size());
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, topology.particles.size());
-	std::vector<BridgeFactory> bridges = CreateBridges(topology, compounds, particleToCompoundidMap);
 
 
+	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), topology, particleToCompoundidMap);
 
-	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size());
-	DistributeBondsToCompoundsAndBridges(topology, grofile.box_size.x, particleToCompoundidMap, simparams.bc_select, compounds, bridges, *bpLutManager);
+	for (int cid = 0; cid < compounds.size(); cid++) {
+		std::vector<int> compoundIdsWithBondedInteractions = bpLutManager->GetIdsOfCompoundsWithEntriesInLut(cid);
+		for (int id : compoundIdsWithBondedInteractions) {
+
+			bool found = false;
+			for (int i = 0; i < compounds[cid].n_bonded_compounds; i++)
+				if (compounds[cid].bonded_compound_ids[i] == id)
+					found = true;
+			if (!found)
+				int a = 0;
+			compounds[cid].addIdOfBondedCompound(id);
+		}
+
+	}
+
+	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(topology, particleToCompoundidMap);
+	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, topology.particles.size());
 
 
-	for (const auto& bridge : bridges) {
-		for (int bid = 0; bid < bridge.n_anglebonds; bid++) {
-			//for (const auto& bond : bridge.anglebonds) {
-			auto bond = bridge.anglebonds[bid];
-			std::unordered_set<int> ids;
-			for (auto& lid : bond.atom_indexes) {
-				if (ids.contains(lid))
-					throw ("Angle bond contains the same index multiple times");
-				ids.insert(lid);
-			}
+	for (int i = 0; i < particleToCompoundidMap.size(); i++) {
+		const auto cRef = particleToCompoundidMap[i];
+		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
+
+		for (const BondgroupRef& bgRef : bgRefs) {
+			compounds[cRef.compoundId].AddBondgroupReference(cRef.localIdInCompound, bgRef);
 		}
 	}
+
+
 
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
@@ -1167,22 +976,17 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 
-	std::vector<CompoundBridge> compoundBridges(bridges.size());
-	for (int i = 0; i < bridges.size(); i++) {
-		compoundBridges[i] = bridges[i];
-	}
-
 	return std::make_unique<BoxImage>(
 		std::move(compounds),
 		static_cast<int>(totalCompoundParticles),
 		bpLutManager->Finish(),
-		std::move(compoundBridges),
 		std::move(tinyMols),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		forcefield.GetTinymolTypes(),
 		topology,
-		forcefield.GetNonbondedInteractionParams()
+		forcefield.GetNonbondedInteractionParams(),
+		BondGroupFactory::FinishBondgroups(bondGroups)
 	);
 
 }

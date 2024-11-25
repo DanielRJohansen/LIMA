@@ -50,7 +50,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	}
 	setDeviceConstantMemory();
 	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr, nullptr);
-	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr, nullptr);
+	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(boxStateCopy.get(), sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 	neighborlistsPtr = sim_dev->compound_neighborlists;
@@ -77,6 +77,9 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	//	unique_compounds.insert(std::string(types));
 	//}
 	//int a = 0;
+
+	bondgroups = GenericCopyToDevice(simulation->box_host->bondgroups);
+	cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * simulation->box_host->bondgroups.size() * BondGroup::maxParticles);
 
 
 
@@ -339,11 +342,6 @@ void Engine::_deviceMaster() {
 			(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
 	}
-	
-	if (boxparams.n_bridges > 0) {
-		compoundBridgeKernel<BoundaryCondition> << <boxparams.n_bridges, MAX_PARTICLES_IN_BRIDGE >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyBridge);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBridgeKernel");
-	}	
 
 	if (boxparams.n_solvents > 0) {
 		solventForceKernel<BoundaryCondition, emvariant> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
@@ -361,11 +359,16 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
 	}
 
+	if (!simulation->box_host->bondgroups.empty()) {
+		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL >> > (bondgroups, *boxStateCopy, forceEnergiesBondgroups);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+	}
+
 	// #### Integration and Transfer kernels
 	cudaDeviceSynchronize();
 
 	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims);
+		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
@@ -467,19 +470,16 @@ CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
 	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
 	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
 	cudaMalloc(&forceEnergyBonds, byteSize);
-	cudaMalloc(&forceEnergyBridge, byteSize);
 
 	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
 	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
 	cudaMemset(forceEnergyBonds, 0, byteSize);
-	cudaMemset(forceEnergyBridge, 0, byteSize);
 }
 
 void CompoundForceEnergyInterims::Free() {
 	cudaFree(forceEnergyFarneighborShortrange);
 	cudaFree(forceEnergyImmediateneighborShortrange);
 	cudaFree(forceEnergyBonds);
-	cudaFree(forceEnergyBridge);
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
 }

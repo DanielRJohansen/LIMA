@@ -162,21 +162,12 @@ struct alignas(4) CompoundCompact {
 #endif
 
 
-	int n_singlebonds = 0;
-	int n_anglebonds = 0;
-	int n_dihedrals = 0;
-	int n_improperdihedrals = 0;
-
 	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
 	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
 	int n_bonded_compounds = 0;
 
 	__device__ void loadMeta(const CompoundCompact* const compound) {
 		n_particles = compound->n_particles;
-		n_singlebonds = compound->n_singlebonds;
-		n_anglebonds = compound->n_anglebonds;
-		n_dihedrals = compound->n_dihedrals;
-		n_improperdihedrals = compound->n_improperdihedrals;
 		n_bonded_compounds = compound->n_bonded_compounds;
 	}
 
@@ -190,11 +181,6 @@ struct alignas(4) CompoundCompact {
 		}
 	}
 };
-
-const int MAX_SINGLEBONDS_IN_COMPOUND = MAX_COMPOUND_PARTICLES + 4;	// Due to AA such a TRP, thhere might be more bonds than atoms
-const int MAX_ANGLEBONDS_IN_COMPOUND = 128;
-const int MAX_DIHEDRALBONDS_IN_COMPOUND = 128 + 64 + 64 + 32;
-const int MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND = 32;
 
 
 struct CompoundInterimState {
@@ -216,15 +202,22 @@ struct CompoundInterimState {
 	Coord coords[MAX_COMPOUND_PARTICLES];
 };
 
+
+
+struct BondgroupRef { // A particles ref to its position in a bondgroup
+	int bondgroupId;
+	int localIndexInBondgroup;
+
+	bool operator<(const BondgroupRef& other) const {
+		if (bondgroupId != other.bondgroupId)
+			return bondgroupId < other.bondgroupId;
+		return localIndexInBondgroup < other.localIndexInBondgroup;
+	}
+};
+
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
 	__host__ __device__ Compound() {}
-
-	// Bonds
-	SingleBond singlebonds[MAX_SINGLEBONDS_IN_COMPOUND];
-	AngleUreyBradleyBond anglebonds[MAX_ANGLEBONDS_IN_COMPOUND];
-	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_COMPOUND];
-	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND];
 
 	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
@@ -240,12 +233,38 @@ struct Compound : public CompoundCompact {
 	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
 
 	int absoluteIndexOfFirstParticle = 0;
+
+	struct BondgroupRefManager {
+		static const int maxBondgroupApperances = 4;
+		int nBondgroupApperances = 0;
+		BondgroupRef bondgroupApperances[maxBondgroupApperances];
+	} bondgroupReferences[MAX_COMPOUND_PARTICLES];
 };
 
+struct BondGroup {
+	struct ParticleRef {
+		int compoundId=0; // TODO: make uint16_t?
+		int localIdInCompound=0; // TODO: make uint16_t?
+	};
 
+	static const int maxParticles = 64;
+	static const int maxSinglebonds = 128;
+	static const int maxAnglebonds = 128 + 64;
+	static const int maxDihedralbonds = 256 + 64;
+	static const int maxImproperdihedralbonds = 32;
 
+	ParticleRef particles[maxParticles];
+	SingleBond singlebonds[maxSinglebonds];
+	AngleUreyBradleyBond anglebonds[maxAnglebonds];
+	DihedralBond dihedralbonds[maxDihedralbonds];
+	ImproperDihedralBond improperdihedralbonds[maxImproperdihedralbonds];
 
-
+	int nParticles = 0;
+	int nSinglebonds = 0;
+	int nAnglebonds = 0;
+	int nDihedralbonds = 0;
+	int nImproperdihedralbonds = 0;
+};
 
 
 
@@ -264,71 +283,6 @@ struct ParticleReference {
 	uint8_t compoundid_local_to_bridge = 255;
 
 	//int global_id = -1; // For debug
-};
-
-struct CompoundBridge {
-	CompoundBridge() {}	
-	
-	ParticleReference particle_refs[MAX_PARTICLES_IN_BRIDGE]{};
-	uint8_t n_particles = 0;					
-
-	uint8_t n_singlebonds = 0;
-	SingleBond singlebonds[MAX_SINGLEBONDS_IN_BRIDGE];
-
-	uint8_t n_anglebonds = 0;
-	AngleUreyBradleyBond anglebonds[MAX_ANGLEBONDS_IN_BRIDGE];
-
-	uint8_t n_dihedrals = 0;
-	DihedralBond dihedrals[MAX_DIHEDRALBONDS_IN_BRIDGE];
-
-	uint8_t n_improperdihedrals = 0;
-	ImproperDihedralBond impropers[MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE];
-
-	static_assert(MAX_COMPOUNDS < UINT16_MAX, "CompoundBridge cannot handle such large compound ids");
-	uint8_t n_compounds;
-	uint16_t compound_ids[MAX_COMPOUNDS_IN_BRIDGE] = { UINT16_MAX,UINT16_MAX,UINT16_MAX,UINT16_MAX };
-
-
-	// -------------- Device functions ------------- //
-	__device__ void loadMeta(const CompoundBridge* const bridge) {
-		n_particles = bridge->n_particles;
-		n_singlebonds = bridge->n_singlebonds;
-		n_anglebonds = bridge->n_anglebonds;
-		n_dihedrals = bridge->n_dihedrals;
-		n_improperdihedrals = bridge->n_improperdihedrals;
-		n_compounds = bridge->n_compounds;
-
-		for (int i = 0; i < 4; i++)
-			compound_ids[i] = bridge->compound_ids[i];
-		
-		//compound_id_left = bridge->compound_id_left;
-		//compound_id_right = bridge->compound_id_right;
-	}
-	__device__ void loadData(const CompoundBridge* const bridge) {
-		if (threadIdx.x < n_particles) {
-			//atom_types[threadIdx.x] = bridge->atom_types[threadIdx.x];
-			particle_refs[threadIdx.x] = bridge->particle_refs[threadIdx.x];
-		}
-		
-		for (int i = 0; (i * blockDim.x) < n_singlebonds; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_singlebonds)
-				singlebonds[index] = bridge->singlebonds[index];
-		}
-		for (int i = 0; (i * blockDim.x) < n_anglebonds; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_anglebonds)
-				anglebonds[index] = bridge->anglebonds[index];
-		}
-		for (int i = 0; (i * blockDim.x) < n_dihedrals; i++) {
-			int index = i * blockDim.x + threadIdx.x;
-			if (index < n_dihedrals)
-				dihedrals[index] = bridge->dihedrals[index];
-		}
-		if (threadIdx.x < n_improperdihedrals) {
-			impropers[threadIdx.x] = bridge->impropers[threadIdx.x];
-		}
-	}
 };
 
 // Precomputed values for pairs of atomtypes

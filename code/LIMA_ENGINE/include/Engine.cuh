@@ -29,17 +29,16 @@ struct CompoundForceEnergyInterims {
 	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBridge[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
 	}
 
 	ForceEnergy* forceEnergyFarneighborShortrange;
 	ForceEnergy* forceEnergyImmediateneighborShortrange;
 	ForceEnergy* forceEnergyBonds;
-	ForceEnergy* forceEnergyBridge;
 };
 
-const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+//const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+const int cbkernel_utilitybuffer_size = sizeof(CompoundCoords);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
 static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
 	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
@@ -82,8 +81,6 @@ public:
 	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
 	~Engine();
 
-	// Todo: Make env run in another thread, so engine has it's own thread entirely
-	// I'm sure that will help the branch predictor alot! Actually, probably no.
 	void step();
 
 	/// <summary>
@@ -143,6 +140,10 @@ private:
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
+
+	// These are owned, but this is temporary place to store them
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
+	BondGroup* bondgroups = nullptr;
 
 	CompoundForceEnergyInterims compoundForceEnergyInterims;
 

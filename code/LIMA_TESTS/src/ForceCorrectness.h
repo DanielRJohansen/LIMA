@@ -131,12 +131,14 @@ namespace ForceCorrectness {
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
+
+		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
 		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + box_host.compounds[0].singlebonds[0].params.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + bondparams.b0);
 
 		// Now figure the expected force and potential
-		const double kB = box_host.compounds[0].singlebonds[0].params.kb / 2.; // [J/(mol lm^2)]
+		const double kB = bondparams.kb / 2.; // [J/(mol lm^2)]
 		const Float3 dir{ 1,0,0 };
 		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
 		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
@@ -190,9 +192,12 @@ namespace ForceCorrectness {
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
+
+		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+
 		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + bondparams.b0);
 
 
 
@@ -201,7 +206,7 @@ namespace ForceCorrectness {
 		const float massA = box_host.compounds[0].atomMasses[0];
 		const float massB = box_host.compounds[0].atomMasses[1];
 		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
-		const double kB = box_host.compounds[0].singlebonds[0].params.kb / LIMA / LIMA; // [J/(mol m^2)]
+		const double kB = bondparams.kb / LIMA / LIMA; // [J/(mol m^2)]
 
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
 

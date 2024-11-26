@@ -103,7 +103,7 @@ const int GRIDNODE_QUERY_RANGE = 2;
 
 // If we go larger, a single compound can stretch over 2 nm!
 //constexpr int MAX_COMPOUND_PARTICLES = IGNORE_HYDROGEN ? 48 : 64;
-constexpr int MAX_COMPOUND_PARTICLES = 64;
+constexpr int MAX_COMPOUND_PARTICLES = 32;
 const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
 const int NEIGHBORLIST_MAX_COMPOUNDS = 512;	// TODO: We need to work on getting this number down!

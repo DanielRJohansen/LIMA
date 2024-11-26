@@ -234,6 +234,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 
 
     const int batchsize = 32;
+	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
@@ -374,7 +375,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 
 	// For neighborcompound and neighbor solventblocks we utilize a batching system
-	const int batchsize = 64;
+	
+	const int batchsize = 32;
+	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
 	__shared__ Float3 relshifts[batchsize];	// [lm]
 	__shared__ int neighborIds[batchsize]; // either compoundID or solventblockID // should be uint16_t? Does it make a diff?
 	__shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock

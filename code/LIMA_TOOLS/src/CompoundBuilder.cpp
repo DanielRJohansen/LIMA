@@ -26,6 +26,10 @@ class BondedParticlesLUTManagerFactory {
 				const ParticleToCompoundMapping& mappingSelf = particleToCompoundMap[gid_self];
 				const ParticleToCompoundMapping& mappingOther = particleToCompoundMap[gid_other];
 
+				if (mappingOther.compoundId == -1 || mappingSelf.compoundId == -1)
+					throw std::runtime_error("compoundId is -1");
+
+
 				BondedParticlesLUT& lut = bplut_man->get(mappingSelf.compoundId, mappingOther.compoundId);
 				lut.set(mappingSelf.localIdInCompound, mappingOther.localIdInCompound, true);
 			}
@@ -160,7 +164,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			nextUniqueParticleId++;
 			indexInGrofile++;
 
-			if (molType.atoms[0].residue == "SOL") {
+			if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") {
 				indexInGrofile += molType.atoms.size() - 1;
 				break;
 			}
@@ -597,19 +601,19 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size.x, atomGroups, simparams.bc_select);
 
-	/*Display d;
-	std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
-	for (const auto& compound : compounds) {
-		positions.push_back({});
-		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			positions.back()[i] = compound.positions[i];
-		}
-	}
-	std::vector<Compound> compounds2;
-	for (const auto& compound : compounds) {
-		compounds2.push_back(compound);
-	}	
-	d.Render(std::make_unique<Rendering::CompoundsTask>(compounds2, positions, grofile.box_size), true);*/
+	//Display d;
+	//std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
+	//for (const auto& compound : compounds) {
+	//	positions.push_back({});
+	//	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+	//		positions.back()[i] = compound.positions[i];
+	//	}
+	//}
+	//std::vector<Compound> compounds2;
+	//for (const auto& compound : compounds) {
+	//	compounds2.push_back(compound);
+	//}	
+	//d.Render(std::make_unique<Rendering::CompoundsTask>(compounds2, positions, grofile.box_size), true);
 
 	//printf("%d compounds\n", compounds.size());
 
@@ -651,7 +655,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
-
 
 	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });

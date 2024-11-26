@@ -18,7 +18,7 @@ class BondedParticlesLUTManagerFactory {
 	std::vector<BondedParticlesLUT> luts;
 	const int nCompounds;
 
-	void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleToCompoundMapping>& particleToCompoundMap, std::span<const uint32_t> global_ids) {
+	void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleToCompoundMapping>& particleToCompoundMap, std::span<const int> global_ids) {
 		for (auto gid_self : global_ids) {
 			for (auto gid_other : global_ids) {
 				if (gid_self == gid_other) { continue; }
@@ -89,178 +89,118 @@ public:
 };
 
 
-
-
-
-
-
-
-
-
-
-
-std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* const positions, int n_elems, float boxlen_nm, BoundaryConditionSelect bc) {
-	const int k = CompoundInteractionBoundary::k;
-	std::array<int, k> center_indices{};
-
-
-	// Initialize k centers randomly
-	// Randomly pick k particles and set them as initial centers
-	for (int i = 0; i < k; ++i) {
-		//center_indices[i] = std::rand() % n_elems;
-		center_indices[i] = std::min(i*n_elems, n_elems);
+class SuperTopology {
+	
+	template <int n>
+	std::array<int, n> TransformBondIds(const std::array<int, n>& ids, int offset) {
+		std::array<int, n> out;
+		for (int i = 0; i < n; i++) {
+			out[i] = ids[i] + offset;
+		}
+		return out;
 	}
 
-	// Holds the index of the center that each point is closest to
-	std::vector<int> labels(n_elems);
+	template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
+	void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology)
+	{
+		for (const auto& bondTopol : bondsInTopfile) {
+			std::array<int, BondType::nAtoms> globalIds;
+			std::array<std::string, BondType::nAtoms> atomTypenames;
 
-	// Max number of iterations or convergence criteria
-	const int max_iter = 50;
-
-	// Main k-means loop
-	for (int iter = 0; iter < max_iter; ++iter) {
-		// Assignment step
-		// Go through each particle and assign it to the closest center
-		for (int i = 0; i < n_elems; ++i) {
-			float min_dist = std::numeric_limits<float>::infinity();
-			for (int j = 0; j < k; ++j) {
-				//float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<PeriodicBoundaryCondition>(&positions[i], &positions[center_indices[j]]);
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], positions[center_indices[j]], boxlen_nm, bc);
-				if (dist < min_dist) {
-					min_dist = dist;
-					labels[i] = j; // Assign this particle to cluster j
-				}
+			for (int i = 0; i < BondType::nAtoms; ++i) {
+				globalIds[i] = bondTopol.ids[i] + atomIdOffset;
+				atomTypenames[i] = particles[globalIds[i]].topologyAtom.type;
 			}
-		}
 
-		// Update step
-		// Calculate new centers as the mean of all particles assigned to each center
-		std::vector<Float3> new_centers(k, Float3{});
-		std::vector<int> counts(k, 0);
+			auto bondParams = forcefield.GetBondParameters<BondType>(atomTypenames); // A bond may be describe as multiple bonds, so this is a vector
 
-		for (int i = 0; i < n_elems; ++i) {
-			int label = labels[i]; // Cluster label of this particle
-			new_centers[label] += positions[i]; // Summing up for mean calculation
-			counts[label] += 1; // Counting particles in each cluster for mean calculation
-		}
-
-		// Divide by the number of particles in each cluster to get the new center
-		for (int j = 0; j < k; ++j) {
-			if (counts[j] > 0) {
-				new_centers[j] *= 1.f/static_cast<float>(counts[j]);
-			}
-		}
-
-		// Find the index in the original positions array that is closest to the new centers
-		for (int j = 0; j < k; ++j) {
-			float min_dist = std::numeric_limits<float>::infinity();
-			for (int i = 0; i < n_elems; ++i) {
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], new_centers[j], boxlen_nm, bc);
-				if (dist < min_dist) {
-					min_dist = dist;
-					center_indices[j] = i; // Update the center index to this particle
-				}
+			for (const auto& param : bondParams) {
+				topology.emplace_back(BondtypeFactory{ globalIds, param });
 			}
 		}
 	}
 
-	return center_indices; // Return the indices of particles that are final centers
-}
+public:
 
 
-std::array<float, CompoundInteractionBoundary::k> clusterRadii(const Float3* const positions, int n_particles, const std::array<Float3, CompoundInteractionBoundary::k>& key_positions, 
-	float boxlen_nm, BoundaryConditionSelect bc) {
-	std::array<float, CompoundInteractionBoundary::k> radii;
-	std::vector<int> labels(n_particles);  // Holds the index of the closest key particle for each particle
+	SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield) {
 
-	// Assign each particle to the closest key particle
-	for (int i = 0; i < n_particles; ++i) {
-		float min_dist = std::numeric_limits<float>::infinity();
-		for (size_t j = 0; j < CompoundInteractionBoundary::k; ++j) {
-			float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], key_positions[j], boxlen_nm, bc);
-			if (dist < min_dist) {
-				min_dist = dist;
-				labels[i] = j;  // Assign this particle to cluster j
+		int nextUniqueParticleId = 0;
+
+		for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
+			const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
+			const int particleIdOffset = nextUniqueParticleId;
+
+			const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
+
+			if (molType.atoms.empty())
+				throw std::runtime_error("Molecule has no atoms");
+
+			for (int localId = 0; localId < molType.atoms.size();) {
+				const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(molType.atoms[localId].type);
+
+				particles.push_back(ParticleFactory1{ molType.atoms[localId], grofile.atoms[nextUniqueParticleId], activeLJParamIndex });
+				nextUniqueParticleId++;
 			}
+
+			LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds);
+			
+			LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds);
+
+			LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds);
+
+			LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds);
+
 		}
 	}
 
-	// Calculate the furthest distance for each cluster
-	for (size_t j = 0; j < CompoundInteractionBoundary::k; ++j) {
-		float max_radius = 0.0f;  // Initialize maximum radius for this cluster
 
-		for (int i = 0; i < n_particles; ++i) {
-			if (labels[i] == j) {  // If this particle belongs to the current cluster
-				float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], key_positions[j], boxlen_nm, bc);
-				if (dist > max_radius) {
-					max_radius = dist; // Update maximum radius
-				}
+	void VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const {
+		const float allowedScalar = energyMinimizationMode ? 7.f : 3.f;//1.9999f;
+
+		for (const auto& bond : singlebonds)
+		{
+			const Float3 pos1 = particles[bond.global_atom_indexes[0]].groAtom.position;
+			const Float3 pos2 = particles[bond.global_atom_indexes[1]].groAtom.position;
+			const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
+			const float bondRelaxedDist = bond.params.b0 * LIMA_TO_NANO;
+
+			if (hyper_dist > bondRelaxedDist * allowedScalar) {
+				throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
 			}
+			if (hyper_dist < bondRelaxedDist * 0.001)
+				throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
 		}
-
-		// Save the maximum radius for this cluster
-		radii[j] = max_radius;
+		//for (const auto& bond : topology.anglebonds)
+		//{
+		//	const Float3 pos1 = topology.particles[bond.global_atom_indexes[0]].position;
+		//	const Float3 pos2 = topology.particles[bond.global_atom_indexes[1]].position;
+		//	const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
+		//	if (hyper_dist < 0.001)
+		//		throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0 * LIMA_TO_NANO));
+		//}
 	}
 
-	return radii;
-}
+
+	std::vector<ParticleFactory1> particles;
+	std::vector<SingleBondFactory> singlebonds;
+	std::vector<AngleBondFactory> anglebonds;
+	std::vector<DihedralBondFactory> dihedralbonds;
+	std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+};
 
 
-Float3 calcCOM(const Float3* positions, int n_elems, float boxlen_nm, BoundaryConditionSelect bc) {
-	Float3 com{};
-	const Float3& designatedCenterPosition = positions[0];
-	for (int i = 0; i < n_elems; i++) {
-		Float3 pos = positions[i];
-		BoundaryConditionPublic::applyHyperposNM(designatedCenterPosition, pos, boxlen_nm, bc);	// Hyperpos around particle 0, since we dont know key position yet 
-		com += pos;
-	}
-	return com / static_cast<float>(n_elems);
-}
 
 
-int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com, float boxlen_nm, BoundaryConditionSelect bc) {
-	int closest_particle_index = 0;
-	float closest_particle_distance = std::numeric_limits<float>::infinity();
-	for (int i = 0; i < n_elems; i++) {
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], com, boxlen_nm, bc);
-		if (dist < closest_particle_distance) {
-			closest_particle_distance = dist;
-			closest_particle_index = i;
-		}
-	}
-	return closest_particle_index;
-}
+
+
+
 
 
 
 
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
-void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id, float boxlen_nm, BoundaryConditionSelect bc) {
-	if (n_particles >= MAX_COMPOUND_PARTICLES) {
-		throw std::runtime_error("Failed to add particle to compound");
-	}
 
-	// Hyperposition each compound relative to particle 0, so we can find key_particle and radius later
-	Float3 hyperpos = particle.position;
-	if (n_particles > 0) {
-		BoundaryConditionPublic::applyHyperposNM(positions[0], hyperpos, boxlen_nm, bc); // i dont LOVE this.. :(
-	}
-
-	// Variables only present in factory
-	positions[n_particles] = hyperpos;
-	global_ids[n_particles] = global_id;
-
-	// Variables present in Compound
-	atom_types[n_particles] = particle.activeLjtypeParameterIndex;
-	atomLetters[n_particles] = particle.topAtom->type[0];
-
-	atom_charges[n_particles] = particle.topAtom->charge * elementaryChargeToKiloCoulombPerMole;
-	atomMasses[n_particles] = particle.topAtom->mass / KILO;
-
-	indicesInGrofile[n_particles] = particle.indexInGrofile;
-
-	n_particles++;
-}
 
 template <int n> 
 std::array<uint8_t, n> ConvertGlobalAtomidsToCompoundlocalIds(const std::vector<ParticleToCompoundMapping>& p2cMap, const std::array<uint32_t, n>& global_atom_ids) {
@@ -424,6 +364,44 @@ std::pair<const std::vector<MoleculeRef>, const std::vector<TinyMolRef>> Prepare
 	return { molecules, tinyMolecules };
 }
 
+
+
+
+std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int>>> SeparateMolecules(const SuperTopology& system) {
+	std::vector<std::vector<int>> molecules;
+	std::vector<std::vector<int>> tinyMolecules;
+
+	std::vector<std::pair<int, std::string>> atoms;
+	atoms.reserve(system.particles.size());
+	for (int pid = 0; pid < system.particles.size(); pid++) {
+		atoms.push_back({ pid, system.particles[pid].topologyAtom.type});
+	}
+	std::vector<std::array<int, 2>> edges;
+	edges.reserve(system.singlebonds.size());
+	for (const auto& bond : system.singlebonds) {
+		edges.push_back(bond.global_atom_indexes);
+	}
+
+
+	const auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
+
+	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph->GetListOfListsofConnectedNodeids();
+
+	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
+
+		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
+
+		if (collection.size() > 3 || collectionIsCustomLimaMolecule)
+			molecules.emplace_back(collection);
+		else
+			tinyMolecules.emplace_back(collection);
+	}
+
+	return { molecules, tinyMolecules };
+}
+
+
+
 std::vector<TinyMolFactory> LoadTinyMols(const GroFile& grofile, const std::vector<TinyMolRef>& tinyMolsRefs, LIMAForcefield& forcefieldManager) {
 	std::vector<TinyMolFactory> tinyMols;
 	tinyMols.reserve(grofile.atoms.size());
@@ -447,7 +425,7 @@ void LoadBondIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfil
 	const std::vector<ParticleFactory>& particles, std::vector<BondtypeFactory>& topology)
 {
 	for (const auto& bondTopol : bondsInTopfile) {
-		std::array<uint32_t, BondType::nAtoms> globalIds;
+		std::array<int, BondType::nAtoms> globalIds;
 		std::array<std::string, BondType::nAtoms> atomTypenames;
 
 		for (int i = 0; i < BondType::nAtoms; ++i) {
@@ -529,6 +507,10 @@ std::vector<std::vector<int>> MapAtomsToSinglebonds(const Topology& topology) {
 struct AtomGroup {
 	std::vector<int> atomIds;
 	std::set<int> idsOfBondedAtomgroups;
+
+	bool operator != (const AtomGroup& other) const {
+		return atomIds != other.atomIds || idsOfBondedAtomgroups != other.idsOfBondedAtomgroups;
+	}
 };
 
 bool AreBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<std::vector<int>>& atomIdToSinglebondsMap) {
@@ -543,6 +525,22 @@ bool AreBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<
 					if (atomleft_singlesbonds[i] == atomright_singlesbonds[j]) {
 						return true;
 					}
+				}
+			}
+		}
+	}
+	return false;
+}
+
+bool AreBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<std::unordered_set<int>>& atomIdToSinglebondsMap) {
+	for (auto& atomleft_gid : left.atomIds) {
+		for (auto& atomright_gid : right.atomIds) {
+			const std::unordered_set<int>& atomleft_singlesbonds = atomIdToSinglebondsMap[atomleft_gid];
+			const std::unordered_set<int>& atomright_singlesbonds = atomIdToSinglebondsMap[atomright_gid];
+
+			for (int singlebondId : atomleft_singlesbonds) {
+				if (atomright_singlesbonds.contains(singlebondId)) {
+					return true;
 				}
 			}
 		}
@@ -664,6 +662,98 @@ const std::vector<AtomGroup> GroupAtoms1(const std::vector<MoleculeRef>& molecul
 }
 
 
+const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& particleidsInMolecules, const SuperTopology& topology) {
+	std::vector<AtomGroup> atomGroups;
+
+
+	std::vector<std::unordered_set<int>> pidToSinglebondidMap(topology.particles.size());
+	for (int bid = 0; bid < topology.singlebonds.size(); bid++) {
+		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[0]].insert(bid);
+		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[1]].insert(bid);
+	}
+
+
+	for (const auto& particleIdsInMolecule : particleidsInMolecules) {
+
+		std::vector<std::pair<int, std::string>> atoms;
+		atoms.reserve(particleIdsInMolecule.size());
+		for (int pid : particleIdsInMolecule) {
+			atoms.push_back({ pid, topology.particles[pid].topologyAtom.type });
+		}
+
+		std::unordered_set<int> bondIdsInMolecule;
+		for (int pid : particleIdsInMolecule) {
+			for (int bid : pidToSinglebondidMap[pid]) {
+				bondIdsInMolecule.insert(bid);
+			}
+		}
+
+		std::vector<std::array<int, 2>> edges;
+		edges.reserve(bondIdsInMolecule.size());
+		for (int bid : bondIdsInMolecule) {
+			edges.push_back(topology.singlebonds[bid].global_atom_indexes);
+		}
+
+
+
+
+		const MoleculeGraph molGraph(atoms, edges);
+		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = molGraph.ComputeNumDownstreamNodes();
+		const MoleculeTree moleculeTree = molGraph.ConstructMoleculeTree();
+
+		std::stack<const MoleculeGraph::Node*> nodeStack;
+		nodeStack.push(molGraph.root);
+
+		atomGroups.push_back({});
+
+		while (!nodeStack.empty()) {
+			const MoleculeGraph::Node* node = nodeStack.top();
+			nodeStack.pop();
+
+			if (MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size() == 0)
+				atomGroups.push_back({});
+			atomGroups.back().atomIds.emplace_back(node->atomid);
+
+			std::vector<int> nodeChildren = moleculeTree.GetChildIds(node->atomid);
+
+			if (nodeChildren.empty()) {
+				// finished
+			}
+			else {
+				// Add the longest childchain to our stack, and remove it from the current children
+				const int indexOfLongestChain = std::max_element(nodeChildren.begin(), nodeChildren.end(),
+					[&nodeIdNumDownstreamNodes](const int& a, const int& b) { return nodeIdNumDownstreamNodes.at(a) < nodeIdNumDownstreamNodes.at(b); }
+				) - nodeChildren.begin();
+				nodeStack.push(&molGraph.nodes.at(nodeChildren[indexOfLongestChain]));
+				nodeChildren[indexOfLongestChain] = nodeChildren.back();
+				nodeChildren.pop_back();
+
+				const std::vector<int> nodeChildrenIdsIdealOrder = ReorderSubchains(nodeChildren, nodeIdNumDownstreamNodes, MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size());
+
+				for (int id : nodeChildrenIdsIdealOrder) {
+					if (nodeIdNumDownstreamNodes.at(id) > MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size())
+						atomGroups.push_back({});
+
+					std::vector<int> allChildIds = moleculeTree.GetAllChildIdsAndSelf(id, nodeIdNumDownstreamNodes);
+					for (int childId : allChildIds) {
+						atomGroups.back().atomIds.emplace_back(childId);
+					}
+				}
+			}
+		}
+	}
+
+	// Now figure out which groups are bonded to others
+	for (int i = 1; i < atomGroups.size(); i++) {
+		if (AreBonded(atomGroups[i - 1], atomGroups[i], pidToSinglebondidMap)) {
+			atomGroups[i].idsOfBondedAtomgroups.insert(i - 1);
+			atomGroups[i - 1].idsOfBondedAtomgroups.insert(i);
+		}
+	}
+
+	return atomGroups;
+}
+
 
 std::vector<CompoundFactory> CreateCompounds(const Topology& topology, float boxlen_nm, const std::vector<AtomGroup>& atomGroups, BoundaryConditionSelect bc_select)
 {
@@ -724,130 +814,9 @@ const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const s
 	return particleToCompoundidMap;
 }
 
-bool ContainsSubset(const std::set<int>& set, const std::set<int>& subset) {
-	return std::all_of(subset.begin(), subset.end(), [&set](const int& elem) {
-		return set.find(elem) != set.end();
-		});
-}
- 
-template<typename BondType>
-void AddToSet(const std::vector<BondType>& bonds, std::vector<std::set<int>>& compoundidsInteractedWithByAtoms, const std::vector<ParticleToCompoundMapping>& particleToCompoundidMap) {
-	for (const auto bond : bonds) {
-		std::set<int> compoundIdsInThisBond;
-		for (const auto globalAtomId : bond.global_atom_indexes) {
-			compoundIdsInThisBond.insert(particleToCompoundidMap[globalAtomId].compoundId);
-		}
-
-		for (const auto globalAtomId : bond.global_atom_indexes) {
-			compoundidsInteractedWithByAtoms[globalAtomId].insert(compoundIdsInThisBond.begin(), compoundIdsInThisBond.end());
-		}
-	}
-}
-
-std::vector<std::set<int>> TrimSetsForSubsets(const std::set<std::set<int>>& compoundsBridgeCandidates) {
-	std::vector<std::set<int>> compoundsBridgeCandidatesSorted(compoundsBridgeCandidates.begin(), compoundsBridgeCandidates.end());
-	std::sort(compoundsBridgeCandidatesSorted.begin(), compoundsBridgeCandidatesSorted.end(), [](const std::set<int>& a, const std::set<int>& b) { return a.size() > b.size(); }); // Largest set first
-
-	std::vector<std::set<int>> compoundsBridgeCandidatesTrimmed;
-	for (const auto& candidate : compoundsBridgeCandidatesSorted) {
-		bool isSubset = false;
-		for (const auto& compound : compoundsBridgeCandidatesTrimmed) {
-			if (ContainsSubset(compound, candidate)) {
-				isSubset = true;
-				break;
-			}
-		}
-		if (!isSubset) {
-			compoundsBridgeCandidatesTrimmed.emplace_back(candidate);
-		}
-	}
-
-	// Sort the bridges by first compoundid, for debugging purposes
-	std::sort(compoundsBridgeCandidatesTrimmed.begin(), compoundsBridgeCandidatesTrimmed.end(), [](const std::set<int>& a, const std::set<int>& b) { return *a.begin() < *b.begin(); });
-
-	return compoundsBridgeCandidatesTrimmed;
-}
 
 
 
-
-template <int n_ids>
-bool SpansTwoCompounds(const std::array<uint32_t, n_ids> bond_globalids, const std::vector<ParticleToCompoundMapping>& p2cMap) {
-	const int compoundid_left = p2cMap[bond_globalids[0]].compoundId;
-
-	for (auto globalId : bond_globalids) {
-		if (compoundid_left != p2cMap[globalId].compoundId) {
-			return true;
-		}
-	}
-	return false;
-}
-
-
-
-// Returns two compound id's of a bond in a bridge. The id's are sorted with lowest first
-template <int N>
-std::array<int, 2> getTheTwoDifferentIds(const std::array<uint32_t, N>& particle_global_ids, const std::vector<ParticleToCompoundMapping>& p2cMap) {
-	std::array<int, 2> compound_ids = { p2cMap[particle_global_ids[0]].compoundId, -1 };
-
-	for (auto globalId : particle_global_ids) {
-		int compoundid_of_particle = p2cMap[globalId].compoundId;
-		if (compoundid_of_particle != compound_ids[0]) {
-			compound_ids[1] = compoundid_of_particle;
-			break;
-		}
-	}
-
-	if (compound_ids[1] == -1) {
-		throw std::runtime_error("Failed to find the second compound of bridge");
-	}
-
-	if (compound_ids[0] > compound_ids[1]) {
-		std::swap(compound_ids[0], compound_ids[1]);
-	}
-
-	return compound_ids;
-}
-
-
-
-
-void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select) {
-//#pragma omp parallel for // TODO Add OMP here, 
-	//for (CompoundFactory& compound : compounds) {
-	for (int cid = 0; cid < compounds.size(); cid++) {
-		CompoundFactory& compound = compounds[cid];
-
-		//for (auto& p : compound.atomLetters) { p = 'C'; }
-
-		const int k = CompoundInteractionBoundary::k;
-		std::array<int, k> key_indices = kMeansClusterCenters(compound.positions, compound.n_particles, boxlen_nm, bc_select);
-		std::array<Float3, k> key_positions;
-		for (int i = 0; i < k; i++) { key_positions[i] = compound.positions[key_indices[i]]; }
-
-		std::array<float, k> radii = clusterRadii(compound.positions, compound.n_particles, key_positions, boxlen_nm, bc_select);
-
-		for (int i = 0; i < k; i++) {
-			compound.interaction_boundary.key_particle_indices[i] = key_indices[i];
-			compound.interaction_boundary.radii[i] = radii[i] * 1.1f;	// Add 10% leeway
-		}
-
-		const Float3 com = calcCOM(compound.positions, compound.n_particles, boxlen_nm, bc_select);
-		compound.centerparticle_index = indexOfParticleClosestToCom(compound.positions, compound.n_particles, com, boxlen_nm, bc_select);
-
-		//char letter[3] = { 'O', 'N', 'P' };
-
-		//for (auto index : key_indices)
-		//	compound.atomLetters[index] = letter[cid];
-	}
-
-	// Calc absolute ids of particles in compounds 
-	if (compounds.empty()) { return; }
-	compounds[0].absoluteIndexOfFirstParticle = 0;
-	for (int i = 1; i < compounds.size(); i++) {
-		compounds[i].absoluteIndexOfFirstParticle = compounds[i - 1].absoluteIndexOfFirstParticle + compounds[i - 1].n_particles;
-	}
-}
 
 
 // Check that we dont have any unrealistic bonds, and warn immediately.
@@ -901,11 +870,24 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 ) 
 {
+	LIMAForcefield forcefield{ topol_file.forcefieldInclude->contents };
+
+	//const SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
+
+	//auto [molecules1, tinyMolecules1] = SeparateMolecules(superTopology);
+
+
+
+
+
+
+
+
+
 	auto [molecules, tinyMolecules] = PrepareMolecules(topol_file);
 
 
 
-	LIMAForcefield forcefield{topol_file.forcefieldInclude->contents};
 
 	const Topology topology = LoadTopology(molecules, forcefield, grofile);
 	VerifyBondsAreStable(topology, grofile.box_size.x, simparams.bc_select, simparams.em_variant);
@@ -914,6 +896,15 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	// Separate molecules into Compound-sized groups. Each group tracks which other groups it is bonded to
 	const std::vector<AtomGroup> atomGroups = GroupAtoms(topology);
 	//const std::vector<AtomGroup> atomGroups = GroupAtoms1(molecules, topology);	
+
+	//for (int i = 0; i < atomGroups.size(); i++) {
+	//	auto a = atomGroups[i];
+	//	auto b = atomGroups1[i];
+
+	//	if (a != b)
+	//		int c = 0;
+	//}
+
 	std::vector<CompoundFactory> compounds = CreateCompounds(topology, grofile.box_size.x, atomGroups, simparams.bc_select);
 
 	/*Display d;
@@ -969,7 +960,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
-	CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
+	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 
 	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(grofile, tinyMolecules, forcefield);

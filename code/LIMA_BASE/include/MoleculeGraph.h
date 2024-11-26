@@ -143,6 +143,10 @@ namespace LimaMoleculeGraph {
 
 		// Create a (possibly disconnected) graph from a MolType
 		MoleculeGraph(const TopologyFile::Moleculetype&, std::optional<const std::unordered_set<int>> allowedIds = std::nullopt);
+
+		// Create a graph with 0-indexed consequtive nodes
+		MoleculeGraph(const std::vector<std::pair<int, std::string>>& atoms, 
+			const std::vector<std::array<int, 2>>& edges);
 		MoleculeGraph() {};
 
 

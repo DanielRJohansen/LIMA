@@ -75,6 +75,21 @@ MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule, std::op
 	}
 }
 
+MoleculeGraph::MoleculeGraph(const std::vector<std::pair<int, std::string>>& atoms, const std::vector<std::array<int, 2>>& edges) {
+	std::vector<std::pair<int, Node>> temp_nodes;
+	temp_nodes.reserve(atoms.size());
+	for (const auto& atom : atoms) {
+		temp_nodes.emplace_back(atom.first, Node(atom.first, atom.second));
+	}
+
+	nodes.insert(temp_nodes.begin(), temp_nodes.end());
+	root = &nodes.at(0);
+	
+	for (const auto& edge : edges) {
+		connectNodes(edge[0], edge[1]);
+	}
+}
+
 
 MoleculeTree MoleculeGraph::ConstructMoleculeTree() const {
 	std::unordered_set<int> visited;

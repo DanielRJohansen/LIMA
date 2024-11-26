@@ -33,14 +33,23 @@ struct ParticleFactory {
 	const int indexInGrofile; // 0-indexed
 };
 
+struct ParticleFactory1 {
+	ParticleFactory1(const TopologyFile::AtomsEntry& topologyAtom, const GroRecord& groAtom, int activeLJParamIndex) :
+		topologyAtom(topologyAtom), groAtom(groAtom), activeLJParamIndex(activeLJParamIndex) {}
+
+	const TopologyFile::AtomsEntry& topologyAtom;
+	const GroRecord& groAtom;
+	const int activeLJParamIndex = -1;
+};
+
 template <int n_Atoms, typename ParamsType>
 struct BondFactory {
 	static const int nAtoms = n_Atoms;
-	BondFactory(const std::array<uint32_t, nAtoms>& ids, const ParamsType& parameters) 
+	BondFactory(const std::array<int, nAtoms>& ids, const ParamsType& parameters)
 		: params(parameters), global_atom_indexes(ids) {}
 
 	ParamsType params;
-	std::array<uint32_t, nAtoms> global_atom_indexes;
+	std::array<int, nAtoms> global_atom_indexes;
 	std::string sourceLine;
 };
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
@@ -105,6 +114,9 @@ public:
 
 	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
 
+	static void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
+
+
 	int id = -1;	// unique lima id
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
@@ -128,11 +140,11 @@ struct TinyMolFactory {
 class BondGroupFactory : public BondGroup {
 
 	
-	void AddBondParticles(const ParticleToCompoundMap&, std::span<const uint32_t> globalIds);
+	void AddBondParticles(const ParticleToCompoundMap&, std::span<const int> globalIds);
 public:
 	BondGroupFactory() {}
 
-	bool HasSpaceForParticlesInBond(const std::span<const uint32_t>& particleIds) const;
+	bool HasSpaceForParticlesInBond(const std::span<const int>& particleIds) const;
 
 	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
@@ -141,8 +153,8 @@ public:
 	void AddBond(const ParticleToCompoundMap&, const DihedralBondFactory&);
 	void AddBond(const ParticleToCompoundMap&, const ImproperDihedralBondFactory&);
 	
-	std::array<uint32_t, maxParticles> particleGlobalIds;
-	std::unordered_map<uint32_t, uint8_t> particleGlobalToLocalId;
+	std::array<int, maxParticles> particleGlobalIds;
+	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
 	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::Topology&,
 		const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap);

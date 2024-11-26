@@ -113,7 +113,7 @@ Bondtype GetBondtypeWithLowestAvailableParticleId(
 	const RandomAccessDeleteSet& availableDihedralbondIds,
 	const RandomAccessDeleteSet& availableImproperDihedralbondIds)
 {
-	uint32_t minParticleId = std::numeric_limits<uint32_t>::max();
+	int minParticleId = std::numeric_limits<int>::max();
 
 	Bondtype type = single;
 
@@ -309,9 +309,9 @@ std::vector<BondGroup> BondGroupFactory::FinishBondgroups(const std::vector<Bond
 
 
 
-bool BondGroupFactory::HasSpaceForParticlesInBond(const std::span<const uint32_t>& particleIds) const {
+bool BondGroupFactory::HasSpaceForParticlesInBond(const std::span<const int>& particleIds) const {
 	int nNewParticles = 0;
-	for (const uint32_t id : particleIds) {
+	for (const int id : particleIds) {
 		if (!particleGlobalToLocalId.contains(id)) {
 			nNewParticles++;
 		}
@@ -320,7 +320,7 @@ bool BondGroupFactory::HasSpaceForParticlesInBond(const std::span<const uint32_t
 }
 
 template <int n>
-std::array<uint8_t, n> GetLocalIds(const std::unordered_map<uint32_t, uint8_t>& particleGlobalToLocalId, const std::array<uint32_t, n>& globalIds) {
+std::array<uint8_t, n> GetLocalIds(const std::unordered_map<int, uint8_t>& particleGlobalToLocalId, const std::array<int, n>& globalIds) {
 	std::array<uint8_t, n> localIds;
 	for (int i = 0; i < n; i++) {
 		if (!particleGlobalToLocalId.contains(globalIds[i])) {
@@ -331,8 +331,8 @@ std::array<uint8_t, n> GetLocalIds(const std::unordered_map<uint32_t, uint8_t>& 
 	return localIds;
 }
 
-void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToCompoundMap, std::span<const uint32_t> bondGlobalIds) {
-	for (uint32_t id : bondGlobalIds) {
+void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToCompoundMap, std::span<const int> bondGlobalIds) {
+	for (int id : bondGlobalIds) {
 		if (!particleGlobalToLocalId.contains(id)) {
 
 			if (nParticles >= maxParticles) {

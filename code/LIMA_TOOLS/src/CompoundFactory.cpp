@@ -17,11 +17,11 @@ void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id
 	global_ids[n_particles] = global_id;
 
 	// Variables present in Compound
-	atom_types[n_particles] = particle.activeLjtypeParameterIndex;
-	atomLetters[n_particles] = particle.topAtom->type[0];
+	atom_types[n_particles] = particle.activeLJParamIndex;
+	atomLetters[n_particles] = particle.topologyAtom.type[0];
 
-	atom_charges[n_particles] = particle.topAtom->charge * elementaryChargeToKiloCoulombPerMole;
-	atomMasses[n_particles] = particle.topAtom->mass / KILO;
+	atom_charges[n_particles] = particle.topologyAtom.charge * elementaryChargeToKiloCoulombPerMole;
+	atomMasses[n_particles] = particle.topologyAtom.mass / KILO;
 
 	indicesInGrofile[n_particles] = particle.indexInGrofile;
 

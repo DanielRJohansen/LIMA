@@ -14,6 +14,8 @@
 
 #include "MDFiles.h"
 
+#include "Forcefield.h"
+
 #include "tuple"
 #include <set>
 struct BoxImage;
@@ -24,21 +26,24 @@ struct BoxImage;
 
 // --------------------------------- Bond Factories --------------------------------- //
 
-struct ParticleFactory {
-	const int activeLjtypeParameterIndex = -1;
-	const TopologyFile::AtomsEntry* topAtom = nullptr;
-	//const GroRecord* groAtom = nullptr;
-	const Float3 position;
-	const int uniqueResId;
-	const int indexInGrofile; // 0-indexed
-};
+//struct ParticleFactory {
+//	const int activeLjtypeParameterIndex = -1;
+//	const TopologyFile::AtomsEntry* topAtom = nullptr;
+//	//const GroRecord* groAtom = nullptr;
+//	const Float3 position;
+//	const int uniqueResId;
+//	const int indexInGrofile; // 0-indexed
+//};
 
-struct ParticleFactory1 {
-	ParticleFactory1(const TopologyFile::AtomsEntry& topologyAtom, const GroRecord& groAtom, int activeLJParamIndex) :
-		topologyAtom(topologyAtom), groAtom(groAtom), activeLJParamIndex(activeLJParamIndex) {}
+struct ParticleFactory {
+	ParticleFactory(const TopologyFile::AtomsEntry& topologyAtom, const Float3& pos, int indexInGrofile, int activeLJParamIndex) :
+		topologyAtom(topologyAtom), position(pos), indexInGrofile(indexInGrofile), activeLJParamIndex(activeLJParamIndex) {}
 
 	const TopologyFile::AtomsEntry& topologyAtom;
-	const GroRecord& groAtom;
+//	const GroRecord& groAtom;
+	const Float3 position{};
+	int indexInGrofile = -1; // 0-indexed
+
 	const int activeLJParamIndex = -1;
 };
 
@@ -69,14 +74,26 @@ using ParticleToCompoundMap = std::vector<ParticleToCompoundMapping>;
 using ParticleToBridgeMap = std::vector<std::optional<ParticleToBridgeMapping>>;
 
 namespace LIMA_MOLECULEBUILD {
-	struct Topology {
-		std::vector<ParticleFactory> particles;
+	class SuperTopology {
 
+		template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
+		void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology);
+
+	public:
+		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
+
+
+		void VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
+
+
+		std::vector<ParticleFactory> particles;
 		std::vector<SingleBondFactory> singlebonds;
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
 	};
+
+
 
 
 
@@ -129,7 +146,7 @@ public:
 struct TinyMolFactory {
 	TinyMolFactory() {}
     TinyMolFactory(const Float3& pos, int tinymolTypeIndex, const std::string& atomType="", Float3 velocity = Float3{})
-        : position(pos), state(TinyMolState{ state.vel_prev,Float3{},tinymolTypeIndex }), atomType(atomType)
+        : position(pos), state(TinyMolState{ velocity,Float3{},tinymolTypeIndex }), atomType(atomType)
 	{}
 	Float3 position;
 	TinyMolState state;
@@ -156,7 +173,7 @@ public:
 	std::array<int, maxParticles> particleGlobalIds;
 	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
-	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::Topology&,
+	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
 		const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap);
 
 	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
@@ -182,7 +199,7 @@ struct BoxImage {
 
 	const ForcefieldTinymol tinymolTypes;
 
-	LIMA_MOLECULEBUILD::Topology topology; // This is only used for debugging purposes
+	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
 	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
 

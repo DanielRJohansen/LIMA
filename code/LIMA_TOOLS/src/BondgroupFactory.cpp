@@ -107,7 +107,7 @@ const enum Bondtype
 };
 
 Bondtype GetBondtypeWithLowestAvailableParticleId(
-	const LIMA_MOLECULEBUILD::Topology& topology,
+	const LIMA_MOLECULEBUILD::SuperTopology& topology,
 	const RandomAccessDeleteSet& availableSinglebondIds,
 	const RandomAccessDeleteSet& availableAnglebondIds,
 	const RandomAccessDeleteSet& availableDihedralbondIds,
@@ -142,7 +142,7 @@ Bondtype GetBondtypeWithLowestAvailableParticleId(
 }
 
 
-std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::Topology& topology, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap) {
+std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap) {
 
 	if (topology.singlebonds.empty()) return {};
 

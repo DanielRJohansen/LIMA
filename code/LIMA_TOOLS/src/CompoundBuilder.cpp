@@ -164,9 +164,11 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			nextUniqueParticleId++;
 			indexInGrofile++;
 
-			if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") {
-				indexInGrofile += molType.atoms.size() - 1;
-				break;
+			if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") { /// TODO: This is a VERY BAD SOLUTION to a difficult problem..
+				localId += 2;
+				indexInGrofile += 2;
+				//indexInGrofile += molType.atoms.size() - 1;
+				//break;
 			}
 		}
 

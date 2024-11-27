@@ -286,7 +286,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t st
 			}
 
 			if (threadIdx.x == 0) {
-				//printf("Hitrate %f\n", static_cast<float>(util) / (MAX_COMPOUND_PARTICLES * MAX_COMPOUND_PARTICLES));
+                //printf("Hitrate %f\n", static_cast<float>(util) / (MAX_COMPOUND_PARTICLES * MAX_COMPOUND_PARTICLES));
 			}
 
 			indexInBatch++;

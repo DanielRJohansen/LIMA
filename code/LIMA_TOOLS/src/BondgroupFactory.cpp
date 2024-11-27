@@ -101,7 +101,7 @@ bool MoreWorkToBeDone(
 }
 
 
-const enum Bondtype
+enum Bondtype
 {
 	single, angle, dihedral, improper
 };
@@ -358,7 +358,7 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
 	if (nSinglebonds >= maxSinglebonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
-	singlebonds[nSinglebonds++] = SingleBond{ GetLocalIds(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
+    singlebonds[nSinglebonds++] = SingleBond{ GetLocalIds<SingleBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
 void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const AngleBondFactory& bond) {
@@ -370,7 +370,7 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
 	if (nAnglebonds >= maxAnglebonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
-	anglebonds[nAnglebonds++] = AngleUreyBradleyBond{ GetLocalIds(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
+    anglebonds[nAnglebonds++] = AngleUreyBradleyBond{ GetLocalIds<AngleUreyBradleyBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
 void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const DihedralBondFactory& bond) {
@@ -382,7 +382,7 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
 	if (nDihedralbonds >= maxDihedralbonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
-	dihedralbonds[nDihedralbonds++] = DihedralBond{ GetLocalIds(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
+    dihedralbonds[nDihedralbonds++] = DihedralBond{ GetLocalIds<DihedralBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
 void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const ImproperDihedralBondFactory& bond) {
@@ -394,5 +394,5 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
 	if (nImproperdihedralbonds >= maxImproperdihedralbonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
-	improperdihedralbonds[nImproperdihedralbonds++] = ImproperDihedralBond{ GetLocalIds(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
+    improperdihedralbonds[nImproperdihedralbonds++] = ImproperDihedralBond{ GetLocalIds<ImproperDihedralBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }

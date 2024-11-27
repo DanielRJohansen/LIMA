@@ -77,7 +77,9 @@ namespace LIMA_MOLECULEBUILD {
 	class SuperTopology {
 
 		template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-		void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology);
+		void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, 
+			int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology,
+			const std::unordered_set<int>& ignoredParticles);
 
 	public:
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);

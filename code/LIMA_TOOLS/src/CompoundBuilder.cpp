@@ -104,7 +104,8 @@ std::array<int, n> TransformBondIds(const std::array<int, n>& ids, int offset) {
 }
 
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology)
+void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, 
+	std::vector<BondtypeFactory>& topology, const std::unordered_set<int>& ignoredParticles)
 {
 	for (const auto& bondTopol : bondsInTopfile) {
 		std::array<int, BondType::nAtoms> globalIds;
@@ -112,6 +113,8 @@ void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile
 
 		bool bondExists = true;
 		for (int i = 0; i < BondType::nAtoms; ++i) {
+			if (ignoredParticles.contains(bondTopol.ids[i]))
+				bondExists = false;
 			if (bondTopol.ids[i] + atomIdOffset >= particles.size()) {
 				bondExists = false;
 				break;
@@ -128,7 +131,7 @@ void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile
 
 
 		// Solvent's bonds are defined in the forcefield, rather the params are directly in the topology... Not sure how to deal with that rn
-		const bool getParamsFromForcefield = particles[globalIds[0]].topologyAtom.residue != "SOL";
+		const bool getParamsFromForcefield = particles[globalIds[0]].topologyAtom.residue != "SOL" && particles[globalIds[0]].topologyAtom.residue != "TIP3";
 			
 
 		// A bond may be describe as multiple bonds, so this is a vector
@@ -146,11 +149,16 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 	int nextUniqueParticleId = 0;
 	int indexInGrofile = 0;
+
+	
+
 	for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
 		const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
 		const int particleIdOffset = nextUniqueParticleId;
 
 		const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
+
+		std::unordered_set<int> ignoredParticles;
 
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
@@ -165,17 +173,21 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			indexInGrofile++;
 
 			if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") { /// TODO: This is a VERY BAD SOLUTION to a difficult problem..
+
+				ignoredParticles.insert(localId + 1);
+				ignoredParticles.insert(localId + 2);
 				localId += 2;
 				indexInGrofile += 2;
+				
 				//indexInGrofile += molType.atoms.size() - 1;
 				//break;
 			}
 		}
 
-		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds);
-		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds);
-		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds);
-		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds);
+		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds, ignoredParticles);
+		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds, ignoredParticles);
+		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds, ignoredParticles);
+		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds, ignoredParticles);
 	}
 }
 

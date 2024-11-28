@@ -1,4 +1,4 @@
-#LIMA_TESTS
+#limatest
 
 if(WIN32)
     enable_language(RC)
@@ -10,21 +10,22 @@ endif()
 set(SOURCE_FILES
     src/main.cpp
 )
-add_executable(LIMA_TESTS
+add_executable(limatest
     ${SOURCE_FILES}
     ${RESOURCE_FILES}
  "src/ForcefieldTests.h")
 
-target_include_directories(LIMA_TESTS PRIVATE
+target_include_directories(limatest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(LIMA_TESTS LIMA_BASE)
-target_link_libraries(LIMA_TESTS LIMA_MD)
+target_link_libraries(limatest LIMA_BASE)
+target_link_libraries(limatest LIMA_MD)
 
 
 if (UNIX)
-    target_compile_options(LIMA_TESTS PRIVATE -O3)
+    target_compile_options(limatest PRIVATE -O3)
+    install(TARGETS limatest DESTINATION /usr/bin)
 elseif (WIN32)
     #target_compile_options(LIMA_TESTS PRIVATE /O2)
 endif()

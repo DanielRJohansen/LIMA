@@ -82,61 +82,62 @@ namespace SupernaturalForces {
 
 	// Overwrites the force that is given as an argument to the function
 	__global__ void ApplyHorizontalSqueeze(SimulationDevice* simDev, int64_t step) {
-		__shared__ Float3 avg_abspos_nm;
-		__shared__ float avg_force_z;
-		__shared__ Float3 relPosNm[MAX_COMPOUND_PARTICLES];
-		__shared__ float forcesZ[MAX_COMPOUND_PARTICLES];
-		__shared__ Float3 origo;
+		//__shared__ Float3 avg_abspos_nm;
+		//__shared__ float avg_force_z;
+		//__shared__ Float3 relPosNm[MAX_COMPOUND_PARTICLES];
+		//__shared__ float forcesZ[MAX_COMPOUND_PARTICLES];
+		//__shared__ Float3 origo;
 
-		relPosNm[threadIdx.x] = Float3{ 0 };
-		forcesZ[threadIdx.x] = 0;
+		//relPosNm[threadIdx.x] = Float3{ 0 };
+		//forcesZ[threadIdx.x] = 0;
 
-		int nParticles = simDev->boxConfig.compounds[blockIdx.x].n_particles;
-		Float3 force{};
+		//int nParticles = simDev->boxConfig.compounds[blockIdx.x].n_particles;
+		//Float3 force{};
 
-		__syncthreads();
+		//__syncthreads();
 
 
-		// Compute the avg position
-		{
-			const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
-			LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
-			__syncthreads();
-			relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
-			__syncthreads();
+		//// Compute the avg position
+		//{
+		//	const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		//	LIMAPOSITIONSYSTEM::LoadCompoundPositionAsLm(coords, origo, relPosNm, nParticles);
+		//	__syncthreads();
+		//	relPosNm[threadIdx.x] = relPosNm[threadIdx.x] * LIMA_TO_NANO + origo;
+		//	__syncthreads();
 
-			distributedSummation(relPosNm, MAX_COMPOUND_PARTICLES);	// Get summed relpos in nm at pos[0]
-			if (threadIdx.x == 0) {
-				avg_abspos_nm = relPosNm[0] / static_cast<float>(nParticles);	// Get average relpos in nm
-			}
-		}
+		//	distributedSummation(relPosNm, MAX_COMPOUND_PARTICLES);	// Get summed relpos in nm at pos[0]
+		//	if (threadIdx.x == 0) {
+		//		avg_abspos_nm = relPosNm[0] / static_cast<float>(nParticles);	// Get average relpos in nm
+		//	}
+		//}
 
-		// Neutralize the Z force
-		{
-			if (threadIdx.x < nParticles) {
-				forcesZ[threadIdx.x] = simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].z;
-			}
-			__syncthreads();				
+		//// Neutralize the Z force
+		//{
+		//	if (threadIdx.x < nParticles) {
+		//		forcesZ[threadIdx.x] = simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x].z;
+		//	}
+		//	__syncthreads();				
 
-			distributedSummation(forcesZ, nParticles);
+		//	distributedSummation(forcesZ, nParticles);
 
-			if (threadIdx.x == 0) {
-				avg_force_z = forcesZ[0] / static_cast<float>(nParticles);
-			}
-			__syncthreads();
+		//	if (threadIdx.x == 0) {
+		//		avg_force_z = forcesZ[0] / static_cast<float>(nParticles);
+		//	}
+		//	__syncthreads();
 
-			// Elimitenate z translation
-			force.z -= avg_force_z;
-		}
-		__syncthreads();
+		//	// Elimitenate z translation
+		//	force.z -= avg_force_z;
+		//}
+		//__syncthreads();
 
-		
-		if (threadIdx.x < nParticles) {
-			const float mass = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
-			SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
-
-			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
-		}		
+		//
+		//if (threadIdx.x < nParticles) {
+		//	const float mass = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		//	SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
+		//	if (isnan(force.len()) || isnan(force.lenSquared()))
+		//		printf("Force is nan squeeze\n");
+		//	simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
+		//}		
 	}
 	//__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
 	//	PeriodicBoundaryCondition::applyBCNM(posNM);	// TODO: Use generic BC
@@ -167,16 +168,21 @@ namespace SupernaturalForces {
 	}
 
 	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev, int64_t step) {
-		__shared__ Float3 origo;
+		//__shared__ Float3 origo;
 
-		const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
-		const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
-		__syncthreads();
-		const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
-		const float massFactor = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		//const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
+		//const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
+		//__syncthreads();
+		//const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
+		//const float massFactor = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
-		if (threadIdx.x < simDev->boxConfig.compounds[blockIdx.x].n_particles)
-			simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += BoxEdgeForce(positionNM) * massFactor;
+		//const Float3 force = BoxEdgeForce(positionNM) * massFactor;
+
+		//if (isnan(force.len()) || isnan(force.lenSquared()))
+		//	printf("Force is nan squeeze\n");
+
+		//if (threadIdx.x < simDev->boxConfig.compounds[blockIdx.x].n_particles)
+		//	simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 	}
 
 	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev, int64_t step) {

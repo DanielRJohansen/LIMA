@@ -4,6 +4,11 @@
 #include <functional>
 #include <algorithm>
 
+#include <glm.hpp>
+__device__ __host__ inline glm::vec3 ToVec3(const Float3& a) { return glm::vec3(a.x, a.y, a.z); }
+__device__ __host__ inline glm::vec4 ToVec4(const Float3& a,float w) { return glm::vec4(a.x, a.y, a.z, w); }
+
+
 class GroFile;
 
 enum FacetDrawMode {

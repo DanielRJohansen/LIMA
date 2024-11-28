@@ -1,27 +1,20 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
-#include <assert.h>  
-
 
 #include "Environment.h"
-#include "Printer.h"
 #include "MDFiles.h"
 #include "CompoundBuilder.h"
-#include "VirtualPathMaker.h"
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
-#include "Forcefield.h"
-
-using namespace LIMA_Print;
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_UPDATE = 50;
+const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -46,7 +39,7 @@ Environment::~Environment() {}
 
 void Environment::CreateSimulation(float boxsize_nm) {
 	SimParams simparams{};
-	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(boxsize_nm));
+	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm)));
 	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
@@ -58,7 +51,6 @@ void Environment::CreateSimulation(std::string gro_path, std::string topol_path,
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-
 	boximage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
@@ -70,6 +62,8 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
 	simulation->forcefield = boximage->forcefield;
+	simulation->forcefieldTinymol = boximage->tinymolTypes;
+	simulation->forcefieldTest = boximage->nonbondedInteractionParams;
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
@@ -78,6 +72,8 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.getStep());
 
 	simulation->forcefield = simulation_src.forcefield;
+	simulation->forcefieldTinymol = simulation_src.forcefieldTinymol;
+	simulation->forcefieldTest = simulation_src.forcefieldTest;
 }
 
 
@@ -145,7 +141,6 @@ bool Environment::prepareForRun() {
 	}
 
 	m_logger.startSection("Simulation started");
-	time0 = std::chrono::steady_clock::now();
 
 	if (simulation->ready_to_run) { return true; }
 
@@ -153,6 +148,8 @@ bool Environment::prepareForRun() {
 	
 	verifyBox();
 	simulation->ready_to_run = true;
+
+	avgStepTimes.reserve((simulation->simparams_host.n_steps + 1) / STEPS_PER_UPDATE);
 
 	// TEMP, this is a bad solution ?? TODO NOW
 	this->compounds = simulation->box_host->compounds;
@@ -190,28 +187,28 @@ void Environment::run(bool doPostRunEvents) {
 	std::unique_ptr<Display> display = nullptr;
 
 	if (m_mode == Full) {
-		display = std::make_unique<Display>(m_mode);
+		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
+	time0 = std::chrono::steady_clock::now();
 	while (true) {
-		auto stepStartTime = std::chrono::steady_clock::now();
 
-		if (engine->runstatus.simulation_finished) { 
-			break; 
+		if (!handleDisplay(compounds, boxparams, display.get(), emVariant)) {
+			break;
 		}
+
+		auto stepStartTime = std::chrono::steady_clock::now();
 		
 		engine->step();
-		//exit(0);
 
-
-		handleStatus(engine->runstatus.current_step, 0);	// TODO fix the 0
-
-		if (!handleDisplay(compounds, boxparams, *display, emVariant)) {
-			break; 
-		}
+		handleStatus(engine->runstatus.current_step);
 		
+		if (engine->runstatus.simulation_finished) {
+			break;
+		}
+
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
@@ -233,26 +230,33 @@ void Environment::run(bool doPostRunEvents) {
 	}
 }
 
-
-void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {
-	if (boximage->total_compound_particles + boximage->solvent_positions.size() != grofile.atoms.size()) {
+void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
+	if (boximage->total_compound_particles + boximage->solvent_positions.size()*3 != grofile.atoms.size()) {
 		throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
 	}
 
-	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep() - 1);
+	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
 
-	for (int i = 0; i < boximage->total_compound_particles; i++) {
-		const int cid = boximage->particleinfos[i].compoundId;
-		const int pid = boximage->particleinfos[i].localIdInCompound;
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
-		grofile.atoms[i].position = new_position;
+	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+			const Float3 newPos = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
+			grofile.atoms[boximage->compounds[cid].indicesInGrofile[pid]].position = newPos;
+		}
 	}
 
-	// Handle solvents 
+	// TODO: Handle this in a safer way
+	// Handle solvents. Since we only load O, we pray to g that O always comes first, and then 2 h's
 	const int firstSolventIndex = boximage->total_compound_particles;
 	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
 		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, stepToLoadFrom);
-		grofile.atoms[firstSolventIndex + solventId].position = new_position;
+		const int indexOfOxygen = firstSolventIndex + solventId*3;
+		assert(grofile.atoms[indexOfOxygen].atomName[0] == 'O');
+
+		const Float3 deltaPos = new_position - grofile.atoms[indexOfOxygen].position;
+
+		grofile.atoms[indexOfOxygen].position += deltaPos;
+		grofile.atoms[indexOfOxygen + 1].position += deltaPos;
+		grofile.atoms[indexOfOxygen + 2].position += deltaPos;
 	}
 }
 GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {
@@ -294,114 +298,65 @@ void Environment::postRunEvents() {
 
 
 
-void Environment::handleStatus(const int64_t step, const int64_t n_steps) {
+void Environment::handleStatus(const int64_t step) {
 	if (m_mode == Headless) {
 		return;
 	}
 
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
+		const std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0);
+		const double duration_ms = duration.count();
 
-		const double duration = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0).count();
+		//// First clear the current line
+		//printf("\r\033[K");
+		// Move cursor to the beginning of the line and clear it
+		printf("\033[1000D\033[K");
 
-		// First clear the current line
-		printf("\r\033[K");
-
-		printf("\rStep #%06llu", step);
-		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ", 
-			duration / STEPS_PER_UPDATE,
+		printf("Step #%06llu", step);
+		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ",
+			duration_ms / STEPS_PER_UPDATE,
 			engine->timings.compound_kernels / STEPS_PER_UPDATE,
 			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
-			engine->timings.cpu_master/ STEPS_PER_UPDATE,
-			engine->timings.nlist/ STEPS_PER_UPDATE,
+			engine->timings.cpu_master / STEPS_PER_UPDATE,
+			engine->timings.nlist / STEPS_PER_UPDATE,
 			engine->timings.electrostatics / STEPS_PER_UPDATE,
 			0);
 
 		engine->timings.reset();
 		time0 = std::chrono::steady_clock::now();
+		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
 	}
 }
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant) {
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant) {
 	if (m_mode != Full) {
 		return true;
 	}
 
-	auto displayException = display.displayThreadException;
+	auto displayException = display->displayThreadException;
 	if (displayException) {
 		std::rethrow_exception(displayException);
 	}
 
 	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
-
+		
 		const std::string info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
-		display.Render(std::make_unique<Rendering::SimulationTask>( 
+		display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
 		));
 		step_at_last_render = engine->runstatus.current_step;
+		engine->runstatus.most_recent_positions = nullptr;
 	}
 
-	return !display.DisplaySelfTerminated();
+	return !display->DisplaySelfTerminated();
 }
-
-
-
-
-
-
-void Environment::renderTrajectory(std::string trj_path)
-{
-	/*
-	Trajectory* trj = new Trajectory(trj_path);
-	for (int i = 0; i < trj->n_particles; i++) {
-		trj->particle_type[i] = 0;
-	}
-	trj->particle_type[0] = 1;
-
-	display->animate(trj);
-	*/
-}
-
-void Environment::makeVirtualTrajectory(std::string trj_path, std::string waterforce_path) {
-	//Trajectory* trj = new Trajectory(trj_path);
-	//Trajectory* force_buffer = new Trajectory(waterforce_path);
-	//int n_steps = trj->n_steps;
-
-	//printf(" part: %d\n", trj->n_particles);
-
-
-	//Float3* particle_position = new Float3[n_steps];
-	//for (int64_t step = 0; step < n_steps; step++)
-	//	particle_position[step] = trj->positions[0 + step * trj->n_particles];
-	//Float3* forces = force_buffer->positions;
-	//
-
-	//VirtualPathMaker VPM;
-	//Float3* vp_path = VPM.makeVirtualPath(particle_position, forces, n_steps);
-
-	//std::ofstream myfile("D:\\Quantom\\virtrj.csv");
-	//for (int64_t step = 0; step < n_steps; step++) {
-
-	//	for (int k = 0; k < 3; k++) {
-	//		myfile << particle_position[step].at(k) << ";";
-	//	}
-	//	for (int k = 0; k < 3; k++) {
-	//		myfile << vp_path[step].at(k) << ";";
-	//	}
-
-	//	myfile << "\n";
-	//}
-	//myfile.close();
-}
-
 
 std::unique_ptr<Simulation> Environment::getSim() {
-	// Should we delete the forcefield here?
-	//boxbuilder.reset();
 	engine.reset();
 	return std::move(simulation);
 }

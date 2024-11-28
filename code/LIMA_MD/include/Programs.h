@@ -12,7 +12,7 @@ namespace Programs {
 	MoleculeHullCollection MakeLipidVesicle(GroFile&, TopologyFile&, Lipids::Selection, float vesicleRadius, 
 		Float3 vesicleCenter, std::optional<int> numLipids=std::nullopt);
 
-	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize);
+	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize, bool renderProgress);
 
 	/// <summary></summary>
 	/// <param name="writePositionsToGrofile">If false, the grofile will not be modified</param>
@@ -21,4 +21,6 @@ namespace Programs {
 	/// <returns>Can be discarded if not needed. Only makes sense to discard if overwriting grofile</returns>
 	std::unique_ptr<Simulation> EnergyMinimize(GroFile&, const TopologyFile&,
 		bool writePositionsToGrofile, const fs::path& workDir, EnvMode, bool mayOverlapEdges, float emtol=100.f);
+
+	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
 }

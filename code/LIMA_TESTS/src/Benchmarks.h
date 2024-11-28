@@ -95,7 +95,7 @@ namespace Benchmarks {
 			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
 			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 
-			MoleculeUtils::CenterMolecule(grofile, topfile);
+			MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
 			//SimulationBuilder::SolvateGrofile(grofile);
 			auto sim = Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
 			grofile.printToFile(std::string{ "em.gro" });
@@ -121,4 +121,100 @@ namespace Benchmarks {
 
 		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
+
+	static LimaUnittestResult ManyT4(EnvMode envmode) {
+		if (envmode== Full)
+		    envmode = ConsoleOnly;	// Cant go fast in Full
+
+		const fs::path workDir  = simulations_dir / "manyt4";		
+		TopologyFile topfile(workDir / "t4_many.top");
+		GroFile grofile(workDir / "t4_many_em.gro");
+
+		//bool em = false;
+		//if (em) {
+		//	GroFile grofile{ workDir  / "molecule" / "conf.gro" };
+		//	TopologyFile topfile{ workDir  / "molecule" / "topol.top" };
+
+		//	MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
+		//	//SimulationBuilder::SolvateGrofile(grofile);
+		//	auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir , envmode, false);
+		//	grofile.printToFile(std::string{ "em.gro" });
+
+		//	SimAnalysis::PlotPotentialEnergyDistribution(*sim, workDir , { 0,1000, 2000, 3000, 4000 - 1 });
+		//}
+		SimParams ip{ workDir  / "sim_params.txt" };
+		ip.data_logging_interval = 50;
+		ip.dt = 100;
+		ip.n_steps = 4000;
+		Environment env{ workDir , envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run(false);
+
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+
+		auto duration = env.simulationTimer->GetTiming();
+		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+		const std::chrono::microseconds allowedTimePerStep{ 4000 };
+
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+	}
+
+	// Returns {avg ms/step, stdDev}
+	static std::pair<float, float> Benchmark(const fs::path& dir) {
+
+		const fs::path workDir = simulations_dir / "benchmarking"/dir;
+		fs::path topPath, groPath;
+
+		for (const auto& entry : fs::directory_iterator(workDir)) {
+			auto ext = entry.path().extension();
+			if (ext == ".top") {
+				if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
+				topPath = entry.path();
+			}
+			else if (ext == ".gro") {
+				if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
+				groPath = entry.path();
+			}
+		}
+		TopologyFile topfile(topPath);
+		GroFile grofile(groPath);
+
+		SimParams params{ workDir / "../sim_params.txt" };
+		params.dt = 100.f; 		
+		Environment env{ workDir , ConsoleOnly };
+		//Environment env{ workDir , Full };
+		env.CreateSimulation(grofile, topfile, params);
+		env.run(false);
+
+		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {
+			throw std::runtime_error("Simulation did not run fully");
+		}
+
+		const float meanSteptime = Statistics::Mean(env.avgStepTimes);
+		const float stdDev = Statistics::StdDev(env.avgStepTimes);
+		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.simulationTimer->GetTiming()).count() / (float)params.n_steps);
+		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
+
+		return { meanSteptime, stdDev};
+	}
+
+
+	static void Benchmark(const std::vector<fs::path>& dirs) {
+		// Header for the output table
+		std::cout << std::left << std::setw(20) << "Directory"
+			<< std::setw(15) << "Avg Time (ms)"
+			<< std::setw(15) << "Std Dev (ms)" << std::endl;
+		std::cout << std::string(50, '-') << std::endl;
+
+		for (const auto& dir : dirs) {
+			auto [meanTime, stdDev] = Benchmark(dir);
+
+			// Format the output
+			std::cout << std::left << std::setw(20) << dir.filename().string()
+				<< std::setw(15) << std::fixed << std::setprecision(2) << meanTime
+				<< std::setw(15) << std::fixed << std::setprecision(2) << stdDev
+				<< std::endl;
+		}
+	}	
+
 }

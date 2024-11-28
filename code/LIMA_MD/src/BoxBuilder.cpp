@@ -20,66 +20,85 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 	}
 	std::vector<Float3> positions;
 	positions.reserve(MAX_COMPOUND_PARTICLES);
-
 	for (int i = 0; i < compound.n_particles; i++) {
 		const Float3& extern_position = compound.positions[i];
 		positions.push_back(extern_position);
 	}
 
-	CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
-	coords_now = LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-	if (simparams.bc_select == PBC && !coords_now.origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
-		throw std::runtime_error(std::format("Invalid compound origo {}", coords_now.origo.toString()));
+	/*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
+	coords_now = */
+	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select));
+	if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
+		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
+	}
+
+	CompoundInterimState compoundState{};
+	memset(&compoundState, 0, sizeof(CompoundInterimState));
+	for (int i = 0; i < compound.n_particles; i++) {		
+		compoundState.coords[i] = Coord(box.compoundCoordsBuffer.back().rel_positions[i]);
 	}
 
 	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
-	box.compoundInterimStates.emplace_back(CompoundInterimState{compound});
+	box.compoundInterimStates.emplace_back(compoundState);
 	box.boxparams.n_compounds++;
+
+	if (!simparams.enable_electrostatics)
+		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
-Float3 get3Random() {	// Returns 3 numbers between 0-1
-	return Float3(
-		(float) (rand() % RAND_MAX / (double) RAND_MAX),
-		(float) (rand() % RAND_MAX / (double) RAND_MAX),
-		(float) (rand() % RAND_MAX / (double) RAND_MAX)
-	);
+int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+{
+	for (const auto& tinyMol : tinyMols) {
+		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
+			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
+		}
+
+		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+
+		box.solventblockgrid_circularqueue->getBlockPtr(nodeIndex, 0, box.boxparams.boxSize)->addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
+		box.boxparams.n_solvents++;
+	}
+
+	std::mt19937 gen(1238971);
+	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
+
+	// Setup forces and vel's for VVS
+	box.tinyMols.reserve(box.boxparams.n_solvents);
+	for (int i = 0; i < box.boxparams.n_solvents; i++) {
+		
+		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
+		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
+
+		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
+	}    
+	box.boxparams.total_particles += box.boxparams.n_solvents;
+	return box.boxparams.n_solvents;
 }
-Float3 get3RandomSigned() {	// returns 3 numbers between -0.5->0.5
-	return get3Random() - Float3(0.5f);
-}
-
-
-
-
-
-
-
 
 
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
 
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
-	srand(290128309);
-
-	auto box = std::make_unique<Box>(static_cast<int>(boxImage.box_size));
+	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
 	box->compounds.reserve(boxImage.compounds.size());
 	box->compoundInterimStates.reserve(boxImage.compounds.size());
+	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());
 	for (const CompoundFactory& compound : boxImage.compounds) {
 		InsertCompoundInBox(compound, *box, simparams);
 	}	
 
-	box->boxparams.total_compound_particles = boxImage.total_compound_particles;						// TODO: Unknown behavior, if multiple molecules are added!
+	box->boxparams.total_compound_particles = boxImage.total_compound_particles;
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	box->bridge_bundle = std::move(boxImage.bridgebundle);					// TODO: Breaks if multiple compounds are added, as only one bridgebundle can exist for now!
-	box->boxparams.n_bridges = box->bridge_bundle->n_bridges;
-
 	box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
+	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
+
 #ifdef ENABLE_SOLVENTS
-	SolvateBox(*box, boxImage.forcefield, simparams, boxImage.solvent_positions);
+	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
 #endif
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
@@ -95,39 +114,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 
 
-int BoxBuilder::SolvateBox(Box& box, const ForceField_NB& forcefield, const SimParams& simparams, const std::vector<Float3>& solvent_positions)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
-{
-	for (Float3 sol_pos : solvent_positions) {
-		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
-			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
-		}
 
-
-
-		const SolventCoord solventcoord = LIMAPOSITIONSYSTEM::createSolventcoordFromAbsolutePosition(
-			sol_pos, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
-
-		box.solventblockgrid_circularqueue->addSolventToGrid(solventcoord, box.boxparams.n_solvents, 0, box.boxparams.boxSize);
-		box.boxparams.n_solvents++;
-
-	}
-
-	// Setup forces and vel's for VVS
-	const float solvent_mass = forcefield.particle_parameters[ATOMTYPE_SOLVENT].mass;
-	const float default_solvent_start_temperature = 310;	// [K]
-	box.solvents.reserve(box.boxparams.n_solvents);
-	for (int i = 0; i < box.boxparams.n_solvents; i++) {		
-		// Give a random velocity
-		const Float3 direction = get3RandomSigned().norm();
-		const float velocity = PhysicsUtils::tempToVelocity(default_solvent_start_temperature, solvent_mass);
-
-		box.solvents.emplace_back(Solvent{ direction * velocity, Float3{} });
-	}
-
-
-	box.boxparams.total_particles += box.boxparams.n_solvents;
-	return box.boxparams.n_solvents;
-}
 
 // Do a unit-test that ensures velocities from a EM is correctly carried over to the simulation
 void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsrc, uint32_t boxsrc_current_step)
@@ -138,22 +125,24 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
-		// Create temporary storage
-		std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
-		const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
+		//simulation.box_host->compoundCoordsBuffer = boxsrc->compoundCoordsBuffer;
 
-		// Copy only the current step to temporary storage
-		CompoundCoords* src_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
-		memcpy(coords_t0.data(), src_t0, bytesize);
+		//// Create temporary storage
+		//std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
+		//const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
-		// Clear all of the data
-		simulation.box_host->compoundcoordsCircularQueue->Flush();
+		//// Copy only the current step to temporary storage
+		//CompoundCoords* src_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
+		//memcpy(coords_t0.data(), src_t0, bytesize);
 
-		// Copy the temporary storage back into the queue
-		for (int i = 0; i < 3; i++) {
-			CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
-			memcpy(dest_t0, coords_t0.data(), bytesize);
-		}
+		//// Clear all of the data
+		//simulation.box_host->compoundcoordsCircularQueue->Flush();
+
+		//// Copy the temporary storage back into the queue
+		//for (int i = 0; i < 3; i++) {
+		//	CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
+		//	memcpy(dest_t0, coords_t0.data(), bytesize);
+		//}
 
 		// TODO ERROR: we dont copy CompoundInterimState, so it is not a true state copy
 	}

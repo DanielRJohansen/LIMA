@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 struct RenderSetup {
     RenderSetup(int argc, char** argv) {
-        for (int i = 1; i < argc; ++i) {
+        for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
             if (arg == "-conf") {
@@ -89,9 +89,9 @@ int render(int argc, char** argv) {
 
     if (setup.whole) {
         TopologyFile topfile{ setup.topol };
-        MoleculeUtils::CenterMolecule(grofile, topfile);
+        MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
     }
-    Display d{ Full };
+    Display d{};
     d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
 
     return 0;

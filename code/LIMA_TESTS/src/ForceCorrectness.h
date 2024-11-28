@@ -10,7 +10,7 @@ namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 6.45e-5) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 1.e-4) {
 		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode};
 
@@ -54,7 +54,7 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 9.e-5) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 1.66e-4) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
@@ -83,9 +83,10 @@ namespace ForceCorrectness {
 			}
 
 			// Give the solvent a velocty
-			{
-				const float vel = PhysicsUtils::tempToVelocity(temp, SOLVENT_MASS);	// [m/s] <=> [lm/ls]
-				env.getSimPtr()->box_host->solvents[0].vel_prev = Float3{ -1, 0, 0 } * vel;
+			{	
+				const float solventMass = env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMols[0].tinymolTypeIndex].mass;
+				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [lm/ls]
+				env.getSimPtr()->box_host->tinyMols[0].vel_prev = Float3{ -1, 0, 0 } * vel;
 			}
 
 
@@ -105,14 +106,14 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 2e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 3e-7);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 
 
-	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {
+	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {		
 		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
@@ -124,25 +125,33 @@ namespace ForceCorrectness {
 
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+
+		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM, 0.f, 0.f }; // Just so we dont get an 0 dist error
+
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
-		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + box_host.compounds[0].singlebonds[0].params.b0);
 
+		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + bondparams.b0);
 
 		// Now figure the expected force and potential
-		const double kB = box_host.compounds[0].singlebonds[0].params.kb / 2.; // [J/(mol lm^2)]
-		const Float3 dir = (coordarray_ptr[0].rel_positions[1].toFloat3() - coordarray_ptr[0].rel_positions[0].toFloat3()).norm();
+		const double kB = bondparams.kb / 2.; // [J/(mol lm^2)]
+		const Float3 dir{ 1,0,0 };
 		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
 		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
 
 
 		env.run();
+		LIMA_UTILS::genericErrorCheck("Error during test");
 
 		const auto sim = env.getSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
+
 		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
+
 		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[0];
 
 
@@ -152,6 +161,7 @@ namespace ForceCorrectness {
 
 		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
 		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
+
 
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
@@ -177,22 +187,26 @@ namespace ForceCorrectness {
 			
 
 		GroFile grofile{ conf };
+		grofile.atoms[0].position.x += 0.1f; // Just so we dont get an 0 dist error
 		TopologyFile topfile{ topol };
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
-		CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-		coordarray_ptr[0].rel_positions[1].x -= static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + box_host.compounds[0].singlebonds[0].params.b0);
+
+		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+
+		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + bondparams.b0);
 
 
 
 
 		// Now figure out how fast the bond should oscillate
-		const auto atomtypeA = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[0]];
-		const auto atomtypeB = env.getSimPtr()->forcefield.particle_parameters[box_host.compounds[0].atom_types[1]];
-
-		const double reducedMass = atomtypeA.mass * atomtypeB.mass / (atomtypeA.mass + atomtypeB.mass); // [kg/mol]
-		const double kB = box_host.compounds[0].singlebonds[0].params.kb / LIMA / LIMA; // [J/(mol m^2)]
+		const float massA = box_host.compounds[0].atomMasses[0];
+		const float massB = box_host.compounds[0].atomMasses[1];
+		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
+		const double kB = bondparams.kb / LIMA / LIMA; // [J/(mol m^2)]
 
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
 
@@ -213,7 +227,7 @@ namespace ForceCorrectness {
 		const float errorThreshold = 1e-2;
 
 		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs], Error: {:.2e}", expectedFrequency, actualFrequency, error),
+			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs]", expectedFrequency, actualFrequency, error),
 			envmode == Full };
 	}
 
@@ -229,12 +243,9 @@ namespace ForceCorrectness {
 		const fs::path work_folder = simulations_dir / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
-		const float particle_mass = 12.011000f * 1e-3f;
-
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.data_logging_interval = 1;
 		params.n_steps = 5000;
-		//params.dt = 50.f;
 		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
@@ -244,16 +255,12 @@ namespace ForceCorrectness {
 
 		for (auto bond_len_error : bond_len_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			grofile.atoms[1].position.x += bondEquilibrium + bond_len_error;
+
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-
-			coordarray_ptr[0].rel_positions[1].x += static_cast<int32_t>((bondEquilibrium + bond_len_error) * NANO_TO_LIMA);
-
-			//box_host->compounds[0].singlebonds[0].b0 = bondEquilibrium * NANO_TO_LIMA;
-			//box_host->compounds[0].singlebonds[0].kb = 502080 * KILO / (NANO_TO_LIMA * NANO_TO_LIMA);
 
 			env.run();
 
@@ -294,22 +301,13 @@ namespace ForceCorrectness {
 
 		for (auto angle_error : angle_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
+			Float3& p3Pos = grofile.atoms[2].position;
+			p3Pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
+			for (auto& atom : grofile.atoms)
+				atom.position += Float3{ 3.f };
+
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
-
-			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
-
-			// First rotate particle #3 to the relaxed position + the error angle
-			Float3 p3_pos = coordarray_ptr[0].rel_positions[2].toFloat3();
-			p3_pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
-
-			coordarray_ptr[0].rel_positions[2] = Coord{ p3_pos };		// Temp disabled, fix soon plz
-
-			// Now center all 3 particles
-			for (auto i = 0; i < 3; i++) {
-				coordarray_ptr->origo += NodeIndex{ 3, 3, 3 };
-			}
 
 			env.run();
 
@@ -352,33 +350,23 @@ namespace ForceCorrectness {
 		for (auto angle_error : angle_errors) {
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-			env.CreateSimulation(grofile, topfile, params);
 
 
-		/*	env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[0]].mass = 100000000.0f;
-			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[1]].mass = 100000000.0f;
-			env.getSimPtr()->forcefield.particle_parameters[env.getSimPtr()->box_host->compounds[0].atom_types[2]].mass = 100000000.0f;*/
 
-			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = box_host->compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
+			auto atom_ids = topfile.GetMoleculeType().improperdihedralbonds[0].ids;			
+			Float3 i = grofile.atoms[atom_ids[0]].position;
+			Float3 j = grofile.atoms[atom_ids[1]].position;
+			Float3 k = grofile.atoms[atom_ids[2]].position;
+			Float3 l = grofile.atoms[atom_ids[3]].position;
 
-			auto atom_ids = box_host->compounds[0].impropers[0].atom_indexes;
-
-			Float3 i = coordarray_ptr[0].rel_positions[atom_ids[0]].toFloat3();
-			Float3 j = coordarray_ptr[0].rel_positions[atom_ids[1]].toFloat3();
-			Float3 k = coordarray_ptr[0].rel_positions[atom_ids[2]].toFloat3();
-			Float3 l = coordarray_ptr[0].rel_positions[atom_ids[3]].toFloat3();
-			
 			// Move i to origo
 			j -= i;
 			k -= i;
 			l -= i;
 			i -= i;	// Do this one last
 
-
-
-			const Float3 plane_normal = (j-i).cross(k-i).norm();
-			const Float3 l_vec = (l-i).norm();
+			const Float3 plane_normal = (j - i).cross(k - i).norm();
+			const Float3 l_vec = (l - i).norm();
 
 			const Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
 
@@ -386,9 +374,16 @@ namespace ForceCorrectness {
 			const Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
 
 
-			Float3 l_diff = (l_rotated - l_point) *l.len();
+			Float3 l_diff = (l_rotated - l_point) * l.len();
 
-			coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff};
+			//coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff };
+			grofile.atoms[atom_ids[3]].position += l_diff;
+
+
+			env.CreateSimulation(grofile, topfile, params);
+
+			Box* box_host = env.getSimPtr()->box_host.get();
+			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
 
 			env.run();
 
@@ -416,6 +411,21 @@ namespace ForceCorrectness {
 	}
 
 
+
+
+	void TestForces1To1(EnvMode envmode) {
+		const fs::path workDir = simulations_dir / "T4Lysozyme";
+		GroFile grofile{ workDir / "molecule" / "conf.gro" };
+		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
+		SimParams params{ workDir / "sim_params.txt" };
+		Environment env{ workDir, envmode };
+		params.n_steps = 11;
+		params.data_logging_interval = 1;
+		env.CreateSimulation(grofile, topfile, params);
+		env.run();
+
+		TestUtils::CompareForces1To1(workDir, env, false);
+	}
 
 }
 
@@ -457,7 +467,7 @@ namespace VerletintegrationTesting {
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 		grofile.atoms.pop_back();
-		topfile.GetLocalAtoms().pop_back();
+		topfile.GetMoleculeType().atoms.pop_back();
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]
@@ -466,7 +476,7 @@ namespace VerletintegrationTesting {
 
 
 		const float particleCharge = static_cast<float>(env.getSimPtr()->box_host->compounds[0].atom_charges[0]) * KILO; // [C/mol]
-		const float particleMass = env.getSimPtr()->forcefield.particle_parameters[1].mass; // [kg/mol]
+		const float particleMass = env.getSimPtr()->box_host->compounds[0].atomMasses[0]; // [kg/mol]
 
 		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
 		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]

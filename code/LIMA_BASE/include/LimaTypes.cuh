@@ -12,9 +12,6 @@
 
 #include <array>
 
-#include <glm.hpp>
-
-
 struct Int3 {
 	__host__ __device__ constexpr Int3() {}
 	__host__ __device__ constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
@@ -54,7 +51,7 @@ struct Float3 {
 	__host__ __device__ constexpr Float3() {}
 	__host__ __device__ constexpr explicit Float3(float a) : x(a), y(a), z(a) {}
 	__host__ __device__ constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
-	__host__ __device__ constexpr Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
+	//__host__ __device__ constexpr Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
 	__host__ __device__ constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	__host__ __device__ constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
@@ -75,8 +72,7 @@ struct Float3 {
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
-	__host__ __device__ glm::vec3 ToVec3() const { return glm::vec3(x, y, z); }
-	__host__ __device__ glm::vec4 ToVec4(float w) const { return glm::vec4(x, y, z, w); }
+	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
 
 
 
@@ -133,6 +129,8 @@ struct Float3 {
 	__host__ __device__ constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
+	__device__ Float3 constexpr sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
+
 
 	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
 
@@ -236,6 +234,14 @@ struct Float3 {
 
 };
 
+struct ForceEnergy {
+	Float3 force;	// [1/lima N/mol]
+	float potE;		// [GN/mol]
+
+	__host__ __device__ inline ForceEnergy operator+ (const ForceEnergy& a) const {
+		return ForceEnergy{ force + a.force, potE + a.potE };
+	}		
+};
 
 struct Double3 {
 	__host__ __device__ Double3() {}
@@ -322,7 +328,6 @@ struct Coord {
 	__host__ __device__ Float3 toFloat3() const { 
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
 	}
-
 };
 
 struct NodeIndex : public Int3 {
@@ -423,6 +428,13 @@ public:
 
 	__host__ void printMatrix(int n) const;
 
+	__host__ bool HasEntries() const {
+		for (int i = 0; i < m_size; i++) {
+			if (matrix[i] != 0) return true;
+		}
+		return false;
+	}
+
 private:
 	const static int m_len = MAX_COMPOUND_PARTICLES;
 	const static int m_size = (m_len * m_len + 31) / 32; // Ceil division
@@ -431,6 +443,7 @@ private:
 
 namespace BondedParticlesLUTHelpers {
 	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
+	static const int maxDiff = (max_bonded_compounds - 1) / 2;
 
 	__device__ __host__ int inline getLocalIndex(int id_self, int id_other) {
 		return (max_bonded_compounds / 2) + (id_other - id_self);
@@ -442,7 +455,16 @@ namespace BondedParticlesLUTHelpers {
 		return 1u << index;
 	}
 
+	__device__ static void VerifyInputs(int idSelf, int idOther) {
+		if (std::abs(idSelf-idOther) > 2 || idSelf < 0 || idOther < 0)
+			printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
+	}
+
 	__device__ inline const BondedParticlesLUT* const get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
+
+		if constexpr(!LIMA_PUSH)
+			VerifyInputs(id_self, id_other);
+
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
 		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
@@ -523,8 +545,9 @@ enum EnvMode { Full, ConsoleOnly, Headless };
 
 struct RenderAtom {
 
-	__device__ __host__ RenderAtom() {}
+	RenderAtom() {}
 	RenderAtom(Float3 positionNM, Float3 boxSize, char atomLetter);
+	RenderAtom(float4 pos, float4 color) : position(pos), color(color) {};
 
 	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	

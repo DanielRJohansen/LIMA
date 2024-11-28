@@ -36,19 +36,19 @@ namespace Electrostatics {
 		return nodeIndex;
 	}
 
+	// Utilitybuffer min size = sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)
 	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposLM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
-		
-
-		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem;
+		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
 
 		// First clean the memory
-		static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");
-		if (threadIdx.x < 27 * 2) {
+		//static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");
+		//if (threadIdx.x < 27 * 2) {
+		for (int i = threadIdx.x; i < 27 * 2; i += blockDim.x) {
 			numParticlesInNodeLocal[threadIdx.x] = 0;
 		}
 		__syncthreads();
 
-
+		// First each particle figure out which node it belongs to RELATIVE TO ITS COMPOUNDS ORIGO
 		int localOffset = 0;
 		NodeIndex relativeLocalIndex;
 		if (threadIdx.x < nParticles) {
@@ -66,19 +66,32 @@ namespace Electrostatics {
 		}
 		__syncthreads();
 
-		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27]; // TODO: assert that this buffer is big enough!
+		// Fetch the current particles in the global node counts, and figure out where to push our counts
+		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27];
 		if (threadIdx.x < 27) {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
-			PeriodicBoundaryCondition::applyBC(absIndex3d);	
+			PeriodicBoundaryCondition::applyBC(absIndex3d);
+
+			//if (BoxGrid::GetNodePtr(chargeGrid, absIndex3d) == nullptr)
+			//	printf("nullptr 6");
 
 			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
+
 			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
+		/*	if (numParticlesInNodeGlobal[threadIdx.x] > ChargeNode::maxParticlesInNode) {
+				printf("Error: Too many particles in node from other kernels: %d\n", numParticlesInNodeGlobal[threadIdx.x]);
+			}*/
 		}
 		__syncthreads();
 
+		// Finally compute the correct index to insert our data, and push that data
 		if (threadIdx.x < nParticles) {
 			NodeIndex absoluteTargetIndex = compoundOrigo + relativeLocalIndex;
 			PeriodicBoundaryCondition::applyBC(absoluteTargetIndex);
+
+		/*	if (BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex) == nullptr)
+				printf("nullptr 5");*/
+
 
 			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)] + localOffset;
 			if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
@@ -203,6 +216,8 @@ namespace Electrostatics {
 		potEInterims[threadIdx.x] = 0.f;
 
 		const NodeIndex myNodeindex = BoxGrid::Get3dIndex(blockIdx.x);
+		if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex) == nullptr)
+			printf("nullptr 1");
 		if (BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles == 0)
 			return;
 
@@ -221,6 +236,9 @@ namespace Electrostatics {
 			NodeIndex queryNodeindexAbsolute = myNodeindex + queryNodeindexRelative;
 			PeriodicBoundaryCondition::applyBC(queryNodeindexAbsolute);
 
+			if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, queryNodeindexAbsolute) == nullptr)
+				printf("nullptr 2");
+
 			const Float3 diff = -queryNodeindexRelative.toFloat3() * static_cast<float>(BoxGrid::blocksizeNM); // [nm]
 			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
 
@@ -236,6 +254,7 @@ namespace Electrostatics {
 		if (threadIdx.x == 0) {
 			// TODO: this potential should be split between all particles in the chargenode, RIIIIIIIIIIIIIIIIGHT?? Josiah??
 			//printf("Force out: %f pot out %f\n", forceInterims[0].len(), potEInterims[0]);
+
 			const float nParticles = static_cast<float>(BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles);
 			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->forcePart = forceInterims[0];
 			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->potentialPart = potEInterims[0];
@@ -247,6 +266,7 @@ namespace Electrostatics {
 	// Returns timing in [ys]
 	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
 	{
+		LIMA_UTILS::genericErrorCheck("Error Before Electrostatics SumChargesInGridnode");
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
 		// First handle short range
@@ -254,12 +274,11 @@ namespace Electrostatics {
 
 		static_assert(ChargeNode::maxParticlesInNode %32 == 0, "Chargenode charges size isn't optimal for this kernel");
 		SumChargesInGridnode<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), 32>>>(sim_dev);
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics SumChargesInGridnode");
 
 
 		CalcLongrangeElectrostaticForces<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), CalcLongrangeElectrostaticForces_nThreads>>>(sim_dev);
-
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics kernels");
+		LIMA_UTILS::genericErrorCheck("Error after Electrostatics CalcLongrangeElectrostaticForces");
 
 
 		const auto t1 = std::chrono::high_resolution_clock::now();

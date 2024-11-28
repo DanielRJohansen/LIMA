@@ -110,16 +110,3 @@ namespace SolventTransferWarnings {
 #endif
 	}
 }
-
-namespace BridgeWarnings {
-	__device__ inline void verifyPRefValid(const ParticleReference& p_ref, const CompoundBridge& bridge) {
-#if defined LIMASAFEMODE
-		if (p_ref.compoundid_local_to_bridge >= bridge.n_compounds) {
-			printf("What the fuck! %d %d\n", p_ref.compoundid_local_to_bridge, bridge.n_compounds);
-			printf("CIDs %d %d %d %d\n", bridge.compound_ids[0], bridge.compound_ids[1], bridge.compound_ids[2], bridge.compound_ids[3]);
-		}
-#endif
-	}
-
-
-}

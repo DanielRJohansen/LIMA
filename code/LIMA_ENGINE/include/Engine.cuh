@@ -18,8 +18,27 @@
 class SimulationDevice;
 class DatabuffersDeviceController;
 class Thermostat;
+class BoxState;
+class BoxConfig;
+class NeighborList;
+class CompoundGridNode;
+struct CompoundForceEnergyInterims {
+	CompoundForceEnergyInterims(int nCompounds);
+	void Free();
 
-const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
+		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+	}
+
+	ForceEnergy* forceEnergyFarneighborShortrange;
+	ForceEnergy* forceEnergyImmediateneighborShortrange;
+	ForceEnergy* forceEnergyBonds;
+};
+
+//const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
+const int cbkernel_utilitybuffer_size = sizeof(CompoundCoords);
 constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
 static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
 	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
@@ -46,11 +65,11 @@ struct RunStatus {
 	Float3* most_recent_positions = nullptr;
 	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
-	float current_temperature = 0.f;
+	float current_temperature = NAN;
 
 	//int64_t stepsSinceEnergycheck = 0;
 	//float highestEnergy = 0.f; // measured in a single particle
-	float greatestForce = 0.f; // measured in a single particle
+	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;
 	bool critical_error_occured = false;
@@ -62,8 +81,6 @@ public:
 	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
 	~Engine();
 
-	// Todo: Make env run in another thread, so engine has it's own thread entirely
-	// I'm sure that will help the branch predictor alot! Actually, probably no.
 	void step();
 
 	/// <summary>
@@ -87,6 +104,8 @@ private:
 
 	void hostMaster();
 	void deviceMaster();
+	template <typename BoundaryCondition, bool emvariant, bool computePotE>
+	void _deviceMaster();
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void setDeviceConstantMemory();
@@ -116,6 +135,21 @@ private:
 	std::unique_ptr<Simulation> simulation = nullptr;
 
 	SimulationDevice* sim_dev = nullptr;
+	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
+	std::unique_ptr<BoxState> boxStateCopy;
+	std::unique_ptr<BoxConfig> boxConfigCopy;
+	NeighborList* neighborlistsPtr = nullptr; // dont own data!
+	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
+
+	// These are owned, but this is temporary place to store them
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
+	BondGroup* bondgroups = nullptr;
+
+	CompoundForceEnergyInterims compoundForceEnergyInterims;
+
+	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+
+	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 

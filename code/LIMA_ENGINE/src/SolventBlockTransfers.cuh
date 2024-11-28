@@ -44,7 +44,7 @@ namespace SolventBlockTransfers {
 
 				queue_global->fastInsert(
 					queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
-					queue_local.ids[threadIdx.x]);
+					queue_local.ids[threadIdx.x], queue_local.atomtypeIds[threadIdx.x]);
 
 				KernelHelpersWarnings::transferOutDebug(queue_global, queue_local, transferdir_queue, queue_index);
 
@@ -75,8 +75,9 @@ namespace SolventBlockTransfers {
 
 		if (remain) {
 			// solventindex_new is only valid for those who remain, the rest *might* have an index of -1
-			solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
-			solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];
+			/*solventblock_next_global->rel_pos[solventindex_new] = relpos_next;
+			solventblock_next_global->ids[solventindex_new] = solventblock_current_local.ids[threadIdx.x];*/
+			SolventBlock::Transfer(solventblock_current_local, solventblock_next_global, solventindex_new, relpos_next);
 		}
 
 

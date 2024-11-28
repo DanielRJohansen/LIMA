@@ -6,21 +6,23 @@ if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
 endif()
 
-set(CMAKE_CUDA_ARCHITECTURES "89" "75" "61")
+set(CMAKE_CUDA_ARCHITECTURES "89")
 
 project(lima LANGUAGES CXX CUDA C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
+#set(CMAKE_BUILD_TYPE Debug)
 
 
 set(CUDA_SEPARABLE_COMPILATION ON)
 
 
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_89,code=sm_89")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
-
+#set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_89,code=sm_89")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_89,code=sm_89")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr") # --ptxas-options=-v")
+#set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -maxrregcount=64 -O2")
 # Only gcc v13 and newer can compile LIMA. On arch gcc defaults to v13, but on ubuntu we need to explicitly install it.
 #find_program(GCC_13_FOUND g++-13)
 #if(GCC_13_FOUND)
@@ -33,7 +35,10 @@ if (UNIX)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
 else()
 	set(set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++20 /W4" ))
+	#set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
+	#add_compile_options(/external:W0 /external:anglebrackets)
 endif()
+
 
 
 find_package(OpenGL REQUIRED)
@@ -67,4 +72,5 @@ add_subdirectory(code/LIMA)
 if (UNIX)
 	# Copy the resources to the appropriate directory
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION /usr/share/LIMA/resources)
+	install(DIRECTORY ${CMAKE_SOURCE_DIR}/dev/ DESTINATION /usr/share/LIMA/dev)
 endif()

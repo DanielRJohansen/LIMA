@@ -389,6 +389,7 @@ class DrawAtomsShader : public Shader {
         } 
 
         vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w); 
+        //vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, 0.25f); 
     }  
     )";
 

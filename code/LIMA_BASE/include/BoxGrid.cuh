@@ -4,7 +4,8 @@
 #include "LimaTypes.cuh"
 #include "Bodies.cuh"
 
-static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64 + 32;
+// Highest concentration in smtv test is only 48 tinymols, but could be larger with more ions and less solvent
+static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 
 // blocks are notcentered 
@@ -28,14 +29,23 @@ struct SolventBlock {
 
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
+			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
 		}
 	}
 
-	__host__ bool addSolvent(const Coord& rel_position, uint32_t id) {
+	__device__ static void Transfer(const SolventBlock& src, SolventBlock* const dst, 
+		const int newIndex, const Coord& relposNext) {
+		dst->rel_pos[newIndex] = relposNext;
+		dst->ids[newIndex] = src.ids[threadIdx.x];
+		dst->atomtypeIds[newIndex] = src.atomtypeIds[threadIdx.x];
+	}
+
+	__host__ bool addSolvent(const Coord& rel_position, uint32_t id, uint8_t atomtypeId) {
 		if (n_solvents == MAX_SOLVENTS_IN_BLOCK) {
 			return false;
 		}
 		ids[n_solvents] = id;
+		atomtypeIds[n_solvents] = atomtypeId;
 		rel_pos[n_solvents++] = rel_position;
 		return true;
 	}
@@ -44,6 +54,10 @@ struct SolventBlock {
 	int n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
+	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
+
+	// Not sure this is the ideal place, as it is an interim and never transferred.. 
+	ForceEnergy forceEnergies[MAX_SOLVENTS_IN_BLOCK];
 };
 
 
@@ -99,7 +113,8 @@ namespace BoxGrid {
 
 
 class SolventBlocksCircularQueue {
-
+	static const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
+	static const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
 
 	// Please dont add other non-static vars to this class without checking movetodevice is not broken
 	// {Step,z,y,x}
@@ -121,10 +136,10 @@ public:
 		return queue;
 	}
 
-	__host__ bool addSolventToGrid(const SolventCoord& coord, uint32_t solvent_id, int64_t step, int boxSizeNM) {
-		// TODO: Implement safety feature checking and failing if PBC is not met!
-		return getBlockPtr(coord.origo, step, boxSizeNM)->addSolvent(coord.rel_position, solvent_id);
-	}
+	//__host__ bool addSolventToGrid(const NodeIndex& nodeindex, const Coord& coord, uint32_t solvent_id, int64_t step, int boxSizeNM) {
+	//	// TODO: Implement safety feature checking and failing if PBC is not met!
+	//	return getBlockPtr(nodeindex, step, boxSizeNM)->addSolvent(coord, solvent_id);
+	//}
 
 	__host__ void allocateData(int blocksPerDim) {
 		if (has_allocated_data) {
@@ -150,7 +165,6 @@ public:
 		const int blocksTotal = blocksInGrid * queue_len;
 		queueTemp.blocks = GenericCopyToDevice(blocks, blocksTotal);
 
-		//is_on_device = true;
 		return GenericCopyToDevice(&queueTemp, 1);
 	}
 	__host__ void CopyDataFromDevice(const SolventBlocksCircularQueue* const queue) const {

@@ -30,7 +30,7 @@ struct CompoundGridNode {
 	// A particle belonging to this node coord, can iterate through this list
 	// to find all appropriate nearby compounds;	// This is insanely high
 	static_assert(MAX_COMPOUNDS <= UINT16_MAX-1, "CompoundGridNode cannot handle such large compound ids");
-	static const int max_nearby_compounds = 64 + 16;
+	static const int max_nearby_compounds = 128;
 	uint16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
 	uint16_t compoundidsWithinShortRangeESCutoff[max_nearby_compounds]{};
 	int n_nearby_compounds = 0;
@@ -41,7 +41,7 @@ namespace Electrostatics {
 	struct ChargeNode {
 		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
 
-		static const int maxParticlesInNode = 256;
+		static const int maxParticlesInNode = 256 + 128;
 
 		//float totalCharge = 0.f;
 
@@ -60,10 +60,13 @@ namespace BoxGrid {
 	// This function assumes the user has used PBC
 	template <typename NodeType>
 	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) {
-		/*if (index3d.x >= BoxGrid::blocksPerDim || index3d.y >= BoxGrid::blocksPerDim || index3d.z >= BoxGrid::blocksPerDim
-			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
-			throw std::runtime_error("Bad 3d index for blockptr\n");
-		}*/
+		//if (index3d.x >= boxSize_device.boxSizeNM_i || index3d.y >= boxSize_device.boxSizeNM_i 
+		//	|| index3d.z >= boxSize_device.boxSizeNM_i
+		//	|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
+		//	printf("Bad 3d index for blockptr %d %d %d\n", index3d.x, index3d.y, index3d.z);
+		//	return nullptr;
+		//}
+
 		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
 	}
 
@@ -85,6 +88,7 @@ template <int size>
 struct SolventTransferqueue {
 	Coord rel_positions[size];
 	uint32_t ids[size];
+	uint8_t atomtypeIds[size];
 	int n_elements = 0;
 
 	// Do NOT call on queue residing in global memory
@@ -94,14 +98,16 @@ struct SolventTransferqueue {
 		}
 		rel_positions[n_elements] = pos;
 		ids[n_elements] = id;
+		atomtypeIds[n_elements] = 0;
 		n_elements++;
 		return true;
 	}
 
 	// Insert relative to thread calling.
-	__device__ void fastInsert(const Coord& relpos, const int id) {
+	__device__ void fastInsert(const Coord& relpos, const int id, uint8_t atomtypeId) {
 		rel_positions[threadIdx.x] = relpos;
 		ids[threadIdx.x] = id;
+		atomtypeIds[threadIdx.x] = atomtypeId;
 	}
 };
 
@@ -146,49 +152,23 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 class NeighborList {
 public:
 	__device__ __host__ bool addCompound(uint16_t new_id) {
-		if (n_compound_neighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
+		if (nNonbondedNeighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
 			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
 			return false;
 			//throw std::runtime_error("Neighborlist overflow");
 		}
-		neighborcompound_ids[n_compound_neighbors++] = new_id;
+		nonbondedNeighborcompoundIds[nNonbondedNeighbors++] = new_id;
 		return true;
 	}
 
-	__device__ void loadMeta(NeighborList* nl_ptr) {	// Called from thread 0
-		n_compound_neighbors = nl_ptr->n_compound_neighbors;
-#ifdef ENABLE_SOLVENTS
-		n_gridnodes = nl_ptr->n_gridnodes;
-#endif
-	}
-	__device__ void loadData(NeighborList* nl_ptr) {
-		//static_assert(MAX_COMPOUND_PARTICLES >= NEIGHBORLIST_MAX_COMPOUNDS, "nlist_loaddata broken: not enough threads");
-		//if (threadIdx.x < n_compound_neighbors)			// DANGER Breaks when threads < mAX_COMPOUND_Ns
-		//	neighborcompound_ids[threadIdx.x] = nl_ptr->neighborcompound_ids[threadIdx.x];
-
-		static_assert(MAX_COMPOUND_PARTICLES < NEIGHBORLIST_MAX_COMPOUNDS, "No need to use a for loop then");
-		for (int i = threadIdx.x; i < n_compound_neighbors; i += blockDim.x) {
-			neighborcompound_ids[i] = nl_ptr->neighborcompound_ids[i];
-		}
-
-#ifdef ENABLE_SOLVENTS
-		for (int i = threadIdx.x; i < n_gridnodes; i += blockDim.x) {
-			gridnode_ids[i] = nl_ptr->gridnode_ids[i];
-		}
-#endif
-	}
-
-	// It is guaranteed that the first compoudns are bonded_compounds. How many, that is something the compound
-	// itself keeps track of
 	static_assert(MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-	uint16_t neighborcompound_ids[NEIGHBORLIST_MAX_COMPOUNDS];
-	int n_compound_neighbors = 0;
+	uint16_t nonbondedNeighborcompoundIds[NEIGHBORLIST_MAX_COMPOUNDS];
+	int nNonbondedNeighbors = 0;
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured
 	__device__ __host__ bool addGridnode(int gridnode_id) {
 		if (n_gridnodes >= max_gridnodes) {
-			//throw std::runtime_error("No room for more nearby gridnodes"); }
 			printf("No room for more nearby gridnodes\n");
 			return false;
 		}
@@ -196,7 +176,6 @@ public:
 		return true;
 	}
 
-	//static const int max_gridnodes = 64 + 4;	// Arbitrary value
 	static const int max_gridnodes = 128;	// Arbitrary value
 	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;

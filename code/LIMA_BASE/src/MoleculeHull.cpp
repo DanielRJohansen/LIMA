@@ -1,6 +1,7 @@
 #include "MoleculeHull.cuh"
 #include "RenderUtilities.cuh"
 #include "MDFiles.h"
+#include "TimeIt.h"
 
 #include <quickhull/quickhull.hpp>
 #include <numeric>
@@ -207,9 +208,8 @@ std::vector<Float3> GenerateSpherePoints(const Float3& origo, float radius, int 
     return points;
 }
 
-#include "TimeIt.h"
 void MoleculeHullFactory::CreateConvexHull() {
-    TimeIt timer{"CH", true};
+    //TimeIt timer{"CH", true};
 
 
     // To ensure the atoms are covered including their VDW dist, we pad them first
@@ -231,8 +231,6 @@ void MoleculeHullFactory::CreateConvexHull() {
 	}
 
     convexHull = ConvexHull(std::vector<Float3>(uniquePrunedHullVertices.begin(), uniquePrunedHullVertices.end()));
-
-    int a = 0;
 }
 
 

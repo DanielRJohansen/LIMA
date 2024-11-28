@@ -12,17 +12,6 @@
 
 
 
-#ifdef __linux__
-#include <unistd.h>
-#else
-#include <windows.h>
-#endif
-
-
-
-
-
-
 namespace fs = std::filesystem;
 using std::string;
 
@@ -96,6 +85,11 @@ std::unordered_map<std::string, std::string> FileUtils::parseINIFile(const std::
 	return dict;
 }
 
+std::string FileUtils::ExtractBetweenQuotemarks(const std::string& input) {
+	auto start = input.find('"') + 1;
+	return input.substr(start, input.find('"', start) - start);
+}
+
 void replaceTabs(std::string& str) {
 	// Find the first occurrence of '\t' in the string
 	size_t found = str.find('\t');
@@ -134,3 +128,74 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 
 	return pairs;
 }
+
+void FileUtils::SkipIfdefBlock(std::ifstream& file) {
+	std::string line;
+	while (getline(file, line)) {
+		auto pos = line.find_first_not_of(" ");
+		if (pos == std::string::npos) continue; // Skip empty or whitespace-only lines
+
+		line = line.substr(pos);
+
+		if (line.starts_with("#else") || line.starts_with("#endif")) return;
+	}
+	throw std::runtime_error("Failed to find #endif in file\n");
+}
+bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines) {
+	auto pos = line.find_first_not_of(" ");
+	if (pos == std::string::npos) return false; // If no non-space character, skip
+
+	if (line.size() >= pos + 6 && line.substr(pos, 6) == "#ifdef") {
+		auto keyword = line.substr(pos + 6);
+		if (defines.find(keyword) == defines.end()) {
+			SkipIfdefBlock(file);
+		}
+		return true;
+	}
+	else if (line.size() >= pos + 7 && line.substr(pos, 7) == "#ifndef") {
+		auto keyword = line.substr(pos + 7);
+		if (defines.find(keyword) != defines.end()) {
+			SkipIfdefBlock(file);
+		}
+		return true;
+	}
+	return false;
+}
+
+std::optional<std::string> FileUtils::ChechlineForDefine(const std::string& line) {
+	auto pos = line.find_first_not_of(" ");
+
+	if (pos != std::string::npos) {
+		if (line.size() >= pos + 7 && line.substr(pos, 7) == "#define") {
+			std::string define = line.substr(pos + 7);
+			removeWhitespace(define);
+			return define;
+		}
+	}
+	return std::nullopt;
+}
+
+
+//void FileUtils::SkipIfdefBlock(std::ifstream& file) {
+//	std::string line;
+//	while (getline(file, line)) {
+//		if (line.size() > 5 && line.substr(0, 7) == "#endif") {			
+//			return;
+//		}
+//	}
+//
+//	throw std::runtime_error(std::format("Failed to find #endif in file\n"));
+//}
+//
+//
+//bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_map<std::string>& defines) {
+//	if (line.size() > 5 && line.substr(0, 6) == "#ifdef") {
+//		SkipIfdefBlock(file);
+//		return true;
+//	}
+//	if (line.size() > 6 && line.substr(0, 7) == "#ifndef") {
+//		SkipIfdefBlock(file);
+//		return true;
+//	}
+//	return false;
+//}

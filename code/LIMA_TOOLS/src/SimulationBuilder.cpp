@@ -4,12 +4,14 @@
 #include "EngineCore.h"
 #include "Statistics.h"
 #include "MoleculeGraph.h"
+#include "MoleculeUtils.h"
 
 #include <format>
 #include <functional>
 #include <algorithm>
 #include <random>
 #include <numeric>
+#include <cfloat>
 
 
 
@@ -47,9 +49,15 @@ float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselectio
 	return minPos;
 }
 
-float genRandomAngle() {
-	return static_cast<float>(rand() % 360) / 360.f * 2.f * PI - PI;
-}
+class RandomUniformGenerator {
+	std::mt19937 generator;
+	std::uniform_real_distribution<float> distribution;
+public:
+	RandomUniformGenerator(float min, float max, int seed = 1238971) : generator(seed), distribution(min, max) {}
+	float operator()() {
+		return distribution(generator);
+	}
+};
 
 void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
 	std::function<void(Float3&)> position_transform) 
@@ -72,7 +80,10 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 		addAtomToFile(outputgrofile, atom, atomsOffset, residuenrOffset, position_transform);
 	}
 
-	outputTopologyFile.AppendTopology(inputTopology);
+	if (inputTopology->GetMoleculeTypePtr() == nullptr)
+		printf("nullptr here");
+
+	outputTopologyFile.AppendMoleculetype(inputTopology->GetMoleculeTypePtr(), inputTopology->forcefieldInclude);
 }
 
 
@@ -86,7 +97,8 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 	}
 
 	for (const auto& lipid : lipidselection) {
-		if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
+		//if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
+		if (lipid.grofile->atoms.size() != lipid.topfile->GetMoleculeType().atoms.size()) {
 			throw std::runtime_error(std::format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
 				lipid.grofile->m_path.string(), lipid.topfile->path.string())
 			);
@@ -140,9 +152,9 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 
 	const int particlesPerBlock = static_cast<int>(std::ceil(particlesPerNm3 * blockLen * blockLen * blockLen));
 
-	srand(1238971);
 
 	GetNextRandomParticle getNextRandomParticle{ particles };
+	RandomUniformGenerator randPos(minDistBetweenAnyParticle * 0.5f, usableBlocklen + minDistBetweenAnyParticle * 0.5f, 1238971);
 
 	std::vector<Float3> positionsInThisBlock(particlesPerBlock);
 
@@ -158,11 +170,9 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 				for (int relativeParticleIndex = 0; relativeParticleIndex < particlesPerBlock; ) {
 					AtomtypeSelect atomtypeselect = getNextRandomParticle();
 
-					const Float3 position = Float3{
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f,
-						static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * usableBlocklen + minDistBetweenAnyParticle * 0.5f
-					} + blockStart;
+					
+
+					const Float3 position = Float3{ randPos(), randPos(), randPos() } + blockStart;
 
 					bool collision = false;
 					for (int i = 0; i < relativeParticleIndex; i++) {
@@ -177,21 +187,10 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						positionsInThisBlock[relativeParticleIndex] = position;
 						const int groId = grofile.atoms.empty() ? 1 : grofile.atoms.back().gro_id + 1;
 						const int resNr = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
+
 						grofile.atoms.emplace_back(GroRecord{ resNr, "XXX", atomtypeselect.atomtype.atomname, groId, position, std::nullopt });
+						topfile.AppendMolecule(atomtypeselect.atomtype.atomname);
 
-						//grofile.addEntry("XXX", atomtypeselect.atomtype.atomname, position);
-						//grofile.atoms.emplace(GroRecord{})
-
-						// Add first the basic atomtype, and then correct the IDs after
-						topfile.GetLocalAtoms().emplace_back(atomtypeselect.atomtype);
-						topfile.GetLocalAtoms().back().id = groId;
-						topfile.GetLocalAtoms().back().resnr = resNr;
-
-
-						//if (topfile.atoms.entries.size() > 1) {
-						//	topfile.atoms.entries.back().nr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].nr + 1;
-						//	topfile.atoms.entries.back().resnr = topfile.atoms.entries[topfile.atoms.entries.size() - 2].resnr +1;
-						//}
 						relativeParticleIndex++;
 					}
 				}
@@ -390,28 +389,48 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	}
 }
 
-void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert) 
+void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter)
 {
-	std::srand(123123123);
+	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 
-	Float3 moleculeCenter{};
-	for (const auto& atom : submolGro.atoms) {
-		moleculeCenter += atom.position;
-	}
-	moleculeCenter *= 1.f/static_cast<float>(submolGro.atoms.size());
+	std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+		pos -= molCenter;
+		pos += targetCenter;
+	};
+
+	AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
+}
+
+void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
+	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
+{
+	// TODO Should we can CenterMol, so it is whole here?
+
+	if (submolTop->moleculetypes.size() > 1)
+		throw std::invalid_argument("Source topology contains more than 1 moleculetype, which is not allowed. Check your file for possible #include with moleculetype definitions");
+
+	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
+	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;
+
+	RandomUniformGenerator genRandomAngle(-PI, PI);	
+	RandomUniformGenerator genTranslation(molRadius, targetGrofile.box_size.x - molRadius);
+	assert(targetGrofile.box_size.x == targetGrofile.box_size.y && targetGrofile.box_size.x == targetGrofile.box_size.z);
+
+	targetGrofile.atoms.reserve(targetGrofile.atoms.size() + nMoleculesToInsert * submolGro.atoms.size());
 
 	for (int i = 0; i < nMoleculesToInsert; i++) {
-		Float3 randomTranslation = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.x,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.y,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * targetGrofile.box_size.z
-		};
+		Float3 randomTranslation = Float3{ genTranslation(), genTranslation() , genTranslation() };
 		Float3 randomRotation = Float3{genRandomAngle(), genRandomAngle(), genRandomAngle()};
 
-		std::function<void(Float3&)> position_transform = [&](Float3& pos) {
-			pos -= moleculeCenter;
-			pos.rotateAroundOrigo(randomRotation);
+		std::function<void(Float3&)> position_transform = [=](Float3& pos) {
+			pos -= molCenter;
+			if (rotateRandomly) {
+				pos = Float3::rodriguesRotatation(pos, Float3(0,0,1), randomRotation.z);
+				pos = Float3::rodriguesRotatation(pos, Float3(0,1,0), randomRotation.y);
+				pos = Float3::rodriguesRotatation(pos, Float3(1,0,0), randomRotation.x);
+			}
+			
 			pos += randomTranslation;
 			};
 
@@ -428,7 +447,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 	const Float3& sphereCenter
 )
 {
-	std::srand(123123123);
+	RandomUniformGenerator genRandomAngle(-PI, PI);
 
 	for (auto& lipid : lipidselection) {
 		centerMoleculeAroundOrigo(*lipid.grofile);
@@ -436,7 +455,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 	GetNextRandomLipid genNextRandomLipid{ lipidselection };
-
+	RandomUniformGenerator genTranslation(-0.5f, 0.5f);
 
 	// Use Fibonacci lattice to evenly distribute points on a sphere
 	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f; // Golden ratio
@@ -484,11 +503,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 		//Float3 rotationNoise = Float3{ genRandomAngle(), genRandomAngle(), genRandomAngle() } / 2.f;
 		//rotationAxis = (rotationAxis + rotationNoise).norm();
 
-		Float3 translationNoise = Float3{
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5,
-			static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5
-		};
+		Float3 translationNoise = Float3{ genTranslation(), genTranslation(), genTranslation() };
 
 
 
@@ -524,8 +539,7 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
 	}
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->name = "Membrane";
-	outputtopologyfile->system = "Membrane";
+	outputtopologyfile->SetSystem("Membrane");
 
 	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
 
@@ -559,9 +573,9 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
-	srand(1238971);
-
+	RandomUniformGenerator genRandomAngle(-PI, PI);
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+	RandomUniformGenerator genRandomUpDownTranslation(-0.05f, 0.05f);
 
 	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
 	for (auto& lipid : lipidselection) {
@@ -578,7 +592,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 				break;
 
 
-			const Float3 randomTopDownTranslation{ 0.f,0.f,static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.1f - 0.05f };
+			const Float3 randomTopDownTranslation{ 0.f,0.f,genRandomUpDownTranslation()};
 
 			// Insert top lipid
 			{

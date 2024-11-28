@@ -25,7 +25,7 @@ glm::mat4 Camera::View() {
     view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
 
     // Translate the world to the opposite direction of the camera position to look at the center
-    view = glm::translate(view, -center.ToVec3());
+    view = glm::translate(view, ToVec3(-center));
 
     return view;
 }
@@ -35,7 +35,7 @@ glm::mat4 Camera::Projection() {
     double aspectRatio = 1.f;
     double fovY = 45.0;
     double nearPlane = 0.1;
-    double farPlane = 100.0;
+    double farPlane = 1000.0;
     double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
     double fW = fH * aspectRatio;
 
@@ -197,24 +197,38 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 }
 
 
-void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
+void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
+    int nAtoms = task.grofile.atoms.size();
+    if (!task.drawSolvent) {
+        for (int i = 0; i < task.grofile.atoms.size(); i++) {
+            auto resname = task.grofile.atoms[i].residueName;
+            if (resname == "SOL" || resname == "TIP3") {
+                nAtoms = i;
+                break;
+            }
+        }
+    }
+    task.nAtoms = nAtoms;
+
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsShader)
-		drawAtomsShader = std::make_unique<DrawAtomsShader>(task.grofile.atoms.size(), &renderAtomsBufferCudaResource);
+		drawAtomsShader = std::make_unique<DrawAtomsShader>(nAtoms, &renderAtomsBufferCudaResource);
+
+
 
     camera.Update(task.grofile.box_size);
 
 	// Preprocess the renderAtoms
 	{
-		renderAtomsTemp.resize(task.grofile.atoms.size());
+		renderAtomsTemp.resize(nAtoms);
 
-        for (int i = 0; i < task.grofile.atoms.size(); i++) {
+        for (int i = 0; i < nAtoms; i++) {
 			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
             if (task.coloringMethod == GradientFromAtomid)
-                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.grofile.atoms.size());
+                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
             else 
 			    renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
 		}
@@ -228,7 +242,7 @@ void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
 		size_t num_bytes = 0;
 		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
 
-		if (num_bytes != task.grofile.atoms.size() * sizeof(RenderAtom)) {
+		if (num_bytes != nAtoms * sizeof(RenderAtom)) {
 			throw std::runtime_error("RenderAtom buffer size mismatch");
 		}
 
@@ -238,4 +252,52 @@ void Display::PrepareNewRenderTask(const Rendering::GrofileTask& task) {
 		cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
 	}
 
+}
+
+void Display::PrepareNewRenderTask(Rendering::CompoundsTask& task) {
+    /*std::vector<Float3> positions;
+
+			positions.push_back(task.compounds[i].positions[j]);
+		}
+	}*/
+    //const int nAtoms = positions.size();
+
+  //  renderAtomsTemp.resize(nAtoms);
+    renderAtomsTemp.resize(0);
+    for (int i = 0; i < task.compounds.size(); i++) {
+        for (int j = 0; j < task.compounds[i].n_particles; j++) {
+			float radius = RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.compounds[i].atomLetters[j]));
+            float4 position = task.positions[i][j].Tofloat4(radius);
+            float4 color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.compounds.size());
+            
+            renderAtomsTemp.push_back(RenderAtom{ position, color });
+        }
+    }
+    task.nAtoms = renderAtomsTemp.size();
+        
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsShader)
+        drawAtomsShader = std::make_unique<DrawAtomsShader>(task.nAtoms, &renderAtomsBufferCudaResource);
+
+    camera.Update(task.boxSize);
+
+    // Move the renderAtoms to device
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+
+        if (num_bytes != task.nAtoms * sizeof(RenderAtom)) {
+            throw std::runtime_error("RenderAtom buffer size mismatch");
+        }
+
+        cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
 }

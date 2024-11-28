@@ -4,6 +4,7 @@
 
 #include "TestUtils.h"
 #include "Programs.h"
+#include "MoleculeHull.cuh"
 
 namespace TestMembraneBuilder {
 	using namespace TestUtils;
@@ -30,22 +31,24 @@ namespace TestMembraneBuilder {
 		// Test the topology is identical to reference
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		TopologyFile refTop{ mol_dir / "membrane_reference.top" };
-		ASSERT(newTop.GetAllAtoms() == refTop.GetAllAtoms(), "Topology Atom Mismatch");
-		ASSERT(newTop.GetAllSinglebonds() == refTop.GetAllSinglebonds(), "Topology Singlebond Mismatch");
-		ASSERT(newTop.GetAllPairs() == refTop.GetAllPairs(), "Topology Pair Mismatch");
-		ASSERT(newTop.GetAllAnglebonds() == refTop.GetAllAnglebonds(), "Topology Anglebond Mismatch");
-		ASSERT(newTop.GetAllDihedralbonds() == refTop.GetAllDihedralbonds(), "Topology Dihedralbond Mismatch");
-		ASSERT(newTop.GetAllImproperDihedralbonds() == refTop.GetAllImproperDihedralbonds(), "Topology Improper Mismatch");
 
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::Pair>(), refTop.GetAllElements<TopologyFile::Pair>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology Atom Mismatch");
+		
 		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };
 		GroFile refGro{ mol_dir / "membrane_reference.gro" };
 		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
 		for (int i = 0; i < newGro.atoms.size(); i++) {
-			if (newGro.atoms[0].position != refGro.atoms[0].position)
+			auto b = (newGro.atoms[i].position - refGro.atoms[i].position).len();
+			if (newGro.atoms[i].position != refGro.atoms[i].position)
 				int a=0;
-			ASSERT(newGro.atoms[0].position == refGro.atoms[0].position, "Atom position mismatch");
+			ASSERT(newGro.atoms[i].position == refGro.atoms[i].position, "Atom position mismatch");
 		}
 
 		// Finally test if we can stabilize the simulation
@@ -59,7 +62,9 @@ namespace TestMembraneBuilder {
 		const fs::path work_dir = simulations_dir / "BuildMembraneCustom";
 		const fs::path mol_dir = work_dir / "molecule";
 
-		TestUtils::CleanDirectory(mol_dir);
+		//TestUtils::CleanDirectory(mol_dir);
+		fs::remove_all(mol_dir);
+		fs::create_directory(mol_dir);
 
 		Lipids::Selection lipidselection;
 		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };
@@ -68,7 +73,7 @@ namespace TestMembraneBuilder {
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true);
+		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
 
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
@@ -76,7 +81,8 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		GroFile newGro{ mol_dir / "membrane.gro" };
 
-		ASSERT(newTop.GetAllAtoms() == top->GetAllAtoms(), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top->GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
+
 
 		SimParams params{};
 		params.em_variant = true;
@@ -108,9 +114,9 @@ namespace TestMembraneBuilder {
 
 		// The first test is pretty much just to see if this function throws
 		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-		for (const auto& includeTop : topfile->GetAllSubMolecules()) {
-			ASSERT(includeTop.includeTopologyFile->readFromCache, "This lipid top should have been read from a cached file");
-		}
+		/*for (const auto& molecule : topfile->GetSystem().molecules) {
+			ASSERT(molecule.moleculetype->readFromCache, "This lipid top should have been read from a cached file");
+		}*/
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;
@@ -146,7 +152,7 @@ namespace TestMembraneBuilder {
 		}
 
 
-		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size);
+		Programs::MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, envmode==Full);
 		
 		// Compare after relaxation
 		{

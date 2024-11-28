@@ -29,7 +29,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 
 	if (particle_index == 0) {
 		data_out[compound_index + (step) * boxparams.n_compounds] = Float3{};
-		compound = compounds[compound_index];
+		compound = compounds[compound_index]; // TODO: this is silly, just use the global one directly
 	}
 	__syncthreads();
 
@@ -38,8 +38,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 	}
 	__syncthreads();
 
-	const uint8_t atom_type = compound.atom_types[particle_index];
-	const float mass = forcefield->particle_parameters[atom_type].mass;
+	const float mass = compound.atomMasses[particle_index];
 
 	const int64_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int64_t step_offset = step * boxparams.total_particles_upperbound;
@@ -65,7 +64,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 
 
 
-void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {
+void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out, const TinyMolState* const tinyMols, const ForcefieldTinymol* const forcefield) {
 	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK_ANALYZER];
 
 
@@ -80,9 +79,9 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 	}
 	if (solvent_index >= boxparams.n_solvents) { return; }
 
-
+	const float mass = forcefield->types[tinyMols[solvent_index].tinymolTypeIndex].mass;
 	const float velocity = vel_buffer[step_offset + compounds_offset + solvent_index];
-	const float kinE = PhysicsUtils::calcKineticEnergy(velocity, SOLVENT_MASS);	// remove direction from vel
+	const float kinE = PhysicsUtils::calcKineticEnergy(velocity, mass);	// remove direction from vel
 	float potE = potE_buffer[compounds_offset + solvent_index + step * boxparams.total_particles_upperbound];
 
 	const float totalE = potE + kinE;
@@ -149,7 +148,7 @@ __global__ void potEHistogramKernel(Compound* compounds, int total_particles_upp
 
 
 
-std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps, float* potE_buffer_device, float* vel_buffer_device, ForceField_NB* forcefield_device) {
+std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps, float* potE_buffer_device, float* vel_buffer_device, const ForcefieldTinymol* const forcefield_device, const TinyMolState* const tinyMols) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
@@ -163,7 +162,7 @@ std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_step
 		cudaMalloc(&data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps);
 
 		dim3 block_dim(n_steps, blocks_per_solventkernel, 1);
-		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->box_host->boxparams, potE_buffer_device, vel_buffer_device, data_out);	// TODO: FIx
+		monitorSolventEnergyKernel << < block_dim, THREADS_PER_SOLVENTBLOCK_ANALYZER >> > (simulation->box_host->boxparams, potE_buffer_device, vel_buffer_device, data_out, tinyMols, forcefield_device);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzeSolvateEnergy\n");
 
 		cudaMemcpy(average_solvent_energy_blocked.data(), data_out, sizeof(Float3) * blocks_per_solventkernel * n_steps, cudaMemcpyDeviceToHost);
@@ -232,6 +231,9 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 	cudaMalloc(&forcefield_device, sizeof(ForceField_NB));
 	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
 
+	ForcefieldTinymol* tinymolForcefield_device = GenericCopyToDevice(&simulation->forcefieldTinymol, 1);
+	TinyMolState* tinymols = GenericCopyToDevice(simulation->box_host->tinyMols);
+
 	if (simulation->box_host->boxparams.n_compounds > 0) {
 		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);
 		cudaMemcpy(compounds_device, simulation->box_host->compounds.data(), sizeof(Compound) * simulation->box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
@@ -260,7 +262,7 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 		cudaMemcpy(vel_buffer_device, &simulation->vel_buffer->data()[step_offset * particles_per_step], sizeof(float) * steps_in_kernel * particles_per_step, cudaMemcpyHostToDevice);
 		LIMA_UTILS::genericErrorCheck("Cuda error during analyzer transfer2\n");
 
-		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel, potE_buffer_device, vel_buffer_device, forcefield_device);
+		std::vector<Float3> average_solvent_energy = analyzeSolvateEnergy(simulation, steps_in_kernel, potE_buffer_device, vel_buffer_device, tinymolForcefield_device, tinymols);
 		std::vector<Float3> average_compound_energy = analyzeCompoundEnergy(simulation, steps_in_kernel, potE_buffer_device, vel_buffer_device, compounds_device, forcefield_device);
 
 		for (int64_t ii = 0; ii < steps_in_kernel; ii++) {
@@ -276,6 +278,9 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 	if (simulation->box_host->boxparams.n_compounds > 0) {
 		cudaFree(compounds_device);
 	}
+
+	cudaFree(tinymolForcefield_device);
+	cudaFree(tinymols);
 
 	//m_logger->finishSection("Finished analyzing energies");
 	return AnalyzedPackage(average_energy, simulation->temperature_buffer);

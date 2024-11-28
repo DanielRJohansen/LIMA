@@ -66,10 +66,19 @@ namespace Rendering {
 
 	struct GrofileTask {
 		const GroFile& grofile;
+		bool drawSolvent = true;
 		ColoringMethod coloringMethod = Atomname;
+		int nAtoms;
 	};
 
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
+	struct CompoundsTask {
+		std::vector<Compound> compounds;
+		std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
+		Float3 boxSize;
+		int nAtoms;
+	};
+
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>, std::unique_ptr<CompoundsTask>>;
 }
 
 
@@ -78,7 +87,7 @@ namespace Rendering {
 class Display {
 public:
 	// Functions called by main thread only
-	Display(EnvMode);
+	Display();
 	~Display();
 	void WaitForDisplayReady();
 
@@ -95,10 +104,12 @@ public:
 	std::exception_ptr displayThreadException{ nullptr };
 
 	static void TestDisplay();
+	static void RenderGrofile(const GroFile& grofile, bool drawSolvent=true) {
+		Display d;
+		d.Render(std::make_unique<Rendering::GrofileTask>(grofile, drawSolvent), true);
+	}
 
 private:
-	LimaLogger logger;
-
 	// The renderThread will be spawned during construction, and run this indefinitely
 	void Mainloop();
 
@@ -113,7 +124,8 @@ private:
 
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
-	void PrepareNewRenderTask(const Rendering::GrofileTask&);
+	void PrepareNewRenderTask(Rendering::GrofileTask&);
+	void PrepareNewRenderTask(Rendering::CompoundsTask&);
 
 
 	// Interfacing

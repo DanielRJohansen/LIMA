@@ -110,11 +110,11 @@
         81        HL         1      SDPC      H47X       140      0.19     1.008
         82        HL         1      SDPC      H47Y       141      0.19     1.008
         83        HL         1      SDPC      H47Z       142      0.19     1.008
-;lipid_section
         84      CTL5         1      SDPC       C48       133     -0.38    12.011
         85        HL         1      SDPC      H48X       137      0.19     1.008
         86        HL         1      SDPC      H48Y       138      0.19     1.008
         87        HL         1      SDPC      H48Z       139      0.19     1.008
+;lipid_section
         88       OSL         1      SDPC       O23       108     -0.47    15.999
         89        CL         1      SDPC       C22        22      0.79    12.011
         90       OBL         1      SDPC       O22       107     -0.65    15.999
@@ -166,7 +166,6 @@
        136      CTL2         1      SDPC        C2         2      0.26    12.011
        137      HAL2         1      SDPC       H2X        26      0.00     1.008
        138      HAL2         1      SDPC       H2Y        27      0.00     1.008
-; residue   1 SDPC rtp SDPC q  0.0
        139      CTL3         1      SDPC        C1         1     -0.27    12.011
        140      HAL3         1      SDPC       H1X        23      0.05     1.008
        141      HAL3         1      SDPC       H1Y        24      0.05     1.008

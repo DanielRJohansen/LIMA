@@ -1,19 +1,16 @@
 #pragma once
 
+#include "Analyzer.cuh"
+#include "Bodies.cuh"
+#include "TimeIt.h"
+#include "MDFiles.h"
+
 #include <memory>
 #include <chrono>
-
-#include "Analyzer.cuh"
-#include "SimulationBuilder.h"
-#include "Bodies.cuh"
-#include "Display.h"
-#include "TimeIt.h"
 
 class Display;
 struct BoxImage;
 class Engine;
-
-
 
 
 namespace fs = std::filesystem;
@@ -47,13 +44,6 @@ public:
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
 	void CreateSimulation(Simulation& simulation_src, SimParams);
-
-	/// <summary>
-	/// Create a lipid bi-layer in the x-y plane.
-	/// </summary>
-	/// <param name="carryout_em">Carry out an energy minimization with no boundary condition, 
-	/// which ensures all particles are inside the box</param>
-	//void createMembrane(Lipids::Selection& lipidselection, bool carryout_em = true);
 
 	/// <summary>
 	/// Create .gro .top and simparams.txt files in the current directory
@@ -94,7 +84,7 @@ public:
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;
-
+	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 
 private:
 
@@ -102,10 +92,10 @@ private:
 	void verifyBox();							// Checks wheter the box will break
 	
 	void postRunEvents();
-	void handleStatus(int64_t step, int64_t n_steps);
+	void handleStatus(int64_t step);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display& display, bool emVariant);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant);
 
 	void sayHello();
 
@@ -114,7 +104,7 @@ private:
 
 	EnvMode m_mode;
 
-	int64_t step_at_last_render = 0;
+	int64_t step_at_last_render = INT64_MIN;
 
 
 	//std::unique_ptr<BoxBuilder> boxbuilder;

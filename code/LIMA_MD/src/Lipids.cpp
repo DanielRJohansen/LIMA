@@ -3,6 +3,11 @@
 #include "Statistics.h"
 #include "MoleculeUtils.h"
 #include "MoleculeGraph.h"
+
+// TODO: These shoudlnt be here
+#include "Environment.h"
+#include "Display.h"
+
 #include <format>
 
 Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, double percentage) :
@@ -22,7 +27,7 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 	topfile = std::make_unique<TopologyFile>(lipidDir / (lipidname + ".itp"));
 
 	if (userSupplied) 
-		OrganizeLipidIntoCompoundsizedSections(*grofile, *topfile);
+		OrganizeLipidIntoCompoundsizedSections(*grofile, topfile->GetMoleculeType());
 }
 
 
@@ -175,15 +180,15 @@ std::vector<int> DetermineAcceptableSectionsizesBasedOnAtomcount(int nAtoms) {
 	}
 }
 
-#include "Display.h"
 
-void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFile& topfile) {
 
-	if (!topfile.GetLocalMolecules().empty()) {
+void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFile::Moleculetype& molecule) {
+
+	/*if (!topfile.GetLocalMolecules().empty()) {
 		throw std::runtime_error("Cannot organise lipids with include molecules");
-	}
+	}*/
 	// First clear any sections previously set by LIMA 
-	for (auto& atom : topfile.GetLocalAtoms()) {
+	for (auto& atom : molecule.atoms) {
 		if (atom.section_name.has_value() && atom.section_name.value() == ";lipid_section") {
 			atom.section_name = std::nullopt;
 		}
@@ -191,10 +196,10 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 
 	if (grofile.box_size == Float3{0})
 		grofile.box_size = Float3{ 10.f };
-	MoleculeUtils::CenterMolecule(grofile, topfile);
+	MoleculeUtils::CenterMolecule(grofile, molecule);
 	OrientLipidhead(grofile);
 
-	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, topfile);
+	LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(grofile, molecule);
 	// Figure out how to prioritise only using the better sizes, IF that combination can be made
 	std::vector<int> sectionSizes = DetermineAcceptableSectionsizesBasedOnAtomcount(grofile.atoms.size());
 
@@ -210,11 +215,11 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 
 	int cummulativeIndex = 0;
 	for (int index : bestPartition) {
-		topfile.GetLocalAtoms()[cummulativeIndex].section_name = ";lipid_section";
+		molecule.atoms[cummulativeIndex].section_name = ";lipid_section";
 		cummulativeIndex += index;
 	}
 }
-#include "Environment.h"
+
 
 void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 	fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
@@ -227,15 +232,15 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 		TopologyFile topfile{ itppath };
 
 		// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
-		assert(topfile.forcefieldInclude);
-		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude(TopologyFile::ForcefieldInclude{"Slipids_2020.ff/forcefield.itp"} );
+		/*assert(topfile.forcefieldInclude);
+		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("Slipids_2020.ff/forcefield.itp", FileUtils::GetLimaDir()/"resources"/"forcefields"/"charmm27.ff");*/
 
 		grofile.box_size = Float3{ 5.f };
 	/*	if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
 			grofile.box_size = Float3{ std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z) };
 		}*/
 
-		OrganizeLipidIntoCompoundsizedSections(grofile, topfile);
+		OrganizeLipidIntoCompoundsizedSections(grofile, topfile.GetMoleculeType());
 
 		// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
 		{
@@ -250,7 +255,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 			auto sim = env.getSim();
 
 			if (displayEachLipidAndHalt) {
-				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>(Full) : nullptr; // TODO: move to top so we dont reinit every time
+				std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
 				display->Render(
 					std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
 					true);

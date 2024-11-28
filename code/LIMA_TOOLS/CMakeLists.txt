@@ -2,9 +2,9 @@
 
 add_library(LIMA_TOOLS STATIC
     src/SimulationBuilder.cpp
-    src/VirtualPathMaker.cpp
     src/CompoundBuilder.cpp
-)
+    src/BondgroupFactory.cpp
+ "src/CompoundFactory.cpp")
 
 target_include_directories(LIMA_TOOLS PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}/src

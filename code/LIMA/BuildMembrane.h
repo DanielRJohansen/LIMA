@@ -102,10 +102,10 @@ Options:
     
     -emtol [value]
         Sets the force tolerance (kJ/mol/nm) for the energy minimization. Default is 100.
-		Example: -emtol 100
+        Example: -emtol 100
 
     -display, -d    
-		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
+        Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
 
     -help, -h    
         Displays this help text and exits.

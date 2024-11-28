@@ -7,47 +7,45 @@
 
 
 struct BoxConfig {	
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, half* compoundsAtomCharges,
-		CompoundBridgeBundleCompact* bridge_bundle,	BondedParticlesLUT* bpLUTs, const Box* const boxHost);
+	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
-	const BoxParams boxparams;
-
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
-	const half* const compoundsAtomCharges;
-	
+	const float* const compoundsAtomCharges;	
 	const Compound* const compounds;
-	const CompoundBridgeBundleCompact* const bridge_bundle;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
 	const BondedParticlesLUT* const bpLUTs;
-
-	const UniformElectricField uniformElectricField;	
 };
 
 struct BoxState {
-	BoxState(CompoundCoords* compoundcoordsCircularQueue, Solvent* solvents,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
 		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers();// Free *this immediately after calling this function
 
 	CompoundInterimState* const compoundsInterimState;
-	CompoundCoords* const compoundcoordsCircularQueue;
+	NodeIndex* const compoundOrigos;
+	Float3* const compoundsRelposLm;
 
-	Solvent* const solvents;
+	TinyMolState* const tinyMols;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
 };
 
+struct AdamState {
+	Float3 firstMoment;
+	Float3 secondMoment;
+};
 
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
 	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 10;
+	static const int nStepsInBuffer = 5;
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		return step % (nStepsInBuffer * loggingInterval) == 0;
@@ -101,6 +99,9 @@ struct SimulationDevice {
 
 	const BoxConfig boxConfig;
 	BoxState* const boxState;
+	const BoxParams boxparams;
+
+	//const UniformElectricField uniformElectricField;
 
 	//ChargeOctTree* charge_octtree;
 	Electrostatics::ChargeNode* chargeGrid = nullptr;
@@ -114,4 +115,7 @@ struct SimulationDevice {
 	Float3 * traj_buffer = nullptr;
 	float* vel_buffer = nullptr;
 	Float3 * forceBuffer = nullptr;
+
+	// Only used in EM
+	AdamState* adamState = nullptr;
 };

@@ -10,7 +10,7 @@ int main() {
 	std::printf("\tMD self test succesful\n");
 
 
-	Display display{ EnvMode::Full };
+	Display display{};
 
 
 	return 0;

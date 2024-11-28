@@ -23,7 +23,7 @@ struct SimParams {
 
 	// Main params
 	uint64_t n_steps = 1000;
-	float dt = 100.f;									// [ls]
+	float dt = 200.f;									// [ls]
 	bool em_variant = false;
 	float em_force_tolerance = 1000; // [kJ/mol/nm]
 
@@ -59,7 +59,7 @@ struct BoxParams {
 	int total_particles_upperbound = 0;
 	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
-	int64_t degreesOfFreedom;
+	int64_t degreesOfFreedom=0;
 };
 
 
@@ -113,9 +113,10 @@ public:
 
 	size_t GetLoggingInterval() const { return loggingInterval; }
 	size_t EntriesPerStep() const { return n_particles_upperbound; }
+	const size_t n_particles_upperbound;
+
 private:
 	const size_t loggingInterval;
-	const size_t n_particles_upperbound;
 	const size_t n_compounds;
 	const size_t n_indices;
 	std::vector<T> buffer;
@@ -133,63 +134,24 @@ namespace LIMALOGSYSTEM {
 	}
 }
 
-class CompoundcoordsCircularQueue_Host {
-	std::vector<CompoundCoords> queue;
-
-	const size_t queueBytesize = sizeof(CompoundCoords) * nElementsInQueue; // TODO: this is not sustainable
-public:
-	static const int nElementsInQueue = CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS;
-
-	static std::unique_ptr<CompoundcoordsCircularQueue_Host> CreateQueue() {
-		auto coordQueue = std::make_unique<CompoundcoordsCircularQueue_Host>();
-		coordQueue->queue.resize(nElementsInQueue);
-		return coordQueue;
-	}
-
-	CompoundCoords* CopyToDevice() const {
-		return GenericCopyToDevice(queue);
-	}
-	void CopyDataFromDevice(const CompoundCoords* const src) {
-		cudaMemcpy(this->queue.data(), src, queueBytesize, cudaMemcpyDeviceToHost);
-	}
-
-	const CompoundCoords& getCoordArray(uint32_t step, uint32_t compound_index) const {
-		const int index0_of_currentstep_coordarray = (step % CompoundcoordsCircularQueueUtils::queueLen) * MAX_COMPOUNDS;
-		return queue[index0_of_currentstep_coordarray + compound_index];
-	}
-
-	CompoundCoords* getCoordarrayRef(uint32_t step, uint32_t compound_index) {
-		return CompoundcoordsCircularQueueUtils::getCoordarrayRef(queue.data(), step, compound_index);
-	}
-
-	// ----- Host Only Functions ----- //
-	void Flush() {
-		for (size_t i = 0; i < CompoundcoordsCircularQueueUtils::queueLen * MAX_COMPOUNDS; i++) {
-			queue[i] = CompoundCoords{};
-		}
-	}
-
-	// Get raw ptr. Try to avoid using
-	CompoundCoords* data() { return queue.data(); }
-};
-
-
 struct Box {
 	Box() {}
-	Box(int boxSize);
+	Box(Float3 boxSize);
 
 	BoxParams boxparams;
 
 
 	std::vector<Compound> compounds;
 	std::vector<CompoundInterimState> compoundInterimStates;
-	std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
+	//std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
+	std::vector<CompoundCoords> compoundCoordsBuffer;
 
-	std::vector<Solvent> solvents;
+	std::vector<TinyMolState> tinyMols;
 	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
 
-	std::unique_ptr<CompoundBridgeBundleCompact> bridge_bundle = nullptr;
 	std::vector<BondedParticlesLUT> bpLutCollection;
+
+	std::vector<BondGroup> bondgroups;
 
 	UniformElectricField uniformElectricField;
 };
@@ -235,6 +197,9 @@ public:
 	SimParams simparams_host;
 
 	ForceField_NB forcefield;
+	ForcefieldTinymol forcefieldTinymol;
+	std::vector<NonbondedInteractionParams> forcefieldTest;
+
 
 	friend class Engine;
 };

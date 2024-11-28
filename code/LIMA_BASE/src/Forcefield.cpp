@@ -3,26 +3,12 @@
 #include "Forcefield.h"
 #include "MDFiles.h"
 
-
-
-#include <filesystem>
 #include <format>
 #include <tuple>
 
 using std::string;
-namespace lfs = FileUtils;
 
-
-
-
-const float water_mass = (15.999000f + 2.f * 1.008000f);	// [g]
-//const float water_sigma = 1.7398 * rminToSigma * AngToNm;	// Value guessed from param19.inp: OH2      0.0000    -0.0758    1.7398 !ST2   water oxygen
-const float water_sigma = 0.22f;	// Made up value. Works better than the one above. I guess i need to implement proper tip3 at some point?
-const float water_epsilon = 0.1591f * kcalToJoule;
-
-
-
-class LjParameterDatabase {
+class AtomtypeDatabase {
 	std::unordered_map<std::string, AtomType> atomTypes;
 
 	std::shared_ptr<std::vector<AtomType>> activeAtomTypes;
@@ -31,19 +17,24 @@ class LjParameterDatabase {
 	bool finished = false;
 
 public:
-	LjParameterDatabase(std::shared_ptr<std::vector<AtomType>> activeAtomTypes);
+	AtomtypeDatabase() {
+		activeAtomTypes = std::make_shared<std::vector<AtomType>>();
+	}
 	void insert(AtomType element);
 	int GetActiveIndex(const std::string& query);
 	std::vector<AtomType>& GetActiveParameters() {
 		finished = true;
 		return *activeAtomTypes;
 	}
+
+	// Debug only
+	std::unordered_map<std::string, AtomType>& _getAll() {
+		return atomTypes;
+	}
 };
 
 
-LjParameterDatabase::LjParameterDatabase(std::shared_ptr<std::vector<AtomType>> activeAtomTypes) : activeAtomTypes(activeAtomTypes) {}
-
-void LjParameterDatabase::insert(AtomType element) {
+void AtomtypeDatabase::insert(AtomType element) {
 	if (finished)
 		throw std::runtime_error("Cannot insert after finishing");
 
@@ -51,13 +42,13 @@ void LjParameterDatabase::insert(AtomType element) {
 	if (!atomTypes.contains(element.name))
 		atomTypes.insert({ element.name, element });
 }
-int LjParameterDatabase::GetActiveIndex(const std::string& query) {
+int AtomtypeDatabase::GetActiveIndex(const std::string& query) {
 	if (finished)
 		throw std::runtime_error("Cannot query for more active types after finishing");
 	if (fastLookup.count(query) != 0)
 		return fastLookup.find(query)->second;
 	if (!atomTypes.contains(query))
-		return -1;
+		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
 
 	const AtomType& parameter = atomTypes.at({ query });
 	// First check of the parameter is already in the active list (since it might be 
@@ -68,7 +59,8 @@ int LjParameterDatabase::GetActiveIndex(const std::string& query) {
 			return i;
 		}
 	}
-
+	if (activeAtomTypes->size() == ForceField_NB::MAX_TYPES)
+		throw std::runtime_error("Cant handle so many unique atomtypes");
 	activeAtomTypes->push_back(parameter);
 	fastLookup.insert({ query, activeAtomTypes->size() - 1 });
 	return activeAtomTypes->size() - 1;
@@ -260,76 +252,84 @@ template class ParameterDatabase<ImproperDihedralbondType>;
 
 
 
+LIMAForcefield::LIMAForcefield() {};
 
+LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
-LIMAForcefield::LIMAForcefield() {}
+	ljParameters = std::make_unique<AtomtypeDatabase>();
+	tinymolTypes = std::make_unique<AtomtypeDatabase>();
 
-LIMAForcefield::LIMAForcefield(const fs::path& path, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes) : path(path){
-	bool verbose = false;
-	const char ignore_atomtype = IGNORE_HYDROGEN ? 'H' : '.';
-
-
-	ljParameters = std::make_unique<LjParameterDatabase>(activeLJParamtypes);
 	singlebondParameters = std::make_unique<ParameterDatabase<SinglebondType>>();
 	anglebondParameters = std::make_unique<ParameterDatabase<AnglebondType>>();
 	dihedralbondParameters = std::make_unique<ParameterDatabase<DihedralbondType>>();
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
 
+	LoadFileIntoForcefield(file);
 
-
-
-
-
-	LoadFileIntoForcefield(path);
-
-	
-	/*LoadFileIntoForcefield(ff_dir / "ffnonbonded.itp");
-	LoadFileIntoForcefield(ff_dir / "ffbonded.itp");*/
-	/*LoadFileIntoForcefield(ff_dir / "ffnanonbonded.itp");
-	LoadFileIntoForcefield(ff_dir / "ffnabonded.itp");
-	LoadFileIntoForcefield(ff_dir / "ions.itp");*/
-
+	// TEMP while we force solvents to be singleparticle
+	if (tinymolTypes->_getAll().contains("OW"))
+		tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
 }
-LIMAForcefield::~LIMAForcefield() {}
 
+LIMAForcefield::~LIMAForcefield() {}
 
 int LIMAForcefield::GetActiveLjParameterIndex(const std::string& query) {
 	return ljParameters->GetActiveIndex(query);
 }
+ForceField_NB LIMAForcefield::GetActiveLjParameters() {
+	ForceField_NB forcefieldNB{};
+	const std::vector<AtomType>& activeParameters = ljParameters->GetActiveParameters();//  *activeLJParamtypes;
+	if (activeParameters.size() > ForceField_NB::MAX_TYPES)
+		throw std::runtime_error("Too many atom types");
+	for (int i = 0; i < activeParameters.size(); i++)
+		forcefieldNB.particle_parameters[i] = activeParameters[i].parameters;
+	return forcefieldNB;
+}
 
+std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionParams() const {
+    std::vector<NonbondedInteractionParams> nonbondedInteractionParams(ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES, NonbondedInteractionParams{0,0});
 
-
-
-
-
-
-void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
-
-	GenericItpFile file{ path };
-
-	for (const auto& line : file.GetSection(TopologySection::includes)) {
-		std::string includedFile = line.substr(9); // Get the substring after '#include '
-		includedFile = includedFile.substr(1, includedFile.size() - 2); // Remove the quotation marks
-
-		// Temp to avoid duplicate types, need to find an elegant solution to this... Maybe only search for multiparams a couple elements ahead, untiill not more matches, instead of always searching entire file
-		if (includedFile.find("ffna") != std::string::npos) {
-			continue;
+	const std::vector<AtomType>& activeParameters = ljParameters->GetActiveParameters();
+	for (int i = 0; i < activeParameters.size(); i++) {
+		for (int j = 0; j < activeParameters.size(); j++) {
+			nonbondedInteractionParams[i * ForceField_NB::MAX_TYPES + j] = NonbondedInteractionParams{
+				(activeParameters[i].parameters.sigma + activeParameters[j].parameters.sigma) * 0.5f,
+                sqrt(activeParameters[i].parameters.epsilon * activeParameters[j].parameters.epsilon)
+                    //,activeParameters[i].charge* activeParameters[j].charge
+			};
 		}
+	}
+	return nonbondedInteractionParams;
+}
 
-		// Construct the new path
-		fs::path newPath = path.parent_path() / includedFile;
 
-		// Recursively call the function with the new path
-		LoadFileIntoForcefield(newPath);
-		continue;		
+int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
+	return tinymolTypes->GetActiveIndex(query);
+}
+
+ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
+	ForcefieldTinymol forcefieldTinymol{};
+	const std::vector<AtomType>& activeParameters = tinymolTypes->GetActiveParameters();
+	if (activeParameters.size() > ForcefieldTinymol::MAX_TYPES)
+		throw std::runtime_error("Too many atom types");
+	for (int i = 0; i < activeParameters.size(); i++) {
+		const AtomType& at = activeParameters[i];
+		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigma, at.parameters.epsilon, at.mass, at.charge };
+	}
+	return forcefieldTinymol;
+}
+
+void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file) 
+{
+	for (const auto& line : file.GetSection(TopologySection::includes)) {	
+		throw std::runtime_error("Includes not supported here");
 	}
 
 	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
 		std::istringstream iss(line);
-
 		AtomType atomtype{};
 		iss >> atomtype.name >> atomtype.atNum
-			>> atomtype.parameters.mass		// [g]
+			>> atomtype.mass				// [g]         // // we take the one from topology, not FF file
 			>> atomtype.charge				// [e]
 			>> atomtype.ptype
 			>> atomtype.parameters.sigma	// [nm]
@@ -337,11 +337,12 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 
 		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
 
-		atomtype.parameters.mass /= static_cast<float>(KILO);
+		atomtype.mass /= static_cast<float>(KILO);
 		atomtype.parameters.sigma *= NANO_TO_LIMA;
 		atomtype.parameters.epsilon *= KILO;
 
 		ljParameters->insert(atomtype);
+		tinymolTypes->insert(atomtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::bondtypes)) {
 		std::istringstream iss(line);
@@ -413,7 +414,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const fs::path& path) {
 }
 
 template<typename GenericBond>
-const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondParameters(const auto& query) {
+const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondParameters(const auto& query) {
 	if constexpr (std::is_same<GenericBond, SingleBond>::value) {
 		return singlebondParameters->get(query);
 	}
@@ -430,101 +431,18 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondPara
 		throw std::runtime_error("Unsupported bond type");
 	}
 }
+
+template<typename GenericBond>
+const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondParameters(const auto& query) {
+	const auto& parameters = _GetBondParameters<GenericBond>(query);
+	if (!parameters.empty())
+		return parameters;
+
+	throw std::runtime_error("Failed to find bond parameters");
+}
 template const std::vector<SingleBond::Parameters>& LIMAForcefield::GetBondParameters<SingleBond>(const std::array<std::string, SingleBond::nAtoms>&);
 template const std::vector<AngleUreyBradleyBond::Parameters>& LIMAForcefield::GetBondParameters<AngleUreyBradleyBond>(const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
 template const std::vector<DihedralBond::Parameters>& LIMAForcefield::GetBondParameters<DihedralBond>(const std::array<std::string, DihedralBond::nAtoms>&);
 template const std::vector<ImproperDihedralBond::Parameters>& LIMAForcefield::GetBondParameters<ImproperDihedralBond>(const std::array<std::string, ImproperDihedralBond::nAtoms>&);
 
-
-
-
-//// Used to determine if we can exlude the bond from simulations
-//template <typename BondParamType>
-//const bool BondHasZeroParameter(const auto& query) {
-//	if constexpr (std::is_same<BondParamType, SingleBond::Parameters>::value) {
-//		return singlebondParameters.get(query).params.kb == 0;
-//	}
-//	else if constexpr (std::is_same<BondParamType, AngleBond::Parameters>::value) {
-//		return anglebondParameters.get(query).params.k_theta == 0;
-//	}
-//	else if constexpr (std::is_same<BondParamType, DihedralBond::Parameters>::value) {
-//		return dihedralbondParameters.get(query).params.k_phi == 0;
-//	}
-//	else if constexpr (std::is_same<BondParamType, ImproperDihedralBond::Parameters>::value) {
-//		return improperdihedralbondParameters.get(query).params.k_psi == 0;
-//	}		
-//	throw std::runtime_error("Unsupported bond type");
-
-	//}
-
-
-
-
-ForcefieldManager::ForcefieldManager() {
-	activeLJParamtypes = std::make_shared<std::vector<AtomType>>();
-
-	activeLJParamtypes->emplace_back(AtomType{ "solvent", 0, ForceField_NB::ParticleParameters{water_mass * 1e-3f, water_sigma * NANO_TO_LIMA, water_epsilon}, 0.f, 'A' }); // TODO: Stop doing this, read from the proper file)
-
-	forcefields.emplace_back(std::make_unique<LIMAForcefield>(limaTestForcefield, activeLJParamtypes));
-}
-ForcefieldManager::~ForcefieldManager() {}
-
-
-
-
-
-LIMAForcefield& ForcefieldManager::GetForcefield(const fs::path& forcefieldPath) {	
-	for (auto& forcefield : forcefields) {
-		if (forcefield->path == forcefieldPath)
-			return *forcefield;
-	}
-
-	forcefields.emplace_back(std::make_unique<LIMAForcefield>(forcefieldPath, activeLJParamtypes ));
-	return *forcefields.back();
-}
-
-
-
-int ForcefieldManager::GetActiveLjParameterIndex(const std::optional<fs::path>& forcefieldName, const std::string& query) {
-	if (!forcefieldName)
-		return GetActiveLjParameterIndex(defaultForcefield, query);
-		//return GetActiveLjParameterIndex({ limaTestForcefield, defaultForcefield }, query);
-
-	
-	const int paramIndex = GetForcefield(forcefieldName.value()).GetActiveLjParameterIndex(query);
-	if (paramIndex != -1)
-		return paramIndex;
-	
-
-	
-
-	throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
-}
-ForceField_NB ForcefieldManager::GetActiveLjParameters() {
-	ForceField_NB forcefield{};
-	const auto& activeParameters = activeLJParamtypes;
-	for (int i = 0; i < activeParameters->size(); i++)
-		forcefield.particle_parameters[i] = (*activeParameters)[i].parameters;
-	return forcefield;
-}
-
-
-template<typename GenericBond>
-const std::vector<typename GenericBond::Parameters>& ForcefieldManager::GetBondParameters(const std::optional<fs::path>& forcefieldName, const auto& query) {
-	//if (!forcefieldName)
-	//	return GetBondParameters<GenericBond>(defaultForcefield, query);
-
-
-	const auto& parameters = GetForcefield(forcefieldName.value_or(defaultForcefield)).GetBondParameters<GenericBond>(query);
-	if (!parameters.empty())
-		return parameters;
-	
-
-
-	throw std::runtime_error("Failed to find bond parameters");
-}
-template const std::vector<SingleBond::Parameters>& ForcefieldManager::GetBondParameters<SingleBond>(const std::optional<fs::path>&, const std::array<std::string, SingleBond::nAtoms>&);
-template const std::vector<AngleUreyBradleyBond::Parameters>& ForcefieldManager::GetBondParameters<AngleUreyBradleyBond>(const std::optional<fs::path>&, const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
-template const std::vector<DihedralBond::Parameters>& ForcefieldManager::GetBondParameters<DihedralBond>(const std::optional<fs::path>&, const std::array<std::string, DihedralBond::nAtoms>&);
-template const std::vector<ImproperDihedralBond::Parameters>& ForcefieldManager::GetBondParameters<ImproperDihedralBond>(const std::optional<fs::path>&, const std::array<std::string, ImproperDihedralBond::nAtoms>&);
 

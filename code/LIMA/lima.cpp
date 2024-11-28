@@ -8,6 +8,11 @@
 #include "BuildMembrane.h"
 #include "mdrun.h"
 #include "GetForcefieldParams.h"
+#include "makebox.h"
+#include "insertmolecule.h"
+#include "insertmolecules.h"
+#include "editconf.h"
+#include "em.h"
 
 namespace fs = std::filesystem;
 
@@ -26,6 +31,11 @@ Programs:
     makesimparams       Generates default simulation parameters and writes them to a file.
     selftest            Runs internal self-tests to validate functionality.
     render              Render a molecule in a 3D viewer.
+    makebox             Makes an empty box (.gro & .top file)
+    insertmolecule      Inserts a molecule into a box
+    insertmolecules     Inserts a molecule into a box multiple times
+    editconf            Edit a .gro file.
+    em                  Energy minimize a simulation with default parameters.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -48,9 +58,14 @@ int main(int argc, char** argv)
 		if (program == "mdrun") { mdrun(argc, argv); }
 		else if (program == "buildmembrane") { buildMembrane(argc, argv); }
 		else if (program == "makesimparams") {SimParams params{}; params.dumpToFile();}
-		else if (program == "-help" || program =="-h"|| program == "help") { std::cout << helpText; }
+		else if (program == "-help" || program =="-h"|| program == "help" || program == "h") { std::cout << helpText; }
 		else if (program == "selftest") { SelfTest(); }
 		else if (program == "render") { render(argc, argv); }
+		else if (program == "makebox") { makebox(argc, argv); }
+		else if (program == "insertmolecule") { insertmolecule(argc, argv); }
+		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
+		else if (program == "editconf") { editconf(argc, argv); }
+		else if (program == "em") { em(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";
@@ -59,6 +74,9 @@ int main(int argc, char** argv)
 	catch (const std::runtime_error& ex) {
 		std::cerr << "LIMA encountered an exception:\n\t " << ex.what() << std::endl;
 		return 1;
+	}
+	catch (const std::exception& ex) {
+		std::cerr << "Caught exception: " << ex.what() << std::endl;
 	}
 	catch (...) {
 		std::cerr << "LIMA caught an unknown exception\n";

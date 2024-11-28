@@ -63,8 +63,8 @@ struct MdrunSetup {
 
     EnvMode envmode = ConsoleOnly;
     fs::path work_dir;
-    fs::path conf = work_dir / "molecule/conf.gro";
-    fs::path topol = work_dir / "molecule/topol.top";
+    fs::path conf = work_dir / "conf.gro";
+    fs::path topol = work_dir / "topol.top";
     fs::path simpar = work_dir / "sim_params.txt";
     fs::path conf_out = work_dir / "out.gro";
 
@@ -86,7 +86,7 @@ Options:
         Path to the simulation parameters file. Defaults to sim_params.txt.
 
     -display, -d
-		Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
+        Flag to enable the display, rendering the simulation and displaying information such as temperature, step and more.
 
     -structure_out [path]
         Output path for the resulting structure file. Defaults to out.gro.
@@ -100,7 +100,6 @@ Example:
 };
 
 int mdrun(int argc, char** argv) {
-    auto t0 = std::chrono::steady_clock::now();
     MdrunSetup setup(argc, argv);
     auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
 
@@ -108,10 +107,19 @@ int mdrun(int argc, char** argv) {
     GroFile grofile{ setup.conf };
     TopologyFile topfile{ setup.topol };
 
+    if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
+        const int newSize = std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z));
+        printf("Boxsize was not an integer, or was not cubic. Setting new boxsize to %d", newSize);
+        grofile.box_size = Float3(newSize, newSize, newSize);
+    }
+
     env->CreateSimulation(grofile, topfile, ip);
+
+    auto t0 = std::chrono::steady_clock::now();
+
     env->run();
 
-    env->WriteBoxCoordinatesToFile(grofile);
+    //env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
     // Calculate total time simulated (in nanoseconds)

@@ -4,15 +4,12 @@
 #include "Printer.h"
 #include "Utilities.h"
 #include "LimaTypes.cuh"
-//#include "EngineUtils.cuh"
-
+#include "Filehandling.h"
 
 #include <iostream>
 #include <string>
 #include <algorithm>
-
 #include <iostream>
-#include <optional>
 #include <functional>
 #include <filesystem>
 
@@ -20,7 +17,7 @@ namespace TestUtils {
 #ifndef __linux__
 	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
 #else
-	const fs::path simulations_dir = "/home/lima/Desktop/LIMA/Simulations/";
+	const fs::path simulations_dir = "/home/lima/Downloads/LIMA_data/";
 #endif
 
 	fs::path getMostSuitableGroFile(const fs::path& workdir) {
@@ -363,6 +360,28 @@ namespace TestUtils {
 		};
 		return "";
 	}
+
+
+	void CompareForces1To1(const fs::path& workDir, Environment& env, bool overwriteRef) {
+		const ParticleDataBuffer<Float3>* forcebuffer = env.getSimPtr()->forceBuffer.get();
+		std::vector<Float3> forces(forcebuffer->GetBufferAtStep(0), forcebuffer->GetBufferAtStep(0) + forcebuffer->n_particles_upperbound);
+
+		if (overwriteRef)
+			FileUtils::WriteVectorToBinaryFile(workDir/ "forces.bin", forces);
+
+		const std::vector<Float3> forcesRef = FileUtils::ReadBinaryFileIntoVector<Float3>(workDir / "forces.bin");
+
+		std::vector<float> errors(forces.size()); // Pre-allocate the vector
+		std::transform(forces.begin(), forces.end(), forcesRef.begin(), errors.begin(),
+			[](const Float3& a, const Float3& b) { return (a - b).len(); });
+
+
+
+		FileUtils::WriteVectorToBinaryFile(workDir / "errors.bin", errors);
+		std::string command = "python " + (FileUtils::GetLimaDir() / "dev/PyTools/pdf.py").string() + " \"" + (workDir / "errors.bin").string() + "\"";
+		std::system(command.c_str());
+	}
+
 } // namespace TestUtils
 
 

@@ -14,11 +14,14 @@
 #error These are mutually exclusive
 #endif
 
+//#define FORCE_NAN_CHECK
+const bool LIMA_PUSH = true;
+
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = true;
+const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
 //#define GENERATETRAINDATA
 
@@ -63,7 +66,6 @@ constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;
 const float rminToSigma = 1.f / powf(2.f, (1.f / 6.f));
-//const float rminToSigma = powf(2.f, (1.f / 6.f));//wrong!
 
 
 const float DEG_TO_RAD = PI / 180.f;
@@ -85,11 +87,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
-const int ATOMTYPE_SOLVENT = 0;
-constexpr float SOLVENT_MASS = 18.01528f * 1e-3f;	// kg/mol		// TODO: Remove this constant from the program!!
-
-const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
-const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
+constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -105,10 +103,10 @@ const int GRIDNODE_QUERY_RANGE = 2;
 
 // If we go larger, a single compound can stretch over 2 nm!
 //constexpr int MAX_COMPOUND_PARTICLES = IGNORE_HYDROGEN ? 48 : 64;
-constexpr int MAX_COMPOUND_PARTICLES = 64;
+constexpr int MAX_COMPOUND_PARTICLES = 32;
 const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
-const int NEIGHBORLIST_MAX_COMPOUNDS = 256+64+32;	// TODO: We need to work on getting this number down!
+const int NEIGHBORLIST_MAX_COMPOUNDS = 512;	// TODO: We need to work on getting this number down!
 //const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
@@ -116,20 +114,16 @@ const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
 
 // Related to compound bridges
 const int MAX_COMPOUNDBRIDGES = MAX_COMPOUNDS;	// Wtf is this param?
-const int MAX_PARTICLES_IN_BRIDGE = 32;	// Limited to 255 by getBridgelocalIdOfParticle, since id 255 is invalid
-const int MAX_SINGLEBONDS_IN_BRIDGE = 4;
+const int MAX_PARTICLES_IN_BRIDGE = 32+16;	// Limited to 255 by getBridgelocalIdOfParticle, since id 255 is invalid
+const int MAX_SINGLEBONDS_IN_BRIDGE = 8;
 const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
-const int MAX_DIHEDRALBONDS_IN_BRIDGE = 64 + 16;
+const int MAX_DIHEDRALBONDS_IN_BRIDGE = 64 + 16 + 16;
 const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;
 const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compounds, for example the loop between beta plates
 
 const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
 
-// Related to forcefield / constant memory
-const int MAX_ATOM_TYPES = 48;	// TODO: Make some checks we dont go above this in Active NB types
 
-constexpr float MAX_COMPOUND_RADIUS = 1.5f;	// was 1.5
-// -------------------------------------------------------------------------------------------------------------- //
 
 
 
@@ -140,16 +134,6 @@ constexpr float MAX_COMPOUND_RADIUS = 1.5f;	// was 1.5
 const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
 // -------------------------------------------------------------------------------------------------------------- //
 
-
-
-
-
-// ------------------------------------------- Temperature Parameters ------------------------------------------- //
-//const bool ENABLE_BOXTEMP	= true;		// Calc box-temp
-//const int STEPS_PER_THERMOSTAT = 200;			// Must be >= 3 why?
-//constexpr float MAX_THERMOSTAT_SCALER = 0.001f / static_cast<float>(STEPS_PER_THERMOSTAT);	// change vel by 0.1% over NSTEPS
-//constexpr bool APPLY_THERMOSTAT = false;		// Apply scalar based on temp
-// -------------------------------------------------------------------------------------------------------------- //
 
 // -------------------------------------------- Neighborlist Parameters ----------------------------------------- //
 const int STEPS_PER_NLIST_UPDATE = 5;

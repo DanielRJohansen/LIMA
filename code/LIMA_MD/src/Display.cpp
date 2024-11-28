@@ -5,7 +5,14 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <algorithm>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+#undef STB_IMAGE_IMPLEMENTATION
+
+
+#define NOMINMAX
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #elif defined(__linux__) || defined(__APPLE__)
@@ -25,12 +32,27 @@ void SetThreadName(const std::string& name) {
     pthread_setname_np(pthread_self(), name.c_str());
 #endif
 }
-
+void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
+    int width, height, channels;
+    unsigned char* pixels = stbi_load(iconPath, &width, &height, &channels, 4);
+    if (pixels) {
+        GLFWimage icon;
+        icon.width = width;
+        icon.height = height;
+        icon.pixels = pixels;
+        glfwSetWindowIcon(window, 1, &icon);
+        stbi_image_free(pixels);
+    }
+    else {
+        // Handle error if the image fails to load
+        fprintf(stderr, "Failed to load icon image\n");
+    }
+}
 
 
 void Display::Setup() {
-    printf("Hello");
     int success = initGLFW();
+    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
 
     SetThreadName("RenderThread");
 
@@ -111,7 +133,6 @@ void Display::Setup() {
         }
         });
 
-    logger.finishSection("Display initialized");
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -120,8 +141,7 @@ void Display::Setup() {
     }
 }
 
-Display::Display(EnvMode envmode) :
-    logger(LimaLogger::LogMode::compact, envmode, "display"),
+Display::Display() :
     camera(Float3{ 2.f })
 {
     renderThread = std::jthread([this] {
@@ -167,6 +187,12 @@ void Display::PrepareTask(Task& task) {
         else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
 			PrepareNewRenderTask(*taskPtr);
 		}
+		else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
+			PrepareNewRenderTask(*taskPtr);
+		}
+		else {
+			throw std::runtime_error("Unknown task type");
+		}
         }, task);
 }
 
@@ -207,8 +233,11 @@ void Display::Mainloop() {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
                 }
                 else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->grofile.atoms.size());
+                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->nAtoms);
 				}
+                else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
+                    _RenderAtomsFromCudaresource(taskPtr->boxSize, taskPtr->nAtoms);
+                }
                 }, currentRenderTask);
         }
     }
@@ -267,16 +296,12 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 }
 
 bool Display::initGLFW() {
-    
-    logger.print("Initializing display...\n");
-
     // Initialize the library
     if (!glfwInit()) {
         throw std::runtime_error("\nGLFW failed to initialize");
     }
 
     // Create a windowed mode window and its OpenGL context
-    logger.print("Loading window --->");
     window = glfwCreateWindow(screenWidth, screenHeight, window_title.c_str(), NULL, NULL);
     if (!window)
     {
@@ -286,7 +311,6 @@ bool Display::initGLFW() {
 #ifndef __linux__
     glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
 #endif
-    logger.print("done\n");
 
     // Make the window's context current
     glfwMakeContextCurrent(window);
@@ -298,7 +322,7 @@ Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}
 void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
     yaw += deltaYaw;
     pitch += deltaPitch;
-    dist += deltaDist;
+    dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
 }
 void Camera::Update(Float3 boxSize) {
     if (center != boxSize / 2.f)
@@ -338,7 +362,7 @@ int FPS::GetFps() const {
 }
 
 void Display::TestDisplay() {
-	Display display{ Full};
+	Display display{};
 	
 	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
 	Compound compound;
@@ -351,3 +375,8 @@ void Display::TestDisplay() {
 	params.total_particles_upperbound = 1;
 	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
 }
+
+//void Display::RenderGrofile(const GroFile& grofile) {
+//    Display d;
+//    d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
+//}

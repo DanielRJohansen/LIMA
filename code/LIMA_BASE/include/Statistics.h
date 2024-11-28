@@ -24,4 +24,6 @@ namespace Statistics {
     float MaxLen(const Float3* const data, size_t n);
 
     double Sumd(const float* const data, size_t size);
+
+	float ProbabilityDensityFunction(float x, float mean, float std_dev);
 }

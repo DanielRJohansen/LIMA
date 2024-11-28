@@ -21,6 +21,7 @@ namespace LIMA_UTILS {
 
     static void genericErrorCheck(const char* text) {
         cudaDeviceSynchronize();
+
         cudaError_t cuda_status = cudaGetLastError();
         if (cuda_status != cudaSuccess) {
             std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
@@ -28,6 +29,19 @@ namespace LIMA_UTILS {
             throw std::runtime_error("genericErrorCheck failed");
         }
     }
+
+    static void genericErrorCheckNoSync(const char* text) {
+        if constexpr (!LIMA_PUSH)
+            cudaDeviceSynchronize();
+
+        cudaError_t cuda_status = cudaGetLastError();
+        if (cuda_status != cudaSuccess) {
+            std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+            fprintf(stderr, text);
+            throw std::runtime_error("genericErrorCheck failed");
+        }
+    }
+
     static void genericErrorCheck(const cudaError_t cuda_status) {
         if (cuda_status != cudaSuccess) {
             std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
@@ -56,18 +70,7 @@ public:
     
     template <typename T>
     void printToFile(const std::string& filename, const std::vector<T>& data) const {
-
-#ifndef __linux__
-        FILE* file;
-
-        const std::string filepath = (log_dir + filename);
-        if (!fopen_s(&file, filepath.c_str(), "wb")) {
-            fwrite(data.data(), sizeof(T), data.size(), file);
-            fclose(file);
-        }
-#else
-    // TODO: Not currently avaible on linux
-#endif
+        // Does nothing
     }
 
 

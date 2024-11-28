@@ -1,10 +1,16 @@
 #include "MoleculeUtils.h"
 #include "BoundaryConditionPublic.h"
 #include "MoleculeGraph.h"
+
 #include <unordered_set>
+#include <numeric>
+#include <algorithm>
+#include <functional>
+#include <cfloat>
 
 Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
-	Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
+	Float3 bbMin{ FLT_MAX };
+	Float3 bbMax{ -FLT_MAX };
 
 	for (const auto& atom : grofile.atoms) {
 		bbMin = Float3::ElementwiseMin(bbMin, atom.position);
@@ -14,9 +20,19 @@ Float3 MoleculeUtils::GeometricCenter(const GroFile& grofile) {
 	return (bbMin + bbMax) / 2;
 }
 
+float MoleculeUtils::Radius(const GroFile& grofile, const Float3& center) {
+	auto maxDistSq = std::transform_reduce(
+		grofile.atoms.begin(), grofile.atoms.end(), 0.f,
+		[](float a, float b) { return std::max(a, b); },
+		[&center](const auto& atom) { return (atom.position - center).lenSquared(); }
+	);
 
-void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile) {
-	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::createGraph(topfile);
+	return std::sqrtf(maxDistSq);
+}
+
+
+void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype& moltype) {
+	LimaMoleculeGraph::MoleculeGraph graph = LimaMoleculeGraph::MoleculeGraph(moltype);
 
 	std::unordered_set<int> visited{};
 
@@ -38,7 +54,7 @@ void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, con
 }
 
 
-void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile& topfile, std::optional<Float3> targetCenter) {
+void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile::Moleculetype& topfile, std::optional<Float3> targetCenter) {
 	MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
 
 	const Float3 currentCenter = GeometricCenter(grofile);
@@ -47,4 +63,18 @@ void MoleculeUtils::CenterMolecule(GroFile& grofile, const TopologyFile& topfile
 	for (auto& particle : grofile.atoms) {
 		particle.position += diff;
 	}
+}
+
+void MoleculeUtils::RotateMolecule(GroFile& grofile, Float3 rotation) {
+	const Float3 center = GeometricCenter(grofile);
+
+	std::function<void(Float3&)> position_transform = [&](Float3& pos) {
+		pos -= center;
+		Float3::rodriguesRotatation(pos, Float3(0, 0, 1), rotation.z);
+		Float3::rodriguesRotatation(pos, Float3(0, 1, 0), rotation.y);
+		Float3::rodriguesRotatation(pos, Float3(1, 0, 0), rotation.x);
+		pos += center;
+	};
+
+	std::for_each(grofile.atoms.begin(), grofile.atoms.end(), [&](auto& atom) { position_transform(atom.position); });
 }

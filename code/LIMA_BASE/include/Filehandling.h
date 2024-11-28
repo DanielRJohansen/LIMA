@@ -6,10 +6,11 @@
 #include <string>
 
 #include <unordered_map>
+#include <unordered_set>
 #include <cassert>
 #include <cstdint>
 #include <limits>
-
+#include <optional>
 #include <filesystem>
 #include <fstream>
 
@@ -25,6 +26,8 @@ namespace FileUtils {
 	bool firstNonspaceCharIs(const std::string& str, char query);
 
 	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
+
+	std::string ExtractBetweenQuotemarks(const std::string& input);
 
 	// Return the top level LIMA dir
 	fs::path GetLimaDir();
@@ -72,6 +75,14 @@ namespace FileUtils {
 			throw std::runtime_error("Error writing to file: " + path.string());
 		}
 	}
+
+	//Steps through the file untill it finds a #endif, throws if it reaches EoF
+	void SkipIfdefBlock(std::ifstream& file);
+
+	// Returns true if the caller should move on to the next line
+	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines);
+
+	std::optional<std::string> ChechlineForDefine(const std::string& line);
 };
 
 

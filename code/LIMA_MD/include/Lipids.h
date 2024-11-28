@@ -17,7 +17,7 @@ namespace Lipids {
 
 	void OrientLipidhead(GroFile&, Float3 desiredOrientation = Float3{0,0,1});
 
-	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile&);
+	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile::Moleculetype&);
 
 	void _MakeLipids(bool writeToFile, bool displayEachLipidAndHalt);
 };

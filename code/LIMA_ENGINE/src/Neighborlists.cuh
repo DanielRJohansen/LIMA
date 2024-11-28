@@ -1,25 +1,19 @@
 #pragma once
 
 #include "Simulation.cuh"
-
-
-//#include "Neighborlists.cuh"
 #include "BoundaryCondition.cuh"
-#include "SimulationDevice.cuh"
-#include "EngineUtils.cuh"
 #include "KernelConstants.cuh"
+#include "SimulationDevice.cuh"
+#include "LimaPositionSystem.cuh"
 
 #include <chrono>
 
-
-class SimulationDevice;
 
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev);
 
 template <typename BoundaryCondition>
 __global__ void updateBlockgridKernel(SimulationDevice* sim_dev);
-
 
 
 namespace NeighborLists {
@@ -47,16 +41,21 @@ namespace NeighborLists {
 
 
 
+
+
+
+
+
 // Assumes the compound is active
 template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t step)
 {
-	const CompoundCoords& compound_coords = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim_dev.boxState->compoundcoordsCircularQueue, step, compound_id);
-	const NodeIndex compound_origo = compound_coords.origo;
+	const NodeIndex compoundOrigo = sim_dev.boxState->compoundOrigos[compound_id];
+	const Float3* const relPositions = &sim_dev.boxState->compoundsRelposLm[compound_id * MAX_COMPOUND_PARTICLES];
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = sim_dev.boxConfig.compounds[compound_id].interaction_boundary.key_particle_indices[i];
-		const Float3 abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_origo, compound_coords.rel_positions[particle_index]);
+		const Float3 abspos = compoundOrigo.toFloat3() + relPositions[particle_index] * LIMA_TO_NANO;
 		result[i] = abspos;
 	}
 }
@@ -141,7 +140,7 @@ const int threads_in_compoundnlist_kernel = 256;
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t step) {
 
-	const int n_compounds = sim_dev->boxConfig.boxparams.n_compounds;
+	const int n_compounds = sim_dev->boxparams.n_compounds;
 	const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool compound_active = compound_id < n_compounds;
 
@@ -162,14 +161,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 	for (int i = 0; i < n_bonded_compounds; i++) {
 		bonded_compound_ids[i] = sim_dev->boxConfig.compounds[compound_id].bonded_compound_ids[i];
 	}
-	// First add all the bonded compounds to the list
-	{
-		// First add the compounds that we are bonded to
-		for (int i = 0; i < n_bonded_compounds; i++) {
-			if (!nlist.addCompound(static_cast<uint16_t>(bonded_compound_ids[i]))) { sim_dev->signals->critical_error_encountered = true; }
-		}
-	}
-
 
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
@@ -200,8 +191,8 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
-		const CompoundCoords& compound_coords = *CompoundcoordsCircularQueueUtils::getCoordarrayRef(sim_dev->boxState->compoundcoordsCircularQueue, step, compound_id);
-		const NodeIndex compound_origo = compound_coords.origo;
+
+		const NodeIndex compound_origo = sim_dev->boxState->compoundOrigos[compound_id];
 
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
@@ -247,7 +238,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool block_active = block_id < BoxGrid::BlocksTotal(boxSize_device.blocksPerDim);
-	const int n_compounds = sim_dev->boxConfig.boxparams.n_compounds;
+	const int n_compounds = sim_dev->boxparams.n_compounds;
 
 	CompoundGridNode gridnode;
 

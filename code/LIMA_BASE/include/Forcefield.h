@@ -19,6 +19,7 @@ struct AtomType {
 	int atNum{};
 	ForceField_NB::ParticleParameters parameters{};
 	float charge{}; // [kilo C/mol]
+	float mass{}; // [kg/mol]
 	char ptype{};
 };
 
@@ -50,7 +51,9 @@ struct ImproperDihedralbondType : public ImproperDihedralBond {
 ///-----------------------------------------------------------------------------------///
 
 
-class LjParameterDatabase;
+
+
+class AtomtypeDatabase;
 
 template <typename GenericBondType>
 class ParameterDatabase;
@@ -58,51 +61,32 @@ class ParameterDatabase;
 class LIMAForcefield {
 public:
 	LIMAForcefield();
-	LIMAForcefield(const fs::path& path, std::shared_ptr<std::vector<AtomType>> activeLJParamtypes);
+	LIMAForcefield(const GenericItpFile& file);
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
-
 	int GetActiveLjParameterIndex(const std::string& query);
+	ForceField_NB GetActiveLjParameters();
+	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
+	int GetActiveTinymoltypeIndex(const std::string& query);
+	ForcefieldTinymol GetTinymolTypes();
+	
 
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 
-	const fs::path path;
-
 private:
-	std::unique_ptr<LjParameterDatabase> ljParameters;
+	std::unique_ptr<AtomtypeDatabase> ljParameters;
+	std::unique_ptr<AtomtypeDatabase> tinymolTypes;
 
 	std::unique_ptr<ParameterDatabase<SinglebondType>> singlebondParameters;
 	std::unique_ptr<ParameterDatabase<AnglebondType>> anglebondParameters;
 	std::unique_ptr<ParameterDatabase<DihedralbondType>> dihedralbondParameters;
 	std::unique_ptr<ParameterDatabase<ImproperDihedralbondType>> improperdihedralbondParameters;
 
-	void LoadFileIntoForcefield(const fs::path& path);
-};
-
-class ForcefieldManager {
-	std::shared_ptr<std::vector<AtomType>> activeLJParamtypes;
-
-	std::vector<std::unique_ptr<LIMAForcefield>> forcefields;
-
-	LIMAForcefield& GetForcefield(const fs::path& forcefieldName);	
-
-	const fs::path internalForcefieldsDir = FileUtils::GetLimaDir() / "resources/forcefields";
-
-	const fs::path limaTestForcefield = internalForcefieldsDir / "lima_custom_forcefield.itp";
-	const fs::path defaultForcefield = internalForcefieldsDir / "charmm27.ff/forcefield.itp";
-
-public:
-
-	ForcefieldManager();
-	~ForcefieldManager();
-
-	int GetActiveLjParameterIndex(const std::optional<fs::path>& forcefieldName, const std::string& query);
-	ForceField_NB GetActiveLjParameters();
-
 	template<typename GenericBond>
-	const std::vector<typename GenericBond::Parameters>& GetBondParameters(
-		const std::optional<fs::path>& forcefieldName, const auto& query);
+	const std::vector<typename GenericBond::Parameters>& _GetBondParameters(const auto& query);
+
+	void LoadFileIntoForcefield(const GenericItpFile& file);
 };

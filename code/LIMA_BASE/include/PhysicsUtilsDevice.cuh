@@ -11,7 +11,7 @@ namespace PhysicsUtilsDevice {
 	/// <param name="myCharge">[kilo C/mol]</param>	// TODO: These can probably be half for performance gains
 	/// <param name="otherCharge">[kilo C/mol]</param>
 	/// <param name="diff">self-other [nm]</param>
-	/// <returns>[1/l N/mol]</returns>
+	/// <returns>[J/mol/nm]</returns>
 	__device__ inline Float3 CalcCoulumbForce_optim(const float myCharge, const float otherCharge, const Float3& diff) 
 	{		
 		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)

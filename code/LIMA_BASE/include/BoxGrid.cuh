@@ -67,8 +67,7 @@ struct SolventBlock {
 
 namespace BoxGrid {
 	static const int blocksizeNM = 1;
-	static const int64_t blocksizeLM = NANO_TO_LIMA_i * blocksizeNM;
-	__device__ __host__ constexpr int NodesPerDim(int boxlenNM) { return boxlenNM / blocksizeNM; }
+	__device__ __host__ constexpr int NodesPerDim(int boxlenNM) { return boxlenNM; }
 	__device__ __host__ constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
 
 	__device__ __host__ inline int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {

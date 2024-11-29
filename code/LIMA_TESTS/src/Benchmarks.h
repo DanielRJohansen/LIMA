@@ -107,7 +107,7 @@ namespace Benchmarks {
 		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
 		SimParams ip{ work_dir / "sim_params.txt" };
 		ip.data_logging_interval = 20;
-		ip.dt = 50;
+		ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
 		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
@@ -144,7 +144,7 @@ namespace Benchmarks {
 		//}
 		SimParams ip{ workDir  / "sim_params.txt" };
 		ip.data_logging_interval = 50;
-		ip.dt = 100;
+		ip.dt = 1.f * FEMTO_TO_NANO;
 		ip.n_steps = 4000;
 		Environment env{ workDir , envmode };
 		env.CreateSimulation(grofile, topfile, ip);
@@ -180,7 +180,7 @@ namespace Benchmarks {
 		GroFile grofile(groPath);
 
 		SimParams params{ workDir / "../sim_params.txt" };
-		params.dt = 100.f; 		
+		params.dt = 1.f * FEMTO_TO_NANO; 		
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);

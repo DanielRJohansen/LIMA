@@ -6,7 +6,7 @@
 
 // Half the interaction between two distant set of particles
 struct ForceAndPotential {
-	Float3 forcePart;		// [1/C 1/lima N/mol] // force = myCharge * forcePart
+	Float3 forcePart;		// [1/C J/mol/nm] // force = myCharge * forcePart
 	float potentialPart;	// [1/C J/mol] // potential = myCharge * potential
 };
 

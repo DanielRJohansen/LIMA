@@ -21,7 +21,7 @@ namespace ForceCorrectness {
 		std::vector<float> energy_gradients;
 
 		for (auto temp : particle_temps) {
-			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [nm/ns]
 			int64_t steps_for_full_interaction = 3000000 / static_cast<int>(vel);
 
 			SimParams params{};
@@ -69,7 +69,7 @@ namespace ForceCorrectness {
 			// Give the carbon a velocity
 			{
 				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [lm/ls]
+				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [nm/ns]
 				const int64_t steps_for_full_interaction = 6000000 / static_cast<int>(vel);
 
 				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
@@ -85,7 +85,7 @@ namespace ForceCorrectness {
 			// Give the solvent a velocty
 			{	
 				const float solventMass = env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMols[0].tinymolTypeIndex].mass;
-				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [lm/ls]
+				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
 				env.getSimPtr()->box_host->tinyMols[0].vel_prev = Float3{ -1, 0, 0 } * vel;
 			}
 
@@ -121,7 +121,6 @@ namespace ForceCorrectness {
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
 		const float bondlenErrorNM = 0.02f; //(r-r0) [nm]
-		const float bondlenErrorLM = bondlenErrorNM * NANO_TO_LIMA;
 
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
@@ -135,13 +134,13 @@ namespace ForceCorrectness {
 		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
 		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + static_cast<int32_t>(bondlenErrorLM + bondparams.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x + Coord{ Float3{bondlenErrorNM + bondparams.b0, 0.f, 0.f} }.x;
 
 		// Now figure the expected force and potential
 		const double kB = bondparams.kb / 2.; // [J/(mol lm^2)]
 		const Float3 dir{ 1,0,0 };
-		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorLM;			// [1/lima N/mol)]
-		const float expectedPotential = kB * bondlenErrorLM * bondlenErrorLM;	// [J/mol]
+		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorNM;			// [J/mol/nm)]
+		const float expectedPotential = kB * bondlenErrorNM * bondlenErrorNM;	// [J/mol]
 
 
 		env.run();
@@ -179,10 +178,10 @@ namespace ForceCorrectness {
 
 		SimParams params{ simpar };
 		// Set time to 1000 [fs]
-		params.dt = 100.f;
+		params.dt = 1.f * FEMTO_TO_NANO;
 		params.n_steps = 1000; 
 		params.data_logging_interval = 1;
-		const float timeElapsed = params.dt * params.n_steps * LIMA_TO_FEMTO; // [fs]
+		const float timeElapsed = params.dt * params.n_steps * NANO_TO_FEMTO; // [fs]
 		float bond_len_error = 0.04f ; //(r-r0) [nm]
 			
 
@@ -197,7 +196,7 @@ namespace ForceCorrectness {
 
 		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - static_cast<int32_t>(bond_len_error * NANO_TO_LIMA + bondparams.b0);
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x; // TODO: Why do the change here and not in the grofile directly?
 
 
 
@@ -206,7 +205,7 @@ namespace ForceCorrectness {
 		const float massA = box_host.compounds[0].atomMasses[0];
 		const float massB = box_host.compounds[0].atomMasses[1];
 		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
-		const double kB = bondparams.kb / LIMA / LIMA; // [J/(mol m^2)]
+		const double kB = bondparams.kb / NANO / NANO; // [J/(mol m^2)]
 
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
 
@@ -462,7 +461,7 @@ namespace VerletintegrationTesting {
 		params.data_logging_interval = 1;
 		params.snf_select = HorizontalChargeField;
 
-		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * LIMA; // [s]
+		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * NANO; // [s]
 
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
@@ -471,7 +470,7 @@ namespace VerletintegrationTesting {
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]
-		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, electricFieldStrength };
+		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{1.f, 0.f, 0.f }, electricFieldStrength };
 
 
 
@@ -484,12 +483,18 @@ namespace VerletintegrationTesting {
 		env.run();
 
 
-
 		const float actualKineticEnergy = env.getAnalyzedPackage().kin_energy.back();
-
 		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
-
 		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
+
+		{
+			//const Float3 pos0 = env.getSimPtr()->traj_buffer->GetMostRecentCompoundparticleDatapoint(0, 0, 0);
+			//const Float3 pos1 = env.getSimPtr()->traj_buffer->GetMostRecentCompoundparticleDatapoint(0, 0, params.n_steps - 1);
+			//const float distanceTraveled = (pos1 - pos0).len();						// [nm]
+			//const float expectedDistance = expectedVelocity * (timeElapsed / NANO); // [nm]
+			//const float error = std::abs(distanceTraveled - expectedDistance) / expectedDistance;
+			//ASSERT(error < 0.01f, std::format("Expected distance: {:.2e} Actual distance: {:.2e}", expectedDistance, distanceTraveled));
+		}
 
 
 		return LimaUnittestResult{ true, "", envmode == Full};

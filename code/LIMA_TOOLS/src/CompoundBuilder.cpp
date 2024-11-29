@@ -199,13 +199,13 @@ void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelec
 		const Float3 pos1 = particles[bond.global_atom_indexes[0]].position;
 		const Float3 pos2 = particles[bond.global_atom_indexes[1]].position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
-		const float bondRelaxedDist = bond.params.b0 * LIMA_TO_NANO;
+		const float bondRelaxedDist = bond.params.b0;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0));
 		}
 		if (hyper_dist < bondRelaxedDist * 0.001)
-			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
+			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0));
 	}
 	for (const auto& bond : anglebonds)
 	{
@@ -213,7 +213,7 @@ void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelec
 		const Float3 pos2 = particles[bond.global_atom_indexes[1]].position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
 		if (hyper_dist < 0.001)
-			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0 * LIMA_TO_NANO));
+			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0));
 	}
 }
 
@@ -671,6 +671,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
+	//const std::vector<TinyMolFactory> tinyMols{};
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 	return std::make_unique<BoxImage>(

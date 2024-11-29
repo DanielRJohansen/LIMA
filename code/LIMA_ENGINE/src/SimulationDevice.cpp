@@ -39,7 +39,7 @@ void BoxConfig::FreeMembers() const {
 
 BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
 	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
-	compoundOrigos(compoundOrigos), compoundsRelposLm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
+	compoundOrigos(compoundOrigos), compoundsRelposNm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
 	std::vector<NodeIndex> compoundsOrigos;
@@ -47,7 +47,7 @@ BoxState* BoxState::Create(const Box& boxHost) {
 	for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
 		compoundsOrigos.push_back(compoundCoords.origo);
 		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].toFloat3());
+			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].ToRelpos());
 		}
 	}
 
@@ -94,7 +94,7 @@ void BoxState::FreeMembers() {
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	cudaFree(boxtemp.compoundOrigos);
-	cudaFree(boxtemp.compoundsRelposLm);
+	cudaFree(boxtemp.compoundsRelposNm);
 	cudaFree(boxtemp.tinyMols);
 	cudaFree(boxtemp.solventblockgrid_circularqueue);
 }

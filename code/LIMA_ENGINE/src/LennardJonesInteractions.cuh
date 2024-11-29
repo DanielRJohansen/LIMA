@@ -47,29 +47,28 @@ namespace LJ {
 	};
 
 
-	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float dist, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
+	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float distNM, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
 		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 		//if (force.len() > 1.f || pot > 1e+8) {
-		const float distNM = dist / NANO_TO_LIMA;
 		if (distNM < 0.05f) {
 			//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
 			////((*pos1 - *pos0) * force_scalar).print('f');
 			//pos0.print('0');
 			//pos1.print('1');
 			printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
-				calcLJOriginString[(int)originSelect], distNM, (diff * force_scalar).len(), sigma / NANO_TO_LIMA, epsilon, type1, type2);
+				calcLJOriginString[(int)originSelect], distNM, (diff * force_scalar).len(), sigma, epsilon, type1, type2);
 		}
 	}
 
 #ifdef ENABLE_LJ
 
 	/// <summary></summary>
-	/// <param name="diff">other minus self, attractive direction [lm]</param>
+	/// <param name="diff">other minus self, attractive direction [nm]</param>
 	/// <param name="dist_sq_reciprocal"></param>
 	/// <param name="potE">[J/mol]</param>
-	/// <param name="sigma">[lm]</param>
+	/// <param name="sigma">[nm]</param>
 	/// <param name="epsilon">[J/mol]</param>
-	/// <returns>Force [1/24 1/lima N/mol] on p0. Caller must multiply with scalar 24. to get correct result</returns>
+	/// <returns>Force [1/24 J/mol/nm] on p0. Caller must multiply with scalar 24. to get correct result</returns>
 	template<bool computePotE, bool emvariant>
 	__device__ inline Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
@@ -82,7 +81,7 @@ namespace LJ {
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 		const Float3 force = diff * force_scalar;
-		
+		printf("%f %f %f %f\n", diff.len(), force.len(), sigma, epsilon);
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
 			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);
@@ -108,7 +107,7 @@ namespace LJ {
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
 
-		return force;	// [1/24 1/lima N/mol]
+		return force;	// [1/24 J/mol/nm]
 	}
 #else 
 	__device__ static Float3 calcLJForceOptim(const Float3&, float, float& , float , float , CalcLJOrigin, int, int) {
@@ -155,8 +154,8 @@ namespace LJ {
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff * LIMA_TO_NANO);
-				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff * LIMA_TO_NANO);
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff);
+				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff);
 			}
 		}
 
@@ -178,9 +177,9 @@ namespace LJ {
 
 		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
 		const Float3 selfRelOffset{
-			fabsf(self_pos.x) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.x) : 0.f,
-			fabsf(self_pos.y) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.y) : 0.f,
-			fabsf(self_pos.z) > static_cast<float>(BoxGrid::blocksizeLM / 2) ? copysignf(static_cast<float>(BoxGrid::blocksizeLM), self_pos.z) : 0.f
+			fabsf(self_pos.x) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.x) : 0.f,
+			fabsf(self_pos.y) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.y) : 0.f,
+			fabsf(self_pos.z) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.z) : 0.f
 		};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
@@ -206,12 +205,12 @@ namespace LJ {
 			}
 
 			if constexpr (ENABLE_ES_SR) {
-				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeLM) * 1.5f)
+				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeNM) * 1.5f) // TODO: magic nr
 				{
                     //electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
+                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff);
 					if constexpr (computePotE && ENABLE_POTE)
-						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff * LIMA_TO_NANO);
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
 				}
 			}
 		}

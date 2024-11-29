@@ -16,13 +16,13 @@ template <bool energyMinimize>
 __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel) {
 	// Calculates bond force on both particles					
 	// Calculates forces as J/mol*M								
-	const Float3 difference = pos_a - pos_b;						// [lm]
-	const float error = difference.len() - bondParams.b0;				// [lm]
+	const Float3 difference = pos_a - pos_b;						// [nm]
+	const float error = difference.len() - bondParams.b0;				// [nm]
 
 	if constexpr (ENABLE_POTE) {
 		potE = 0.5f * bondParams.kb * (error * error);				// [J/mol]
 	}
-	float force_scalar = -bondParams.kb * error;				// [J/(mol*lm)] = [1/lima N/mol]
+	float force_scalar = -bondParams.kb * error;				// [J/mol/nm]
 
 	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
 	// Note that we still get the correct value for potE
@@ -33,8 +33,8 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	}
 
 	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
-	results[0] = dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
-	results[1] = -dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
+	results[0] = dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
+	results[1] = -dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
 
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
@@ -75,8 +75,8 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 
 	// UreyBradley potential
 	{
-	//	const Float3 difference = pos_left - pos_right;						// [lm]
-	//	const float error = difference.len() - angletype.params.ub0;				// [lm]
+	//	const Float3 difference = pos_left - pos_right;						// [nm]
+	//	const float error = difference.len() - angletype.params.ub0;				// [nm]
 
 	//	if constexpr (ENABLE_POTE) {
 	//		potE = 0.5f * angletype.params.kUB * (error * error);				// [J/mol]
@@ -134,8 +134,7 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 	if constexpr (ENABLE_POTE) {
 		potE = dihedral.params.k_phi * (1. + cos(dihedral.params.n * torsion - dihedral.params.phi_0));
 	}
-	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion
-		- dihedral.params.phi_0)) / NANO_TO_LIMA;
+	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion - dihedral.params.phi_0));
 
 	B = B * rBinv;
 	Float3 f1, f2, f3;
@@ -226,7 +225,7 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 	if constexpr (ENABLE_POTE) {
 		potE = 0.5f * improper.params.k_psi * (error * error);
 	}
-	const float torque = improper.params.k_psi * (angle - improper.params.psi_0) * LIMA_TO_NANO;
+	const float torque = improper.params.k_psi * (angle - improper.params.psi_0);
 
 	// This is the simple way, always right-ish
 	results[3] = plane2_normal * (torque / l.distToLine(j, k));
@@ -390,10 +389,10 @@ __device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedra
 		if (bond_index < n_dihedrals) {
 			db = &dihedrals[bond_index];
 			LimaForcecalc::calcDihedralbondForces(
-				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[0]],
+				positions[db->atom_indexes[1]],
+				positions[db->atom_indexes[2]],
+				positions[db->atom_indexes[3]],
 				*db,
 				forces,
 				potential
@@ -445,10 +444,10 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 			db = &impropers[bond_index];
 
 			LimaForcecalc::calcImproperdihedralbondForces(
-				positions[db->atom_indexes[0]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[1]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[2]] / NANO_TO_LIMA,
-				positions[db->atom_indexes[3]] / NANO_TO_LIMA,
+				positions[db->atom_indexes[0]],
+				positions[db->atom_indexes[1]],
+				positions[db->atom_indexes[2]],
+				positions[db->atom_indexes[3]],
 				*db,
 				forces,
 				potential

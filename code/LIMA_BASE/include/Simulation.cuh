@@ -23,7 +23,7 @@ struct SimParams {
 
 	// Main params
 	uint64_t n_steps = 1000;
-	float dt = 200.f;									// [ls]
+	float dt = 2.f * FEMTO_TO_NANO;				// [ns]
 	bool em_variant = false;
 	float em_force_tolerance = 1000; // [kJ/mol/nm]
 
@@ -180,7 +180,7 @@ public:
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;// [nm]
 	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;	// [J/mol]
 	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
-	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [1/l N/mol] // For debug only
+	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [J/mol/nm] // For debug only
 
 	std::vector<float> temperature_buffer;	
 	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system

@@ -20,6 +20,7 @@ struct Int3 {
 	__host__ __device__ inline Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
 	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
 	__host__ __device__ inline Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
+	__host__ __device__ constexpr Int3 operator - () const { return Int3(-x, -y, -z); }
 
 	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ void operator /= (const int a) { x /= a; y /= a; z /= a; }
@@ -29,7 +30,7 @@ struct Int3 {
 
 	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
-	__host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
+	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 
 	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
@@ -235,8 +236,8 @@ struct Float3 {
 };
 
 struct ForceEnergy {
-	Float3 force;	// [1/lima N/mol]
-	float potE;		// [GN/mol]
+	Float3 force;	// [J/mol/nm]
+	float potE;		// [J/mol]
 
 	__host__ __device__ inline ForceEnergy operator+ (const ForceEnergy& a) const {
 		return ForceEnergy{ force + a.force, potE + a.potE };
@@ -271,19 +272,82 @@ struct Double3 {
 	double x = 0, y = 0, z = 0;
 };
 
-// LIMA Coordinate3
+struct NodeIndex : public Int3 {
+	__host__ __device__ NodeIndex() : Int3() {}
+	__host__ __device__ NodeIndex(const int& x, const int& y, const int& z) : Int3(x, y, z) {}
+	__host__ __device__ NodeIndex(const Int3& a) : Int3(a) {}
+
+	//__host__ __device__ int32_t dot(const NodeIndex& a) const { return (x * a.x + y * a.y + z * a.z); }
+
+	// This function does NOT return anything position related, only distance related
+	__host__ __device__ Float3 toFloat3() const {
+		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+	}
+
+	__device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+
+	__device__ int sum() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+
+	__device__ __host__ int largestMagnitudeElement() const {
+		const Int3 m = this->abs();
+		return std::max(
+			std::max(m.x, m.y),
+			m.z
+		);
+	}
+
+	__device__ __host__ bool isInBox(int nodes_per_dim) const {
+		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
+			return false;
+		return true;
+	}
+};
+
+
+
+// Very fine-grained integer position, counted in [lm]
 struct Coord {
+
+	static const int nanoToLima_i = 100'000'000;
+	static constexpr float nanoToLima_f = static_cast<float>(nanoToLima_i);
+	static constexpr float limaToNano_f = static_cast<float>(1. / static_cast<double>(nanoToLima_f));
+
 	int32_t x = 0, y = 0, z = 0;	// [lm]
 
 	__device__ __host__ Coord() {};
-	__device__ __host__ explicit Coord(Float3 pos_abs) {
-		x = static_cast<int32_t>(pos_abs.x);
-		y = static_cast<int32_t>(pos_abs.y);
-		z = static_cast<int32_t>(pos_abs.z);
-	}
-
 	__host__ __device__ Coord(int32_t a) : x(a), y(a), z(a) {}
 	__host__ __device__ Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
+
+	__device__ __host__ explicit Coord(Float3 pos) :
+		x(static_cast<int32_t>(pos.x * nanoToLima_f)),
+		y(static_cast<int32_t>(pos.y * nanoToLima_f)),
+		z(static_cast<int32_t>(pos.z * nanoToLima_f))
+		{
+		if constexpr (!LIMA_PUSH) {
+			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
+				printf("pos %d %d %d\n", pos.x, pos.y, pos.z);
+				//				throw std::runtime_error("NodeIndex out of bounds");
+			}
+		}
+	}
+
+	__device__ __host__ explicit Coord(const NodeIndex& nodeIndex) 
+		: x(nodeIndex.x*nanoToLima_i), y(nodeIndex.y* nanoToLima_i), z(nodeIndex.z* nanoToLima_i) {
+		if constexpr (!LIMA_PUSH) {
+			if (std::abs(nodeIndex.x) > 1000 || std::abs(nodeIndex.y) > 1000 || std::abs(nodeIndex.z) > 1000) {// TODO magic nr,relates to intmax, fix!
+				printf("NodeIndex %d %d %d\n", nodeIndex.x, nodeIndex.y, nodeIndex.z);
+//				throw std::runtime_error("NodeIndex out of bounds");
+			}
+		}
+	}
+
+	__device__ __host__ Float3 ToRelpos() const {
+		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } * limaToNano_f;
+	}
+
+
+
+
 
 	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
 	__host__ __device__ Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
@@ -325,40 +389,9 @@ struct Coord {
 		}
 	}
 
-	__host__ __device__ Float3 toFloat3() const { 
-		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
-	}
-};
-
-struct NodeIndex : public Int3 {
-	__host__ __device__ NodeIndex() : Int3() {}
-	__host__ __device__ NodeIndex(const int& x, const int& y, const int& z) : Int3(x,y,z) {}
-	__host__ __device__ NodeIndex(const Int3& a) : Int3(a) {}
-
-	//__host__ __device__ int32_t dot(const NodeIndex& a) const { return (x * a.x + y * a.y + z * a.z); }
-
-	// This function does NOT return anything position related, only distance related
-	__host__ __device__ Float3 toFloat3() const {
-		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
-	}
-
-	__device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
-
-	__device__ int sum() const { return std::abs(x) + std::abs(y) + std::abs(z); }
-
-	__host__ int largestMagnitudeElement() const {
-		const Int3 m = this->abs();
-		return std::max(
-			std::max(m.x, m.y),
-			m.z
-		);
-	}
-
-	__device__ __host__ bool isInBox(int nodes_per_dim) const {
-		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
-			return false;
-		return true;
-	}
+	//__host__ __device__ Float3 toFloat3() const { 
+	//	return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
+	//}
 };
 
 

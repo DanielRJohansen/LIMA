@@ -37,13 +37,11 @@ namespace LIMAPOSITIONSYSTEM {
 	/// <summary>
 	/// Use with care, will overflow if posLM is > 20 nm. Does NOT apply boundary condition
 	/// </summary>
-	/// <param name="posLM"></param>
-	/// <returns></returns>
-	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posLM) {
+	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posNM) {
 		NodeIndex nodeindex{
-			static_cast<int>(round((posLM.x) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(round((posLM.y) / static_cast<float>(BoxGrid::blocksizeLM))),
-			static_cast<int>(round((posLM.z) / static_cast<float>(BoxGrid::blocksizeLM)))
+			static_cast<int>(round(posNM.x)),
+			static_cast<int>(round(posNM.y)),
+			static_cast<int>(round(posNM.z))
 		};
 
 		return nodeindex;
@@ -59,15 +57,6 @@ namespace LIMAPOSITIONSYSTEM {
 		return nodeindex;
 	}
 
-	/// <summary>
-	/// Converts a nodeindex to a relative position in [lm]. ONLY safe to call with relatively small node indexes. 
-	/// If the index has proponents larger than what a coord can represent, then :((( 
-	/// </summary>
-	/// <returns>Coord in [lm]</returns>
-	__device__ __host__ static Coord nodeIndexToCoord(const NodeIndex& node_index) { 
-		return Coord{ node_index.x, node_index.y, node_index.z } * static_cast<int32_t>(BoxGrid::blocksizeLM);	// TODO: Unsafe
-	}
-	
 
 	// Returns absolute position of nodeindex [nm]
 	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
@@ -96,16 +85,7 @@ namespace LIMAPOSITIONSYSTEM {
 			//+ "% f % f % f Hyperpos % f % f % f node % f % f % f");
 		}
 
-		return Coord{ 
-			static_cast<int32_t>(relpos.x * NANO_TO_LIMA), 
-			static_cast<int32_t>(relpos.y * NANO_TO_LIMA), 
-			static_cast<int32_t>(relpos.z * NANO_TO_LIMA) 
-		};
-	}
-
-	// relpos in LM
-	__device__ __host__ static Float3 relposToAbsolutePosition(const Coord& relpos) {
-		return relpos.toFloat3() / NANO_TO_LIMA;
+		return Coord{ relpos };
 	}
 
 	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, float boxlen_nm, BoundaryConditionSelect bc) {
@@ -117,7 +97,7 @@ namespace LIMAPOSITIONSYSTEM {
 	}
 
 	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Coord& coord) {
-		return nodeIndexToAbsolutePosition(nodeindex) + relposToAbsolutePosition(coord);
+		return nodeindex.toFloat3() + coord.ToRelpos();
 	}
 	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Float3& relposNM) {
 		return nodeIndexToAbsolutePosition(nodeindex) + relposNM;
@@ -139,11 +119,6 @@ namespace LIMAPOSITIONSYSTEM {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
 			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);
 
-		}
-		if (compoundcoords.rel_positions[key_particle_index].maxElement() > static_cast<int32_t>(BoxGrid::blocksizeLM)) {
-			compoundcoords.rel_positions[key_particle_index].print('k');
-			//printf("%d\n", compoundcoords.rel_positions[key_particle_index].maxElement());
-			throw std::runtime_error("Failed to place compound correctly.");
 		}
 		return compoundcoords;
 	}
@@ -167,20 +142,17 @@ namespace LIMAPOSITIONSYSTEM {
 
 	// The following two functions MUST ALWAYS be used together
 	// Shift refers to the wanted difference in the relative positions, thus origo must move -shift.
-	// Keep in mind that origo is in nm and rel_pos are in lm
 	// ONLY CALL FROM THREAD 0
 	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index) {
-		//const Coord shift_nm = coords.rel_positions[keyparticle_index] / static_cast<int32_t>(NANO_TO_LIMA);	// OPTIM. If LIMA wasn't 100 femto, but rather a power of 2, we could do this much better!
-		//const NodeIndex shift_node = coordToNodeIndex(coords.rel_positions[keyparticle_index]);
 
 		const NodeIndex shift = NodeIndex{
-			coords.rel_positions[keyparticle_index].x / (static_cast<int>(BoxGrid::blocksizeLM) / 2),	// /2 so we switch to new index once we are halfway there
-			coords.rel_positions[keyparticle_index].y / (static_cast<int>(BoxGrid::blocksizeLM) / 2),
-			coords.rel_positions[keyparticle_index].z / (static_cast<int>(BoxGrid::blocksizeLM) / 2)
+			coords.rel_positions[keyparticle_index].x / (Coord::nanoToLima_i / 2),	// /2 so we switch to new index once we are halfway there
+			coords.rel_positions[keyparticle_index].y / (Coord::nanoToLima_i / 2),
+			coords.rel_positions[keyparticle_index].z / (Coord::nanoToLima_i / 2)
 		};
 		EngineUtilsWarnings::verifyCompoundOrigoshiftDuringIntegrationIsValid(shift, coords.rel_positions[keyparticle_index]);
 		coords.origo += shift;
-		return -nodeIndexToCoord(shift);
+		return -Coord{ shift };		
 	}
 
 	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
@@ -207,11 +179,8 @@ namespace LIMAPOSITIONSYSTEM {
 	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
 	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
 	__device__ static NodeIndex getTransferDirection(const Coord& relpos) {
-		const int32_t blocklen_half = BoxGrid::blocksizeLM / 2;
-
 		EngineUtilsWarnings::verifyValidRelpos(relpos);
-
-		return getOnehotDirection(relpos, blocklen_half);
+		return getOnehotDirection(relpos, Coord::nanoToLima_i / 2);
 	}
 
 	template <typename BoundaryCondition>
@@ -233,19 +202,6 @@ namespace LIMAPOSITIONSYSTEM {
 	//}
 
 
-	__device__ inline void LoadCompoundPositionAsLm(const CompoundCoords* const coordsGlobal, Float3& origoOut, Float3* relposOut, int nActiveParticles) {
-		if (threadIdx.x == 0) {
-			origoOut = nodeIndexToAbsolutePosition(coordsGlobal->origo);
-		}
-		relposOut[threadIdx.x] = coordsGlobal->rel_positions[threadIdx.x].toFloat3();
-	}
-
-	__device__ inline Float3 LoadRelposLmAndOrigo(const CompoundCoords* const coordsGlobal, Float3& origoOut) {
-		if (threadIdx.x == 0) {
-			origoOut = nodeIndexToAbsolutePosition(coordsGlobal->origo);
-		}
-		return coordsGlobal->rel_positions[threadIdx.x].toFloat3();
-	}
 
 };
 
@@ -254,10 +210,6 @@ namespace LIMAPOSITIONSYSTEM {
 // This workaround is to have these functions as static class fucntinos instead of namespace, which avoid the issue somehow. fuck its annoying tho
 class LIMAPOSITIONSYSTEM_HACK{
 public:
-	__device__ static void getRelativePositions(const Coord* coords, Float3* positions, const unsigned int n_elements) {
-		if (threadIdx.x < n_elements)
-			positions[threadIdx.x] = coords[threadIdx.x].toFloat3();
-	}
 
 	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
 		coords.rel_positions[threadIdx.x] += shift_lm;
@@ -271,7 +223,7 @@ public:
 
 
 	// This function is only used in bridge, and can be made alot smarter with that context. TODO
-	// Calculate the shift in [lm] for all relpos belonging to right, so they will share origo with left
+	// Calculate the shift in [nm] for all relpos belonging to right, so they will share origo with left
 	template <typename BoundaryCondition>
 	__device__ static Coord getRelativeShiftBetweenCoordarrays(const NodeIndex* const compoundOrigosBuffer, int64_t step, int compound_index_left, int compound_index_right) {
 		const NodeIndex& nodeindex_left = compoundOrigosBuffer[compound_index_left]; //   CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
@@ -283,18 +235,13 @@ public:
 		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
 
 		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
-		//return (coord_origo_left - hyperorigo_right) * static_cast<uint32_t>(NANO_TO_LIMA);	// This fucks up when the diff is > ~20
-		return LIMAPOSITIONSYSTEM::nodeIndexToCoord(nodeshift_right_to_left * -1);
+		return Coord{ -nodeshift_right_to_left };
 	}
 
-		// Calculate the necessary shift in LM of all elements of FROM, assuming the origo has been shifted to TO
-	/*__device__ static Coord getRelShiftFromOrigoShift(const Coord& origo_from, const Coord& origo_to) {
-		return (origo_from - origo_to) * static_cast<int32_t>(NANO_TO_LIMA);
-	}*/
-	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) {
+	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) { // Really dont like this function, also the result is almost always convert to FLoat3, so can do some optimizastion here TODO TODO TODO IMPORTANT
 		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
 
 		const NodeIndex origo_shift = from - to;
-		return LIMAPOSITIONSYSTEM::nodeIndexToCoord(origo_shift);
+		return Coord{ origo_shift };
 	}
 };

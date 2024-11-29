@@ -25,8 +25,8 @@
 
 struct SingleBond {
 	struct Parameters {
-		float b0 = 0.f;	// [lm]
-		float kb = 0.f;	// [J/(mol*lm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+		float b0 = 0.f;	// [nm]
+		float kb = 0.f;	// [J/(mol*nm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
 
 		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return kb == 0.f; }
@@ -45,8 +45,8 @@ struct AngleUreyBradleyBond {
 	struct Parameters {
 		float theta0 = 0.f;	// [rad]
 		float kTheta = 0.f;	// [J/mol/rad^2]
-		float ub0 = 0.f;	// [lm]
-		float kUB = 0.f;	// [J/mol/lm^2]
+		float ub0 = 0.f;	// [nm]
+		float kUB = 0.f;	// [J/mol/nm^2]
 
 		bool operator==(const Parameters&) const = default;
 		bool HasZeroParam() const { return kTheta == 0.f; }
@@ -111,7 +111,7 @@ struct CompoundCoords {
 	}
 	
 	NodeIndex origo{};								// [nm]
-	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [lm]
+	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [nm]
 };
 
 
@@ -230,8 +230,6 @@ struct Compound : public CompoundCompact {
 
 	float atomMasses[MAX_COMPOUND_PARTICLES];	// [kg/mol]
 
-	//bool is_in_bridge[MAX_COMPOUND_PARTICLES];	// TODO: implement this?
-
 	int absoluteIndexOfFirstParticle = 0;
 
 	struct BondgroupRefManager {
@@ -298,8 +296,8 @@ struct ForceField_NB {
 
 	struct ParticleParameters {	//Nonbonded
 		//float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;		// [lm]
-		float epsilon = -1;		// [J/mol]
+		float sigma = -1;		// [nm]
+		float epsilon = -1;		// [J/mol/nm]
 	};
 
 	ParticleParameters particle_parameters[MAX_TYPES];
@@ -310,8 +308,8 @@ struct ForcefieldTinymol {
 
 	// Can make mass and epsilon half
 	struct TinyMolType {
-		float sigma = -1;		// [lm]
-		float epsilon = -1;		// [J/mol]
+		float sigma = -1;		// [nm]
+		float epsilon = -1;		// [J/mol/nm]
 		float mass = -1;		// [kg/mol]
 		float charge = -1;		// [kC/mol]
 	};
@@ -321,7 +319,7 @@ struct ForcefieldTinymol {
 
 
 class UniformElectricField {
-	Float3 field;	// [mV/limameter]
+	Float3 field;	// [mV/nm]
 
 	public:
 		UniformElectricField() {}
@@ -329,7 +327,7 @@ class UniformElectricField {
 		/// <param name="direction"></param>
 		/// <param name="magnitude">[V/nm]</param>
 		__host__ UniformElectricField(Float3 direction, float magnitude) 
-			: field(direction.norm() * magnitude * KILO * LIMA_TO_NANO) {
+			: field(direction.norm() * magnitude * KILO) {
 			assert(direction.len() != 0.f);
 		}
 	

@@ -338,7 +338,6 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
 
 		atomtype.mass /= static_cast<float>(KILO);
-		atomtype.parameters.sigma *= NANO_TO_LIMA;
 		atomtype.parameters.epsilon *= KILO;
 
 		ljParameters->insert(atomtype);
@@ -352,8 +351,8 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 			>> bondtype.params.b0	// [nm]
 			>> bondtype.params.kb;	// [kJ/mol/nm^2]
 
-		bondtype.params.b0 *= NANO_TO_LIMA;
-		bondtype.params.kb *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
+
+		bondtype.params.kb *= KILO; // Convert to J/mol
 
 		singlebondParameters->insert(bondtype);
 	}
@@ -371,8 +370,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 
 		anglebondtype.params.theta0 *= DEG_TO_RAD;
 		anglebondtype.params.kTheta *= KILO; // Convert to J/mol/rad^2
-		anglebondtype.params.ub0 *= NANO_TO_LIMA;
-		anglebondtype.params.kUB *= 1. / NANO_TO_LIMA / NANO_TO_LIMA * KILO; // Convert to J/mol
+		anglebondtype.params.kUB *= KILO; // Convert to J/mol
 
 		anglebondParameters->insert(anglebondtype);
 	}
@@ -390,7 +388,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 			>> n;
 
 		dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
-		dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol// Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
+		dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol/nm Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
 		dihedralbondtype.params.n = n;
 
 		dihedralbondParameters->insert(dihedralbondtype);

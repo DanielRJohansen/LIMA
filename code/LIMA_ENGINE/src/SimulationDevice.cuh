@@ -29,7 +29,7 @@ struct BoxState {
 
 	CompoundInterimState* const compoundsInterimState;
 	NodeIndex* const compoundOrigos;
-	Float3* const compoundsRelposLm;
+	Float3* const compoundsRelposNm;
 
 	TinyMolState* const tinyMols;
 	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
@@ -67,7 +67,7 @@ struct DatabuffersDeviceController {
 	float* potE_buffer = nullptr;				// For total energy summation
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
-	Float3* forceBuffer = nullptr;				// [1/l N/mol] // For debug only
+	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
 	const int total_particles_upperbound;
 };
 
@@ -108,7 +108,7 @@ struct SimulationDevice {
 	float* chargeGridChargeSums = nullptr;
 
 	// potE should be divided equally between all the particles in the node
-	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [1/l N/mol], float potE [J/mol]}
+	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [J/mol/nm], float potE [J/mol]}
 
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;

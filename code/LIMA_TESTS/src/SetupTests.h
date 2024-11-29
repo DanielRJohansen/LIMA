@@ -10,7 +10,7 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 
 	SimParams simparams;
 	simparams.n_steps = 100;
-	simparams.dt = 100.f;
+	simparams.dt = 1.f * FEMTO_TO_NANO;
 	simparams.data_logging_interval = 1;
 
 	env.CreateSimulation(GroFile{workDir / "molecule/conf.gro"}, TopologyFile{workDir / "molecule/topol.top"}, simparams);

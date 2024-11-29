@@ -364,9 +364,9 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		AnglebondType anglebondtype{};
 		iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
 			>> anglebondtype.params.theta0		// [degrees]
-			>> anglebondtype.params.kTheta	// [kJ/mol/rad^2]
-			>> anglebondtype.params.ub0
-			>> anglebondtype.params.kUB;
+			>> anglebondtype.params.kTheta		// [kJ/mol/rad^2]
+			>> anglebondtype.params.ub0			// [nm]
+			>> anglebondtype.params.kUB;		// [kJ/mol/nm^2]
 
 		anglebondtype.params.theta0 *= DEG_TO_RAD;
 		anglebondtype.params.kTheta *= KILO; // Convert to J/mol/rad^2

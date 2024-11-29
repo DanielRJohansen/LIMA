@@ -74,30 +74,36 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 	results[1] = (results[0] + results[2]) * -1.f;
 
 	// UreyBradley potential
-	{
-	//	const Float3 difference = pos_left - pos_right;						// [nm]
-	//	const float error = difference.len() - angletype.params.ub0;				// [nm]
+	if constexpr (ENABLE_UREYBRADLEY) {
+		const Float3 difference = pos_left - pos_right;						// [nm]
+		const float error = difference.len() - angletype.params.ub0;		// [nm]
 
-	//	if constexpr (ENABLE_POTE) {
-	//		potE = 0.5f * angletype.params.kUB * (error * error);				// [J/mol]
-	//	}
-	//	float force_scalar = -angletype.params.kUB * error;				// [J/(mol*lm)] = [1/lima N/mol]
+		if constexpr (ENABLE_POTE) {
+			potE += 0.5f * angletype.params.kUB * (error * error);			// [J/mol]
+		}
+		float force_scalar = -angletype.params.kUB * error;					// [J/mol/nm] 
 
-	//	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
-	//	// Note that we still get the correct value for potE
-	///*	if constexpr (energyMinimize) {
-	//		if (error > bondParams.b0 * 2.f) {
-	//			force_scalar = -bondParams.kb * bondParams.b0 * 2.f;
-	//		}
-	//	}*/
+		// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
+		// Note that we still get the correct value for potE
+	/*	if constexpr (energyMinimize) {
+			if (error > bondParams.b0 * 2.f) {
+				force_scalar = -bondParams.kb * bondParams.b0 * 2.f;
+			}
+		}*/
 
-	//	//printf("UB: %f Angleforce %f\n", force_scalar, results[0].len());
+		//printf("UB: %f Angleforce %f\n", force_scalar, results[0].len());
 
-	//	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
-	//	//results[0] += dir * force_scalar;								// [kg * lm / (mol*ls^2)] = [1/lima N]
-	//	//results[2] += -dir * force_scalar;
-	//	results[0] += -inward_force_direction1 * force_scalar;
-	//	results[2] += -inward_force_direction2 * force_scalar;
+		const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
+
+		//printf("%f %f %f %f %f\n", force_scalar, error, angletype.params.kUB, angletype.params.ub0, results[0].len());
+
+
+		results[0] += dir * force_scalar;								// [J/mol/nm] = [1/lima N]
+		results[2] += -dir * force_scalar;
+
+
+		//results[0] += -inward_force_direction1 * force_scalar;
+		//results[2] += -inward_force_direction2 * force_scalar;
 	}
 #if defined LIMASAFEMODE
 	if (results[0].len() > 0.1f) {

@@ -35,6 +35,7 @@ int main() {
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
+		//UreyBradleyForceAndPotentialSanityCheck(envmode);
 		//SinglebondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
@@ -135,6 +136,7 @@ void RunAllUnitTests() {
 	// Isolated forces sanity checks
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+	ADD_TEST("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("TestIntegration", TestIntegration(envmode));
 
 	// Stability tests

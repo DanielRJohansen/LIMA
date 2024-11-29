@@ -23,6 +23,8 @@ const bool LIMA_PUSH = true;
 const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
+const bool ENABLE_UREYBRADLEY = true;
+
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE

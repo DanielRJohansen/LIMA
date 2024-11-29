@@ -81,7 +81,6 @@ namespace LJ {
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
 		const Float3 force = diff * force_scalar;
-		printf("%f %f %f %f\n", diff.len(), force.len(), sigma, epsilon);
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
 			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);

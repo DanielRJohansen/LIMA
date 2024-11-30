@@ -356,8 +356,6 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 
 		singlebondParameters->insert(bondtype);
 	}
-	// TODO: Gromacs choses UreyBradley instead of harmonic angle potentials. UB includes a 1-3 interaction term for the angle.
-	// We should obviously do the same to receive similar results
 	for (const auto& line : file.GetSection(TopologySection::angletypes)) {
 		std::istringstream iss(line);
 

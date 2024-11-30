@@ -22,80 +22,120 @@
 
 // ------------------------------------------------- BondTypes ------------------------------------------------- //
 
+namespace Bondtypes {
+	struct SingleBond {
+		struct Parameters {
+			float b0 = 0.f;	// [nm]
+			float kb = 0.f;	// [J/(mol*nm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+			
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return kb == 0.f; }
+								
+			/// <param name="b0">[nm]</param>
+			/// <param name="kB">[kJ/mol/nm^2]</param>
+			static Parameters CreateFromCharmm(float b0, float kB);
+		};
 
-struct SingleBond {
-	struct Parameters {
-		float b0 = 0.f;	// [nm]
-		float kb = 0.f;	// [J/(mol*nm^2)] // V(bond) = 1/2 * kb * (r - b0)^2
+		SingleBond() {}
+		SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
-		bool operator==(const Parameters&) const = default;
-		bool HasZeroParam() const { return kb == 0.f; }
+		Parameters params;
+		uint8_t atom_indexes[2] = { 0,0 };	// Relative to the compund
+		const static int nAtoms = 2;
 	};
 
-	SingleBond(){}
-	SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
+	struct PairBond {
+		struct Parameters {
+			float sigma = 0.f;
+			float epsilon = 0.f;
 
-	Parameters params;
-	uint8_t atom_indexes[2] = {0,0};	// Relative to the compund
-	const static int nAtoms = 2;
-};
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return epsilon == 0.f; };
 
+			
+			/// <param name="sigma">[nm]</param>
+			/// <param name="epsilon">[kJ/mol/nm]</param>
+			static Parameters CreateFromCharmm(float sigma, float epsilon);
+		};
 
-struct AngleUreyBradleyBond {
-	struct Parameters {
-		float theta0 = 0.f;	// [rad]
-		float kTheta = 0.f;	// [J/mol/rad^2]
-		float ub0 = 0.f;	// [nm]
-		float kUB = 0.f;	// [J/mol/nm^2]
+		PairBond() {};
+		PairBond(std::array<uint8_t, 2> ids, const Parameters&);
 
-		bool operator==(const Parameters&) const = default;
-		bool HasZeroParam() const { return kTheta == 0.f; }
+		Parameters params;
+		uint8_t atom_indexes[2] = { 0,0 };	// Relative to the compund
+		const static int nAtoms = 2;
 	};
 
-	AngleUreyBradleyBond() {}
-	AngleUreyBradleyBond(std::array<uint8_t, 3> ids, const Parameters&);
+	struct AngleUreyBradleyBond {
+		struct Parameters {
+			float theta0 = 0.f;	// [rad]
+			float kTheta = 0.f;	// [J/mol/rad^2]
+			float ub0 = 0.f;	// [nm]
+			float kUB = 0.f;	// [J/mol/nm^2]
 
-	Parameters params;
-	uint8_t atom_indexes[3] = {0,0,0}; // i,j,k angle between i and k
-	const static int nAtoms = 3;
-};
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return kTheta == 0.f; }
+			
+			
+			/// <param name="t0">[degrees]</param>
+			/// <param name="kTheta">[kJ/mol/rad^2]</param>
+			/// <param name="ub0">[nm]</param>
+			/// <param name="kUb">[kJ/molnm]</param>
+			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb);
+		};
 
-struct DihedralBond {
-	struct Parameters {
-		float phi_0;		// [rad]
-		float k_phi;		// [J/mol/rad^2]
-		float n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
+		AngleUreyBradleyBond() {}
+		AngleUreyBradleyBond(std::array<uint8_t, 3> ids, const Parameters&);
 
-		bool operator==(const Parameters&) const = default;
-		bool HasZeroParam() const { return k_phi == 0.f; }
-	};
-	const static int nAtoms = 4;
-	DihedralBond() {}
-	DihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
-	
-	Parameters params;
-	uint8_t atom_indexes[4] = {0,0,0,0};
-};
-
-struct ImproperDihedralBond {
-	struct Parameters {
-		float psi_0 = 0.f;	// [rad]
-		float k_psi = 0.f;	// [J/mol/rad^2]
-
-		bool operator==(const Parameters&) const = default;
-		bool HasZeroParam() const { return k_psi == 0.f; }
+		Parameters params;
+		uint8_t atom_indexes[3] = { 0,0,0 }; // i,j,k angle between i and k
+		const static int nAtoms = 3;
 	};
 
-	ImproperDihedralBond() {}
-	ImproperDihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
+	struct DihedralBond {
+		struct Parameters {
+			float phi_0;		// [rad]
+			float k_phi;		// [J/mol/rad^2]
+			float n;			// [multiplicity] n parameter, how many energy equilibriums does the dihedral have // OPTIMIZE: maybe float makes more sense, to avoid conversion in kernels?
 
-	Parameters params;
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return k_phi == 0.f; }
 
-	uint8_t atom_indexes[4] = { 0,0,0,0 };
-	const static int nAtoms = 4;
-};
+			/// <param name="phi_0">[degress]</param>
+			/// <param name="k_phi">[kJ/mol/rad^2]</param>
+			static Parameters CreateFromCharmm(float phi0, float kPhi, int n);
+		};
+		const static int nAtoms = 4;
+		DihedralBond() {}
+		DihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
 
+		Parameters params;
+		uint8_t atom_indexes[4] = { 0,0,0,0 };
+	};
 
+	struct ImproperDihedralBond {
+		struct Parameters {
+			float psi_0 = 0.f;	// [rad]
+			float k_psi = 0.f;	// [J/mol/rad^2]
+
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return k_psi == 0.f; }
+
+			/// <param name="psi_0">[degrees]</param>
+			/// <param name="k_psi">[kJ/mol/rad^2]</param>
+			static Parameters CreateFromCharmm(float psi0, float kPsi);
+		};
+
+		ImproperDihedralBond() {}
+		ImproperDihedralBond(std::array<uint8_t, 4> ids, const Parameters&);
+
+		Parameters params;
+
+		uint8_t atom_indexes[4] = { 0,0,0,0 };
+		const static int nAtoms = 4;
+	};
+}
+using namespace Bondtypes;
 // ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
 
 

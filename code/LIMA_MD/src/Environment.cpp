@@ -231,9 +231,7 @@ void Environment::run(bool doPostRunEvents) {
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
-	if (boximage->total_compound_particles + boximage->solvent_positions.size()*3 != grofile.atoms.size()) {
-		throw std::runtime_error("Number of particles in grofile does not match the number of particles in the simulation");
-	}
+	int particlesUpdated = 0;
 
 	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
 
@@ -241,22 +239,28 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
 			const Float3 newPos = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
 			grofile.atoms[boximage->compounds[cid].indicesInGrofile[pid]].position = newPos;
+			particlesUpdated++;
 		}
 	}
 
-	// TODO: Handle this in a safer way
-	// Handle solvents. Since we only load O, we pray to g that O always comes first, and then 2 h's
-	const int firstSolventIndex = boximage->total_compound_particles;
-	for (int solventId = 0; solventId < simulation->box_host->boxparams.n_solvents; solventId++) {
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solventId, stepToLoadFrom);
-		const int indexOfOxygen = firstSolventIndex + solventId*3;
-		assert(grofile.atoms[indexOfOxygen].atomName[0] == 'O');
+	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
 
-		const Float3 deltaPos = new_position - grofile.atoms[indexOfOxygen].position;
+		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+		const int nAtomsInTinymol = tinymol.nParticles;
 
-		grofile.atoms[indexOfOxygen].position += deltaPos;
-		grofile.atoms[indexOfOxygen + 1].position += deltaPos;
-		grofile.atoms[indexOfOxygen + 2].position += deltaPos;
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, stepToLoadFrom);
+		const Float3 deltaPos = new_position - grofile.atoms[tinymol.firstParticleIdInGrofile].position;
+
+		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomType[0]);
+
+		for (int i = 0; i < nAtomsInTinymol; i++) {
+			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
+			particlesUpdated++;
+		}		
+	}
+
+	if (particlesUpdated != grofile.atoms.size()) {
+		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 	}
 }
 GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {

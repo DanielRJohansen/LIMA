@@ -42,6 +42,10 @@ namespace EngineUtils {
 	
 
 	__device__ static Coord IntegratePositionADAM(const Coord& pos, Float3 force, AdamState* const adamState, int step) {
+
+		// TODO: Maybe figure out the highest force particle in the system, and scale each particles lr based on that, so only particles with high forces move, and the rest are relatively still
+		// untill the highest forces get down to their level?
+
 		const float alpha = 8000.f;        // Learning rate (can be tuned)
 		const float beta1 = 0.9f;          // Decay rate for first moment
 		const float beta2 = 0.999f;        // Decay rate for second moment

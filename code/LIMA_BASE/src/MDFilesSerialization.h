@@ -82,11 +82,11 @@ namespace cereal {
 		archive(atom.charge);
 		archive(atom.mass);
 	}
-	template <class Archive, size_t N>
-	void serialize(Archive& archive, TopologyFile::GenericBond<N>& bond) {
-		archive(bond.ids);
-		archive(bond.funct);
-	}
+	//template <class Archive, size_t N>
+	//void serialize(Archive& archive, TopologyFile::GenericBond<N, typename ParameterType>& bond) {
+	//	archive(bond.ids);
+	//	archive(bond.funct);
+	//}
 
 	//template <class Archive>
 	//void serialize(Archive& archive, TopologyFile::MoleculeEntry& molecule) {

@@ -347,28 +347,28 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		std::istringstream iss(line);
 
 		SinglebondType bondtype{};
+		float b0, kb;
 		iss >> bondtype.bonded_typenames[0] >> bondtype.bonded_typenames[1] >> bondtype.func
-			>> bondtype.params.b0	// [nm]
-			>> bondtype.params.kb;	// [kJ/mol/nm^2]
+			>> b0	// [nm]
+			>> kb;	// [kJ/mol/nm^2]
 
-
-		bondtype.params.kb *= KILO; // Convert to J/mol
+		bondtype.params = SingleBond::Parameters::CreateFromCharmm(b0, kb);
 
 		singlebondParameters->insert(bondtype);
 	}
+	// TODO: implement pair here
 	for (const auto& line : file.GetSection(TopologySection::angletypes)) {
 		std::istringstream iss(line);
 
 		AnglebondType anglebondtype{};
+		float t0, kT, ub0, kUB;
 		iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
-			>> anglebondtype.params.theta0		// [degrees]
-			>> anglebondtype.params.kTheta		// [kJ/mol/rad^2]
-			>> anglebondtype.params.ub0			// [nm]
-			>> anglebondtype.params.kUB;		// [kJ/mol/nm^2]
+			>> t0		// [degrees]
+			>> kT		// [kJ/mol/rad^2]
+			>> ub0		// [nm]
+			>> kUB;		// [kJ/mol/nm^2]
 
-		anglebondtype.params.theta0 *= DEG_TO_RAD;
-		anglebondtype.params.kTheta *= KILO; // Convert to J/mol/rad^2
-		anglebondtype.params.kUB *= KILO; // Convert to J/mol
+		anglebondtype.params = AngleUreyBradleyBond::Parameters::CreateFromCharmm(t0, kT, ub0, kUB);
 
 		anglebondParameters->insert(anglebondtype);
 	}
@@ -376,18 +376,15 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		std::istringstream iss(line);
 
 		DihedralbondType dihedralbondtype{};
-		float phi0;
-		float kphi;
-		float n;
+		float phi0, kphi;
+		int n;
 		iss >> dihedralbondtype.bonded_typenames[0] >> dihedralbondtype.bonded_typenames[1] >> dihedralbondtype.bonded_typenames[2] >> dihedralbondtype.bonded_typenames[3]
 			>> dihedralbondtype.func
 			>> phi0	// [degrees]
 			>> kphi	// [kJ/mol]
 			>> n;
 
-		dihedralbondtype.params.phi_0 = phi0 * DEG_TO_RAD;
-		dihedralbondtype.params.k_phi = kphi * KILO / 2.f; // Convert to J/mol/nm Convert to J/mol TODO: Move the /2 from here to the force calculation to save an op there
-		dihedralbondtype.params.n = n;
+		dihedralbondtype.params = DihedralBond::Parameters::CreateFromCharmm(phi0, kphi, n);
 
 		dihedralbondParameters->insert(dihedralbondtype);
 	}
@@ -395,15 +392,13 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		std::istringstream iss(line);
 
 		ImproperDihedralbondType improperdihedralbondtype{};
-		float psi0;	// [degrees]
-		float kpsi;	// [kJ/mol]
+		float psi0, kPsi;
 		iss >> improperdihedralbondtype.bonded_typenames[0] >> improperdihedralbondtype.bonded_typenames[1] >> improperdihedralbondtype.bonded_typenames[2] >> improperdihedralbondtype.bonded_typenames[3]
 			>> improperdihedralbondtype.func
 			>> psi0		// [degrees]
-			>> kpsi;	// [2 * kJ/mol]
+			>> kPsi;	// [2 * kJ/mol]
 
-		improperdihedralbondtype.params.psi_0 = psi0 * DEG_TO_RAD;
-		improperdihedralbondtype.params.k_psi = kpsi * KILO;
+		improperdihedralbondtype.params = ImproperDihedralBond::Parameters::CreateFromCharmm(psi0, kPsi);
 
 		improperdihedralbondParameters->insert(improperdihedralbondtype);
 	}

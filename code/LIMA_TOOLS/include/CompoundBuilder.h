@@ -88,6 +88,9 @@ namespace LIMA_MOLECULEBUILD {
 		void VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
 
 
+		//Temporary, untill how i know how to deal with bonds in tinymols
+		void RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>&);
+
 		std::vector<ParticleFactory> particles;
 		std::vector<SingleBondFactory> singlebonds;
 		std::vector<AngleBondFactory> anglebonds;
@@ -147,12 +150,17 @@ public:
 
 struct TinyMolFactory {
 	TinyMolFactory() {}
-    TinyMolFactory(const Float3& pos, int tinymolTypeIndex, const std::string& atomType="", Float3 velocity = Float3{})
-        : position(pos), state(TinyMolState{ velocity,Float3{},tinymolTypeIndex }), atomType(atomType)
+    TinyMolFactory(const Float3& pos, int tinymolTypeIndex, 
+		const std::string& atomType, int nParticles, int firstParticleIdInGrofile, Float3 velocity = Float3{}
+	)
+        : position(pos), state(TinyMolState{ velocity,Float3{},tinymolTypeIndex }), nParticles(nParticles),
+		atomType(atomType), firstParticleIdInGrofile(firstParticleIdInGrofile)
 	{}
-	Float3 position;
+	Float3 position{};
 	TinyMolState state;
     std::string atomType; // Debug only
+	int nParticles = -1;
+	int firstParticleIdInGrofile = -1;
 };
 
 

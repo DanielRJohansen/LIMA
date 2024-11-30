@@ -10,7 +10,7 @@ static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 // blocks are notcentered 
 struct SolventBlock {
-	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE;
+	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE * 2;
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		origo = block.origo; // Not necessary, is given by the blockIdx.x

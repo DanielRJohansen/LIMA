@@ -131,16 +131,21 @@ void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile
 
 
 		// Solvent's bonds are defined in the forcefield, rather the params are directly in the topology... Not sure how to deal with that rn
-		const bool getParamsFromForcefield = particles[globalIds[0]].topologyAtom.residue != "SOL" && particles[globalIds[0]].topologyAtom.residue != "TIP3";
-			
+		//const bool getParamsFromForcefield = particles[globalIds[0]].topologyAtom.residue != "SOL" && particles[globalIds[0]].topologyAtom.residue != "TIP3";
+		/*const bool getParamsFromForcefield = true;
+		const bool getParamsFromForcefield1 = bondTopol.parameters.has_value();*/
 
-		// A bond may be describe as multiple bonds, so this is a vector
-		const std::vector<typename BondType::Parameters>& bondParams = getParamsFromForcefield
-			? forcefield.GetBondParameters<BondType>(atomTypenames)
-			: std::vector<typename BondType::Parameters>{ {typename BondType::Parameters{}} };
+		// In rare cases, the bond parameters are directly in the topology file
+		if (bondTopol.parameters.has_value()) {
+			topology.emplace_back(BondtypeFactory{ globalIds, bondTopol.parameters.value() });
+		}
+		else {
+			// A bond may be described as multiple bonds, so this is a vector
+			const std::vector<typename BondType::Parameters>& bondParams = forcefield.GetBondParameters<BondType>(atomTypenames);
 
-		for (const auto& param : bondParams) {
-			topology.emplace_back(BondtypeFactory{ globalIds, param });
+			for (const auto& param : bondParams) {
+				topology.emplace_back(BondtypeFactory{ globalIds, param });
+			}
 		}
 	}
 }
@@ -172,16 +177,20 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			nextUniqueParticleId++;
 			indexInGrofile++;
 
-			if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") { /// TODO: This is a VERY BAD SOLUTION to a difficult problem..
+			//if (molType.atoms[localId].residue == "SOL" || molType.atoms[localId].residue == "TIP3") {
+			//	if (molType.atoms[localId].atomname[0] == 'H')
+			//		ignoredParticles.insert(localId);
+			//}
 
-				ignoredParticles.insert(localId + 1);
-				ignoredParticles.insert(localId + 2);
-				localId += 2;
-				indexInGrofile += 2;
-				
-				//indexInGrofile += molType.atoms.size() - 1;
-				//break;
-			}
+			//if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") { /// TODO: This is a VERY BAD SOLUTION to a difficult problem..
+			//	ignoredParticles.insert(localId + 1);
+			//	ignoredParticles.insert(localId + 2);
+			//	localId += 2;
+			//	indexInGrofile += 2;
+			//	
+			//	//indexInGrofile += molType.atoms.size() - 1;
+			//	//break;
+			//}
 		}
 
 		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds, ignoredParticles);
@@ -217,6 +226,35 @@ void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelec
 	}
 }
 
+template<typename BondtypeFactory>
+std::vector<BondtypeFactory> _RemoveBondsFromTinymol(const std::vector<BondtypeFactory>& bonds, const std::vector<ParticleToCompoundMapping>& p2cMap) {
+	std::vector<bool> bondsThatBelongToCompounds(bonds.size(), true);
+
+	for (int bid = 0; bid < bonds.size(); bid++) {
+		for (int i = 0; i < BondtypeFactory::nAtoms; i++) {
+			if (p2cMap[bonds[bid].global_atom_indexes[i]].compoundId == -1) {
+				bondsThatBelongToCompounds[bid] = false;
+				break;
+			}
+		}
+	}
+
+	std::vector<BondtypeFactory> newBonds;
+	newBonds.reserve(bonds.size());
+	for (int bid = 0; bid < bonds.size(); bid++) {
+		if (bondsThatBelongToCompounds[bid])
+			newBonds.emplace_back(bonds[bid]);
+	}
+
+	return newBonds;
+}
+
+void SuperTopology::RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>& p2cMap) {
+	singlebonds = _RemoveBondsFromTinymol(singlebonds, p2cMap);
+	anglebonds = _RemoveBondsFromTinymol(anglebonds, p2cMap);
+	dihedralbonds = _RemoveBondsFromTinymol(dihedralbonds, p2cMap);
+	improperdihedralbonds = _RemoveBondsFromTinymol(improperdihedralbonds, p2cMap);
+}
 
 
 
@@ -306,7 +344,9 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 		tinyMols.emplace_back(TinyMolFactory{ 
 			topology.particles[onlyParticleToTake].position,
 			forcefield.GetActiveTinymoltypeIndex(topology.particles[onlyParticleToTake].topologyAtom.type),
-			topology.particles[onlyParticleToTake].topologyAtom.type
+			topology.particles[onlyParticleToTake].topologyAtom.type,
+			static_cast<int>(particleIds.size()),
+			topology.particles[onlyParticleToTake].indexInGrofile
 			});
 	}
 
@@ -605,7 +645,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 {
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude->contents };
 
-	const SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
+	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
 	superTopology.VerifyBondsAreStable(grofile.box_size.x, simparams.bc_select, simparams.em_variant);
 
 	auto [molecules, tinyMolecules] = SeparateMolecules(superTopology);
@@ -632,6 +672,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//printf("%d compounds\n", compounds.size());
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
+
+	superTopology.RemoveBondsFromTinymol(particleToCompoundidMap);
 
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);

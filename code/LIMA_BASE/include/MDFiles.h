@@ -155,7 +155,7 @@ namespace MDFiles {
 class TopologyFile {	//.top or .itp
 public:
 	struct AtomsEntry;
-	template <size_t N>	struct GenericBond;
+	template <size_t N, typename ParametersType>	struct GenericBond;
 	struct SingleBond;
 	struct Pair;
 	struct AngleBond;
@@ -360,13 +360,15 @@ struct TopologyFile::AtomsEntry {
 
 
 
-template <size_t N>
+template <size_t N, typename ParametersType>
 struct TopologyFile::GenericBond{
 	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
 	std::array<int,N> ids{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 	int funct{};
+
+	std::optional<ParametersType> parameters = std::nullopt;
 
 	std::string sourceLine{};	// used for debugging	TODO: remove
 
@@ -378,12 +380,12 @@ struct TopologyFile::GenericBond{
 		oss << std::setw(width) << std::right << funct << "\n";
 	}
 
-	bool operator==(const GenericBond<N>& other) const {
+	bool operator==(const GenericBond<N, typename ParametersType>& other) const {
 		return std::equal(std::begin(ids), std::end(ids), std::begin(other.ids)) && funct == other.funct;
 	}
 };
-struct TopologyFile::SingleBond : GenericBond<2> {};
-struct TopologyFile::Pair : GenericBond<2> {};
-struct TopologyFile::AngleBond : GenericBond<3> {};
-struct TopologyFile::DihedralBond : GenericBond<4> {};
-struct TopologyFile::ImproperDihedralBond : GenericBond<4> {};
+struct TopologyFile::SingleBond : GenericBond<2, Bondtypes::SingleBond::Parameters> {};
+struct TopologyFile::Pair : GenericBond<2, Bondtypes::PairBond::Parameters> {};
+struct TopologyFile::AngleBond : GenericBond<3, Bondtypes::AngleUreyBradleyBond::Parameters> {};
+struct TopologyFile::DihedralBond : GenericBond<4, Bondtypes::DihedralBond::Parameters> {};
+struct TopologyFile::ImproperDihedralBond : GenericBond<4, Bondtypes::ImproperDihedralBond::Parameters> {};

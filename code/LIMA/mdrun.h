@@ -119,7 +119,7 @@ int mdrun(int argc, char** argv) {
 
     env->run();
 
-    //env->WriteBoxCoordinatesToFile(grofile);
+    env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
     // Calculate total time simulated (in nanoseconds)

@@ -380,7 +380,7 @@ struct TopologyFile::GenericBond{
 		oss << std::setw(width) << std::right << funct << "\n";
 	}
 
-	bool operator==(const GenericBond<N, typename ParametersType>& other) const {
+    bool operator==(const GenericBond<N, ParametersType>& other) const {
 		return std::equal(std::begin(ids), std::end(ids), std::begin(other.ids)) && funct == other.funct;
 	}
 };

@@ -309,7 +309,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	__shared__ int nGridnodes;
 
 	__shared__ Float3 utility_buffer_f3[MAX_COMPOUND_PARTICLES * 2];
-	__shared__ Float3 utility_float3;
 
 	__shared__ BondedParticlesLUT bpLUT;
 	__shared__ float particleChargesBuffers[MAX_COMPOUND_PARTICLES * 2];
@@ -321,7 +320,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	BoxState* const boxState = sim->boxState;
 	const BoxConfig& boxConfig = sim->boxConfig;
 	const SimParams& simparams = sim->params;
-	SimSignals* signals = sim->signals;
 
 	float potE_sum{};
 	Float3 force{};
@@ -486,57 +484,25 @@ template __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsK
 #undef compound_index
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void compoundBondsKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
-	__shared__ CompoundCompact compound;				// Mostly bond information
-	__shared__ Float3 compound_positions[THREADS_PER_COMPOUNDBLOCK];
-	__shared__ Float3 utility_buffer_f3[THREADS_PER_COMPOUNDBLOCK];
-	__shared__ float utility_buffer_f[THREADS_PER_COMPOUNDBLOCK];
-	//__shared__ NodeIndex compound_origo;
-
-	// Buffer to be cast to different datatypes. This is dangerous!
-	__shared__ char utility_buffer[cbkernel_utilitybuffer_size];
-
-	BoxState* boxState = sim->boxState;
+__global__ void CompoundSnfKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
+	__shared__ int nParticles;
 
 	if (threadIdx.x == 0) {
-		compound.loadMeta(&sim->boxConfig.compounds[blockIdx.x]);
+		nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
 	}
 	__syncthreads();
-	compound.loadData(&sim->boxConfig.compounds[blockIdx.x]);
-
-	{
-		static_assert(cbkernel_utilitybuffer_size >= sizeof(CompoundCoords), "Utilitybuffer not large enough for CompoundCoords");
-		__syncthreads();
-		compound_positions[threadIdx.x] = boxState->compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-		__syncthreads();
-	}
 
 	float potE_sum{};
 	Float3 force{};
 
-	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
-	{
-		//SingleBond* singlebonds = EngineUtils::LoadBonds<SingleBond, MAX_SINGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].singlebonds, compound.n_singlebonds);
-		//force += LimaForcecalc::computeSinglebondForces<energyMinimize>(singlebonds, compound.n_singlebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum, 0);
-
-		//AngleUreyBradleyBond* anglebonds = EngineUtils::LoadBonds<AngleUreyBradleyBond, MAX_ANGLEBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].anglebonds, compound.n_anglebonds);
-		//force += LimaForcecalc::computeAnglebondForces(anglebonds, compound.n_anglebonds, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-
-		//DihedralBond* dihedrals = EngineUtils::LoadBonds<DihedralBond, MAX_DIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].dihedrals, compound.n_dihedrals);
-		//force += LimaForcecalc::computeDihedralForces(dihedrals, compound.n_dihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-
-		//ImproperDihedralBond* impropers = EngineUtils::LoadBonds<ImproperDihedralBond, MAX_IMPROPERDIHEDRALBONDS_IN_COMPOUND>(utility_buffer, sim->boxConfig.compounds[blockIdx.x].impropers, compound.n_improperdihedrals);
-		//force += LimaForcecalc::computeImproperdihedralForces(impropers, compound.n_improperdihedrals, compound_positions, utility_buffer_f3, utility_buffer_f, &potE_sum);
-	}
-
 	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
-	if (sim->params.snf_select == HorizontalChargeField && threadIdx.x < compound.n_particles) {		
+	if (sim->params.snf_select == HorizontalChargeField && nParticles) {
 		force += uniformElectricField.GetForce(sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x]);
+		// No potE, as kinE in this field approaches infinity, potE approaches -infinity.
 	}
 
 	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
-	if (threadIdx.x < compound.n_particles) {
-		//boxState->compoundsInterimState[blockIdx.x].forceEnergyBonds[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	if (threadIdx.x < nParticles) {
 		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
 }
@@ -602,7 +568,6 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 		// Energy minimize
 		if constexpr (emvariant) {
-			const float progress = static_cast<float>(step) / static_cast<float>(sim->params.n_steps);
 			const Float3 safeForce = EngineUtils::ForceActivationFunction(forceEnergy.force);
 
 			AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
@@ -790,7 +755,6 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 	BoxState* boxState = sim->boxState;
 	const SimParams& simparams = sim->params;
-	SimSignals* signals = sim->signals;
 	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
 	//const ForceEnergy forceEnergy = solventblock_ptr->forceEnergies[threadIdx.x];
@@ -813,7 +777,6 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 		const float mass = tinymolForcefield_device.types[tinyMols_ref.tinymolTypeIndex].mass;
 
 		if constexpr (energyMinimize) {
-			const float progress = static_cast<float>(step) / static_cast<float>(simparams.n_steps);
 			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
 			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);

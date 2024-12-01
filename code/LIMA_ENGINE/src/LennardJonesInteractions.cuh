@@ -47,7 +47,7 @@ namespace LJ {
 	};
 
 
-	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float distNM, Float3 diff, float force_scalar, float sigma, float type1, float type2) {
+	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float distNM, Float3 diff, float force_scalar, float sigma, int type1, int type2) {
 		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
 		//if (force.len() > 1.f || pot > 1e+8) {
 		if (distNM < 0.05f) {
@@ -172,7 +172,7 @@ namespace LJ {
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
-		int hits = 0;
+		//int hits = 0;
 
 		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
 		const Float3 selfRelOffset{
@@ -182,12 +182,11 @@ namespace LJ {
 		};
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
-			const int neighborparticle_atomtype = atom_types[neighborparticle_id];
 			
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-				hits++;
+				//hits++;
                 //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
@@ -213,7 +212,7 @@ namespace LJ {
 				}
 			}
 		}
-		atomicAdd(&util, hits);
+		//atomicAdd(&util, hits);
 		
 
 

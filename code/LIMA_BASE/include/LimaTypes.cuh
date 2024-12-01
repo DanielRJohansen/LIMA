@@ -259,13 +259,13 @@ struct Double3 {
 	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ inline Double3 operator - (const Double3 a) const { return Double3(x - a.x, y - a.y, z - a.z); }
 
-	__host__ __device__ inline double len() { return (double)sqrt(x * x + y * y + z * z); }
+	__host__ __device__ inline double len() const { return (double)sqrt(x * x + y * y + z * z); }
 
 	__host__ __device__ Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
-	__host__ __device__ void print(char c = '_') {
+	__host__ __device__ void print(char c = '_') const {
 		printf("%c %.10f %.10f %.10f\n", c, x, y, z);
 	}
 
@@ -325,7 +325,7 @@ struct Coord {
 		{
 		if constexpr (!LIMA_PUSH) {
 			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
-				printf("pos %d %d %d\n", pos.x, pos.y, pos.z);
+				printf("pos %f %f %f\n", pos.x, pos.y, pos.z);
 				//				throw std::runtime_error("NodeIndex out of bounds");
 			}
 		}
@@ -412,13 +412,13 @@ struct BoundingBox {
 		return (min + max) * 0.5f;
 	}
 
-	bool intersects(BoundingBox b) {
+	bool intersects(BoundingBox b) const {
 		return
 			min.x <= b.max.x && max.x >= b.min.x &&
 			min.y <= b.max.y && max.y >= b.min.y &&
 			min.z <= b.max.z && max.z >= b.min.z;
 	}
-	bool pointIsInBox(Float3 point) {
+	bool pointIsInBox(Float3 point) const {
 		return (min < point) && (point < max);
 	}
 	void addPadding(float margin) {
@@ -493,7 +493,7 @@ namespace BondedParticlesLUTHelpers {
 			printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
 	}
 
-	__device__ inline const BondedParticlesLUT* const get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
+	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
 
 		if constexpr(!LIMA_PUSH)
 			VerifyInputs(id_self, id_other);

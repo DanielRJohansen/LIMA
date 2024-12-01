@@ -337,10 +337,10 @@ void Engine::_deviceMaster() {
 			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 
-		compoundBondsKernel<BoundaryCondition, emvariant> 
+		CompoundSnfKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
 			(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundBondsKernel");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundSnfKernel");
 	}
 
 	if (boxparams.n_solvents > 0) {

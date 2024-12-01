@@ -32,7 +32,7 @@ namespace EngineUtils {
 #ifndef ENABLE_INTEGRATEPOSITION
 		return pos;
 #endif
-		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)) };				// precise version
+		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {

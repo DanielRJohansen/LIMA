@@ -37,7 +37,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 			const int ljtypeIndex = ljtypeIndices[atomIndex++];
 			file << atom.type << " "
-				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma * LIMA_TO_NANO
+				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma
 				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilon << "\n";
 		}
 		file << "\n";
@@ -58,7 +58,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (const auto& bond : boximage->topology.singlebonds) {
 			for (int i = 0; i < bond.nAtoms; i++)
 				file << atomNames[bond.global_atom_indexes[i]] << " ";
-			file << bond.params.b0 * LIMA_TO_NANO << " " << bond.params.kb / LIMA_TO_NANO / LIMA_TO_NANO << "\n";
+			file << bond.params.b0 << " " << bond.params.kb << "\n";
 		}
 		file << "\n";
 	}
@@ -69,7 +69,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (const auto& angle : boximage->topology.anglebonds) {
 			for (int i = 0; i < angle.nAtoms; i++)
 				file << atomNames[angle.global_atom_indexes[i]] << " ";
-			file << angle.params.theta0 << " " << angle.params.kTheta << " " << angle.params.ub0 * LIMA_TO_NANO << " " << angle.params.kUB / LIMA_TO_NANO / LIMA_TO_NANO << "\n";
+			file << angle.params.theta0 << " " << angle.params.kTheta << " " << angle.params.ub0 << " " << angle.params.kUB << "\n";
 		}
 		file << "\n";
 	}
@@ -157,7 +157,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	Environment env{ workDir, envmode};
 	SimParams params;
 	params.em_variant = true;	
-	params.dt = 150.f;
+	params.dt = 1.5f * FEMTO_TO_NANO;
 	params.em_force_tolerance = emtol;
 	params.data_logging_interval = 50;
 

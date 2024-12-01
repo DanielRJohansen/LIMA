@@ -66,6 +66,8 @@ public:
 	}
 };
 
+// TODO remove these macro's now
+
 // This macro functions calls the correct kernel, depending on the BoundaryCondition select
 #define LAUNCH_GENERIC_KERNEL(kernel, grid_size, block_size, bc_select, kernel_arg1, kernel_arg2) \
 	do { \

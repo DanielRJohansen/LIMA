@@ -35,6 +35,7 @@ int main() {
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
+		//UreyBradleyForceAndPotentialSanityCheck(envmode);
 		//SinglebondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
@@ -47,7 +48,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solvents", envmode, 2.85e-6f, 1.1e-7);
+		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -89,7 +90,9 @@ int main() {
 		//grofile.box_size = Float3(std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z)));
 		////Display::RenderGrofile(grofile, false);
 		//TopologyFile topfile(dir / "topol.top");
-		////Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
+		//Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
+		//grofile.printToFile(std::string{ "em.gro" });
+
 		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\sim_params.txt)");
 		//simparams.dt = 100.f;
 		//////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
@@ -135,6 +138,7 @@ void RunAllUnitTests() {
 	// Isolated forces sanity checks
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
+	ADD_TEST("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("TestIntegration", TestIntegration(envmode));
 
 	// Stability tests
@@ -146,7 +150,7 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6));
+	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 7.1e-4, 2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests

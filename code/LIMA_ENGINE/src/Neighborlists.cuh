@@ -51,11 +51,11 @@ template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t step)
 {
 	const NodeIndex compoundOrigo = sim_dev.boxState->compoundOrigos[compound_id];
-	const Float3* const relPositions = &sim_dev.boxState->compoundsRelposLm[compound_id * MAX_COMPOUND_PARTICLES];
+	const Float3* const relPositions = &sim_dev.boxState->compoundsRelposNm[compound_id * MAX_COMPOUND_PARTICLES];
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = sim_dev.boxConfig.compounds[compound_id].interaction_boundary.key_particle_indices[i];
-		const Float3 abspos = compoundOrigo.toFloat3() + relPositions[particle_index] * LIMA_TO_NANO;
+		const Float3 abspos = compoundOrigo.toFloat3() + relPositions[particle_index];
 		result[i] = abspos;
 	}
 }

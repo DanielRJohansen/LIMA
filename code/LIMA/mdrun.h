@@ -119,11 +119,11 @@ int mdrun(int argc, char** argv) {
 
     env->run();
 
-    //env->WriteBoxCoordinatesToFile(grofile);
+    env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
     // Calculate total time simulated (in nanoseconds)
-    const double total_ns = static_cast<double>(ip.n_steps) * ip.dt * LIMA_TO_NANO;
+    const double total_ns = static_cast<double>(ip.n_steps) * ip.dt;
 
     // Measure elapsed time in seconds
     auto t1 = std::chrono::steady_clock::now();

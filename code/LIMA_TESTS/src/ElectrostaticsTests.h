@@ -17,7 +17,7 @@ namespace ElectrostaticsTests {
 
 	static LimaUnittestResult CoulombForceSanityCheck(EnvMode envmode) {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
-		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * LIMA;  // [1/l N / mol] https://www.omnicalculator.com/physics/coulombs-law
+		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
 		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
 		// TODO: add potE to this also
@@ -199,7 +199,7 @@ namespace ElectrostaticsTests {
 			);
 
 		SimParams simparams;
-		simparams.dt = 20;
+		simparams.dt = 0.2f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select = HorizontalChargeField;
@@ -280,7 +280,7 @@ namespace ElectrostaticsTests {
 
 		SimParams simparams;
 		simparams.n_steps = nSteps;
-		simparams.dt = 100;
+		simparams.dt = 1.f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.enable_electrostatics = true;

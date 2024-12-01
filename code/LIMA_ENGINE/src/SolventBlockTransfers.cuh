@@ -43,7 +43,7 @@ namespace SolventBlockTransfers {
 				STransferQueue* queue_global = &transfermodules[blockid_global].transfer_queues[queue_index];
 
 				queue_global->fastInsert(
-					queue_local.rel_positions[threadIdx.x] - LIMAPOSITIONSYSTEM::nodeIndexToCoord(transferdir_queue),
+					queue_local.rel_positions[threadIdx.x] - Coord(transferdir_queue),
 					queue_local.ids[threadIdx.x], queue_local.atomtypeIds[threadIdx.x]);
 
 				KernelHelpersWarnings::transferOutDebug(queue_global, queue_local, transferdir_queue, queue_index);

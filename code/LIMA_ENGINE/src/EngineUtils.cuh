@@ -32,7 +32,7 @@ namespace EngineUtils {
 #ifndef ENABLE_INTEGRATEPOSITION
 		return pos;
 #endif
-		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5 / mass * dt * dt)).round() };				// precise version
+		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
@@ -41,11 +41,17 @@ namespace EngineUtils {
 	}
 	
 
-	__device__ static Coord IntegratePositionADAM(const Coord& pos, const Float3 force, AdamState* const adamState, int step) {
+	__device__ static Coord IntegratePositionADAM(const Coord& pos, Float3 force, AdamState* const adamState, int step) {
+
+		// TODO: Maybe figure out the highest force particle in the system, and scale each particles lr based on that, so only particles with high forces move, and the rest are relatively still
+		// untill the highest forces get down to their level?
+
 		const float alpha = 8000.f;        // Learning rate (can be tuned)
 		const float beta1 = 0.9f;          // Decay rate for first moment
 		const float beta2 = 0.999f;        // Decay rate for second moment
 		const float epsilon = 1e-8f;
+
+		force *= 1e-8;
 
 		// 2. Update Moment Estimates
 		const Float3 firstMoment = adamState->firstMoment * beta1 + force * (1 - beta1);
@@ -58,7 +64,11 @@ namespace EngineUtils {
 		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step));
 
 		const Float3 deltaPos = (firstMomentCorrected / (secondMomentCorrected.sqrtElementwise() + Float3{ epsilon })) * alpha;
-		return pos + Coord{ deltaPos };
+		//if (deltaPos.len() > 5.f) {
+		//	force.print('F');
+		//	deltaPos.print('D');
+		//}
+		return pos + Coord{ deltaPos * 1e-8f };
 	}
 
 //	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
@@ -99,7 +109,7 @@ namespace EngineUtils {
 	}
 
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force, float scalar=5.f) {
+	__device__ static Float3 ForceActivationFunction(const Float3 force, float scalar=1.f) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
@@ -114,7 +124,7 @@ namespace EngineUtils {
 		//const float alpha = scaleAbove * LIMA / NANO * KILO; // [1/l N/mol]
 
 		// Apply tanh to the magnitude
-		const float alpha = 1000.f * LIMA / NANO * KILO * scalar; // [1/l N/mol]
+		const float alpha = 1000.f * KILO * scalar; // [J/mol/nm]
 
 		// Tanh function, ideal for the 
 		const float scaledMagnitude = alpha * tanh(force.len()/alpha);
@@ -162,7 +172,7 @@ namespace EngineUtils {
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
-			return dist_sq_reciprocal < cutoffLmSquaredReciprocal_device;	//  1. / (CUTOFF_LM * CUTOFF_LM);
+			return dist_sq_reciprocal < cutoffNmSquaredReciprocal_device;	//  1. / (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
@@ -177,7 +187,7 @@ namespace EngineUtils {
 			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 			// calc Relative LimaPosition Shift from the origo-shift
-			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).toFloat3();
+			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).ToRelpos();
 		}
 		__syncthreads();
 

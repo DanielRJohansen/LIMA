@@ -162,6 +162,12 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		for (int i = 0; i < 2; i++)
 			singlebond.ids[i] = moleculetype->groIdToLimaId[groIds[i]];
 		singlebond.sourceLine = line;
+
+		float b0, kb;
+		if (iss >> b0 >> kb) {
+			singlebond.parameters = Bondtypes::SingleBond::Parameters::CreateFromCharmm(b0, kb);
+		}
+
 		moleculetype->singlebonds.emplace_back(singlebond);
 		break;
 	}
@@ -173,6 +179,12 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 			break;
 		for (int i = 0; i < 2; i++)
 			pair.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+
+		float sigma, epsilon;
+		if (iss >> sigma >> epsilon) {
+			pair.parameters = Bondtypes::PairBond::Parameters::CreateFromCharmm(sigma, epsilon);
+		}
+
 		moleculetype->pairs.emplace_back(pair);
 		break;
 	}
@@ -184,6 +196,12 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 			break;
 		for (int i = 0; i < 3; i++)
 			angle.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+
+		float theta0, ktheta, ub0, kUb;
+		if (iss >> theta0 >> ktheta >> ub0 >> kUb) {
+			angle.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb);
+		}
+
 		moleculetype->anglebonds.emplace_back(angle);
 		break;
 	}
@@ -195,6 +213,13 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 			break;
 		for (int i = 0; i < 4; i++)
 			dihedral.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+
+		float phi0, kphi;
+		int n;
+		if (iss >> phi0 >> kphi >> n) {
+			dihedral.parameters = Bondtypes::DihedralBond::Parameters::CreateFromCharmm(phi0, kphi, n);
+		}
+
 		moleculetype->dihedralbonds.emplace_back(dihedral);
 		break;
 	}
@@ -206,6 +231,12 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 			break;
 		for (int i = 0; i < 4; i++)
 			improper.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+
+		float phi0, kphi;
+		if (iss >> phi0 >> kphi) {
+			improper.parameters = Bondtypes::ImproperDihedralBond::Parameters::CreateFromCharmm(phi0, kphi);
+		}
+
 		moleculetype->improperdihedralbonds.emplace_back(improper);
 		moleculetype->improperdihedralbonds.back().sourceLine = line;
 		break;

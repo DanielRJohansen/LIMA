@@ -37,7 +37,7 @@ namespace Electrostatics {
 	}
 
 	// Utilitybuffer min size = sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)
-	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposLM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
+	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposNM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
 		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
 
 		// First clean the memory
@@ -52,7 +52,7 @@ namespace Electrostatics {
 		int localOffset = 0;
 		NodeIndex relativeLocalIndex;
 		if (threadIdx.x < nParticles) {
-			relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposLM);
+			relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposNM);
 			relativeLocalIndex.x = std::max(relativeLocalIndex.x, -1);
 			relativeLocalIndex.x = std::min(relativeLocalIndex.x, 1);
 			relativeLocalIndex.y = std::max(relativeLocalIndex.y, -1);
@@ -96,11 +96,11 @@ namespace Electrostatics {
 			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)] + localOffset;
 			if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
 				printf("Error: offset out of bounds: %d. LO %d GO %d\n", offset, localOffset, numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)]);
-				LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposLM).print('n');
-				(relposLM * LIMA_TO_NANO).print('p');
+				LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposNM).print('n');
+				(relposNM).print('p');
 			}
 			
-			const Float3 positionRelativeToNodeNM = relposLM * LIMA_TO_NANO - relativeLocalIndex.toFloat3();
+			const Float3 positionRelativeToNodeNM = relposNM - relativeLocalIndex.toFloat3();
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->positions[offset] = positionRelativeToNodeNM;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->charges[offset] = charge;
 			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->compoundIds[offset] = blockIdx.x;

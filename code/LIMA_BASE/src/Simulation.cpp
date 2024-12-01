@@ -65,7 +65,7 @@ SimParams::SimParams(const fs::path& path) {
 	auto dict = FileUtils::parseINIFile(path.string(), forceKeysAndValuesLowercase);
 
 	Readi(dict, n_steps, "n_steps");
-	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_LIMA; });
+	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_NANO; });
 	Readb(dict, em_variant, "em");
 	Readf(dict, em_force_tolerance, "em_force_tolerance");
 
@@ -95,7 +95,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 	file << "\n// Main params\n";
 	file << "n_steps=" << n_steps << "\n";
-	file << "dt=" << static_cast<int>(std::round(dt * LIMA_TO_FEMTO)) << " # [fs]\n";
+	file << "dt=" << static_cast<int>(std::round(dt * NANO_TO_FEMTO)) << " # [fs]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
 	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm] - only relevant if em=true\n";
 

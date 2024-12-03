@@ -27,6 +27,10 @@ public:
 		return *activeAtomTypes;
 	}
 
+	AtomType& GetAtomType(const std::string& query) {
+		return atomTypes.at(query);
+	}
+
 	// Debug only
 	std::unordered_map<std::string, AtomType>& _getAll() {
 		return atomTypes;
@@ -120,14 +124,15 @@ private:
 		if constexpr (std::is_same<bond, SinglebondType>::value) {
 			swap(bondedTypeNames[0], bondedTypeNames[1]);
 		}
+		else if constexpr (std::is_same<bond, PairbondType>::value) {
+			swap(bondedTypeNames[0], bondedTypeNames[1]);
+		}
 		else if constexpr (std::is_same<bond, AnglebondType>::value) {
 			swap(bondedTypeNames[0], bondedTypeNames[2]);
 		}
 		else if constexpr (std::is_same<bond, DihedralbondType>::value) {
-
 			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
 			std::swap(bondedTypeNames[1], bondedTypeNames[2]);
-
 		}
 		else if constexpr (std::is_same<bond, ImproperDihedralbondType>::value) {
 			std::swap(bondedTypeNames[0], bondedTypeNames[3]);
@@ -138,7 +143,6 @@ private:
 	}
 
 	void __insert(const GenericBondType& element) {
-
 		if (locked) {
 			throw std::runtime_error("Cannot add to database after it has been locked");
 		}
@@ -235,6 +239,7 @@ private:
 	}
 };
 template class ParameterDatabase<SinglebondType>;
+template class ParameterDatabase<PairbondType>;
 template class ParameterDatabase<AnglebondType>;
 template class ParameterDatabase<DihedralbondType>;
 template class ParameterDatabase<ImproperDihedralbondType>;
@@ -260,6 +265,7 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 	tinymolTypes = std::make_unique<AtomtypeDatabase>();
 
 	singlebondParameters = std::make_unique<ParameterDatabase<SinglebondType>>();
+	pairbondParameters = std::make_unique<ParameterDatabase<PairbondType>>();
 	anglebondParameters = std::make_unique<ParameterDatabase<AnglebondType>>();
 	dihedralbondParameters = std::make_unique<ParameterDatabase<DihedralbondType>>();
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
@@ -357,6 +363,19 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		singlebondParameters->insert(bondtype);
 	}
 	// TODO: implement pair here
+	for (const auto& line : file.GetSection(TopologySection::pairtypes)) {
+		std::istringstream iss(line);
+
+		PairbondType pairbondtype{};
+		float sigma, epsilon;
+		iss >> pairbondtype.bonded_typenames[0] >> pairbondtype.bonded_typenames[1] >> pairbondtype.func
+			>> sigma	// [nm]
+			>> epsilon;	// [kJ/mol]
+
+		pairbondtype.params = PairBond::Parameters::CreateFromCharmm(sigma, epsilon);
+
+		pairbondParameters->insert(pairbondtype);
+	}
 	for (const auto& line : file.GetSection(TopologySection::angletypes)) {
 		std::istringstream iss(line);
 
@@ -409,6 +428,26 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 	if constexpr (std::is_same<GenericBond, SingleBond>::value) {
 		return singlebondParameters->get(query);
 	}
+	else if constexpr (std::is_same<GenericBond, PairBond>::value) 
+	{
+		// Pairbonds are special, as they are only defined for special interactions. In other cases we simply combine the LJ params for the types
+		if (pairbondParameters->get(query).empty()) {
+			
+			const AtomType& left = ljParameters->GetAtomType(query[0]);
+			const AtomType& right = ljParameters->GetAtomType(query[1]);
+
+			// TODO: Would prefer to have this computation in a file specialized for it..
+			const float sigma = (left.parameters.sigma + right.parameters.sigma) * 0.5f;
+			const float epsilon = sqrt(left.parameters.epsilon * right.parameters.epsilon);
+
+			pairbondParameters->insert(PairbondType{
+				.bonded_typenames = query,
+				.func = 1,
+				.params = PairBond::Parameters{sigma, epsilon}
+				});
+		}
+		return pairbondParameters->get(query);
+	}
 	else if constexpr (std::is_same<GenericBond, AngleUreyBradleyBond>::value) {
 		return anglebondParameters->get(query);
 	}
@@ -432,6 +471,7 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondPara
 	throw std::runtime_error("Failed to find bond parameters");
 }
 template const std::vector<SingleBond::Parameters>& LIMAForcefield::GetBondParameters<SingleBond>(const std::array<std::string, SingleBond::nAtoms>&);
+template const std::vector<PairBond::Parameters>& LIMAForcefield::GetBondParameters<PairBond>(const std::array<std::string, PairBond::nAtoms>&);
 template const std::vector<AngleUreyBradleyBond::Parameters>& LIMAForcefield::GetBondParameters<AngleUreyBradleyBond>(const std::array<std::string, AngleUreyBradleyBond::nAtoms>&);
 template const std::vector<DihedralBond::Parameters>& LIMAForcefield::GetBondParameters<DihedralBond>(const std::array<std::string, DihedralBond::nAtoms>&);
 template const std::vector<ImproperDihedralBond::Parameters>& LIMAForcefield::GetBondParameters<ImproperDihedralBond>(const std::array<std::string, ImproperDihedralBond::nAtoms>&);

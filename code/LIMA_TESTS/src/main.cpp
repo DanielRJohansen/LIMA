@@ -28,7 +28,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		//Lipids::_MakeLipids(true, false);
-
+		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
@@ -139,6 +139,7 @@ void RunAllUnitTests() {
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
 	ADD_TEST("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(envmode));
+	ADD_TEST("PairbondForceAndPotentialSanityCheck", PairbondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("TestIntegration", TestIntegration(envmode));
 
 	// Stability tests
@@ -150,12 +151,12 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 7.1e-4, 2e-6));
+	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.175e-3, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.86e-3, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

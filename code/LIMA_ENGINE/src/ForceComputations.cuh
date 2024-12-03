@@ -7,6 +7,8 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 
+#include "LennardJonesInteractions.cuh"
+
 
 namespace LimaForcecalc 
 {
@@ -330,6 +332,48 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 	return force;
 }
 
+__device__ inline Float3 computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,
+	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+{
+	// First clear the buffer which will store the forces.
+	forces_interim[threadIdx.x] = Float3(0.f);
+	potentials_interim[threadIdx.x] = 0.f;
+	__syncthreads();
+
+	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_pairbonds; bond_offset++) {
+		const PairBond* pb = nullptr;
+		Float3 forces[2] = { Float3{}, Float3{} };
+		float potential = 0.f;
+		const int bond_index = threadIdx.x + bond_offset * blockDim.x;
+
+		if (bond_index < n_pairbonds) {
+			pb = &pairbonds[bond_index];
+
+			const Float3 diff = positions[pb->atom_indexes[1]] - positions[pb->atom_indexes[0]];
+			const float distSqReciprocal = 1.f / diff.lenSquared();
+
+			const Float3 forceOnLeft = LJ::calcLJForceOptim<true, false>(diff, distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;
+			forces[0] = forceOnLeft;
+			forces[1] = -forceOnLeft;
+		}
+
+		for (int i = 0; i < blockDim.x; i++) {
+			if (threadIdx.x == i && pb != nullptr) {
+				for (int i = 0; i < 2; i++) {
+					forces_interim[pb->atom_indexes[i]] += forces[i];
+					potentials_interim[pb->atom_indexes[i]] += potential; // No *0.5f here, since LJ computes the pot per atom already;
+				}
+			}
+			__syncthreads();
+		}
+	}
+
+	*potE += potentials_interim[threadIdx.x];
+	const Float3 force = forces_interim[threadIdx.x];
+	__syncthreads();
+
+	return force;
+}
 
 __device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
 	Float3* const forces_interim, float* const potentials_interim, float* const potE)

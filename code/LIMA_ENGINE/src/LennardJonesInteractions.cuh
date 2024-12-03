@@ -39,7 +39,7 @@ namespace LJ {
 		return sqrtf(e1 * e2);
 	}
 
-	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };
+	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
 
 
 	__device__ static const char* calcLJOriginString[] = {

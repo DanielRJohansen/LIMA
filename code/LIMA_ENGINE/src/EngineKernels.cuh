@@ -967,6 +967,21 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		}
 	}
 
+
+	{
+		// TODO: i have no clue if pairbonds should also compute SR electrostatics?
+		PairBond* bondsBuffer = reinterpret_cast<PairBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += blockDim.x) {
+			if (batchStart + threadIdx.x < bondGroup->nPairbonds) {
+				const int bondIndex = batchStart + threadIdx.x;
+				bondsBuffer[threadIdx.x] = bondGroup->pairbonds[bondIndex];
+			}
+			__syncthreads();
+
+			force += LimaForcecalc::computePairbondForces(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+		}
+	}
+
 	forceEnergiesOut[blockIdx.x * BondGroup::maxParticles + threadIdx.x] = ForceEnergy{ force, potE };
 }
 template __global__ void BondgroupsKernel<PeriodicBoundaryCondition, true>(const BondGroup* const, const BoxState, ForceEnergy* const);

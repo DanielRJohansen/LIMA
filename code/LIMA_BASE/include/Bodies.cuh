@@ -235,7 +235,7 @@ struct CompoundInterimState {
 	ForceEnergy forceEnergyBridge[MAX_COMPOUND_PARTICLES];*/
 
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES];
+	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // TODO units
 	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
 
 	Coord coords[MAX_COMPOUND_PARTICLES];
@@ -288,16 +288,19 @@ struct BondGroup {
 	static const int maxSinglebonds = 128;
 	static const int maxAnglebonds = 128 + 64;
 	static const int maxDihedralbonds = 256 + 64;
+	static const int maxPairbonds = maxDihedralbonds;
 	static const int maxImproperdihedralbonds = 32;
 
 	ParticleRef particles[maxParticles];
 	SingleBond singlebonds[maxSinglebonds];
+	PairBond pairbonds[maxPairbonds];
 	AngleUreyBradleyBond anglebonds[maxAnglebonds];
 	DihedralBond dihedralbonds[maxDihedralbonds];
 	ImproperDihedralBond improperdihedralbonds[maxImproperdihedralbonds];
 
 	int nParticles = 0;
 	int nSinglebonds = 0;
+	int nPairbonds = 0;
 	int nAnglebonds = 0;
 	int nDihedralbonds = 0;
 	int nImproperdihedralbonds = 0;

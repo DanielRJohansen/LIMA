@@ -58,6 +58,7 @@ struct BondFactory {
 	std::string sourceLine;
 };
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
+using PairBondFactory = BondFactory<2, PairBond::Parameters>;
 using AngleBondFactory = BondFactory<3, AngleUreyBradleyBond::Parameters>;
 using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
@@ -93,6 +94,7 @@ namespace LIMA_MOLECULEBUILD {
 
 		std::vector<ParticleFactory> particles;
 		std::vector<SingleBondFactory> singlebonds;
+		std::vector<PairBondFactory> pairbonds;
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
@@ -176,6 +178,7 @@ public:
 	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
 	void AddBond(const ParticleToCompoundMap&, const SingleBondFactory&);
+	void AddBond(const ParticleToCompoundMap&, const PairBondFactory&);
 	void AddBond(const ParticleToCompoundMap&, const AngleBondFactory&);
 	void AddBond(const ParticleToCompoundMap&, const DihedralBondFactory&);
 	void AddBond(const ParticleToCompoundMap&, const ImproperDihedralBondFactory&);

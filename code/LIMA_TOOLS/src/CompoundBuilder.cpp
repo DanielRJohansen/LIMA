@@ -176,24 +176,10 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			particles.push_back(ParticleFactory{ molType.atoms[localId], grofile.atoms[indexInGrofile].position, indexInGrofile, activeLJParamIndex });
 			nextUniqueParticleId++;
 			indexInGrofile++;
-
-			//if (molType.atoms[localId].residue == "SOL" || molType.atoms[localId].residue == "TIP3") {
-			//	if (molType.atoms[localId].atomname[0] == 'H')
-			//		ignoredParticles.insert(localId);
-			//}
-
-			//if (molType.atoms[0].residue == "SOL" || molType.atoms[0].residue == "TIP3") { /// TODO: This is a VERY BAD SOLUTION to a difficult problem..
-			//	ignoredParticles.insert(localId + 1);
-			//	ignoredParticles.insert(localId + 2);
-			//	localId += 2;
-			//	indexInGrofile += 2;
-			//	
-			//	//indexInGrofile += molType.atoms.size() - 1;
-			//	//break;
-			//}
 		}
 
 		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds, ignoredParticles);
+		LoadBondsIntoTopology<PairBond, PairBondFactory, TopologyFile::PairBond>(molType.pairbonds, particleIdOffset, forcefield, pairbonds, ignoredParticles);
 		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds, ignoredParticles);
 		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds, ignoredParticles);
 		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds, ignoredParticles);
@@ -251,6 +237,7 @@ std::vector<BondtypeFactory> _RemoveBondsFromTinymol(const std::vector<BondtypeF
 
 void SuperTopology::RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>& p2cMap) {
 	singlebonds = _RemoveBondsFromTinymol(singlebonds, p2cMap);
+	pairbonds = _RemoveBondsFromTinymol(pairbonds, p2cMap);
 	anglebonds = _RemoveBondsFromTinymol(anglebonds, p2cMap);
 	dihedralbonds = _RemoveBondsFromTinymol(dihedralbonds, p2cMap);
 	improperdihedralbonds = _RemoveBondsFromTinymol(improperdihedralbonds, p2cMap);
@@ -591,33 +578,6 @@ const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const s
 
 
 
-
-//// Check that we dont have any unrealistic bonds, and warn immediately.
-//void VerifyBondsAreStable(const Topology& topology, float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) {	
-//	const float allowedScalar = energyMinimizationMode ? 7.f : 3.f;//1.9999f;
-//
-//	for (const auto& bond : topology.singlebonds) 
-//	{		
-//		const Float3 pos1 = topology.particles[bond.global_atom_indexes[0]].position;
-//		const Float3 pos2 = topology.particles[bond.global_atom_indexes[1]].position;
-//		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
-//		const float bondRelaxedDist = bond.params.b0 * LIMA_TO_NANO;
-//
-//		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-//			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
-//		}
-//		if (hyper_dist < bondRelaxedDist * 0.001)
-//			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0 * LIMA_TO_NANO));
-//	}
-//	for (const auto& bond : topology.anglebonds)
-//	{
-//		const Float3 pos1 = topology.particles[bond.global_atom_indexes[0]].position;
-//		const Float3 pos2 = topology.particles[bond.global_atom_indexes[1]].position;
-//		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
-//		if (hyper_dist < 0.001)
-//			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0 * LIMA_TO_NANO));
-//	}
-//}
 //void VerifyBondsAreLegal(const std::vector<AngleBondFactory>& anglebonds, const std::vector<DihedralBondFactory>& dihedralbonds) {
 //	for (const auto& bond : anglebonds) {
 //		if (bond.global_atom_indexes[0] == bond.global_atom_indexes[1] || bond.global_atom_indexes[1] == bond.global_atom_indexes[2] || bond.global_atom_indexes[0] == bond.global_atom_indexes[2])

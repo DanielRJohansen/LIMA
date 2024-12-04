@@ -620,10 +620,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 }
 
 
-
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
+__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int neighborblockNumElements;
@@ -645,7 +644,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		nElementsInBlock = solventblock_ptr->n_solvents;
 	}
 	__syncthreads();
-	
+
 
 	const bool threadActive = threadIdx.x < nElementsInBlock;
 
@@ -682,19 +681,52 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 			if (threadActive) {// TODO: use computePote template param here
-				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum, 
+				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum,
 					utility_buffer_small, idSelf, tinymolForcefield_device, tinymolTypeId);
 			}
 			__syncthreads();
 		}
 	}
-	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
+	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergiesCompoundinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
+}
+
+static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
+template <typename BoundaryCondition, bool energyMinimize>
+__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
+	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+	__shared__ int neighborblockNumElements;
+	__shared__ Float3 utility_float3;
+	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
+	__shared__ int nElementsInBlock;
+
+	// Doubles as block_index_3d!
+	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
+
+	const SolventBlock* const solventblock_ptr = boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+
+
+	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
+		forcefieldTinymol_shared.types[threadIdx.x] = tinymolForcefield_device.types[threadIdx.x]; // TODO Check that im using this and not the __constant??
+	}
+
+	if (threadIdx.x == 0) {
+		nElementsInBlock = solventblock_ptr->n_solvents;
+	}
+	__syncthreads();
+	
+	const bool threadActive = threadIdx.x < nElementsInBlock;
+
+	Float3 force{};
+	float potE_sum{};
+	const Float3 relpos_self = solventblock_ptr->rel_pos[threadIdx.x].ToRelpos();
+	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
+	const uint32_t idSelf = solventblock_ptr->ids[threadIdx.x];
 
 
 	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
 	{		
-		__syncthreads(); // Sync since use of utility
 		if (threadActive) {
 			utility_buffer[threadIdx.x] = relpos_self;
 			utility_buffer_small[threadIdx.x] = tinymolTypeId;
@@ -703,7 +735,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		if (threadActive) {
 			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nElementsInBlock, true, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 		}
-		__syncthreads(); // Sync since use of utility
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
@@ -734,14 +765,13 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 				if (threadActive) {
 					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 				}
-				__syncthreads();
 			}
 		}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// Finally push force and potE for next kernel
-	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergies[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergiesTinymolinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
 
@@ -757,10 +787,9 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 	const SimParams& simparams = sim->params;
 	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
 
-	//const ForceEnergy forceEnergy = solventblock_ptr->forceEnergies[threadIdx.x];
-	const Float3 force = solventblock_ptr->forceEnergies[threadIdx.x].force;
-	const float potE = solventblock_ptr->forceEnergies[threadIdx.x].potE;
-	
+	const Float3 force = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].force + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].force;
+	const float potE = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].potE + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].potE;
+
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
 	}

@@ -57,7 +57,8 @@ struct SolventBlock {
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
 
 	// Not sure this is the ideal place, as it is an interim and never transferred.. 
-	ForceEnergy forceEnergies[MAX_SOLVENTS_IN_BLOCK];
+	ForceEnergy forceEnergiesCompoundinteractions[MAX_SOLVENTS_IN_BLOCK];
+	ForceEnergy forceEnergiesTinymolinteractions[MAX_SOLVENTS_IN_BLOCK];
 };
 
 

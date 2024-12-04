@@ -344,7 +344,10 @@ void Engine::_deviceMaster() {
 	}
 
 	if (boxparams.n_solvents > 0) {
-		solventForceKernel<BoundaryCondition, emvariant> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
+			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+
+		solventForceKernel<BoundaryCondition, emvariant> <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 	}
 	

@@ -69,6 +69,10 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
     compoundLjParameters = GenericCopyToDevice(compoundParticleParams);
     //cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
 
+	for (cudaStream_t& stream : cudaStreams) {
+		cudaStreamCreate(&stream);
+	}
+
 
 	//std::unordered_set<std::string> unique_compounds;
 	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
@@ -103,6 +107,10 @@ Engine::~Engine() {
 	}
 	compoundForceEnergyInterims.Free();
 	cudaFree(compoundLjParameters);
+
+	for (cudaStream_t& stream : cudaStreams) {
+		cudaStreamDestroy(stream);
+	}
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	assert(simulation == nullptr);
@@ -329,12 +337,12 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
+			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0] >> >
             (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
+			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[1] >>> (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 
 		CompoundSnfKernel<BoundaryCondition, emvariant> 
@@ -346,11 +354,13 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_solvents > 0) {
 		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
 		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
-			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2] >>>(*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
 		// TODO: Too many threads, we rarely get close to filling the block
-		solventForceKernel<BoundaryCondition, emvariant> <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+		solventForceKernel<BoundaryCondition, emvariant> 
+			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3] >> >
+			(*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 	}
 	

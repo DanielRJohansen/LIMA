@@ -125,6 +125,7 @@ private:
 
 	bool updatenlists_mutexlock = 0;
 
+	std::array<cudaStream_t, 5> cudaStreams;
 
 	// ################################# VARIABLES AND ARRAYS ################################# //
 

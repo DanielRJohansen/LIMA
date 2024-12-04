@@ -7,7 +7,8 @@
 
 
 struct BoxConfig {	
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs);
+	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
 	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
@@ -18,6 +19,8 @@ struct BoxConfig {
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
 	const BondedParticlesLUT* const bpLUTs;
+
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds;
 };
 
 struct BoxState {

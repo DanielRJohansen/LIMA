@@ -109,6 +109,22 @@ namespace BoxGrid {
 	__device__ __host__ inline NodeType* GetNodePtr(NodeType* grid, const int index1d) {
 		return &grid[index1d];
 	}
+
+	namespace TinymolBlockAdjacency {
+		static const int nNearbyBlocks = 56;
+
+		struct BlockRef {
+			int blockId = -1;
+			Float3 relShift{};
+		};
+
+		// Returns a cudapointer to the data
+		BlockRef* PrecomputeNeabyBlockIds(int boxlenNM);
+
+		__device__ static const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
+			return &nearbyBlockIdsData[blockId * nNearbyBlocks];
+		}
+	}
 };
 
 

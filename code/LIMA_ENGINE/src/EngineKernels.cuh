@@ -739,35 +739,64 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock TinyMolState Interactions ----------------------------------------------------- //
-	const int query_range = 2;
-	for (int x = -query_range; x <= query_range; x++) {
-		for (int y = -query_range; y <= query_range; y++) {
-			for (int z = -query_range; z <= query_range; z++) {
-				const NodeIndex dir{ x,y,z };
-				if (dir.sum() > 3) { continue; }
-				if (dir.isZero()) { continue; }
+	__shared__ BoxGrid::TinymolBlockAdjacency::BlockRef nearbyBlock[BoxGrid::TinymolBlockAdjacency::nNearbyBlocks];
+	if (threadIdx.x < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks) {
+		nearbyBlock[threadIdx.x] = BoxGrid::TinymolBlockAdjacency::GetPtrToNearbyBlockids(blockIdx.x, boxConfig.tinymolNearbyBlockIds)[threadIdx.x];
+	}
+	__syncthreads();
 
-				const int blockindex_neighbor = EngineUtils::getNewBlockId<BoundaryCondition>(dir, block_origo);
-				KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
 
-				const SolventBlock* solventblock_neighbor = boxState.solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
-				const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
-				const Float3 origoshift_offset = Coord(dir).ToRelpos();
+	for (int i = 0; i < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks; i++) {
+		const int blockindex_neighbor = nearbyBlock[i].blockId;
 
-				// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
-				__syncthreads();
-				if (threadIdx.x < nsolvents_neighbor) {
-					utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos() + origoshift_offset;
-					utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
-				}
-				__syncthreads();
+		const SolventBlock* solventblock_neighbor = boxState.solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
+		const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 
-				if (threadActive) {
-					force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
-				}
-			}
+		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
+		__syncthreads();
+		if (threadIdx.x < nsolvents_neighbor) {
+			utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos() + nearbyBlock[i].relShift;
+			utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
+		}
+		__syncthreads();
+
+		if (threadActive) {
+			force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
 		}
 	}
+
+	//const int query_range = 2;
+	//for (int z = -query_range; z <= query_range; z++) {
+	//	for (int y = -query_range; y <= query_range; y++) {
+	//		for (int x = -query_range; x <= query_range; x++) {
+	//			const NodeIndex dir{ x,y,z };
+	//			if (dir.sum() > 3) { continue; }
+	//			if (dir.isZero()) { continue; }
+
+	//			const int blockindex_neighbor = EngineUtils::getNewBlockId<BoundaryCondition>(dir, block_origo);
+	//			KernelHelpersWarnings::assertValidBlockId(blockindex_neighbor);
+
+	//			//if (blockindex_neighbor != nearbyBlockId[index++])
+	//			//	printf("Fail %d %d\n", blockindex_neighbor, nearbyBlockId[index-1]);
+
+	//			const SolventBlock* solventblock_neighbor = boxState.solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
+	//			const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+	//			const Float3 origoshift_offset = Coord(dir).ToRelpos();
+
+	//			// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
+	//			__syncthreads();
+	//			if (threadIdx.x < nsolvents_neighbor) {
+	//				utility_buffer[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos() + origoshift_offset;
+	//				utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
+	//			}
+	//			__syncthreads();
+
+	//			if (threadActive) {
+	//				force += LJ::computeSolventToSolventLJForces<true, energyMinimize>(relpos_self, tinymolTypeId, utility_buffer, nsolvents_neighbor, false, potE_sum, forcefieldTinymol_shared, utility_buffer_small);
+	//			}
+	//		}
+	//	}
+	//}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// Finally push force and potE for next kernel

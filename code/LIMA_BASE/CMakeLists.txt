@@ -18,6 +18,7 @@ add_library(LIMA_BASE STATIC
     src/Geometry.cpp
     src/MoleculeUtils.cpp 
     src/Topologyfile.cpp
+    src/BoxGrid.cu
 )
 
 target_include_directories(LIMA_BASE PRIVATE 

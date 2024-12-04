@@ -50,7 +50,7 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	}
 	setDeviceConstantMemory();
 	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr, nullptr);
-	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr);
+	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(boxStateCopy.get(), sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 	neighborlistsPtr = sim_dev->compound_neighborlists;
@@ -344,9 +344,12 @@ void Engine::_deviceMaster() {
 	}
 
 	if (boxparams.n_solvents > 0) {
+		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
 		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
 			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
+		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
+		// TODO: Too many threads, we rarely get close to filling the block
 		solventForceKernel<BoundaryCondition, emvariant> <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (*boxStateCopy, *boxConfigCopy, compoundgridPtr, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 	}

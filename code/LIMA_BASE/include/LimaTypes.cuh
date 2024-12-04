@@ -284,9 +284,9 @@ struct NodeIndex : public Int3 {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
-	__device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+	__device__ __host__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
-	__device__ int sum() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+	__device__ __host__ int sum() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 
 	__device__ __host__ int largestMagnitudeElement() const {
 		const Int3 m = this->abs();

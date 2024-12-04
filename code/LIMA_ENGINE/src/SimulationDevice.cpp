@@ -26,7 +26,7 @@ BoxConfig* BoxConfig::Create(const Box& boxHost) {
 		compoundsAtomtypes, 
 		compoundsAtomCharges, 
 		GenericCopyToDevice(boxHost.bpLutCollection), 
-		BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize)
+        BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
 	);
 
 	BoxConfig* devPtr;

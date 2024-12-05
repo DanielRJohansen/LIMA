@@ -107,6 +107,9 @@ private:
 	template <typename BoundaryCondition, bool emvariant, bool computePotE>
 	void _deviceMaster();
 
+	template <typename BoundaryCondition, bool emvariant>
+	void SnfHandler(cudaStream_t& stream);
+
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void setDeviceConstantMemory();
 	void verifyEngine();

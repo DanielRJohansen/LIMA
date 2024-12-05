@@ -208,25 +208,4 @@ namespace SupernaturalForces {
 
 
 
-	void SnfHandler(Simulation* simulation, SimulationDevice* simDev, int64_t step) {
-		cudaDeviceSynchronize();
-
-
-		switch (simulation->simparams_host.snf_select) {
-			case None:
-				break;
-			case HorizontalSqueeze:
-				SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);
-				break;
-			case HorizontalChargeField:
-				break;
-			case BoxEdgePotential:
-				if (simulation->box_host->boxparams.n_compounds > 0)
-					BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);	
-				if (simulation->box_host->boxparams.n_solvents > 0) 
-					BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev, step);
-				break;
-		}		
-		cudaDeviceSynchronize();
-	}
 }

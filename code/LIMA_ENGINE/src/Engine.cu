@@ -345,10 +345,12 @@ void Engine::_deviceMaster() {
 			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[1] >>> (sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 
-		CompoundSnfKernel<BoundaryCondition, emvariant> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>> 
-			(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundSnfKernel");
+
+        // TODO: Move this to snf handler
+        //CompoundSnfKernel<BoundaryCondition, emvariant>
+        //	<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >>>
+        //	(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
+        //LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundSnfKernel");
 	}
 
 	if (boxparams.n_solvents > 0) {
@@ -365,18 +367,22 @@ void Engine::_deviceMaster() {
 	}
 	
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+        // TODO Provide cudaStream
 		// Must occur after DistributeCompoundchargesToGridKernel
-		timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
+        //timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
+        //LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
 
 	if (simulation->simparams_host.snf_select != None) {
-		SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
+        // TODO: provide cudaStream to handler
+        //SupernaturalForces::SnfHandler(simulation.get(), sim_dev, simulation->getStep());
+        //LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
 	}
 
 	if (!simulation->box_host->bondgroups.empty()) {
-		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL >> > (bondgroups, *boxStateCopy, forceEnergiesBondgroups);
+        BondgroupsKernel<BoundaryCondition, emvariant>
+            <<<simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>
+            (bondgroups, *boxStateCopy, forceEnergiesBondgroups);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 	}
 
@@ -384,7 +390,9 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 
 	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> << <boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups);
+        CompoundIntegrationKernel<BoundaryCondition, emvariant>
+            <<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0] >>>
+            (sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
@@ -392,21 +400,22 @@ void Engine::_deviceMaster() {
 		const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(simulation->getStep());
 		if (isTransferStep)
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, true> 
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >>> 
+                <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1]  >>>
 					(sim_dev, simulation->getStep());
 		else
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, false>
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK >>>
+                <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1]  >>>
 					(sim_dev, simulation->getStep());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrationLoggingAndTransferout");
 
 		if (isTransferStep) {
 			cudaDeviceSynchronize();
-			solventTransferKernel<BoundaryCondition> << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size >> > (sim_dev, simulation->getStep());
+            solventTransferKernel<BoundaryCondition>
+                <<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, 0, cudaStreams[1]  >>>
+                (sim_dev, simulation->getStep());
 			LIMA_UTILS::genericErrorCheckNoSync("Error after solventTransferKernel");
 		}
 	}
-	
 
 	cudaDeviceSynchronize();
 }

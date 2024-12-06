@@ -15,13 +15,13 @@
 #endif
 
 //#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = true;
+const bool LIMA_PUSH = false;
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
 const bool ENABLE_UREYBRADLEY = true;
 

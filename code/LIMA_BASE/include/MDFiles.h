@@ -258,6 +258,11 @@ public:
 			throw std::runtime_error("System not initialized");
 		return m_system;
 	}
+	System& GetSystemMutable() {
+		if (!m_system.IsInit())
+			throw std::runtime_error("System not initialized");
+		return m_system;
+	}
 	void SetSystem(const std::string& systemName) {
 		if (m_system.IsInit())
 			throw std::runtime_error("System already initialized");

@@ -352,7 +352,7 @@ namespace ElectrostaticsTests {
 	}
 
 
-	LimaUnittestResult TestLongrangeEsNoLJ(EnvMode envmode) {
+	LimaUnittestResult TestLongrangeEsNoLJTwoParticles(EnvMode envmode) {
 		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode};
 
@@ -374,7 +374,9 @@ namespace ElectrostaticsTests {
 			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
 			env.run();
 
-			const Float3 diff = grofile.atoms[0].position - grofile.atoms[1].position;
+			Float3 hyperposOther = grofile.atoms[1].position;
+			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
+			const Float3 diff = grofile.atoms[0].position - hyperposOther;
 			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
 			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff);
 
@@ -383,8 +385,8 @@ namespace ElectrostaticsTests {
 			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
 			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
 
-			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
 			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
+			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
 
 			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
 			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.0001f,
@@ -424,6 +426,97 @@ namespace ElectrostaticsTests {
 			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0).len(), expectedForce.len()));
 		}
 
+
+		return LimaUnittestResult{ true, "", envmode == Full };
+	}
+
+
+	// Create many pos charged Ions as compounds. Set all LJ to 0. Compute exact SR and LR interactions between all particles. Run simulation 1 step, and compare the errors
+	LimaUnittestResult TestLongrangeEsNoLJManyParticles(EnvMode envmode) {
+		const float boxlen = 10.f;
+		const float chargeExtern = 2.4f;
+		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
+		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", boxlen,
+			AtomsSelection{
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
+			},
+			20.f
+			);
+
+		const fs::path work_folder = simulations_dir / "ShortrangeElectrostaticsCompoundOnly/";
+		Environment env{ work_folder, envmode };
+
+		
+		
+		SimParams params{};
+		params.n_steps = 1;
+		params.data_logging_interval = 1;
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		//grofile.atoms.resize(3);
+		// Give atoms 3 arbitrary positions, far away from eachother
+		//grofile.atoms[0].position = Float3{ 1.f, 1.f, 5.f };
+		//grofile.atoms[1].position = Float3{ 6.f, 1.f, 3.f };
+		//grofile.atoms[2].position = Float3{ 12.f, 8.f, 7.f };
+		/*grofile.atoms[0].position = Float3{ 1.f, 1.f, 5.f };
+		grofile.atoms[1].position = Float3{ 6.f, 1.f, 5.f };
+		grofile.atoms[2].position = Float3{ 12.f, 1.f, 5.f };*/
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+		//topfile.GetSystemMutable().molecules.resize(3);
+
+		env.CreateSimulation(grofile, topfile, params);
+		env.getSimPtr()->forcefield.particle_parameters[0].epsilon = 0.f; // There is only 1 particle type
+		env.run();
+
+
+		// Now compute all expected forces and potentials
+		std::vector<float> expectedPotentials(grofile.atoms.size());
+		std::vector<Float3> expectedForces(grofile.atoms.size());
+
+		for (int i = 0; i < grofile.atoms.size(); i++) {
+			const auto& atom = grofile.atoms[i];
+			float potential{};
+			Float3 force{};
+			for (int j = 0; j < grofile.atoms.size(); j++) {
+				if (i == j)
+					continue;
+
+				Float3 hyperposOther = grofile.atoms[j].position;
+				BoundaryConditionPublic::applyHyperposNM(atom.position, hyperposOther, boxlen, PBC);
+				const Float3 diff = atom.position - hyperposOther;
+				const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(charge, charge, diff.len()) * 0.5f;
+				const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(charge, charge, diff);
+
+				potential += expectedPotential;
+				force += expectedForce;
+			}
+			expectedPotentials[i] = potential;
+			expectedForces[i] = force;
+		}
+
+		const auto sim = env.getSim();
+		const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
+
+		std::vector<float> potErrors(grofile.atoms.size());
+		std::vector<float> forceErrors(grofile.atoms.size());
+
+		for (int i = 0; i < grofile.atoms.size(); i++) {
+			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(i, 0, 0) - expectedPotentials[i]) / expectedPotentials[i];
+			auto a = sim->forceBuffer->getCompoundparticleDatapointAtIndex(i, 0, 0);
+			auto b = expectedForces[i];
+			const float forceError = (sim->forceBuffer->getCompoundparticleDatapointAtIndex(i, 0, 0) - expectedForces[i]).len() / expectedForces[i].len();
+			potErrors[i] = potEError;
+			forceErrors[i] = forceError;
+		}
+
+		const float maxPotError = *std::max_element(potErrors.begin(), potErrors.end());
+		const float meanPotError = Statistics::Mean(potErrors);
+		ASSERT(meanPotError < 5e-2, std::format("Mean PotE Error {:.3e}", meanPotError));
+		ASSERT(maxPotError < 1, std::format("Max PotE Error {:.3e}", maxPotError));
+		
+		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
+		const float meanForceError = Statistics::Mean(forceErrors);
+		ASSERT(meanForceError < 5e-2, std::format("Mean Force Error {:.3e}", meanForceError));
+		ASSERT(maxForceError < 1, std::format("Max Force Error {:.3e}", maxForceError));
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}

@@ -36,175 +36,174 @@ namespace Electrostatics {
 		return nodeIndex;
 	}
 
-	// Utilitybuffer min size = sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)
-	__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposNM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
-		int* numParticlesInNodeLocal = (int*)utilityBuffer_sharedMem; // First 27 ints
-
-		// First clean the memory
-		//static_assert(MAX_COMPOUND_PARTICLES >= 27 * 2, "Not enough threads to reset buffer");
-		//if (threadIdx.x < 27 * 2) {
-		for (int i = threadIdx.x; i < 27 * 2; i += blockDim.x) {
-			numParticlesInNodeLocal[threadIdx.x] = 0;
-		}
-		__syncthreads();
-
-		// First each particle figure out which node it belongs to RELATIVE TO ITS COMPOUNDS ORIGO
-		int localOffset = 0;
-		NodeIndex relativeLocalIndex;
-		if (threadIdx.x < nParticles) {
-			relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposNM);
+	__device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
+		if (particleActive) {
+			NodeIndex relativeLocalIndex;
+			relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
 			relativeLocalIndex.x = std::max(relativeLocalIndex.x, -1);
 			relativeLocalIndex.x = std::min(relativeLocalIndex.x, 1);
 			relativeLocalIndex.y = std::max(relativeLocalIndex.y, -1);
 			relativeLocalIndex.y = std::min(relativeLocalIndex.y, 1);
 			relativeLocalIndex.z = std::max(relativeLocalIndex.z, -1);
 			relativeLocalIndex.z = std::min(relativeLocalIndex.z, 1);
+			return relativeLocalIndex;
+		}
+		return NodeIndex{};
+	}
 
+	// Utilitybuffer min size = sizeof(int) * (27 * 2 + MAX_COMPOUND_PARTICLES)
+	//__device__ static void DistributeChargesToChargegrid(const NodeIndex& compoundOrigo, const Float3& relposNM, float charge, ChargeNode* chargeGrid, int nParticles, char* utilityBuffer_sharedMem) {
+	__global__ void DistributeCompoundchargesToGridKernel(SimulationDevice * sim) 
+	{
+		__shared__ int numParticlesInNodeLocal[27];
+		__shared__ int numParticlesInNodeGlobal[27];
 
-			const int localIndex = convertRelative3dIndexToAbsolute1d(relativeLocalIndex);
-			localOffset = atomicAdd(&numParticlesInNodeLocal[localIndex], 1);
+		NodeIndex compoundOrigo = sim->boxState->compoundOrigos[blockIdx.x];
+		const Float3 relPos = sim->boxState->compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES];
+		const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
+		const float myCharge = sim->boxConfig.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+
+		// todo: threads with a charge of 0 should NOT push that charge (duh)
+
+		if (threadIdx.x < 27) {
+			numParticlesInNodeLocal[threadIdx.x] = 0;
+			numParticlesInNodeGlobal[threadIdx.x] = 0;
 		}
 		__syncthreads();
 
+		// First each particle figure out which node it belongs to relative to it's compounds origo. Then it decide the offset to put values, wrt other particles in this compound
+		int myOffsetInLocalNode = 0;																				// Between 0 and maxParticlesInNode
+		const NodeIndex relativeNode = GetParticlesBlockRelativeToCompoundOrigo(relPos, threadIdx.x < nParticles);	// Between {-1,-1,-1} and {1,1,1}
+		const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
+		for (int i = 0; i < nParticles; i++) {
+			if (threadIdx.x == i)
+				myOffsetInLocalNode = numParticlesInNodeLocal[localNodeId]++;
+			__syncthreads();
+		}
+
 		// Fetch the current particles in the global node counts, and figure out where to push our counts
-		int* numParticlesInNodeGlobal = &((int*)utilityBuffer_sharedMem)[27];
 		if (threadIdx.x < 27) {
 			NodeIndex absIndex3d = compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x);
 			PeriodicBoundaryCondition::applyBC(absIndex3d);
 
-			//if (BoxGrid::GetNodePtr(chargeGrid, absIndex3d) == nullptr)
-			//	printf("nullptr 6");
-
-			int* nParticlesInNodePtr = &BoxGrid::GetNodePtr(chargeGrid, absIndex3d)->nParticles;
-
-			numParticlesInNodeGlobal[threadIdx.x] = atomicAdd(nParticlesInNodePtr, numParticlesInNodeLocal[threadIdx.x]);
-		/*	if (numParticlesInNodeGlobal[threadIdx.x] > ChargeNode::maxParticlesInNode) {
-				printf("Error: Too many particles in node from other kernels: %d\n", numParticlesInNodeGlobal[threadIdx.x]);
-			}*/
+			// No need to fetch this data, if no particles goes there...
+			if (numParticlesInNodeLocal[threadIdx.x] > 0) {
+				numParticlesInNodeGlobal[threadIdx.x] = BoxGrid::GetNodePtr(sim->chargeGrid, absIndex3d)->MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x]);
+			} 
 		}
 		__syncthreads();
 
 		// Finally compute the correct index to insert our data, and push that data
 		if (threadIdx.x < nParticles) {
-			NodeIndex absoluteTargetIndex = compoundOrigo + relativeLocalIndex;
+			NodeIndex absoluteTargetIndex = compoundOrigo + relativeNode;
 			PeriodicBoundaryCondition::applyBC(absoluteTargetIndex);
 
-		/*	if (BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex) == nullptr)
-				printf("nullptr 5");*/
-
-
-			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)] + localOffset;
-			if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
+			const int offset = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeNode)] + myOffsetInLocalNode;
+	/*		if (offset < 0 || offset >= ChargeNode::maxParticlesInNode) {
 				printf("Error: offset out of bounds: %d. LO %d GO %d\n", offset, localOffset, numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeLocalIndex)]);
-				LIMAPOSITIONSYSTEM::PositionToNodeIndex(relposNM).print('n');
-				(relposNM).print('p');
-			}
+				LIMAPOSITIONSYSTEM::PositionToNodeIndex(relPos).print('n');
+				(relPos).print('p');
+			}*/
 			
-			const Float3 positionRelativeToNodeNM = relposNM - relativeLocalIndex.toFloat3();
-			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->positions[offset] = positionRelativeToNodeNM;
-			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->charges[offset] = charge;
-			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->compoundIds[offset] = blockIdx.x;
-			BoxGrid::GetNodePtr(chargeGrid, absoluteTargetIndex)->particleIds[offset] = threadIdx.x;
+			//const Float3 positionRelativeToNodeNM = relPos - relativeLocalIndex.toFloat3();
+			
+			BoxGrid::GetNodePtr(sim->chargeGrid, absoluteTargetIndex)->charges[offset] = myCharge;
+
+			auto res = BoxGrid::GetNodePtr(sim->chargeGrid, absoluteTargetIndex)->compoundReservations[0];
+			//BoxGrid::GetNodePtr(sim->chargeGrid, absoluteTargetIndex)->positions[offset] = positionRelativeToNodeNM;
+			//BoxGrid::GetNodePtr(sim->chargeGrid, absoluteTargetIndex)->compoundIds[offset] = blockIdx.x;
+			//BoxGrid::GetNodePtr(sim->chargeGrid, absoluteTargetIndex)->particleIds[offset] = threadIdx.x;
 		}
 	}
 
 
+	//
+	__device__ void BitonicSort(ChargeNode::CompoundReservation* reservations) {
+		static const int arraySize = ChargeNode::maxReservations;
+		for (int k = 2; k <= arraySize; k *= 2) {
+			for (int j = k / 2; j > 0; j /= 2) {
+				int ixj = threadIdx.x ^ j;
+				if (ixj > threadIdx.x) {
+					if ((threadIdx.x & k) == 0) {
+						if (reservations[threadIdx.x].compoundId > reservations[ixj].compoundId) {
+							// Swap
+							ChargeNode::CompoundReservation temp = reservations[threadIdx.x];
+							reservations[threadIdx.x] = reservations[ixj];
+							reservations[ixj] = temp;
+						}
+					}
+					else {
+						if (reservations[threadIdx.x].compoundId < reservations[ixj].compoundId) {
+							// Swap
+							ChargeNode::CompoundReservation temp = reservations[threadIdx.x];
+							reservations[threadIdx.x] = reservations[ixj];
+							reservations[ixj] = temp;
+						}
+					}
+				}
+				__syncthreads();
+			}
+		}
+	}
 
-
-
-
-	//__global__ static void HandleShortrangeElectrostatics(SimulationDevice* simDev) {
-	//	__shared__ Float3 positionsBuffer[ChargeNode::maxParticlesInNode];
-	//	__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];
-
-	//	const int index1D = blockIdx.x;
-	//	const NodeIndex index3D = BoxGrid::Get3dIndex(blockIdx.x);
-	//	ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, index1D);
-	//	const bool threadActive = threadIdx.x < myNode_GlobalMem->nParticles;
-
-	//	const Float3 myPos = threadActive
-	//		? myNode_GlobalMem->positions[threadIdx.x]
-	//		: Float3(42.f);
-
-	//	const float myCharge = threadActive
-	//		? myNode_GlobalMem->charges[threadIdx.x]
-	//		: 0.f;
-
-	//	Float3 force{}; // Accumulated as [GN/mol], converted to GigaN before writing to output
-	//	float potE = 0.f; // Accumulated as [J/mol], converted to GigaJ before writing to output
-
-
-	//	for (int xOff = -1; xOff <= 1; xOff++) {
-	//		for (int yOff = -1; yOff <= 1; yOff++) {
-	//			for (int zOff = -1; zOff <= 1; zOff++) {
-
-	//				const bool skipOwnIndex = xOff == 0 && yOff == 0 && zOff == 0;
-	//				NodeIndex queryNodeindex = index3D + NodeIndex(xOff, yOff, zOff);
-	//				PeriodicBoundaryCondition::applyBC(queryNodeindex);
-
-	//				if (threadIdx.x < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles) {
-	//					positionsBuffer[threadIdx.x] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(NodeIndex{xOff, yOff, zOff}, BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->positions[threadIdx.x]);
-	//					
-	//					chargesBuffer[threadIdx.x] = BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->charges[threadIdx.x];
-	//				}
-	//				__syncthreads();
-
-	//				if (threadActive) {
-	//					for (int i = 0; i < BoxGrid::GetNodePtr(simDev->chargeGrid, queryNodeindex)->nParticles; i++) {
-
-	//						if (skipOwnIndex && i == threadIdx.x)
-	//							continue;
-
-	//						const Float3 otherPos = positionsBuffer[i];
-	//						const float otherCharge = chargesBuffer[i];
-
-	//						const Float3 diff = myPos - otherPos;	
-	//							
-	//						force += PhysicsUtilsDevice::CalcCoulumbForce(myCharge, otherCharge, diff);
-	//						potE += PhysicsUtilsDevice::CalcCoulumbPotential(myCharge, otherCharge, diff) * 0.5f;	// 0.5 because the other particle is also calcing this
-	//					}
-	//				}
-	//			}
-	//		}
-	//	}
-
-
-
-
-	//	if (threadActive) {
-	//		const int cid = myNode_GlobalMem->compoundIds[threadIdx.x];
-	//		const int pid = myNode_GlobalMem->particleIds[threadIdx.x];
-	//		//printf("Resulting force %f potE %f \n", force.len(), potE);
-
-	//		simDev->boxState->compounds[cid].potE_interim[pid] += potE;
-	//		simDev->boxState->compounds[cid].forces_interim[pid] += force;
-	//	}
-
-	//	__syncthreads();
-
-	//	// Finally reset nParticles before next step
-	//	if (threadIdx.x == 0)
-	//		BoxGrid::GetNodePtr(simDev->chargeGrid, index3D)->nParticles = 0;
-	//}
-
-
-
+	static const int SumChargesInGridnode_NTHREADS = ChargeNode::maxReservations;
 	__global__ static void SumChargesInGridnode(SimulationDevice* simDev) {
-		__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];	// OPTIM: each thread can do a parallel partial sum, and then we only need to sum the 32 partial sums in the end
+		//__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];	// OPTIM: each thread can do a parallel partial sum, and then we only need to sum the 32 partial sums in the end
+
+		//ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, blockIdx.x);
+		//for (int i = threadIdx.x; i < ChargeNode::maxParticlesInNode; i+=blockDim.x) {
+		//	chargesBuffer[i] = i < myNode_GlobalMem->nParticles
+		//		? myNode_GlobalMem->charges[i]
+		//		: 0.f;
+		//}
+		//__syncthreads();
+
+		//LAL::distributedSummation(chargesBuffer, ChargeNode::maxParticlesInNode);
+
+		//__syncthreads();
+		//if (threadIdx.x == 0) {
+		//	*BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, blockIdx.x) = chargesBuffer[0];
+		//}
+
+		
+		__shared__ ChargeNode::CompoundReservation reservations[ChargeNode::maxReservations];
+		reservations[threadIdx.x] = ChargeNode::CompoundReservation{};
+		//__shared__ float chargesBuffer[ChargeNode::maxParticlesInNode];	// OPTIM: each thread can do a parallel partial sum, and then we only need to sum the 32 partial sums in the end
+		//__shared__ float chargesSums[ChargeNode::maxReservations];
+		__shared__ float chargeSum;
 
 		ChargeNode* myNode_GlobalMem = BoxGrid::GetNodePtr(simDev->chargeGrid, blockIdx.x);
-		for (int i = threadIdx.x; i < ChargeNode::maxParticlesInNode; i+=blockDim.x) {
-			chargesBuffer[i] = i < myNode_GlobalMem->nParticles
-				? myNode_GlobalMem->charges[i]
-				: 0.f;
+		const uint32_t nReservations = myNode_GlobalMem->reservationKey >> 16;
+		if (threadIdx.x < nReservations)
+			reservations[threadIdx.x] = myNode_GlobalMem->compoundReservations[threadIdx.x];
+		//chargesSums[threadIdx.x] = 0.f;
+		chargeSum = 0.f;
+		__syncthreads();
+
+		BitonicSort(reservations);
+		__syncthreads();
+
+
+
+		float chargeSumInterrim = 0.f;
+		if (threadIdx.x < nReservations) {
+			for (int i = 0; i < reservations[threadIdx.x].nParticlesInThisNode; i++) {
+				chargeSumInterrim += myNode_GlobalMem->charges[reservations[threadIdx.x].firstParticlesOffsetInThisNode + i];
+			}
 		}
-		__syncthreads();
 
-		LAL::distributedSummation(chargesBuffer, ChargeNode::maxParticlesInNode);
+		for (int i = 0; i < nReservations; i++) {
+			if (threadIdx.x == i)
+				chargeSum += chargeSumInterrim;
+			__syncthreads;
+		}
 
-		__syncthreads();
 		if (threadIdx.x == 0) {
-			*BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, blockIdx.x) = chargesBuffer[0];
+			const NodeIndex mo = BoxGrid::Get3dIndex(blockIdx.x);
+
+			//myNode_GlobalMem->charges[0] = chargeSum;
+			myNode_GlobalMem->reservationKey = 0;
+			*BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, blockIdx.x) = chargeSum;
 		}
 	}
 
@@ -216,10 +215,10 @@ namespace Electrostatics {
 		potEInterims[threadIdx.x] = 0.f;
 
 		const NodeIndex myNodeindex = BoxGrid::Get3dIndex(blockIdx.x);
-		if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex) == nullptr)
-			printf("nullptr 1");
-		if (BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles == 0)
-			return;
+		//if (BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex) == nullptr)
+		//	printf("nullptr 1");
+		//if (BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles == 0)
+		//	return;
 
 
 		// For even sized grids, there is 1 node that is equally far away on both sides, thus that nodes forces cancel out. This logic avoids such nodes
@@ -230,7 +229,7 @@ namespace Electrostatics {
 		for (int i = threadIdx.x; i < nNodesInBoxGridEffective; i += blockDim.x) {
 			const NodeIndex queryNodeindexRelative = BoxGrid::Get3dIndexWithNNodes(i, nNodesPerDimRelativeToUs) + nodeOffset;
 
-			if (queryNodeindexRelative.MaxAbsElement() < 2) // These are shortrange
+			if (queryNodeindexRelative.MaxAbsElement() < 2) // These are shortrange 
 				continue;
 
 			NodeIndex queryNodeindexAbsolute = myNodeindex + queryNodeindexRelative;
@@ -255,30 +254,27 @@ namespace Electrostatics {
 			// TODO: this potential should be split between all particles in the chargenode, RIIIIIIIIIIIIIIIIGHT?? Josiah??
 			//printf("Force out: %f pot out %f\n", forceInterims[0].len(), potEInterims[0]);
 
-			const float nParticles = static_cast<float>(BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles);
+			
 			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->forcePart = forceInterims[0];
-			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->potentialPart = potEInterims[0];
-			BoxGrid::GetNodePtr(simDev->chargeGrid, myNodeindex)->nParticles = 0;
+			BoxGrid::GetNodePtr(simDev->chargeGridOutputForceAndPot, myNodeindex)->potentialPart = potEInterims[0];			
 		}
 	}
 
 
 	// Returns timing in [ys]
-	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost) 
+	__host__ static int HandleElectrostatics(SimulationDevice* sim_dev, BoxParams boxparamsHost, cudaStream_t& cudaStream) 
 	{
-		LIMA_UTILS::genericErrorCheck("Error Before Electrostatics SumChargesInGridnode");
+		// TODO Needs a cudastream as argument
+		//LIMA_UTILS::genericErrorCheckNoSync("Error Before Electrostatics SumChargesInGridnode");
 		const auto t0 = std::chrono::high_resolution_clock::now();
 
-		// First handle short range
-		//HandleShortrangeElectrostatics<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), ChargeNode::maxParticlesInNode >> > (sim_dev);
-
-		static_assert(ChargeNode::maxParticlesInNode %32 == 0, "Chargenode charges size isn't optimal for this kernel");
-		SumChargesInGridnode<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), 32>>>(sim_dev);
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics SumChargesInGridnode");
+		//static_assert(ChargeNode::maxParticlesInNode %32 == 0, "Chargenode charges size isn't optimal for this kernel");
+		SumChargesInGridnode<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), SumChargesInGridnode_NTHREADS, 0, cudaStream >>>(sim_dev);
+		//LIMA_UTILS::genericErrorCheck("Error after Electrostatics SumChargesInGridnode");
 
 
-		CalcLongrangeElectrostaticForces<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), CalcLongrangeElectrostaticForces_nThreads>>>(sim_dev);
-		LIMA_UTILS::genericErrorCheck("Error after Electrostatics CalcLongrangeElectrostaticForces");
+		CalcLongrangeElectrostaticForces<<<BoxGrid::BlocksTotal(boxparamsHost.boxSize), CalcLongrangeElectrostaticForces_nThreads, 0, cudaStream>>>(sim_dev);
+		//LIMA_UTILS::genericErrorCheck("Error after Electrostatics CalcLongrangeElectrostaticForces");
 
 
 		const auto t1 = std::chrono::high_resolution_clock::now();

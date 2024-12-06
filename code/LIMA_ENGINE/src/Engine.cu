@@ -1,21 +1,17 @@
 #include "Engine.cuh"
-#include "Utilities.h"
-#include "Neighborlists.cuh"
-#include "Statistics.h"
 
-#include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
+#include "Neighborlists.cuh"
+#include "BoundaryCondition.cuh"
 #include "SimulationDevice.cuh"
 #include "LimaPositionSystem.cuh"
-
 #include "ChargeOcttree.cuh"
-
 #include "EngineKernels.cuh"
-
 #include "Thermostat.cuh"
-
 #include "SupernaturalForces.cuh"
 
+#include "Statistics.h"
+#include "Utilities.h"
 
 #include <unordered_set>
 
@@ -329,7 +325,7 @@ void Engine::_deviceMaster() {
 
 	// #### Pre force kernels
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics && boxparams.n_compounds > 0) {
-		DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>(sim_dev);
+		Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>(sim_dev);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributeCompoundchargesToGridKernel");
 	}
 
@@ -363,8 +359,8 @@ void Engine::_deviceMaster() {
 	
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
 		// Must occur after DistributeCompoundchargesToGridKernel
-		//timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams);
-		//LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
+		timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams, cudaStreams[2]);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
 
 	if (simulation->simparams_host.snf_select != None) {

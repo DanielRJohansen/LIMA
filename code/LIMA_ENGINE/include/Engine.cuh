@@ -1,16 +1,15 @@
 #pragma once
 
+#include "LimaTypes.cuh"
+#include "Simulation.cuh"
+
+#include "Constants.h"
+#include "Utilities.h"
+
 #include <iostream>
 #include <chrono>
 #include <thread>
 #include <memory>
-
-#include "Constants.h"
-#include "LimaTypes.cuh"
-#include "Simulation.cuh"
-#include "Utilities.h"
-
-
 
 
 

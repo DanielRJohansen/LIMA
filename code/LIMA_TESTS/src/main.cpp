@@ -27,6 +27,9 @@ void RunAllUnitTests();
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+		//TestLongrangeEsNoLJTwoParticles(envmode);
+		//TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -160,18 +163,17 @@ void RunAllUnitTests() {
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
+	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
+	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
+	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
+	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
+	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Test Setup
-	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));	
-
-
-	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
-	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
-	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
-	
+	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));

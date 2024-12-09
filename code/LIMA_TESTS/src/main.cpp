@@ -28,7 +28,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		//TestLongrangeEsNoLJTwoParticles(envmode);
+		TestLongrangeEsNoLJTwoParticles(envmode);
 		//TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
@@ -114,7 +114,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

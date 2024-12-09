@@ -9,11 +9,13 @@
 #include "EngineKernels.cuh"
 #include "Thermostat.cuh"
 #include "SupernaturalForces.cuh"
+#include "PME.cuh"
 
 #include "Statistics.h"
 #include "Utilities.h"
 
 #include <unordered_set>
+
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
@@ -27,10 +29,10 @@
 //	+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
 //	+ 4 + 4 * 3 * 2;
 
-Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
-	: bc_select(bc), m_logger(std::move(logger)), compoundForceEnergyInterims(sim->box_host->boxparams.n_compounds)
+Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
+	: bc_select(bc), m_logger(std::move(logger)), compoundForceEnergyInterims(_sim->box_host->boxparams.n_compounds)
 {
-	simulation = std::move(sim);
+	simulation = std::move(_sim);
 
 	verifyEngine();
 
@@ -70,6 +72,8 @@ Engine::Engine(std::unique_ptr<Simulation> sim, BoundaryConditionSelect bc, std:
 	}
 
 
+	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize);
+	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
 	//std::unordered_set<std::string> unique_compounds;
 	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
 	//	char types[64];
@@ -325,7 +329,7 @@ void Engine::_deviceMaster() {
 
 	// #### Pre force kernels
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics && boxparams.n_compounds > 0) {
-		Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>(sim_dev);
+		//Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>(sim_dev);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributeCompoundchargesToGridKernel");
 	}
 
@@ -359,7 +363,8 @@ void Engine::_deviceMaster() {
 	
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
 		// Must occur after DistributeCompoundchargesToGridKernel
-		timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams, cudaStreams[2]);
+		//timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams, cudaStreams[2]);
+		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
 
@@ -380,7 +385,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0] >> >
-			(sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups);
+			(sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 

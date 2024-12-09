@@ -356,7 +356,7 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, int64_t step, const Uni
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, const ForceEnergy* const forceEnergiesPME) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -387,21 +387,23 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
 	if constexpr (ENABLE_ES_LR) {
-		if (sim->params.enable_electrostatics && threadIdx.x < nParticles) {
-			NodeIndex nodeindex = compound_coords.origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_coords.rel_positions[threadIdx.x].ToRelpos());
-			BoundaryCondition::applyBC(nodeindex);
-			const float myCharge = sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x];
-			//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());			
-			if (BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex) == nullptr) {
-				//printf("nullptr 0");
-				auto a = compound_coords.origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_coords.rel_positions[threadIdx.x].ToRelpos());
-				printf("abs %d %d %d hyper %d %d %d  BPD %d\n", a.x, a.y, a.z, nodeindex.x, nodeindex.y, nodeindex.z, boxSize_device.blocksPerDim);
-			}
+		//if (sim->params.enable_electrostatics && threadIdx.x < nParticles) {
+		//	NodeIndex nodeindex = compound_coords.origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_coords.rel_positions[threadIdx.x].ToRelpos());
+		//	BoundaryCondition::applyBC(nodeindex);
+		//	const float myCharge = sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x];
+		//	//printf("F %f ES %f\n", force.len(), BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->force.len());			
+		//	if (BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex) == nullptr) {
+		//		//printf("nullptr 0");
+		//		auto a = compound_coords.origo + LIMAPOSITIONSYSTEM::PositionToNodeIndex(compound_coords.rel_positions[threadIdx.x].ToRelpos());
+		//		printf("abs %d %d %d hyper %d %d %d  BPD %d\n", a.x, a.y, a.z, nodeindex.x, nodeindex.y, nodeindex.z, boxSize_device.blocksPerDim);
+		//	}
 
 
-			forceEnergy.force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
-			forceEnergy.potE += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
-		}
+		//	forceEnergy.force += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->forcePart * myCharge;
+		//	forceEnergy.potE += BoxGrid::GetNodePtr(sim->chargeGridOutputForceAndPot, nodeindex)->potentialPart * myCharge;
+		//}
+		if (threadIdx.x < nParticles)
+			forceEnergy = forceEnergy + forceEnergiesPME[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 	}
 
 

@@ -363,27 +363,30 @@ namespace ElectrostaticsTests {
 			params.enable_electrostatics = true;
 			params.data_logging_interval = 1;
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			grofile.box_size = Float3{ 15.f };
-			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
-			grofile.atoms[1].position = Float3{ 7.f, 1.5f, 1.5f };
+			grofile.box_size = Float3{ 20.f };
+			grofile.atoms[0].position = Float3{ 1.1f, 1.62f, 1.49f };
+			grofile.atoms[1].position = Float3{ 4.1f, 1.62f, 1.49f };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 
 			env.CreateSimulation(grofile, topfile, params);
 			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = -1.f * elementaryChargeToKiloCoulombPerMole;
 			env.run();
 
 			Float3 hyperposOther = grofile.atoms[1].position;
 			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
 			const Float3 diff = grofile.atoms[0].position - hyperposOther;
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff);
+			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, -elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
+			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, -elementaryChargeToKiloCoulombPerMole, diff);
 
 			const auto sim = env.getSim();
 			const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
 			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
 			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
+
+			printf("Expected force %f %f %f\n", expectedForce.x, expectedForce.y, expectedForce.z);
+			printf("Actual force %f %f %f\n", actualForce.x, actualForce.y, actualForce.z);
 
 			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
 			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));

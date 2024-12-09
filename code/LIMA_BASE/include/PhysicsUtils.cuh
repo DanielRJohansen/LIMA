@@ -36,7 +36,7 @@ namespace PhysicsUtils {
 	/// <param name="otherCharge">[kilo C/mol]</param>
 	/// <param name="diff">self-other [nm]</param>
 	/// <returns>[J/mol/nm]</returns>
-	constexpr float modifiedCoulombConstant_Force = COULOMBCONSTANT / NANO / NANO / AVOGADROSNUMBER * NANO * KILO * KILO;	// [1/n N/mol nm^2 / (kilo C/mol)^2]
+	constexpr float modifiedCoulombConstant_Force = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol*nm / (kilo C/mol)^2]
 	__host__ inline Float3 CalcCoulumbForce(const float myCharge, const float otherCharge, const Float3& diff) 
 	{
 		return diff.norm() * modifiedCoulombConstant_Force * (myCharge * otherCharge) / diff.lenSquared();

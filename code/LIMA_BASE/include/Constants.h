@@ -66,7 +66,7 @@ const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some othe
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
-constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
+constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [n*m^2/C^2] == [ J*m / C^2]
 constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
 
 constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / KILO;

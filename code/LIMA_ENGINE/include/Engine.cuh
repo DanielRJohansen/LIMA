@@ -21,6 +21,9 @@ class BoxState;
 class BoxConfig;
 class NeighborList;
 class CompoundGridNode;
+
+namespace PME { class Controller; };
+
 struct CompoundForceEnergyInterims {
 	CompoundForceEnergyInterims(int nCompounds);
 	void Free();
@@ -146,6 +149,11 @@ private:
 
 	// These are owned, but this is temporary place to store them
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
+	ForceEnergy* forceEnergiesPME = nullptr;
+
+
+	std::unique_ptr<PME::Controller> pmeController = nullptr;
+
 	BondGroup* bondgroups = nullptr;
 
 	CompoundForceEnergyInterims compoundForceEnergyInterims;

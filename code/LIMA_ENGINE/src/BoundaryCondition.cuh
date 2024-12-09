@@ -23,6 +23,14 @@ public:
 
 	}
 
+	__device__ NodeIndex static applyBC(const NodeIndex& nodeindex, int nodesPerDim) {
+		NodeIndex output = nodeindex;
+		output.x += nodesPerDim * ((nodeindex.x < 0) - (nodeindex.x >= nodesPerDim));
+		output.y += nodesPerDim * ((nodeindex.y < 0) - (nodeindex.y >= nodesPerDim));
+		output.z += nodesPerDim * ((nodeindex.z < 0) - (nodeindex.z >= nodesPerDim));
+		return output;
+	}
+
 	__device__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
 		const NodeIndex difference = static_index - movable_index;
 		movable_index.x += boxSize_device.blocksPerDim * (difference.x > (boxSize_device.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)

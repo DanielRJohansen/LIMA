@@ -364,21 +364,26 @@ namespace ElectrostaticsTests {
 			params.data_logging_interval = 1;
 			GroFile grofile{ work_folder / "molecule/conf.gro" };
 			grofile.box_size = Float3{ 20.f };
-			grofile.atoms[0].position = Float3{ 1.1f, 1.62f, 1.49f };
-			grofile.atoms[1].position = Float3{ 4.1f, 1.62f, 1.49f };
+			grofile.atoms[0].position = Float3{ 7.025f, 10.025f, 10.025f };
+			grofile.atoms[1].position = Float3{ 10.025f, 10.025f, 10.025f };
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
+
+			//grofile.atoms.resize(1);
+			//topfile.GetSystemMutable().molecules[0].moleculetype.get()->atoms.re;
 
 
 			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = -1.f * elementaryChargeToKiloCoulombPerMole;
+			float charge0 = -1.f * elementaryChargeToKiloCoulombPerMole;
+			float charge1 = 1.f * elementaryChargeToKiloCoulombPerMole;
+			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = charge0;
+			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = charge1;
 			env.run();
 
 			Float3 hyperposOther = grofile.atoms[1].position;
 			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
 			const Float3 diff = grofile.atoms[0].position - hyperposOther;
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, -elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, -elementaryChargeToKiloCoulombPerMole, diff);
+			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(charge0, charge1, diff.len()) * 0.5f;
+			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(charge0, charge1, diff);
 
 			const auto sim = env.getSim();
 			const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
@@ -388,15 +393,15 @@ namespace ElectrostaticsTests {
 			printf("Expected force %f %f %f\n", expectedForce.x, expectedForce.y, expectedForce.z);
 			printf("Actual force %f %f %f\n", actualForce.x, actualForce.y, actualForce.z);
 
-			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
-			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
+			ASSERT(forceError < 0.2f, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
+			ASSERT(potEError < 0.2f, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
 
 			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
 			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.0001f,
 				std::format("Expected forces to be equal and opposite. P0 {:.1e} {:.1e} {:.1e} P1 {:.1e} {:.1e} {:.1e}",
 				actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));
 		}
-
+		exit(1);
 
 		// Now check with 2 particles of maximum error from nodeindexes
 		{

@@ -71,7 +71,7 @@ namespace PME {
 			const float skal = 1.f;
 			constfloat G = 1.f;
 			D[index] = exp(-m*PI/G* PI / G)* skal /
-				(m*PI**volume.x*volume.y*volume.z) *
+				(m*PI*volume.x*volume.y*volume.z) *
 				BCoeff(pmax, K, k.x)*
 				BCoeff(pmax, K, k.y)*
 				BCoeff(pmax, K, k.z);

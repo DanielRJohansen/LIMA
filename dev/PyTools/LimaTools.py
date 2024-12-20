@@ -5,7 +5,7 @@ import numpy as np
 import CompareParametersWithGromacs
 import Potentials
 import os
-
+import Plot2dVec
 import Energies
 
 
@@ -85,6 +85,10 @@ def count_lines_in_directory():
 
 
 if __name__ == "__main__":
+
+    Plot2dVec.plot_binary_float_matrix()
+    exit(0)
+
     count_lines_in_directory()
     exit(0)
 

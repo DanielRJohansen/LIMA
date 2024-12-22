@@ -14,7 +14,7 @@ struct BoxConfig {
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
-	const float* const compoundsAtomCharges;	
+	const float* const compoundsAtomCharges;	// [kC/mol]
 	const Compound* const compounds;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace

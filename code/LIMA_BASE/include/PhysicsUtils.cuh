@@ -50,7 +50,14 @@ namespace PhysicsUtils {
 	constexpr float modifiedCoulombConstant_Potential = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol * nm / (kilo C/mol)^2] 
 	__host__ inline constexpr float CalcCoulumbPotential(const float myCharge, const float otherCharge, const float distance) 
 	{		
-		// N * m = J
 		return modifiedCoulombConstant_Potential * (myCharge * otherCharge) / distance;
+	}
+
+	/// <summary>
+	/// Computes the ewald splitting parameter Kappa
+	/// </summary>
+	/// <returns>[1/nm]</returns>
+	constexpr float CalcEwaldkappa(float cutoffNM) {
+		return 3.f / cutoffNM; // erfc(3) will yield a tolerance of 2e-5.. 
 	}
 }

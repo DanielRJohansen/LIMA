@@ -356,84 +356,69 @@ namespace ElectrostaticsTests {
 		const fs::path work_folder = simulations_dir / "Pool/";
 		Environment env{ work_folder, envmode};
 
+		struct TestSetup {
+			Float3 p0, p1;
+			float c0, c1;
+		};
+
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
-		{
-			SimParams params{};
-			params.n_steps = 1;
-			params.enable_electrostatics = true;
-			params.data_logging_interval = 1;
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			grofile.box_size = Float3{ 20.f };
-			grofile.atoms[0].position = Float3{ 7.025f, 10.025f, 10.025f };
-			grofile.atoms[1].position = Float3{ 10.025f, 10.025f, 10.025f };
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
+		std::vector<TestSetup> testSetups{
+			{Float3{ 5.025f, 10.025f, 10.025f }, Float3{ 10.025f, 10.025f, 10.025f }, -1.f * elementaryChargeToKiloCoulombPerMole, 1.f * elementaryChargeToKiloCoulombPerMole}	// Perfectly centered between 8 gridnodes (when 20 nodes/nm)
+			//,{Float3{ 4.025f, 12.025f, 9.025f }, Float3{ 10.025f, 10.025f, 10.025f }, -1.f * elementaryChargeToKiloCoulombPerMole, 1.f * elementaryChargeToKiloCoulombPerMole}	// Perfectly centered, but 3D force
+			//,{Float3{ 4.f, 12.1f, 9.333f }, Float3{ 10.025f, 10.025f, 10.025f }, -1.f * elementaryChargeToKiloCoulombPerMole, 1.f * elementaryChargeToKiloCoulombPerMole}		// Not centered
+			//,{Float3{ 9.2f, 10.f, 10.f }, Float3{ 10.f, 10.f, 10.f}, -1.f * elementaryChargeToKiloCoulombPerMole, 1.f * elementaryChargeToKiloCoulombPerMole}					// Within SR range, check to ensure force isnt computed twice
+			//,
+			//{Float3{ 4.f, 12.1f, 9.333f }, Float3{ 10.025f, 10.025f, 10.025f }, -3.f * elementaryChargeToKiloCoulombPerMole, 1.f * elementaryChargeToKiloCoulombPerMole}		// Not centered, non neutal charges -- NOT CURRENTLY SUPPORTED
+		};
 
-			//grofile.atoms.resize(1);
-			//topfile.GetSystemMutable().molecules[0].moleculetype.get()->atoms.re;
 
+
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		grofile.box_size = Float3{ 20.f };
+
+		SimParams params{};
+		params.n_steps = 1;
+		params.enable_electrostatics = true;
+		params.data_logging_interval = 1;
+
+		for (int testIndex = 0; testIndex < testSetups.size(); testIndex++) {
+			const auto setup = testSetups[testIndex];
+
+			grofile.atoms[0].position = setup.p0;
+			grofile.atoms[1].position = setup.p1;
 
 			env.CreateSimulation(grofile, topfile, params);
-			float charge0 = -1.f * elementaryChargeToKiloCoulombPerMole;
-			float charge1 = 1.f * elementaryChargeToKiloCoulombPerMole;
-			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = charge0;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = charge1;
+			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = setup.c0;
+			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = setup.c1;
 			env.run();
 
 			Float3 hyperposOther = grofile.atoms[1].position;
 			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
 			const Float3 diff = grofile.atoms[0].position - hyperposOther;
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(charge0, charge1, diff.len()) * 0.5f;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(charge0, charge1, diff);
+			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(setup.c0, setup.c1, diff.len()) * 0.5f;
+			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(setup.c0, setup.c1, diff);
 
 			const auto sim = env.getSim();
 			const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
-			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
+			const float actualPotential = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
+			const float potEError = std::abs((actualPotential - expectedPotential) / expectedPotential);
 			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
 
-			printf("Expected force %f %f %f\n", expectedForce.x, expectedForce.y, expectedForce.z);
-			printf("Actual force %f %f %f\n", actualForce.x, actualForce.y, actualForce.z);
+			/*Float3 ghostforce = PhysicsUtils::CalcCoulumbForce(setup.c0, setup.c1, Float3{15.f, 0.f, 0.f});
+			(actualForce - ghostforce).print('F');*/
 
-			ASSERT(forceError < 0.2f, std::format("Actual Force {:.5e} Expected force {:.5e}", actualForce.len(), expectedForce.len()));
-			ASSERT(potEError < 0.2f, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
+			if (envmode == Full) {
+				printf("testIndex %d", testIndex);
+			}
+			ASSERT(forceError < 0.02f, std::format("Actual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError));
+			ASSERT(potEError < 0.1f, std::format("Actual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", actualPotential, expectedPotential, potEError));
 
 			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
 			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.0001f,
 				std::format("Expected forces to be equal and opposite. P0 {:.1e} {:.1e} {:.1e} P1 {:.1e} {:.1e} {:.1e}",
-				actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));
+					actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));			
 		}
-		exit(1);
-
-		// Now check with 2 particles of maximum error from nodeindexes
-		{
-			SimParams params{};
-			params.n_steps = 1;
-			params.enable_electrostatics = true;
-			params.data_logging_interval = 1;
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			grofile.box_size = Float3{ 15.f };
-			grofile.atoms[0].position = Float3{ 1.4f, 1.5f, 1.5f };
-			grofile.atoms[1].position = Float3{ 6.6f, 1.5f, 1.5f };
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-
-			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = 1.f * elementaryChargeToKiloCoulombPerMole;
-			env.run();
-			
-			const Float3 diff = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(grofile.atoms[0].position).toFloat3()
-				- LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(grofile.atoms[1].position).toFloat3();
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff.len()) * 0.5f;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(elementaryChargeToKiloCoulombPerMole, elementaryChargeToKiloCoulombPerMole, diff);
-
-			const auto sim = env.getSim();
-			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedPotential) / expectedPotential;
-			const float forceError = (sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0) - expectedForce).len() / expectedForce.len();
-
-			ASSERT(potEError < 1e-3, std::format("Actual PotE {:.5e} Expected potE: {:.5e}", sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0), expectedPotential));
-			ASSERT(forceError < 1e-3, std::format("Actual Force {:.5e} Expected force {:.5e}", sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0).len(), expectedForce.len()));
-		}
-
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}

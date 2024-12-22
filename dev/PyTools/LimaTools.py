@@ -7,7 +7,8 @@ import Potentials
 import os
 import Plot2dVec
 import Energies
-
+import math
+from scipy.special import erfc
 
 def read_histogram_data(filename):
     with open(filename, 'rb') as f:
@@ -86,7 +87,30 @@ def count_lines_in_directory():
 
 if __name__ == "__main__":
 
-    Plot2dVec.plot_binary_float_matrix()
+    #print(math.erfc(3))
+    kappa = 2.5
+    x = np.linspace(0.001, 3, 500)  # Avoid division by zero
+
+    # Compute the scalar term
+    erfc_term = erfc(x * kappa)
+    #scalar = erfc_term / x ** 2
+    scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * x * np.exp(-kappa * kappa * x**2)
+
+    #scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * (np.exp(-kappa*kappa * x**2))
+
+    #scalar = erfc(x*kappa) + 2*kappa/(np.sqrt(3.14)*x)*np.exp(-kappa * kappa * x**2) * x
+
+    #scalar = erfc(x*kappa)
+
+    # Plot the function
+    plt.figure(figsize=(8, 5))
+    plt.plot(x, scalar, label=r'$\mathrm{Scalar} = \frac{\mathrm{erfc}(|x| \cdot \kappa)}{x^2}$')
+    plt.title('Scalar Derived from erfc(x)')
+    plt.xlabel('x')
+    plt.ylabel('Scalar')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
     exit(0)
 
     count_lines_in_directory()

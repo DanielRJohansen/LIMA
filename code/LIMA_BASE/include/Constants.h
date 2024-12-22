@@ -23,6 +23,8 @@ const bool LIMA_PUSH = false;
 const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
+const bool ENABLE_ERFC_FOR_EWALD = true;
+
 const bool ENABLE_UREYBRADLEY = true;
 
 //#define GENERATETRAINDATA

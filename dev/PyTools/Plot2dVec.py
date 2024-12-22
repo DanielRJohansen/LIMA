@@ -14,16 +14,14 @@ def plot_binary_float_matrices(num_slices, gridpoints_per_dim, center_slice, spa
 
     indices = [center_slice + i * spacing for i in range(-num_slices // 2, num_slices // 2 + 1)]
 
-    vmin = max(data.min(), 1e-10)  # Avoid log(0) issues
-    vmax = data.max()
-
     fig, axes = plt.subplots(num_slices, 1, figsize=(15, num_slices * 5))
 #    axes = axes.flatten()
 
     for ax, slice_data, slice_idx in zip(axes, slices, indices):
-        norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
+        # vmin = max(data.min(), 1e-10)  # Avoid log(0) issues
+        #norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
         #im = ax.imshow(slice_data, cmap='viridis', aspect='equal', norm=norm)
-        im = ax.imshow(slice_data, cmap='viridis', aspect='equal', vmin=vmin, vmax=vmax)
+        im = ax.imshow(slice_data, cmap='viridis', aspect='equal', vmin=data.min(), vmax=data.max())
         ax.set_title(f"Slice {slice_idx}")
         ax.axis('off')
         fig.colorbar(im, ax=ax, shrink=0.6)

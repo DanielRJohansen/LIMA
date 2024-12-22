@@ -153,7 +153,7 @@ namespace LJ {
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff);
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf* charges[neighborparticle_id], -diff);
 				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff);
 			}
 		}
@@ -206,7 +206,7 @@ namespace LJ {
 				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeNM) * 1.5f) // TODO: magic nr
 				{
                     //electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff);
+                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
 					if constexpr (computePotE && ENABLE_POTE)
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
 				}

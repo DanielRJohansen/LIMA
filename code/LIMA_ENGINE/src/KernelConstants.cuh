@@ -24,6 +24,8 @@ __constant__ ForcefieldTinymol tinymolForcefield_device;
 __constant__ BoxSize boxSize_device;
 __constant__ float cutoffNm_device;
 __constant__ float cutoffNmSquaredReciprocal_device;
+__constant__ float ewaldkappa_device;
+
 __constant__ float thermostatScalar_device;
 
 __constant__ NonbondedInteractionParams nonbondedInteractionParams_device[ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES];

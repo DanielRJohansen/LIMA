@@ -72,7 +72,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	}
 
 
-	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize);
+	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm);
 	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
 	//std::unordered_set<std::string> unique_compounds;
 	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
@@ -137,8 +137,9 @@ void Engine::setDeviceConstantMemory() {
 
 	cudaMemcpyToSymbol(cutoffNm_device, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmSquaredReciprocal = 1.f / (simulation->simparams_host.cutoff_nm * simulation->simparams_host.cutoff_nm );
-	cudaMemcpyToSymbol(cutoffNmSquaredReciprocal_device, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
-
+	cudaMemcpyToSymbol(cutoffNmSquaredReciprocal_device, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
+	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simparams_host.cutoff_nm);
+	cudaMemcpyToSymbol(ewaldkappa_device, &ewaldKappa, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	const float initialThermostatScalar = 1.f;
 	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);

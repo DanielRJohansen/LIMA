@@ -241,7 +241,7 @@ namespace Electrostatics {
 			const Float3 diff = -queryNodeindexRelative.toFloat3() * static_cast<float>(BoxGrid::blocksizeNM); // [nm]
 			const float queryCharge = *BoxGrid::GetNodePtr(simDev->chargeGridChargeSums, queryNodeindexAbsolute);
 
-			forceInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbForce_optim(1.f, queryCharge, diff) * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
+			forceInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbForce_optim(1.f * queryCharge, diff) * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
 			potEInterims[threadIdx.x] += PhysicsUtilsDevice::CalcCoulumbPotential_optim(1.f, queryCharge, diff) * 0.5f * PhysicsUtilsDevice::modifiedCoulombConstant_Potential;	// 0.5 because the other node is also calcing this
 		}
 

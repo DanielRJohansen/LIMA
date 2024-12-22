@@ -12,30 +12,35 @@ namespace PhysicsUtilsDevice {
 	/// <param name="otherCharge">[kilo C/mol]</param>
 	/// <param name="diff">self-other [nm]</param>
 	/// <returns>[J/mol/nm]</returns>
-	__device__ inline Float3 CalcCoulumbForce_optim(const float myCharge, const float otherCharge, const Float3& diff) 
-	{		
-		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
-		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
-
-		const Float3 force = diff * myCharge * otherCharge * invLenCubed;
-#ifdef FORCE_NAN_CHECK
-		if (force.isNan())
-			force.print('E');
-#endif
-
-		return force;
-	}
+//	__device__ inline Float3 CalcCoulumbForce_optim(const float myCharge, const float otherCharge, const Float3& diff) 
+//	{		
+//		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
+//		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
+//
+//		const Float3 force = diff * myCharge * otherCharge * invLenCubed;
+//#ifdef FORCE_NAN_CHECK
+//		if (force.isNan())
+//			force.print('E');
+//#endif
+//
+//		return force;
+//	}
 
 	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff)
 	{
 		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
 
-		const Float3 force = diff * chargeProduct * invLenCubed;
+		Float3 force = diff * chargeProduct * invLenCubed;
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan())
 			force.print('E');
 #endif
+		if constexpr (ENABLE_ERFC_FOR_EWALD) {
+			const float erfcTerm = erfc(diff.len() * ewaldkappa_device);
+			const float scalar = erfcTerm + 2.f * ewaldkappa_device / sqrt(PI) * diff.len() * exp(-ewaldkappa_device * ewaldkappa_device * diff.lenSquared());
+			force *= scalar;
+		}
 
 		return force;
 	}
@@ -48,7 +53,11 @@ namespace PhysicsUtilsDevice {
 	//constexpr float modifiedCoulombConstant_Force = 1.f;
 	__device__ inline float CalcCoulumbPotential_optim(const float myCharge, const float otherCharge, const Float3& diff)
 	{
-		// N * m = J		
-		return (myCharge * otherCharge) * rsqrtf(diff.lenSquared());
+		float potential = (myCharge * otherCharge) * rsqrtf(diff.lenSquared());
+		if constexpr (ENABLE_ERFC_FOR_EWALD) {
+			potential *= erfcf(diff.len() * ewaldkappa_device);
+		}
+		
+		return potential;
 	}
 }

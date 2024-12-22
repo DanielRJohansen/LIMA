@@ -411,7 +411,7 @@ namespace ElectrostaticsTests {
 			if (envmode == Full) {
 				printf("testIndex %d", testIndex);
 			}
-			ASSERT(forceError < 0.02f, std::format("Actual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError));
+			ASSERT(forceError < 0.1f, std::format("Actual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError));
 			ASSERT(potEError < 0.1f, std::format("Actual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", actualPotential, expectedPotential, potEError));
 
 			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);

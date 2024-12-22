@@ -1,33 +1,74 @@
-import os
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
+import sys
 
-def plot_binary_float_matrices(num_slices, gridpoints_per_dim, center_slice, spacing, filename="C:/Users/Daniel/git_repo/LIMA_data/Pool/PmePot_AllSlices.bin"):
+
+def read_binary_float_matrices(filename, num_slices, gridpoints_per_dim):
     with open(filename, "rb") as file:
         data = np.frombuffer(file.read(), dtype=np.float32)
+    return data.reshape(num_slices, gridpoints_per_dim, gridpoints_per_dim)
 
 
-    data = data.reshape(num_slices, gridpoints_per_dim, gridpoints_per_dim)
-    slices = [data[i] for i in range(data.shape[0])]
-
-    indices = [center_slice + i * spacing for i in range(-num_slices // 2, num_slices // 2 + 1)]
-
-    fig, axes = plt.subplots(num_slices, 1, figsize=(15, num_slices * 5))
-#    axes = axes.flatten()
-
+def plot_colormaps(axes, slices, indices, data_min, data_max):
     for ax, slice_data, slice_idx in zip(axes, slices, indices):
-        # vmin = max(data.min(), 1e-10)  # Avoid log(0) issues
-        #norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-        #im = ax.imshow(slice_data, cmap='viridis', aspect='equal', norm=norm)
-        im = ax.imshow(slice_data, cmap='viridis', aspect='equal', vmin=data.min(), vmax=data.max())
+        im = ax.imshow(slice_data, cmap='viridis', aspect='equal', vmin=data_min, vmax=data_max)
         ax.set_title(f"Slice {slice_idx}")
         ax.axis('off')
-        fig.colorbar(im, ax=ax, shrink=0.6)
+        plt.colorbar(im, ax=ax, shrink=0.6)
+
+
+def extract_line_plots(data):
+    num_slices = data.shape[0]
+    x_lines = []
+    y_lines = []
+
+    for slice_idx in range(num_slices):
+        slice_data = data[slice_idx]
+        max_value = np.max(slice_data)
+        x_idx = np.argmax(slice_data.max(axis=0))  # Column index of max
+        y_idx = np.argmax(slice_data.max(axis=1))  # Row index of max
+
+        x_line = slice_data[:, x_idx]  # Vertical line at max column
+        y_line = slice_data[y_idx, :]  # Horizontal line at max row
+
+        x_lines.append(x_line)
+        y_lines.append(y_line)
+
+    return x_lines, y_lines
+
+
+def plot_line_plots(axes, x_lines, y_lines, indices):
+    for ax, x_line, y_line, slice_idx in zip(axes, x_lines, y_lines, indices):
+        ax.plot(x_line, label="X-Dim Line")
+        ax.plot(y_line, label="Y-Dim Line")
+        ax.set_title(f"Line Plot for Slice {slice_idx}")
+        ax.legend()
+
+
+def plot_binary_float_matrices(num_slices, gridpoints_per_dim, center_slice, spacing,
+                               filename="C:/Users/Daniel/git_repo/LIMA_data/Pool/PmePot_AllSlices.bin"):
+    data = read_binary_float_matrices(filename, num_slices, gridpoints_per_dim)
+    slices = [data[i] for i in range(data.shape[0])]
+    indices = [center_slice + i * spacing for i in range(-num_slices // 2, num_slices // 2 + 1)]
+
+    x_lines, y_lines = extract_line_plots(data)
+
+    # Create subplots with an extra column for line plots
+    fig, axes = plt.subplots(num_slices, 2, figsize=(15, num_slices * 5))
+    data_min, data_max = data.min(), data.max()
+
+    # Ensure axes is always iterable
+    axes = axes if num_slices > 1 else [axes]
+
+    # Plot colormaps in the first column
+    plot_colormaps([ax[0] for ax in axes], slices, indices, data_min, data_max)
+
+    # Plot line plots in the second column
+    plot_line_plots([ax[1] for ax in axes], x_lines, y_lines, indices)
 
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 5:

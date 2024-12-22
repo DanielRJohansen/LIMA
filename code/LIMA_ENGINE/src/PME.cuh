@@ -220,9 +220,12 @@ namespace PME {
 		const int halfNodes = gridpointsPerDim / 2;
 		int nGridpointsHalfdim = gridpointsPerDim / 2 + 1;
 		const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
-		if (index1D > nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
-			return;
+		/*if (index1D > nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
+			return;*/
 		NodeIndex freqIndex = Get3dIndexReciprocalspace(index1D, gridpointsPerDim, nGridpointsHalfdim);
+
+		if (freqIndex.x >= nGridpointsHalfdim || freqIndex.y >= gridpointsPerDim || freqIndex.z >= gridpointsPerDim)
+			return;
 
 		// Remap frequencies to negative for indices > N/2
 		int kxIndex = freqIndex.x;
@@ -262,6 +265,8 @@ namespace PME {
 		double splineCorrection = (Sx * Sy * Sz);
 		splineCorrection = splineCorrection * splineCorrection; // squared for forward+back interpolation
 
+		splineCorrection = 1;
+
 		if (kSquared > epsilon) {
 			currentGreensValue = (4.0 * PI / (volume * kSquared)) 
 				* exp(-kSquared / (4.0 * ewaldKappa * ewaldKappa)) 
@@ -269,6 +274,10 @@ namespace PME {
 				* PhysicsUtilsDevice::modifiedCoulombConstant_Force
 				;
 		}
+
+		//if (freqIndex.y == halfNodes || freqIndex.z == halfNodes) {
+		//	currentGreensValue = 0.0;
+		//}
 
 		d_greensFunction[index1D] = static_cast<float>(currentGreensValue);
 	}
@@ -412,46 +421,54 @@ namespace PME {
 			InverseFFT();
 			cudaDeviceSynchronize();
 
+			//PlotPotentialSlices();
+
 			InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, chargeGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 			LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialKernel failed!");
 		}
+		
+	private:
+		//Just for debugging
+		void PlotPotentialSlices() {
+
+			std::vector<float> gridHost;
+			GenericCopyToHost(chargeGrid, gridHost, nGridpointsRealspace);
+
+			int centerSlice = 200;
+			int numSlices = 1;
+			int spacing = 20;
+
+			std::vector<float> combinedData;
+			std::vector<int> sliceIndices;
+
+			for (int i = -numSlices; i <= numSlices; ++i) {
+				int sliceIndex = centerSlice + i * spacing;
+				if (sliceIndex < 0 || sliceIndex >= gridpointsPerDim) {
+					throw std::runtime_error("error");
+				}
+
+				int firstIndex = gridpointsPerDim * gridpointsPerDim * sliceIndex;
+				int lastIndex = firstIndex + gridpointsPerDim * gridpointsPerDim;
+				combinedData.insert(combinedData.end(), gridHost.begin() + firstIndex, gridHost.begin() + lastIndex);
+				sliceIndices.push_back(sliceIndex);
+			}
+
+			// Save all slices to one file
+			FileUtils::WriteVectorToBinaryFile("C:/Users/Daniel/git_repo/LIMA_data/Pool/PmePot_AllSlices.bin", combinedData);
+
+			// Call the Python script to plot the slices
+			std::string pyscriptPath = (FileUtils::GetLimaDir() / "dev" / "PyTools" / "Plot2dVec.py").string();
+			std::string command = "python " + pyscriptPath + " " + std::to_string(numSlices * 2 + 1) + " " + std::to_string(gridpointsPerDim) + " " + std::to_string(centerSlice) + " " + std::to_string(spacing);
+			std::system(command.c_str());
+		}
+
 	};
 }
 
 
 /// Code to plot the potential grid
 //
-//{
-//	std::vector<float> pots;
-//	GenericCopyToHost(chargeGrid, pots, nGridpointsRealspace);
-//
-//	int centerSlice = 200;
-//	int numSlices = 2;
-//	int spacing = 20;
-//
-//	std::vector<float> combinedData;
-//	std::vector<int> sliceIndices;
-//
-//	for (int i = -numSlices; i <= numSlices; ++i) {
-//		int sliceIndex = centerSlice + i * spacing;
-//		if (sliceIndex < 0 || sliceIndex >= gridpointsPerDim) {
-//			throw std::runtime_error("error");
-//		}
-//
-//		int firstIndex = gridpointsPerDim * gridpointsPerDim * sliceIndex;
-//		int lastIndex = firstIndex + gridpointsPerDim * gridpointsPerDim;
-//		combinedData.insert(combinedData.end(), pots.begin() + firstIndex, pots.begin() + lastIndex);
-//		sliceIndices.push_back(sliceIndex);
-//	}
-//
-//	// Save all slices to one file
-//	FileUtils::WriteVectorToBinaryFile("C:/Users/Daniel/git_repo/LIMA_data/Pool/PmePot_AllSlices.bin", combinedData);
-//
-//	// Call the Python script to plot the slices
-//	std::string pyscriptPath = (FileUtils::GetLimaDir() / "dev" / "PyTools" / "Plot2dVec.py").string();
-//	std::string command = "python " + pyscriptPath + " " + std::to_string(numSlices * 2 + 1) + " " + std::to_string(gridpointsPerDim) + " " + std::to_string(centerSlice) + " " + std::to_string(spacing);
-//	std::system(command.c_str());
-//			}
+
 //
 ////const int firstIndex = gridpointsPerDim * gridpointsPerDim * 200;
 ////const int lastIndex = firstIndex + gridpointsPerDim * gridpointsPerDim;

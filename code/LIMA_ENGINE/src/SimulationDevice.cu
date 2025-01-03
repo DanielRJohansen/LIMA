@@ -103,6 +103,7 @@ void BoxState::FreeMembers() {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
+	cudaFree(boxtemp.compoundsInterimState);
 	cudaFree(boxtemp.compoundOrigos);
 	cudaFree(boxtemp.compoundsRelposNm);
 	cudaFree(boxtemp.tinyMols);

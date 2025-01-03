@@ -9,7 +9,7 @@ import Plot2dVec
 import Energies
 import math
 from scipy.special import erfc
-
+import Plotdata
 def read_histogram_data(filename):
     with open(filename, 'rb') as f:
         # Read the number of steps
@@ -85,22 +85,17 @@ def count_lines_in_directory():
     print(f"Total lines of code: {total_lines}")
 
 
-if __name__ == "__main__":
-
-    #print(math.erfc(3))
+def PlotErfcScalar():
     kappa = 2.5
     x = np.linspace(0.001, 3, 500)  # Avoid division by zero
 
     # Compute the scalar term
     erfc_term = erfc(x * kappa)
-    #scalar = erfc_term / x ** 2
-    scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * x * np.exp(-kappa * kappa * x**2)
-
-    #scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * (np.exp(-kappa*kappa * x**2))
-
-    #scalar = erfc(x*kappa) + 2*kappa/(np.sqrt(3.14)*x)*np.exp(-kappa * kappa * x**2) * x
-
-    #scalar = erfc(x*kappa)
+    # scalar = erfc_term / x ** 2
+    scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * x * np.exp(-kappa * kappa * x ** 2)
+    # scalar = erfc_term + (2.0 * kappa / np.sqrt(3.14)) * (np.exp(-kappa*kappa * x**2))
+    # scalar = erfc(x*kappa) + 2*kappa/(np.sqrt(3.14)*x)*np.exp(-kappa * kappa * x**2) * x
+    # scalar = erfc(x*kappa)
 
     # Plot the function
     plt.figure(figsize=(8, 5))
@@ -111,9 +106,14 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
     plt.show()
-    exit(0)
 
-    count_lines_in_directory()
+if __name__ == "__main__":
+
+    #print(math.erfc(3))
+
+    Plotdata.PlotData()
+
+    #count_lines_in_directory()
     exit(0)
 
     # Get the current folder path

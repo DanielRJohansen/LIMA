@@ -25,11 +25,11 @@ def extract_line_plots(data):
     for slice_idx in range(num_slices):
         slice_data = data[slice_idx]
         max_value = np.max(slice_data)
-        x_idx = np.argmax(slice_data.max(axis=0))  # Column index of max
-        y_idx = np.argmax(slice_data.max(axis=1))  # Row index of max
+        x_idx = np.argmax(slice_data.max(axis=1))  # Column index of max
+        y_idx = np.argmax(slice_data.max(axis=0))  # Row index of max
 
-        x_line = slice_data[:, x_idx]  # Vertical line at max column
-        y_line = slice_data[y_idx, :]  # Horizontal line at max row
+        x_line = slice_data[x_idx:, :]  # Vertical line at max column
+        y_line = slice_data[:, y_idx]  # Horizontal line at max row
 
         x_lines.append(x_line)
         y_lines.append(y_line)
@@ -40,7 +40,7 @@ def extract_line_plots(data):
 def plot_line_plots(axes, x_lines, y_lines, indices):
     for ax, x_line, y_line, slice_idx in zip(axes, x_lines, y_lines, indices):
         ax.plot(x_line, label="X-Dim Line")
-        ax.plot(y_line, label="Y-Dim Line")
+        #ax.plot(y_line, label="Y-Dim Line")
         ax.set_title(f"Line Plot for Slice {slice_idx}")
         ax.legend()
 

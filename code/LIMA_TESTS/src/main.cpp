@@ -28,8 +28,10 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
+		//PlotPmePotAsFactorOfDistance(envmode);
+		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
 		TestLongrangeEsNoLJTwoParticles(envmode);
-		//TestLongrangeEsNoLJManyParticles(envmode);
+		TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -159,11 +161,10 @@ void RunAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.86e-3, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.24e-3, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
-	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
 	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
 	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));

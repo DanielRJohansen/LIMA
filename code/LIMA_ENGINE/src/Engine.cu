@@ -74,6 +74,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm);
 	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
+	cudaMemset(forceEnergiesPME, 0, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
 	//std::unordered_set<std::string> unique_compounds;
 	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
 	//	char types[64];
@@ -107,6 +108,10 @@ Engine::~Engine() {
 	}
 	compoundForceEnergyInterims.Free();
 	cudaFree(compoundLjParameters);
+
+	cudaFree(forceEnergiesPME);
+	cudaFree(forceEnergiesBondgroups);
+	cudaFree(bondgroups);
 
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamDestroy(stream);

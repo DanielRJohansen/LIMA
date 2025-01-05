@@ -11,35 +11,30 @@ BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* co
 	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
-BoxConfig* BoxConfig::Create(const Box& boxHost) {
+BoxConfig BoxConfig::Create(const Box& boxHost) {
 	uint8_t* compoundsAtomtypes;
 	float* compoundsAtomCharges;
 	cudaMalloc(&compoundsAtomtypes, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
 	cudaMalloc(&compoundsAtomCharges, sizeof(float) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
-	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) {
+	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) { // OPTIM This is very slow
 		cudaMemcpy(compoundsAtomtypes + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_types, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(float) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
-	BoxConfig boxTemp(
+	return BoxConfig (
 		GenericCopyToDevice(boxHost.compounds), 
 		compoundsAtomtypes, 
 		compoundsAtomCharges, 
 		GenericCopyToDevice(boxHost.bpLutCollection), 
         BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
 	);
-
-	BoxConfig* devPtr;
-	cudaMallocManaged(&devPtr, sizeof(BoxConfig));
-	cudaMemcpy(devPtr, &boxTemp, sizeof(BoxConfig), cudaMemcpyHostToDevice);
-
-	return devPtr;
 }
 void BoxConfig::FreeMembers() const {
 	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 	// TODO why not clearing compounds????
 
+	cudaFree((void*)boxtemp.compounds);
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
 	cudaFree((void*)boxtemp.compoundsAtomCharges);
 	cudaFree((void*)boxtemp.bpLUTs);
@@ -154,9 +149,9 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 
-SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
+SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
 	BoxState* boxState, const DatabuffersDeviceController& databuffers) : 
-	boxConfig(*boxConfig), boxState(boxState), params(params_host),
+	boxConfig(boxConfig), boxState(boxState), params(params_host),
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
@@ -201,6 +196,8 @@ void SimulationDevice::FreeMembers() {
 
 	cudaFree(compound_grid);
 	cudaFree(compound_neighborlists);
+	cudaFree(transfermodule_array);
+	cudaFree(signals);
 
 	//cudaFree(charge_octtree);
 	cudaFree(chargeGrid);

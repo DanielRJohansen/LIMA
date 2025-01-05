@@ -29,7 +29,6 @@ def read_binary_data(filepath):
 
         # Read optional independent variable flag
         has_x_axis = struct.unpack('i', file.read(4))[0]
-        print("has axis", has_x_axis)
 
         # Read the optional x-axis vector
         x_axis = None
@@ -59,6 +58,7 @@ def plot_data(labels, data, x_axis=None):
 
     # Plot each data vector using indices as x-values
     for i in range(data.shape[0]):
+        print(data[i])
         plt.plot(indices, data[i], label=labels[i])
 
     # Set x-axis ticks to match indices, with x_axis values as labels

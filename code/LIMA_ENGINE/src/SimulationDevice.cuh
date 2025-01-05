@@ -9,7 +9,7 @@
 struct BoxConfig {	
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
 	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
-	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
+	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
 	// CompoundData used ALOT, kept here for memory locality
@@ -71,6 +71,7 @@ struct DatabuffersDeviceController {
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
+
 	const int total_particles_upperbound;
 };
 
@@ -82,7 +83,7 @@ struct DatabuffersDeviceController {
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
+	SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
 	BoxState* boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
@@ -98,7 +99,7 @@ struct SimulationDevice {
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	const SimParams params;
-	SimSignals* signals;
+	SimSignals* signals = nullptr;
 
 	const BoxConfig boxConfig;
 	BoxState* const boxState;

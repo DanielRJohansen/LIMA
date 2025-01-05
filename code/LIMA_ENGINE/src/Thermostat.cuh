@@ -69,7 +69,7 @@ namespace _Thermostat {
 } // namespace Thermostat
 
 class Thermostat {
-	float* intermediate;
+	float* intermediate = nullptr;
 	int totalParticlesUpperbound;
 	int nCompounds;
 	int nSolvents;

@@ -107,8 +107,8 @@ Engine::~Engine() {
 		cudaFree(sim_dev);
 	}
 	compoundForceEnergyInterims.Free();
-	cudaFree(compoundLjParameters);
 
+	cudaFree(compoundLjParameters);
 	cudaFree(forceEnergiesPME);
 	cudaFree(forceEnergiesBondgroups);
 	cudaFree(bondgroups);

@@ -16,7 +16,7 @@
 // TODO: Do i need to account for e0, vacuum/spaceial permitivity here? Probably....
 
 namespace PME {
-	const int gridpointsPerNm = 20;
+	const int gridpointsPerNm = 10;
 	constexpr float gridpointsPerNm_f = static_cast<float>(gridpointsPerNm);
 
 	__device__ __host__ int GetGridIndexRealspace(const Int3& gridIndex, int gridpointsPerDim) {
@@ -44,9 +44,12 @@ namespace PME {
 
 
 
-	__global__ void DistributeChargesToGridKernel(const BoxConfig config, const BoxState state, float* chargeGrid, int gridpointsPerDim) {
+	__global__ void DistributeChargesToGridKernel(const BoxConfig config, const BoxState state, float* realspaceGrid, int gridpointsPerDim) {
 		if (threadIdx.x >= config.compounds[blockIdx.x].n_particles)
 			return;
+
+		constexpr float delta = 1.f / gridpointsPerNm_f;
+		constexpr float invCellVolume = 1.f / (delta * delta * delta);
 
 		const float charge = config.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];	// [kC/mol]
 		if (charge == 0.f)
@@ -102,7 +105,7 @@ namespace PME {
 
 					const NodeIndex index3d = PeriodicBoundaryCondition::applyBC(NodeIndex{ X,Y,Z }, gridpointsPerDim);
 					const int index1D = GetGridIndexRealspace(index3d, gridpointsPerDim);
-					chargeGrid[index1D] += charge * wxyCur * wz[dz]; // TODO This must be applyBC
+					realspaceGrid[index1D] += charge * wxyCur * wz[dz] * invCellVolume; 
 				}
 			}
 		}
@@ -111,7 +114,7 @@ namespace PME {
 	__global__ void InterpolateForcesAndPotentialKernel(
 		const BoxConfig config, 
 		const BoxState state, 
-		const float* potentialGrid, 
+		const float* realspaceGrid, 
 		int gridpointsPerDim, 
 		ForceEnergy* const forceEnergies, 
 		float selfenergyCorrection			// [J/mol]
@@ -173,7 +176,7 @@ namespace PME {
 					const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ X, Y, Z }, gridpointsPerDim);
 					const int gridIndex = GetGridIndexRealspace(node, gridpointsPerDim);
 
-					float phi = potentialGrid[gridIndex];
+					float phi = realspaceGrid[gridIndex];
 
 					NodeIndex plusX  = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x + 1, node.y,     node.z }, gridpointsPerDim);
 					NodeIndex minusX = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x - 1, node.y,     node.z }, gridpointsPerDim);
@@ -182,12 +185,12 @@ namespace PME {
 					NodeIndex plusZ  = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z + 1 }, gridpointsPerDim);
 					NodeIndex minusZ = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z - 1 }, gridpointsPerDim);
 
-					float phi_plusX = potentialGrid[GetGridIndexRealspace(plusX, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
-					float phi_minusX = potentialGrid[GetGridIndexRealspace(minusX, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
-					float phi_plusY = potentialGrid[GetGridIndexRealspace(plusY, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
-					float phi_minusY = potentialGrid[GetGridIndexRealspace(minusY, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
-					float phi_plusZ = potentialGrid[GetGridIndexRealspace(plusZ, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
-					float phi_minusZ = potentialGrid[GetGridIndexRealspace(minusZ, gridpointsPerDim)];// / (gridpointsPerDim * gridpointsPerDim * gridpointsPerDim);
+					float phi_plusX = realspaceGrid[GetGridIndexRealspace(plusX, gridpointsPerDim)];
+					float phi_minusX = realspaceGrid[GetGridIndexRealspace(minusX, gridpointsPerDim)];
+					float phi_plusY = realspaceGrid[GetGridIndexRealspace(plusY, gridpointsPerDim)];
+					float phi_minusY = realspaceGrid[GetGridIndexRealspace(minusY, gridpointsPerDim)];
+					float phi_plusZ = realspaceGrid[GetGridIndexRealspace(plusZ, gridpointsPerDim)];
+					float phi_minusZ = realspaceGrid[GetGridIndexRealspace(minusZ, gridpointsPerDim)];
 
 					float E_x = -(phi_plusX - phi_minusX) * (gridpointsPerNm / 2.0f);
 					float E_y = -(phi_plusY - phi_minusY) * (gridpointsPerNm / 2.0f);
@@ -250,7 +253,7 @@ namespace PME {
 		double kHalfY = ky * (delta * 0.5);
 		double kHalfZ = kz * (delta * 0.5);
 
-		const double epsilon = 1e-8;
+		const double epsilon = 1e-14; // TODO try to change this
 
 		auto splineFactor = [epsilon](double kh) {
 			if (fabs(kh) < epsilon) return 1.0;
@@ -268,7 +271,7 @@ namespace PME {
 		//splineCorrection = 1;
 
 		if (kSquared > epsilon) {
-			currentGreensValue = (4.0 * PI / (volume * kSquared)) 
+			currentGreensValue = (4.0 * PI / ( kSquared))			
 				* exp(-kSquared / (4.0 * ewaldKappa * ewaldKappa)) 
 				* splineCorrection
 				* PhysicsUtilsDevice::modifiedCoulombConstant_Force
@@ -292,7 +295,7 @@ namespace PME {
 	{
 		int nGridpointsHalfdim = gridpointsPerDim / 2 + 1;// TODO: add comment here
 		const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
-		if (index1D > nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
+		if (index1D >= nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
 			return;
 
 
@@ -309,11 +312,18 @@ namespace PME {
 		d_reciprocalFreqData[index1D] = currentFreqValue;
 	}
 
+	__global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float normalizationFactor) {
+		int index = blockIdx.x * blockDim.x + threadIdx.x;
+		if (index >= nGridpointsRealspace)
+			return;
+
+		realspaceGrid[index] *= normalizationFactor;
+	}
 
 	class Controller {
 
-		float* chargeGrid;
-		cufftComplex* potentialGrid;
+		float* realspaceGrid;
+		cufftComplex* fourierspaceGrid;
 		float* greensFunctionScalars;
 
 		int gridpointsPerDim=-1;
@@ -328,18 +338,18 @@ namespace PME {
 		cufftHandle planForward;
 		cufftHandle planInverse;
 
-		// For system with a net charge, we apply to correction to each chargegridnode
+		// For system with a net charge, we apply to correction to each realspaceGridnode
 		//LAL::optional<float> backgroundchargeCorrection;
 
 		void ForwardFFT() {
-			cufftResult result = cufftExecR2C(planForward, chargeGrid, potentialGrid);
+			cufftResult result = cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid);
 			if (result != CUFFT_SUCCESS) {
 				fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
 			}
 		}
 
 		void InverseFFT() {		
-			cufftResult result = cufftExecC2R(planInverse, potentialGrid, chargeGrid);
+			cufftResult result = cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid);
 			if (result != CUFFT_SUCCESS) {
 				fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
 			}
@@ -387,8 +397,8 @@ namespace PME {
 			cufftPlan3d(&planForward, gridpointsPerDim, gridpointsPerDim, gridpointsPerDim, CUFFT_R2C);
 			cufftPlan3d(&planInverse, gridpointsPerDim, gridpointsPerDim, gridpointsPerDim, CUFFT_C2R);
 
-			cudaMalloc(&chargeGrid, nGridpointsRealspace * sizeof(float));
-			cudaMalloc(&potentialGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
+			cudaMalloc(&realspaceGrid, nGridpointsRealspace * sizeof(float));
+			cudaMalloc(&fourierspaceGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
 			cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
 			cudaDeviceSynchronize();
 
@@ -402,8 +412,8 @@ namespace PME {
 			cufftDestroy(planForward);
 			cufftDestroy(planInverse);
 
-			cudaFree(chargeGrid);
-			cudaFree(potentialGrid);
+			cudaFree(realspaceGrid);
+			cudaFree(fourierspaceGrid);
 			cudaFree(greensFunctionScalars);
 		}
 
@@ -411,25 +421,27 @@ namespace PME {
 			if (nCompounds == 0)
 				return;
 
-			cudaMemset(chargeGrid, 0, nGridpointsRealspace * sizeof(float));// maybe do this async, after the last kernel?
-			cudaMemset(potentialGrid, 0, nGridpointsReciprocalspace * sizeof(cufftComplex));
+			cudaMemset(realspaceGrid, 0, nGridpointsRealspace * sizeof(float));// maybe do this async, after the last kernel?
+			cudaMemset(fourierspaceGrid, 0, nGridpointsReciprocalspace * sizeof(cufftComplex));
 			cudaDeviceSynchronize();
-			DistributeChargesToGridKernel<<<nCompounds, MAX_COMPOUND_PARTICLES>> > (config, state, chargeGrid, gridpointsPerDim);
+			DistributeChargesToGridKernel<<<nCompounds, MAX_COMPOUND_PARTICLES>> > (config, state, realspaceGrid, gridpointsPerDim);
 			LIMA_UTILS::genericErrorCheckNoSync("DistributeChargesToGridKernel failed!");
 			cudaDeviceSynchronize();
 
 			ForwardFFT();
 			cudaDeviceSynchronize();
 
-			ApplyGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64 >> > (potentialGrid, greensFunctionScalars, gridpointsPerDim, boxlenNm);
+			ApplyGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64 >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, boxlenNm);
 			LIMA_UTILS::genericErrorCheckNoSync("ApplyGreensFunctionKernel failed!");
 
 			InverseFFT();
 			cudaDeviceSynchronize();
 
+			Normalize << <(nGridpointsRealspace + 63) / 64, 64 >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
+			
 			//PlotPotentialSlices();
 
-			InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, chargeGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+			InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 			LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialKernel failed!");
 
 			cudaDeviceSynchronize();
@@ -440,11 +452,11 @@ namespace PME {
 		void PlotPotentialSlices() {
 
 			std::vector<float> gridHost;
-			GenericCopyToHost(chargeGrid, gridHost, nGridpointsRealspace);
+			GenericCopyToHost(realspaceGrid, gridHost, nGridpointsRealspace);
 
 			int centerSlice = 200;
 			int numSlices = 1;
-			int spacing = 20;
+			int spacing = 10;
 
 			std::vector<float> combinedData;
 			std::vector<int> sliceIndices;

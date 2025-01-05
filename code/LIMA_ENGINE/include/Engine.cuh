@@ -140,25 +140,28 @@ private:
 	uint64_t step_at_last_traj_transfer = 0;
 	std::unique_ptr<Simulation> simulation = nullptr;
 
+	// Owned
 	SimulationDevice* sim_dev = nullptr;
+	// These are owned, but this is temporary place to store them
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
+	ForceEnergy* forceEnergiesPME = nullptr;
+	BondGroup* bondgroups = nullptr;
+	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
-	// These are owned, but this is temporary place to store them
-	ForceEnergy* forceEnergiesBondgroups = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
+
 
 
 	std::unique_ptr<PME::Controller> pmeController = nullptr;
 
-	BondGroup* bondgroups = nullptr;
 
 	CompoundForceEnergyInterims compoundForceEnergyInterims;
 
-	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
 
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 

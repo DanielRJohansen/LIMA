@@ -536,6 +536,13 @@ void GenericCopyToHost(T* srcDevice, std::vector<T>& destHost, size_t nElements)
 }
 
 template<typename T>
+std::vector<T> GenericCopyToHost(T* srcDevice, size_t nElements) {
+	std::vector<T> destHost(nElements);
+	cudaMemcpy(destHost.data(), srcDevice, nElements * sizeof(T), cudaMemcpyDeviceToHost);
+	return destHost;
+}
+
+template<typename T>
 void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	size_t bytesize = n_elements * sizeof(T);
 

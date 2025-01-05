@@ -388,8 +388,8 @@ namespace PMEtest {
         // Compute forces and energy
 		InterpolateForcesAndPotentialKernel(positions, charges, realspaceGrid_Host.data(), gridpointsPerDim, forceEnergy, CalcEnergyCorrection(charges, ewaldKappa));
 
-		const Float3 dipoleMoment = ComputeDipoleMoment(positions, charges);
-        ApplyDipoleForceCorrection(dipoleMoment, charges, forceEnergy, boxLenNm * boxLenNm * boxLenNm);
+		//const Float3 dipoleMoment = ComputeDipoleMoment(positions, charges);
+        //ApplyDipoleForceCorrection(dipoleMoment, charges, forceEnergy, boxLenNm * boxLenNm * boxLenNm);
 
 
     }

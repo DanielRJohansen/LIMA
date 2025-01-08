@@ -17,7 +17,6 @@ __device__ __host__ int GetGridIndexRealspace(const Int3& gridIndex, int gridpoi
 __device__ __host__ int GetGridIndexReciprocalspace(const Int3& gridIndex, int gridpointsPerDim, int nGridpointsHalfdim) {
 	return gridIndex.x + gridIndex.y * nGridpointsHalfdim + gridIndex.z * nGridpointsHalfdim * gridpointsPerDim;
 }
-
 __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim, int nGridpointsHalfdim) {
 	int z = index1d / (nGridpointsHalfdim * gridpointsPerDim);
 	index1d -= z * nGridpointsHalfdim * gridpointsPerDim;
@@ -27,36 +26,61 @@ __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim
 	return NodeIndex{ x, y, z };
 }
 
-__device__ inline int convertRelative3dIndexToAbsolute1d(const NodeIndex& nodeIndex) {
-	return (nodeIndex.x + 1) + (nodeIndex.y + 1) * 3 + (nodeIndex.z + 1) * 3 * 3;
-}
-
-__device__ inline NodeIndex ConvertAbsolute1dToRelative3d(int index) {
-	NodeIndex nodeIndex;
-
-	nodeIndex.z = index / 9 - 1;
-	index = index % 9;
-	nodeIndex.y = index / 3 - 1;
-	nodeIndex.x = index % 3 - 1;
-
-	return nodeIndex;
-}
-
 __device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
-	if (particleActive) {
-		NodeIndex relativeLocalIndex;
-		relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
-		relativeLocalIndex.x = std::max(relativeLocalIndex.x, -1);
-		relativeLocalIndex.x = std::min(relativeLocalIndex.x, 1);
-		relativeLocalIndex.y = std::max(relativeLocalIndex.y, -1);
-		relativeLocalIndex.y = std::min(relativeLocalIndex.y, 1);
-		relativeLocalIndex.z = std::max(relativeLocalIndex.z, -1);
-		relativeLocalIndex.z = std::min(relativeLocalIndex.z, 1);
-		return relativeLocalIndex;
-	}
-	return NodeIndex{};
+	NodeIndex relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
+	relativeLocalIndex.x = (relativeLocalIndex.x > 0) - (relativeLocalIndex.x < 0);
+	relativeLocalIndex.y = (relativeLocalIndex.y > 0) - (relativeLocalIndex.y < 0);
+	relativeLocalIndex.z = (relativeLocalIndex.z > 0) - (relativeLocalIndex.z < 0);
+	return relativeLocalIndex;
 }
 
+struct Direction3 {
+	uint8_t data; // store 6 bits: top 2 for x+1, next 2 for y+1, bottom 2 for z+1
+
+	__device__ constexpr Direction3() : data(0) {}
+
+	__device__ constexpr Direction3(int x, int y, int z)
+		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
+	{}
+
+	__device__ inline int x() const { return ((data >> 4) & 0x3) - 1; }
+	__device__ inline int y() const { return ((data >> 2) & 0x3) - 1; }
+	__device__ inline int z() const { return (data & 0x3) - 1; }
+
+	__device__ bool operator==(const Direction3& o) const { return data == o.data; }
+	__device__ bool operator!=(const Direction3& o) const { return data != o.data; }
+	__device__ Direction3 operator-() const { return Direction3{ -x(), -y(), -z() }; }
+	__device__ NodeIndex ToNodeIndex() const { return NodeIndex{ x(), y(), z() }; }
+};
+
+
+namespace device_tables {
+	__device__ constexpr Direction3 sIndexToDirection[27] = {
+	Direction3(-1,-1,-1), Direction3(0,-1,-1), Direction3(1,-1,-1),
+	Direction3(-1, 0,-1), Direction3(0, 0,-1), Direction3(1, 0,-1),
+	Direction3(-1, 1,-1), Direction3(0, 1,-1), Direction3(1, 1,-1),
+
+	Direction3(-1,-1, 0), Direction3(0,-1, 0), Direction3(1,-1, 0),
+	Direction3(-1, 0, 0), /* (0,0,0) excl */   Direction3(1, 0, 0),
+	Direction3(-1, 1, 0), Direction3(0, 1, 0), Direction3(1, 1, 0),
+
+	Direction3(-1,-1, 1), Direction3(0,-1, 1), Direction3(1,-1, 1),
+	Direction3(-1, 0, 1), Direction3(0, 0, 1), Direction3(1, 0, 1),
+	Direction3(-1, 1, 1), Direction3(0, 1, 1), Direction3(1, 1, 1), 
+	Direction3(0,0,0)												// 0-Dir is put here, so we can skip it in kernels that doesnt need it
+	};
+
+	__device__ constexpr uint8_t sDirectionToIndex[64] = {
+		  0,   9,  17, 255,   3,  12,  20, 255,
+		  6,  14,  23, 255, 255, 255, 255, 255,
+		  1,  10,  18, 255,   4,   26,  21, 255,
+		  7,  15,  24, 255, 255, 255, 255, 255,
+		  2,  11,  19, 255,   5,  13,  22, 255,
+		  8,  16,  25, 255, 255, 255, 255, 255,
+		255, 255, 255, 255, 255, 255, 255, 255,
+		255, 255, 255, 255, 255, 255, 255, 255
+	};
+}
 
 
 // --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
@@ -82,7 +106,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 	// First each particle figure out which node it belongs to relative to it's compounds origo. Then it decide the offset to put values, wrt other particles in this compound
 	int myOffsetInLocalNode = 0;																				// Between 0 and maxParticlesInNode
 	const NodeIndex relativeNode = GetParticlesBlockRelativeToCompoundOrigo(relPos, threadIdx.x < nParticles);	// Between {-1,-1,-1} and {1,1,1}
-	const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
+	//const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
+	const int localNodeId = device_tables::sDirectionToIndex[Direction3{ relativeNode.x, relativeNode.y, relativeNode.z}.data];
 	for (int i = 0; i < nParticles; i++) {
 		if (threadIdx.x == i)
 			myOffsetInLocalNode = numParticlesInNodeLocal[localNodeId]++;
@@ -91,7 +116,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 
 	// Fetch the current particles in the global node counts, and figure out where to push our counts
 	if (threadIdx.x < 27) {
-		const NodeIndex absIndex3d = PeriodicBoundaryCondition::applyBC(compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x), blocksPerDim);
+		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
+		const NodeIndex absIndex3d = PeriodicBoundaryCondition::applyBC(compoundOrigo + myDirection.ToNodeIndex(), blocksPerDim);
 		
 		// No need to fetch this data, if no particles goes there...
 		if (numParticlesInNodeLocal[threadIdx.x] > 0) {
@@ -106,7 +132,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 		const NodeIndex absoluteTargetblockIndex3D = PeriodicBoundaryCondition::applyBC(compoundOrigo + relativeNode, blocksPerDim);
 		const int absoluteTargetblockIndex = BoxGrid::Get1dIndex(absoluteTargetblockIndex3D, blocksPerDim);
 
-		const int offsetInTargetsBuffer = numParticlesInNodeGlobal[convertRelative3dIndexToAbsolute1d(relativeNode)] + myOffsetInLocalNode;
+		
+		const int offsetInTargetsBuffer = numParticlesInNodeGlobal[localNodeId] + myOffsetInLocalNode;
 
 		const Float3 relposRelativeToTargetBlock = relPos - relativeNode.toFloat3();
 
@@ -118,52 +145,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 }
 
 
-struct Direction3 {
-	uint8_t data; // store 6 bits: top 2 for x+1, next 2 for y+1, bottom 2 for z+1
 
-	__device__ constexpr Direction3() : data(0) {}
-
-	__device__ constexpr Direction3(int x, int y, int z)
-		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
-	{}
-
-	__device__ inline int x() const { return ((data >> 4) & 0x3) - 1; }
-	__device__ inline int y() const { return ((data >> 2) & 0x3) - 1; }
-	__device__ inline int z() const { return (data & 0x3) - 1; }
-
-	__device__ bool operator==(const Direction3& o) const { return data == o.data; }
-	__device__ bool operator!=(const Direction3& o) const { return data != o.data; }
-	__device__ Direction3 operator-() const { return Direction3{ -x(), -y(), -z() }; }
-};
-
-
-
-namespace device_tables {
-	__device__ constexpr Direction3 sIndexToDirection[26] = {
-	Direction3(-1,-1,-1), Direction3(0,-1,-1), Direction3(1,-1,-1),
-	Direction3(-1, 0,-1), Direction3(0, 0,-1), Direction3(1, 0,-1),
-	Direction3(-1, 1,-1), Direction3(0, 1,-1), Direction3(1, 1,-1),
-
-	Direction3(-1,-1, 0), Direction3(0,-1, 0), Direction3(1,-1, 0),
-	Direction3(-1, 0, 0), /* (0,0,0) excl */   Direction3(1, 0, 0),
-	Direction3(-1, 1, 0), Direction3(0, 1, 0), Direction3(1, 1, 0),
-
-	Direction3(-1,-1, 1), Direction3(0,-1, 1), Direction3(1,-1, 1),
-	Direction3(-1, 0, 1), Direction3(0, 0, 1), Direction3(1, 0, 1),
-	Direction3(-1, 1, 1), Direction3(0, 1, 1), Direction3(1, 1, 1)
-	};
-
-	//__device__ constexpr uint8_t sDirectionToIndex[64] = {
-	//	  0,   9,  17, 255,   3,  12,  20, 255,
-	//	  6,  14,  23, 255, 255, 255, 255, 255,
-	//	  1,  10,  18, 255,   4, 255,  21, 255,
-	//	  7,  15,  24, 255, 255, 255, 255, 255,
-	//	  2,  11,  19, 255,   5,  13,  22, 255,
-	//	  8,  16,  25, 255, 255, 255, 255, 255,
-	//	255, 255, 255, 255, 255, 255, 255, 255,
-	//	255, 255, 255, 255, 255, 255, 255, 255
-	//};
-}
 
 
 __device__ bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorindex3d, const Direction3& queryDirection) {
@@ -181,6 +163,13 @@ __device__ bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorin
 		return false;
 
 	return true;
+
+	/*int xOutOfBounds = ((queryDirection.x() + 1) & 2) && (floorindex3d.x <= (gridpointsPerNm - 2 * queryDirection.x()));
+	int yOutOfBounds = ((queryDirection.y() + 1) & 2) && (floorindex3d.y <= (gridpointsPerNm - 2 * queryDirection.y()));
+	int zOutOfBounds = ((queryDirection.z() + 1) & 2) && (floorindex3d.z <= (gridpointsPerNm - 2 * queryDirection.z()));
+
+	return !(xOutOfBounds | yOutOfBounds | zOutOfBounds);*/
+
 }
 
 __device__ Int3 FloorIndex3d(const Float3& relpos) {

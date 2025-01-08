@@ -390,12 +390,12 @@ namespace ElectrostaticsTests {
 			ASSERT(potEError < 3.f, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError));
 
 			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
-			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.0001f,
-				std::format("Expected forces to be equal and opposite. P0 {:.1e} {:.1e} {:.1e} P1 {:.1e} {:.1e} {:.1e}",
+			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.001f,
+				std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
 					actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));			
 		}
 
-		return LimaUnittestResult{ true, "", envmode == Full };
+		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {

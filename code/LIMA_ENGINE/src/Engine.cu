@@ -9,13 +9,16 @@
 #include "EngineKernels.cuh"
 #include "Thermostat.cuh"
 #include "SupernaturalForces.cuh"
-#include "PME.cuh"
+//#include "PME.cuh"
+#include "PMEfast.cuh"
 
 #include "Statistics.h"
 #include "Utilities.h"
 
 #include <unordered_set>
 
+
+// Optim: make sure any ptr sent to a kernel is 128 byte aligned
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);

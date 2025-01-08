@@ -6,7 +6,9 @@ add_library(LIMA_ENGINE STATIC
     src/Engine.cu
     src/ChargeOcttree.cu
     src/ConvexHullEngine.cu
- "src/SimulationDevice.cu")
+ "src/SimulationDevice.cu"
+    src/PMEfast.cu
+)
 
 target_include_directories(LIMA_ENGINE PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}/src

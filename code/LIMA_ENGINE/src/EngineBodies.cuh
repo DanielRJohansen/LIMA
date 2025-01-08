@@ -43,7 +43,8 @@ namespace Electrostatics {
 
 	struct ChargeNode {
 
-		// To remain deterministic AND fast, each compound will push their particles data to a node, in the order in which atomicAdd decides.
+		// To remain deterministic AND fast, each compound will push their particles data to a node, 
+		// in the order in which atomicAdd decides.
 		// This means, when computing the chargeSum in a node, we need to sort wrt compoundIds
 		// To do this, each compound needs to leave a reservation
 		struct CompoundReservation {
@@ -111,7 +112,7 @@ namespace BoxGrid {
 
 	// This function assumes the user has used PBC
 	template <typename NodeType>
-	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) {
+	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) { // Dont like this function, it hides using constant mem...
 		//if (index3d.x >= boxSize_device.boxSizeNM_i || index3d.y >= boxSize_device.boxSizeNM_i 
 		//	|| index3d.z >= boxSize_device.boxSizeNM_i
 		//	|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {

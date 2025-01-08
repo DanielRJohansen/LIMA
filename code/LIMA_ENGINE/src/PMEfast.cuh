@@ -14,33 +14,38 @@
 
 #include <cuda_runtime.h>
 #include <cufft.h>
-
-
-struct ChargeBlock;
-
+#include <memory>
+namespace ChargeBlock {
+	struct ChargeblockBuffers;
+}
 // TODO: Do i need to account for e0, vacuum/spaceial permitivity here? Probably....
+
+
 
 namespace PME {
 	const int gridpointsPerNm = 10;
 	constexpr float gridpointsPerNm_f = static_cast<float>(gridpointsPerNm);
+	constexpr float invCellVolume = static_cast<float>(gridpointsPerNm * gridpointsPerNm * gridpointsPerNm);
+
 
 	class Controller {
-		// FFT
-		float* realspaceGrid;
-		cufftComplex* fourierspaceGrid;
-		float* greensFunctionScalars;
-
-		// 
-		ChargeBlock* chargeBlocks;
-
 		int gridpointsPerDim = -1;
 		size_t nGridpointsRealspace = 0;
 		int nGridpointsReciprocalspace = -1;
 		const float ewaldKappa;
 		float boxlenNm{};
+		const int nChargeblocks;
 
 		// Always applied constant per particle
 		float selfenergyCorrection;
+
+		// FFT
+		float* realspaceGrid;
+		cufftComplex* fourierspaceGrid;
+		float* greensFunctionScalars;
+
+		// Chargeblocks 
+		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
 
 		cufftHandle planForward;
 		cufftHandle planInverse;
@@ -98,7 +103,7 @@ namespace PME {
 			std::vector<float> gridHost;
 			GenericCopyToHost(realspaceGrid, gridHost, nGridpointsRealspace);
 
-			int centerSlice = 100;
+			int centerSlice = 40;
 			int numSlices = 1;
 			int spacing = 10;
 

@@ -45,56 +45,12 @@ struct Direction3 {
 
 int main() {
 	try {
-		// constexpr Direction3 sIndexToDirection[26] = {
-		//	Direction3(-1,-1,-1), Direction3(0,-1,-1), Direction3(1,-1,-1),
-		//	Direction3(-1, 0,-1), Direction3(0, 0,-1), Direction3(1, 0,-1),
-		//	Direction3(-1, 1,-1), Direction3(0, 1,-1), Direction3(1, 1,-1),
-
-		//	Direction3(-1,-1, 0), Direction3(0,-1, 0), Direction3(1,-1, 0),
-		//	Direction3(-1, 0, 0), /* (0,0,0) excl */   Direction3(1, 0, 0),
-		//	Direction3(-1, 1, 0), Direction3(0, 1, 0), Direction3(1, 1, 0),
-
-		//	Direction3(-1,-1, 1), Direction3(0,-1, 1), Direction3(1,-1, 1),
-		//	Direction3(-1, 0, 1), Direction3(0, 0, 1), Direction3(1, 0, 1),
-		//	Direction3(-1, 1, 1), Direction3(0, 1, 1), Direction3(1, 1, 1)
-		//};
-
-		// constexpr uint8_t sDirectionToIndex[64] = {
-		//	   0,   9,  17, 255,   3,  12,  20, 255,
-		//	   6,  14,  23, 255, 255, 255, 255, 255,
-		//	   1,  10,  18, 255,   4, 255,  21, 255,
-		//	   7,  15,  24, 255, 255, 255, 255, 255,
-		//	   2,  11,  19, 255,   5,  13,  22, 255,
-		//	   8,  16,  25, 255, 255, 255, 255, 255,
-		//	 255, 255, 255, 255, 255, 255, 255, 255,
-		//	 255, 255, 255, 255, 255, 255, 255, 255
-		// };
-
-		// for (int z = -1; z < 2; z++) {
-		//	 for (int y = -1; y < 2; y++) {
-		//		 for (int x = -1; x < 2; x++) {
-		//			 if (x == 0 && y == 0 && z == 0)
-		//				 continue;
-		//			 Direction3 dir { x, y, z };
-
-		//			 int index = sDirectionToIndex[dir.data];
-		//			 Direction3 dir2 = sIndexToDirection[index];
-		//			 if (dir != dir2)
-		//				 printf("FAIL!");
-		//		 }
-		//	 }
-		// }
-		//	 
-
-		//exit(0);
-
-
 		constexpr auto envmode = EnvMode::Full;
 
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
-		TestLongrangeEsNoLJTwoParticles(envmode);
-		TestLongrangeEsNoLJManyParticles(envmode);
+		//TestLongrangeEsNoLJTwoParticles(envmode);
+		//TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -124,12 +80,12 @@ int main() {
 		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
-
+		//TestIntegration(envmode);
 
 		
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
@@ -181,7 +137,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -227,7 +183,7 @@ void RunAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.24e-3, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 9.642e-4, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

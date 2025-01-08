@@ -1,23 +1,25 @@
 #include "PMEfast.cuh"
 #include "PhysicsUtilsDevice.cuh"
 #include "LimaPositionSystem.cuh"
+#include "DeviceAlgorithms.cuh"
 
 using namespace PME;
 
 __device__ __host__ int GetGridIndexRealspace(const Int3& gridIndex, int gridpointsPerDim) {
-	return gridIndex.x + gridIndex.y * gridpointsPerDim + gridIndex.z * gridpointsPerDim * gridpointsPerDim;
+	return BoxGrid::Get1dIndex(gridIndex, gridpointsPerDim);
+	//return gridIndex.x + gridIndex.y * gridpointsPerDim + gridIndex.z * gridpointsPerDim * gridpointsPerDim;
 }
 __device__ __host__ int GetGridIndexReciprocalspace(const Int3& gridIndex, int gridpointsPerDim, int nGridpointsHalfdim) {
 	return gridIndex.x + gridIndex.y * nGridpointsHalfdim + gridIndex.z * nGridpointsHalfdim * gridpointsPerDim;
 }
-__device__ NodeIndex Get3dIndexRealspace(int index1d, int gridpointsPerDim) {
-	int z = index1d / (gridpointsPerDim * gridpointsPerDim);
-	index1d -= z * gridpointsPerDim * gridpointsPerDim;
-	int y = index1d / gridpointsPerDim;
-	index1d -= y * gridpointsPerDim;
-	int x = index1d;
-	return NodeIndex{ x, y, z };
-}
+//__device__ NodeIndex Get3dIndexRealspace(int index1d, int gridpointsPerDim) {
+//	int z = index1d / (gridpointsPerDim * gridpointsPerDim);
+//	index1d -= z * gridpointsPerDim * gridpointsPerDim;
+//	int y = index1d / gridpointsPerDim;
+//	index1d -= y * gridpointsPerDim;
+//	int x = index1d;
+//	return NodeIndex{ x, y, z };
+//}
 __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim, int nGridpointsHalfdim) {
 	int z = index1d / (nGridpointsHalfdim * gridpointsPerDim);
 	index1d -= z * nGridpointsHalfdim * gridpointsPerDim;
@@ -57,27 +59,27 @@ __device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float
 	return NodeIndex{};
 }
 
-__device__ void CalcBspline(float f, float* w ) {
-	w[0] = (1.f - f) * (1.f - f) * (1.f - f) / 6.f;
-	w[1] = (4.f - 6.f * f * f + 3.f * f * f * f) / 6.f;
-	w[2] = (1.f + 3.f * f + 3.f * f * f - 3.f * f * f * f) / 6.f;
-	w[3] = (f * f * f) / 6.f;
-}
+
 
 struct ChargePos {
 	Float3 pos;		// [nm] Relative to a chargeBlock
 	float charge;	// [kC/mol]
 };
-struct ChargeBlock {
-	static const int maxParticlesInBlock = 64; // TODO boxGrid should be able to compute this, based on a size
-	static const int maxParticlesFromNeighborBlock = 16;
-	static const int nNeighborBlocks = 3 * 3 * 3 - 1;
 
+namespace ChargeBlock {
+	const int maxParticlesInBlock = 64; // TODO boxGrid should be able to compute this, based on a size
+	const int maxParticlesFromNeighborBlock = 16;
+	const int nNeighborBlocks = 3 * 3 * 3 - 1;
+
+	const int maxReservations = 32; // This is probably too low.. especially for small compounds
+	//CompoundReservation compoundReservations[maxReservations];
+
+	const int maxParticlesInNode = 256 + 128;
 
 	// To remain deterministic AND fast, each compound will push their particles data to a block, 
-	// in the order in which atomicAdd decides.
-	// This means, when computing the chargeSum in a block, we need to sort wrt compoundIds
-	// To do this, each compound needs to leave a reservation
+// in the order in which atomicAdd decides.
+// This means, when computing the chargeSum in a block, we need to sort wrt compoundIds
+// To do this, each compound needs to leave a reservation
 	struct CompoundReservation {
 		uint32_t compoundId = UINT32_MAX;
 		uint32_t firstParticlesOffsetInThisNode = UINT32_MAX;
@@ -94,41 +96,96 @@ struct ChargeBlock {
 		}
 	};
 
-	uint32_t reservationKey;
 
-	static const int maxReservations = 32; // This is probably too low.. especially for small compounds
-	CompoundReservation compoundReservations[maxReservations];
+	struct ChargeblockBuffers {
+		ChargeblockBuffers(int nChargeblocks) {
+			//ChargeBlock::MallocParticles(&chargeposBuffer, &chargeposFromNearbyBlockBuffer, &compoundReservationsBuffer, nChargeblocks);
+			cudaMalloc(&reservationKeyBuffer, nChargeblocks * sizeof(uint32_t));
+			cudaMalloc(&compoundReservationsBuffer, ChargeBlock::maxReservations * sizeof(ChargeBlock::CompoundReservation) * nChargeblocks);
+			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInNode * sizeof(ChargePos) * nChargeblocks);
+			cudaMalloc(&chargeposFromNearbyBlockBuffer, ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks * sizeof(ChargePos) * nChargeblocks);
+		}
+		/*~ChargeblockBuffers() {
+			cudaFree(reservationKeyBuffer);
+			cudaFree(compoundReservationsBuffer);
+			cudaFree(chargeposBuffer);
+			cudaFree(chargeposFromNearbyBlockBuffer);
+		}*/
+		// Overwrite the reservation buffer with 0's, such that prev reservations and chargepos'es are ignored
+		void Refresh(int nChargeblocks) {
+			cudaMemset(reservationKeyBuffer, 0, nChargeblocks * sizeof(uint32_t));
+		}
+		void Free() {
+			cudaFree(reservationKeyBuffer);
+			cudaFree(compoundReservationsBuffer);
+			cudaFree(chargeposBuffer);
+			cudaFree(chargeposFromNearbyBlockBuffer);
+		}
+		uint32_t* reservationKeyBuffer;
+		ChargeBlock::CompoundReservation* compoundReservationsBuffer;
+		ChargePos* chargeposBuffer;
+		ChargePos* chargeposFromNearbyBlockBuffer;
+	};
 
-	static const int maxParticlesInNode = 256 + 128;
+
 	//float charges[maxParticlesInNode];	// This could just be a set of uint8 vals referencing a charge index, as we wont have many different charges
 
 
-	ChargePos particles[maxParticlesInBlock];
-	ChargePos particlesFromNearbyBlocks[maxParticlesFromNeighborBlock * nNeighborBlocks];
+	/*ChargePos particles[maxParticlesInBlock];
+	ChargePos particlesFromNearbyBlocks[maxParticlesFromNeighborBlock * nNeighborBlocks];*/
 
+	__device__ ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
+		return &buffers.chargeposBuffer[blockIndex * maxParticlesInNode];
+	}
+	/*__device__ const ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
+		return &buffers.chargeposBuffer[blockIndex * maxParticlesInNode];
+	}*/
+	__device__ ChargePos* const GetParticlesFromNearbyBlocks(const ChargeblockBuffers buffers, int blockIndex) {
+		return &buffers.chargeposFromNearbyBlockBuffer[blockIndex * maxParticlesFromNeighborBlock * nNeighborBlocks];
+	}
+	/*__device__ const ChargePos* const GetParticlesFromNearbyBlocks(const ChargeblockBuffers chargeposFromNearbyBlockBuffer, int blockIndex) {
+		return &buffers.chargeposFromNearbyBlockBuffer[blockIndex * maxParticlesFromNeighborBlock * nNeighborBlocks];
+	}*/
+	__device__ CompoundReservation* const GetCompoundReservations(const ChargeblockBuffers buffers, int blockIndex) {
+		return &buffers.compoundReservationsBuffer[blockIndex * maxReservations];
+	}
+	//const CompoundReservation* const GetCompoundReservations(const CompoundReservation* compoundReservationsBuffer, int blockIndex) {
+	//	return &compoundReservationsBuffer[blockIndex * maxReservations];
+	//}
+
+
+	__device__ int nParticlesReserved(const ChargeblockBuffers buffers, int blockIndex) {
+		return CompoundReservation::GetOffset(buffers.reservationKeyBuffer[blockIndex]);
+	}
+	__device__ int nReservations(const ChargeblockBuffers buffers, int blockIndex) {
+		return CompoundReservation::GetReservationIndex(buffers.reservationKeyBuffer[blockIndex]);
+	}
 
 	// Returns the index where the compounds first particle should be inserted
-	__device__ uint32_t MakeReservation(uint32_t compoundId, uint32_t nParticles) {
-		const uint32_t key = CompoundReservation::MakeKey(nParticles);
-		const uint32_t prevKey = atomicAdd(&reservationKey, key);
+	__device__ uint32_t MakeReservation(uint32_t compoundId, uint32_t nParticles, ChargeblockBuffers chargeblockBuffers, int blockIndex) {
+		const uint32_t key = ChargeBlock::CompoundReservation::MakeKey(nParticles);
+		const uint32_t prevKey = atomicAdd(&chargeblockBuffers.reservationKeyBuffer[blockIndex], key);
 
 
-		const uint32_t reservationIndex = CompoundReservation::GetReservationIndex(prevKey);
-		const uint32_t offset = CompoundReservation::GetOffset(prevKey);
+		const uint32_t reservationIndex = ChargeBlock::CompoundReservation::GetReservationIndex(prevKey);
+		const uint32_t offset = ChargeBlock::CompoundReservation::GetOffset(prevKey);
 
 		if constexpr (!LIMA_PUSH) {
 			if (reservationIndex >= maxReservations || offset + nParticles >= maxParticlesInNode) {
 				printf("Illegal reservation ri: %d offset: %d nP: %d \n", reservationIndex, offset, nParticles);
 			}
 		}
-		compoundReservations[reservationIndex] = CompoundReservation{ compoundId, offset, nParticles };
+		//compoundReservations[reservationIndex] = CompoundReservation{ compoundId, offset, nParticles };
+		chargeblockBuffers.compoundReservationsBuffer[blockIndex * maxReservations + reservationIndex] = CompoundReservation{ compoundId, offset, nParticles };
 		return offset;
 	}
-	__device__ void Reset() {
-		reservationKey = 0;
-	}
+	//__device__ void Reset() {
+	//	reservationKey = 0;
+	//}
 
 };
+using namespace ChargeBlock;
+
 
 
 // The number of threads per block (blockDim.x) must match arraySize.
@@ -161,7 +218,7 @@ __device__ void BitonicSort(ChargeBlock::CompoundReservation* reservations) { //
 	}
 }
 
-__global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, ChargeBlock* const chargeBlocks, int blocksPerDim)
+__global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, const ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
 {
 	__shared__ int numParticlesInNodeLocal[27];
 	__shared__ int numParticlesInNodeGlobal[27];
@@ -192,10 +249,12 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 	if (threadIdx.x < 27) {
 		const NodeIndex absIndex3d = PeriodicBoundaryCondition::applyBC(compoundOrigo + ConvertAbsolute1dToRelative3d(threadIdx.x), blocksPerDim);
 		
-
 		// No need to fetch this data, if no particles goes there...
 		if (numParticlesInNodeLocal[threadIdx.x] > 0) {
-			numParticlesInNodeGlobal[threadIdx.x] = chargeBlocks[BoxGrid::Get1dIndex(absIndex3d, blocksPerDim)].MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x]);
+			//numParticlesInNodeGlobal[threadIdx.x] = chargeBlocks[BoxGrid::Get1dIndex(absIndex3d, blocksPerDim)].MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x]);
+			const int targetBlockIndex = BoxGrid::Get1dIndex(absIndex3d, blocksPerDim);
+			//numParticlesInNodeGlobal[threadIdx.x] = chargeblockBuffers.  chargeBlocks[BoxGrid::Get1dIndex(absIndex3d, blocksPerDim)].MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x]);
+			numParticlesInNodeGlobal[threadIdx.x] = ChargeBlock::MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x], chargeblockBuffers, targetBlockIndex);
 		}
 	}
 	__syncthreads();
@@ -213,7 +272,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 		if (absoluteTargetblockIndex < 0 || absoluteTargetblockIndex >= blocksPerDim * blocksPerDim * blocksPerDim)
 			printf("Error %d\n", absoluteTargetblockIndex);
 
-		chargeBlocks[absoluteTargetblockIndex].particles[offsetInTargetsBuffer] = ChargePos{ relposRelativeToTargetBlock, myCharge };
+		ChargeBlock::GetParticles(chargeblockBuffers, absoluteTargetblockIndex)[offsetInTargetsBuffer] = ChargePos{ relposRelativeToTargetBlock, myCharge };
+		//chargeBlocks[absoluteTargetblockIndex].particles[offsetInTargetsBuffer] = ChargePos{ relposRelativeToTargetBlock, myCharge };
 	}
 }
 
@@ -253,16 +313,16 @@ namespace device_tables {
 	Direction3(-1, 1, 1), Direction3(0, 1, 1), Direction3(1, 1, 1)
 	};
 
-	__device__ constexpr uint8_t sDirectionToIndex[64] = {
-		  0,   9,  17, 255,   3,  12,  20, 255,
-		  6,  14,  23, 255, 255, 255, 255, 255,
-		  1,  10,  18, 255,   4, 255,  21, 255,
-		  7,  15,  24, 255, 255, 255, 255, 255,
-		  2,  11,  19, 255,   5,  13,  22, 255,
-		  8,  16,  25, 255, 255, 255, 255, 255,
-		255, 255, 255, 255, 255, 255, 255, 255,
-		255, 255, 255, 255, 255, 255, 255, 255
-	};
+	//__device__ constexpr uint8_t sDirectionToIndex[64] = {
+	//	  0,   9,  17, 255,   3,  12,  20, 255,
+	//	  6,  14,  23, 255, 255, 255, 255, 255,
+	//	  1,  10,  18, 255,   4, 255,  21, 255,
+	//	  7,  15,  24, 255, 255, 255, 255, 255,
+	//	  2,  11,  19, 255,   5,  13,  22, 255,
+	//	  8,  16,  25, 255, 255, 255, 255, 255,
+	//	255, 255, 255, 255, 255, 255, 255, 255,
+	//	255, 255, 255, 255, 255, 255, 255, 255
+	//};
 }
 
 
@@ -283,19 +343,9 @@ __device__ bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorin
 	return true;
 }
 
-__device__ Direction3 DirectionFromIndex3dInBlock(Int3 floorindex3d) {
-	const int x = floorindex3d.x < 1 ? -1 : 
-		(floorindex3d.x > gridpointsPerNm - 3 ? 1 : 0);
-	const int y = floorindex3d.y < 1 ? -1 :
-		(floorindex3d.y > gridpointsPerNm - 3 ? 1 : 0);
-	const int z = floorindex3d.z < 1 ? -1 :
-		(floorindex3d.z > gridpointsPerNm - 3 ? 1 : 0);
-	return Direction3{ x, y, z };
-}
-
 __device__ Int3 FloorIndex3d(const Float3& relpos) {
 	return Int3{
-		static_cast<int>(floorf(relpos.x * gridpointsPerNm_f)),
+		static_cast<int>(floorf(relpos.x * gridpointsPerNm_f)),// TODO should this mul not be in int for precision?
 		static_cast<int>(floorf(relpos.y * gridpointsPerNm_f)),
 		static_cast<int>(floorf(relpos.z * gridpointsPerNm_f))
 	};
@@ -304,27 +354,19 @@ __device__ Int3 FloorIndex3d(const Float3& relpos) {
 
 static_assert(MAX_COMPOUND_PARTICLES == ChargeBlock::maxReservations, "Expecting just 1 particle/thread in a reservation");
 // Spawn with nthreads = ChargeBlock::maxReservations
-__global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* const chargeBlocks, int blocksPerDim) 
+__global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
 {
 	// First we must sort the particles we own, wrt to the reservations to make this deterministic
+	// We apply the sort both on local and global mem
 
 	__shared__ ChargeBlock::CompoundReservation reservations[ChargeBlock::maxReservations];
 	reservations[threadIdx.x] = ChargeBlock::CompoundReservation{};
 	NodeIndex blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
-	//__shared__ float chargesBuffer[ChargeBlock::maxParticlesInNode];	// OPTIM: each thread can do a parallel partial sum, and then we only need to sum the 32 partial sums in the end
-	//__shared__ float chargesSums[ChargeBlock::maxReservations];
-	__shared__ float chargeSum;
 
-
-	ChargeBlock* const myBlock_GlobalMem = &chargeBlocks[blockIdx.x];
-	const uint32_t nReservations = myBlock_GlobalMem->reservationKey >> 16;
+	const uint32_t nReservations = ChargeBlock::nReservations(chargeblockBuffers, blockIdx.x);
 	if (threadIdx.x < nReservations)
-		reservations[threadIdx.x] = myBlock_GlobalMem->compoundReservations[threadIdx.x];
-	chargeSum = 0.f;
+		reservations[threadIdx.x] = ChargeBlock::GetCompoundReservations(chargeblockBuffers, blockIdx.x)[threadIdx.x];
 	__syncthreads();
-
-	if (threadIdx.x == 0)
-		myBlock_GlobalMem->Reset();
 
 	BitonicSort(reservations);
 	__syncthreads();
@@ -334,15 +376,17 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* cons
 	for (int reservationIndex = 0; reservationIndex < nReservations; reservationIndex++) {
 		if (threadIdx.x < reservations[reservationIndex].nParticlesInThisNode) {
 			const int particleIndexUnsorted = reservations[reservationIndex].firstParticlesOffsetInThisNode + threadIdx.x;
-			myParticles[nParticlesLoaded + threadIdx.x] = myBlock_GlobalMem->particles[particleIndexUnsorted];
+			const int particleIndexSorted = nParticlesLoaded + threadIdx.x;
+			//myParticles[particleIndexSorted] = myBlock_GlobalMem->particles[particleIndexUnsorted];
+			myParticles[particleIndexSorted] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[particleIndexUnsorted];
 		}
 		nParticlesLoaded += reservations[reservationIndex].nParticlesInThisNode;
 		__syncthreads(); // Dont think this is needed
 	}
 
 	// Now the particles are sorted in local mem, but we also want a them sorted in global mem
-	for (int i = threadIdx.x; i < nParticlesLoaded; i++)
-		myBlock_GlobalMem->particles[i] = myParticles[i];
+	for (int i = threadIdx.x; i < nParticlesLoaded; i+=blockDim.x)
+		ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i] = myParticles[i];
 
 	// Now we have sorted particles in myParticles, and we can start pushing them to the neighbor blocks locally
 	// 
@@ -351,7 +395,8 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* cons
 	__shared__ ChargePos particlesToNearbyBlocks[maxOutgoingParticles];
 	for (int i = threadIdx.x; i < maxOutgoingParticles; i += blockDim.x)
 		particlesToNearbyBlocks[i] = ChargePos{ Float3{}, 0.f };
-	
+	__syncthreads();
+
 	if (threadIdx.x < 26) {// only first 26 threads have work
 		const Float3 blockAbsPos = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim).toFloat3();
 
@@ -361,15 +406,12 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* cons
 
 		for (int i = 0; i < nParticlesLoaded; i++) {
 			const Int3 floorIndex3d = FloorIndex3d(myParticles[i].pos);
-			//const Direction3 direction = DirectionFromIndex3dInBlock(floorIndex3d); // WRONG, a index may have multiple directions, rather see if a index also matches myDireciton
-			//if (direction == myDirection) {
-			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
 
-
+			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) 
+			{
 				if (myOffset + myOutgoingParticlesCount >= maxOutgoingParticles || i >= maxOutgoingParticles) {
 					printf("Illegal index %d %d %d mydir %d %d %d\n Floorindex %d %d %d\n", myOffset, myOutgoingParticlesCount, i, myDirection.x(), myDirection.y(), myDirection.z(), 
-						floorIndex3d.x, floorIndex3d.y, floorIndex3d.z);
-					
+						floorIndex3d.x, floorIndex3d.y, floorIndex3d.z);		
 				}
 
 				particlesToNearbyBlocks[myOffset + myOutgoingParticlesCount] = myParticles[i];
@@ -384,7 +426,6 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* cons
 	for (int i = threadIdx.x; i < maxOutgoingParticles; i += blockDim.x) {
 		// Start by figuring out which incomingBuffer to target in the targetBlock
 		const Direction3 direction = device_tables::sIndexToDirection[i / ChargeBlock::maxParticlesFromNeighborBlock];
-		//Direction3 directionFromTargetsPointOfView = -direction;
 
 		// Transform current particle, so it's position is relative to the target block
 		particlesToNearbyBlocks[i].pos -= Float3{ static_cast<float>(direction.x()), static_cast<float>(direction.y()), static_cast<float>(direction.z()) };
@@ -392,37 +433,30 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeBlock* cons
 		const NodeIndex targetBlockIndex3D = PeriodicBoundaryCondition::applyBC(blockIndex3D + NodeIndex{ direction.x(), direction.y(), direction.z() }, blocksPerDim);		
 		const int targetBlockIndex = BoxGrid::Get1dIndex(targetBlockIndex3D, blocksPerDim);
 
-		if (targetBlockIndex<0 || targetBlockIndex>= blocksPerDim* blocksPerDim* blocksPerDim)
-			printf("Illegal targetBlockIndex %d\n", targetBlockIndex);
-
-		chargeBlocks[targetBlockIndex].particlesFromNearbyBlocks[i] = particlesToNearbyBlocks[i]; // Being a little cheeky with the indices here, as the target block will have the inverse layout of the source block.. But it works, right?
+		//chargeBlocks[targetBlockIndex].particlesFromNearbyBlocks[i] = particlesToNearbyBlocks[i]; // Being a little cheeky with the indices here, as the target block will have the inverse layout of the source block.. But it works, right?
+		ChargeBlock::GetParticlesFromNearbyBlocks(chargeblockBuffers, targetBlockIndex)[i] = particlesToNearbyBlocks[i];
 	}
 }
 
-__global__ void ChargeblockDistributeToGrid(const ChargeBlock* const chargeBlocks, float* const realspaceGrid, int blocksPerDim, int gridpointsPerDim) {
+__global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffers, float* const realspaceGrid, int blocksPerDim, int gridpointsPerDim) {
 	__shared__ ChargePos particles[ChargeBlock::maxParticlesInBlock + ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock];
 
 	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock + ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock; i += blockDim.x)
 		particles[i].charge = 0.f;
 
-	const ChargeBlock* const myBlock_GlobalMem = &chargeBlocks[blockIdx.x];
 
-	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock; i += blockDim.x) {
-		particles[i] = myBlock_GlobalMem->particles[i];
+	for (int i = threadIdx.x; i < ChargeBlock::nParticlesReserved(chargeblockBuffers, blockIdx.x); i += blockDim.x) {
+		particles[i] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i];
 	}
 	for (int i = threadIdx.x; i < ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock; i += blockDim.x) {
-		particles[ChargeBlock::maxParticlesInBlock + i] = myBlock_GlobalMem->particlesFromNearbyBlocks[i];
+		particles[ChargeBlock::maxParticlesInBlock + i] = ChargeBlock::GetParticlesFromNearbyBlocks(chargeblockBuffers, blockIdx.x)[i];
 	}
 	__syncthreads();
-
 
 	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd atomically	
 	constexpr double largestPossibleValue = (4. / 6.) * (5. * elementaryChargeToKiloCoulombPerMole) * 8; // Highest bspline coeff * (highestCharge) * maxExpectedParticleNearNode
 	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue; // 10 for safety
 	constexpr float invScalar = 1.f / scalar;
-
-	constexpr float delta = 1.f / gridpointsPerNm_f;
-	constexpr float invCellVolume = 1.f / (delta * delta * delta);
 
 	__shared__ int localGrid[gridpointsPerNm * gridpointsPerNm * gridpointsPerNm];
 	float* localGridAsFloat = reinterpret_cast<float*>(localGrid);
@@ -448,9 +482,9 @@ __global__ void ChargeblockDistributeToGrid(const ChargeBlock* const chargeBlock
 		float fz = gridPos.z - static_cast<float>(iz);
 
 		float wx[4], wy[4], wz[4];
-		CalcBspline(fx, wx);
-		CalcBspline(fy, wy);
-		CalcBspline(fz, wz);
+		LAL::CalcBspline(fx, wx);
+		LAL::CalcBspline(fy, wy);
+		LAL::CalcBspline(fz, wz);
 
 		// Distribute the charge to the surrounding 4x4x4 cells
 		for (int dx = 0; dx < 4; dx++) {
@@ -507,59 +541,6 @@ __global__ void ChargeblockDistributeToGrid(const ChargeBlock* const chargeBlock
 		const int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridpointsPerDim);
 		const int localIndex = row * gridpointsPerNm + myIndexInRow;
 		realspaceGrid[globalIndex] = localGridAsFloat[localIndex];
-	}
-}
-
-
-
-
-__global__ void DistributeChargesToGridKernel(const BoxConfig config, const BoxState state, float* realspaceGrid, int gridpointsPerDim) {
-	if (threadIdx.x >= config.compounds[blockIdx.x].n_particles)
-		return;
-
-	constexpr float delta = 1.f / gridpointsPerNm_f;
-	constexpr float invCellVolume = 1.f / (delta * delta * delta);
-
-	const float charge = config.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];	// [kC/mol]
-	if (charge == 0.f)
-		return;
-
-	const NodeIndex origo = state.compoundOrigos[blockIdx.x];
-	const Float3 relpos = state.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-	Float3 absPos = relpos + origo.toFloat3();
-	PeriodicBoundaryCondition::applyBCNM(absPos);
-
-	// Map absolute position to fractional grid coordinates
-	Float3 gridPos = absPos * gridpointsPerNm_f;
-	int ix = static_cast<int>(floorf(gridPos.x));
-	int iy = static_cast<int>(floorf(gridPos.y));
-	int iz = static_cast<int>(floorf(gridPos.z));
-
-	float fx = gridPos.x - static_cast<float>(ix);
-	float fy = gridPos.y - static_cast<float>(iy);
-	float fz = gridPos.z - static_cast<float>(iz);
-	
-	float wx[4], wy[4], wz[4];
-	CalcBspline(fx, wx);	
-	CalcBspline(fy, wy);
-	CalcBspline(fz, wz);
-
-	// Distribute the charge to the surrounding 4x4x4 cells
-	for (int dx = 0; dx < 4; dx++) {
-		int X = -1 + ix + dx;
-		float wxCur = wx[dx];
-		for (int dy = 0; dy < 4; dy++) {
-			int Y = -1 + iy + dy;
-			float wxyCur = wxCur * wy[dy];
-			for (int dz = 0; dz < 4; dz++) {
-				int Z = -1 + iz + dz;
-				//printf("Weight %f\n", wxyCur * wz[dz]);
-
-				const NodeIndex index3d = PeriodicBoundaryCondition::applyBC(NodeIndex{ X,Y,Z }, gridpointsPerDim);
-				const int index1D = GetGridIndexRealspace(index3d, gridpointsPerDim);
-				realspaceGrid[index1D] += charge * wxyCur * wz[dz] * invCellVolume;
-			}
-		}
 	}
 }
 
@@ -774,7 +755,9 @@ __global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float 
 
 
 
-PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM) : boxlenNm(boxLenNm), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM))
+
+PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM) 
+	: boxlenNm(boxLenNm), nChargeblocks(boxLenNm* boxLenNm* boxLenNm), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM))
 {
 	gridpointsPerDim = boxLenNm * gridpointsPerNm;
 	nGridpointsRealspace = gridpointsPerDim * gridpointsPerDim * gridpointsPerDim;
@@ -796,9 +779,8 @@ PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM) : boxl
 	cudaMalloc(&fourierspaceGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
 
-	cudaMalloc(&chargeBlocks, boxLenNm * boxLenNm * boxLenNm * sizeof(ChargeBlock));
-	cudaMemset(chargeBlocks, 0, boxLenNm * boxLenNm * boxLenNm * sizeof(ChargeBlock));
-	cudaDeviceSynchronize();
+	chargeblockBuffers = std::make_unique<ChargeBlock::ChargeblockBuffers>(nChargeblocks);
+
 
 	const int nBlocks = (nGridpointsReciprocalspace + 63) / 64;
 	PrecomputeGreensFunctionKernel << <nBlocks, 64 >> > (greensFunctionScalars, gridpointsPerDim, boxLenNm, ewaldKappa);
@@ -814,7 +796,8 @@ PME::Controller::~Controller() {
 	cudaFree(realspaceGrid);
 	cudaFree(fourierspaceGrid);
 	cudaFree(greensFunctionScalars);
-	cudaFree(chargeBlocks);
+
+	chargeblockBuffers->Free();
 }
 
 void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy) {
@@ -823,18 +806,14 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 
 	cudaMemset(realspaceGrid, 0, nGridpointsRealspace * sizeof(float));// maybe do this async, after the last kernel?
 	cudaMemset(fourierspaceGrid, 0, nGridpointsReciprocalspace * sizeof(cufftComplex));
+	chargeblockBuffers->Refresh(nChargeblocks);
 	cudaDeviceSynchronize();
 
-
-	//DistributeChargesToGridKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, realspaceGrid, gridpointsPerDim);
-	//LIMA_UTILS::genericErrorCheckNoSync("DistributeChargesToGridKernel failed!");
-	//cudaDeviceSynchronize();
-
-	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, chargeBlocks, boxlenNm);
+	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, *chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheck("DistributeCompoundchargesToBlocksKernel failed!");
-	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations >> > (chargeBlocks, boxlenNm);
+	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations >> > (*chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheck("DistributeOverlappingParticlesToNeighborBlocks failed!");
-	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32 >> > (chargeBlocks, realspaceGrid, boxlenNm, gridpointsPerDim);
+	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32 >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
 	LIMA_UTILS::genericErrorCheck("ChargeblockDistributeToGrid failed!");
 	cudaDeviceSynchronize();
 

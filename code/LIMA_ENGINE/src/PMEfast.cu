@@ -27,16 +27,11 @@ __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim
 }
 
 __device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
-	//NodeIndex relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
 	return NodeIndex{
 		(relpos.x > 1.f) - (relpos.x < 0.f),
 		(relpos.y > 1.f) - (relpos.y < 0.f),
 		(relpos.z > 1.f) - (relpos.z < 0.f)
 	};
-	/*relativeLocalIndex.x = 
-	relativeLocalIndex.y = 
-	relativeLocalIndex.z = 
-	return relativeLocalIndex;*/
 }
 
 struct Direction3 {
@@ -188,9 +183,6 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 	const uint32_t nReservations = ChargeBlock::nReservations(chargeblockBuffers, blockIdx.x);
 	if (threadIdx.x < nReservations)
 		reservations[threadIdx.x] = ChargeBlock::GetCompoundReservations(chargeblockBuffers, blockIdx.x)[threadIdx.x];
-	__syncthreads();
-
-	BitonicSort(reservations);
 	__syncthreads();
 
 	__shared__ ChargePos myParticles[ChargeBlock::maxParticlesInBlock];

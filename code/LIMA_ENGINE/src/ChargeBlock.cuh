@@ -43,18 +43,12 @@ namespace ChargeBlock {
 
 	struct ChargeblockBuffers {
 		ChargeblockBuffers(int nChargeblocks) {
-			//ChargeBlock::MallocParticles(&chargeposBuffer, &chargeposFromNearbyBlockBuffer, &compoundReservationsBuffer, nChargeblocks);
 			cudaMalloc(&reservationKeyBuffer, nChargeblocks * sizeof(uint32_t));
 			cudaMalloc(&compoundReservationsBuffer, ChargeBlock::maxReservations * sizeof(ChargeBlock::CompoundReservation) * nChargeblocks);
 			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInBlock * sizeof(ChargePos) * nChargeblocks);
 			cudaMalloc(&chargeposFromNearbyBlockBuffer, ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks * sizeof(ChargePos) * nChargeblocks);
 		}
-		/*~ChargeblockBuffers() {
-			cudaFree(reservationKeyBuffer);
-			cudaFree(compoundReservationsBuffer);
-			cudaFree(chargeposBuffer);
-			cudaFree(chargeposFromNearbyBlockBuffer);
-		}*/
+
 		// Overwrite the reservation buffer with 0's, such that prev reservations and chargepos'es are ignored
 		void Refresh(int nChargeblocks) {
 			cudaMemset(reservationKeyBuffer, 0, nChargeblocks * sizeof(uint32_t));
@@ -123,37 +117,34 @@ namespace ChargeBlock {
 		chargeblockBuffers.compoundReservationsBuffer[blockIndex * maxReservations + reservationIndex] = CompoundReservation{ compoundId, offset, nParticles };
 		return offset;
 	}
-	//__device__ void Reset() {
-	//	reservationKey = 0;
-	//}
 
 	// The number of threads per block (blockDim.x) must match arraySize.
-// ArraySize must be a power of 2.
-	__device__ void BitonicSort(CompoundReservation* reservations) { // TODO: move to LAL
-		static const int arraySize = maxReservations;
-		for (int k = 2; k <= arraySize; k *= 2) {
-			for (int j = k / 2; j > 0; j /= 2) {
-				int ixj = threadIdx.x ^ j;
-				if (ixj > threadIdx.x) {
-					if ((threadIdx.x & k) == 0) {
-						if (reservations[threadIdx.x].compoundId > reservations[ixj].compoundId) {
-							// Swap
-							CompoundReservation temp = reservations[threadIdx.x];
-							reservations[threadIdx.x] = reservations[ixj];
-							reservations[ixj] = temp;
-						}
-					}
-					else {
-						if (reservations[threadIdx.x].compoundId < reservations[ixj].compoundId) {
-							// Swap
-							CompoundReservation temp = reservations[threadIdx.x];
-							reservations[threadIdx.x] = reservations[ixj];
-							reservations[ixj] = temp;
-						}
-					}
-				}
-				__syncthreads();
-			}
-		}
-	}
+	// ArraySize must be a power of 2.
+	//__device__ void BitonicSort(CompoundReservation* reservations) { // TODO: move to LAL
+	//	static const int arraySize = maxReservations;
+	//	for (int k = 2; k <= arraySize; k *= 2) {
+	//		for (int j = k / 2; j > 0; j /= 2) {
+	//			int ixj = threadIdx.x ^ j;
+	//			if (ixj > threadIdx.x) {
+	//				if ((threadIdx.x & k) == 0) {
+	//					if (reservations[threadIdx.x].compoundId > reservations[ixj].compoundId) {
+	//						// Swap
+	//						CompoundReservation temp = reservations[threadIdx.x];
+	//						reservations[threadIdx.x] = reservations[ixj];
+	//						reservations[ixj] = temp;
+	//					}
+	//				}
+	//				else {
+	//					if (reservations[threadIdx.x].compoundId < reservations[ixj].compoundId) {
+	//						// Swap
+	//						CompoundReservation temp = reservations[threadIdx.x];
+	//						reservations[threadIdx.x] = reservations[ixj];
+	//						reservations[ixj] = temp;
+	//					}
+	//				}
+	//			}
+	//			__syncthreads();
+	//		}
+	//	}
+	//}
 };

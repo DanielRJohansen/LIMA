@@ -27,11 +27,16 @@ __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim
 }
 
 __device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
-	NodeIndex relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
-	relativeLocalIndex.x = (relativeLocalIndex.x > 0) - (relativeLocalIndex.x < 0);
-	relativeLocalIndex.y = (relativeLocalIndex.y > 0) - (relativeLocalIndex.y < 0);
-	relativeLocalIndex.z = (relativeLocalIndex.z > 0) - (relativeLocalIndex.z < 0);
-	return relativeLocalIndex;
+	//NodeIndex relativeLocalIndex = LIMAPOSITIONSYSTEM::PositionToNodeIndex(relpos);
+	return NodeIndex{
+		(relpos.x > 1.f) - (relpos.x < 0.f),
+		(relpos.y > 1.f) - (relpos.y < 0.f),
+		(relpos.z > 1.f) - (relpos.z < 0.f)
+	};
+	/*relativeLocalIndex.x = 
+	relativeLocalIndex.y = 
+	relativeLocalIndex.z = 
+	return relativeLocalIndex;*/
 }
 
 struct Direction3 {
@@ -82,72 +87,6 @@ namespace device_tables {
 	};
 }
 
-
-// --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
-
-
-__global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, const ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
-{
-	__shared__ int numParticlesInNodeLocal[27];
-	__shared__ int numParticlesInNodeGlobal[27];
-
-	NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x];
-	const Float3 relPos = boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES]; // I want this to be relpos to the block, no?
-	const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
-	const float myCharge = boxConfig.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-
-	// todo: threads with a charge of 0 should NOT push that charge (duh)
-	if (threadIdx.x < 27) {
-		numParticlesInNodeLocal[threadIdx.x] = 0;
-		numParticlesInNodeGlobal[threadIdx.x] = 0;
-	}
-	__syncthreads();
-
-	// First each particle figure out which node it belongs to relative to it's compounds origo. Then it decide the offset to put values, wrt other particles in this compound
-	int myOffsetInLocalNode = 0;																				// Between 0 and maxParticlesInNode
-	const NodeIndex relativeNode = GetParticlesBlockRelativeToCompoundOrigo(relPos, threadIdx.x < nParticles);	// Between {-1,-1,-1} and {1,1,1}
-	//const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
-	const int localNodeId = device_tables::sDirectionToIndex[Direction3{ relativeNode.x, relativeNode.y, relativeNode.z}.data];
-	for (int i = 0; i < nParticles; i++) {
-		if (threadIdx.x == i)
-			myOffsetInLocalNode = numParticlesInNodeLocal[localNodeId]++;
-		__syncthreads();
-	}
-
-	// Fetch the current particles in the global node counts, and figure out where to push our counts
-	if (threadIdx.x < 27) {
-		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
-		const NodeIndex absIndex3d = PeriodicBoundaryCondition::applyBC(compoundOrigo + myDirection.ToNodeIndex(), blocksPerDim);
-		
-		// No need to fetch this data, if no particles goes there...
-		if (numParticlesInNodeLocal[threadIdx.x] > 0) {
-			const int targetBlockIndex = BoxGrid::Get1dIndex(absIndex3d, blocksPerDim);
-			numParticlesInNodeGlobal[threadIdx.x] = ChargeBlock::MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x], chargeblockBuffers, targetBlockIndex);
-		}
-	}
-	__syncthreads();
-
-	// Finally compute the correct index to insert our data, and push that data
-	if (threadIdx.x < nParticles) {
-		const NodeIndex absoluteTargetblockIndex3D = PeriodicBoundaryCondition::applyBC(compoundOrigo + relativeNode, blocksPerDim);
-		const int absoluteTargetblockIndex = BoxGrid::Get1dIndex(absoluteTargetblockIndex3D, blocksPerDim);
-
-		
-		const int offsetInTargetsBuffer = numParticlesInNodeGlobal[localNodeId] + myOffsetInLocalNode;
-
-		const Float3 relposRelativeToTargetBlock = relPos - relativeNode.toFloat3();
-
-		if (absoluteTargetblockIndex < 0 || absoluteTargetblockIndex >= blocksPerDim * blocksPerDim * blocksPerDim)
-			printf("Error %d\n", absoluteTargetblockIndex);
-
-		ChargeBlock::GetParticles(chargeblockBuffers, absoluteTargetblockIndex)[offsetInTargetsBuffer] = ChargePos{ relposRelativeToTargetBlock, myCharge };
-	}
-}
-
-
-
-
-
 __device__ bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorindex3d, const Direction3& queryDirection) {
 	if (queryDirection.x() == -1 && floorindex3d.x > 0)
 		return false;
@@ -180,6 +119,60 @@ __device__ Int3 FloorIndex3d(const Float3& relpos) {
 	};
 }
 
+// --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
+
+
+__global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, const ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
+{
+	__shared__ int numParticlesInNodeLocal[27];
+	__shared__ int numParticlesInNodeGlobal[27];
+
+	NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x]; // This coincides as the center block, or 0,0,0 direction block we target
+	const Float3 relPos = boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x]; // I want this to be relpos to the block, no?
+	const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
+	const float myCharge = boxConfig.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+
+	// todo: threads with a charge of 0 should NOT push that charge (duh)
+	if (threadIdx.x < 27) {
+		numParticlesInNodeLocal[threadIdx.x] = 0;
+		numParticlesInNodeGlobal[threadIdx.x] = 0;
+	}
+	__syncthreads();
+
+	// First each particle figure out which node it belongs to relative to it's compounds origo. Then it decide the offset to put values, wrt other particles in this compound
+	int myOffsetInLocalNode = 0;																				// Between 0 and maxParticlesInNode
+	const NodeIndex relativeNode = GetParticlesBlockRelativeToCompoundOrigo(relPos, threadIdx.x < nParticles);	// Between {-1,-1,-1} and {1,1,1}
+	//const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
+	const int localNodeId = device_tables::sDirectionToIndex[Direction3{ relativeNode.x, relativeNode.y, relativeNode.z}.data]; // [0,26]
+	for (int i = 0; i < nParticles; i++) {
+		if (threadIdx.x == i)
+			myOffsetInLocalNode = numParticlesInNodeLocal[localNodeId]++;
+		__syncthreads();
+	}
+
+	// Fetch the current particles in the global node counts, and figure out where to push our counts
+	if (threadIdx.x < 27 && numParticlesInNodeLocal[threadIdx.x] > 0) {
+		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
+		const NodeIndex absIndex3d = PeriodicBoundaryCondition::applyBC(compoundOrigo + myDirection.ToNodeIndex(), blocksPerDim);
+		const int targetBlockIndex = BoxGrid::Get1dIndex(absIndex3d, blocksPerDim);
+
+		numParticlesInNodeGlobal[threadIdx.x] = ChargeBlock::MakeReservation(blockIdx.x, numParticlesInNodeLocal[threadIdx.x], chargeblockBuffers, targetBlockIndex);
+	}
+	__syncthreads();
+
+	// Finally compute the correct index to insert our data, and push that data
+	if (threadIdx.x < nParticles) {
+		const NodeIndex absoluteTargetblockIndex3D = PeriodicBoundaryCondition::applyBC(compoundOrigo + relativeNode, blocksPerDim);
+		const int absoluteTargetblockIndex = BoxGrid::Get1dIndex(absoluteTargetblockIndex3D, blocksPerDim);		
+		const int offsetInTargetsBuffer = numParticlesInNodeGlobal[localNodeId] + myOffsetInLocalNode;
+		const Float3 relposRelativeToTargetBlock = relPos - relativeNode.toFloat3();
+
+		ChargeBlock::GetParticles(chargeblockBuffers, absoluteTargetblockIndex)[offsetInTargetsBuffer] = ChargePos{ relposRelativeToTargetBlock, myCharge };
+	}
+}
+
+
+
 
 static_assert(MAX_COMPOUND_PARTICLES == ChargeBlock::maxReservations, "Expecting just 1 particle/thread in a reservation");
 // Spawn with nthreads = ChargeBlock::maxReservations
@@ -207,10 +200,17 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 			const int particleIndexUnsorted = reservations[reservationIndex].firstParticlesOffsetInThisNode + threadIdx.x;
 			const int particleIndexSorted = nParticlesLoaded + threadIdx.x;
 			//myParticles[particleIndexSorted] = myBlock_GlobalMem->particles[particleIndexUnsorted];
+
+			if (reservations[reservationIndex].nParticlesInThisNode > MAX_COMPOUND_PARTICLES)
+				printf("Cant handle so many nodes");
+
 			myParticles[particleIndexSorted] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[particleIndexUnsorted];
 		}
 		nParticlesLoaded += reservations[reservationIndex].nParticlesInThisNode;
 		__syncthreads(); // Dont think this is needed
+
+		if (nParticlesLoaded >= ChargeBlock::maxParticlesInBlock || nReservations >= 32)
+			printf("Something wrong here %d %d\n", nParticlesLoaded, nReservations);
 	}
 
 	// Now the particles are sorted in local mem, but we also want a them sorted in global mem
@@ -223,7 +223,7 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 	const int maxOutgoingParticles = ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks;
 	__shared__ ChargePos particlesToNearbyBlocks[maxOutgoingParticles];
 	for (int i = threadIdx.x; i < maxOutgoingParticles; i += blockDim.x)
-		particlesToNearbyBlocks[i] = ChargePos{ Float3{}, 0.f };
+		particlesToNearbyBlocks[i] = ChargePos{ Float3{-42.f, -42.f,-42.f}, 0.f };
 	__syncthreads();
 
 	if (threadIdx.x < 26) {// only first 26 threads have work
@@ -238,9 +238,11 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 
 			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) 
 			{
-				if (myOffset + myOutgoingParticlesCount >= maxOutgoingParticles || i >= maxOutgoingParticles) {
-					printf("Illegal index %d %d %d mydir %d %d %d\n Floorindex %d %d %d\n", myOffset, myOutgoingParticlesCount, i, myDirection.x(), myDirection.y(), myDirection.z(), 
-						floorIndex3d.x, floorIndex3d.y, floorIndex3d.z);		
+				if (myOffset + myOutgoingParticlesCount >= maxOutgoingParticles || i >= maxOutgoingParticles || myOutgoingParticlesCount >= ChargeBlock::maxParticlesFromNeighborBlock) {
+					printf("Illegal index. BlockIdx %d ThreadId %d MyOffset = %d myOutgoingCount: %d i: %d mydir %d %d %d Floorindex %d %d %d ParticlePos %f %f %f\n",
+						blockIdx.x, threadIdx.x, myOffset, myOutgoingParticlesCount, i, myDirection.x(), myDirection.y(), myDirection.z(),
+						floorIndex3d.x, floorIndex3d.y, floorIndex3d.z, myParticles[i].pos.x, myParticles[i].pos.y, myParticles[i].pos.z
+					);
 				}
 
 				particlesToNearbyBlocks[myOffset + myOutgoingParticlesCount] = myParticles[i];

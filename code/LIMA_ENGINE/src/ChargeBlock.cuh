@@ -6,14 +6,14 @@
 
 
 namespace ChargeBlock {
-	const int maxParticlesInBlock = 64; // TODO boxGrid should be able to compute this, based on a size
-	const int maxParticlesFromNeighborBlock = 16;
+	const int maxParticlesInBlock = 256; // TODO boxGrid should be able to compute this, based on a size
+	const int maxParticlesFromNeighborBlock = 64;
 	const int nNeighborBlocks = 3 * 3 * 3 - 1;
 
 	const int maxReservations = 32; // This is probably too low.. especially for small compounds
 	//CompoundReservation compoundReservations[maxReservations];
 
-	const int maxParticlesInNode = 256 + 128;
+	//const int maxParticlesInNode = 256 + 128;
 
 	struct ChargePos {
 		Float3 pos;		// [nm] Relative to a chargeBlock
@@ -46,7 +46,7 @@ namespace ChargeBlock {
 			//ChargeBlock::MallocParticles(&chargeposBuffer, &chargeposFromNearbyBlockBuffer, &compoundReservationsBuffer, nChargeblocks);
 			cudaMalloc(&reservationKeyBuffer, nChargeblocks * sizeof(uint32_t));
 			cudaMalloc(&compoundReservationsBuffer, ChargeBlock::maxReservations * sizeof(ChargeBlock::CompoundReservation) * nChargeblocks);
-			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInNode * sizeof(ChargePos) * nChargeblocks);
+			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInBlock * sizeof(ChargePos) * nChargeblocks);
 			cudaMalloc(&chargeposFromNearbyBlockBuffer, ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks * sizeof(ChargePos) * nChargeblocks);
 		}
 		/*~ChargeblockBuffers() {
@@ -79,7 +79,7 @@ namespace ChargeBlock {
 	ChargePos particlesFromNearbyBlocks[maxParticlesFromNeighborBlock * nNeighborBlocks];*/
 
 	__device__ ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
-		return &buffers.chargeposBuffer[blockIndex * maxParticlesInNode];
+		return &buffers.chargeposBuffer[blockIndex * maxParticlesInBlock];
 	}
 	/*__device__ const ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
 		return &buffers.chargeposBuffer[blockIndex * maxParticlesInNode];
@@ -115,7 +115,7 @@ namespace ChargeBlock {
 		const uint32_t offset = ChargeBlock::CompoundReservation::GetOffset(prevKey);
 
 		if constexpr (!LIMA_PUSH) {
-			if (reservationIndex >= maxReservations || offset + nParticles >= maxParticlesInNode) {
+			if (reservationIndex >= maxReservations || offset + nParticles >= maxParticlesInBlock) {
 				printf("Illegal reservation ri: %d offset: %d nP: %d \n", reservationIndex, offset, nParticles);
 			}
 		}

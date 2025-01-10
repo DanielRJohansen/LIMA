@@ -13,8 +13,6 @@
 //#include <cuda/pipeline>
 #include "KernelConstants.cuh"
 
-
-#include "Electrostatics.cuh"
 #include "LennardJonesInteractions.cuh"
 
 

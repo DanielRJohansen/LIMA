@@ -3,7 +3,6 @@
 #include "EngineBodies.cuh"
 #include "Bodies.cuh"
 #include "Simulation.cuh"
-#include "ChargeOcttree.cuh"
 
 
 struct BoxConfig {	
@@ -104,12 +103,6 @@ struct SimulationDevice {
 	const BoxConfig boxConfig;
 	BoxState* const boxState;
 	const BoxParams boxparams;
-
-	//const UniformElectricField uniformElectricField;
-
-	//ChargeOctTree* charge_octtree;
-	Electrostatics::ChargeNode* chargeGrid = nullptr;
-	float* chargeGridChargeSums = nullptr;
 
 	// potE should be divided equally between all the particles in the node
 	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [J/mol/nm], float potE [J/mol]}

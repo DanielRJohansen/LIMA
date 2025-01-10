@@ -5,15 +5,14 @@
 #include "BoundaryCondition.cuh"
 #include "SimulationDevice.cuh"
 #include "LimaPositionSystem.cuh"
-#include "ChargeOcttree.cuh"
 #include "EngineKernels.cuh"
 #include "Thermostat.cuh"
 #include "SupernaturalForces.cuh"
-//#include "PME.cuh"
-#include "PMEfast.cuh"
+#include "PME.cuh"
 
 #include "Statistics.h"
 #include "Utilities.h"
+
 
 #include <unordered_set>
 

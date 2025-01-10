@@ -1,5 +1,5 @@
 #include "SimulationDevice.cuh"
-
+#include "Utilities.h"
 
 
 BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds) :
@@ -173,10 +173,6 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	vel_buffer = databuffers.vel_buffer;
 	forceBuffer = databuffers.forceBuffer;
 
-	chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
-	chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
-	chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
-
 	if (params_host.em_variant) {
 		cudaMalloc(&adamState, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
 		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
@@ -198,13 +194,8 @@ void SimulationDevice::FreeMembers() {
 	cudaFree(compound_neighborlists);
 	cudaFree(transfermodule_array);
 	cudaFree(signals);
-
-	//cudaFree(charge_octtree);
-	cudaFree(chargeGrid);
-	cudaFree(chargeGridChargeSums);
 	cudaFree(chargeGridOutputForceAndPot);
 
 	if (adamState != nullptr)
 		cudaFree(adamState);
 }
-

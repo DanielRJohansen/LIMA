@@ -4,10 +4,7 @@
 # in order to access __constant__ memory
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
-    src/ChargeOcttree.cu
-    src/ConvexHullEngine.cu
- "src/SimulationDevice.cu"
-    src/PMEfast.cu
+    src/SimulationDevice.cpp
 )
 
 target_include_directories(LIMA_ENGINE PRIVATE

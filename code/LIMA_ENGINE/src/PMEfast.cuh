@@ -48,10 +48,10 @@ namespace PME {
 
 	public:
 
-		Controller(int boxLenNm, const Box& box, float cutoffNM);
+		Controller(int boxLenNm, const Box& box, float cutoffNM, cudaStream_t& stream);
 		~Controller();
 
-		void CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy);
+		void CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy, cudaStream_t& stream);
 
 	private:
 		//Just for debugging

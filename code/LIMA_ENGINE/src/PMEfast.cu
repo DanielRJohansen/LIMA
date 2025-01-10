@@ -556,7 +556,7 @@ __global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float 
 // --------------------------------------------------------------- Controller --------------------------------------------------------------- //	
 
 
-PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM) 
+PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM, cudaStream_t& stream)
 	: boxlenNm(boxLenNm), nChargeblocks(boxLenNm* boxLenNm* boxLenNm), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM))
 {
 	gridpointsPerDim = boxLenNm * gridpointsPerNm;
@@ -574,6 +574,8 @@ PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM)
 
 	cufftPlan3d(&planForward, gridpointsPerDim, gridpointsPerDim, gridpointsPerDim, CUFFT_R2C);
 	cufftPlan3d(&planInverse, gridpointsPerDim, gridpointsPerDim, gridpointsPerDim, CUFFT_C2R);
+	cufftSetStream(planForward, stream);
+	cufftSetStream(planInverse, stream);
 
 	cudaMalloc(&realspaceGrid, nGridpointsRealspace * sizeof(float));
 	cudaMalloc(&fourierspaceGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
@@ -600,7 +602,7 @@ PME::Controller::~Controller() {
 	chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy) {
+void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy, cudaStream_t& stream) {
 	if (nCompounds == 0)
 		return;
 
@@ -609,11 +611,11 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 	chargeblockBuffers->Refresh(nChargeblocks);
 	cudaDeviceSynchronize();
 
-	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, *chargeblockBuffers, boxlenNm);
+	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheck("DistributeCompoundchargesToBlocksKernel failed!");
-	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations >> > (*chargeblockBuffers, boxlenNm);
+	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations, 0, stream >> > (*chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheck("DistributeOverlappingParticlesToNeighborBlocks failed!");
-	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32 >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
+	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
 	LIMA_UTILS::genericErrorCheck("ChargeblockDistributeToGrid failed!");
 	cudaDeviceSynchronize();
 
@@ -626,7 +628,7 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 		cudaDeviceSynchronize();
 	}
 
-	ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64 >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, boxlenNm);
+	ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, boxlenNm);
 	LIMA_UTILS::genericErrorCheckNoSync("ApplyGreensFunctionKernel failed!");
 
 	// InverseFFT
@@ -638,11 +640,11 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 		cudaDeviceSynchronize();
 	}
 
-	Normalize << <(nGridpointsRealspace + 63) / 64, 64 >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
+	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
 
 	//PlotPotentialSlices();
 
-	InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+	InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialKernel failed!");
 
 	cudaDeviceSynchronize();

@@ -131,7 +131,7 @@ private:
 	bool updatenlists_mutexlock = 0;
 
 	std::array<cudaStream_t, 5> cudaStreams;
-
+	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	int testval = 0;

@@ -73,9 +73,9 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamCreate(&stream);
 	}
+	cudaStreamCreate(&pmeStream);
 
-
-	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm);
+	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
 	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
 	cudaMemset(forceEnergiesPME, 0, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
 	//std::unordered_set<std::string> unique_compounds;
@@ -373,7 +373,7 @@ void Engine::_deviceMaster() {
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
 		// Must occur after DistributeCompoundchargesToGridKernel
 		//timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams, cudaStreams[2]);
-		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME);
+		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
 

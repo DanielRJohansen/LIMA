@@ -109,32 +109,38 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 template <typename Selection>
 struct SampleSelectionRandomly {
 	// Seedoffset is so we can get repeatable but different outcomes from multiple instantiations
-	SampleSelectionRandomly(const Selection& selection, int seedOffset=0) : selection(selection) {
-		// Make a vector that points to the  selection index, so we can randomly select lipids
-		for (int i = 0; i < selection.size(); i++) {
-			for (int j = 0; j < selection[i].percentage; j++)
+	SampleSelectionRandomly(const Selection& selection, int seedOffset = 0)
+	: selection(selection)
+	, rng(34896495u + static_cast<unsigned>(seedOffset))
+	{
+		// Build a vector of indices reflecting the "percentage" weighting
+		// (same as before)
+		for (int i = 0; i < static_cast<int>(selection.size()); i++) {
+			for (int j = 0; j < selection[i].percentage; j++) {
 				selection_indexes.push_back(i);
+			}
 		}
-		// Shuffle the vector
-		g = std::mt19937(34896495 + seedOffset);
-
-		std::shuffle(selection_indexes.begin(), selection_indexes.end(), g);
+		// Prepare a uniform distribution for picking random indices
+		distribution = std::uniform_int_distribution<int>(
+			0,
+			static_cast<int>(selection_indexes.size()) - 1
+		);
 	}
 
+	// Return a const-ref to a randomly selected lipid/atom from 'selection'
 	const auto& operator()() {
-		if (select == 100) {
-			select = 0;
-			std::shuffle(selection_indexes.begin(), selection_indexes.end(), g);
-		}
-		return selection[selection_indexes[select++]];
+		// Generate a random index to select from 'selection_indexes'
+		int randomPos = distribution(rng);
+		int chosenIndex = selection_indexes[randomPos];
+		return selection[chosenIndex];
 	}
 
 private:
 	const Selection& selection;
 	std::vector<int> selection_indexes;
 
-	int select = 0;
-	std::mt19937 g;
+	std::mt19937 rng;
+	std::uniform_int_distribution<int> distribution;
 };
 
 using GetNextRandomLipid = SampleSelectionRandomly<Lipids::Selection>;
@@ -577,7 +583,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
 	RandomUniformGenerator genRandomUpDownTranslation(-0.05f, 0.05f);
 
-	std::unordered_map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
+	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions; // Must be ordered, so we get the same sequence each time
 	for (auto& lipid : lipidselection) {
 		queuedInsertions[lipid.lipidname] = std::vector<QueuedInsertion>();
 	}

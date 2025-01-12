@@ -116,8 +116,10 @@ namespace EngineUtils {
 			return GenerateRandomForce();
 		}
 
-		if (isnan(force.lenSquared()))
+		if (isnan(force.lenSquared())) {
 			force.print('A');
+			asm("trap;"); // Force the kernel to crash
+		}
 
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200
 		//const float scaleAbove = 1000.f + 30000.f * (1.f-progress);

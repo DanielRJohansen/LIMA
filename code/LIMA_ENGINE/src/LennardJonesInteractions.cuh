@@ -80,24 +80,20 @@ namespace LJ {
 		s = s * s * s;
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
+		if constexpr (emvariant)
+			force_scalar = fmaxf(fminf(force_scalar, 1e+20), -1e+20); // Necessary to avoid inf * 0 = NaN
+
 		const Float3 force = diff * force_scalar;
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
-			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);
-			diff.print('D');
-		}
-		if constexpr (!emvariant) {
-			if (force.lenSquared() > FLT_MAX) {
-				(diff * LIMA_TO_NANO).print('D');
-				printf("diff %f\n", diff.len() * LIMA_TO_NANO);
-				printf("%s", calcLJOriginString[originSelect]);
-			}
+			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f s %f distSqRecip %f emvariant %d forceScalar %f firstPart %f\n",
+				   diff.x, diff.y, diff.z, sigma, epsilon, s, dist_sq_reciprocal, emvariant, force_scalar, epsilon * s * dist_sq_reciprocal);
 		}
 #endif
 
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
-		}		
+		}
 
 		if constexpr (emvariant)
 			return EngineUtils::ForceActivationFunction(force, 100.f);

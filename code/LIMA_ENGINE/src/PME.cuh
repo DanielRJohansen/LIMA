@@ -516,6 +516,13 @@ __global__ void InterpolateForcesAndPotentialKernel(
 
 	potential *= 0.5f; // Potential is halved because we computing for both this and the other particle's
 
+#ifdef FORCE_NAN_CHECK
+	if (force.isNan()) {
+		printf("PME computed NaN force\n");
+		asm("trap;");
+	}
+#endif
+
 	forceEnergies[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potential };
 }
 

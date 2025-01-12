@@ -563,7 +563,7 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
-	const float n_lipids_total = lipid_density * grofile.box_size.x * grofile.box_size.y;
+	const float n_lipids_total = lipid_density * grofile.box_size.x * grofile.box_size.y; // (per side)
 	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
 	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
 
@@ -614,6 +614,10 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 
 				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
 				//	topfile, inputlipid.topfile);
+
+				if (nLipidsInserted == 0) {
+					printf("FirstLipid is %s\n", inputlipid.lipidname.c_str());
+				}
 
 				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}

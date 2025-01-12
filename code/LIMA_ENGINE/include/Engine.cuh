@@ -138,7 +138,7 @@ private:
 
 	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
-	std::unique_ptr<Simulation> simulation = nullptr;
+	std::unique_ptr<Simulation> simulation;
 
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
@@ -157,7 +157,7 @@ private:
 
 
 
-	std::unique_ptr<PME::Controller> pmeController = nullptr;
+	std::unique_ptr<PME::Controller> pmeController;
 
 
 	CompoundForceEnergyInterims compoundForceEnergyInterims;

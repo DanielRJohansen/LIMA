@@ -26,7 +26,7 @@ namespace PME { class Controller; };
 
 struct CompoundForceEnergyInterims {
 	CompoundForceEnergyInterims(int nCompounds);
-	void Free();
+	void Free() const;
 
 	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]

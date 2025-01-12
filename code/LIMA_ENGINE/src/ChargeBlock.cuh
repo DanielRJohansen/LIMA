@@ -50,10 +50,10 @@ namespace ChargeBlock {
 		}
 
 		// Overwrite the reservation buffer with 0's, such that prev reservations and chargepos'es are ignored
-		void Refresh(int nChargeblocks) {
+		void Refresh(int nChargeblocks) const {
 			cudaMemset(reservationKeyBuffer, 0, nChargeblocks * sizeof(uint32_t));
 		}
-		void Free() {
+		void Free() const {
 			cudaFree(reservationKeyBuffer);
 			cudaFree(compoundReservationsBuffer);
 			cudaFree(chargeposBuffer);
@@ -72,19 +72,19 @@ namespace ChargeBlock {
 	/*ChargePos particles[maxParticlesInBlock];
 	ChargePos particlesFromNearbyBlocks[maxParticlesFromNeighborBlock * nNeighborBlocks];*/
 
-	__device__ ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
+	__device__ ChargePos* GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
 		return &buffers.chargeposBuffer[blockIndex * maxParticlesInBlock];
 	}
 	/*__device__ const ChargePos* const GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
 		return &buffers.chargeposBuffer[blockIndex * maxParticlesInNode];
 	}*/
-	__device__ ChargePos* const GetParticlesFromNearbyBlocks(const ChargeblockBuffers buffers, int blockIndex) {
+	__device__ ChargePos* GetParticlesFromNearbyBlocks(const ChargeblockBuffers buffers, int blockIndex) {
 		return &buffers.chargeposFromNearbyBlockBuffer[blockIndex * maxParticlesFromNeighborBlock * nNeighborBlocks];
 	}
 	/*__device__ const ChargePos* const GetParticlesFromNearbyBlocks(const ChargeblockBuffers chargeposFromNearbyBlockBuffer, int blockIndex) {
 		return &buffers.chargeposFromNearbyBlockBuffer[blockIndex * maxParticlesFromNeighborBlock * nNeighborBlocks];
 	}*/
-	__device__ CompoundReservation* const GetCompoundReservations(const ChargeblockBuffers buffers, int blockIndex) {
+	__device__ CompoundReservation* GetCompoundReservations(const ChargeblockBuffers buffers, int blockIndex) {
 		return &buffers.compoundReservationsBuffer[blockIndex * maxReservations];
 	}
 	//const CompoundReservation* const GetCompoundReservations(const CompoundReservation* compoundReservationsBuffer, int blockIndex) {

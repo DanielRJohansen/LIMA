@@ -14,9 +14,6 @@
 #include "Utilities.h"
 
 
-#include <unordered_set>
-
-
 // Optim: make sure any ptr sent to a kernel is 128 byte aligned
 
 //const int compound_size = sizeof(CompoundCompact);
@@ -522,7 +519,7 @@ CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
 	cudaMemset(forceEnergyBonds, 0, byteSize);
 }
 
-void CompoundForceEnergyInterims::Free() {
+void CompoundForceEnergyInterims::Free() const {
 	cudaFree(forceEnergyFarneighborShortrange);
 	cudaFree(forceEnergyImmediateneighborShortrange);
 	cudaFree(forceEnergyBonds);

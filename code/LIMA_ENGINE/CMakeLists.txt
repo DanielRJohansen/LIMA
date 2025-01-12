@@ -17,12 +17,12 @@ ${CMAKE_CURRENT_SOURCE_DIR}/include
 
 target_link_libraries(LIMA_ENGINE LIMA_BASE CUDA::cufft)
 
-target_compile_options(LIMA_ENGINE PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>: 
-        --lcufft_static
-        --lculibos
-    >
-)
+#target_compile_options(LIMA_ENGINE PRIVATE
+#    $<$<COMPILE_LANGUAGE:CUDA>: 
+#        --lcufft_static
+#        --lculibos
+#    >
+#)
 
 
 if (UNIX)

@@ -541,7 +541,6 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, int grid
 	int kzShiftedIndex = (freqIndex.z <= halfNodes) ? freqIndex.z : freqIndex.z - gridpointsPerDim;
 
 	// Ewald kappa fixed
-	double volume = boxLen * boxLen * boxLen;				// [nm^3]
 	double delta = boxLen / (double)gridpointsPerDim;		// [nm]
 
 	// Physical wavevectors

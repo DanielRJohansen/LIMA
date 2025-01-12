@@ -544,8 +544,6 @@ template <typename BoundaryCondition, bool energyMinimize>
 __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
-	__shared__ int neighborblockNumElements;
-	__shared__ Float3 utility_float3;
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 	__shared__ int nElementsInBlock;
 
@@ -570,7 +568,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	float potE_sum{};
 	const Float3 relpos_self = solventblock_ptr->rel_pos[threadIdx.x].ToRelpos();
 	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
-	const uint32_t idSelf = solventblock_ptr->ids[threadIdx.x];
 
 
 	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //

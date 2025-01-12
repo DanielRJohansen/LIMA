@@ -96,7 +96,7 @@ namespace BoxGrid {
 	__host__ static NodeType* MallocOnDevice(int boxSizeNM) {
 		const int blocksTotal = BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM);
 
-		NodeType* grid_dev;
+		NodeType* grid_dev = nullptr;
 		cudaMalloc(&grid_dev, sizeof(NodeType) * blocksTotal);
 		cudaMemset(grid_dev, 0, sizeof(NodeType) * blocksTotal);
 		return grid_dev;

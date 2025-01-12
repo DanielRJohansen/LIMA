@@ -52,7 +52,7 @@ namespace TestMinorPrograms {
 
 		GroFile grofile(workDir / "t4_many.gro");
 		TopologyFile topfile(workDir / "t4_many.top");		
-		Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
+		Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false, 2000.f);
 		grofile.printToFile(workDir / "t4_many_em.gro");
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };

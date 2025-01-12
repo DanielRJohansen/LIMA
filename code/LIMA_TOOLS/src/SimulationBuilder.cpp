@@ -618,13 +618,6 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 					pos += randomTopDownTranslation;
 					};
 
-				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
-				//	topfile, inputlipid.topfile);
-
-				if (nLipidsInserted == 0) {
-					printf("FirstLipid is %s\n", inputlipid.lipidname.c_str());
-				}
-
 				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
 			}
 

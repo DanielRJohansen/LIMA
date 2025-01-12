@@ -575,8 +575,6 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 			file << "[ system ]\n";
 			file << m_system.title << "\n\n";
 
-			printf("First mol in topol: %s\n", m_system.molecules[0].name.c_str());
-
 			file << "[ molecules ]\n";
 			for (int i = 0; i < m_system.molecules.size(); i++) {
 				std::ostringstream oss;

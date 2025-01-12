@@ -43,7 +43,7 @@ void BoxConfig::FreeMembers() const {
 
 
 BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
-	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
+	SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
 	compoundOrigos(compoundOrigos), compoundsRelposNm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
@@ -62,7 +62,7 @@ BoxState* BoxState::Create(const Box& boxHost) {
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
 		GenericCopyToDevice(boxHost.tinyMols),
-		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
+		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),		
 		GenericCopyToDevice(boxHost.compoundInterimStates));
 
 	BoxState* boxStateDev;
@@ -91,7 +91,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	}
 
 
-	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
+	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(boxtemp.solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
 	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() {

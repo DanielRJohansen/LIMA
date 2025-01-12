@@ -55,7 +55,7 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 
 		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
 
-		box.solventblockgrid_circularqueue->getBlockPtr(nodeIndex, 0, box.boxparams.boxSize)->addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
+		SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndex, 0, box.boxparams.boxSize).addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
 		box.boxparams.n_solvents++;
 	}
 
@@ -158,7 +158,7 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		const int solventBlocksGridBytesize = sizeof(SolventBlock) * blocksInGrid;
 
 		// Copy only the current step to temporary storage
-		SolventBlock* src_t0 = simulation.box_host->solventblockgrid_circularqueue->getBlockPtr(0, boxsrc_current_step);
+		SolventBlock* src_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, boxsrc_current_step);
 		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);
 
 		// Clear all of the data
@@ -167,7 +167,7 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 
 
 		// Copy the temporary storage back into the queue
-		SolventBlock* dest_t0 = simulation.box_host->solventblockgrid_circularqueue->getBlockPtr(0, 0);
+		SolventBlock* dest_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, 0);
 		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);
 	}
 }

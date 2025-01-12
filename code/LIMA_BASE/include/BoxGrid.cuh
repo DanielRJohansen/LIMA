@@ -13,7 +13,6 @@ struct SolventBlock {
 	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE * 2;
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
-		origo = block.origo; // Not necessary, is given by the blockIdx.x
 		n_solvents = block.n_solvents;
 		if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
 			printf("Too many solvents in block!\n");
@@ -49,8 +48,7 @@ struct SolventBlock {
 		rel_pos[n_solvents++] = rel_position;
 		return true;
 	}
-
-	NodeIndex origo{};
+	 
 	int n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
@@ -128,77 +126,18 @@ namespace BoxGrid {
 };
 
 
-class SolventBlocksCircularQueue {
+namespace SolventBlocksCircularQueue {
 	static const int STEPS_PER_SOLVENTBLOCKTRANSFER = 5;	// If we go below 2, we might see issue in solventtransfers
 	static const int SOLVENTBLOCK_TRANSFERSTEP = STEPS_PER_SOLVENTBLOCKTRANSFER - 1;
-
-	// Please dont add other non-static vars to this class without checking movetodevice is not broken
-	// {Step,z,y,x}
-	SolventBlock* blocks = nullptr;
-	int blocksInGrid = 0;
-	bool has_allocated_data = false;
-	bool is_on_device = false;
-
-
-public:
 	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
 
-	SolventBlocksCircularQueue() {};	// C
 
-	__host__ static std::unique_ptr<SolventBlocksCircularQueue> createQueue(int boxlenNM) {
-		auto queue = std::make_unique<SolventBlocksCircularQueue>();
-		queue->allocateData(BoxGrid::NodesPerDim(boxlenNM));
-		queue->initializeBlocks(boxlenNM);
-		return queue;
+	static __host__ int nElementsTotal(int boxlenNM) {
+		return BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxlenNM)) * queue_len;
 	}
 
-	//__host__ bool addSolventToGrid(const NodeIndex& nodeindex, const Coord& coord, uint32_t solvent_id, int64_t step, int boxSizeNM) {
-	//	// TODO: Implement safety feature checking and failing if PBC is not met!
-	//	return getBlockPtr(nodeindex, step, boxSizeNM)->addSolvent(coord, solvent_id);
-	//}
-
-	__host__ void allocateData(int blocksPerDim) {
-		if (has_allocated_data) {
-			throw std::runtime_error("BoxGridCircularQueue may not allocate data multiple times");
-		}
-		
-		blocksInGrid = BoxGrid::BlocksTotal(blocksPerDim);
-		const int blocksTotal = blocksInGrid * queue_len;
-		blocks = new SolventBlock[blocksTotal]();
-		has_allocated_data = true;
-	}
-
-	__host__ void initializeBlocks(int boxlenNM) {
-		for (int64_t step = 0; step < queue_len; step++) {
-			for (int i = 0; i < blocksInGrid; i++) {
-				getBlockPtr(i, step)->origo = BoxGrid::Get3dIndex(i, boxlenNM);
-			}
-		}
-	}
-
-	__host__ SolventBlocksCircularQueue* CopyToDevice() const {
-		SolventBlocksCircularQueue queueTemp = *this;
-		const int blocksTotal = blocksInGrid * queue_len;
-		queueTemp.blocks = GenericCopyToDevice(blocks, blocksTotal);
-
-		return GenericCopyToDevice(&queueTemp, 1);
-	}
-	__host__ void CopyDataFromDevice(const SolventBlocksCircularQueue* const queue) const {
-		const int blocksTotal = blocksInGrid * queue_len;
-		cudaMemcpy(blocks, queue->blocks, sizeof(SolventBlock) * blocksTotal, cudaMemcpyDeviceToHost);
-	}
-
-
-	// This function assumes the user has used PBC
-	__host__ SolventBlock* getBlockPtr(const NodeIndex& index3d, const int64_t step, int boxSizeNm) {
-#if defined LIMASAFEMODE
-		if (index3d.x >= BOXGRID_N_NODES || index3d.y >= BOXGRID_N_NODES || index3d.z >= BOXGRID_N_NODES
-			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
-			throw std::runtime_error("Bad 3d index for blockptr\n");
-		}
-#endif
-
-		return getBlockPtr(BoxGrid::Get1dIndex(index3d, boxSizeNm), step);
+	static std::vector<SolventBlock> createQueue(int boxlenNM) {
+		return std::vector<SolventBlock>(nElementsTotal(boxlenNM));
 	}
 
 	__device__ __host__ bool static isTransferStep(int64_t step) {
@@ -209,9 +148,17 @@ public:
 	}
 
 	// This function assumes the user has used PBC
-	__device__ __host__ SolventBlock* getBlockPtr(const size_t index1d, const size_t step) {
-		const size_t step_offset = (step % queue_len) * blocksInGrid;
-		return &blocks[index1d + step_offset];
+	__device__ __host__ static SolventBlock* getBlockPtr(SolventBlock* queue, int blocksPerDim, const size_t index1d, const size_t step) {
+		const size_t step_offset = (step % queue_len) * BoxGrid::BlocksTotal(blocksPerDim);
+		return &queue[index1d + step_offset];
+	}
+
+	__host__ static SolventBlock& GetBlockRef(std::vector<SolventBlock>& queue, NodeIndex index3d, const int64_t step, int boxSizeNm) {
+		if (index3d.x >= boxSizeNm || index3d.y >= boxSizeNm || index3d.z >= boxSizeNm
+			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
+			throw std::runtime_error("Bad 3d index for blockptr\n");
+		}
+		return *getBlockPtr(queue.data(), boxSizeNm, BoxGrid::Get1dIndex(index3d, boxSizeNm), step);
 	}
 };
 

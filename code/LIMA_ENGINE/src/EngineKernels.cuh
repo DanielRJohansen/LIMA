@@ -280,10 +280,10 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 				if (threadIdx.x < batchsize && threadIdx.x + i < nGridnodes) {
 					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].gridnode_ids[i + threadIdx.x];
 
-					solventblockPtrs[threadIdx.x] = boxState->solventblockgrid_circularqueue->getBlockPtr(neighborIds[threadIdx.x], step);
+					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, neighborIds[threadIdx.x], step);
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], boxSize_device.boxSizeNM_i));
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).ToRelpos();
-					neighborNParticles[threadIdx.x] = boxState->solventblockgrid_circularqueue->getBlockPtr(neighborIds[threadIdx.x], step)->n_solvents;
+					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->n_solvents;
 				}
 				indexInBatch = 0;
 				__syncthreads();
@@ -481,7 +481,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 
-	const SolventBlock* const solventblock_ptr = boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step);
 
 
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
@@ -536,7 +536,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 		}
 	}
 
-	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergiesCompoundinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step)->forceEnergiesCompoundinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
@@ -552,7 +552,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, boxSize_device.boxSizeNM_i);
 
-	const SolventBlock* const solventblock_ptr = boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step);
 
 
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
@@ -597,7 +597,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	for (int i = 0; i < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks; i++) {
 		const int blockindex_neighbor = nearbyBlock[i].blockId;
 
-		const SolventBlock* solventblock_neighbor = boxState.solventblockgrid_circularqueue->getBlockPtr(blockindex_neighbor, step);
+		const SolventBlock* solventblock_neighbor = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockindex_neighbor, step);
 		const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
 
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
@@ -614,7 +614,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}
 
 	// Finally push force and potE for next kernel
-	boxState.solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step)->forceEnergiesTinymolinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step)->forceEnergiesTinymolinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
 
@@ -628,7 +628,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 	BoxState* boxState = sim->boxState;
 	const SimParams& simparams = sim->params;
-	SolventBlock* solventblock_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
+	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step);
 
 	const Float3 force = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].force + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].force;
 	const float potE = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].potE + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].potE;
@@ -679,7 +679,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 
 	// Push new SolventCoord to global mem
-	SolventBlock* const solventblock_next_ptr = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
+	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step + 1);
 
 	if constexpr (transferOutThisStep) {
 		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
@@ -709,8 +709,8 @@ __global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_current = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step);
-	SolventBlock* solventblock_next = boxState->solventblockgrid_circularqueue->getBlockPtr(blockIdx.x, step + 1);
+	SolventBlock* solventblock_current = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step);
+	SolventBlock* solventblock_next = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, boxSize_device.boxSizeNM_i, blockIdx.x, step + 1);
 
 	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
 

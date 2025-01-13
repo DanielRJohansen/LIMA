@@ -13,14 +13,14 @@
 #include <array>
 
 struct Int3 {
-	__host__ __device__ constexpr Int3() {}
-	__host__ __device__ constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
+	constexpr Int3() {}
+	constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
 
-	__host__ __device__ inline Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ inline Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ inline Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
-	__host__ __device__ inline Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
-	__host__ __device__ constexpr Int3 operator - () const { return Int3(-x, -y, -z); }
+	constexpr Int3 operator + (const Int3 a) const { return Int3(x + a.x, y + a.y, z + a.z); }
+	constexpr Int3 operator - (const Int3 a) const { return Int3(x - a.x, y - a.y, z - a.z); }
+	constexpr Int3 operator * (const int a) const { return Int3(x * a, y * a, z * a); }
+	constexpr Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
+	constexpr Int3 operator - () const { return Int3(-x, -y, -z); }
 
 	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
 	__host__ __device__ void operator /= (const int a) { x /= a; y /= a; z /= a; }
@@ -49,27 +49,26 @@ struct Int3 {
 struct Float3 {
 	float x = 0, y = 0, z = 0;
 
-	__host__ __device__ constexpr Float3() {}
-	__host__ __device__ constexpr explicit Float3(float a) : x(a), y(a), z(a) {}
-	__host__ __device__ constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
-	//__host__ __device__ constexpr Float3(float* a) { x = a[0]; y = a[1]; z = a[2]; }
-	__host__ __device__ constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
-	__host__ __device__ constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr Float3() {}
+	constexpr explicit Float3(float a) : x(a), y(a), z(a) {}
+	constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
+	constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
+	constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	__host__ constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
-	__host__ __device__ constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
-	__host__ __device__ constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
-	__host__ __device__ constexpr Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
-	__host__ __device__ constexpr Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
-	__host__ __device__ constexpr Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
-	__host__ __device__ constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
-	__host__ __device__ constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
-	__host__ __device__ constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
-	__host__ __device__ constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
-	__host__ __device__ constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
+	constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
+	constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
+	constexpr Float3 operator * (const Float3& a) const { return Float3(x * a.x, y * a.y, z * a.z); }
+	constexpr Float3 operator / (const float a) const { return Float3(x / a, y / a, z / a); }
+	constexpr Float3 operator / (const Float3& a) const { return Float3(x / a.x, y / a.y, z / a.z); }
+	constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
+	constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
+	constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
+	constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
+	constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
+	constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
+	constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
 	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
@@ -273,11 +272,9 @@ struct Double3 {
 };
 
 struct NodeIndex : public Int3 {
-	__host__ __device__ NodeIndex() : Int3() {}
-	__host__ __device__ NodeIndex(const int& x, const int& y, const int& z) : Int3(x, y, z) {}
-	__host__ __device__ NodeIndex(const Int3& a) : Int3(a) {}
-
-	//__host__ __device__ int32_t dot(const NodeIndex& a) const { return (x * a.x + y * a.y + z * a.z); }
+	constexpr NodeIndex() : Int3() {}
+	constexpr NodeIndex(const int& x, const int& y, const int& z) : Int3(x, y, z) {}
+	constexpr NodeIndex(const Int3& a) : Int3(a) {}
 
 	// This function does NOT return anything position related, only distance related
 	__host__ __device__ Float3 toFloat3() const {

@@ -72,13 +72,13 @@ using namespace PME;
 
 // --------------------------------------------------------------- Kernel Helpers --------------------------------------------------------------- //	
 
-__device__ __host__ int GetGridIndexRealspace(const Int3& gridIndex, int gridpointsPerDim) {
+constexpr int GetGridIndexRealspace(const Int3& gridIndex, int gridpointsPerDim) {
 	return BoxGrid::Get1dIndex(gridIndex, gridpointsPerDim);
 }
-__device__ __host__ int GetGridIndexReciprocalspace(const Int3& gridIndex, int gridpointsPerDim, int nGridpointsHalfdim) {
+constexpr int GetGridIndexReciprocalspace(const Int3& gridIndex, int gridpointsPerDim, int nGridpointsHalfdim) {
 	return gridIndex.x + gridIndex.y * nGridpointsHalfdim + gridIndex.z * nGridpointsHalfdim * gridpointsPerDim;
 }
-__device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim, int nGridpointsHalfdim) {
+constexpr NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim, int nGridpointsHalfdim) {
 	int z = index1d / (nGridpointsHalfdim * gridpointsPerDim);
 	index1d -= z * nGridpointsHalfdim * gridpointsPerDim;
 	int y = index1d / nGridpointsHalfdim;
@@ -87,7 +87,7 @@ __device__ NodeIndex Get3dIndexReciprocalspace(int index1d, int gridpointsPerDim
 	return NodeIndex{ x, y, z };
 }
 
-__device__ inline NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
+constexpr NodeIndex GetParticlesBlockRelativeToCompoundOrigo(const Float3& relpos, bool particleActive) {
 	return NodeIndex{
 		(relpos.x > 1.f) - (relpos.x < 0.f),
 		(relpos.y > 1.f) - (relpos.y < 0.f),
@@ -104,14 +104,14 @@ struct Direction3 {
 		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
 	{}
 
-	__device__ inline int x() const { return ((data >> 4) & 0x3) - 1; }
-	__device__ inline int y() const { return ((data >> 2) & 0x3) - 1; }
-	__device__ inline int z() const { return (data & 0x3) - 1; }
+	constexpr int x() const { return ((data >> 4) & 0x3) - 1; }
+	constexpr int y() const { return ((data >> 2) & 0x3) - 1; }
+	constexpr int z() const { return (data & 0x3) - 1; }
 
-	__device__ bool operator==(const Direction3& o) const { return data == o.data; }
-	__device__ bool operator!=(const Direction3& o) const { return data != o.data; }
-	__device__ Direction3 operator-() const { return Direction3{ -x(), -y(), -z() }; }
-	__device__ NodeIndex ToNodeIndex() const { return NodeIndex{ x(), y(), z() }; }
+	constexpr bool operator==(const Direction3& o) const { return data == o.data; }
+	constexpr bool operator!=(const Direction3& o) const { return data != o.data; }
+	constexpr Direction3 operator-() const { return Direction3{ -x(), -y(), -z() }; }
+	constexpr NodeIndex ToNodeIndex() const { return NodeIndex{ x(), y(), z() }; }
 };
 
 
@@ -143,31 +143,18 @@ namespace device_tables {
 	};
 }
 
-__device__ bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorindex3d, const Direction3& queryDirection) {
-	if (queryDirection.x() == -1 && floorindex3d.x > 0)
-		return false;
-	if (queryDirection.x() == 1 && floorindex3d.x < gridpointsPerNm - 2)
-		return false;
-	if (queryDirection.y() == -1 && floorindex3d.y > 0)
-		return false;
-	if (queryDirection.y() == 1 && floorindex3d.y < gridpointsPerNm - 2)
-		return false;
-	if (queryDirection.z() == -1 && floorindex3d.z > 0)
-		return false;
-	if (queryDirection.z() == 1 && floorindex3d.z < gridpointsPerNm - 2)
-		return false;
-
-	return true;
-
-	/*int xOutOfBounds = ((queryDirection.x() + 1) & 2) && (floorindex3d.x <= (gridpointsPerNm - 2 * queryDirection.x()));
-	int yOutOfBounds = ((queryDirection.y() + 1) & 2) && (floorindex3d.y <= (gridpointsPerNm - 2 * queryDirection.y()));
-	int zOutOfBounds = ((queryDirection.z() + 1) & 2) && (floorindex3d.z <= (gridpointsPerNm - 2 * queryDirection.z()));
-
-	return !(xOutOfBounds | yOutOfBounds | zOutOfBounds);*/
-
+constexpr bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorindex3d, const Direction3& queryDirection) {
+	return !(
+		(queryDirection.x() == -1 && floorindex3d.x > 0) ||
+		(queryDirection.x() == 1 && floorindex3d.x < gridpointsPerNm - 2) ||
+		(queryDirection.y() == -1 && floorindex3d.y > 0) ||
+		(queryDirection.y() == 1 && floorindex3d.y < gridpointsPerNm - 2) ||
+		(queryDirection.z() == -1 && floorindex3d.z > 0) ||
+		(queryDirection.z() == 1 && floorindex3d.z < gridpointsPerNm - 2)
+		);
 }
 
-__device__ Int3 FloorIndex3d(const Float3& relpos) {
+constexpr Int3 FloorIndex3d(const Float3& relpos) {
 	return Int3{
 		static_cast<int>(floorf(relpos.x * gridpointsPerNm_f)),// TODO should this mul not be in int for precision?
 		static_cast<int>(floorf(relpos.y * gridpointsPerNm_f)),
@@ -188,7 +175,6 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 	const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
 	const float myCharge = boxConfig.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 
-	// todo: threads with a charge of 0 should NOT push that charge (duh)
 	if (threadIdx.x < 27) {
 		numParticlesInNodeLocal[threadIdx.x] = 0;
 		numParticlesInNodeGlobal[threadIdx.x] = 0;
@@ -198,10 +184,9 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 	// First each particle figure out which node it belongs to relative to it's compounds origo. Then it decide the offset to put values, wrt other particles in this compound
 	int myOffsetInLocalNode = 0;																				// Between 0 and maxParticlesInNode
 	const NodeIndex relativeNode = GetParticlesBlockRelativeToCompoundOrigo(relPos, threadIdx.x < nParticles);	// Between {-1,-1,-1} and {1,1,1}
-	//const int localNodeId = convertRelative3dIndexToAbsolute1d(relativeNode);									// Between 0 and 26	
 	const int localNodeId = device_tables::sDirectionToIndex[Direction3{ relativeNode.x, relativeNode.y, relativeNode.z }.data]; // [0,26]
 	for (int i = 0; i < nParticles; i++) {
-		if (threadIdx.x == i)
+		if (threadIdx.x == i && myCharge != 0.f)
 			myOffsetInLocalNode = numParticlesInNodeLocal[localNodeId]++;
 		__syncthreads();
 	}
@@ -217,7 +202,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 	__syncthreads();
 
 	// Finally compute the correct index to insert our data, and push that data
-	if (threadIdx.x < nParticles) {
+	if (threadIdx.x < nParticles && myCharge != 0.f) {
 		const NodeIndex absoluteTargetblockIndex3D = PeriodicBoundaryCondition::applyBC(compoundOrigo + relativeNode, blocksPerDim);
 		const int absoluteTargetblockIndex = BoxGrid::Get1dIndex(absoluteTargetblockIndex3D, blocksPerDim);
 		const int offsetInTargetsBuffer = numParticlesInNodeGlobal[localNodeId] + myOffsetInLocalNode;
@@ -230,8 +215,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 
 
 
-static_assert(MAX_COMPOUND_PARTICLES == ChargeBlock::maxReservations, "Expecting just 1 particle/thread in a reservation");
-// Spawn with nthreads = ChargeBlock::maxReservations
+// spawn with atleast 26 threads
 __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
 {
 	const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
@@ -505,12 +489,11 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, int grid
 	const int halfNodes = gridpointsPerDim / 2;
 	int nGridpointsHalfdim = gridpointsPerDim / 2 + 1;
 	const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
-	/*if (index1D > nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
-		return;*/
+	if (index1D >= nGridpointsHalfdim * gridpointsPerDim * gridpointsPerDim)
+		return;
+
 	NodeIndex freqIndex = Get3dIndexReciprocalspace(index1D, gridpointsPerDim, nGridpointsHalfdim);
 
-	if (freqIndex.x >= nGridpointsHalfdim || freqIndex.y >= gridpointsPerDim || freqIndex.z >= gridpointsPerDim)
-		return;
 
 	// Remap frequencies to negative for indices > N/2
 	int kxIndex = freqIndex.x;
@@ -645,7 +628,7 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 
 	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
-	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations, 0, stream >> > (*chargeblockBuffers, boxlenNm);
+	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeOverlappingParticlesToNeighborBlocks failed!");
 	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
 	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");

@@ -8,8 +8,6 @@ namespace ChargeBlock {
 	const int maxParticlesFromNeighborBlock = 64;
 	const int nNeighborBlocks = 3 * 3 * 3 - 1;
 
-	const int maxReservations = 32; // This is probably too low.. especially for small compounds
-
 	struct ChargePos {
 		Float3 pos;		// [nm] Relative to a chargeBlock
 		float charge;	// [kC/mol]
@@ -35,10 +33,10 @@ namespace ChargeBlock {
 	};
 
 	namespace { // private functions
-		__device__ static uint32_t MakeKey(uint32_t nParticles) {
+		constexpr uint32_t MakeKey(uint32_t nParticles) {
 			return uint32_t{ nParticles | 0x0001'0000 };
 		}
-		__device__ static uint32_t GetOffset(uint32_t key) {
+		constexpr uint32_t GetOffset(uint32_t key) {
 			return key & 0xFFFF;
 		}
 	}

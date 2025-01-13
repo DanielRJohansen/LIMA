@@ -306,7 +306,7 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock + ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock; i += blockDim.x) {
 		const float charge = particles[i].charge;	// [kC/mol]
 		if (charge == 0.f)
-			continue;;
+            continue;
 
 		const Float3 posRelativeToBlock = particles[i].pos;
 
@@ -372,10 +372,10 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		const int xOffset = myIndexInRow;
 
 		const NodeIndex globalIndex3d = blocksFirstIndex3dInRealspacegrid + NodeIndex{ xOffset, yOffset, zOffset };
-		if (globalIndex3d.x < 0 || globalIndex3d.x >= gridpointsPerDim || globalIndex3d.y < 0 || globalIndex3d.y >= gridpointsPerDim || globalIndex3d.z < 0 || globalIndex3d.z >= gridpointsPerDim) {
-			globalIndex3d.print('g');
-			printf("index %d %d %d\n", xOffset, yOffset, zOffset);
-		}
+        //if (globalIndex3d.x < 0 || globalIndex3d.x >= gridpointsPerDim || globalIndex3d.y < 0 || globalIndex3d.y >= gridpointsPerDim || globalIndex3d.z < 0 || globalIndex3d.z >= gridpointsPerDim) {
+        //	globalIndex3d.print('g');
+        //	printf("index %d %d %d\n", xOffset, yOffset, zOffset);
+        //}
 
 		const int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridpointsPerDim);
 		const int localIndex = row * gridpointsPerNm + myIndexInRow;

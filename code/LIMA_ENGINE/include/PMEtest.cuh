@@ -300,7 +300,7 @@ namespace PMEtest {
         double chargeSquaredSum = 0;
         for (auto charge : charges)
                 chargeSquaredSum += charge * charge;              
-        return static_cast<float>(-ewaldKappa / sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant_Potential);
+        return static_cast<float>(-ewaldKappa / sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
     }
 
     static Float3 ComputeDipoleMoment(const std::vector<Float3>& positions, const std::vector<float>& charges) {

@@ -4,6 +4,7 @@
 #include "Simulation.cuh"
 #include "SimulationDevice.cuh"
 #include "ChargeBlock.cuh"
+#include "DeviceAlgorithmsPrivate.cuh"
 
 #include <cufft.h>
 #include <memory>
@@ -274,6 +275,8 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 	}
 }
 
+// This kernel accumulates charges of it's particle in a local shared buffer. Any charge outside any kernels volume is ignored, and assumed handled elsewhere
+// To remain deterministic, the intermediate charges are stored as integers, such that we simply can use atomicAdd to accumulate charges
 __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffers, float* const realspaceGrid, int blocksPerDim, int gridpointsPerDim) {
 	__shared__ ChargePos particles[ChargeBlock::maxParticlesInBlock + ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock];
 
@@ -292,7 +295,7 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	if (threadIdx.x == 0)
 		chargeblockBuffers.reservationKeyBuffer[blockIdx.x] = 0; // Reset the key buffer
 
-	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd atomically	
+	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd deterministically	
 	constexpr double largestPossibleValue = (4. / 6.) * (5. * elementaryChargeToKiloCoulombPerMole) * 8; // Highest bspline coeff * (highestCharge) * maxExpectedParticleNearNode
 	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue; // 10 for safety
 	constexpr float invScalar = 1.f / scalar;
@@ -302,11 +305,10 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	for (int i = threadIdx.x; i < gridpointsPerNm * gridpointsPerNm * gridpointsPerNm; i += blockDim.x)
 		localGrid[i] = 0;
 
-
 	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock + ChargeBlock::nNeighborBlocks * ChargeBlock::maxParticlesFromNeighborBlock; i += blockDim.x) {
 		const float charge = particles[i].charge;	// [kC/mol]
 		if (charge == 0.f)
-			continue;;
+			continue;
 
 		const Float3 posRelativeToBlock = particles[i].pos;
 
@@ -538,7 +540,7 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, int grid
 		currentGreensValue = (4.0 * PI / (kSquared))
 			* exp(-kSquared / (4.0 * ewaldKappa * ewaldKappa))
 			* splineCorrection
-			* PhysicsUtilsDevice::modifiedCoulombConstant_Force
+			* PhysicsUtilsDevice::modifiedCoulombConstant
 			;
 	}
 
@@ -671,14 +673,14 @@ void PME::Controller::CalcEnergyCorrection(const Box& box) {
 		}
 	}
 
-	selfenergyCorrection = static_cast<float>(-ewaldKappa / sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant_Potential);
+	selfenergyCorrection = static_cast<float>(-ewaldKappa / sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 
 	/*if (std::abs(chargeSum) > 1e-6) {
 		backgroundchargeCorrection = chargeSum / static_cast<double>
 	}*/
 	// Only relevant for systems with a net charge
 	//const float volume = static_cast<float>(box.boxparams.boxSize) * static_cast<float>(box.boxparams.boxSize) * static_cast<float>(box.boxparams.boxSize);	
-	//const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (kappa * kappa * volume) * PhysicsUtils::modifiedCoulombConstant_Potential);
+	//const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (kappa * kappa * volume) * PhysicsUtils::modifiedCoulombConstant);
 	//return selfEnergyCorrection + backgroundEnergyCorrection;		// [J/mol]
 }
 

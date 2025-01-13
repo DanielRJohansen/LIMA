@@ -27,6 +27,8 @@ const bool ENABLE_ERFC_FOR_EWALD = true;
 
 const bool ENABLE_UREYBRADLEY = true;
 
+const bool USE_PRECOMPUTED_BSPLINES = true;
+
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE

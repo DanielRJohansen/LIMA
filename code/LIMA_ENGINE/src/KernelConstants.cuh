@@ -31,6 +31,12 @@ __constant__ float thermostatScalar_device;
 __constant__ NonbondedInteractionParams nonbondedInteractionParams_device[ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES];
 
 
+// Precomputed values
+
+static constexpr int BSPLINE_LUT_SIZE = 128;
+// We store only w0, w1 => total size = 2*N.
+__constant__ float bsplineTable_device[2 * (BSPLINE_LUT_SIZE)];
+
 
 //
 //inline void SetConstantMem(int boxSizeNM) {

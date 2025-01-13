@@ -4,27 +4,8 @@
 
 // Functions optimized for CUDA
 namespace PhysicsUtilsDevice {
-	using PhysicsUtils::modifiedCoulombConstant_Force;
-	using PhysicsUtils::modifiedCoulombConstant_Potential;
+	using PhysicsUtils::modifiedCoulombConstant;
 
-	// <summary>Calculate the force without multiplying the coulumbConstant, so called must do that!!</summary>	
-	/// <param name="myCharge">[kilo C/mol]</param>	// TODO: These can probably be half for performance gains
-	/// <param name="otherCharge">[kilo C/mol]</param>
-	/// <param name="diff">self-other [nm]</param>
-	/// <returns>[J/mol/nm]</returns>
-//	__device__ inline Float3 CalcCoulumbForce_optim(const float myCharge, const float otherCharge, const Float3& diff) 
-//	{		
-//		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
-//		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
-//
-//		const Float3 force = diff * myCharge * otherCharge * invLenCubed;
-//#ifdef FORCE_NAN_CHECK
-//		if (force.isNan())
-//			force.print('E');
-//#endif
-//
-//		return force;
-//	}
 
 	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff)
 	{
@@ -49,13 +30,13 @@ namespace PhysicsUtilsDevice {
 	// <param name="myCharge">[kilo C/mol]</param>
 	// <param name="otherCharge">[kilo C/mol]</param>
 	// <param name="diff">[nm]</param>
-	// <returns>[J/mol   /   modifiedCoulombConstant_Force ]</returns>
-	//constexpr float modifiedCoulombConstant_Force = 1.f;
+	// <returns>[J/mol   /   modifiedCoulombConstant ]</returns>
+	//constexpr float modifiedCoulombConstant = 1.f;
 	__device__ inline float CalcCoulumbPotential_optim(const float myCharge, const float otherCharge, const Float3& diff)
 	{
 		float potential = (myCharge * otherCharge) * rsqrtf(diff.lenSquared());
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			potential *= erfcf(diff.len() * ewaldkappa_device);
+			potential *= erfc(diff.len() * ewaldkappa_device);
 		}
 		
 		return potential;

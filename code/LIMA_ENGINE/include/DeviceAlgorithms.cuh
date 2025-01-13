@@ -2,7 +2,6 @@
 
 #include <cuda_runtime.h>
 
-
 namespace LAL {
 	__device__ __host__ constexpr int32_t ceil(float num) {
 		return (static_cast<float>(static_cast<int32_t>(num)) == num)
@@ -94,13 +93,6 @@ namespace LAL {
 			arrayptr[threadIdx.x] = temp;
 			__syncthreads();
 		}
-	}
-	
-	__device__ constexpr void CalcBspline(float f, float* w) {
-		w[0] = (1.f - f) * (1.f - f) * (1.f - f) / 6.f;
-		w[1] = (4.f - 6.f * f * f + 3.f * f * f * f) / 6.f;
-		w[2] = (1.f + 3.f * f + 3.f * f * f - 3.f * f * f * f) / 6.f;
-		w[3] = (f * f * f) / 6.f;
 	}
 
 	//__device__ inline void Sort(float* data, int nElements) {

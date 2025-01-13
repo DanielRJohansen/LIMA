@@ -13,6 +13,7 @@
 #include "Statistics.h"
 #include "Utilities.h"
 
+#include "EngineHostside.h"
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
@@ -148,6 +149,8 @@ void Engine::setDeviceConstantMemory() {
 
 	assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
 	cudaMemcpyToSymbol(nonbondedInteractionParams_device, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
+
+	cudaMemcpyToSymbol(bsplineTable_device, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Error while setting CUDA __constant__ memory\n");
 }

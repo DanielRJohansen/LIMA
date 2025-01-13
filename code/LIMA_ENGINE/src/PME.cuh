@@ -374,10 +374,10 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		const int xOffset = myIndexInRow;
 
 		const NodeIndex globalIndex3d = blocksFirstIndex3dInRealspacegrid + NodeIndex{ xOffset, yOffset, zOffset };
-		if (globalIndex3d.x < 0 || globalIndex3d.x >= gridpointsPerDim || globalIndex3d.y < 0 || globalIndex3d.y >= gridpointsPerDim || globalIndex3d.z < 0 || globalIndex3d.z >= gridpointsPerDim) {
-			globalIndex3d.print('g');
-			printf("index %d %d %d\n", xOffset, yOffset, zOffset);
-		}
+        //if (globalIndex3d.x < 0 || globalIndex3d.x >= gridpointsPerDim || globalIndex3d.y < 0 || globalIndex3d.y >= gridpointsPerDim || globalIndex3d.z < 0 || globalIndex3d.z >= gridpointsPerDim) {
+        //	globalIndex3d.print('g');
+        //	printf("index %d %d %d\n", xOffset, yOffset, zOffset);
+        //}
 
 		const int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridpointsPerDim);
 		const int localIndex = row * gridpointsPerNm + myIndexInRow;

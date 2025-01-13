@@ -5,6 +5,8 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 #include "PhysicsUtilsDevice.cuh"
+#include "DeviceAlgorithmsPrivate.cuh"
+
 #include <cfloat>
 
 namespace LJ {

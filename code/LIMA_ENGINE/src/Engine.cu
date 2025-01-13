@@ -139,6 +139,8 @@ void Engine::setDeviceConstantMemory() {
 	//cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
 
 	cudaMemcpyToSymbol(cutoffNm_device, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
+	const float cutoffNmReciprocal = 1.f / simulation->simparams_host.cutoff_nm;
+	cudaMemcpyToSymbol(cutoffNmReciprocal_device, &cutoffNmReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmSquaredReciprocal = 1.f / (simulation->simparams_host.cutoff_nm * simulation->simparams_host.cutoff_nm );
 	cudaMemcpyToSymbol(cutoffNmSquaredReciprocal_device, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
 	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simparams_host.cutoff_nm);
@@ -150,7 +152,11 @@ void Engine::setDeviceConstantMemory() {
 	assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
 	cudaMemcpyToSymbol(nonbondedInteractionParams_device, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
 
+	// Prepare precomputed values on device
+	const float cutoffNM = simulation->simparams_host.cutoff_nm;
 	cudaMemcpyToSymbol(bsplineTable_device, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(erfcForcescalarTable_device, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(erfcPotentialscalarTable_device, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Error while setting CUDA __constant__ memory\n");
 }

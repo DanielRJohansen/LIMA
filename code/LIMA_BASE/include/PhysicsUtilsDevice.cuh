@@ -18,9 +18,22 @@ namespace PhysicsUtilsDevice {
 			force.print('E');
 #endif
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			const float erfcTerm = erfc(diff.len() * ewaldkappa_device);
-			const float scalar = erfcTerm + 2.f * ewaldkappa_device / sqrt(PI) * diff.len() * exp(-ewaldkappa_device * ewaldkappa_device * diff.lenSquared());
-			force *= scalar;
+			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
+				const float erfcTerm = erfc(diff.len() * ewaldkappa_device);
+				const float scalar = erfcTerm + 2.f * ewaldkappa_device / sqrt(PI) * diff.len() * exp(-ewaldkappa_device * ewaldkappa_device * diff.lenSquared());
+				force *= scalar;
+			}
+			else {
+				const float distanceInArray = fminf(diff.len() * cutoffNmReciprocal_device * ERFC_LUT_SIZE - 1, ERFC_LUT_SIZE - 1);
+				const int index = static_cast<int>(std::floor(distanceInArray));
+				const int indexNext = std::min(index + 1, ERFC_LUT_SIZE - 1);
+				const float frac = distanceInArray - static_cast<float>(index);
+				const float scalar = erfcForcescalarTable_device[index] * (1.f - frac) + erfcForcescalarTable_device[indexNext] * frac;// optim: look into using std::lerp
+
+				//printf("Scalar %f %f relIndex %f\n", scalar, erfc(diff.len() * ewaldkappa_device) + 2.f * ewaldkappa_device / sqrt(PI) * diff.len() * exp(-ewaldkappa_device * ewaldkappa_device * diff.lenSquared()), relativeIndex);
+
+				force *= scalar;
+			}
 		}
 
 		return force;
@@ -36,7 +49,18 @@ namespace PhysicsUtilsDevice {
 	{
 		float potential = (myCharge * otherCharge) * rsqrtf(diff.lenSquared());
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			potential *= erfc(diff.len() * ewaldkappa_device);
+			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
+
+				potential *= erfc(diff.len() * ewaldkappa_device);
+			}
+			else {
+				const float distanceInArray = fminf(diff.len() * cutoffNmReciprocal_device * ERFC_LUT_SIZE - 1, ERFC_LUT_SIZE - 1);
+				const int index = static_cast<int>(std::floor(distanceInArray));
+				const int indexNext = std::min(index + 1, ERFC_LUT_SIZE - 1);
+				const float frac = distanceInArray - static_cast<float>(index);
+				const float scalar = erfcPotentialscalarTable_device[index] * (1.f - frac) + erfcForcescalarTable_device[indexNext] * frac;// optim: look into using std::lerp
+				potential *= scalar;
+			}
 		}
 		
 		return potential;

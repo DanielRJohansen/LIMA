@@ -23,6 +23,7 @@ __constant__ ForceField_NB forcefield_device;
 __constant__ ForcefieldTinymol tinymolForcefield_device;
 __constant__ BoxSize boxSize_device;
 __constant__ float cutoffNm_device;
+__constant__ float cutoffNmReciprocal_device;
 __constant__ float cutoffNmSquaredReciprocal_device;
 __constant__ float ewaldkappa_device;
 
@@ -35,9 +36,12 @@ __constant__ NonbondedInteractionParams nonbondedInteractionParams_device[ForceF
 
 static constexpr int BSPLINE_LUT_SIZE = 128;
 // We store only w0, w1 => total size = 2*N.
-__constant__ float bsplineTable_device[2 * (BSPLINE_LUT_SIZE)];
+__constant__ float bsplineTable_device[2 * (BSPLINE_LUT_SIZE)]; // precomputed 4th order bsplines [0,1]
 
 
+static constexpr int ERFC_LUT_SIZE = 512;
+__constant__ float erfcForcescalarTable_device[ERFC_LUT_SIZE]; // precomputed scalers [0, 1], where 1=cutoffNM
+__constant__ float erfcPotentialscalarTable_device[ERFC_LUT_SIZE];
 //
 //inline void SetConstantMem(int boxSizeNM) {
 //	BoxSize boxSize;

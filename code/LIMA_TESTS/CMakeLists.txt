@@ -13,7 +13,7 @@ set(SOURCE_FILES
 add_executable(limatest
     ${SOURCE_FILES}
     ${RESOURCE_FILES}
- "src/ForcefieldTests.h")
+ )
 
 target_include_directories(limatest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "TestUtils.h"
-#include "MDStability.cuh"	//Gives access to the testGenericBox
 #include "PhysicsUtils.cuh"
 #include "format"
 

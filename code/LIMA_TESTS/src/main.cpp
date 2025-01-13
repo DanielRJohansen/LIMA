@@ -1,5 +1,5 @@
 #include "ForceCorrectness.h"
-#include "MDStability.cuh"
+#include "MDStability.h"
 #include "MembraneBuilder.h"
 #include "MinorPrograms.h"
 #include "ElectrostaticsTests.h"

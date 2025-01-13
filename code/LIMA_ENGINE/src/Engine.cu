@@ -14,8 +14,6 @@
 #include "Utilities.h"
 
 
-// Optim: make sure any ptr sent to a kernel is 128 byte aligned
-
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
 //const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;

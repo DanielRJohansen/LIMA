@@ -8,14 +8,16 @@ RenderAtom::RenderAtom(Float3 pos, Float3 boxSize, char atomLetter) {
 	color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(atomLetter));
 }
 
-BoundingBox::BoundingBox(const std::vector<Float3>& points) {
+constexpr BoundingBox::BoundingBox(const std::vector<Float3>& points) {
 	min = Float3{std::numeric_limits<float>::max()};
 	max = Float3{std::numeric_limits<float>::min()};
 	for (const Float3& p : points) {
-		for (int dim = 0; dim < 3; dim++) {
-			min[dim] = std::min(min[dim], p[dim]);
-			max[dim] = std::max(max[dim], p[dim]);
-		}
+		min.x = std::min(min.x, p.x);
+		min.y = std::min(min.y, p.y);
+		min.z = std::min(min.z, p.z);
+		max.x = std::max(max.x, p.x);
+		max.y = std::max(max.y, p.y);
+		max.z = std::max(max.z, p.z);
 	}
 }
 

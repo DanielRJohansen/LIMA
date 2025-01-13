@@ -23,7 +23,7 @@ BoxGrid::TinymolBlockAdjacency::BlockRef* BoxGrid::TinymolBlockAdjacency::Precom
 				for (int x = -query_range; x <= query_range; x++) {
 					const NodeIndex dir{ x,y,z };
 
-                    if (dir.largestMagnitudeElement() == 1 || (dir.largestMagnitudeElement() == 2 && dir.sum() == 2)) {
+                    if (dir.largestMagnitudeElement() == 1 || (dir.largestMagnitudeElement() == 2 && dir.Magnitude() == 2)) {
 
                         NodeIndex nearbyIndex = NodeIndex{ index3d.x + x, index3d.y + y, index3d.z + z };
                         BoundaryConditionPublic::applyBC(nearbyIndex, boxlenNM);

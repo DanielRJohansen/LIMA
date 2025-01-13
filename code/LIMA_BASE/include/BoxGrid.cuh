@@ -66,15 +66,15 @@ struct SolventBlock {
 
 namespace BoxGrid {
 	static const int blocksizeNM = 1;
-	__device__ __host__ constexpr int NodesPerDim(int boxlenNM) { return boxlenNM; }
-	__device__ __host__ constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
+	constexpr int NodesPerDim(int boxlenNM) { return boxlenNM; }
+	constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
 
-	__device__ __host__ constexpr int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
+	constexpr int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
 		const int bpd = NodesPerDim(boxSizeNM);
 		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
 	}
 
-	__device__ __host__ inline NodeIndex Get3dIndexWithNNodes(int index1d, int npd) {
+	constexpr NodeIndex Get3dIndexWithNNodes(int index1d, int npd) {
 		int z = index1d / (npd * npd);
 		index1d -= z * npd * npd;
 		int y = index1d / npd;
@@ -82,7 +82,7 @@ namespace BoxGrid {
 		int x = index1d;
 		return NodeIndex{ x, y, z };
 	}
-	__device__ __host__ inline NodeIndex Get3dIndex(int index1d, int boxlenNM) {
+	constexpr NodeIndex Get3dIndex(int index1d, int boxlenNM) {
 		return Get3dIndexWithNNodes(index1d, NodesPerDim(boxlenNM));
 	}
 
@@ -132,7 +132,7 @@ namespace SolventBlocksCircularQueue {
 	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
 
 
-	static __host__ int nElementsTotal(int boxlenNM) {
+	constexpr int nElementsTotal(int boxlenNM) {
 		return BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxlenNM)) * queue_len;
 	}
 
@@ -140,10 +140,10 @@ namespace SolventBlocksCircularQueue {
 		return std::vector<SolventBlock>(nElementsTotal(boxlenNM));
 	}
 
-	__device__ __host__ bool static isTransferStep(int64_t step) {
+	constexpr bool isTransferStep(int64_t step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == SOLVENTBLOCK_TRANSFERSTEP;
 	}
-	__device__ bool static isFirstStepAfterTransfer(int64_t step) {
+	constexpr bool isFirstStepAfterTransfer(int64_t step) {
 		return (step % STEPS_PER_SOLVENTBLOCKTRANSFER) == 0;
 	}
 

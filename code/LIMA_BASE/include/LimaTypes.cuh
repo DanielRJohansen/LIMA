@@ -22,17 +22,17 @@ struct Int3 {
 	constexpr Int3 operator / (const int a) const { return Int3(x / a, y / a, z / a); }
 	constexpr Int3 operator - () const { return Int3(-x, -y, -z); }
 
-	__host__ __device__ void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ void operator /= (const int a) { x /= a; y /= a; z /= a; }
+	constexpr void operator += (const Int3& a) { x += a.x; y += a.y; z += a.z; }
+	constexpr void operator /= (const int a) { x /= a; y /= a; z /= a; }
 
-	__host__ __device__ bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
-	__host__ __device__ bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
+	constexpr bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
+	constexpr bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
 	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 
-	__host__ __device__ void print(char c = '_', bool prefix_newline = false) const {
+	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
 		printf("%c %c %d\t %d\t %d\n", nl, c, x, y, z);
 	}
@@ -54,7 +54,7 @@ struct Float3 {
 	constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
 	constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
-	__host__ constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
 	constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
 	constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
@@ -70,10 +70,9 @@ struct Float3 {
 	constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
-	__host__ __device__ float3 Tofloat3() const { return float3{ x, y, z }; }
-	__host__ __device__ float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
+	constexpr float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
 	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
-
 
 
 
@@ -122,14 +121,14 @@ struct Float3 {
 	__device__ bool isNan() const {
 		return isnan(x) || isnan(y) || isnan(z);
 	}
-	__host__ __device__ Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
-	__host__ __device__ Float3 square() const { return Float3(x * x, y * y, z * z); }
+	constexpr Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
+	constexpr Float3 square() const { return Float3(x * x, y * y, z * z); }
 	__host__ __device__ inline float len() const { return sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
-	__host__ __device__ constexpr float lenSquared() const { return (x * x + y * y + z * z); }
-	__host__ __device__ Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
-	__host__ __device__ Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
-	__device__ Float3 constexpr sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
+	constexpr float lenSquared() const { return (x * x + y * y + z * z); }
+	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
+	constexpr Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
+	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
 
 
 	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
@@ -153,12 +152,12 @@ struct Float3 {
 	}
 
 
-	__host__ __device__ Float3 cross(const Float3 a) const { 
+	constexpr Float3 cross(const Float3 a) const {
 		return Float3(
 			y * a.z - z * a.y, 
 			z * a.x - x * a.z, 
 			x * a.y - y * a.x); }
-	__host__ __device__ float dot(Float3 a) const { return (x * a.x + y * a.y + z * a.z); }
+	constexpr float dot(Float3 a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ Float3 abs() const {
 		return Float3(
 			std::abs(x),
@@ -202,16 +201,6 @@ struct Float3 {
 			fmaxf(fabsf(x), fabsf(y)),
 			fabsf(z)
 		);
-	}
-
-
-	// Not used right now!
-	__host__ __device__ static Float3 centerOfMass(Float3* arr_ptr, uint32_t arr_size) {	// Only run before sim, so we can cast to double without slowing sim
-		Float3 sum = Float3(0, 0, 0);
-		for (uint32_t i = 0; i < arr_size; i++) {
-			sum = sum + arr_ptr[i];
-		}
-		return sum * (1.f / static_cast<float>(arr_size));
 	}
 
 	// Assumes *this is a point, and arguments are two points on a line
@@ -281,9 +270,9 @@ struct NodeIndex : public Int3 {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
-	__device__ __host__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+	constexpr bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
-	__device__ __host__ int sum() const { return std::abs(x) + std::abs(y) + std::abs(z); }
+	__device__ __host__ int Magnitude() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 
 	__device__ __host__ int largestMagnitudeElement() const {
 		const Int3 m = this->abs();
@@ -311,9 +300,9 @@ struct Coord {
 
 	int32_t x = 0, y = 0, z = 0;	// [lm]
 
-	__device__ __host__ Coord() {};
-	__host__ __device__ Coord(int32_t a) : x(a), y(a), z(a) {}
-	__host__ __device__ Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
+	constexpr Coord() {};
+	constexpr Coord(int32_t a) : x(a), y(a), z(a) {}
+	constexpr Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
 
 	__device__ __host__ explicit Coord(Float3 pos) :
 		x(static_cast<int32_t>(pos.x * nanoToLima_f)),
@@ -346,17 +335,16 @@ struct Coord {
 
 
 
-	__host__ __device__ Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
-	__host__ __device__ Coord operator / (const int32_t& a) const { return Coord(x / a, y / a, z / a); }
-	__host__ __device__ Coord operator - () const { return Coord(-x, -y, -z); }
-	__host__ __device__ void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
-	__host__ __device__ void operator -= (const Coord& a) { x -= a.x; y -= a.y; z -= a.z; };
-	__host__ __device__ Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
-	__host__ __device__ Coord operator * (const float) const = delete;
-	__host__ __device__ bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
-	__host__ __device__ bool operator != (const Coord& a) const { return !(*this == a); }
-	//__device__ Coord operator >> (const uint32_t a) const { return Coord(x >> a, y >> a, z >> a); }
+	constexpr Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
+	constexpr Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
+	constexpr Coord operator / (const int32_t& a) const { return Coord(x / a, y / a, z / a); }
+	constexpr Coord operator - () const { return Coord(-x, -y, -z); }
+	constexpr void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
+	constexpr void operator -= (const Coord& a) { x -= a.x; y -= a.y; z -= a.z; };
+	constexpr Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
+	constexpr Coord operator * (const float) const = delete;
+	constexpr bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
+	constexpr bool operator != (const Coord& a) const { return !(*this == a); }
 	
 	__host__ __device__ int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ void print(char c = '_', bool nl=1) const { 
@@ -368,9 +356,7 @@ struct Coord {
 		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
 	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
-	__device__ __host__ static int32_t max(int l, int r) { return l > r ? l : r; }
-
-	__device__ __host__ int32_t maxElement() const { return max(std::abs(x), max(std::abs(y), std::abs(z))); }
+	__device__ __host__ int32_t maxElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 
 	__host__ int32_t* get(int dim) {
 		switch (dim)
@@ -396,20 +382,20 @@ struct Coord {
 
 
 struct BoundingBox {
-	BoundingBox(
+	constexpr BoundingBox(
 		Float3 min = Float3{ std::numeric_limits<float>::max() },
 		Float3 max = Float3{ std::numeric_limits<float>::lowest() }) 
 		: min(min), max(max) {}
 
-	BoundingBox(const std::vector<Float3>& points);
+	constexpr BoundingBox(const std::vector<Float3>& points);
 
 	Float3 min, max;
 
-	Float3 Center() const {
+	constexpr Float3 Center() const {
 		return (min + max) * 0.5f;
 	}
 
-	bool intersects(BoundingBox b) const {
+	constexpr bool intersects(BoundingBox b) const {
 		return
 			min.x <= b.max.x && max.x >= b.min.x &&
 			min.y <= b.max.y && max.y >= b.min.y &&

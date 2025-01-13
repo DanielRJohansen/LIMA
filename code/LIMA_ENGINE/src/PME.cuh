@@ -234,44 +234,13 @@ static_assert(MAX_COMPOUND_PARTICLES == ChargeBlock::maxReservations, "Expecting
 // Spawn with nthreads = ChargeBlock::maxReservations
 __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffers chargeblockBuffers, int blocksPerDim)
 {
-	// First we must sort the particles we own, wrt to the reservations to make this deterministic
-	// We apply the sort both on local and global mem
-
-	__shared__ ChargeBlock::CompoundReservation reservations[ChargeBlock::maxReservations];
-	reservations[threadIdx.x] = ChargeBlock::CompoundReservation{};
-	NodeIndex blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
-
-	const uint32_t nReservations = ChargeBlock::nReservations(chargeblockBuffers, blockIdx.x);
-	if (threadIdx.x < nReservations)
-		reservations[threadIdx.x] = ChargeBlock::GetCompoundReservations(chargeblockBuffers, blockIdx.x)[threadIdx.x];
-	__syncthreads();
-
+	const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
+	const int nParticles = ChargeBlock::nParticlesReserved(chargeblockBuffers, blockIdx.x);
 	__shared__ ChargePos myParticles[ChargeBlock::maxParticlesInBlock];
-	int nParticlesLoaded = 0;
-	for (int reservationIndex = 0; reservationIndex < nReservations; reservationIndex++) {
-		if (threadIdx.x < reservations[reservationIndex].nParticlesInThisNode) {
-			const int particleIndexUnsorted = reservations[reservationIndex].firstParticlesOffsetInThisNode + threadIdx.x;
-			const int particleIndexSorted = nParticlesLoaded + threadIdx.x;
-			//myParticles[particleIndexSorted] = myBlock_GlobalMem->particles[particleIndexUnsorted];
-
-			if (reservations[reservationIndex].nParticlesInThisNode > MAX_COMPOUND_PARTICLES)
-				printf("Cant handle so many nodes");
-
-			myParticles[particleIndexSorted] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[particleIndexUnsorted];
-		}
-		nParticlesLoaded += reservations[reservationIndex].nParticlesInThisNode;
-		__syncthreads(); // Dont think this is needed
-
-		if (nParticlesLoaded >= ChargeBlock::maxParticlesInBlock || nReservations >= 32)
-			printf("Something wrong here %d %d\n", nParticlesLoaded, nReservations);
+	for (int i = threadIdx.x; i < nParticles; i += blockDim.x) {
+		myParticles[i] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i];
 	}
 
-	// Now the particles are sorted in local mem, but we also want a them sorted in global mem
-	for (int i = threadIdx.x; i < nParticlesLoaded; i += blockDim.x)
-		ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i] = myParticles[i];
-
-	// Now we have sorted particles in myParticles, and we can start pushing them to the neighbor blocks locally
-	// 
 	// Temp storage buffer for outgoing particles
 	const int maxOutgoingParticles = ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks;
 	__shared__ ChargePos particlesToNearbyBlocks[maxOutgoingParticles];
@@ -286,7 +255,7 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 		int myOutgoingParticlesCount = 0;
 		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
 
-		for (int i = 0; i < nParticlesLoaded; i++) {
+		for (int i = 0; i < nParticles; i++) {
 			const Int3 floorIndex3d = FloorIndex3d(myParticles[i].pos);
 
 			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection))
@@ -317,7 +286,6 @@ __global__ void DistributeOverlappingParticlesToNeighborBlocks(ChargeblockBuffer
 		const NodeIndex targetBlockIndex3D = PeriodicBoundaryCondition::applyBC(blockIndex3D + NodeIndex{ direction.x(), direction.y(), direction.z() }, blocksPerDim);
 		const int targetBlockIndex = BoxGrid::Get1dIndex(targetBlockIndex3D, blocksPerDim);
 
-		//chargeBlocks[targetBlockIndex].particlesFromNearbyBlocks[i] = particlesToNearbyBlocks[i]; // Being a little cheeky with the indices here, as the target block will have the inverse layout of the source block.. But it works, right?
 		ChargeBlock::GetParticlesFromNearbyBlocks(chargeblockBuffers, targetBlockIndex)[i] = particlesToNearbyBlocks[i];
 	}
 }

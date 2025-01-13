@@ -1,5 +1,4 @@
 //#pragma once // Only allowed to be included by engine.cu
-#pragma once
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
@@ -338,6 +337,9 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	}
 	__syncthreads();
 
+	if (threadIdx.x == 0)
+		chargeblockBuffers.reservationKeyBuffer[blockIdx.x] = 0; // Reset the key buffer
+
 	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd atomically	
 	constexpr double largestPossibleValue = (4. / 6.) * (5. * elementaryChargeToKiloCoulombPerMole) * 8; // Highest bspline coeff * (highestCharge) * maxExpectedParticleNearNode
 	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue; // 10 for safety
@@ -648,7 +650,6 @@ PME::Controller::Controller(int boxLenNm, const Box& box, float cutoffNM, cudaSt
 	cudaMalloc(&realspaceGrid, nGridpointsRealspace * sizeof(float));
 	cudaMalloc(&fourierspaceGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
-
 	chargeblockBuffers = std::make_unique<ChargeBlock::ChargeblockBuffers>(nChargeblocks);
 
 
@@ -674,18 +675,12 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 	if (nCompounds == 0)
 		return;
 
-	cudaMemset(realspaceGrid, 0, nGridpointsRealspace * sizeof(float));// maybe do this async, after the last kernel?
-	cudaMemset(fourierspaceGrid, 0, nGridpointsReciprocalspace * sizeof(cufftComplex));
-	chargeblockBuffers->Refresh(nChargeblocks);
-	cudaDeviceSynchronize();
-
 	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, boxlenNm);
-	LIMA_UTILS::genericErrorCheck("DistributeCompoundchargesToBlocksKernel failed!");
+	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
 	DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, ChargeBlock::maxReservations, 0, stream >> > (*chargeblockBuffers, boxlenNm);
-	LIMA_UTILS::genericErrorCheck("DistributeOverlappingParticlesToNeighborBlocks failed!");
+	LIMA_UTILS::genericErrorCheckNoSync("DistributeOverlappingParticlesToNeighborBlocks failed!");
 	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
-	LIMA_UTILS::genericErrorCheck("ChargeblockDistributeToGrid failed!");
-	cudaDeviceSynchronize();
+	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
 
 	// ForwardFFT
 	{
@@ -693,7 +688,6 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 		if (result != CUFFT_SUCCESS) {
 			fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
 		}
-		cudaDeviceSynchronize();
 	}
 
 	ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, boxlenNm);
@@ -705,7 +699,6 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 		if (result != CUFFT_SUCCESS) {
 			fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
 		}
-		cudaDeviceSynchronize();
 	}
 
 	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
@@ -714,8 +707,6 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 
 	InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialKernel failed!");
-
-	cudaDeviceSynchronize();
 }
 
 void PME::Controller::CalcEnergyCorrection(const Box& box) {

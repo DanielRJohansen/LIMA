@@ -47,12 +47,10 @@ namespace ChargeBlock {
 			cudaMalloc(&compoundReservationsBuffer, ChargeBlock::maxReservations * sizeof(ChargeBlock::CompoundReservation) * nChargeblocks);
 			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInBlock * sizeof(ChargePos) * nChargeblocks);
 			cudaMalloc(&chargeposFromNearbyBlockBuffer, ChargeBlock::maxParticlesFromNeighborBlock * ChargeBlock::nNeighborBlocks * sizeof(ChargePos) * nChargeblocks);
-		}
 
-		// Overwrite the reservation buffer with 0's, such that prev reservations and chargepos'es are ignored
-		void Refresh(int nChargeblocks) const {
 			cudaMemset(reservationKeyBuffer, 0, nChargeblocks * sizeof(uint32_t));
 		}
+
 		void Free() const {
 			cudaFree(reservationKeyBuffer);
 			cudaFree(compoundReservationsBuffer);

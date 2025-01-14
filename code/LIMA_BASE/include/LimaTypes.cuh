@@ -265,6 +265,8 @@ struct NodeIndex : public Int3 {
 	constexpr NodeIndex(const int& x, const int& y, const int& z) : Int3(x, y, z) {}
 	constexpr NodeIndex(const Int3& a) : Int3(a) {}
 
+	//constexpr NodeIndex operator+(const NodeIndex& a) const { return NodeIndex(x + a.x, y + a.y, z + a.z); }
+
 	// This function does NOT return anything position related, only distance related
 	__host__ __device__ Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));

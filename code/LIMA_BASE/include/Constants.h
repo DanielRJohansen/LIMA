@@ -14,8 +14,8 @@
 #error These are mutually exclusive
 #endif
 
-//#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = true;
+#define FORCE_NAN_CHECK
+const bool LIMA_PUSH = false;
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION
@@ -27,8 +27,8 @@ const bool ENABLE_ERFC_FOR_EWALD = true;
 
 const bool ENABLE_UREYBRADLEY = true;
 
-const bool USE_PRECOMPUTED_BSPLINES = true;
-const bool USE_PRECOMPUTED_ERFCSCALARS = true;
+const bool USE_PRECOMPUTED_BSPLINES = false;
+const bool USE_PRECOMPUTED_ERFCSCALARS = false;
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE

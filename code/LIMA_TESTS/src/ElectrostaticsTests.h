@@ -12,9 +12,6 @@
 #include <string>
 #include <map>
 
-
-#include "PMEtest.cuh"
-
 namespace ElectrostaticsTests {
 	using namespace TestUtils;
 

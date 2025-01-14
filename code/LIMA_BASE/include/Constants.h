@@ -14,8 +14,8 @@
 #error These are mutually exclusive
 #endif
 
-#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = false;
+//#define FORCE_NAN_CHECK
+const bool LIMA_PUSH = true;
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION

@@ -577,8 +577,6 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 
 	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, boxlenNm);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
-	//DistributeOverlappingParticlesToNeighborBlocks << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, boxlenNm);
-	//LIMA_UTILS::genericErrorCheckNoSync("DistributeOverlappingParticlesToNeighborBlocks failed!");
 	ChargeblockDistributeToGrid << <boxlenNm * boxlenNm * boxlenNm, 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, boxlenNm, gridpointsPerDim);
 	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
 

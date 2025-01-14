@@ -40,7 +40,7 @@ namespace _Thermostat {
 			TotalKineticEnergySolvents(const TinyMolState* const _states)
 			: states(_states){}
 
-		__host__ __device__
+		__device__
 			float operator()(int idx) const {
 			const float mass = tinymolForcefield_device.types[states[idx].tinymolTypeIndex].mass;
 			const Float3& velocity = states[idx].vel_prev;

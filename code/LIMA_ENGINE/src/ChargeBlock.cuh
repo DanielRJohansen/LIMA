@@ -5,7 +5,6 @@
 
 namespace ChargeBlock {
 	const int maxParticlesInBlock = 256; // TODO boxGrid should be able to compute this, based on a size
-	const int nNeighborBlocks = 3 * 3 * 3 - 1;
 
 	struct ChargePos {
 		Float3 pos;		// [nm] Relative to a chargeBlock

@@ -196,6 +196,9 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 		int myCount = 0;
 
 		for (int i = 0; i < nParticles; i++) {
+			if (charges[i] == 0.f) // Skip particles with no charge
+				continue;
+
 			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
 			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
 				outgoingParticlesId[threadIdx.x * MAX_COMPOUND_PARTICLES + myCount] = i; 
@@ -228,36 +231,33 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfi
 // This kernel accumulates charges of it's particle in a local shared buffer. Any charge outside any kernels volume is ignored, and assumed handled elsewhere
 // To remain deterministic, the intermediate charges are stored as integers, such that we simply can use atomicAdd to accumulate charges
 __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffers, float* const realspaceGrid, int blocksPerDim, int gridpointsPerDim) {
-	__shared__ ChargePos particles[ChargeBlock::maxParticlesInBlock];
+	__shared__  int nParticles;
+	__shared__ int localGrid[gridpointsPerNm * gridpointsPerNm * gridpointsPerNm];
 
-	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock; i += blockDim.x)
-		particles[i].charge = 0.f;
+	// Init shared variables
+	float* localGridAsFloat = reinterpret_cast<float*>(localGrid);
+	for (int i = threadIdx.x; i < gridpointsPerNm * gridpointsPerNm * gridpointsPerNm; i += blockDim.x)
+		localGrid[i] = 0;
 
-
-	for (int i = threadIdx.x; i < ChargeBlock::nParticlesReserved(chargeblockBuffers, blockIdx.x); i += blockDim.x) {
-		particles[i] = ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i];
+	if (threadIdx.x == 0) {
+		nParticles = ChargeBlock::nParticlesReserved(chargeblockBuffers, blockIdx.x);
+		chargeblockBuffers.reservationKeyBuffer[blockIdx.x] = 0; // Reset the key buffer		
 	}
 	__syncthreads();
 
-	if (threadIdx.x == 0)
-		chargeblockBuffers.reservationKeyBuffer[blockIdx.x] = 0; // Reset the key buffer
 
 	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd deterministically	
 	constexpr double largestPossibleValue = (4. / 6.) * (5. * elementaryChargeToKiloCoulombPerMole) * 8; // Highest bspline coeff * (highestCharge) * maxExpectedParticleNearNode
 	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue; // 10 for safety
 	constexpr float invScalar = 1.f / scalar;
 
-	__shared__ int localGrid[gridpointsPerNm * gridpointsPerNm * gridpointsPerNm];
-	float* localGridAsFloat = reinterpret_cast<float*>(localGrid);
-	for (int i = threadIdx.x; i < gridpointsPerNm * gridpointsPerNm * gridpointsPerNm; i += blockDim.x)
-		localGrid[i] = 0;
 
-	for (int i = threadIdx.x; i < ChargeBlock::maxParticlesInBlock; i += blockDim.x) {
-		const float charge = particles[i].charge;	// [kC/mol]
-		if (charge == 0.f)
-			continue;
+	// Loop over all particles, distribute it's charges to the __shared__ grid
+	for (int i = threadIdx.x; i < nParticles; i += blockDim.x) {
+		const ChargePos* const particlePtr = &ChargeBlock::GetParticles(chargeblockBuffers, blockIdx.x)[i];
 
-		const Float3 posRelativeToBlock = particles[i].pos;
+		const float charge = particlePtr->charge;	// [kC/mol]
+		const Float3 posRelativeToBlock = particlePtr->pos;
 
 		// Map position to fractional local grid coordinates
 		Float3 gridPos = posRelativeToBlock * gridpointsPerNm_f;
@@ -277,7 +277,7 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		// Distribute the charge to the surrounding 4x4x4 cells
 		for (int dx = 0; dx < 4; dx++) {
 			int X = -1 + ix + dx;
-			if (X < 0 || X >= gridpointsPerNm) // Out-of-local-bounds gridpoints are assumed to be handled by the neighbor blocks
+			if (X < 0 || X >= gridpointsPerNm) // Out-of-local-bounds gridpoints are handled by the neighbor blocks
 				continue;
 
 			float wxCur = wx[dx];

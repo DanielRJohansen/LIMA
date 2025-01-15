@@ -45,7 +45,7 @@
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(const int64_t step, const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
+__global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
 	bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams) {
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm] // TODO: maybe only keep these in register mem    
     __shared__ uint8_t atomTypes[MAX_COMPOUND_PARTICLES];
@@ -318,7 +318,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 #undef compound_index
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void CompoundSnfKernel(SimulationDevice* sim, int64_t step, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
+__global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
 	__shared__ int nParticles;
 
 	if (threadIdx.x == 0) {
@@ -514,7 +514,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
+__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;

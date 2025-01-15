@@ -1,6 +1,61 @@
 #include "KernelConstants.cuh"
 #include "PhysicsUtils.cuh"
 
+
+
+
+
+
+
+std::unique_ptr<Simulation> Engine::takeBackSim() {
+	assert(sim_dev);
+	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
+	return std::move(simulation);
+}
+
+void Engine::verifyEngine() {
+	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
+
+	const int nBlocks = simulation->box_host->boxparams.boxSize;
+	assert(nBlocks * nBlocks * nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
+
+	if constexpr (ENABLE_ES_LR) {
+		if (simulation->simparams_host.enable_electrostatics && simulation->simparams_host.bc_select != PBC) {
+			throw std::invalid_argument("Electrostatics only supported with PBC at the current time");
+		}
+	}
+}
+
+
+
+
+
+CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
+	const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
+	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
+	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
+	cudaMalloc(&forceEnergyBonds, byteSize);
+
+	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
+	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
+	cudaMemset(forceEnergyBonds, 0, byteSize);
+}
+
+void CompoundForceEnergyInterims::Free() const {
+	cudaFree(forceEnergyFarneighborShortrange);
+	cudaFree(forceEnergyImmediateneighborShortrange);
+	cudaFree(forceEnergyBonds);
+
+	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
+}
+
+
+
+
+
+
+
+
 constexpr std::array<float, 2 * DeviceConstants::BSPLINE_LUT_SIZE> PrecomputeBsplineTable()
 {
     const int N = DeviceConstants::BSPLINE_LUT_SIZE;

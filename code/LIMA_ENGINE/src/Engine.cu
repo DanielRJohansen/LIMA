@@ -15,17 +15,6 @@
 
 #include "EngineHostside.h"
 
-//const int compound_size = sizeof(CompoundCompact);
-//const int nlsit_size = sizeof(NeighborList);
-//const int sssize = (sizeof(Float3) + sizeof(float)) * MAX_COMPOUND_PARTICLES;
-//const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(NeighborList) +
-//	(2* sizeof(Float3)) * MAX_COMPOUND_PARTICLES + sizeof(Coord) + sizeof(Float3) + clj_utilitybuffer_bytes;
-//static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
-
-//const int sbsize = sizeof(SolventBlock);
-//const int Skernel_shared_mem = (sizeof(Float3) + 1) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(SolventBlock)
-//	+ sizeof(SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>) * 6
-//	+ 4 + 4 * 3 * 2;
 
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc), m_logger(std::move(logger)), compoundForceEnergyInterims(_sim->box_host->boxparams.n_compounds)
@@ -63,7 +52,6 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
     }
     compoundLjParameters = GenericCopyToDevice(compoundParticleParams);
-    //cudaMalloc(&compoundLjParameters, sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES * simulation->box_host->boxparams.n_compounds);
 
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamCreate(&stream);
@@ -73,13 +61,6 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
 	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
 	cudaMemset(forceEnergiesPME, 0, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
-	//std::unordered_set<std::string> unique_compounds;
-	//for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
-	//	char types[64];
-	//	memcpy(types, simulation->box_host->compounds[i].atom_types, 64);
-	//	unique_compounds.insert(std::string(types));
-	//}
-	//int a = 0;
 
 	bondgroups = GenericCopyToDevice(simulation->box_host->bondgroups);
 	cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * simulation->box_host->bondgroups.size() * BondGroup::maxParticles);
@@ -162,27 +143,10 @@ void Engine::setDeviceConstantMemory() {
 }
 
 
-std::unique_ptr<Simulation> Engine::takeBackSim() {
-	assert(sim_dev);
-	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
-	return std::move(simulation);
-}
 
-void Engine::verifyEngine() {
-	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
-
-	const int nBlocks = simulation->box_host->boxparams.boxSize;
-	assert(nBlocks* nBlocks* nBlocks < INT32_MAX && "Neighborlist cannot handle such large gridnode_ids");
-
-	if constexpr (ENABLE_ES_LR) {
-		if (simulation->simparams_host.enable_electrostatics && simulation->simparams_host.bc_select != PBC) {
-			throw std::invalid_argument("Electrostatics only supported with PBC at the current time");
-		}
-	}
-}
 
 void Engine::step() {
-	LIMA_UTILS::genericErrorCheck("Error before step!");
+	LIMA_UTILS::genericErrorCheckNoSync("Error before step!");
 
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
 	assert(simulation);
@@ -191,7 +155,7 @@ void Engine::step() {
 
 	hostMaster();
 
-	LIMA_UTILS::genericErrorCheck("Error after step!");
+	LIMA_UTILS::genericErrorCheckNoSync("Error after step!");
 }
 
 void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
@@ -216,7 +180,6 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();
-	runstatus.critical_error_occured = sim_dev->signals->critical_error_encountered;	// TODO: Can i get this from simparams_host? UNSAFE
 	if (runstatus.current_step >= simulation->simparams_host.n_steps || runstatus.critical_error_occured)
 		runstatus.simulation_finished = true;
 
@@ -241,17 +204,19 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
 	if (steps_to_transfer == 0) { return; }
 
+	cudaDeviceSynchronize();
 
 	const int64_t startstep = simulation->getStep() - steps_to_transfer * simulation->simparams_host.data_logging_interval;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
+	
 	cudaMemcpyAsync(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->potE_buffer,
 		sizeof(float) * particlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
-
+	
 	cudaMemcpyAsync(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->vel_buffer,
@@ -272,8 +237,6 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 
 	step_at_last_traj_transfer = simulation->getStep();
 	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep() - 1, simulation->simparams_host.data_logging_interval));
-
-	cudaDeviceSynchronize();
 }
 
 void Engine::offloadTrainData() {
@@ -333,24 +296,17 @@ void Engine::HandleEarlyStoppingInEM() {
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
 template <typename BoundaryCondition, bool emvariant, bool computePotE>
 void Engine::_deviceMaster() {
-	cudaDeviceSynchronize();
 	
 	const BoxParams& boxparams = simulation->box_host->boxparams;
-	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
-
-
-	// #### Pre force kernels
-	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics && boxparams.n_compounds > 0) {
-		//Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>(sim_dev);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributeCompoundchargesToGridKernel");
-	}
 
 	// #### Initial round of force computations
 	cudaDeviceSynchronize();
+
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
-            (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
+            (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
+				compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -419,8 +375,6 @@ void Engine::_deviceMaster() {
 			LIMA_UTILS::genericErrorCheckNoSync("Error after solventTransferKernel");
 		}
 	}	
-
-	cudaDeviceSynchronize();
 }
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
 template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();
@@ -483,7 +437,7 @@ void Engine::deviceMaster() {
 
 
 
-
+// This function must not have changing template or normal arguments for it's kernels, or it will break cudaGraph
 template <typename BoundaryCondition, bool emvariant>
 void Engine::SnfHandler(cudaStream_t& stream) {
 	switch (simulation->simparams_host.snf_select) {
@@ -504,30 +458,4 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 			SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simulation->getStep());
 		break;
 	}
-}
-
-
-
-
-
-
-
-
-CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
-	const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
-	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
-	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
-	cudaMalloc(&forceEnergyBonds, byteSize);
-
-	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
-	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
-	cudaMemset(forceEnergyBonds, 0, byteSize);
-}
-
-void CompoundForceEnergyInterims::Free() const {
-	cudaFree(forceEnergyFarneighborShortrange);
-	cudaFree(forceEnergyImmediateneighborShortrange);
-	cudaFree(forceEnergyBonds);
-
-	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
 }

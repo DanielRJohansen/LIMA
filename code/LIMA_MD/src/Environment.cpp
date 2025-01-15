@@ -92,7 +92,6 @@ void Environment::createSimulationFiles(float boxlen) {
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
-	static_assert(THREADS_PER_COMPOUNDBLOCK >= MAX_COMPOUND_PARTICLES, "Illegal kernel parameter");
 }
 
 void Environment::verifyBox() {

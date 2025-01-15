@@ -68,7 +68,7 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
 
 			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], positionsRight[iright]);
-			const float max_dist = cutoffNm_device + left.radii[ileft] + right.radii[iright];
+			const float max_dist = DeviceConstants::cutoffNM + left.radii[ileft] + right.radii[iright];
 
 			if (dist < max_dist)
 				return true;
@@ -84,7 +84,7 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
 		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], point);
-		const float max_dist = cutoffNm_device + boundary.radii[ileft];
+		const float max_dist = DeviceConstants::cutoffNM + boundary.radii[ileft];
 
 		if (dist < max_dist)
 			return true;
@@ -202,11 +202,11 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 
 					// If the query node is NOT inside the box, which happens in some boundary conditions, we cannot continue, 
 					// since the node wont exists, and thus compounds are not allowed to access it.
-					//printf("%d\n", boxSize_device.blocksPerDim);
-					if (!query_origo.isInBox(boxSize_device.blocksPerDim))
+					//printf("%d\n", DeviceConstants::boxSize.blocksPerDim);
+					if (!query_origo.isInBox(DeviceConstants::boxSize.blocksPerDim))
 						continue;
 
-					const int querynode_id = BoxGrid::Get1dIndex(query_origo, boxSize_device.boxSizeNM_i);
+					const int querynode_id = BoxGrid::Get1dIndex(query_origo, DeviceConstants::boxSize.boxSizeNM_i);
 					const Float3 querynode_pos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(query_origo);
 
 
@@ -237,13 +237,13 @@ template <typename BoundaryCondition>
 __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
-	const bool block_active = block_id < BoxGrid::BlocksTotal(boxSize_device.blocksPerDim);
+	const bool block_active = block_id < BoxGrid::BlocksTotal(DeviceConstants::boxSize.blocksPerDim);
 	const int n_compounds = sim_dev->boxparams.n_compounds;
 
 	CompoundGridNode gridnode;
 
 	const NodeIndex block_origo = block_active
-		? BoxGrid::Get3dIndex(block_id, boxSize_device.boxSizeNM_i)
+		? BoxGrid::Get3dIndex(block_id, DeviceConstants::boxSize.boxSizeNM_i)
 		: NodeIndex{};
 
 	const Float3 block_abspos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(block_origo);

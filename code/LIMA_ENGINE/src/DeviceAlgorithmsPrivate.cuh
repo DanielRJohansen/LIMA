@@ -12,19 +12,20 @@ namespace LAL {
 			w[3] = (f * f * f) / 6.f;
 		}
 		else {
-			const float alpha = f * (BSPLINE_LUT_SIZE - 1);
+			const int N = DeviceConstants::BSPLINE_LUT_SIZE;
+			const float alpha = f * (N - 1);
 			const int index = static_cast<int>(floor(alpha));
-			const int idxUp = min(index + 1, BSPLINE_LUT_SIZE - 1);
+			const int idxUp = min(index + 1, N - 1);
 			const float frac = alpha - index;   // in [0,1)
-			w[0] = lerp(bsplineTable_device[index], bsplineTable_device[idxUp], frac);
-			w[1] = lerp(bsplineTable_device[BSPLINE_LUT_SIZE + index], bsplineTable_device[BSPLINE_LUT_SIZE + idxUp], frac);
+			w[0] = lerp(DeviceConstants::bsplineTable[index], DeviceConstants::bsplineTable[idxUp], frac);
+			w[1] = lerp(DeviceConstants::bsplineTable[N + index], DeviceConstants::bsplineTable[N + idxUp], frac);
 
-			float alphaInv = (1.f - f) * (BSPLINE_LUT_SIZE - 1);
+			float alphaInv = (1.f - f) * (N - 1);
 			int idxInv = (int)floor(alphaInv);
-			int idxInvUp = min(idxInv + 1, BSPLINE_LUT_SIZE - 1);
+			int idxInvUp = min(idxInv + 1, N - 1);
 			float fracInv = alphaInv - idxInv;
-			w[2] = lerp(bsplineTable_device[BSPLINE_LUT_SIZE + idxInv], bsplineTable_device[BSPLINE_LUT_SIZE + idxInvUp], fracInv);
-			w[3] = lerp(bsplineTable_device[idxInv], bsplineTable_device[idxInvUp], fracInv);
+			w[2] = lerp(DeviceConstants::bsplineTable[N + idxInv], DeviceConstants::bsplineTable[N + idxInvUp], fracInv);
+			w[3] = lerp(DeviceConstants::bsplineTable[idxInv], DeviceConstants::bsplineTable[idxInvUp], fracInv);
 		}		
 	}
 }
@@ -46,16 +47,17 @@ namespace PhysicsUtilsDevice {
 #endif
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
-				const float erfcTerm = erfc(diff.len() * ewaldkappa_device);
-				const float scalar = erfcTerm + 2.f * ewaldkappa_device / sqrt(PI) * diff.len() * exp(-ewaldkappa_device * ewaldkappa_device * diff.lenSquared());
+				const float erfcTerm = erfc(diff.len() * DeviceConstants::ewaldKappa);
+				const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappa / sqrt(PI) * diff.len() * exp(-DeviceConstants::ewaldKappa * DeviceConstants::ewaldKappa * diff.lenSquared());
 				force *= scalar;
 			}
 			else {
-				const float distanceInArray = fminf(diff.len() * cutoffNmReciprocal_device * ERFC_LUT_SIZE - 1, ERFC_LUT_SIZE - 1);
+				const int N = DeviceConstants::ERFC_LUT_SIZE;
+				const float distanceInArray = fminf(diff.len() * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
 				const int index = static_cast<int>(std::floor(distanceInArray));
-				const int indexNext = std::min(index + 1, ERFC_LUT_SIZE - 1);
+				const int indexNext = std::min(index + 1, N - 1);
 				const float frac = distanceInArray - static_cast<float>(index);
-				const float scalar = LAL::lerp(erfcForcescalarTable_device[index], erfcForcescalarTable_device[indexNext], frac);// optim: look into using std::lerp
+				const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
 
 				force *= scalar;
 			}
@@ -76,14 +78,15 @@ namespace PhysicsUtilsDevice {
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
 
-				potential *= erfc(diff.len() * ewaldkappa_device);
+				potential *= erfc(diff.len() * DeviceConstants::ewaldKappa);
 			}
 			else {
-				const float distanceInArray = fminf(diff.len() * cutoffNmReciprocal_device * ERFC_LUT_SIZE - 1, ERFC_LUT_SIZE - 1);
+				const int N = DeviceConstants::ERFC_LUT_SIZE;
+				const float distanceInArray = fminf(diff.len() * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
 				const int index = static_cast<int>(std::floor(distanceInArray));
-				const int indexNext = std::min(index + 1, ERFC_LUT_SIZE - 1);
+				const int indexNext = std::min(index + 1, N - 1);
 				const float frac = distanceInArray - static_cast<float>(index);
-				const float scalar = LAL::lerp(erfcPotentialscalarTable_device[index], erfcForcescalarTable_device[indexNext], frac);// optim: look into using std::lerp
+				const float scalar = LAL::lerp(DeviceConstants::erfcPotentialscalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
 				potential *= scalar;
 			}
 		}

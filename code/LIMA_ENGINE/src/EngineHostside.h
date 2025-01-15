@@ -1,9 +1,9 @@
 #include "KernelConstants.cuh"
 #include "PhysicsUtils.cuh"
 
-constexpr std::array<float, 2 * BSPLINE_LUT_SIZE> PrecomputeBsplineTable()
+constexpr std::array<float, 2 * DeviceConstants::BSPLINE_LUT_SIZE> PrecomputeBsplineTable()
 {
-    const int N = BSPLINE_LUT_SIZE;
+    const int N = DeviceConstants::BSPLINE_LUT_SIZE;
     std::array<float, 2 * N> result{};
 
     for (int i = 0; i < N; i++)
@@ -23,13 +23,13 @@ constexpr std::array<float, 2 * BSPLINE_LUT_SIZE> PrecomputeBsplineTable()
 }
 
 // Precomputes ERFC-related scalars from 0 to cutoffNM
-std::array<float, ERFC_LUT_SIZE> PrecomputeErfcForcescalarTable(float cutoffNM) {
+std::array<float, DeviceConstants::ERFC_LUT_SIZE> PrecomputeErfcForcescalarTable(float cutoffNM) {
 	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(cutoffNM);
 
-	std::array<float, ERFC_LUT_SIZE> result{};
+	std::array<float, DeviceConstants::ERFC_LUT_SIZE> result{};
 
-	for (int i = 0; i < ERFC_LUT_SIZE; i++)	{
-		const double fraction = static_cast<double>(i) / static_cast<double>(ERFC_LUT_SIZE - 1);
+	for (int i = 0; i < DeviceConstants::ERFC_LUT_SIZE; i++)	{
+		const double fraction = static_cast<double>(i) / static_cast<double>(DeviceConstants::ERFC_LUT_SIZE - 1);
 		const double correspondingDistance = fraction * cutoffNM;
 
         const double erfcTerm = erfc(correspondingDistance * ewaldKappa);
@@ -40,13 +40,13 @@ std::array<float, ERFC_LUT_SIZE> PrecomputeErfcForcescalarTable(float cutoffNM) 
 	return result;
 }
 
-std::array<float, ERFC_LUT_SIZE> PrecomputeErfcPotentialscalarTable(float cutoffNM) {
+std::array<float, DeviceConstants::ERFC_LUT_SIZE> PrecomputeErfcPotentialscalarTable(float cutoffNM) {
 	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(cutoffNM);
 
-	std::array<float, ERFC_LUT_SIZE> result{};
+	std::array<float, DeviceConstants::ERFC_LUT_SIZE> result{};
 
-	for (int i = 0; i < ERFC_LUT_SIZE; i++)	{
-		const double fraction = static_cast<double>(i) / static_cast<double>(ERFC_LUT_SIZE - 1);
+	for (int i = 0; i < DeviceConstants::ERFC_LUT_SIZE; i++)	{
+		const double fraction = static_cast<double>(i) / static_cast<double>(DeviceConstants::ERFC_LUT_SIZE - 1);
 		const double correspondingDistance = fraction * cutoffNM;
 
 		const float scalar = erfc(correspondingDistance * ewaldKappa);

@@ -202,7 +202,7 @@ struct alignas(4) CompoundCompact {
 
 
 	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
-	static const int max_bonded_compounds = MAX_COMPOUNDS_IN_BRIDGE * 2 - 2;
+	static const int max_bonded_compounds = 4 * 2 - 2;
 	int n_bonded_compounds = 0;
 
 	__device__ void loadMeta(const CompoundCompact* const compound) {

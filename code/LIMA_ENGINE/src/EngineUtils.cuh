@@ -24,7 +24,7 @@ namespace EngineUtils {
 	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
 		NodeIndex new_nodeindex = transfer_direction + origo;
 		BoundaryCondition::applyBC(new_nodeindex);
-		return BoxGrid::Get1dIndex(new_nodeindex, boxSize_device.boxSizeNM_i);
+		return BoxGrid::Get1dIndex(new_nodeindex, DeviceConstants::boxSize.boxSizeNM_i);
 	}
 
 	// returns pos_tadd1
@@ -174,7 +174,7 @@ namespace EngineUtils {
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
-			return dist_sq_reciprocal < cutoffNmSquaredReciprocal_device;	//  1. / (CUTOFF_LM * CUTOFF_LM);
+			return dist_sq_reciprocal < DeviceConstants::cutoffNmSquaredReciprocal;	//  1. / (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
@@ -201,7 +201,6 @@ namespace EngineUtils {
 
 	template <typename BondType, int max_bondtype_in_compound>
 	__device__ BondType* LoadBonds(char* utility_buffer, const BondType* const source, int nBondsToLoad) {
-		static_assert(cbkernel_utilitybuffer_size >= sizeof(BondType) * max_bondtype_in_compound, "Utilitybuffer not large enough for bondtype");
 		BondType* bonds = (BondType*)utility_buffer;
 
 		auto block = cooperative_groups::this_thread_block();

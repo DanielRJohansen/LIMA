@@ -39,14 +39,6 @@ struct CompoundForceEnergyInterims {
 	ForceEnergy* forceEnergyBonds;
 };
 
-//const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
-const int cbkernel_utilitybuffer_size = sizeof(CompoundCoords);
-constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
-static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
-	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
-static_assert(sizeof(int) * 3 * 3 * 3 * 2 <= cbkernel_utilitybuffer_size,
-	"Not enough space for Electrostatics::DistributeChargesToChargegrid global offsets buffer");
-
 struct EngineTimings {
 	int compound_kernels{};
 	int solvent_kernels{};

@@ -12,7 +12,7 @@
 namespace LJ {
 	// __constant__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
-		return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5f;
+		return (DeviceConstants::forcefield.particle_parameters[atomtype1].sigma + DeviceConstants::forcefield.particle_parameters[atomtype2].sigma) * 0.5f;
 	}
 	// __shared__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
@@ -20,7 +20,7 @@ namespace LJ {
 	}
 
 	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
-		return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
+		return sqrtf(DeviceConstants::forcefield.particle_parameters[atomtype1].epsilon * DeviceConstants::forcefield.particle_parameters[atomtype2].epsilon);
 	}
 	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
 		//return 1.4f;
@@ -139,7 +139,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
 			//float a = calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield);
-			//float b = __half2float(nonbondedInteractionParams_device[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
+			//float b = __half2float(DeviceConstants::nonbondedinteractionParams[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
 			//if (std::abs(a - b) / a > 1e-5) {
 			//	printf("Epsilon mismatch %f %f\n", a, b);
 			//}
@@ -178,14 +178,14 @@ namespace LJ {
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
 				//hits++;
-                //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
+                //const NonbondedInteractionParams params = DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
                     __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
                     /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
                     calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
-                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
-                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
+                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
+                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
                     //params.sigma, params.epsilon,
 					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
@@ -266,8 +266,8 @@ namespace LJ {
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, forcefield_device.particle_parameters[atomtypes_others[i]].sigma),
-				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, forcefield_device.particle_parameters[atomtypes_others[i]].epsilon),
+				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].sigma),
+				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].epsilon),
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);

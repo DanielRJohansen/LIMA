@@ -18,33 +18,29 @@ struct BoxSize {
 	int blocksPerDim = 0;	// for boxGrid
 };
 
+namespace DeviceConstants {
 
-__constant__ ForceField_NB forcefield_device;
-__constant__ ForcefieldTinymol tinymolForcefield_device;
-__constant__ BoxSize boxSize_device;
-__constant__ float cutoffNm_device;
-__constant__ float cutoffNmReciprocal_device;
-__constant__ float cutoffNmSquaredReciprocal_device;
-__constant__ float ewaldkappa_device;
+	__constant__ ForceField_NB forcefield;
+	__constant__ ForcefieldTinymol tinymolForcefield;
+	__constant__ BoxSize boxSize;
+	__constant__ float cutoffNM;
+	__constant__ float cutoffNmReciprocal;
+	__constant__ float cutoffNmSquaredReciprocal;
+	__constant__ float ewaldKappa;
 
-__constant__ float thermostatScalar_device;
+	__constant__ float thermostatScalar;
 
-__constant__ NonbondedInteractionParams nonbondedInteractionParams_device[ForceField_NB::MAX_TYPES* ForceField_NB::MAX_TYPES];
-
-
-// Precomputed values
-
-static constexpr int BSPLINE_LUT_SIZE = 128;
-// We store only w0, w1 => total size = 2*N.
-__constant__ float bsplineTable_device[2 * (BSPLINE_LUT_SIZE)]; // precomputed 4th order bsplines [0,1]
+	__constant__ NonbondedInteractionParams nonbondedinteractionParams[ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES];
 
 
-static constexpr int ERFC_LUT_SIZE = 512;
-__constant__ float erfcForcescalarTable_device[ERFC_LUT_SIZE]; // precomputed scalers [0, 1], where 1=cutoffNM
-__constant__ float erfcPotentialscalarTable_device[ERFC_LUT_SIZE];
-//
-//inline void SetConstantMem(int boxSizeNM) {
-//	BoxSize boxSize;
-//	boxSize.Set(boxSizeNM);
-//	cudaMemcpyToSymbol(boxSize_device, &boxSize, sizeof(BoxSize));	
-//}
+	// Precomputed values
+
+	static constexpr int BSPLINE_LUT_SIZE = 128;
+	// We store only w0, w1 => total size = 2*N.
+	__constant__ float bsplineTable[2 * (BSPLINE_LUT_SIZE)]; // precomputed 4th order bsplines [0,1]
+
+
+	static constexpr int ERFC_LUT_SIZE = 64;
+	__constant__ float erfcForcescalarTable[ERFC_LUT_SIZE]; // precomputed scalers [0, 1], where 1=cutoffNM
+	__constant__ float erfcPotentialscalarTable[ERFC_LUT_SIZE];
+}

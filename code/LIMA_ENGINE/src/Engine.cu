@@ -17,9 +17,9 @@
 
 //const int compound_size = sizeof(CompoundCompact);
 //const int nlsit_size = sizeof(NeighborList);
-//const int sssize = (sizeof(Float3) + sizeof(float)) * THREADS_PER_COMPOUNDBLOCK;
+//const int sssize = (sizeof(Float3) + sizeof(float)) * MAX_COMPOUND_PARTICLES;
 //const int Ckernel_shared_mem = sizeof(CompoundCompact) + sizeof(NeighborList) +
-//	(2* sizeof(Float3)) * THREADS_PER_COMPOUNDBLOCK + sizeof(Coord) + sizeof(Float3) + clj_utilitybuffer_bytes;
+//	(2* sizeof(Float3)) * MAX_COMPOUND_PARTICLES + sizeof(Coord) + sizeof(Float3) + clj_utilitybuffer_bytes;
 //static_assert(Ckernel_shared_mem < 45000, "Not enough shared memory for CompoundKernel");
 
 //const int sbsize = sizeof(SolventBlock);
@@ -122,41 +122,41 @@ Engine::~Engine() {
 
 void Engine::setDeviceConstantMemory() {
 	//const int forcefield_bytes = sizeof(ForceField_NB);
-	cudaMemcpyToSymbol(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
-	cudaMemcpyToSymbol(tinymolForcefield_device, &simulation->forcefieldTinymol, sizeof(ForcefieldTinymol), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::forcefield, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
+	cudaMemcpyToSymbol(DeviceConstants::tinymolForcefield, &simulation->forcefieldTinymol, sizeof(ForcefieldTinymol), 0, cudaMemcpyHostToDevice);
 
 	BoxSize boxSize_host;
 	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
-	cudaMemcpyToSymbol(boxSize_device, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::boxSize, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
 	//SetConstantMem(simulation->boxparams_host.boxSize);
 	//BoxSize bs;
-	//cudaMemcpyFromSymbol(&bs, boxSize_device, sizeof(BoxSize));
+	//cudaMemcpyFromSymbol(&bs, DeviceConstants::boxSize, sizeof(BoxSize));
 
 //	cudaDeviceSynchronize();
 
 
 	//BoxSize bs1;
-	//cudaMemcpyFromSymbol(&bs1, boxSize_device, sizeof(BoxSize));
+	//cudaMemcpyFromSymbol(&bs1, DeviceConstants::boxSize, sizeof(BoxSize));
 
-	cudaMemcpyToSymbol(cutoffNm_device, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::cutoffNM, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmReciprocal = 1.f / simulation->simparams_host.cutoff_nm;
-	cudaMemcpyToSymbol(cutoffNmReciprocal_device, &cutoffNmReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::cutoffNmReciprocal, &cutoffNmReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmSquaredReciprocal = 1.f / (simulation->simparams_host.cutoff_nm * simulation->simparams_host.cutoff_nm );
-	cudaMemcpyToSymbol(cutoffNmSquaredReciprocal_device, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
+	cudaMemcpyToSymbol(DeviceConstants::cutoffNmSquaredReciprocal, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
 	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simparams_host.cutoff_nm);
-	cudaMemcpyToSymbol(ewaldkappa_device, &ewaldKappa, sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::ewaldKappa, &ewaldKappa, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	const float initialThermostatScalar = 1.f;
-	cudaMemcpyToSymbol(thermostatScalar_device, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
-	cudaMemcpyToSymbol(nonbondedInteractionParams_device, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::nonbondedinteractionParams, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
 
 	// Prepare precomputed values on device
 	const float cutoffNM = simulation->simparams_host.cutoff_nm;
-	cudaMemcpyToSymbol(bsplineTable_device, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(erfcForcescalarTable_device, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(erfcPotentialscalarTable_device, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::bsplineTable, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::erfcForcescalarTable, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::erfcPotentialscalarTable, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
 
 	LIMA_UTILS::genericErrorCheck("Error while setting CUDA __constant__ memory\n");
 }
@@ -206,7 +206,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 			runstatus.current_temperature = temperature;
 
 			if (simulation->simparams_host.apply_thermostat)
-				cudaMemcpyToSymbol(thermostatScalar_device, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+				cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 		}
 		
 		HandleEarlyStoppingInEM();
@@ -341,7 +341,7 @@ void Engine::_deviceMaster() {
 
 	// #### Pre force kernels
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics && boxparams.n_compounds > 0) {
-		//Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>(sim_dev);
+		//Electrostatics::DistributeCompoundchargesToGridKernel<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>(sim_dev);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributeCompoundchargesToGridKernel");
 	}
 
@@ -349,12 +349,12 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0]>>>
+			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->getStep(), *boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[1] >>> 
+			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
 			(sim_dev, simulation->getStep(), compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 	}
@@ -374,8 +374,6 @@ void Engine::_deviceMaster() {
 	}
 	
 	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-		// Must occur after DistributeCompoundchargesToGridKernel
-		//timings.electrostatics += Electrostatics::HandleElectrostatics(sim_dev, boxparams, cudaStreams[2]);
 		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
 	}
@@ -396,7 +394,7 @@ void Engine::_deviceMaster() {
 
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
-			<<<boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, cudaStreams[0] >> >
+			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
 			(sim_dev, simulation->getStep(), compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
@@ -492,16 +490,16 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 	case None:
 		break;
 	case HorizontalSqueeze:
-		SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, stream >> > (sim_dev, simulation->getStep());
+		SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
 		break;
 	case HorizontalChargeField:
 		CompoundSnfKernel<BoundaryCondition, emvariant>
-			<< <simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, stream >>>
+			<< <simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >>>
 			(sim_dev, simulation->getStep(), simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
 		break;
 	case BoxEdgePotential:
 		if (simulation->box_host->boxparams.n_compounds > 0)
-			SupernaturalForces::BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK, 0, stream >> > (sim_dev, simulation->getStep());
+			SupernaturalForces::BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
 		if (simulation->box_host->boxparams.n_solvents > 0)
 			SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simulation->getStep());
 		break;

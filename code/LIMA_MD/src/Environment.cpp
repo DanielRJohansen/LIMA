@@ -200,7 +200,7 @@ void Environment::run(bool doPostRunEvents) {
 
 		auto stepStartTime = std::chrono::steady_clock::now();
 		
-		engine->step();
+		engine->Step();
 
 		handleStatus(engine->runstatus.current_step);
 		

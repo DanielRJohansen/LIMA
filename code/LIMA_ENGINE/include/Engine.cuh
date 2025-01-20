@@ -75,7 +75,7 @@ public:
 	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
 	~Engine();
 
-	void step();
+	void Step();
 
 	/// <summary>
 	/// Engine takes ownedship of sim. Noone else is allowed to access
@@ -98,8 +98,11 @@ private:
 
 	void hostMaster();
 	void deviceMaster();
+
 	template <typename BoundaryCondition, bool emvariant, bool computePotE>
-	void _deviceMaster();
+	void _BuildKernelgraph(cudaGraph_t& graph);
+
+	void BuildKernelgraph(cudaGraph_t& graph, bool logData);
 
 	template <typename BoundaryCondition, bool emvariant>
 	void SnfHandler(cudaStream_t& stream);
@@ -122,8 +125,8 @@ private:
 
 	bool updatenlists_mutexlock = 0;
 
-	std::array<cudaStream_t, 5> cudaStreams;
-	cudaStream_t pmeStream;
+	
+	cudaStream_t masterStream, pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	int testval = 0;
@@ -162,6 +165,15 @@ private:
 	std::unique_ptr<Thermostat> thermostat;
 
 	const BoundaryConditionSelect bc_select;
+
+
+
+
+	// CUDA Graph
+	cudaGraph_t kernelsGraph_nolog = nullptr;
+	cudaGraphExec_t kernelsGraphExec_nolog = nullptr;
+	cudaGraph_t kernelsGraph_log = nullptr;
+	cudaGraphExec_t kernelsGraphExec_log = nullptr;
 };
 
  

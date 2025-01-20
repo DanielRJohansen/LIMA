@@ -51,6 +51,7 @@ namespace PME {
 		~Controller();
 
 		void CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy, cudaStream_t& stream);
+		void AddToGraph(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergy, cudaGraph_t& graph, std::vector<cudaGraphNode_t>& forceDependencies, cudaGraphNode_t& node1);
 
 	private:
 		//Just for debugging
@@ -605,6 +606,106 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 
 	InterpolateForcesAndPotentialKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialKernel failed!");
+}
+
+
+void PME::Controller::AddToGraph(const BoxConfig& config, const BoxState& state, 
+	int nCompounds, ForceEnergy* const forceEnergy, cudaGraph_t& graph, std::vector<cudaGraphNode_t>& forceDependencies,
+	cudaGraphNode_t& node1) {
+	if (nCompounds == 0)
+		return;
+
+	//cudaGraphNode_t nodeDistributeToChargeblocks, nodeChargeblocksDistributeToGrid, hostnodeForwardFFT, nodeApplyGreens, hostnodeInverseFFT, nodeNormalize, nodeComputeForces;
+
+	{
+		void* kernelArgs[] = { (void*)&config, (void*)&state,  (void*)&(*chargeblockBuffers), &boxlenNm};
+		cudaKernelNodeParams nodeParamsDistributeCompound = {
+			(void*)DistributeCompoundchargesToBlocksKernel,
+			dim3(nCompounds),
+			dim3(MAX_COMPOUND_PARTICLES),
+			0,
+			kernelArgs,
+			nullptr
+		};
+		LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&node1, graph, nullptr, 0, &nodeParamsDistributeCompound));
+	}
+	//{
+	//	void* kernelArgs[] = { (void*)&(*chargeblockBuffers), &realspaceGrid, &boxlenNm, &gridpointsPerDim };
+	//	cudaKernelNodeParams nodeParamsDistributeGrid = {
+	//		(void*)ChargeblockDistributeToGrid,
+	//		dim3(boxlenNm * boxlenNm * boxlenNm),
+	//		dim3(32),
+	//		0,
+	//		kernelArgs,
+	//		nullptr
+	//	};
+	//	LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeChargeblocksDistributeToGrid, graph, &nodeDistributeToChargeblocks, 1, &nodeParamsDistributeGrid));
+	//}
+	//{
+	//	auto forwardFn = [](void* inputs) {
+	//		cufftHandle planForward = (cufftHandle)((void**)inputs)[0];		
+	//		float* realspaceGrid = (float*)((void**)inputs)[1];
+	//		cufftComplex* fourierspaceGrid = (cufftComplex*)((void**)inputs)[2];
+	//		cufftResult result = cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid);
+	//		if (result != CUFFT_SUCCESS) {
+	//			fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
+	//		}
+	//	};
+	//	void* args[] = { &planForward, &realspaceGrid, &fourierspaceGrid };
+	//	cudaHostNodeParams hostnodeParams{ forwardFn, args };
+	//	cudaGraphAddHostNode(&hostnodeForwardFFT, graph, &nodeChargeblocksDistributeToGrid, 1, &hostnodeParams);
+	//}
+	//{
+	//	void* kernelArgs[] = { &fourierspaceGrid, &greensFunctionScalars, &gridpointsPerDim, &boxlenNm };
+	//	cudaKernelNodeParams nodeParamsApplyGreens = {
+	//		(void*)ApplyGreensFunctionKernel,
+	//		dim3((nGridpointsReciprocalspace + 63) / 64),
+	//		dim3(64),
+	//		0,
+	//		kernelArgs,
+	//		nullptr
+	//	};
+	//	LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeApplyGreens, graph, &hostnodeForwardFFT, 1, &nodeParamsApplyGreens));
+	//}
+	//{
+	//	auto inverseFn = [](void* inputs) {
+	//		cufftHandle planInverse = (cufftHandle)((void**)inputs)[0];
+	//		cufftComplex* fourierspaceGrid = (cufftComplex*)((void**)inputs)[1];
+	//		float* realspaceGrid = (float*)((void**)inputs)[2];
+	//		cufftResult result = cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid);
+	//		if (result != CUFFT_SUCCESS) {
+	//			fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
+	//		}
+	//	};
+	//	void* args[] = { &planInverse, &fourierspaceGrid, &realspaceGrid };
+	//	cudaHostNodeParams hostnodeParams{ inverseFn, args };
+	//	cudaGraphAddHostNode(&hostnodeInverseFFT, graph, &nodeApplyGreens, 1, &hostnodeParams);
+	//}
+	//{
+	//	void* kernelArgs[] = { &realspaceGrid, &nGridpointsRealspace, &nGridpointsReciprocalspace };
+	//	cudaKernelNodeParams nodeParamsNormalize = {
+	//		(void*)Normalize,
+	//		dim3((nGridpointsRealspace + 63) / 64),
+	//		dim3(64),
+	//		0,
+	//		kernelArgs,
+	//		nullptr
+	//	};
+	//	LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeNormalize, graph, &hostnodeInverseFFT, 1, &nodeParamsNormalize));
+	//}
+	//{
+	//	void* kernelArgs[] = { (void*)&config, (void*)&state, (void*)&realspaceGrid, (void*)&gridpointsPerDim, (void*)&forceEnergy, (void*)&selfenergyCorrection };
+	//	cudaKernelNodeParams nodeParamsComputeForces = {
+	//		(void*)InterpolateForcesAndPotentialKernel,
+	//		dim3(nCompounds),
+	//		dim3(MAX_COMPOUND_PARTICLES),
+	//		0,
+	//		kernelArgs,
+	//		nullptr
+	//	};
+	//	LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeComputeForces, graph, &nodeNormalize, 1, &nodeParamsComputeForces));
+	//	forceDependencies.push_back(nodeComputeForces);
+	//}
 }
 
 void PME::Controller::CalcEnergyCorrection(const Box& box) {

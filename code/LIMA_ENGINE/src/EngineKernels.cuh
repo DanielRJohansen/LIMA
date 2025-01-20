@@ -32,9 +32,8 @@
 
 
 
-
-
-
+__constant__ int step;
+__constant__ bool transferOutThisStep;
 
 
 
@@ -148,7 +147,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step, ForceEnergy* const forceEnergy) {
+__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, ForceEnergy* forceEnergy) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm]
 
@@ -342,7 +341,7 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricFi
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, const ForceEnergy* const forceEnergiesPME) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, const ForceEnergy* const forceEnergiesPME) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -443,7 +442,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
+__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int neighborblockNumElements;
@@ -514,7 +513,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step) {
+__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
@@ -588,8 +587,8 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 }
 
 
-template <typename BoundaryCondition, bool energyMinimize, bool transferOutThisStep>
-__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step) {
+template <typename BoundaryCondition, bool energyMinimize>
+__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim) {
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
@@ -651,7 +650,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 	// Push new SolventCoord to global mem
 	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
 
-	if constexpr (transferOutThisStep) {
+	if (transferOutThisStep) {
 		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
 		// Init queue, otherwise it will contain wierd values 
 		if (threadIdx.x < 6) {
@@ -674,7 +673,10 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
+__global__ void solventTransferKernel(SimulationDevice* sim) {
+	if (!transferOutThisStep)
+		return;
+
 	BoxState* boxState = sim->boxState;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];

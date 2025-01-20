@@ -15,7 +15,7 @@
 #endif
 
 //#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = true;
+const bool LIMA_PUSH = false;
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION

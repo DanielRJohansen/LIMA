@@ -53,9 +53,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
     }
     compoundLjParameters = GenericCopyToDevice(compoundParticleParams);
 
-	for (cudaStream_t& stream : cudaStreams) {
-		cudaStreamCreate(&stream);
-	}
+	cudaStreamCreate(&masterStream);
 	cudaStreamCreate(&pmeStream);
 
 	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
@@ -77,6 +75,20 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	bootstrapTrajbufferWithCoords();
 
 	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+
+	// Create kernels graphs. We need for for the steps where we log data, and 1 for all other
+	int a = 0;
+	cudaMemcpyToSymbol(step, &a, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(transferOutThisStep, &a, sizeof(bool), 0, cudaMemcpyHostToDevice);
+	cudaDeviceSynchronize();
+	BuildKernelgraph(kernelsGraph_log, true);
+	auto err1 = cudaGraphInstantiate(&kernelsGraphExec_log, kernelsGraph_log, nullptr, nullptr, 0);
+	LIMA_UTILS::genericErrorCheck("2");
+	BuildKernelgraph(kernelsGraph_nolog, false);
+	auto err2 = cudaGraphInstantiate(&kernelsGraphExec_nolog, kernelsGraph_nolog, nullptr, nullptr, 0);
+	LIMA_UTILS::genericErrorCheck("4");
+
+
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -92,9 +104,7 @@ Engine::~Engine() {
 	cudaFree(forceEnergiesBondgroups);
 	cudaFree(bondgroups);
 
-	for (cudaStream_t& stream : cudaStreams) {
-		cudaStreamDestroy(stream);
-	}
+
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	assert(simulation == nullptr);
@@ -145,7 +155,7 @@ void Engine::setDeviceConstantMemory() {
 
 
 
-void Engine::step() {
+void Engine::Step() {
 	LIMA_UTILS::genericErrorCheckNoSync("Error before step!");
 
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
@@ -294,140 +304,345 @@ void Engine::HandleEarlyStoppingInEM() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-template <typename BoundaryCondition, bool emvariant, bool computePotE>
-void Engine::_deviceMaster() {
-	
-	const BoxParams& boxparams = simulation->box_host->boxparams;
-	const int step = simulation->getStep();
-	// #### Initial round of force computations
-	cudaDeviceSynchronize();
-
-	if (boxparams.n_compounds > 0) {
-		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
-            (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
-				compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
-
-		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
-			(sim_dev, step, compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-	}
-
-	if (boxparams.n_solvents > 0) {
-		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
-		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
-			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
-			(*boxStateCopy, *boxConfigCopy, compoundgridPtr, step);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
-
-		// TODO: Too many threads, we rarely get close to filling the block
-		solventForceKernel<BoundaryCondition, emvariant> 
-			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
-			(*boxStateCopy, *boxConfigCopy, step);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
-	}
-	
-	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
-	}
-
-	if (simulation->simparams_host.snf_select != None) {
-		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
-	}
-
-	if (!simulation->box_host->bondgroups.empty()) {
-		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-			(bondgroups, *boxStateCopy, forceEnergiesBondgroups);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
-	}
-
-	// #### Integration and Transfer kernels
-	cudaStreamSynchronize(pmeStream);
-	for (int i = 0; i < cudaStreams.size(); i++) {
-		cudaStreamSynchronize(cudaStreams[i]);
-	}
-
-	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
-	}
-
-	if (boxparams.n_solvents > 0) {
-		const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(step);
-		if (isTransferStep)
-			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, true> 
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>>
-					(sim_dev, step);
-		else
-			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, false>
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>>
-					(sim_dev, step);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrationLoggingAndTransferout");
-
-		if (isTransferStep) {
-			cudaDeviceSynchronize();
-			solventTransferKernel<BoundaryCondition> 
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, 0, cudaStreams[1]>>> 
-				(sim_dev, step);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after solventTransferKernel");
-		}
-	}	
-}
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, true>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, false>();
-template void Engine::_deviceMaster<NoBoundaryCondition, true, true>();
-template void Engine::_deviceMaster<NoBoundaryCondition, true, false>();
-template void Engine::_deviceMaster<NoBoundaryCondition, false, true>();
-template void Engine::_deviceMaster<NoBoundaryCondition, false, false>();
-
 
 
 void Engine::deviceMaster() {
+	const BoxParams& boxparams = simulation->box_host->boxparams;
+	//const int step = simulation->getStep();
+	// #### Initial round of force computations
+	cudaDeviceSynchronize();
 
 	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
+
+	// Overwrite the "step" argument for all kernels, somehow????
+	const int _step = simulation->getStep();
+	const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(step);
+
+	cudaMemcpyToSymbol(step, &_step, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(transferOutThisStep, &isTransferStep, sizeof(bool), 0, cudaMemcpyHostToDevice);
+	cudaDeviceSynchronize();
+
+	cudaError_t err;
+
+	if (logData)
+		err = cudaGraphLaunch(kernelsGraphExec_log, masterStream);
+	else
+		err = cudaGraphLaunch(kernelsGraphExec_nolog, masterStream);
+
+	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
+	}
+
+	cudaStreamSynchronize(masterStream);
+	cudaStreamSynchronize(pmeStream);
+
+
+	if (boxparams.n_compounds > 0) {
+		CompoundIntegrationKernel<PeriodicBoundaryCondition, false>
+			<< <boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, masterStream >> >
+			(sim_dev, compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
+	}
+
+	if (boxparams.n_solvents > 0) {
+		TinymolIntegrationLoggingAndTransferout<PeriodicBoundaryCondition, false>
+			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, pmeStream >> >
+			(sim_dev);
+		solventTransferKernel<PeriodicBoundaryCondition>
+			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, 0, pmeStream >> >
+			(sim_dev);
+	}
+
+	cudaStreamSynchronize(masterStream);
+	cudaStreamSynchronize(pmeStream);
+
+
+	/*cudaDeviceSynchronize();
+	LIMA_UTILS::genericErrorCheckNoSync("Error after step!");*/
+
+}
+
+template <typename BoundaryCondition, bool emvariant, bool computePotE>
+void Engine::_BuildKernelgraph(cudaGraph_t& graph) {
+
+	const BoxParams boxparams = simulation->box_host->boxparams;
+
+	cudaGraphCreate(&graph, 0);
+
+	cudaGraphNode_t nodeFarneighbor = nullptr;
+	cudaGraphNode_t nodeBonds = nullptr;
+	cudaGraphNode_t nodeTinymolCompoundinteractions = nullptr;
+	cudaGraphNode_t nodeTinymolForceKernel = nullptr;
+	cudaGraphNode_t nodeSnf = nullptr;
+
+	cudaGraphNode_t nodeBarrierSection = nullptr;
+
+	cudaGraphNode_t nodeCompoundIntegration = nullptr;
+	cudaGraphNode_t nodeTinymolIntegration = nullptr;
+	cudaGraphNode_t nodeSolventTransfer = nullptr;
+
+	cudaGraphNode_t pmeNode1;
+
+	std::vector<cudaGraphNode_t> forceDependencies; // Add all nodes to this vector, so they are sync before moving to integration
+
+
+	if (boxparams.n_compounds > 0) {
+		{
+			void* kernelArgs[] = {
+				(void*)&(*boxStateCopy),
+				(void*)&(*boxConfigCopy),
+				(void*)&neighborlistsPtr,
+				(void*)&simulation->simparams_host.enable_electrostatics,
+				(void*)&compoundForceEnergyInterims.forceEnergyFarneighborShortrange,
+				(void*)&compoundLjParameters
+			};
+			cudaKernelNodeParams kernelnodeParams{
+				(void*)compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE>,
+				dim3(boxparams.n_compounds),
+				dim3(MAX_COMPOUND_PARTICLES),
+				0,
+				kernelArgs,
+				nullptr
+			};
+
+			LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeFarneighbor, graph, nullptr, 0, &kernelnodeParams));
+			forceDependencies.emplace_back(nodeFarneighbor);
+		}
+
+		{
+			cudaGraphNode_t node;
+			void* kernelArgs[] = { &sim_dev, &compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange };
+			cudaKernelNodeParams kernelnodeParams = {
+				(void*)compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE>,
+				boxparams.n_compounds,
+				MAX_COMPOUND_PARTICLES,
+				0,
+				kernelArgs,
+				nullptr 
+			};
+						
+			LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&node, graph, nullptr, 0, &kernelnodeParams));
+			forceDependencies.emplace_back(node);
+		}
+	}
+
+
+	if (!simulation->box_host->bondgroups.empty()) {
+		void* kernelArgs[] = { &bondgroups, &(*boxStateCopy), &forceEnergiesBondgroups };
+		cudaKernelNodeParams kernelnodeParams = {
+			(void*)BondgroupsKernel<BoundaryCondition, emvariant>,
+			simulation->box_host->bondgroups.size(),
+			THREADS_PER_BONDSGROUPSKERNEL,
+			0,
+			kernelArgs,
+			nullptr
+		};
+		LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeBonds, graph, nullptr, 0, &kernelnodeParams));
+		forceDependencies.emplace_back(nodeBonds);
+	}
+
+	if (boxparams.n_solvents > 0) {
+		{
+			void* kernelArgs[] = {
+				(void*)&(*boxStateCopy),
+				(void*)&(*boxConfigCopy),
+				&compoundgridPtr
+			};
+			cudaKernelNodeParams kernelnodeParams = {
+				(void*)TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>,
+				BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)),
+				SolventBlock::MAX_SOLVENTS_IN_BLOCK,
+				0,
+				kernelArgs,
+				nullptr
+			};
+			LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeTinymolCompoundinteractions, graph, nullptr, 0, &kernelnodeParams));
+			forceDependencies.emplace_back(nodeTinymolCompoundinteractions);
+		}
+		{
+			void* kernelArgs[] = { (void*)&(*boxStateCopy), (void*)&(*boxConfigCopy) };
+			cudaKernelNodeParams kernelnodeParams = {
+				(void*)solventForceKernel<BoundaryCondition, emvariant>,
+				BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)),
+				SolventBlock::MAX_SOLVENTS_IN_BLOCK,
+				0,
+				kernelArgs,
+				nullptr
+			};
+			LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeTinymolForceKernel, graph, nullptr, 0, &kernelnodeParams));
+			forceDependencies.emplace_back(nodeTinymolForceKernel);
+		}
+	}
+	//if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+	//	pmeController->AddToGraph(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, graph, forceDependencies, pmeNode1);
+	//}
+	switch (simulation->simparams_host.snf_select)
+	{
+
+	case None:
+		break;
+	case HorizontalSqueeze:	{
+		//SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
+		throw std::runtime_error("Not implemented");
+
+		//void* kernelArgs[] = { &sim_dev, &compoundForceEnergyInterims.forceEnergyBonds };
+		//cudaKernelNodeParams kernelnodeParams = {
+		//	(void*)SupernaturalForces::ApplyHorizontalSqueeze
+		//	boxparams.n_compounds,
+		//	MAX_COMPOUND_PARTICLES,
+		//	0,
+		//	kernelArgs,
+		//	nullptr
+		//};
+		//LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeSnf, graph, nullptr, 0, &kernelnodeParams));
+		//forceDependencies.emplace_back(nodeSnf);
+		break;
+	}		
+	case HorizontalChargeField: {
+		void* kernelArgs[] = { &sim_dev, &simulation->box_host->uniformElectricField, &compoundForceEnergyInterims.forceEnergyBonds };
+		cudaKernelNodeParams kernelnodeParams = {
+			(void*)CompoundSnfKernel<BoundaryCondition, emvariant>,
+			boxparams.n_compounds,
+			MAX_COMPOUND_PARTICLES,
+			0,
+			kernelArgs,
+			nullptr
+		};
+		LIMA_UTILS::genericErrorCheck(cudaGraphAddKernelNode(&nodeSnf, graph, nullptr, 0, &kernelnodeParams));
+		forceDependencies.emplace_back(nodeSnf);
+		break;
+
+		//CompoundSnfKernel<BoundaryCondition, emvariant>
+		//	<< <simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> >
+		//	(sim_dev, simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
+	}
+
+	case BoxEdgePotential: {
+		throw std::runtime_error("Not implemented");
+		/*if (simulation->box_host->boxparams.n_compounds > 0)
+			SupernaturalForces::BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
+		if (simulation->box_host->boxparams.n_solvents > 0)
+			SupernaturalForces::BoxEdgeForceSolvents << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream >> > (sim_dev, simulation->getStep());
+		break;*/
+		break;
+	}
+		
+	default:
+		break;
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+	// Sync all prev nodes
+	{
+		auto err = cudaGraphAddEmptyNode(&nodeBarrierSection, graph, forceDependencies.data(), forceDependencies.size());
+		LIMA_UTILS::genericErrorCheck("e");
+	}
+
+	//if (boxparams.n_compounds > 0) {
+	//	void* compoundIntegrationArgs[] = {
+	//		&sim_dev,
+	//		&compoundForceEnergyInterims,
+	//		&forceEnergiesBondgroups,
+	//		&forceEnergiesPME
+	//	};
+	//	cudaKernelNodeParams compoundIntegrationParams = {
+	//		(void*)CompoundIntegrationKernel<BoundaryCondition, emvariant>,
+	//		dim3(boxparams.n_compounds),
+	//		dim3(MAX_COMPOUND_PARTICLES),
+	//		0,
+	//		compoundIntegrationArgs,
+	//		nullptr
+	//	};
+	//	cudaGraphAddKernelNode(&nodeCompoundIntegration, graph, &nodeBarrierSection, 1, &compoundIntegrationParams);
+	//	LIMA_UTILS::genericErrorCheck("e");
+	//}
+
+	//if (boxparams.n_solvents > 0) {
+	//	{
+	//		void* tinymolIntegrationArgs[] = { &sim_dev };
+	//		cudaKernelNodeParams tinymolIntegrationParams = {
+	//			(void*)TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant>,
+	//			dim3(BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize))),
+	//			dim3(SolventBlock::MAX_SOLVENTS_IN_BLOCK),
+	//			0,
+	//			tinymolIntegrationArgs,
+	//			nullptr
+	//		};
+	//		cudaGraphAddKernelNode(&nodeTinymolIntegration, graph, &nodeBarrierSection, 1, &tinymolIntegrationParams);
+	//		LIMA_UTILS::genericErrorCheck("e");
+	//	}
+	//	{
+	//		void* solventTransferArgs[] = { &sim_dev };
+	//		cudaKernelNodeParams solventTransferParams = {
+	//			(void*)solventTransferKernel<BoundaryCondition>,
+	//			dim3(BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize))),
+	//			dim3(SolventBlockTransfermodule::max_queue_size),
+	//			0,
+	//			solventTransferArgs,
+	//			nullptr
+	//		};
+	//		cudaGraphAddKernelNode(&nodeSolventTransfer, graph, &nodeTinymolIntegration, 1, &solventTransferParams);
+	//		LIMA_UTILS::genericErrorCheck("e");
+	//	}
+	//}
+}
+template void Engine::_BuildKernelgraph<PeriodicBoundaryCondition, true, true>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<PeriodicBoundaryCondition, true, false>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<PeriodicBoundaryCondition, false, true>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<PeriodicBoundaryCondition, false, false>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<NoBoundaryCondition, true, true>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<NoBoundaryCondition, true, false>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<NoBoundaryCondition, false, true>(cudaGraph_t&);
+template void Engine::_BuildKernelgraph<NoBoundaryCondition, false, false>(cudaGraph_t&);
+
+
+
+void Engine::BuildKernelgraph(cudaGraph_t& graph, bool logData) {
 
 	switch (simulation->simparams_host.bc_select) {
 	case NoBC:
 		if (simulation->simparams_host.em_variant) {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, true, true>();
+				_BuildKernelgraph<NoBoundaryCondition, true, true>(graph);
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, true, false>();
+				_BuildKernelgraph<NoBoundaryCondition, true, false>(graph);
 			}
 		}
 		else {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, false, true>();
+				_BuildKernelgraph<NoBoundaryCondition, false, true>(graph);
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, false, false>();
+				_BuildKernelgraph<NoBoundaryCondition, false, false>(graph);
 			}
 		}
 		break;
 	case PBC:
 		if (simulation->simparams_host.em_variant) {
 			if (logData) {
-				_deviceMaster<PeriodicBoundaryCondition, true, true>();
+				_BuildKernelgraph<PeriodicBoundaryCondition, true, true>(graph);
 			}
 			else {
-				_deviceMaster<PeriodicBoundaryCondition, true, false>();
+				_BuildKernelgraph<PeriodicBoundaryCondition, true, false>(graph);
 			}
 		}
 		else {
 			if (logData) {
-				_deviceMaster<PeriodicBoundaryCondition, false, true>();
+				_BuildKernelgraph<PeriodicBoundaryCondition, false, true>(graph);
 			}
 			else {
-				_deviceMaster<PeriodicBoundaryCondition, false, false>();
+				_BuildKernelgraph<PeriodicBoundaryCondition, false, false>(graph);
 			}
 		}
 		break;
@@ -462,3 +677,184 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 		break;
 	}
 }
+
+
+
+
+
+//cudaKernelNodeParams kFarParams{};
+//// For demonstration, we show typical fields:
+//kFarParams.func = (void*)compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE>;
+//kFarParams.gridDim = dim3(boxparams.n_compounds);
+//kFarParams.blockDim = dim3(MAX_COMPOUND_PARTICLES);
+//kFarParams.sharedMemBytes = 0;
+//{
+//	// Put real arguments in a vector<void*>
+//	// Adjust these to match your kernel signature
+//	static bool cpe = true; // or false, per your usage
+//	void* args[] = {
+//		&boxStateCopy,
+//		&boxConfigCopy,
+//		&neighborlistsPtr,
+//		&compoundForceEnergyInterims.forceEnergyFarneighborShortrange,
+//		&compoundLjParameters
+//	};
+//	kFarParams.kernelParams = args;
+//}
+//kFarParams.extra = nullptr;
+
+//// No dependencies  can be added with a null dependency array
+//auto err = cudaGraphAddKernelNode(&nodeFarneighbor, graph, nullptr, 0, &kFarParams);
+
+
+
+
+
+
+
+// ------------------------------------------------------------------
+// 3) Add a barrier node so that Section 2 will start only after
+//    both kernels in Section 1 have completed.
+// ------------------------------------------------------------------
+   //{
+   //	cudaGraphNode_t dependencies[2] = { nodeFarneighbor, nodeImmediateneighbor };
+   //	cudaGraphAddEmptyNode(&nodeBarrierSection1, graph, dependencies, 2);
+   //}
+
+
+
+
+
+   // ------------------------------------------------------------------
+  // 4) Section 2
+  //    - CompoundIntegrationKernel (if n_compounds > 0)
+  //    - TinymolIntegrationLoggingAndTransferout + solventTransferKernel (in sequence)
+  // ------------------------------------------------------------------
+//if (boxparams.n_compounds > 0)
+//{
+	//cudaKernelNodeParams compoundIntegrationParams = {};
+	//compoundIntegrationParams.func = (void*)CompoundIntegrationKernel<BoundaryCondition, emvariant>;
+	//compoundIntegrationParams.gridDim = dim3(boxparams.n_compounds);
+	//compoundIntegrationParams.blockDim = dim3(MAX_COMPOUND_PARTICLES);
+	//compoundIntegrationParams.sharedMemBytes = 0;
+	//void* compoundIntegrationArgs[] = {
+	//	&sim_dev,
+	//	&compoundForceEnergyInterims,
+	//	&forceEnergiesBondgroups,
+	//	&forceEnergiesPME
+	//};
+	//compoundIntegrationParams.kernelParams = compoundIntegrationArgs;
+	//compoundIntegrationParams.extra = nullptr;
+
+	//cudaGraphAddKernelNode(&nodeCompoundIntegration, graph, &nodeBarrierSection1, 1, &compoundIntegrationParams);
+//}
+//
+//// ------------------------------------------------------------------
+//// 4b) If n_solvents > 0, run 2 kernels in sequence
+//// ------------------------------------------------------------------
+//if (boxparams.n_solvents > 0)
+//{
+//	//cudaKernelNodeParams tinymolIntegrationParams = {};
+//	//tinymolIntegrationParams.func = (void*)TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant>;
+//	//tinymolIntegrationParams.gridDim = dim3(BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)));
+//	//tinymolIntegrationParams.blockDim = dim3(SolventBlock::MAX_SOLVENTS_IN_BLOCK);
+//	//tinymolIntegrationParams.sharedMemBytes = 0;
+//	//void* tinymolIntegrationArgs[] = { &sim_dev };
+//	//tinymolIntegrationParams.kernelParams = tinymolIntegrationArgs;
+//	//tinymolIntegrationParams.extra = nullptr;
+//
+//	//cudaGraphAddKernelNode(&nodeTinymolIntegration, graph, &nodeBarrierSection1, 1, &tinymolIntegrationParams);
+//
+//	//cudaKernelNodeParams solventTransferParams = {};
+//	//solventTransferParams.func = (void*)solventTransferKernel<BoundaryCondition>;
+//	//solventTransferParams.gridDim = dim3(BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)));
+//	//solventTransferParams.blockDim = dim3(SolventBlockTransfermodule::max_queue_size);
+//	//solventTransferParams.sharedMemBytes = 0;
+//	//void* solventTransferArgs[] = { &sim_dev };
+//	//solventTransferParams.kernelParams = solventTransferArgs;
+//	//solventTransferParams.extra = nullptr;
+//
+//	//cudaGraphAddKernelNode(&nodeSolventTransfer, graph, &nodeTinymolIntegration, 1, &solventTransferParams);
+//}
+
+// #### Force kernels
+
+//if (boxparams.n_compounds > 0) {
+//	compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
+//           (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
+   //			compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
+
+   //	/*compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+   //		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
+   //		(sim_dev, compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);*/
+   //}
+
+   //if (boxparams.n_solvents > 0) {
+   //	// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
+   //	TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
+   //		<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
+   //		(*boxStateCopy, *boxConfigCopy, compoundgridPtr);
+
+   //	// TODO: Too many threads, we rarely get close to filling the block
+   //	solventForceKernel<BoundaryCondition, emvariant> 
+   //		<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
+   //		(*boxStateCopy, *boxConfigCopy);
+   //}
+
+   //if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+   //	pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
+   //}
+
+   /*if (simulation->simparams_host.snf_select != None) {
+	   SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
+   }*/
+
+   //if (!simulation->box_host->bondgroups.empty()) {
+   //	BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
+   //		(bondgroups, *boxStateCopy, forceEnergiesBondgroups);
+   //}
+
+   //// #### Sync all streams
+   //for (int i = 0; i < 5; i++)
+   //	cudaEventRecord(streamSync[i], cudaStreams[i]);
+   //cudaEventRecord(pmeStreamSync, pmeStream);
+
+   //for (int i = 0; i < 5; i++) {
+   //	if (i != 0)
+   //		cudaStreamWaitEvent(cudaStreams[0], streamSync[i], 0);
+   //	if (i != 1)
+   //		cudaStreamWaitEvent(cudaStreams[1], streamSync[i], 0);
+   //}
+   //cudaStreamWaitEvent(cudaStreams[0], pmeStreamSync, 0);// solvents dont need to wait for pme, as they are only neutral currently
+   //cudaStreamWaitEvent(cudaStreams[1], pmeStreamSync, 0);// solvents dont need to wait for pme, as they are only neutral currently
+
+   //// #### Integration and Transfer kernels
+
+   //if (boxparams.n_compounds > 0) {
+   //	CompoundIntegrationKernel<BoundaryCondition, emvariant> 
+   //		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
+   //		(sim_dev, compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
+   //}
+
+   //if (boxparams.n_solvents > 0) {		
+   //	TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant>
+   //		<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
+   //		(sim_dev);
+   //	solventTransferKernel<BoundaryCondition>
+   //		<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, 0, cudaStreams[1] >> >
+   //		(sim_dev);
+   //}	
+
+
+   //// End graph capture
+   //auto c = cudaStreamEndCapture(masterStream, &graph);
+
+   //for (int i = 0; i < 5; i++)
+   //	cudaEventDestroy(streamSync[i]);
+   //cudaEventDestroy(pmeStreamSync);
+
+   //for (cudaStream_t& stream : cudaStreams) {
+   //	cudaStreamDestroy(stream);
+   //}
+   //cudaStreamDestroy(pmeStream);

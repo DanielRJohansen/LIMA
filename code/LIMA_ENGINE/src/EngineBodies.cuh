@@ -79,20 +79,13 @@ struct SolventTransferqueue {
 	// Do NOT call on queue residing in global memory
 	__device__ bool addElement(const Coord& pos, const Coord& pos_prev, uint32_t id) {
 		if (n_elements >= size) {
-			return false;
+			return false; // TODO: LOsing atoms here!!!
 		}
 		rel_positions[n_elements] = pos;
 		ids[n_elements] = id;
 		atomtypeIds[n_elements] = 0;
 		n_elements++;
 		return true;
-	}
-
-	// Insert relative to thread calling.
-	__device__ void fastInsert(const Coord& relpos, const int id, uint8_t atomtypeId) {
-		rel_positions[threadIdx.x] = relpos;
-		ids[threadIdx.x] = id;
-		atomtypeIds[threadIdx.x] = atomtypeId;
 	}
 };
 
@@ -104,21 +97,16 @@ struct SolventBlockTransfermodule {
 	// Each queue will be owned solely by 1 adjecent solventblock
 	SolventTransferqueue<max_queue_size> transfer_queues[n_queues];
 
-	int n_remain = 0;
-
-	/// <param name="transfer_direction">Relative to the originating block</param>
-	__device__ static int getQueueIndex(const NodeIndex& transfer_direction) {
-		// Fucking magic yo...
-		// Only works if transfer_direction.len() == 1
-		// First op leaves a space at index 3:
-		//{-z, -y, -x, _ x, y, z}
-		//const int tmp_index = transfer_direction.dot(NodeIndex{ 1, 2, 3 });
-		int tmp_index = transfer_direction.x * 1 + transfer_direction.y * 2 + transfer_direction.z * 3;
-		// Shift positive values left.
-		tmp_index = tmp_index > 0 ? tmp_index + 2 : tmp_index + 3;
-		return tmp_index;
-	}
+	int n_remain = 0; 
 };
+
+namespace SolventblockTransferUtils {
+	__device__ constexpr NodeIndex indexToDirection[6] = {
+		NodeIndex{0, 0, -1}, NodeIndex{0, 0, 1},
+		NodeIndex{0, -1, 0}, NodeIndex{0, 1, 0},
+		NodeIndex{-1, 0, 0}, NodeIndex{1, 0, 0}
+	};
+}
 
 using STransferQueue = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>;
 using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;

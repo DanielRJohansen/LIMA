@@ -311,7 +311,6 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 	if (threadIdx.x < compound.n_particles) {
-		//sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyImmediateneighborShortrange[threadIdx.x] = ForceEnergy{ force, potE_sum };
 		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
 	}
 }
@@ -593,6 +592,9 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
+	__shared__ Coord relPositionsNext[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+
+
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
 
@@ -613,7 +615,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 
 
-	Coord relpos_next{};
+	//Coord relpos_next{};
 	if (solventActive) {
 		TinyMolState& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
 		const float mass = DeviceConstants::tinymolForcefield.types[tinyMols_ref.tinymolTypeIndex].mass;
@@ -623,7 +625,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
 
-			relpos_next = pos_now;
+			relPositionsNext[threadIdx.x] = pos_now;
 			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
 				force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
@@ -640,7 +642,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 			tinyMols_ref.force_prev = force;
 
 			// Save pos locally, but only push to box as this kernel ends
-			relpos_next = pos_now;
+			relPositionsNext[threadIdx.x] = pos_now;
 			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
 				force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
@@ -653,16 +655,18 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 	if constexpr (transferOutThisStep) {
 		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
+		__shared__ NodeIndex transferDirections[SolventBlock::MAX_SOLVENTS_IN_BLOCK]; // TODO: should be Direction3 instead
+		// 
 		// Init queue, otherwise it will contain wierd values 
 		if (threadIdx.x < 6) {
 			transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
 		}
 		utility_buffer_small[threadIdx.x] = 0;
 		__syncthreads();
-		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relpos_next, utility_buffer_small, sim->transfermodule_array, transferqueues);
+		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relPositionsNext, utility_buffer_small, sim->transfermodule_array, transferqueues, transferDirections);
 	}
 	else {
-		solventblock_next_ptr->rel_pos[threadIdx.x] = relpos_next;
+		solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
 		solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
 		solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
 		if (threadIdx.x == 0) {

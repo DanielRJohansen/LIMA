@@ -30,21 +30,39 @@ void Engine::verifyEngine() {
 
 
 
-CompoundForceEnergyInterims::CompoundForceEnergyInterims(int nCompounds) {
-	const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
-	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
-	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
-	cudaMalloc(&forceEnergyBonds, byteSize);
+ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks) {
+	if (nCompounds > 0) {
+		const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
+		cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
+		cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
+		cudaMalloc(&forceEnergyBonds, byteSize);
 
-	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
-	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
-	cudaMemset(forceEnergyBonds, 0, byteSize);
+		cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
+		cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
+		cudaMemset(forceEnergyBonds, 0, byteSize);
+	}
+
+	if (nSolvents > 0) {
+		const size_t byteSize = sizeof(ForceEnergy) * SolventBlock::MAX_SOLVENTS_IN_BLOCK * nSolventblocks;
+		cudaMalloc(&forceEnergiesCompoundinteractions, byteSize);
+		cudaMalloc(&forceEnergiesTinymolinteractions, byteSize);
+
+		cudaMemset(forceEnergiesCompoundinteractions, 0, byteSize);
+		cudaMemset(forceEnergiesTinymolinteractions, 0, byteSize);
+	}
 }
 
-void CompoundForceEnergyInterims::Free() const {
-	cudaFree(forceEnergyFarneighborShortrange);
-	cudaFree(forceEnergyImmediateneighborShortrange);
-	cudaFree(forceEnergyBonds);
+void ForceEnergyInterims::Free() const {
+	if (forceEnergyFarneighborShortrange != nullptr) {
+		cudaFree(forceEnergyFarneighborShortrange);
+		cudaFree(forceEnergyImmediateneighborShortrange);
+		cudaFree(forceEnergyBonds);
+	}
+
+	if (forceEnergiesCompoundinteractions != nullptr) { // The buffers are never allocated in some sims
+		cudaFree(forceEnergiesCompoundinteractions);
+		cudaFree(forceEnergiesTinymolinteractions);
+	}
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
 }

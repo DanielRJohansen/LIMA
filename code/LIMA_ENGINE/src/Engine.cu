@@ -17,7 +17,7 @@
 
 
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
-	: bc_select(bc), m_logger(std::move(logger)), compoundForceEnergyInterims(_sim->box_host->boxparams.n_compounds)
+	: bc_select(bc), m_logger(std::move(logger)), forceEnergyInterims(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.n_solvents, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize))
 {
 	simulation = std::move(_sim);
 
@@ -85,7 +85,7 @@ Engine::~Engine() {
 		sim_dev->FreeMembers();
 		cudaFree(sim_dev);
 	}
-	compoundForceEnergyInterims.Free();
+	forceEnergyInterims.Free();
 
 	cudaFree(compoundLjParameters);
 	cudaFree(forceEnergiesPME);
@@ -306,12 +306,12 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
-				compoundForceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
+				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
-			(sim_dev, step, compoundForceEnergyInterims.forceEnergyImmediateneighborShortrange);
+			(sim_dev, step, forceEnergyInterims.forceEnergyImmediateneighborShortrange);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 	}
 
@@ -319,13 +319,13 @@ void Engine::_deviceMaster() {
 		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
 		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
 			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
-			(*boxStateCopy, *boxConfigCopy, compoundgridPtr, step);
+			(*boxStateCopy, *boxConfigCopy, compoundgridPtr, step, forceEnergyInterims.forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
 		// TODO: Too many threads, we rarely get close to filling the block
 		solventForceKernel<BoundaryCondition, emvariant> 
 			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
-			(*boxStateCopy, *boxConfigCopy, step);
+			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims.forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 	}
 	
@@ -354,7 +354,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, compoundForceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
+			(sim_dev, step, forceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
@@ -363,11 +363,11 @@ void Engine::_deviceMaster() {
 		if (isTransferStep)
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, true> 
 				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>>
-					(sim_dev, step);
+					(sim_dev, step, forceEnergyInterims.forceEnergiesCompoundinteractions, forceEnergyInterims.forceEnergiesTinymolinteractions);
 		else
 			TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant, false>
 				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>>
-					(sim_dev, step);
+					(sim_dev, step, forceEnergyInterims.forceEnergiesCompoundinteractions, forceEnergyInterims.forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrationLoggingAndTransferout");
 
 		if (isTransferStep) {
@@ -452,7 +452,7 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 	case HorizontalChargeField:
 		CompoundSnfKernel<BoundaryCondition, emvariant>
 			<< <simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >>>
-			(sim_dev, simulation->box_host->uniformElectricField, compoundForceEnergyInterims.forceEnergyBonds);
+			(sim_dev, simulation->box_host->uniformElectricField, forceEnergyInterims.forceEnergyBonds);
 		break;
 	case BoxEdgePotential:
 		if (simulation->box_host->boxparams.n_compounds > 0)

@@ -10,22 +10,25 @@ static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 // blocks are notcentered 
 struct SolventBlock {
-	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE * 2;
+	static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE;
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		n_solvents = block.n_solvents;
-		if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
-			printf("Too many solvents in block!\n");
+		if constexpr (!LIMA_PUSH) {
+			if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
+				printf("Too many solvents in block!\n");
+			}
 		}
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
 		rel_pos[threadIdx.x] = Coord{};	// temp
 		if (threadIdx.x < n_solvents) {
 
-			if (block.rel_pos[threadIdx.x] == Coord{ 0 }) {
-				printf("Loading zeroes blockid %d nsol %d\n", blockIdx.x, n_solvents);
+			if constexpr (!LIMA_PUSH) {
+				if (block.rel_pos[threadIdx.x] == Coord{ 0 }) {
+					printf("Loading zeroes blockid %d nsol %d\n", blockIdx.x, n_solvents);
+				}
 			}
-
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
@@ -49,14 +52,11 @@ struct SolventBlock {
 		return true;
 	}
 	 
-	int n_solvents = 0;
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
+	int n_solvents = 0;
 
-	// Not sure this is the ideal place, as it is an interim and never transferred.. 
-	ForceEnergy forceEnergiesCompoundinteractions[MAX_SOLVENTS_IN_BLOCK];
-	ForceEnergy forceEnergiesTinymolinteractions[MAX_SOLVENTS_IN_BLOCK];
 };
 
 

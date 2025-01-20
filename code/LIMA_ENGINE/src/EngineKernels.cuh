@@ -342,7 +342,7 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricFi
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const CompoundForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, const ForceEnergy* const forceEnergiesPME) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, const ForceEnergy* const forceEnergiesPME) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -443,7 +443,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step) {
+__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step, ForceEnergy* const forceEnergies) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int neighborblockNumElements;
@@ -509,12 +509,12 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 		}
 	}
 
-	SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step)->forceEnergiesCompoundinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	forceEnergies[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step) {
+__global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step, ForceEnergy* const forceEnergies) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
@@ -584,12 +584,12 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}
 
 	// Finally push force and potE for next kernel
-	SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step)->forceEnergiesTinymolinteractions[threadIdx.x] = ForceEnergy{ force, potE_sum };
+	forceEnergies[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
 
 template <typename BoundaryCondition, bool energyMinimize, bool transferOutThisStep>
-__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step) {
+__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step, const ForceEnergy* const forceEnergiesCompoundinteractions, const ForceEnergy* const forceEnergiesTinymolinteractions) {
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
@@ -600,8 +600,8 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 	const SimParams& simparams = sim->params;
 	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
-	const Float3 force = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].force + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].force;
-	const float potE = solventblock_ptr->forceEnergiesCompoundinteractions[threadIdx.x].potE + solventblock_ptr->forceEnergiesTinymolinteractions[threadIdx.x].potE;
+	const Float3 force = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force;
+	const float potE = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE;
 
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
@@ -746,7 +746,6 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		positions[threadIdx.x] = boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
 		
 	}
-//	__syncthreads();
 
 
 	Float3 force{};

@@ -24,8 +24,8 @@ class CompoundGridNode;
 
 namespace PME { class Controller; };
 
-struct CompoundForceEnergyInterims {
-	CompoundForceEnergyInterims(int nCompounds);
+struct ForceEnergyInterims {
+	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks);
 	void Free() const;
 
 	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
@@ -34,9 +34,14 @@ struct CompoundForceEnergyInterims {
 			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
 	}
 
-	ForceEnergy* forceEnergyFarneighborShortrange;
-	ForceEnergy* forceEnergyImmediateneighborShortrange;
-	ForceEnergy* forceEnergyBonds;
+	// Compounds
+	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyBonds = nullptr;
+
+	// Tinymol
+	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
+	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
 };
 
 struct EngineTimings {
@@ -152,7 +157,7 @@ private:
 	std::unique_ptr<PME::Controller> pmeController;
 
 
-	CompoundForceEnergyInterims compoundForceEnergyInterims;
+	ForceEnergyInterims forceEnergyInterims;
 
 
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;

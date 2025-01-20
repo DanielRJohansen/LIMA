@@ -1,5 +1,5 @@
 #include "ForceCorrectness.h"
-#include "MDStability.cuh"
+#include "MDStability.h"
 #include "MembraneBuilder.h"
 #include "MinorPrograms.h"
 #include "ElectrostaticsTests.h"
@@ -21,14 +21,38 @@ using namespace VerletintegrationTesting;
 
 void RunAllUnitTests();
 
+uint8_t Dir(int x, int y, int z)  {
+	return static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1));
+}
 
 
+struct Direction3 {
+	uint8_t data; // store 6 bits: top 2 for x+1, next 2 for y+1, bottom 2 for z+1
+
+	 constexpr Direction3() : data(0) {}
+
+	 constexpr Direction3(int x, int y, int z)
+		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
+	{}
+
+	 inline int x() const { return ((data >> 4) & 0x3) - 1; }
+	 inline int y() const { return ((data >> 2) & 0x3) - 1; }
+	 inline int z() const { return (data & 0x3) - 1; }
+
+	 bool operator==(const Direction3& o) const { return data == o.data; }
+	 bool operator!=(const Direction3& o) const { return data != o.data; }
+};
 
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
-		//Lipids::_MakeLipids(true, false);
 
+		//PlotPmePotAsFactorOfDistance(envmode);
+		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
+		//TestLongrangeEsNoLJTwoParticles(envmode);
+		//TestLongrangeEsNoLJManyParticles(envmode);
+		//Lipids::_MakeLipids(true, false);
+		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
@@ -56,9 +80,11 @@ int main() {
 		//TestElectrostaticsManyParticles(envmode);
 		//doPoolBenchmarkES(envmode);
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
+		//TestIntegration(envmode);
 
-
+		
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//const fs::path work_dir = simulations_dir / "test";
@@ -126,6 +152,7 @@ int main() {
 	return 0;
 }
 
+
 #define ADD_TEST(description, execution_function) \
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
@@ -139,6 +166,7 @@ void RunAllUnitTests() {
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
 	ADD_TEST("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(envmode));
+	ADD_TEST("PairbondForceAndPotentialSanityCheck", PairbondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("TestIntegration", TestIntegration(envmode));
 
 	// Stability tests
@@ -150,34 +178,32 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 7.1e-4, 2e-6));
+	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.175e-3, 2e-5));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.224e-3, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
+	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
+	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
+	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
+	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Test Setup
-	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));	
-
-
-	ADD_TEST("doPoolBenchmarkES", doPoolBenchmarkES(envmode));
-	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
-	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
-	
+	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 
-	ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
+	//ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
 
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	//ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...

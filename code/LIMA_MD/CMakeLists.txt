@@ -38,6 +38,7 @@ target_compile_definitions(LIMA_MD PUBLIC GLEW_STATIC)
 target_link_libraries(LIMA_MD 
     LIMA_BASE
     LIMA_ENGINE
+    LIMA_CONVEXHULLENGINE
     LIMA_TOOLS
     LIMA_DEPENDS
     ${GLFW_LIBRARIES}

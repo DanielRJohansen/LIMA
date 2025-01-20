@@ -1,44 +1,49 @@
 #include "SimulationDevice.cuh"
+#include "Utilities.h"
 
 
-
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
-	bpLUTs(bpLUTs)
+	bpLUTs(bpLUTs),
+	tinymolNearbyBlockIds(tinymolNearbyBlockIds)
 	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
-BoxConfig* BoxConfig::Create(const Box& boxHost) {
+BoxConfig BoxConfig::Create(const Box& boxHost) {
 	uint8_t* compoundsAtomtypes;
 	float* compoundsAtomCharges;
 	cudaMalloc(&compoundsAtomtypes, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
 	cudaMalloc(&compoundsAtomCharges, sizeof(float) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
-	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) {
+	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) { // OPTIM This is very slow
 		cudaMemcpy(compoundsAtomtypes + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_types, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(float) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
 	}
 
-	BoxConfig boxTemp(GenericCopyToDevice(boxHost.compounds), compoundsAtomtypes, compoundsAtomCharges, GenericCopyToDevice(boxHost.bpLutCollection));
-	BoxConfig* devPtr;
-	cudaMallocManaged(&devPtr, sizeof(BoxConfig));
-	cudaMemcpy(devPtr, &boxTemp, sizeof(BoxConfig), cudaMemcpyHostToDevice);
-
-	return devPtr;
+	return BoxConfig (
+		GenericCopyToDevice(boxHost.compounds), 
+		compoundsAtomtypes, 
+		compoundsAtomCharges, 
+		GenericCopyToDevice(boxHost.bpLutCollection), 
+        BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
+	);
 }
 void BoxConfig::FreeMembers() const {
-	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr);
+	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
+	// TODO why not clearing compounds????
 
+	cudaFree((void*)boxtemp.compounds);
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
 	cudaFree((void*)boxtemp.compoundsAtomCharges);
 	cudaFree((void*)boxtemp.bpLUTs);
+	cudaFree((void*)boxtemp.tinymolNearbyBlockIds);
 }
 
 
 BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
-	SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
+	SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
 	compoundOrigos(compoundOrigos), compoundsRelposNm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
 BoxState* BoxState::Create(const Box& boxHost) {
@@ -57,7 +62,7 @@ BoxState* BoxState::Create(const Box& boxHost) {
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
 		GenericCopyToDevice(boxHost.tinyMols),
-		boxHost.solventblockgrid_circularqueue->CopyToDevice(),
+		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),		
 		GenericCopyToDevice(boxHost.compoundInterimStates));
 
 	BoxState* boxStateDev;
@@ -86,13 +91,14 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	}
 
 
-	boxHost.solventblockgrid_circularqueue->CopyDataFromDevice(boxtemp.solventblockgrid_circularqueue);
+	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(boxtemp.solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
 	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
+	cudaFree(boxtemp.compoundsInterimState);
 	cudaFree(boxtemp.compoundOrigos);
 	cudaFree(boxtemp.compoundsRelposNm);
 	cudaFree(boxtemp.tinyMols);
@@ -143,9 +149,9 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 
-SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
+SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
 	BoxState* boxState, const DatabuffersDeviceController& databuffers) : 
-	boxConfig(*boxConfig), boxState(boxState), params(params_host),
+	boxConfig(boxConfig), boxState(boxState), params(params_host),
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
@@ -167,10 +173,6 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	vel_buffer = databuffers.vel_buffer;
 	forceBuffer = databuffers.forceBuffer;
 
-	chargeGrid = BoxGrid::MallocOnDevice<Electrostatics::ChargeNode>(box_host->boxparams.boxSize);
-	chargeGridChargeSums = BoxGrid::MallocOnDevice<float>(box_host->boxparams.boxSize);
-	chargeGridOutputForceAndPot = BoxGrid::MallocOnDevice<ForceAndPotential>(box_host->boxparams.boxSize);
-
 	if (params_host.em_variant) {
 		cudaMalloc(&adamState, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
 		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
@@ -190,13 +192,10 @@ void SimulationDevice::FreeMembers() {
 
 	cudaFree(compound_grid);
 	cudaFree(compound_neighborlists);
-
-	//cudaFree(charge_octtree);
-	cudaFree(chargeGrid);
-	cudaFree(chargeGridChargeSums);
+	cudaFree(transfermodule_array);
+	cudaFree(signals);
 	cudaFree(chargeGridOutputForceAndPot);
 
 	if (adamState != nullptr)
 		cudaFree(adamState);
 }
-

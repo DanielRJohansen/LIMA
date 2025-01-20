@@ -302,6 +302,7 @@ bool Display::initGLFW() {
     }
 
     // Create a windowed mode window and its OpenGL context
+    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE); // Do not focus the window on creation
     window = glfwCreateWindow(screenWidth, screenHeight, window_title.c_str(), NULL, NULL);
     if (!window)
     {

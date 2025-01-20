@@ -251,7 +251,7 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
             , errMsg);
 	}
     if (envmode == Full) {
-		printf("%d Anglebond parameters verified\n", angleparamsGromacs.size());
+		printf("%u Anglebond parameters verified\n", angleparamsGromacs.size());
 	}
 
 
@@ -287,7 +287,7 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
         ASSERT(std::abs(l.psi_0 - g.psi_0) < 0.001f && std::abs((l.k_psi - g.k_psi) / std::max(g.k_psi, 1.f)) < maxError, errMsg);
 	}
     if (envmode == Full) {
-		printf("%d ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
+		printf("%u ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
 	}
 
     return LimaUnittestResult{ true, "No Error", envmode == Full };

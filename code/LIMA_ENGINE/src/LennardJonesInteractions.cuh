@@ -5,12 +5,14 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 #include "PhysicsUtilsDevice.cuh"
+#include "DeviceAlgorithmsPrivate.cuh"
+
 #include <cfloat>
 
 namespace LJ {
 	// __constant__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
-		return (forcefield_device.particle_parameters[atomtype1].sigma + forcefield_device.particle_parameters[atomtype2].sigma) * 0.5f;
+		return (DeviceConstants::forcefield.particle_parameters[atomtype1].sigma + DeviceConstants::forcefield.particle_parameters[atomtype2].sigma) * 0.5f;
 	}
 	// __shared__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
@@ -18,7 +20,7 @@ namespace LJ {
 	}
 
 	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
-		return sqrtf(forcefield_device.particle_parameters[atomtype1].epsilon * forcefield_device.particle_parameters[atomtype2].epsilon);
+		return sqrtf(DeviceConstants::forcefield.particle_parameters[atomtype1].epsilon * DeviceConstants::forcefield.particle_parameters[atomtype2].epsilon);
 	}
 	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
 		//return 1.4f;
@@ -39,7 +41,7 @@ namespace LJ {
 		return sqrtf(e1 * e2);
 	}
 
-	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter };
+	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
 
 
 	__device__ static const char* calcLJOriginString[] = {
@@ -80,24 +82,20 @@ namespace LJ {
 		s = s * s * s;
 		float force_scalar = epsilon * s * dist_sq_reciprocal * (1.f - 2.f * s);	// Attractive when positive		[(kg*nm^2)/(nm^2*ns^2*mol)] ->----------------------	[(kg)/(ns^2*mol)]	
 
+		if constexpr (emvariant)
+			force_scalar = fmaxf(fminf(force_scalar, 1e+20), -1e+20); // Necessary to avoid inf * 0 = NaN
+
 		const Float3 force = diff * force_scalar;
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
-			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f\n", diff.x, diff.y, diff.z, sigma, epsilon);
-			diff.print('D');
-		}
-		if constexpr (!emvariant) {
-			if (force.lenSquared() > FLT_MAX) {
-				(diff * LIMA_TO_NANO).print('D');
-				printf("diff %f\n", diff.len() * LIMA_TO_NANO);
-				printf("%s", calcLJOriginString[originSelect]);
-			}
+			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f s %f distSqRecip %f emvariant %d forceScalar %f firstPart %f\n",
+				   diff.x, diff.y, diff.z, sigma, epsilon, s, dist_sq_reciprocal, emvariant, force_scalar, epsilon * s * dist_sq_reciprocal);
 		}
 #endif
 
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
-		}		
+		}
 
 		if constexpr (emvariant)
 			return EngineUtils::ForceActivationFunction(force, 100.f);
@@ -141,7 +139,7 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
 			//float a = calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield);
-			//float b = __half2float(nonbondedInteractionParams_device[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
+			//float b = __half2float(DeviceConstants::nonbondedinteractionParams[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
 			//if (std::abs(a - b) / a > 1e-5) {
 			//	printf("Epsilon mismatch %f %f\n", a, b);
 			//}
@@ -153,13 +151,13 @@ namespace LJ {
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, charges[neighborparticle_id], -diff);
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf* charges[neighborparticle_id], -diff);
 				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff);
 			}
 		}
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
 	// For non bonded-to compounds
@@ -174,50 +172,34 @@ namespace LJ {
 		float electrostaticPotential{};
 		//int hits = 0;
 
-		// TODO: i dont have any unittests that test whether this works as i expect. Would require a compound with 2 atoms not in the same gridnode
-		const Float3 selfRelOffset{
-			fabsf(self_pos.x) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.x) : 0.f,
-			fabsf(self_pos.y) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.y) : 0.f,
-			fabsf(self_pos.z) > static_cast<float>(BoxGrid::blocksizeNM) / 2.f ? copysignf(static_cast<float>(BoxGrid::blocksizeNM), self_pos.z) : 0.f
-		};
-
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
 				//hits++;
-                //const NonbondedInteractionParams params = nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
+                //const NonbondedInteractionParams params = DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
                     __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
                     /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
                     calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
-                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
-                    //nonbondedInteractionParams_device[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
+                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
+                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
                     //params.sigma, params.epsilon,
 					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
 					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 				);
+
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
+				if constexpr (computePotE && ENABLE_POTE)
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
 			}
+		}		
 
-			if constexpr (ENABLE_ES_SR) {
-				if ((neighbor_positions[neighborparticle_id] - selfRelOffset).LargestMagnitudeElement() < static_cast<float>(BoxGrid::blocksizeNM) * 1.5f) // TODO: magic nr
-				{
-                    //electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff * LIMA_TO_NANO);
-                    electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf, chargeNeighbors[neighborparticle_id], -diff);
-					if constexpr (computePotE && ENABLE_POTE)
-						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
-				}
-			}
-		}
-		//atomicAdd(&util, hits);
-		
-
-
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant_Potential * 0.5f;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant_Force;
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
 	// Specific to solvent kernel	
@@ -284,8 +266,8 @@ namespace LJ {
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, forcefield_device.particle_parameters[atomtypes_others[i]].sigma),
-				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, forcefield_device.particle_parameters[atomtypes_others[i]].epsilon),
+				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].sigma),
+				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].epsilon),
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);

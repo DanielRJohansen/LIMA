@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cuda_runtime.h>
+
 namespace LAL {
 	__device__ __host__ constexpr int32_t ceil(float num) {
 		return (static_cast<float>(static_cast<int32_t>(num)) == num)
@@ -23,6 +25,10 @@ namespace LAL {
 
 	__device__ inline bool IsEven(int a) {
 		return !(a & 1);
+	}
+
+	__device__ inline float lerp(float v0, float v1, float t) {
+		return fma(t, v1, fma(-t, v0, v0));
 	}
 
 	// TODO These functions are NOT what their names elude they are, fix that
@@ -93,35 +99,35 @@ namespace LAL {
 		}
 	}
 
-	__device__ inline void Sort(float* data, int nElements) {
-		// Assuming that data is already in shared memory.
-		int tid = threadIdx.x;
+	//__device__ inline void Sort(float* data, int nElements) {
+	//	// Assuming that data is already in shared memory.
+	//	int tid = threadIdx.x;
 
-		for (int k = 2; k <= nElements; k <<= 1) {
-			for (int j = k >> 1; j > 0; j >>= 1) {
-				int ixj = tid ^ j;
-				if (ixj > tid) {
-					if ((tid & k) == 0) {
-						if (data[tid] > data[ixj]) {
-							// Swap data[tid] and data[ixj]
-							float temp = data[tid];
-							data[tid] = data[ixj];
-							data[ixj] = temp;
-						}
-					}
-					else {
-						if (data[tid] < data[ixj]) {
-							// Swap data[tid] and data[ixj]
-							float temp = data[tid];
-							data[tid] = data[ixj];
-							data[ixj] = temp;
-						}
-					}
-				}
-				__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
-			}
-		}
-	}
+	//	for (int k = 2; k <= nElements; k <<= 1) {
+	//		for (int j = k >> 1; j > 0; j >>= 1) {
+	//			int ixj = tid ^ j;
+	//			if (ixj > tid) {
+	//				if ((tid & k) == 0) {
+	//					if (data[tid] > data[ixj]) {
+	//						// Swap data[tid] and data[ixj]
+	//						float temp = data[tid];
+	//						data[tid] = data[ixj];
+	//						data[ixj] = temp;
+	//					}
+	//				}
+	//				else {
+	//					if (data[tid] < data[ixj]) {
+	//						// Swap data[tid] and data[ixj]
+	//						float temp = data[tid];
+	//						data[tid] = data[ixj];
+	//						data[ixj] = temp;
+	//					}
+	//				}
+	//			}
+	//			__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+	//		}
+	//	}
+	//}
 
 
 }

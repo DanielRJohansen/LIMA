@@ -147,7 +147,7 @@ struct Box {
 	std::vector<CompoundCoords> compoundCoordsBuffer;
 
 	std::vector<TinyMolState> tinyMols;
-	std::unique_ptr<SolventBlocksCircularQueue> solventblockgrid_circularqueue = nullptr;
+	std::vector<SolventBlock> solventblockgrid_circularqueue;
 
 	std::vector<BondedParticlesLUT> bpLutCollection;
 
@@ -203,11 +203,5 @@ public:
 
 	friend class Engine;
 };
-
-namespace SimUtils {
-	std::unique_ptr<Box> copyToHost(Box* box_dev);
-};
-
-
 
 

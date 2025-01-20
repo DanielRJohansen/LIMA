@@ -2,7 +2,7 @@
 
 add_library(LIMA_BASE STATIC
     src/Printer.cpp
-    src/Bodies.cu
+    src/Bodies.cpp
     src/Filehandling.cpp
     src/Forcefield.cpp
     src/LimaTypes.cpp
@@ -18,6 +18,8 @@ add_library(LIMA_BASE STATIC
     src/Geometry.cpp
     src/MoleculeUtils.cpp 
     src/Topologyfile.cpp
+    src/BoxGrid.cpp
+    src/PlotUtils.cpp
 )
 
 target_include_directories(LIMA_BASE PRIVATE 

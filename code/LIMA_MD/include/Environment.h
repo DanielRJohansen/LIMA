@@ -75,7 +75,6 @@ public:
 	std::unique_ptr<Simulation> getSim();
 	Simulation* getSimPtr();
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
-	SolventBlocksCircularQueue* getSolventBlocks();
 
 	std::string getWorkdir() { return work_dir.string(); }
 

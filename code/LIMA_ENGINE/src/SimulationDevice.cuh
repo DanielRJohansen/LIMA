@@ -1,28 +1,30 @@
 #pragma once
 
+#include "EngineBodies.cuh"
 #include "Bodies.cuh"
 #include "Simulation.cuh"
-#include "EngineBodies.cuh"
-#include "ChargeOcttree.cuh"
 
 
 struct BoxConfig {	
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs);
-	static BoxConfig* Create(const Box& boxHost); // Returns a ptr to device
+	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
+	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;// Free *this immediately after calling this function
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
-	const float* const compoundsAtomCharges;	
+	const float* const compoundsAtomCharges;	// [kC/mol]
 	const Compound* const compounds;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
 	const BondedParticlesLUT* const bpLUTs;
+
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds;
 };
 
 struct BoxState {
 	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
-		SolventBlocksCircularQueue* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
+		SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers();// Free *this immediately after calling this function
@@ -32,7 +34,7 @@ struct BoxState {
 	Float3* const compoundsRelposNm;
 
 	TinyMolState* const tinyMols;
-	SolventBlocksCircularQueue* const solventblockgrid_circularqueue;
+	SolventBlock* const solventblockgrid_circularqueue;
 };
 
 struct AdamState {
@@ -68,6 +70,7 @@ struct DatabuffersDeviceController {
 	Float3* traj_buffer = nullptr;				// Absolute positions [nm]
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
+
 	const int total_particles_upperbound;
 };
 
@@ -79,7 +82,7 @@ struct DatabuffersDeviceController {
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host, BoxConfig* boxConfig,
+	SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
 	BoxState* boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
@@ -95,17 +98,11 @@ struct SimulationDevice {
 	SolventBlockTransfermodule* transfermodule_array = nullptr;
 
 	const SimParams params;
-	SimSignals* signals;
+	SimSignals* signals = nullptr;
 
 	const BoxConfig boxConfig;
 	BoxState* const boxState;
 	const BoxParams boxparams;
-
-	//const UniformElectricField uniformElectricField;
-
-	//ChargeOctTree* charge_octtree;
-	Electrostatics::ChargeNode* chargeGrid = nullptr;
-	float* chargeGridChargeSums = nullptr;
 
 	// potE should be divided equally between all the particles in the node
 	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [J/mol/nm], float potE [J/mol]}

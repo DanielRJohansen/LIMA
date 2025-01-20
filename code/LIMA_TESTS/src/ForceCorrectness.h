@@ -1,7 +1,6 @@
 #pragma once
 
 #include "TestUtils.h"
-#include "MDStability.cuh"	//Gives access to the testGenericBox
 #include "PhysicsUtils.cuh"
 #include "format"
 
@@ -334,7 +333,74 @@ namespace ForceCorrectness {
 	}
 
 
+	LimaUnittestResult PairbondForceAndPotentialSanityCheck(EnvMode envmode) {
+		const fs::path work_folder = simulations_dir / "Pairbond/";
+		Environment env{ work_folder, envmode };
 
+		SimParams params{ work_folder / "sim_params.txt" };
+		params.n_steps = 1;
+		params.data_logging_interval = 1;
+
+		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+
+		env.CreateSimulation(grofile, topfile, params);
+
+		Box& box_host = *env.getSimPtr()->box_host.get();
+
+		ASSERT(box_host.bondgroups[0].nPairbonds == 1, std::format("Expected sim to contain 1 pairbond, found {}", box_host.bondgroups[0].nPairbonds));
+
+		// Neutralize singlebonds
+		box_host.bondgroups[0].nSinglebonds = 0;
+		ASSERT(box_host.bondgroups[0].nAnglebonds == 0, "Expected 0 anglebonds");
+		box_host.bondgroups[0].nDihedralbonds = 0;
+		ASSERT(box_host.bondgroups[0].nImproperdihedralbonds == 0, "Expected 0 improperdihedralbonds");
+
+
+		// Now calculate expected forces and potential energy
+		const int p0 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[0]].localIdInCompound;
+		const int p1 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[1]].localIdInCompound;
+
+		const Float3 pos0 = box_host.compoundCoordsBuffer[0].rel_positions[p0].ToRelpos();
+		const Float3 pos1 = box_host.compoundCoordsBuffer[0].rel_positions[p1].ToRelpos();
+		const Float3 diff = pos1 - pos0;
+
+		const PairBond::Parameters bondparams = box_host.bondgroups[0].pairbonds[0].params;
+		const float s = std::powf(bondparams.sigma / (diff.len()), 6.f);
+		float force_scalar = 24.f * bondparams.epsilon * s / diff.lenSquared() * (1.f - 2.f * s);
+		const Float3 expectedForce = diff * force_scalar;
+		const float expectedPotential = 4.f * bondparams.epsilon * s * (s - 1.f) * 0.5f;
+
+		env.run();
+		LIMA_UTILS::genericErrorCheck("Error during test");
+
+		// TODO: Also test explicitly if the force should be attractive or repulsive, and that it actually is. This is to make sure the sign is correct
+
+		const auto sim = env.getSim();
+
+		// Fetch the potential energy from the buffer, summing over all three atoms
+		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, p0, 0);
+
+		// Fetch the actual force on the middle atom (atom 1)
+		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[p0];
+
+		ASSERT(expectedForce.len() > 1.f, "Force too small for test to be meaningful");
+		ASSERT(expectedPotential > 1.f, "Potential energy too small for test to be meaningful");
+
+		// Validate force and potential
+		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
+		ASSERT(forceError < 0.0001f, std::format(
+			"Expected force: {:.2e} {:.2e} {:.2e} Actual force: {:.2e} {:.2e} {:.2e} Error: {:.2e}",
+			expectedForce.x, expectedForce.y, expectedForce.z,
+			actualForce.x, actualForce.y, actualForce.z, forceError));
+
+		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
+		ASSERT(potEError < 0.0001f, std::format(
+			"Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2e}",
+			expectedPotential, actualPotE, potEError));
+
+		return LimaUnittestResult{ true, "Success", envmode == Full };
+	}
 
 
 

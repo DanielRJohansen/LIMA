@@ -348,7 +348,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	}
 
 	overwriteParticleIds<>(molecule.singlebonds, map);
-	overwriteParticleIds<>(molecule.pairs, map);
+	overwriteParticleIds<>(molecule.pairbonds, map);
 	overwriteParticleIds<>(molecule.anglebonds, map);
 	overwriteParticleIds<>(molecule.dihedralbonds, map);
 	overwriteParticleIds<>(molecule.improperdihedralbonds, map);
@@ -374,7 +374,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	}
 
 	std::sort(molecule.singlebonds.begin(), molecule.singlebonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
-	std::sort(molecule.pairs.begin(), molecule.pairs.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.pairbonds.begin(), molecule.pairbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(molecule.anglebonds.begin(), molecule.anglebonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(molecule.dihedralbonds.begin(), molecule.dihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(molecule.improperdihedralbonds.begin(), molecule.improperdihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });

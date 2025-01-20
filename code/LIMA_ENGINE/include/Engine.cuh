@@ -1,16 +1,15 @@
 #pragma once
 
+#include "LimaTypes.cuh"
+#include "Simulation.cuh"
+
+#include "Constants.h"
+#include "Utilities.h"
+
 #include <iostream>
 #include <chrono>
 #include <thread>
 #include <memory>
-
-#include "Constants.h"
-#include "LimaTypes.cuh"
-#include "Simulation.cuh"
-#include "Utilities.h"
-
-
 
 
 
@@ -22,9 +21,12 @@ class BoxState;
 class BoxConfig;
 class NeighborList;
 class CompoundGridNode;
-struct CompoundForceEnergyInterims {
-	CompoundForceEnergyInterims(int nCompounds);
-	void Free();
+
+namespace PME { class Controller; };
+
+struct ForceEnergyInterims {
+	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks);
+	void Free() const;
 
 	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
@@ -32,18 +34,15 @@ struct CompoundForceEnergyInterims {
 			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
 	}
 
-	ForceEnergy* forceEnergyFarneighborShortrange;
-	ForceEnergy* forceEnergyImmediateneighborShortrange;
-	ForceEnergy* forceEnergyBonds;
-};
+	// Compounds
+	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyBonds = nullptr;
 
-//const int cbkernel_utilitybuffer_size = sizeof(DihedralBond) * MAX_DIHEDRALBONDS_IN_COMPOUND;
-const int cbkernel_utilitybuffer_size = sizeof(CompoundCoords);
-constexpr int clj_utilitybuffer_bytes = sizeof(CompoundCoords); // TODO: Make obsolete and remove
-static_assert(sizeof(int) * 3 * 3 * 3 <= cbkernel_utilitybuffer_size,
-	"Not enough space for Electrostatics::DistributeChargesToChargegrid local offsets buffer");
-static_assert(sizeof(int) * 3 * 3 * 3 * 2 <= cbkernel_utilitybuffer_size,
-	"Not enough space for Electrostatics::DistributeChargesToChargegrid global offsets buffer");
+	// Tinymol
+	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
+	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
+};
 
 struct EngineTimings {
 	int compound_kernels{};
@@ -107,6 +106,9 @@ private:
 	template <typename BoundaryCondition, bool emvariant, bool computePotE>
 	void _deviceMaster();
 
+	template <typename BoundaryCondition, bool emvariant>
+	void SnfHandler(cudaStream_t& stream);
+
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void setDeviceConstantMemory();
 	void verifyEngine();
@@ -125,29 +127,38 @@ private:
 
 	bool updatenlists_mutexlock = 0;
 
-
+	std::array<cudaStream_t, 5> cudaStreams;
+	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	int testval = 0;
 
 	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
-	std::unique_ptr<Simulation> simulation = nullptr;
+	std::unique_ptr<Simulation> simulation;
 
+	// Owned
 	SimulationDevice* sim_dev = nullptr;
+	// These are owned, but this is temporary place to store them
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
+	ForceEnergy* forceEnergiesPME = nullptr;
+	BondGroup* bondgroups = nullptr;
+	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
-	// These are owned, but this is temporary place to store them
-	ForceEnergy* forceEnergiesBondgroups = nullptr;
-	BondGroup* bondgroups = nullptr;
 
-	CompoundForceEnergyInterims compoundForceEnergyInterims;
 
-	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+
+	std::unique_ptr<PME::Controller> pmeController;
+
+
+	ForceEnergyInterims forceEnergyInterims;
+
 
 	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
 

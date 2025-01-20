@@ -4,6 +4,9 @@
 #include "BoxGrid.cuh"
 #include "KernelConstants.cuh"
 
+#include <cuda_runtime.h>
+
+
 // Half the interaction between two distant set of particles
 struct ForceAndPotential {
 	Float3 forcePart;		// [1/C J/mol/nm] // force = myCharge * forcePart
@@ -36,42 +39,24 @@ struct CompoundGridNode {
 	int n_nearby_compounds = 0;
 };
 
-namespace Electrostatics {
-
-	struct ChargeNode {
-		//static const int maxParticlesInNode = MAX_PARTICLES_IN_BOXGRIDNODE;
-
-		static const int maxParticlesInNode = 256 + 128;
-
-		//float totalCharge = 0.f;
-
-		int nParticles = 0;
-		Float3 positions[maxParticlesInNode];	// [nm]
-		float charges[maxParticlesInNode];	// This could just be a set of uint8 vals referencing a charge index, as we wont have many different charges
-		int compoundIds[maxParticlesInNode];	// We need to know where the charges belong to..
-		int particleIds[maxParticlesInNode];
-	};
-	//constexpr int aaa = sizeof(ChargeNode) * 20 * 20 * 20 / 1000000;
-}
-
 // Extra functions that require access to kernel constants
 namespace BoxGrid {
 
 	// This function assumes the user has used PBC
 	template <typename NodeType>
-	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) {
-		//if (index3d.x >= boxSize_device.boxSizeNM_i || index3d.y >= boxSize_device.boxSizeNM_i 
-		//	|| index3d.z >= boxSize_device.boxSizeNM_i
+	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) { // Dont like this function, it hides using constant mem...
+		//if (index3d.x >= DeviceConstants::boxSize.boxSizeNM_i || index3d.y >= DeviceConstants::boxSize.boxSizeNM_i 
+		//	|| index3d.z >= DeviceConstants::boxSize.boxSizeNM_i
 		//	|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 		//	printf("Bad 3d index for blockptr %d %d %d\n", index3d.x, index3d.y, index3d.z);
 		//	return nullptr;
 		//}
 
-		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize_device.boxSizeNM_i));
+		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, DeviceConstants::boxSize.boxSizeNM_i));
 	}
 
 	__device__ static NodeIndex Get3dIndex(int index1d) {
-		const int bpd = NodesPerDim(boxSize_device.boxSizeNM_i);
+		const int bpd = NodesPerDim(DeviceConstants::boxSize.boxSizeNM_i);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;
 		int y = index1d / bpd;

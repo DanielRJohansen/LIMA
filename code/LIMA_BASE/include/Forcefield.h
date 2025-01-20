@@ -29,6 +29,12 @@ struct SinglebondType : public SingleBond {
 	Parameters params;
 };
 
+struct PairbondType : public PairBond {
+	std::array<std::string, 2> bonded_typenames; // i,j
+	int func{};
+	Parameters params;
+};
+
 struct AnglebondType : public AngleUreyBradleyBond {
 	std::array<std::string, 3> bonded_typenames; // i,j,k
 	int func{};
@@ -81,6 +87,7 @@ private:
 	std::unique_ptr<AtomtypeDatabase> tinymolTypes;
 
 	std::unique_ptr<ParameterDatabase<SinglebondType>> singlebondParameters;
+	std::unique_ptr<ParameterDatabase<PairbondType>> pairbondParameters;
 	std::unique_ptr<ParameterDatabase<AnglebondType>> anglebondParameters;
 	std::unique_ptr<ParameterDatabase<DihedralbondType>> dihedralbondParameters;
 	std::unique_ptr<ParameterDatabase<ImproperDihedralbondType>> improperdihedralbondParameters;

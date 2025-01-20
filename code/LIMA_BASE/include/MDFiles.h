@@ -157,7 +157,7 @@ public:
 	struct AtomsEntry;
 	template <size_t N, typename ParametersType>	struct GenericBond;
 	struct SingleBond;
-	struct Pair;
+	struct PairBond;
 	struct AngleBond;
 	struct DihedralBond;
 	struct ImproperDihedralBond;
@@ -169,7 +169,7 @@ public:
 
 		std::vector<AtomsEntry> atoms;
 		std::vector<SingleBond> singlebonds;
-		std::vector<Pair> pairs;
+		std::vector<PairBond> pairbonds;
 		std::vector<AngleBond> anglebonds;
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
@@ -184,7 +184,7 @@ public:
 		std::vector<T>& GetElements() {
 			if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
 			else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
-			else if constexpr (std::is_same_v<T, Pair>) return pairs;
+			else if constexpr (std::is_same_v<T, PairBond>) return pairbonds;
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
@@ -194,7 +194,7 @@ public:
 		const std::vector<T>& GetElements() const {
 			if constexpr (std::is_same_v<T, AtomsEntry>) return atoms;
 			else if constexpr (std::is_same_v<T, SingleBond>) return singlebonds;
-			else if constexpr (std::is_same_v<T, Pair>) return pairs;
+			else if constexpr (std::is_same_v<T, PairBond>) return pairbonds;
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
@@ -254,6 +254,11 @@ public:
 
 
 	const System& GetSystem() const { 
+		if (!m_system.IsInit())
+			throw std::runtime_error("System not initialized");
+		return m_system;
+	}
+	System& GetSystemMutable() {
 		if (!m_system.IsInit())
 			throw std::runtime_error("System not initialized");
 		return m_system;
@@ -385,7 +390,7 @@ struct TopologyFile::GenericBond{
 	}
 };
 struct TopologyFile::SingleBond : GenericBond<2, Bondtypes::SingleBond::Parameters> {};
-struct TopologyFile::Pair : GenericBond<2, Bondtypes::PairBond::Parameters> {};
+struct TopologyFile::PairBond : GenericBond<2, Bondtypes::PairBond::Parameters> {};
 struct TopologyFile::AngleBond : GenericBond<3, Bondtypes::AngleUreyBradleyBond::Parameters> {};
 struct TopologyFile::DihedralBond : GenericBond<4, Bondtypes::DihedralBond::Parameters> {};
 struct TopologyFile::ImproperDihedralBond : GenericBond<4, Bondtypes::ImproperDihedralBond::Parameters> {};

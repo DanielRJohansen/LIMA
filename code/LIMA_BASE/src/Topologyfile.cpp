@@ -172,20 +172,20 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		break;
 	}
 	case TopologySection::pairs: {
-		TopologyFile::Pair pair{};
+		TopologyFile::PairBond pairbond{};
 		int groIds[2];
-		iss >> groIds[0] >> groIds[1] >> pair.funct;
+		iss >> groIds[0] >> groIds[1] >> pairbond.funct;
 		if (!VerifyAllParticlesInBondExists<2>(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 2; i++)
-			pair.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
+			pairbond.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
 
 		float sigma, epsilon;
 		if (iss >> sigma >> epsilon) {
-			pair.parameters = Bondtypes::PairBond::Parameters::CreateFromCharmm(sigma, epsilon);
+			pairbond.parameters = Bondtypes::PairBond::Parameters::CreateFromCharmm(sigma, epsilon);
 		}
 
-		moleculetype->pairs.emplace_back(pair);
+		moleculetype->pairbonds.emplace_back(pairbond);
 		break;
 	}
 	case TopologySection::angles: {
@@ -667,7 +667,7 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 		file << "[ bonds ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
 		file << composeString(singlebonds);
 		file << "[ pairs ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
-		file << composeString(pairs);
+		file << composeString(pairbonds);
 		file << "[ angles ]\n" << generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) + "\n";
 		file << composeString(anglebonds);
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) + "\n";

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LimaTypes.cuh"
 #include "EngineBodies.cuh"
+#include "LimaTypes.cuh"
 #include "DeviceAlgorithms.cuh"
 #include "BoxGrid.cuh"
 
@@ -32,7 +32,7 @@ namespace SupernaturalForces {
 		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force, float particle_mass) {
 			const float box_padding = 0.5f;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
-			const float boxlenHalfNM = boxSize_device.boxSizeNM_f / 2.f;
+			const float boxlenHalfNM = DeviceConstants::boxSize.boxSizeNM_f / 2.f;
 			const float dist_x = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.x) - boxlenHalfNM + box_padding, 0.f);
 			const float dist_y = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.y) - boxlenHalfNM + box_padding, 0.f);
 
@@ -132,7 +132,7 @@ namespace SupernaturalForces {
 
 		//
 		//if (threadIdx.x < nParticles) {
-		//	const float mass = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		//	const float mass = DeviceConstants::forcefield.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 		//	SupernaturalForces::_applyHorizontalSqueeze(avg_abspos_nm, avg_force_z, force, mass);
 		//	if (isnan(force.len()) || isnan(force.lenSquared()))
 		//		printf("Force is nan squeeze\n");
@@ -141,7 +141,7 @@ namespace SupernaturalForces {
 	}
 	//__device__ void applyHorizontalChargefield(Float3 posNM, Float3& force, float particleCharge) {
 	//	PeriodicBoundaryCondition::applyBCNM(posNM);	// TODO: Use generic BC
-	//	const float distFromMidPlane = posNM.x - (boxSize_device.boxSizeNM_f / 2.f);
+	//	const float distFromMidPlane = posNM.x - (DeviceConstants::boxSize.boxSizeNM_f / 2.f);
 
 	//	const float dir = distFromMidPlane / std::abs(distFromMidPlane);
 	//	const float forceApplied = particleCharge * dir * KILO * KILO * 1000.f;
@@ -155,7 +155,7 @@ namespace SupernaturalForces {
 
 
 	Float3 __device__ BoxEdgeForce(const Float3& positionNM) {
-		const Float3 boxSize{ boxSize_device.boxSizeNM_f };
+		const Float3 boxSize{ DeviceConstants::boxSize.boxSizeNM_f };
 		Float3 force{};
 		const float scalar = 20.f;
 		force.x += std::exp(scalar * (0.f - positionNM.x) - 2.f);
@@ -174,7 +174,7 @@ namespace SupernaturalForces {
 		//const Float3 relposLM = LIMAPOSITIONSYSTEM::LoadRelposLmAndOrigo(coords, origo);
 		//__syncthreads();
 		//const Float3 positionNM = relposLM * LIMA_TO_NANO + origo;
-		//const float massFactor = forcefield_device.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
+		//const float massFactor = DeviceConstants::forcefield.particle_parameters[simDev->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x]].mass;
 
 		//const Float3 force = BoxEdgeForce(positionNM) * massFactor;
 
@@ -208,25 +208,4 @@ namespace SupernaturalForces {
 
 
 
-	void SnfHandler(Simulation* simulation, SimulationDevice* simDev, int64_t step) {
-		cudaDeviceSynchronize();
-
-
-		switch (simulation->simparams_host.snf_select) {
-			case None:
-				break;
-			case HorizontalSqueeze:
-				SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);
-				break;
-			case HorizontalChargeField:
-				break;
-			case BoxEdgePotential:
-				if (simulation->box_host->boxparams.n_compounds > 0)
-					BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, THREADS_PER_COMPOUNDBLOCK >> > (simDev, step);	
-				if (simulation->box_host->boxparams.n_solvents > 0) 
-					BoxEdgeForceSolvents<<< BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK>>>(simDev, step);
-				break;
-		}		
-		cudaDeviceSynchronize();
-	}
 }

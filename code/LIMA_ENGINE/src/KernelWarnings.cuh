@@ -6,12 +6,13 @@
 
 #pragma once
 
-#include <iostream>
 
-#include "Constants.h"
 #include "Bodies.cuh"
 #include "EngineBodies.cuh"
 
+#include "Constants.h"
+
+#include <iostream>
 
 
 

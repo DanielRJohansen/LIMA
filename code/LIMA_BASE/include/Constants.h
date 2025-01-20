@@ -6,7 +6,7 @@
 
 
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
-// sim with no impropers has this effect. It is very wierd, and i fear i have some undefined behavior
+// sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
 // somewhere in the code
 //#define LIMASAFEMODE
 //#define LIMAPUSH
@@ -21,30 +21,25 @@ const bool LIMA_PUSH = true;
 #define ENABLE_INTEGRATEPOSITION
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+
+const bool ENABLE_ERFC_FOR_EWALD = true;
 
 const bool ENABLE_UREYBRADLEY = true;
 
+const bool USE_PRECOMPUTED_BSPLINES = false;
+const bool USE_PRECOMPUTED_ERFCSCALARS = false;
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE
 //#define DONTGENDATA
 
-constexpr float PI = 3.14159f;
 
 
 
 
 
 // -------------------------------------------- Physics Parameters ---------------------------------------------- //
-const int RAMPUP_STEPS = 0;					// Set to 0 to disable
-constexpr float RAMPUP_MOMENTUM_SCALAR = 0.2f;
-constexpr float MAX_RAMPUP_DIST = 0.0001f;	// [nm] how far any particle is max allowed to move during ramp-up
-
-constexpr float VEL_RMS_SCALAR = 0.f;		// Set to 0 to freeze solvents
-
-
-
 constexpr float KILO = 1000.f;
 constexpr double GIGA = 1e9;
 constexpr double NANO = 1e-9;
@@ -53,12 +48,11 @@ constexpr double FEMTO = 1e-15;
 constexpr double NANO_TO_FEMTO = 1e6;
 constexpr double FEMTO_TO_NANO = 1e-6;
 
-
+constexpr float PI = 3.14159f;
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;
 const float rminToSigma = 1.f / powf(2.f, (1.f / 6.f));
-
 
 const float DEG_TO_RAD = PI / 180.f;
 
@@ -66,7 +60,7 @@ const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some othe
 
 constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
-constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [N m^2 / C^2]
+constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [n*m^2/C^2] == [ J*m / C^2]
 constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
 
 constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGADROSNUMBER / KILO;
@@ -94,40 +88,11 @@ const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
 // If we go larger, a single compound can stretch over 2 nm!
-//constexpr int MAX_COMPOUND_PARTICLES = IGNORE_HYDROGEN ? 48 : 64;
 constexpr int MAX_COMPOUND_PARTICLES = 32;
 const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
 
 const int NEIGHBORLIST_MAX_COMPOUNDS = 512;	// TODO: We need to work on getting this number down!
-//const int NEIGHBORLIST_MAX_SOLVENTS = 6144;
 
 const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
 
-
-// Related to compound bridges
-const int MAX_COMPOUNDBRIDGES = MAX_COMPOUNDS;	// Wtf is this param?
-const int MAX_PARTICLES_IN_BRIDGE = 32+16;	// Limited to 255 by getBridgelocalIdOfParticle, since id 255 is invalid
-const int MAX_SINGLEBONDS_IN_BRIDGE = 8;
-const int MAX_ANGLEBONDS_IN_BRIDGE = 16;
-const int MAX_DIHEDRALBONDS_IN_BRIDGE = 64 + 16 + 16;
-const int MAX_IMPROPERDIHEDRALBONDS_IN_BRIDGE = 4;
-const int MAX_COMPOUNDS_IN_BRIDGE = 4;	// Some bridges span more than 2 compounds, for example the loop between beta plates
-
 const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift
-
-
-
-
-
-
-
-
-// -------------------------------------------- Kernel Parameters ----------------------------------------------- //
-const int THREADS_PER_COMPOUNDBLOCK = MAX_COMPOUND_PARTICLES;
-// -------------------------------------------------------------------------------------------------------------- //
-
-
-// -------------------------------------------- Neighborlist Parameters ----------------------------------------- //
-const int STEPS_PER_NLIST_UPDATE = 5;
-const bool ALLOW_ASYNC_NLISTUPDATE = true;
-// -------------------------------------------------------------------------------------------------------------- //

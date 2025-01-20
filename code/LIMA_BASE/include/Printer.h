@@ -3,8 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-
-
+#include <span>
+#include <optional>
 
 using string = std::string;
 
@@ -34,7 +34,7 @@ namespace LIMA_Print {
 		std::cout << "]\n";
 	}
 
-	static void plotEnergies(const std::vector<float>& potE, const std::vector<float>& kinE, const std::vector<float>& totE) {
+	static void plotEnergies(const std::span<float>& potE, const std::span<float>& kinE, const std::span<float>& totE) {
 		// Check if vectors have the same length
 		if (potE.size() != kinE.size() || kinE.size() != totE.size()) {
 			std::cerr << "Error: Vectors must have the same length." << std::endl;

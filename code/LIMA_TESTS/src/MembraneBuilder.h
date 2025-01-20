@@ -34,7 +34,7 @@ namespace TestMembraneBuilder {
 
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::Pair>(), refTop.GetAllElements<TopologyFile::Pair>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology Atom Mismatch");

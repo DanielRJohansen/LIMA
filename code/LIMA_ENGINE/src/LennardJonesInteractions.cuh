@@ -165,41 +165,49 @@ namespace LJ {
 	__device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, const uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, const int neighbor_n_particles, const uint8_t* const atom_types, const ForceField_NB& forcefield, 
         const float chargeSelf, const float* const chargeNeighbors,
-        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams, int& util)
+        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams, 
+		ForceEnergy* const othersForceenergySharedbuffer, int nParticles)
 	{
 		Float3 force(0.f);
-		Float3 electrostaticForce{};
-		float electrostaticPotential{};
-		//int hits = 0;
+		/*Float3 electrostaticForce{};
+		float electrostaticPotential{};*/
 
-		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
-			
-            const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
-            const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-				//hits++;
-                //const NonbondedInteractionParams params = DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
-				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-                    (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
-                    __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
-                    /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
-                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
-                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
-                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
-                    //params.sigma, params.epsilon,
-					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
-					CalcLJOrigin::ComComInter
-					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
-				);
+		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {			
+			const int neighborparticle_id = (i + threadIdx.x) % MAX_COMPOUND_PARTICLES;
+			if (neighborparticle_id < neighbor_n_particles && threadIdx.x < nParticles) {
 
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
-				if constexpr (computePotE && ENABLE_POTE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
+				const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
+				const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+
+				if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
+					float potE = 0.f;
+					Float3 ljforce = calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE,
+						(myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
+						__fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
+						CalcLJOrigin::ComComInter
+					) * 24.f;
+
+
+
+					const Float3 electrostaticForce = PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff) * PhysicsUtilsDevice::modifiedCoulombConstant;
+					float electrostaticPotential = 0.f;
+					if constexpr (computePotE && ENABLE_POTE)
+						electrostaticPotential = PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+
+					othersForceenergySharedbuffer[neighborparticle_id].force += -(ljforce + electrostaticForce);
+					othersForceenergySharedbuffer[neighborparticle_id].potE += potE + electrostaticPotential;
+
+					force += ljforce + electrostaticForce;
+					potE_sum += potE + electrostaticPotential;
+				}
 			}
+
+			__syncthreads(); // Needed to avoid multiple threads writing to the same position in the otherForceenergySharedbuffer at once
 		}		
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		//potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		//return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		return force;
 	}
 
 	// Specific to solvent kernel	

@@ -167,6 +167,11 @@ private:
 	std::unique_ptr<Thermostat> thermostat;
 
 	const BoundaryConditionSelect bc_select;
+
+	// TODO: Find a suitable place for these
+	int* indicesToFetchNeighborInteractions = nullptr;
+	ForceEnergy* forceEnergiesNeighborInteractionsStorage = nullptr; //intermittent
+
 };
 
  

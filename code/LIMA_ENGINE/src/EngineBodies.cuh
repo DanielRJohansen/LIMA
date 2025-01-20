@@ -114,7 +114,11 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 
-
+namespace ComputeNeighborsInteractions {
+	constexpr bool DoCompute(int myId, int otherId) {
+		return (((myId + otherId) & 1) != 0) ? (myId > otherId) : (myId < otherId);
+	}
+}
 
 
 

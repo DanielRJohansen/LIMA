@@ -46,7 +46,8 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
-	bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams) {
+	bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams,
+	int* const indicesToFetchNeighborInteractions, ForceEnergy* const neighborInteractions) {
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm] // TODO: maybe only keep these in register mem    
     __shared__ uint8_t atomTypes[MAX_COMPOUND_PARTICLES];
 
@@ -87,19 +88,23 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 	
 	ForceField_NB::ParticleParameters myParams = ljParams[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 	__shared__ ForceField_NB::ParticleParameters neighborLjParams[MAX_COMPOUND_PARTICLES];
-	__shared__ int util;
-	
+	__shared__ ForceEnergy neighborsForceenergySharedbuffer[MAX_COMPOUND_PARTICLES];
+	__shared__ int nNeighborsWeComputed;
+
+	if (threadIdx.x == 0)
+		nNeighborsWeComputed = 0;
+	for (int i = 0; i < NEIGHBORLIST_MAX_COMPOUNDS; i+=blockDim.x)
+		indicesToFetchNeighborInteractions[blockIdx.x * NEIGHBORLIST_MAX_COMPOUNDS + i + threadIdx.x] = -1;
+
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
-		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
-			util = 0;
 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (indexInBatch == batchsize) {
-				if (threadIdx.x < batchsize && threadIdx.x + i < nNonbondedCompoundNeighbors) {
+				if (threadIdx.x < batchsize && threadIdx.x + i < nNonbondedCompoundNeighbors) { // TODO: Superfluous comparison
 					neighborIds[threadIdx.x] = compoundNeighborlists[blockIdx.x].nonbondedNeighborcompoundIds[i + threadIdx.x];
 
 					const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);
@@ -113,10 +118,20 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 				indexInBatch = 0;
 				__syncthreads();
 			}
+			
+			const bool doCompute = ComputeNeighborsInteractions::DoCompute(blockIdx.x, neighborIds[indexInBatch]);
+
+			if (!doCompute) {
+				indexInBatch++;
+				continue; // We let the other block compute our interactions, and fetch that result in the next kernel
+			}
+
+			// Prepare to also computer our query's interactions
+			neighborsForceenergySharedbuffer[threadIdx.x] = {};
+
 
 			const int currentNeighborNParticles = neighborNParticles[indexInBatch];
 			if (threadIdx.x < currentNeighborNParticles) {
-				// Load first element in batch and sync
 				const int currentNeighborId = neighborIds[indexInBatch];
 
 				neighborAtomstypes[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
@@ -126,13 +141,19 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 			}
 			__syncthreads();
 
-            if (threadIdx.x < nParticles) {
-                force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
-					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, myParams, neighborLjParams, util);
-			}
+            
+			force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
+				neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, myParams, neighborLjParams, neighborsForceenergySharedbuffer, nParticles);
+			
+
+
+			__syncthreads(); // Todo: We probably just need Neighborlist_max / 2 + a margin
+			neighborInteractions[blockIdx.x * NEIGHBORLIST_MAX_COMPOUNDS * MAX_COMPOUND_PARTICLES + nNeighborsWeComputed * MAX_COMPOUND_PARTICLES + threadIdx.x] = neighborsForceenergySharedbuffer[threadIdx.x];
+			__syncthreads();
 
 			if (threadIdx.x == 0) {
-                //printf("Hitrate %f\n", static_cast<float>(util) / (MAX_COMPOUND_PARTICLES * MAX_COMPOUND_PARTICLES));
+				indicesToFetchNeighborInteractions[blockIdx.x * NEIGHBORLIST_MAX_COMPOUNDS + nNeighborsWeComputed] = neighborIds[indexInBatch];
+				nNeighborsWeComputed++;
 			}
 
 			indexInBatch++;
@@ -145,6 +166,53 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 	}
 }
 
+__global__ void ReadInteractionComputedByNeighbor(const NeighborList* const compoundNeighborlists, const int* const indicesToFetchNeighborInteractions, 
+	const ForceEnergy* const neighborInteractions, ForceEnergy* const forceEnergies) {
+	const int batchsize = 32;
+	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
+	__shared__ int neighborIds[batchsize];
+	const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
+
+
+	ForceEnergy myForceenergy{};
+
+	__shared__ int indexOfResult;
+
+	int indexInBatch = batchsize;
+	for (int indexInNeighborlist = 0; indexInNeighborlist < nNonbondedCompoundNeighbors; indexInNeighborlist++) {
+		__syncthreads();
+		static_assert(MAX_COMPOUND_PARTICLES >= batchsize, "Wrong size");
+		// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
+		if (indexInBatch == batchsize) {
+			if (threadIdx.x < batchsize && threadIdx.x + indexInNeighborlist < nNonbondedCompoundNeighbors) {
+				neighborIds[threadIdx.x] = compoundNeighborlists[blockIdx.x].nonbondedNeighborcompoundIds[indexInNeighborlist + threadIdx.x];
+			}
+
+			indexInBatch = 0;
+			__syncthreads();
+		}
+
+		const int neighborId = neighborIds[indexInBatch];
+		const bool doRead = !ComputeNeighborsInteractions::DoCompute(blockIdx.x, neighborId);
+		if (!doRead) {
+			indexInBatch++;
+			continue;
+		}
+
+		for (int i = threadIdx.x; i < NEIGHBORLIST_MAX_COMPOUNDS; i += blockDim.x) {
+			const int queryIndex = neighborId * NEIGHBORLIST_MAX_COMPOUNDS + i;
+			if (indicesToFetchNeighborInteractions[queryIndex] == blockIdx.x) {
+				indexOfResult = queryIndex;
+				break;
+			}
+		}
+		__syncthreads();
+
+		myForceenergy += neighborInteractions[indexOfResult * MAX_COMPOUND_PARTICLES + threadIdx.x];
+		indexInBatch++;
+	}
+	forceEnergies[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] += myForceenergy;
+}
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step

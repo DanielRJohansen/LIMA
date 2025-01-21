@@ -67,10 +67,8 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 
 
-
-	cudaMalloc(&indicesToFetchNeighborInteractions, sizeof(int) * NEIGHBORLIST_MAX_COMPOUNDS * simulation->box_host->boxparams.n_compounds);
-	cudaMalloc(&forceEnergiesNeighborInteractionsStorage, sizeof(ForceEnergy) * NEIGHBORLIST_MAX_COMPOUNDS * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
-	const size_t max_bytesize = sizeof(ForceEnergy) * NEIGHBORLIST_MAX_COMPOUNDS * 20000 * MAX_COMPOUND_PARTICLES/1000000;
+	cudaMalloc(&forceEnergiesNeighborInteractionsStorage, sizeof(ForceEnergy) * NeighborList::maxCompounds * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
+	const size_t max_bytesize = sizeof(ForceEnergy) * NeighborList::maxCompounds * 20000 * MAX_COMPOUND_PARTICLES/1000000;
 
 
 
@@ -96,7 +94,6 @@ Engine::~Engine() {
 	cudaFree(forceEnergiesBondgroups);
 	cudaFree(bondgroups);
 
-	cudaFree(indicesToFetchNeighborInteractions);
 	cudaFree(forceEnergiesNeighborInteractionsStorage);
 
 	for (cudaStream_t& stream : cudaStreams) {
@@ -313,11 +310,11 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
-				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters, indicesToFetchNeighborInteractions, forceEnergiesNeighborInteractionsStorage);
+				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters, forceEnergiesNeighborInteractionsStorage);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		ReadInteractionComputedByNeighbor << <boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(neighborlistsPtr, indicesToFetchNeighborInteractions, forceEnergiesNeighborInteractionsStorage, forceEnergyInterims.forceEnergyFarneighborShortrange);
+			(neighborlistsPtr, forceEnergiesNeighborInteractionsStorage, forceEnergyInterims.forceEnergyFarneighborShortrange);
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 

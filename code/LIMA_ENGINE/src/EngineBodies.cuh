@@ -128,19 +128,39 @@ namespace ComputeNeighborsInteractions {
 
 class NeighborList {
 public:
-	__device__ __host__ bool addCompound(uint16_t new_id) {
-		if (nNonbondedNeighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
-			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-			return false;
-			//throw std::runtime_error("Neighborlist overflow");
+	static const int maxCompounds = 256;
+
+	__device__ __host__ bool addCompound(int targetId, int myId) {
+
+		if (ComputeNeighborsInteractions::DoCompute(myId, targetId)) {
+			if constexpr (!LIMA_PUSH) {
+				if (nNonbondedNeighborsToCompute >= maxCompounds) {
+					printf("Failed to add compound to neighborlist\n");
+					return false;
+				}
+			}
+			nonbondedNeighborcompoundIdsToCompute[nNonbondedNeighborsToCompute++] = static_cast<uint16_t>(targetId);
 		}
-		nonbondedNeighborcompoundIds[nNonbondedNeighbors++] = new_id;
+		else {
+			if constexpr (!LIMA_PUSH) {
+				if (nNonbondedNeighborsToRead >= maxCompounds) {
+					printf("Failed to add compound to neighborlist\n");
+					return false;
+				}
+			}
+			// So we cant figure out the index yet, so we just store the ID for now. A subsequent kernel must convert the
+			// compoundId to an index in the buffer
+			nonbondedNeighborcompoundIdsToRead_AbsIndexInForceenergyBufferOfParticle0[nNonbondedNeighborsToRead++] = targetId;
+		}
+
 		return true;
 	}
 
 	static_assert(MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-	uint16_t nonbondedNeighborcompoundIds[NEIGHBORLIST_MAX_COMPOUNDS];
-	int nNonbondedNeighbors = 0;
+	uint16_t nonbondedNeighborcompoundIdsToCompute[maxCompounds];
+	int nonbondedNeighborcompoundIdsToRead_AbsIndexInForceenergyBufferOfParticle0[maxCompounds];
+	int nNonbondedNeighborsToCompute = 0;
+	int nNonbondedNeighborsToRead = 0;
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured

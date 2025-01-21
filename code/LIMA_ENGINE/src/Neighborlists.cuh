@@ -9,42 +9,6 @@
 #include <chrono>
 
 
-template <typename BoundaryCondition>
-__global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev);
-
-template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(SimulationDevice* sim_dev);
-
-
-namespace NeighborLists {
-	void updateNlists(SimulationDevice*, int64_t step, BoundaryConditionSelect, const BoxParams&, int& timing);
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Assumes the compound is active
 template <typename BoundaryCondition>
@@ -59,7 +23,6 @@ __device__ void getCompoundAbspositions(SimulationDevice& sim_dev, int compound_
 		result[i] = abspos;
 	}
 }
-template __device__ void getCompoundAbspositions<PeriodicBoundaryCondition>(SimulationDevice& sim_dev, int compound_id, Float3* result, int64_t);
 
 template <typename BoundaryCondition>
 __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, const CompoundInteractionBoundary& right, const Float3* const positionsLeft, const Float3* const positionsRight)
@@ -101,7 +64,6 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 	const CompoundInteractionBoundary* const boundaries_others,
 	int n_bonded_compounds, const int* const bonded_compound_ids)
 {
-	// Now add all compounds nearby we are NOT bonded to. (They were added before this)
 	for (int i = 0; i < blockDim.x; i++) {
 		const int query_compound_id = offset + i;
 
@@ -122,14 +84,12 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
 		if (canCompoundsInteract<BoundaryCondition>(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
 		{
-			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id)))
+			if (!nlist.addCompound(query_compound_id, compound_id))
 				return false;
 		}
 	}
 	return true;
 }
-template __device__ bool addAllNearbyCompounds<PeriodicBoundaryCondition>(const SimulationDevice&, NeighborList&, const Float3* const, const Float3* const, int, int, int, const CompoundInteractionBoundary&,
-	const CompoundInteractionBoundary* const, int, const int* const);
 
 
 
@@ -165,6 +125,9 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
 
+	nlist.nNonbondedNeighborsToCompute = 0;
+	nlist.nNonbondedNeighborsToRead = 0;
+
 	// Loop over all compounds and add all nearbys
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
 		// All threads help load a batch of compound_positions
@@ -186,6 +149,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 			}
 		}
 	}
+
 
 #ifdef ENABLE_SOLVENTS
 	// Loop over the nearby gridnodes, and add them if they're within range
@@ -227,9 +191,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 		sim_dev->compound_neighborlists[compound_id] = nlist;
 	}
 }
-template __global__ void updateCompoundNlistsKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
-template __global__ void updateCompoundNlistsKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
-
 
 
 const int nthreads_in_blockgridkernel = 128;
@@ -283,35 +244,70 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, int64_t step)
 		gridnode_global->loadData(gridnode);
 	}
 }
-template __global__ void updateBlockgridKernel<PeriodicBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
-template __global__ void updateBlockgridKernel<NoBoundaryCondition>(SimulationDevice* sim_dev, int64_t step);
 
+// One block per compound
+__global__ void ConvertCompoundIdToReadIntoIndexInTheForceenergyBuffer(SimulationDevice* const simDev) {
+	NeighborList* const myNlist = &simDev->compound_neighborlists[blockIdx.x];
 
+	__shared__ int found;
 
+	for (int i = 0; i < myNlist->nNonbondedNeighborsToRead; i++) {
+		const int queryCompoundId = myNlist->nonbondedNeighborcompoundIdsToRead_AbsIndexInForceenergyBufferOfParticle0[i];
+		const NeighborList* const queryNeighborlist = &simDev->compound_neighborlists[queryCompoundId];
+		found = 0;
+		__syncthreads();
 
+		for (int indexInTargetsResponsibility = threadIdx.x; indexInTargetsResponsibility < queryNeighborlist->nNonbondedNeighborsToCompute; indexInTargetsResponsibility += blockDim.x) {
+			const int idAtIndex = queryNeighborlist->nonbondedNeighborcompoundIdsToCompute[indexInTargetsResponsibility];
 
+			if (idAtIndex == blockIdx.x) {
+				const int indexInForceEnergyBuffer = queryCompoundId * NeighborList::maxCompounds * MAX_COMPOUND_PARTICLES + indexInTargetsResponsibility * MAX_COMPOUND_PARTICLES;
+				myNlist->nonbondedNeighborcompoundIdsToRead_AbsIndexInForceenergyBufferOfParticle0[i] = indexInForceEnergyBuffer;
 
-void NeighborLists::updateNlists(SimulationDevice* sim_dev, int64_t step, BoundaryConditionSelect bc_select, const BoxParams& boxparams, int& timing)
-{
-	const auto t0 = std::chrono::high_resolution_clock::now();
+				if constexpr (!LIMA_PUSH) {
+					atomicAdd(&found, 1);
+				}
+			}
+		}
 
-	// Technically we could only run if > 1, buuut running with any compounds lets us spot bugs easier.
-	if (boxparams.n_compounds > 0) {
-		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
-		LAUNCH_GENERIC_KERNEL(updateCompoundNlistsKernel, n_blocks, threads_in_compoundnlist_kernel, bc_select, sim_dev, step);
+		if constexpr (!LIMA_PUSH) {
+			__syncthreads();
+			if (threadIdx.x == 0 && found != 1)
+				printf("NList failed to find readindex from responsible compound");
+			__syncthreads();
+		}
+
 	}
+}
 
-	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
-	//LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
 
-	if (boxparams.n_solvents > 0) {
-		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
-		LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev, step);
+
+namespace NeighborLists {
+	// OPTIM: use stream(s) on this function
+	void updateNlists(SimulationDevice* sim_dev, int64_t step, BoundaryConditionSelect bc_select, const BoxParams& boxparams, int& timing)
+	{
+		const auto t0 = std::chrono::high_resolution_clock::now();
+
+		// Technically we could only run if > 1, buuut running with any compounds lets us spot bugs easier.
+		if (boxparams.n_compounds > 0) {
+			const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
+			LAUNCH_GENERIC_KERNEL(updateCompoundNlistsKernel, n_blocks, threads_in_compoundnlist_kernel, bc_select, sim_dev, step);
+		}
+
+		cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
+		if (boxparams.n_compounds > 0) {
+			ConvertCompoundIdToReadIntoIndexInTheForceenergyBuffer << <boxparams.n_compounds, 64 >> > (sim_dev);
+			LIMA_UTILS::genericErrorCheckNoSync("Error during ConvertCompoundIdToReadIntoIndexInTheForceenergyBuffer");
+		}
+
+		if (boxparams.n_solvents > 0) {
+			const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
+			LAUNCH_GENERIC_KERNEL(updateBlockgridKernel, n_blocks, nthreads_in_blockgridkernel, bc_select, sim_dev, step);
+		}
+		LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
+
+
+		const auto t1 = std::chrono::high_resolution_clock::now();
+		timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 	}
-
-	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
-
-
-	const auto t1 = std::chrono::high_resolution_clock::now();
-	timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 }

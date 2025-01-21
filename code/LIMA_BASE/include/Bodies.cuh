@@ -184,7 +184,7 @@ struct TinyMolState {
 
 // Instead of having a single key_particle and an single radius, we now have multiple
 struct CompoundInteractionBoundary {
-	static const int k = 2;
+	static const int k = 2; // OPTIM: play around with this number
 
 	float radii[k];	// [nm]
 	int key_particle_indices[k];

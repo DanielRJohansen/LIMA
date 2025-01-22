@@ -204,7 +204,7 @@ namespace LJ {
 
 	// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum,
+	__device__ Float3 computeSolventToSolventLJForces(const Float3 relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum,
 		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {
 		Float3 force{};
 

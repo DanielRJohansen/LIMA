@@ -46,36 +46,29 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
-	bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams) {
-	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm] // TODO: maybe only keep these in register mem    
-    __shared__ uint8_t atomTypes[MAX_COMPOUND_PARTICLES];
-
+    bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams)
+{
+	__shared__ Float3 neighborPositions[MAX_COMPOUND_PARTICLES];
+    __shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm] // TODO: maybe only keep these in register mem
+	__shared__ float neighborParticlescharges[MAX_COMPOUND_PARTICLES];
+    __shared__ NodeIndex compoundOrigo;
     const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
     const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
-
-	__shared__ Float3 neighborPositions[MAX_COMPOUND_PARTICLES];
-
-	__shared__ float neighborParticlescharges[MAX_COMPOUND_PARTICLES];
-
-	__shared__ ForceField_NB forcefield_shared;
-	__shared__ uint8_t neighborAtomstypes[MAX_COMPOUND_PARTICLES];
-
-    const NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x];
+    //const NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x];
+    if (threadIdx.x == 0)
+        compoundOrigo = boxState.compoundOrigos[blockIdx.x];
 
 	float potE_sum{};
 	Float3 force{};
-	//NodeIndex compound_origo{}; // TODO: Figure out why TF everything breaks if i make this __shared__???????
+
 	const float particleCharge = enableES	// TODO: this is temporary
 	? static_cast<float>(boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x])
 	: 0.f;
 
-    atomTypes[threadIdx.x] = boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
-	{
-		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, compound_positions, &boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
-		cooperative_groups::memcpy_async(block, &forcefield_shared, &DeviceConstants::forcefield, sizeof(ForceField_NB));
-		cooperative_groups::wait(block);
-	}
+    {
+        auto block = cooperative_groups::this_thread_block();
+        cooperative_groups::memcpy_async(block, compound_positions, &boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
+    }
 
 
 
@@ -87,7 +80,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 	
 	ForceField_NB::ParticleParameters myParams = ljParams[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 	__shared__ ForceField_NB::ParticleParameters neighborLjParams[MAX_COMPOUND_PARTICLES];
-	__shared__ int util;
 	
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
@@ -95,7 +87,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
 			__syncthreads();
-			util = 0;
 			static_assert(MAX_COMPOUND_PARTICLES >= batchsize);
 			// First check if we need to load a new batch of relshifts & n_particles for the coming 32 compounds
 			if (indexInBatch == batchsize) {
@@ -119,7 +110,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 				// Load first element in batch and sync
 				const int currentNeighborId = neighborIds[indexInBatch];
 
-				neighborAtomstypes[threadIdx.x] = boxConfig.compoundsAtomtypes[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 				neighborParticlescharges[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 				neighborPositions[threadIdx.x] = boxState.compoundsRelposNm[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[indexInBatch];
 				neighborLjParams[threadIdx.x] = ljParams[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
@@ -127,12 +117,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 			__syncthreads();
 
             if (threadIdx.x < nParticles) {
-                force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], atomTypes[threadIdx.x], potE_sum,
-					neighborPositions, neighborNParticles[indexInBatch], neighborAtomstypes, forcefield_shared, particleCharge, neighborParticlescharges, myParams, neighborLjParams, util);
-			}
-
-			if (threadIdx.x == 0) {
-                //printf("Hitrate %f\n", static_cast<float>(util) / (MAX_COMPOUND_PARTICLES * MAX_COMPOUND_PARTICLES));
+                force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], potE_sum,
+                    neighborPositions, neighborNParticles[indexInBatch], particleCharge, neighborParticlescharges, myParams, neighborLjParams);
 			}
 
 			indexInBatch++;

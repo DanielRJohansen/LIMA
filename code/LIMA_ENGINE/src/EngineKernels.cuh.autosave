@@ -107,18 +107,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 				__syncthreads();
 			}
 
-			const int currentNeighborNParticles = neighborNParticles[indexInBatch];
+
             const int currentNeighborId = neighborIds[indexInBatch];
 
             cooperative_groups::memcpy_async(block, neighborPositions, &boxState.compoundsRelposNm[currentNeighborId * MAX_COMPOUND_PARTICLES], sizeof(Float3) * MAX_COMPOUND_PARTICLES);
             cooperative_groups::memcpy_async(block, neighborParticlescharges, &boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES], sizeof(float) * MAX_COMPOUND_PARTICLES);
             cooperative_groups::memcpy_async(block, neighborLjParams, &ljParams[currentNeighborId * MAX_COMPOUND_PARTICLES], sizeof(ForceField_NB::ParticleParameters) * MAX_COMPOUND_PARTICLES);
-            //if (threadIdx.x < currentNeighborNParticles) {
-            //	neighborParticlescharges[threadIdx.x] = boxConfig.compoundsAtomCharges[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
-            //	neighborLjParams[threadIdx.x] = ljParams[currentNeighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
-            //}
             cooperative_groups::wait(block);
-            //__syncthreads();
 
             if (threadIdx.x < nParticles) {
                 force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x] - relshifts[indexInBatch], potE_sum,
@@ -508,9 +503,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 	__shared__ int nElementsInBlock;
-
-	// Doubles as block_index_3d!
-	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
 
 	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 

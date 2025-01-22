@@ -66,9 +66,17 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * simulation->box_host->bondgroups.size() * BondGroup::maxParticles);
 
 
-
-
-
+	std::vector<CompoundQuickData> compoundQuickDataHost(simulation->box_host->boxparams.n_compounds, CompoundQuickData{});
+	for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
+		const Compound& compound = simulation->box_host->compounds[cid];
+		CompoundQuickData& quickData = compoundQuickDataHost[cid];
+		for (int pid = 0; pid < compound.n_particles; pid++) {
+			quickData.relPos[pid] = simulation->box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
+			quickData.ljParams[pid] = simulation->forcefield.particle_parameters[compound.atom_types[pid]];
+			quickData.charges[pid] = compound.atom_charges[pid];
+		}
+	}
+	compoundQuickData = GenericCopyToDevice(compoundQuickDataHost);
 
 	auto boxparams = simulation->box_host->boxparams;
 	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
@@ -311,7 +319,7 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
-				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters);
+				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters, compoundQuickData);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -356,7 +364,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, forceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME);
+			(sim_dev, step, forceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME, compoundQuickData);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 

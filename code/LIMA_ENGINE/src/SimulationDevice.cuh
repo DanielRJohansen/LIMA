@@ -42,6 +42,14 @@ struct AdamState {
 	Float3 secondMoment;
 };
 
+
+struct alignas(128) CompoundQuickData {
+	Float3 relPos[MAX_COMPOUND_PARTICLES];
+	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
+	float charges[MAX_COMPOUND_PARTICLES];
+};
+
+
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
 	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);

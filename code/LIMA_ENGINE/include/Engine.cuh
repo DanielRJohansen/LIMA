@@ -21,6 +21,7 @@ class BoxState;
 class BoxConfig;
 class NeighborList;
 class CompoundGridNode;
+struct CompoundQuickData;
 
 namespace PME { class Controller; };
 
@@ -167,6 +168,8 @@ private:
 	std::unique_ptr<Thermostat> thermostat;
 
 	const BoundaryConditionSelect bc_select;
+
+	CompoundQuickData* compoundQuickData = nullptr;
 };
 
  

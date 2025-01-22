@@ -302,6 +302,11 @@ void Engine::_deviceMaster() {
 	// #### Initial round of force computations
 	cudaDeviceSynchronize();
 
+    if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+        pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
+        LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
+    }
+
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
@@ -329,10 +334,7 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 	}
 	
-	if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-		pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
-	}
+
 
 	if (simulation->simparams_host.snf_select != None) {
 		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);

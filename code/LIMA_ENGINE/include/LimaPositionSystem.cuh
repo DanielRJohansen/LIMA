@@ -244,4 +244,8 @@ public:
 		const NodeIndex origo_shift = from - to;
 		return Coord{ origo_shift };
 	}
+    __device__ static constexpr Float3 getRelShiftFromOrigoShiftFloat3(const NodeIndex& from, const NodeIndex& to) {
+        return NodeIndex{from-to}.toFloat3();
+    }
+
 };

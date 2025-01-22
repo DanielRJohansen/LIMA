@@ -123,7 +123,7 @@ struct Float3 {
 	}
 	constexpr Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	constexpr Float3 square() const { return Float3(x * x, y * y, z * z); }
-	__host__ __device__ inline float len() const { return std::sqrtf(x * x + y * y + z * z); }
+    __host__ __device__ inline float len() const { return std::sqrt(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
@@ -131,7 +131,7 @@ struct Float3 {
 	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
 
 
-	constexpr Float3 Floor() const { return Float3(std::floorf(x), std::floorf(y), std::floorf(z));}
+    constexpr Float3 Floor() const { return Float3(std::floor(x), std::floor(y), std::floor(z));}
 
 	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(

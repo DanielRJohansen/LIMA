@@ -1,8 +1,9 @@
 #pragma once
 
-#include "Constants.h"
-#include "LimaTypes.cuh"
 #include "Bodies.cuh"
+#include "LimaTypes.cuh"
+
+#include "Constants.h"
 
 // Highest concentration in smtv test is only 48 tinymols, but could be larger with more ions and less solvent
 static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;

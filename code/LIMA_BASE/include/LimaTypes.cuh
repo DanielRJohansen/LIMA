@@ -54,7 +54,7 @@ struct Float3 {
 	constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
 	constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
-	constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr explicit Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 
 	constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
 	constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
@@ -123,7 +123,7 @@ struct Float3 {
 	}
 	constexpr Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	constexpr Float3 square() const { return Float3(x * x, y * y, z * z); }
-	__host__ __device__ inline float len() const { return sqrtf(x * x + y * y + z * z); }
+	__host__ __device__ inline float len() const { return std::sqrtf(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
@@ -131,11 +131,10 @@ struct Float3 {
 	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
 
 
-	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
+	constexpr Float3 Floor() const { return Float3(std::floorf(x), std::floorf(y), std::floorf(z));}
 
 	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
-		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
 		val = val > 1.f ? 1.f : val;
 		val = val < -1.f ? -1.f : val;
 		return acos(val);
@@ -268,7 +267,7 @@ struct NodeIndex : public Int3 {
 	//constexpr NodeIndex operator+(const NodeIndex& a) const { return NodeIndex(x + a.x, y + a.y, z + a.z); }
 
 	// This function does NOT return anything position related, only distance related
-	__host__ __device__ Float3 toFloat3() const {
+	constexpr Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
@@ -284,7 +283,7 @@ struct NodeIndex : public Int3 {
 		);
 	}
 
-	__device__ __host__ bool isInBox(int nodes_per_dim) const {
+	constexpr bool isInBox(int nodes_per_dim) const {
 		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
 			return false;
 		return true;
@@ -329,7 +328,7 @@ struct Coord {
 		}
 	}
 
-	__device__ __host__ Float3 ToRelpos() const {
+	constexpr Float3 ToRelpos() const {
 		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } * limaToNano_f;
 	}
 
@@ -348,7 +347,7 @@ struct Coord {
 	constexpr bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
 	constexpr bool operator != (const Coord& a) const { return !(*this == a); }
 	
-	__host__ __device__ int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
+	constexpr int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ void print(char c = '_', bool nl=1) const { 
 		if (nl) printf(" %c %d %d %d\n", c, x, y, z);
 		else printf(" %c %d %d %d", c, x, y, z);
@@ -356,7 +355,7 @@ struct Coord {
 	// Print in pico, assuming baseline is lima
 	__host__ __device__ void printS(char c = '_') const { 
 		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
-	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+	constexpr bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
 	__device__ __host__ int32_t maxElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 
@@ -403,25 +402,25 @@ struct BoundingBox {
 			min.y <= b.max.y && max.y >= b.min.y &&
 			min.z <= b.max.z && max.z >= b.min.z;
 	}
-	bool pointIsInBox(Float3 point) const {
+	constexpr bool pointIsInBox(Float3 point) const {
 		return (min < point) && (point < max);
 	}
-	void addPadding(float margin) {
-		min += Float3(-margin);
-		max += Float3(margin);
+	constexpr void addPadding(float padding) {
+		min += Float3(-padding);
+		max += Float3(padding);
 	}
 };
 
 class BondedParticlesLUT {
 public:
-	__device__ BondedParticlesLUT() {}
-	__host__ BondedParticlesLUT(bool val) {
+	__device__ constexpr BondedParticlesLUT() {}
+	__host__ constexpr BondedParticlesLUT(bool val) {
 		for (int i = 0; i < m_size; i++) {
 			matrix[i] = val ? UINT32_MAX : 0;
 		}
 	}
 
-	__host__ __device__ bool get(int i1, int i2) const {
+	constexpr bool get(int i1, int i2) const {
 		int index = i1 + i2 * m_len;
 		int byteIndex = index / 32;
 		int bitIndex = index % 32;

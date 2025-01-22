@@ -1,10 +1,12 @@
 #include "Analyzer.cuh"
-#include "Printer.h"
-#include "PhysicsUtils.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "PhysicsUtils.cuh"
+
+
 #include "Constants.h"
-#include "Filehandling.h"
+#include "Printer.h"
 #include "Statistics.h"
+
 
 #include <algorithm>
 #include <numeric>

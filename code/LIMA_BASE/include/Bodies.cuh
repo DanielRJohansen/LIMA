@@ -191,7 +191,7 @@ struct CompoundInteractionBoundary {
 };
 
 struct alignas(4) CompoundCompact {
-	__host__ __device__ CompoundCompact() {}
+	constexpr CompoundCompact() {}
 
 	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	int n_particles = 0;
@@ -256,7 +256,7 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
-	__host__ __device__ Compound() {}
+	constexpr Compound() {}
 
 	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
@@ -309,11 +309,8 @@ struct BondGroup {
 
 
 struct ParticleReference {
-	ParticleReference() {}	// TODO: i dont think i need this.
-
-
 	// Used by moleculebuilder only
-	ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
+	constexpr ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
 		compound_id(compound_id), local_id_compound(local_id_compound),
 		compoundid_local_to_bridge(compoundid_local_to_bridge) 
 	{}

@@ -48,10 +48,6 @@ namespace _Thermostat {
 		}
 	};
 
-	__global__ void ComputeTemperatureScalarKernel(float temperature, SimulationDevice* simDev) {
-
-	}
-
 	float ComputeThermostatScalar(float temperature, const SimParams& simparams) {
 		const float target_temp = 310.f;  // Target temperature in [K]
 

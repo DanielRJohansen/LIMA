@@ -178,7 +178,7 @@ private:
 
 
 	// Returns {isMatch, wildcardCoint}, so 0 is perfect match, 3 in a dihedral, is a poor match
-	std::tuple<bool, int> DetermineMatchDegree(const std::span<const std::string>& query, const std::span<const std::string>& typeInForcefield) {
+	constexpr std::tuple<bool, int> DetermineMatchDegree(const std::span<const std::string>& query, const std::span<const std::string>& typeInForcefield) {
 		int wildcardCount = 0;
 		const auto wildcard = "X";
 
@@ -219,23 +219,7 @@ private:
 				}
 			}
 		}
-
-//		if (!bestBondIndices.empty())
 		return bestBondIndices;
-
-
-		//if constexpr (std::is_same_v<GenericBondType, DihedralbondType>) {
-		//	std::cout << "Dihedral type\n";
-		//}
-		//else if constexpr (std::is_same_v<GenericBondType, ImproperDihedralbondType>) {
-		//	std::cout << "Improper type\n";
-		//}
-		//printf("Query typenames: ");
-		//for (const auto& name : query) {
-		//	std::cout << name << " ";
-		//}
-
-		//throw std::runtime_error("\nfindBestMatchInForcefield failed");
 	}
 };
 template class ParameterDatabase<SinglebondType>;

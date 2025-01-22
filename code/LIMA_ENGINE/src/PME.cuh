@@ -618,7 +618,7 @@ void PME::Controller::CalcEnergyCorrection(const Box& box) {
 		}
 	}
 
-	selfenergyCorrection = static_cast<float>(-ewaldKappa / sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
+	selfenergyCorrection = static_cast<float>(-ewaldKappa / std::sqrtf(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 
 	/*if (std::abs(chargeSum) > 1e-6) {
 		backgroundchargeCorrection = chargeSum / static_cast<double>

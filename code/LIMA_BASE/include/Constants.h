@@ -1,8 +1,7 @@
 #pragma once
 
-#include <math.h>
 #include <cstdint>
-#include <limits.h>
+#include <math.h>
 
 
 // LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a

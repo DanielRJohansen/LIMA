@@ -1,14 +1,14 @@
 #include "Engine.cuh"
 
-#include "EngineBodies.cuh"
-#include "Neighborlists.cuh"
 #include "BoundaryCondition.cuh"
-#include "SimulationDevice.cuh"
-#include "LimaPositionSystem.cuh"
+#include "EngineBodies.cuh"
 #include "EngineKernels.cuh"
-#include "Thermostat.cuh"
-#include "SupernaturalForces.cuh"
+#include "LimaPositionSystem.cuh"
+#include "Neighborlists.cuh"
 #include "PME.cuh"
+#include "SimulationDevice.cuh"
+#include "SupernaturalForces.cuh"
+#include "Thermostat.cuh"
 
 #include "Statistics.h"
 #include "Utilities.h"
@@ -381,14 +381,6 @@ void Engine::_deviceMaster() {
 		}
 	}	
 }
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, true>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, true, false>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, true>();
-template void Engine::_deviceMaster<PeriodicBoundaryCondition, false, false>();
-template void Engine::_deviceMaster<NoBoundaryCondition, true, true>();
-template void Engine::_deviceMaster<NoBoundaryCondition, true, false>();
-template void Engine::_deviceMaster<NoBoundaryCondition, false, true>();
-template void Engine::_deviceMaster<NoBoundaryCondition, false, false>();
 
 
 

@@ -18,7 +18,7 @@ GroRecord parseGroLine(const std::string& line) {
 
 	// Direct assignment avoiding unnecessary erase-remove idiom
 	// Use std::string::find_first_not_of and find_last_not_of to trim spaces
-	auto trimSpaces = [](const std::string& str) -> std::string {
+	auto constexpr trimSpaces = [](const std::string& str) -> std::string {
 		size_t start = str.find_first_not_of(' ');
 		size_t end = str.find_last_not_of(' ');
 		return start == std::string::npos ? "" : str.substr(start, end - start + 1);

@@ -2,15 +2,15 @@
 
 class NoBoundaryCondition {
 public:
-	static void applyBC(NodeIndex& origo) {}
+	static void constexpr applyBC(NodeIndex& origo) {}
 
-	static void applyBC(Float3& position, float boxlen_nm) {}
+	static void constexpr applyBC(Float3& position, float boxlen_nm) {}
 
 };
 
 class PeriodicBoundaryCondition {
 public:
-	static void applyBC(NodeIndex& origo, int boxgrid_n_nodes) {
+	static void constexpr applyBC(NodeIndex& origo, int boxgrid_n_nodes) {
 		origo.x += boxgrid_n_nodes * (origo.x < 0);
 		origo.x -= boxgrid_n_nodes * (origo.x >= boxgrid_n_nodes);
 		origo.y += boxgrid_n_nodes * (origo.y < 0);
@@ -19,7 +19,7 @@ public:
 		origo.z -= boxgrid_n_nodes * (origo.z >= boxgrid_n_nodes);
 	}
 
-	static void applyBC(Float3& position, float boxlen_nm) {
+	static void constexpr applyBC(Float3& position, float boxlen_nm) {
 		position.x += boxlen_nm * (position.x < 0.f);
 		position.x -= boxlen_nm * (position.x > boxlen_nm);
 		position.y += boxlen_nm * (position.y < 0.f);
@@ -28,7 +28,7 @@ public:
 		position.z -= boxlen_nm * (position.z > boxlen_nm);
 	}
 
-	static void applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm) {
+	static void constexpr applyHyperposNM(const Float3& static_particle, Float3& movable_particle, float boxlen_nm) {
 		const float boxlenhalf_nm = boxlen_nm / 2.f;
 
 		movable_particle.x += boxlen_nm * ((static_particle.x - movable_particle.x) > boxlenhalf_nm);
@@ -39,7 +39,7 @@ public:
 		movable_particle.z -= boxlen_nm * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm);
 	}
 
-	static void applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm) {
+	static void constexpr applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, int boxlen_nm) {
 		const int boxlenHalfNM = boxlen_nm / 2;
 		
 		movableNodeindex.x += BoxGrid::NodesPerDim(boxlen_nm) * ((staticNodeindex.x - movableNodeindex.x) > boxlenHalfNM);

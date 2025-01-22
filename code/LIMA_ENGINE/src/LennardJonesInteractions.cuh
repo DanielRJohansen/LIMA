@@ -11,24 +11,24 @@
 
 namespace LJ {
 	// __shared__ mem version
-	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+	constexpr float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
 		return forcefield.particle_parameters[atomtype1].sigmaHalf + forcefield.particle_parameters[atomtype2].sigmaHalf;
 	}
-	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+	constexpr float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
 		return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
 	}
 
-	__device__ inline float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+	constexpr float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
 		return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
 	}
-	__device__ inline float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+	constexpr float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
 		return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
 	}
 
-	__device__ inline float CalcSigma(float sigma1Half, float sigma2Half) {
+	constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
 		return sigma1Half + sigma2Half;
 	}
-	__device__ inline float CalcEpsilon(float eps1Sqrt, float eps2Sqrt) {
+	constexpr float CalcEpsilon(float eps1Sqrt, float eps2Sqrt) {
 		return eps1Sqrt * eps2Sqrt;
 	}
 
@@ -161,26 +161,16 @@ namespace LJ {
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
-		//int hits = 0;
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
-				//hits++;
-                //const NonbondedInteractionParams params = DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     myParams.sigmaHalf + neighborParams[neighborparticle_id].sigmaHalf,
                     myParams.epsilonSqrt * neighborParams[neighborparticle_id].epsilonSqrt,
-                    /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
-                    calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
-                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
-                    //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon,
-                    //params.sigma, params.epsilon,
-					//calcSigma(atomtype_self, neighborparticle_atomtype), calcEpsilon(atomtype_self, neighborparticle_atomtype),
 					CalcLJOrigin::ComComInter
-					//global_id_self, neighbor_compound->particle_global_ids[neighborparticle_id]
 				);
 
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);

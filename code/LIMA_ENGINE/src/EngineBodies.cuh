@@ -44,7 +44,7 @@ namespace BoxGrid {
 
 	// This function assumes the user has used PBC
 	template <typename NodeType>
-	__device__ NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) { // Dont like this function, it hides using constant mem...
+	__device__ constexpr NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) { // Dont like this function, it hides using constant mem...
 		//if (index3d.x >= DeviceConstants::boxSize.boxSizeNM_i || index3d.y >= DeviceConstants::boxSize.boxSizeNM_i 
 		//	|| index3d.z >= DeviceConstants::boxSize.boxSizeNM_i
 		//	|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
@@ -55,7 +55,7 @@ namespace BoxGrid {
 		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, DeviceConstants::boxSize.boxSizeNM_i));
 	}
 
-	__device__ static NodeIndex Get3dIndex(int index1d) {
+	__device__ constexpr static NodeIndex Get3dIndex(int index1d) {
 		const int bpd = NodesPerDim(DeviceConstants::boxSize.boxSizeNM_i);
 		int z = index1d / (bpd * bpd);
 		index1d -= z * bpd * bpd;

@@ -338,8 +338,9 @@ struct ForceField_NB {
 
 	struct ParticleParameters {	//Nonbonded
 		//float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;		// [nm]
-		float epsilon = -1;		// [J/mol/nm]
+		// Values at a format for efficient parameter computation
+		float sigmaHalf = -1;		// [nm]
+		float epsilonSqrt = -1;		// [J/mol/nm]
 	};
 
 	ParticleParameters particle_parameters[MAX_TYPES];
@@ -350,8 +351,8 @@ struct ForcefieldTinymol {
 
 	// Can make mass and epsilon half
 	struct TinyMolType {
-		float sigma = -1;		// [nm]
-		float epsilon = -1;		// [J/mol/nm]
+		float sigmaHalf = -1;		// [nm]
+		float epsilonSqrt = -1;		// [J/mol/nm]
 		float mass = -1;		// [kg/mol]
 		float charge = -1;		// [kC/mol]
 	};

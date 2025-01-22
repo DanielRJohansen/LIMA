@@ -10,35 +10,26 @@
 #include <cfloat>
 
 namespace LJ {
-	// __constant__ mem version
-	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2) {
-		return (DeviceConstants::forcefield.particle_parameters[atomtype1].sigma + DeviceConstants::forcefield.particle_parameters[atomtype2].sigma) * 0.5f;
-	}
 	// __shared__ mem version
 	__device__ inline float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-		return (forcefield.particle_parameters[atomtype1].sigma + forcefield.particle_parameters[atomtype2].sigma) * 0.5f;
-	}
-
-	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2) {
-		return sqrtf(DeviceConstants::forcefield.particle_parameters[atomtype1].epsilon * DeviceConstants::forcefield.particle_parameters[atomtype2].epsilon);
+		return forcefield.particle_parameters[atomtype1].sigmaHalf + forcefield.particle_parameters[atomtype2].sigmaHalf;
 	}
 	__device__ inline float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-		//return 1.4f;
-		return __fsqrt_rn(forcefield.particle_parameters[atomtype1].epsilon * forcefield.particle_parameters[atomtype2].epsilon);
+		return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
 	}
 
 	__device__ inline float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return (forcefield.types[tinymolType1].sigma + forcefield.types[tinymolType2].sigma) * 0.5f;
+		return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
 	}
 	__device__ inline float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return sqrtf(forcefield.types[tinymolType1].epsilon * forcefield.types[tinymolType2].epsilon);
+		return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
 	}
 
-	__device__ inline float CalcSigma(float s1, float s2) {
-		return (s1 + s2) * 0.5f;
+	__device__ inline float CalcSigma(float sigma1Half, float sigma2Half) {
+		return sigma1Half + sigma2Half;
 	}
-	__device__ inline float CalcEpsilon(float e1, float e2) {
-		return sqrtf(e1 * e2);
+	__device__ inline float CalcEpsilon(float eps1Sqrt, float eps2Sqrt) {
+		return eps1Sqrt * eps2Sqrt;
 	}
 
 	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
@@ -180,8 +171,8 @@ namespace LJ {
 				//hits++;
                 //const NonbondedInteractionParams params = DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype];
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-                    (myParams.sigma + neighborParams[neighborparticle_id].sigma) * 0.5f,
-                    __fsqrt_rn(myParams.epsilon * neighborParams[neighborparticle_id].epsilon),
+                    myParams.sigmaHalf + neighborParams[neighborparticle_id].sigmaHalf,
+                    myParams.epsilonSqrt * neighborParams[neighborparticle_id].epsilonSqrt,
                     /*calcSigma(atomtype_self, neighborparticle_atomtype, forcefield),
                     calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),*/
                     //DeviceConstants::nonbondedinteractionParams[static_cast<int>(atomtype_self) * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].sigma,
@@ -232,8 +223,6 @@ namespace LJ {
 		const ForceField_NB& forcefield, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
 		Float3 force{};
 
-		const float mySigma = forcefield.particle_parameters[atomtype_self].sigma;
-		const float myEps = forcefield.particle_parameters[atomtype_self].epsilon;		
 
 		for (int i = 0; i < n_particles; i++) {
 
@@ -244,8 +233,8 @@ namespace LJ {
 
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(mySigma, forcefieldTinymol_shared.types[tinymolTypeIds[i]].sigma),
-				CalcEpsilon(myEps, forcefieldTinymol_shared.types[tinymolTypeIds[i]].epsilon),
+				CalcSigma(forcefield.particle_parameters[atomtype_self].sigmaHalf, forcefieldTinymol_shared.types[tinymolTypeIds[i]].sigmaHalf),
+				CalcEpsilon(forcefield.particle_parameters[atomtype_self].epsilonSqrt, forcefieldTinymol_shared.types[tinymolTypeIds[i]].epsilonSqrt),
 				CalcLJOrigin::SolCom,
 				atomtype_self, -1
 			);
@@ -265,9 +254,11 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
+			const auto& otherType = DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]];
+
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigma, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].sigma),
-				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilon, DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]].epsilon),
+				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigmaHalf, otherType.sigmaHalf),
+				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilonSqrt, otherType.epsilonSqrt),
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);

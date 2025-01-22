@@ -37,8 +37,8 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 			const int ljtypeIndex = ljtypeIndices[atomIndex++];
 			file << atom.type << " "
-				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma
-				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilon << "\n";
+				<< forcefieldNB.particle_parameters[ljtypeIndex].sigmaHalf * 2.
+				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilonSqrt * forcefieldNB.particle_parameters[ljtypeIndex].epsilonSqrt << "\n";
 		}
 		file << "\n";
 	}

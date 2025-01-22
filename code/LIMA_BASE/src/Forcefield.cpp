@@ -299,8 +299,8 @@ std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionP
 	for (int i = 0; i < activeParameters.size(); i++) {
 		for (int j = 0; j < activeParameters.size(); j++) {
 			nonbondedInteractionParams[i * ForceField_NB::MAX_TYPES + j] = NonbondedInteractionParams{
-				(activeParameters[i].parameters.sigma + activeParameters[j].parameters.sigma) * 0.5f,
-                sqrt(activeParameters[i].parameters.epsilon * activeParameters[j].parameters.epsilon)
+				(activeParameters[i].parameters.sigmaHalf + activeParameters[j].parameters.sigmaHalf),
+                activeParameters[i].parameters.epsilonSqrt * activeParameters[j].parameters.epsilonSqrt
                     //,activeParameters[i].charge* activeParameters[j].charge
 			};
 		}
@@ -320,7 +320,7 @@ ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
 		throw std::runtime_error("Too many atom types");
 	for (int i = 0; i < activeParameters.size(); i++) {
 		const AtomType& at = activeParameters[i];
-		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigma, at.parameters.epsilon, at.mass, at.charge };
+		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigmaHalf, at.parameters.epsilonSqrt, at.mass, at.charge };
 	}
 	return forcefieldTinymol;
 }
@@ -333,18 +333,19 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 
 	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
 		std::istringstream iss(line);
+		float sigma, epsilon;
 		AtomType atomtype{};
 		iss >> atomtype.name >> atomtype.atNum
 			>> atomtype.mass				// [g]         // // we take the one from topology, not FF file
 			>> atomtype.charge				// [e]
 			>> atomtype.ptype
-			>> atomtype.parameters.sigma	// [nm]
-			>> atomtype.parameters.epsilon;	// [kJ/mol]
+			>> sigma	// [nm]
+			>> epsilon;	// [kJ/mol]
 
 		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
-
 		atomtype.mass /= static_cast<float>(KILO);
-		atomtype.parameters.epsilon *= KILO;
+		atomtype.parameters.epsilonSqrt = std::sqrt(epsilon * KILO);
+		atomtype.parameters.sigmaHalf = sigma * 0.5f;
 
 		ljParameters->insert(atomtype);
 		tinymolTypes->insert(atomtype);
@@ -437,8 +438,8 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 			const AtomType& right = ljParameters->GetAtomType(query[1]);
 
 			// TODO: Would prefer to have this computation in a file specialized for it..
-			const float sigma = (left.parameters.sigma + right.parameters.sigma) * 0.5f;
-			const float epsilon = sqrt(left.parameters.epsilon * right.parameters.epsilon);
+			const float sigma = left.parameters.sigmaHalf + right.parameters.sigmaHalf;
+			const float epsilon = left.parameters.epsilonSqrt * right.parameters.epsilonSqrt;
 
 			pairbondParameters->insert(PairbondType{
 				.bonded_typenames = query,

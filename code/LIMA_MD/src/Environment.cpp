@@ -192,6 +192,7 @@ std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	time0 = std::chrono::steady_clock::now();
+    auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
 		if (!handleDisplay(compounds, boxparams, display.get(), emVariant)) {
@@ -211,6 +212,7 @@ std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
+    auto t1 = std::chrono::steady_clock::now();
 	simulationTimer->stop();
 
 	// Transfers the remaining traj data and more
@@ -228,7 +230,7 @@ std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
 		postRunEvents();
 	}
 
-    return simulationTimer->elapsed();
+    return t1-t0;
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 

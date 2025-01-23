@@ -51,7 +51,7 @@ public:
 	void createSimulationFiles(float boxlen);
 
 	// Run a standard MD sim
-    /// <returns>Elapsed Engine time in milliseconds</returns>
+    /// <returns>Elapsed Engine time in seconds</returns>
     std::chrono::duration<double> run(bool doPostRunEvents=true);
 
 	/// <summary>

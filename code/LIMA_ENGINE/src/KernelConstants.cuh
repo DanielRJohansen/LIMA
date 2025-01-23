@@ -42,7 +42,7 @@ namespace DeviceConstants {
 	__constant__ float bsplineTable[2 * (BSPLINE_LUT_SIZE)]; // precomputed 4th order bsplines [0,1]
 
 
-	static constexpr int ERFC_LUT_SIZE = 64;
+        static constexpr int ERFC_LUT_SIZE = 32;
 	__constant__ float erfcForcescalarTable[ERFC_LUT_SIZE]; // precomputed scalers [0, 1], where 1=cutoffNM
 	__constant__ float erfcPotentialscalarTable[ERFC_LUT_SIZE];
 }

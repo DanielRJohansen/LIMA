@@ -633,8 +633,10 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 				force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
-			if (force.isNan() || force.lenSquared() >= FLT_MAX)
-				force.print('S');
+            if constexpr (!LIMA_PUSH) {
+                if (force.isNan() || force.lenSquared() >= FLT_MAX)
+                    force.print('S');
+            }
 
 			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref.force_prev, force, simparams.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);

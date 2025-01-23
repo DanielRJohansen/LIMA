@@ -115,14 +115,14 @@ int mdrun(int argc, char** argv) {
 
     env->CreateSimulation(grofile, topfile, ip);
 
-    const std::chrono::duration<double> enginetimeMs = env->run();
-
+    const std::chrono::duration<double> enginetime = env->run(); // [s]
+    printf("Engine time %f\n", enginetime.count());
     env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
     // Calculate total time simulated (in nanoseconds)
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
-    const double wall_time_sec = std::chrono::duration_cast<std::chrono::seconds>(enginetimeMs).count();
+    const double wall_time_sec = enginetime.count();
 
     // Calculate performance metrics
     const double ns_per_day = total_ns_simulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day

@@ -115,9 +115,6 @@ struct SimulationDevice {
 	BoxState* const boxState;
 	const BoxParams boxparams;
 
-	// potE should be divided equally between all the particles in the node
-	ForceAndPotential* chargeGridOutputForceAndPot = nullptr; // {Float3 force [J/mol/nm], float potE [J/mol]}
-
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;
 	Float3 * traj_buffer = nullptr;
@@ -126,4 +123,34 @@ struct SimulationDevice {
 
 	// Only used in EM
 	AdamState* adamState = nullptr;
+};
+
+struct ForceEnergyInterims {
+	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks, int nBondgroups);
+	void Free() const;
+
+	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
+		ForceEnergy pmeFE = {};
+		if constexpr (ENABLE_ES_LR) {
+			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+		}
+
+		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ pmeFE;
+	}
+
+	// Compounds
+	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
+	ForceEnergy* forceEnergyBonds = nullptr;
+	ForceEnergy* forceEnergiesPME = nullptr;
+
+	// Bondgroups
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
+
+	// Tinymol
+	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
+	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
 };

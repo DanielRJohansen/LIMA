@@ -1,23 +1,14 @@
 #pragma once
 
-#include "Simulation.cuh"
 #include "BoundaryCondition.cuh"
-#include "KernelConstants.cuh"
-#include "SimulationDevice.cuh"
 #include "LimaPositionSystem.cuh"
+#include "Simulation.cuh"
+#include "SimulationDevice.cuh"
 
-#include <chrono>
-
-
-template <typename BoundaryCondition>
-__global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev);
-
-template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(SimulationDevice* sim_dev);
 
 
 namespace NeighborLists {
-	void updateNlists(SimulationDevice*, int64_t step, BoundaryConditionSelect, const BoxParams&, int& timing);
+	void updateNlists(SimulationDevice*, int64_t step, BoundaryConditionSelect, const BoxParams&);
 };
 
 
@@ -291,10 +282,9 @@ template __global__ void updateBlockgridKernel<NoBoundaryCondition>(SimulationDe
 
 
 
-void NeighborLists::updateNlists(SimulationDevice* sim_dev, int64_t step, BoundaryConditionSelect bc_select, const BoxParams& boxparams, int& timing)
+void NeighborLists::updateNlists(SimulationDevice* sim_dev, int64_t step, BoundaryConditionSelect bc_select, const BoxParams& boxparams)
 {
-	const auto t0 = std::chrono::high_resolution_clock::now();
-
+// OPTIM: Pass a stream here, avoid the sync
 	// Technically we could only run if > 1, buuut running with any compounds lets us spot bugs easier.
 	if (boxparams.n_compounds > 0) {
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
@@ -310,8 +300,4 @@ void NeighborLists::updateNlists(SimulationDevice* sim_dev, int64_t step, Bounda
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
-
-
-	const auto t1 = std::chrono::high_resolution_clock::now();
-	timing += static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
 }

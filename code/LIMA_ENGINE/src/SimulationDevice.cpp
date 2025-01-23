@@ -183,18 +183,15 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 
 void SimulationDevice::FreeMembers() {
 	boxConfig.FreeMembers();
-	//cudaFree((void*)boxConfig);
 	boxState->FreeMembers();
 	cudaFree(boxState);
 
 
-	//cudaFree(params);
 
 	cudaFree(compound_grid);
 	cudaFree(compound_neighborlists);
 	cudaFree(transfermodule_array);
 	cudaFree(signals);
-	cudaFree(chargeGridOutputForceAndPot);
 
 	if (adamState != nullptr)
 		cudaFree(adamState);

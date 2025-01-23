@@ -7,12 +7,6 @@
 #include <cuda_runtime.h>
 
 
-// Half the interaction between two distant set of particles
-struct ForceAndPotential {
-	Float3 forcePart;		// [1/C J/mol/nm] // force = myCharge * forcePart
-	float potentialPart;	// [1/C J/mol] // potential = myCharge * potential
-};
-
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(uint16_t compound_id) {
 		if (n_nearby_compounds >= max_nearby_compounds) {
@@ -123,9 +117,10 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 class NeighborList {
+	static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
 public:
 	__device__ __host__ bool addCompound(uint16_t new_id) {
-		if (nNonbondedNeighbors >= NEIGHBORLIST_MAX_COMPOUNDS) {
+		if (nNonbondedNeighbors >= maxCompounds) {
 			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
 			return false;
 			//throw std::runtime_error("Neighborlist overflow");
@@ -134,8 +129,8 @@ public:
 		return true;
 	}
 
-	static_assert(MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-	uint16_t nonbondedNeighborcompoundIds[NEIGHBORLIST_MAX_COMPOUNDS];
+	static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
+	uint16_t nonbondedNeighborcompoundIds[maxCompounds];
 	int nNonbondedNeighbors = 0;
 
 #ifdef ENABLE_SOLVENTS

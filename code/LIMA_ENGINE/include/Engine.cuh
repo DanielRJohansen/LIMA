@@ -7,9 +7,8 @@
 #include "Utilities.h"
 
 #include <iostream>
-#include <chrono>
-#include <thread>
 #include <memory>
+#include <thread>
 
 
 
@@ -22,54 +21,12 @@ class BoxConfig;
 class NeighborList;
 class CompoundGridNode;
 struct CompoundQuickData;
+struct ForceEnergyInterims;
 
 namespace PME { class Controller; };
 
-struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks, int nBondgroups);
-	void Free() const;
 
-	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
-		ForceEnergy pmeFE = {};
-		if constexpr (ENABLE_ES_LR) {
-			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
-		}
 
-		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ pmeFE;
-	}
-
-	// Compounds
-	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyBonds = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
-
-	// Bondgroups
-	ForceEnergy* forceEnergiesBondgroups = nullptr;
-
-	// Tinymol
-	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
-	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
-};
-
-struct EngineTimings {
-	int compound_kernels{};
-	int solvent_kernels{};
-	int cpu_master{};
-	int nlist{};
-	int electrostatics{};
-
-	void reset() {
-		compound_kernels = 0;
-		solvent_kernels = 0;
-		cpu_master = 0;
-		nlist = 0;
-		electrostatics = 0;
-	}
-};
 
 struct RunStatus {
 	Float3* most_recent_positions = nullptr;
@@ -100,7 +57,6 @@ public:
 	std::unique_ptr<Simulation> takeBackSim();
 
 
-	EngineTimings timings{};
 	volatile RunStatus runstatus;
 
 	void terminateSimulation();
@@ -146,7 +102,7 @@ private:
 	SimulationDevice* sim_dev = nullptr;
 	BondGroup* bondgroups = nullptr;
 	CompoundQuickData* compoundQuickData = nullptr;
-	ForceEnergyInterims forceEnergyInterims;
+	
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -158,6 +114,7 @@ private:
 	std::unique_ptr<PME::Controller> pmeController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
+	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
 
 	const BoundaryConditionSelect bc_select;
 

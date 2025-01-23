@@ -1,15 +1,18 @@
 #pragma once
 
-#include <assert.h>
-#include <string>
-#include <fstream>
-#include <vector>
-#include <iostream>
 #include "LimaTypes.cuh"
-#include <filesystem>
 
+#include <assert.h>
+#include <cmath>
+#include <concepts>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <memory>
-namespace fs = std::filesystem;
+#include <ranges>
+#include <string>
+#include <vector>
+
 
 namespace LIMA_UTILS {
 
@@ -54,6 +57,7 @@ namespace LIMA_UTILS {
 
 
 class LimaLogger {
+
 public:
     enum LogMode {
         normal,
@@ -61,7 +65,7 @@ public:
     };   
     LimaLogger() {}
     LimaLogger(const LimaLogger&) = delete;
-    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const fs::path& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
+    LimaLogger(const LogMode mode, EnvMode envmode, const std::string& name, const std::filesystem::path& workfolder=""); // With no workfolder, the logger simply wont putput anything to a file
     ~LimaLogger();
 
     void startSection(const std::string& input);
@@ -90,9 +94,7 @@ private:
 static std::unique_ptr<LimaLogger> makeLimaloggerBareboned(const std::string& name) {
     return std::make_unique<LimaLogger>(LimaLogger::LogMode::compact, EnvMode::Headless, name);
 }
-#include <cmath>
-#include <concepts>
-#include <ranges>
+
 // Lima Algorithm Library
 namespace LAL {
 
@@ -114,63 +116,7 @@ namespace LAL {
 		}
         return res;
     }
-    constexpr int ceilFloatToInt(float num) {
-        return (static_cast<float>(static_cast<int>(num)) == num)
-            ? static_cast<int>(num)
-            : static_cast<int>(num) + ((num > 0) ? 1 : 0);
-    }
 
-    constexpr float pow_constexpr(float base, int exp) {
-        return (exp == 0) ? 1 : base * pow_constexpr(base, exp - 1);
-    }
-
-    // This is not sustainable....
-    constexpr float log2f(float val) {
-        return (val < 2.0f) 
-            ? (val - 1.0f) / (val + 1.0f) + (1.0f / 3.0f) 
-                * pow_constexpr((val - 1.0f) / (val + 1.0f), 3) + (1.0f / 5.0f) 
-                * pow_constexpr((val - 1.0f) / (val + 1.0f), 5) 
-            : 1.0f + log2f(val / 2.0f);
-    }
-
-    template<typename T>
-    class optional {
-    private:
-        bool _hasValue = false;
-        T _value;
-
-    public:
-        optional() : _hasValue(false), _value() {}
-
-        optional(const T& value) : _hasValue(true), _value(value) {}
-
-        optional(T&& value) : _hasValue(true), _value(std::move(value)) {}
-
-        optional& operator=(const T& value) {
-            this->_value = value;
-            _hasValue = true;
-            return *this;
-        }
-
-        optional& operator=(T&& value) {
-            this->_value = std::move(value);
-            _hasValue = true;
-            return *this;
-        }
-
-        T value() const {
-            if (!_hasValue) {
-                throw std::runtime_error("No value present in optional.");
-            }
-            return _value;
-        }
-
-        operator bool() const {
-            return _hasValue;
-        }
-
-        bool hasValue() const { return _hasValue; }
-    };    
 
 
     //float LargestDiff(const Float3 queryPoint, const std::span<Float3>& points);

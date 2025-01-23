@@ -97,7 +97,7 @@ namespace TestUtils {
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
-	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<SimParams> simparams, EnvMode envmode) {
+	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
 		
 		const fs::path work_folder = simulations_dir / foldername;
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
@@ -106,9 +106,7 @@ namespace TestUtils {
 
 		auto env = std::make_unique<Environment>(work_folder, envmode);
 
-		const SimParams ip = simparams.hasValue()
-			? simparams.value()
-			: SimParams{ simpar };
+		const SimParams ip = simparams.value_or(SimParams{ simpar });
 		
 
 		env->CreateSimulation(conf, topol, ip);
@@ -295,7 +293,7 @@ namespace TestUtils {
 		EnvMode envmode,
 		float max_vc = 0.001,
 		float max_gradient=1e-7,
-		LAL::optional<SimParams> ip = {}
+		std::optional<SimParams> ip = {}
 	)
 	{		
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);

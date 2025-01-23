@@ -320,16 +320,8 @@ void Environment::handleStatus(const int64_t step) {
 		printf("\033[1000D\033[K");
 
 		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ",
-			duration_ms / STEPS_PER_UPDATE,
-			engine->timings.compound_kernels / STEPS_PER_UPDATE,
-			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
-			engine->timings.cpu_master / STEPS_PER_UPDATE,
-			engine->timings.nlist / STEPS_PER_UPDATE,
-			engine->timings.electrostatics / STEPS_PER_UPDATE,
-			0);
+		printf("\tAvg. time: %.2fms", duration_ms / STEPS_PER_UPDATE);
 
-		engine->timings.reset();
 		time0 = std::chrono::steady_clock::now();
 		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
 	}

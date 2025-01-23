@@ -12,19 +12,20 @@ BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* co
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
 BoxConfig BoxConfig::Create(const Box& boxHost) {
-	uint8_t* compoundsAtomtypes;
-	float* compoundsAtomCharges;
-	cudaMalloc(&compoundsAtomtypes, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
-	cudaMalloc(&compoundsAtomCharges, sizeof(float) * MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
+	std::vector<uint8_t> compoundsAtomTypes;
+	std::vector<float> compoundsAtomCharges;
+	compoundsAtomTypes.reserve(MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
+	compoundsAtomCharges.reserve(MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
+
 	for (int cid = 0; cid < boxHost.boxparams.n_compounds; cid++) { // OPTIM This is very slow
-		cudaMemcpy(compoundsAtomtypes + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_types, sizeof(uint8_t) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
-		cudaMemcpy(compoundsAtomCharges + MAX_COMPOUND_PARTICLES * cid, boxHost.compounds[cid].atom_charges, sizeof(float) * MAX_COMPOUND_PARTICLES, cudaMemcpyHostToDevice);
+		compoundsAtomTypes.insert(compoundsAtomTypes.end(), boxHost.compounds[cid].atom_types, boxHost.compounds[cid].atom_types + MAX_COMPOUND_PARTICLES);
+		compoundsAtomCharges.insert(compoundsAtomCharges.end(), boxHost.compounds[cid].atom_charges, boxHost.compounds[cid].atom_charges + MAX_COMPOUND_PARTICLES);
 	}
 
 	return BoxConfig (
 		GenericCopyToDevice(boxHost.compounds), 
-		compoundsAtomtypes, 
-		compoundsAtomCharges, 
+		GenericCopyToDevice(compoundsAtomTypes),
+		GenericCopyToDevice(compoundsAtomCharges), 
 		GenericCopyToDevice(boxHost.bpLutCollection), 
         BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
 	);
@@ -32,7 +33,6 @@ BoxConfig BoxConfig::Create(const Box& boxHost) {
 void BoxConfig::FreeMembers() const {
 	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
-	// TODO why not clearing compounds????
 
 	cudaFree((void*)boxtemp.compounds);
 	cudaFree((void*)boxtemp.compoundsAtomtypes);
@@ -198,4 +198,25 @@ void SimulationDevice::FreeMembers() {
 
 	if (adamState != nullptr)
 		cudaFree(adamState);
+}
+
+CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation) {
+	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box_host->boxparams.n_compounds, CompoundQuickData{});
+	for (int cid = 0; cid < simulation.box_host->compounds.size(); cid++) {
+		const Compound& compound = simulation.box_host->compounds[cid];
+		CompoundQuickData& quickData = compoundQuickDataHost[cid];
+		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
+			if (pid < compound.n_particles) {
+				quickData.relPos[pid] = simulation.box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
+				quickData.ljParams[pid] = simulation.forcefield.particle_parameters[compound.atom_types[pid]];
+				quickData.charges[pid] = compound.atom_charges[pid];
+			}
+			else {
+				quickData.relPos[pid] = Float3{};
+				quickData.ljParams[pid] = ForceField_NB::ParticleParameters{};
+				quickData.charges[pid] = 0.f;
+			}
+		}
+	}
+	return GenericCopyToDevice(compoundQuickDataHost);
 }

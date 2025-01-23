@@ -30,16 +30,23 @@ void Engine::verifyEngine() {
 
 
 
-ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks) {
+ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks, int nBondgroups) {
 	if (nCompounds > 0) {
 		const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
 		cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
 		cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
 		cudaMalloc(&forceEnergyBonds, byteSize);
-
+		cudaMalloc(&forceEnergiesPME, byteSize);
+		
 		cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
 		cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
 		cudaMemset(forceEnergyBonds, 0, byteSize);
+		cudaMemset(forceEnergiesPME, 0, byteSize);		
+	}
+
+	if (nBondgroups > 0) {
+		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * nBondgroups * BondGroup::maxParticles);
+		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * nBondgroups * BondGroup::maxParticles);
 	}
 
 	if (nSolvents > 0) {
@@ -57,6 +64,8 @@ void ForceEnergyInterims::Free() const {
 		cudaFree(forceEnergyFarneighborShortrange);
 		cudaFree(forceEnergyImmediateneighborShortrange);
 		cudaFree(forceEnergyBonds);
+		cudaFree(forceEnergiesPME);
+		cudaFree(forceEnergiesBondgroups);
 	}
 
 	if (forceEnergiesCompoundinteractions != nullptr) { // The buffers are never allocated in some sims

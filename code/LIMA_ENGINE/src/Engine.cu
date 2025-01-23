@@ -17,14 +17,18 @@
 
 
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
-	: bc_select(bc), m_logger(std::move(logger)), forceEnergyInterims(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.n_solvents, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize))
+	: bc_select(bc)
+	, m_logger(std::move(logger))
+	, forceEnergyInterims(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.n_solvents, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size())
 {
 	simulation = std::move(_sim);
 
 	verifyEngine();
 
-	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->boxparams.total_particles_upperbound, 
-		simulation->box_host->boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
+	const BoxParams boxparams = simulation->box_host->boxparams;
+
+	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(boxparams.total_particles_upperbound, 
+		boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
 
 
 	// Create the Sim_dev {
@@ -43,7 +47,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 
 
-    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
+    std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
         const Compound& compound = simulation->box_host->compounds[cid];
         for (int pid = 0; pid < compound.n_particles; pid++) {
@@ -51,47 +55,24 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
         }
 
     }
-    compoundLjParameters = GenericCopyToDevice(compoundParticleParams);
 
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamCreate(&stream);
 	}
 	cudaStreamCreate(&pmeStream);
 
-	pmeController = std::make_unique<PME::Controller>(simulation->box_host->boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
-	cudaMalloc(&forceEnergiesPME, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES); // TODO: make cudaFree ...
-	cudaMemset(forceEnergiesPME, 0, sizeof(ForceEnergy) * simulation->box_host->boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
+	pmeController = std::make_unique<PME::Controller>(boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
 
 	bondgroups = GenericCopyToDevice(simulation->box_host->bondgroups);
-	cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * simulation->box_host->bondgroups.size() * BondGroup::maxParticles);
 
+	compoundQuickData = CompoundQuickData::CreateBuffer(*simulation);
 
-	std::vector<CompoundQuickData> compoundQuickDataHost(simulation->box_host->boxparams.n_compounds, CompoundQuickData{});
-	for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
-		const Compound& compound = simulation->box_host->compounds[cid];
-		CompoundQuickData& quickData = compoundQuickDataHost[cid];
-        for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
-            if (pid < compound.n_particles) {
-                quickData.relPos[pid] = simulation->box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
-                quickData.ljParams[pid] = simulation->forcefield.particle_parameters[compound.atom_types[pid]];
-                quickData.charges[pid] = compound.atom_charges[pid];
-            }
-            else {
-                quickData.relPos[pid] = Float3{};
-                quickData.ljParams[pid] = ForceField_NB::ParticleParameters{};
-                quickData.charges[pid] = 0.f;
-            }
-		}
-	}
-	compoundQuickData = GenericCopyToDevice(compoundQuickDataHost);
-
-	auto boxparams = simulation->box_host->boxparams;
 	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams, timings.nlist);
+	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, boxparams, timings.nlist);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -102,9 +83,6 @@ Engine::~Engine() {
 	}
 	forceEnergyInterims.Free();
 
-	cudaFree(compoundLjParameters);
-	cudaFree(forceEnergiesPME);
-	cudaFree(forceEnergiesBondgroups);
 	cudaFree(bondgroups);
 
 	for (cudaStream_t& stream : cudaStreams) {
@@ -124,15 +102,6 @@ void Engine::setDeviceConstantMemory() {
 	BoxSize boxSize_host;
 	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
 	cudaMemcpyToSymbol(DeviceConstants::boxSize, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
-	//SetConstantMem(simulation->boxparams_host.boxSize);
-	//BoxSize bs;
-	//cudaMemcpyFromSymbol(&bs, DeviceConstants::boxSize, sizeof(BoxSize));
-
-//	cudaDeviceSynchronize();
-
-
-	//BoxSize bs1;
-	//cudaMemcpyFromSymbol(&bs1, DeviceConstants::boxSize, sizeof(BoxSize));
 
 	cudaMemcpyToSymbol(DeviceConstants::cutoffNM, &simulation->simparams_host.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmReciprocal = 1.f / simulation->simparams_host.cutoff_nm;
@@ -314,11 +283,12 @@ void Engine::_deviceMaster() {
 	
 	const BoxParams& boxparams = simulation->box_host->boxparams;
 	const int step = simulation->getStep();
+
 	// #### Initial round of force computations
 	cudaDeviceSynchronize();
 
     if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-        pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergiesPME, pmeStream);
+        pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergyInterims.forceEnergiesPME, pmeStream);
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
@@ -326,7 +296,7 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (*boxStateCopy, *boxConfigCopy, neighborlistsPtr, simulation->simparams_host.enable_electrostatics, 
-				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundLjParameters, compoundQuickData);
+				forceEnergyInterims.forceEnergyFarneighborShortrange, compoundQuickData);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -358,7 +328,7 @@ void Engine::_deviceMaster() {
 
 	if (!simulation->box_host->bondgroups.empty()) {
 		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-			(bondgroups, *boxStateCopy, forceEnergiesBondgroups);
+			(bondgroups, *boxStateCopy, forceEnergyInterims.forceEnergiesBondgroups);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 	}
 
@@ -371,7 +341,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, forceEnergyInterims, forceEnergiesBondgroups, forceEnergiesPME, compoundQuickData);
+			(sim_dev, step, forceEnergyInterims, compoundQuickData);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 

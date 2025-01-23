@@ -26,19 +26,29 @@ struct CompoundQuickData;
 namespace PME { class Controller; };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks);
+	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks, int nBondgroups);
 	void Free() const;
 
-	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
+	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
+		ForceEnergy pmeFE = {};
+		if constexpr (ENABLE_ES_LR) {
+			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+		}
+
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
+			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ pmeFE;
 	}
 
 	// Compounds
 	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyBonds = nullptr;
+	ForceEnergy* forceEnergiesPME = nullptr;
+
+	// Bondgroups
+	ForceEnergy* forceEnergiesBondgroups = nullptr;
 
 	// Tinymol
 	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
@@ -67,8 +77,6 @@ struct RunStatus {
 	int current_step = 0;
 	float current_temperature = NAN;
 
-	//int64_t stepsSinceEnergycheck = 0;
-	//float highestEnergy = 0.f; // measured in a single particle
 	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;
@@ -126,13 +134,9 @@ private:
 
 	std::unique_ptr<LimaLogger> m_logger;
 
-	bool updatenlists_mutexlock = 0;
-
 	std::array<cudaStream_t, 5> cudaStreams;
 	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
-
-	int testval = 0;
 
 	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
@@ -140,11 +144,9 @@ private:
 
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
-	// These are owned, but this is temporary place to store them
-	ForceEnergy* forceEnergiesBondgroups = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
 	BondGroup* bondgroups = nullptr;
-	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+	CompoundQuickData* compoundQuickData = nullptr;
+	ForceEnergyInterims forceEnergyInterims;
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -153,23 +155,12 @@ private:
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
 
-
-
 	std::unique_ptr<PME::Controller> pmeController;
-
-
-	ForceEnergyInterims forceEnergyInterims;
-
-
-	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
-
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
-
 	std::unique_ptr<Thermostat> thermostat;
 
 	const BoundaryConditionSelect bc_select;
 
-	CompoundQuickData* compoundQuickData = nullptr;
 };
 
  

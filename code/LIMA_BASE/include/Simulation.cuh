@@ -143,7 +143,6 @@ struct Box {
 
 	std::vector<Compound> compounds;
 	std::vector<CompoundInterimState> compoundInterimStates;
-	//std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 	std::vector<CompoundCoords> compoundCoordsBuffer;
 
 	std::vector<TinyMolState> tinyMols;

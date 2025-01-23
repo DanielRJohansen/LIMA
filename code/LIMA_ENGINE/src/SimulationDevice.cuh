@@ -47,6 +47,9 @@ struct alignas(128) CompoundQuickData {
 	Float3 relPos[MAX_COMPOUND_PARTICLES];
 	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
 	float charges[MAX_COMPOUND_PARTICLES];
+
+	// Returns ptr to device buffer
+	__host__ static CompoundQuickData* CreateBuffer(const Simulation& sim);
 };
 
 

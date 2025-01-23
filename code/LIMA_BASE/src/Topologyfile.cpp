@@ -122,8 +122,6 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 	case TopologySection::atoms:
 	{
 		if (firstNonspaceCharIs(line, ';')) {
-			// TODO: Test for residue or lipid_section in the [1] position of the comment instead
-
 			// Skip the very first line which is the legend
 			if (line.find("cgnr") != std::string::npos) {
 				break;

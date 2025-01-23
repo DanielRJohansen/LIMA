@@ -347,7 +347,6 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 
 		singlebondParameters->insert(bondtype);
 	}
-	// TODO: implement pair here
 	for (const auto& line : file.GetSection(TopologySection::pairtypes)) {
 		std::istringstream iss(line);
 

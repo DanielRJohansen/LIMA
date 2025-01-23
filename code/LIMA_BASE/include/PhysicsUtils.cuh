@@ -34,7 +34,7 @@ namespace PhysicsUtils {
 	}
 
 	/// <summary>Slow host version, faster version in PhysicsUtilsDevice</summary>
-	/// <param name="myCharge">[kilo C/mol]</param>	// TODO: These can probably be half for performance gains
+	/// <param name="myCharge">[kilo C/mol]</param>
 	/// <param name="otherCharge">[kilo C/mol]</param>
 	/// <param name="diff">self-other [nm]</param>
 	/// <returns>[J/mol/nm]</returns>	

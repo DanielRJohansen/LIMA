@@ -18,34 +18,9 @@
 
 
 namespace LIMAPOSITIONSYSTEM {
-	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
-
-
-
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
 
-
-	
-	template<typename T>
-	inline T floor_div(T num, T denom) {
-		static_assert(std::is_integral<T>::value, "floor_div requires integer types");
-		return (num - (num < 0 ? denom - 1 : 0)) / denom;
-	}
-
-
-	/// <summary>
-	/// Use with care, will overflow if posLM is > 20 nm. Does NOT apply boundary condition
-	/// </summary>
-	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posNM) {
-		NodeIndex nodeindex{
-			static_cast<int>(round(posNM.x)),
-			static_cast<int>(round(posNM.y)),
-			static_cast<int>(round(posNM.z))
-		};
-
-		return nodeindex;
-	}
 
 	__device__ __host__ inline NodeIndex PositionToNodeIndexNM(const Float3& posNM) {
 		NodeIndex nodeindex{
@@ -222,29 +197,13 @@ public:
 	}
 
 
-	// This function is only used in bridge, and can be made alot smarter with that context. TODO
-	// Calculate the shift in [nm] for all relpos belonging to right, so they will share origo with left
-	template <typename BoundaryCondition>
-	__device__ static Coord getRelativeShiftBetweenCoordarrays(const NodeIndex* const compoundOrigosBuffer, int64_t step, int compound_index_left, int compound_index_right) {
-		const NodeIndex& nodeindex_left = compoundOrigosBuffer[compound_index_left]; //   CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
-		const NodeIndex& nodeindex_right = compoundOrigosBuffer[compound_index_right]; //CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
-
-		const NodeIndex hypernodeindex_right = BoundaryCondition::applyHyperpos_Return(nodeindex_left, nodeindex_right);
-		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
-
-		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
-
-		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
-		return Coord{ -nodeshift_right_to_left };
-	}
-
-	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) { // Really dont like this function, also the result is almost always convert to FLoat3, so can do some optimizastion here TODO TODO TODO IMPORTANT
+	/*__device__ static Coord GetRelShiftFromOrigoShift_Coord(const NodeIndex& from, const NodeIndex& to) {
 		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
 
 		const NodeIndex origo_shift = from - to;
 		return Coord{ origo_shift };
-	}
-    __device__ static constexpr Float3 getRelShiftFromOrigoShiftFloat3(const NodeIndex& from, const NodeIndex& to) {
+	}*/
+    __device__ static constexpr Float3 GetRelShiftFromOrigoShift_Float3(const NodeIndex& from, const NodeIndex& to) {
         return NodeIndex{from-to}.toFloat3();
     }
 

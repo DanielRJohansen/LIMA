@@ -74,7 +74,7 @@ namespace KernelHelpersWarnings {
 			transferdir_queue.print('d');
 		}
 #endif
-#ifndef LIMAPUSH
+#ifndef LIMA_PUSH
 		if (threadIdx.x == 0 && queue_local.n_elements > 15) {
 			printf("\nTransferring %d elements\n", queue_local.n_elements);
 		}

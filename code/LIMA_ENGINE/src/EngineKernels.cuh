@@ -46,7 +46,7 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
-    bool enableES, ForceEnergy* const forceEnergy, const ForceField_NB::ParticleParameters* const ljParams, const CompoundQuickData* const compoundQuickDataBuffer)
+    bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer)
 {
     const int batchsize = 32;
 
@@ -90,7 +90,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 
                 // calc Relative LimaPosition Shift from the origo-shift
                 const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);   // TODO: Consider adding safety here, that origo isn't too far..
-                relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShiftFloat3(querycompound_hyperorigo, compoundOrigo);
+                relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, compoundOrigo);
             }
 
             indexInBatch = 0;
@@ -213,7 +213,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[threadIdx.x];
 
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, boxState->compoundOrigos[neighborId]);
-			relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, compound_origo).ToRelpos();
+			relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, compound_origo);
 			compoundPairLutPtrs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, neighborId);
 		}
 		__syncthreads();
@@ -258,7 +258,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], DeviceConstants::boxSize.boxSizeNM_i));
-					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(solventblock_hyperorigo, compound_origo).ToRelpos();
+					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(solventblock_hyperorigo, compound_origo);
 					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->n_solvents;
 				}
 				indexInBatch = 0;
@@ -321,8 +321,7 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricFi
 }
 
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, const ForceEnergy* const bondgroupForceenergies, 
-	const ForceEnergy* const forceEnergiesPME, CompoundQuickData* const compoundQuickData) {
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, CompoundQuickData* const compoundQuickData) {
 	
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
@@ -334,29 +333,18 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
 	// Fetch interims from other kernels
-	/*Float3 force = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].force;
-	float potE_sum = sim->boxState->compoundsInterimState[blockIdx.x].forceEnergyFarneighborShortrange[threadIdx.x].potE;*/
-
-	ForceEnergy forceEnergy = forceEnergies.Sum(blockIdx.x, threadIdx.x);	
-
+	ForceEnergy forceEnergy = forceEnergies.SumCompound(blockIdx.x, threadIdx.x);
 	{
 		const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
 		for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
 			const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
-			forceEnergy = forceEnergy + bondgroupForceenergies[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+			forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
 		}
 	}
 	
 
 	
 	__syncthreads();
-
-	// ------------------------------------------------------------ LongRange Electrostatics --------------------------------------------------------------- //	
-	if constexpr (ENABLE_ES_LR) {
-		if (threadIdx.x < nParticles)
-			forceEnergy = forceEnergy + forceEnergiesPME[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-	}
-
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 #ifdef FORCE_NAN_CHECK
@@ -750,7 +738,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		//KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
 
 		// calc Relative LimaPosition Shift from the origo-shift
-		const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(myNodeindex, origo).ToRelpos();
+		const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(myNodeindex, origo);
 
 		positions[threadIdx.x] = boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
 		

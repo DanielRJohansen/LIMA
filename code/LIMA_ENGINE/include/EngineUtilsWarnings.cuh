@@ -2,7 +2,7 @@
 // Each of these functions will be omitted based on the preprocessor flags.
 // There will be a separate namespace for each kernel!
 
-// Each function determines if its priority is under LIMASAFEMODE or LIMAPUSH
+// Each function determines if its priority is under LIMASAFEMODE or LIMA_PUSH
 
 #pragma once
 

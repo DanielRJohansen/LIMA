@@ -223,20 +223,9 @@ struct alignas(4) CompoundCompact {
 
 
 struct CompoundInterimState {
-	// Interims from the bridgekernel to compoundkernel
-	//float potE_interim[MAX_COMPOUND_PARTICLES];
-	//Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
-	//__host__ Float3 sumForce(int particleIndex) const;
-	//__host__ float sumPotentialenergy(int particleIndex) const;
-
-	//ForceEnergy forceEnergyFarneighborShortrange[MAX_COMPOUND_PARTICLES];
-	/*ForceEnergy forceEnergyImmediateneighborShortrange[MAX_COMPOUND_PARTICLES];
-	ForceEnergy forceEnergyBonds[MAX_COMPOUND_PARTICLES];
-	ForceEnergy forceEnergyBridge[MAX_COMPOUND_PARTICLES];*/
-
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // TODO units
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // [J/mol]
+	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
 	Coord coords[MAX_COMPOUND_PARTICLES];
 };

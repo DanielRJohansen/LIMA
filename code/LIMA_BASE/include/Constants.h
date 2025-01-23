@@ -8,13 +8,13 @@
 // sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
 // somewhere in the code
 //#define LIMASAFEMODE
-//#define LIMAPUSH
-#if defined LIMAPUSH && defined LIMASAFEMODE
+const bool LIMA_PUSH = true;
+
+#if defined LIMA_PUSH && defined LIMASAFEMODE
 #error These are mutually exclusive
 #endif
 
 //#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = true;
 
 #define ENABLE_LJ
 #define ENABLE_INTEGRATEPOSITION

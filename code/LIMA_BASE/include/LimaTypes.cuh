@@ -313,7 +313,6 @@ struct Coord {
 		if constexpr (!LIMA_PUSH) {
 			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
 				printf("pos %f %f %f\n", pos.x, pos.y, pos.z);
-				//				throw std::runtime_error("NodeIndex out of bounds");
 			}
 		}
 	}
@@ -323,7 +322,6 @@ struct Coord {
 		if constexpr (!LIMA_PUSH) {
 			if (std::abs(nodeIndex.x) > 1000 || std::abs(nodeIndex.y) > 1000 || std::abs(nodeIndex.z) > 1000) {// TODO magic nr,relates to intmax, fix!
 				printf("NodeIndex %d %d %d\n", nodeIndex.x, nodeIndex.y, nodeIndex.z);
-//				throw std::runtime_error("NodeIndex out of bounds");
 			}
 		}
 	}

@@ -189,7 +189,7 @@ namespace EngineUtils {
 			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 			// calc Relative LimaPosition Shift from the origo-shift
-			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).ToRelpos();
+			utility_float3 = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, origo_self);
 		}
 		__syncthreads();
 

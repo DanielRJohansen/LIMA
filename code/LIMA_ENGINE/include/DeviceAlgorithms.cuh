@@ -99,35 +99,36 @@ namespace LAL {
 		}
 	}
 
-	//__device__ inline void Sort(float* data, int nElements) {
-	//	// Assuming that data is already in shared memory.
-	//	int tid = threadIdx.x;
+    //template <typename T>
+    //__device__ inline void Sort(T* data, int nElements) { // Assuming that data is already in shared memory.
 
-	//	for (int k = 2; k <= nElements; k <<= 1) {
-	//		for (int j = k >> 1; j > 0; j >>= 1) {
-	//			int ixj = tid ^ j;
-	//			if (ixj > tid) {
-	//				if ((tid & k) == 0) {
-	//					if (data[tid] > data[ixj]) {
-	//						// Swap data[tid] and data[ixj]
-	//						float temp = data[tid];
-	//						data[tid] = data[ixj];
-	//						data[ixj] = temp;
-	//					}
-	//				}
-	//				else {
-	//					if (data[tid] < data[ixj]) {
-	//						// Swap data[tid] and data[ixj]
-	//						float temp = data[tid];
-	//						data[tid] = data[ixj];
-	//						data[ixj] = temp;
-	//					}
-	//				}
-	//			}
-	//			__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
-	//		}
-	//	}
-	//}
+    //    int tid = threadIdx.x;
+
+    //    for (int k = 2; k <= nElements; k <<= 1) {
+    //        for (int j = k >> 1; j > 0; j >>= 1) {
+    //            int ixj = tid ^ j;
+    //            if (ixj > tid) {
+    //                if ((tid & k) == 0) {
+    //                    if (data[tid] > data[ixj]) {
+    //                        // Swap data[tid] and data[ixj]
+    //                        T temp = data[tid];
+    //                        data[tid] = data[ixj];
+    //                        data[ixj] = temp;
+    //                    }
+    //                }
+    //                else {
+    //                    if (data[tid] < data[ixj]) {
+    //                        // Swap data[tid] and data[ixj]
+    //                        T temp = data[tid];
+    //                        data[tid] = data[ixj];
+    //                        data[ixj] = temp;
+    //                    }
+    //                }
+    //            }
+    //            __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+    //        }
+    //    }
+    //}
 
 
 }

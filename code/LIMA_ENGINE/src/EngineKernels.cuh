@@ -55,7 +55,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 
     __shared__ Float3 relshifts[batchsize];	// [nm]
     __shared__ uint16_t neighborIds[batchsize]; // either compoundID or solventblockID
-    __shared__ int neighborNParticles[batchsize]; // either particlesInCompound or particlesInSolventblock
 
     const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
     const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
@@ -71,15 +70,12 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
         cooperative_groups::wait(block);
     }
 
-    if (!enableES)
-        compoundQuickData.charges[threadIdx.x] = 0;
-
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];
-    const float myCharge = compoundQuickData.charges[threadIdx.x];
+    const float myCharge = enableES ? compoundQuickData.charges[threadIdx.x] : 0.f;
     const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
 
 	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
-
+    __shared__ int neighborNParticlesVote;
 	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
 	{
         auto block = cooperative_groups::this_thread_block();
@@ -92,12 +88,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
             if (indexInNeighborlist < nNonbondedCompoundNeighbors) {
                 neighborIds[threadIdx.x] = compoundNeighborlists[blockIdx.x].nonbondedNeighborcompoundIds[indexInNeighborlist];
 
-                const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);
-                // TODO: Consider adding safety here, that origo isn't too far..
-
                 // calc Relative LimaPosition Shift from the origo-shift
+                const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);   // TODO: Consider adding safety here, that origo isn't too far..
                 relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShiftFloat3(querycompound_hyperorigo, compoundOrigo);
-                neighborNParticles[threadIdx.x] = boxConfig.compounds[neighborIds[threadIdx.x]].n_particles;
             }
 
             indexInBatch = 0;
@@ -105,12 +98,17 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);
             for (int indexInBatch = 0; indexInBatch < nElementsInBatch; indexInBatch++) {
+                neighborNParticlesVote = MAX_COMPOUND_PARTICLES;// Assume all are active
                 cooperative_groups::memcpy_async(block, &compoundQuickData, &compoundQuickDataBuffer[neighborIds[indexInBatch]], sizeof(CompoundQuickData));
                 cooperative_groups::wait(block);
 
+                if (compoundQuickData.ljParams[threadIdx.x].sigmaHalf == -1.f)
+                    atomicMin(&neighborNParticlesVote, threadIdx.x);
+                __syncthreads();
+
                 if (threadIdx.x < nParticles) {
                     force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - relshifts[indexInBatch], potE_sum,
-                        compoundQuickData.relPos, neighborNParticles[indexInBatch], myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+                        compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
                 }
             }
 		}
@@ -125,9 +123,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 
     auto block = cooperative_groups::this_thread_block();
     cooperative_groups::memcpy_async(block, &forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES], forceEnergyOut, sizeof(ForceEnergy) * MAX_COMPOUND_PARTICLES);
-    //if (threadIdx.x < nParticles) {
-    //	forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
-    //}
 }
 
 

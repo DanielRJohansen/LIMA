@@ -185,7 +185,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev, int64_t st
 				sim_dev->signals->critical_error_encountered = true;
 			}
 		}
-	}
+	}        
 
 #ifdef ENABLE_SOLVENTS
 	// Loop over the nearby gridnodes, and add them if they're within range

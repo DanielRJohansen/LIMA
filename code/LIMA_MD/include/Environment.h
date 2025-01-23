@@ -51,7 +51,8 @@ public:
 	void createSimulationFiles(float boxlen);
 
 	// Run a standard MD sim
-	void run(bool doPostRunEvents=true);
+    /// <returns>Elapsed Engine time in milliseconds</returns>
+    std::chrono::duration<double> run(bool doPostRunEvents=true);
 
 	/// <summary>
 	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the

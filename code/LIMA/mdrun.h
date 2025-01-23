@@ -115,24 +115,18 @@ int mdrun(int argc, char** argv) {
 
     env->CreateSimulation(grofile, topfile, ip);
 
-    auto t0 = std::chrono::steady_clock::now();
-
-    env->run();
+    const std::chrono::duration<double> enginetimeMs = env->run();
 
     env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
     // Calculate total time simulated (in nanoseconds)
-    const double total_ns = static_cast<double>(ip.n_steps) * ip.dt;
-
-    // Measure elapsed time in seconds
-    auto t1 = std::chrono::steady_clock::now();
-    std::chrono::duration<double> elapsed_seconds = t1 - t0;
-    double wall_time_sec = elapsed_seconds.count();
+    const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
+    const double wall_time_sec = std::chrono::duration_cast<std::chrono::seconds>(enginetimeMs).count();
 
     // Calculate performance metrics
-    double ns_per_day = total_ns / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-    double hr_per_ns = (wall_time_sec / total_ns) / 3600.0;    // convert to hours per ns
+    const double ns_per_day = total_ns_simulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+    const double hr_per_ns = (wall_time_sec / total_ns_simulated) / 3600.0;    // convert to hours per ns
 
     // Print time and performance info in the GROMACS-like format
     printf("\n");

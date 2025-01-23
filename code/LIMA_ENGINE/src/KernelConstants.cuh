@@ -11,11 +11,13 @@ struct BoxSize {
 		boxSizeNM_i = boxSizeNM;
 		boxSizeNM_f = static_cast<float>(boxSizeNM);
 		blocksPerDim = BoxGrid::NodesPerDim(boxSizeNM);
+                blocksPerDimHalf = blocksPerDim/2;
 	}
 
 	int boxSizeNM_i = 0;
 	float boxSizeNM_f = 0;
 	int blocksPerDim = 0;	// for boxGrid
+        int blocksPerDimHalf = 0;
 };
 
 namespace DeviceConstants {

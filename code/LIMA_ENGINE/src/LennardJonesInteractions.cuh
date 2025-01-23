@@ -110,7 +110,7 @@ namespace LJ {
 
 	// For intraCompound or bonded-to compounds	
 	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
+    __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
         float chargeSelf, const float* const charges)

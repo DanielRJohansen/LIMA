@@ -102,6 +102,9 @@ namespace LAL {
     //    return r > l ? r : l;
     //}
     
+    bool constexpr isPowerOf2(int n) {
+        return (n > 0) && ((n & (n - 1)) == 0);
+    }
 
 
     constexpr int powi(int base, int exp) {

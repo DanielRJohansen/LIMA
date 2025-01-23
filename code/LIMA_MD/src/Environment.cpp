@@ -179,9 +179,9 @@ void Environment::sayHello() {
 }
 #include <optional>
 
-void Environment::run(bool doPostRunEvents) {
+std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
 	const bool emVariant = simulation->simparams_host.em_variant;
-	if (!prepareForRun()) { return; }
+    if (!prepareForRun()) { return {}; }
 
 	std::unique_ptr<Display> display = nullptr;
 
@@ -227,6 +227,8 @@ void Environment::run(bool doPostRunEvents) {
 	if (simulation->finished && doPostRunEvents) {
 		postRunEvents();
 	}
+
+    return simulationTimer->elapsed();
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 

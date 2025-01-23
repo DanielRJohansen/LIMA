@@ -70,10 +70,17 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
 		const Compound& compound = simulation->box_host->compounds[cid];
 		CompoundQuickData& quickData = compoundQuickDataHost[cid];
-		for (int pid = 0; pid < compound.n_particles; pid++) {
-			quickData.relPos[pid] = simulation->box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
-			quickData.ljParams[pid] = simulation->forcefield.particle_parameters[compound.atom_types[pid]];
-			quickData.charges[pid] = compound.atom_charges[pid];
+        for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
+            if (pid < compound.n_particles) {
+                quickData.relPos[pid] = simulation->box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
+                quickData.ljParams[pid] = simulation->forcefield.particle_parameters[compound.atom_types[pid]];
+                quickData.charges[pid] = compound.atom_charges[pid];
+            }
+            else {
+                quickData.relPos[pid] = Float3{};
+                quickData.ljParams[pid] = ForceField_NB::ParticleParameters{};
+                quickData.charges[pid] = 0.f;
+            }
 		}
 	}
 	compoundQuickData = GenericCopyToDevice(compoundQuickDataHost);

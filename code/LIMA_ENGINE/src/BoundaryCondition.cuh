@@ -35,7 +35,7 @@ public:
 		const NodeIndex difference = static_index - movable_index;
 		movable_index.x += DeviceConstants::boxSize.blocksPerDim * (difference.x > (DeviceConstants::boxSize.blocksPerDim / 2));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
 		movable_index.x -= DeviceConstants::boxSize.blocksPerDim * (difference.x < -(DeviceConstants::boxSize.blocksPerDim / 2));
-		movable_index.y += DeviceConstants::boxSize.blocksPerDim * (difference.y > (DeviceConstants::boxSize.blocksPerDim / 2));
+        movable_index.y += DeviceConstants::boxSize.blocksPerDim * (difference.y > (DeviceConstants::boxSize.blocksPerDim / 2));// OPTIM TOdo use other constant, dont do /2 here
 		movable_index.y -= DeviceConstants::boxSize.blocksPerDim * (difference.y < -(DeviceConstants::boxSize.blocksPerDim / 2));
 		movable_index.z += DeviceConstants::boxSize.blocksPerDim * (difference.z > (DeviceConstants::boxSize.blocksPerDim / 2));
 		movable_index.z -= DeviceConstants::boxSize.blocksPerDim * (difference.z < -(DeviceConstants::boxSize.blocksPerDim / 2));
@@ -43,7 +43,7 @@ public:
 
 	__device__ constexpr static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) {
 		NodeIndex hyperIndex = movable_index;
-		const int halfBox = DeviceConstants::boxSize.blocksPerDim / 2;
+        const int halfBox = DeviceConstants::boxSize.blocksPerDimHalf;
 		const NodeIndex difference = static_index - movable_index;
 
 		hyperIndex.x += DeviceConstants::boxSize.blocksPerDim * ((difference.x > halfBox) - (difference.x < -halfBox));

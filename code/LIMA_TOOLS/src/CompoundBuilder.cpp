@@ -458,8 +458,8 @@ const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& pa
 
 
 		const MoleculeGraph molGraph(atoms, edges);
-		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = molGraph.ComputeNumDownstreamNodes();
 		const MoleculeTree moleculeTree = molGraph.ConstructMoleculeTree();
+		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = molGraph.ComputeNumDownstreamNodes(moleculeTree);
 
 		std::stack<const MoleculeGraph::Node*> nodeStack;
 		nodeStack.push(molGraph.root);

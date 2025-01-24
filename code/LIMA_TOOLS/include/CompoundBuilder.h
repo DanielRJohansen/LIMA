@@ -26,21 +26,12 @@ struct BoxImage;
 
 // --------------------------------- Bond Factories --------------------------------- //
 
-//struct ParticleFactory {
-//	const int activeLjtypeParameterIndex = -1;
-//	const TopologyFile::AtomsEntry* topAtom = nullptr;
-//	//const GroRecord* groAtom = nullptr;
-//	const Float3 position;
-//	const int uniqueResId;
-//	const int indexInGrofile; // 0-indexed
-//};
 
 struct ParticleFactory {
 	ParticleFactory(const TopologyFile::AtomsEntry& topologyAtom, const Float3& pos, int indexInGrofile, int activeLJParamIndex) :
 		topologyAtom(topologyAtom), position(pos), indexInGrofile(indexInGrofile), activeLJParamIndex(activeLJParamIndex) {}
 
 	const TopologyFile::AtomsEntry& topologyAtom;
-//	const GroRecord& groAtom;
 	const Float3 position{};
 	int indexInGrofile = -1; // 0-indexed
 

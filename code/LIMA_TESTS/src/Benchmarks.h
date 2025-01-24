@@ -217,4 +217,27 @@ namespace Benchmarks {
 		}
 	}	
 
+	static LimaUnittestResult PrepareSimulation_stmv(EnvMode envmode) {
+		TimeIt timer("Load Sim");
+		const fs::path work_dir = simulations_dir / "benchmarking"/"stmv";
+
+		GroFile grofile{ work_dir / "conf.gro" };
+		TopologyFile topfile{ work_dir /  "topol.top" };
+		SimParams ip{};
+		ip.n_steps = 1;
+		ip.data_logging_interval = 20;
+		ip.enable_electrostatics = true;
+		Environment env{ work_dir, envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.prepareForRun();
+		const std::chrono::duration<double> elapsedTime = timer.elapsed();
+		
+		//env.run();
+
+		const std::chrono::duration<double> maxTime{ 30. }; // [s]
+		
+		return LimaUnittestResult{ elapsedTime < maxTime, std::format("Elapsed time: {:.2f} [s] Allowed: {:.2f} [s]", elapsedTime.count(), maxTime.count()), envmode != Headless };
+	}
+
+
 }

@@ -156,7 +156,7 @@ namespace LimaMoleculeGraph {
 		// Uses a BFS approach to construct a molecule without cycles
 		MoleculeTree ConstructMoleculeTree() const;
 
-		std::unordered_map<int, int> ComputeNumDownstreamNodes() const;
+		std::unordered_map<int, int> ComputeNumDownstreamNodes(const MoleculeTree& moleculeTree) const;
 
 	/*	void addNode(int node_id, const std::string& atomname) {
 			nodes.emplace(node_id, Node(node_id, atomname) );

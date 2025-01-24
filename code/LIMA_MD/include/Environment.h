@@ -86,6 +86,7 @@ public:
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 
+	bool prepareForRun();
 private:
 
 	void constexpr verifySimulationParameters();			// Constants before doing anything
@@ -99,7 +100,7 @@ private:
 
 	void sayHello();
 
-	bool prepareForRun();
+	
 
 
 	EnvMode m_mode;

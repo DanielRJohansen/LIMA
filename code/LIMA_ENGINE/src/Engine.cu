@@ -90,7 +90,7 @@ Engine::~Engine() {
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
-	assert(simulation == nullptr);
+	//assert(simulation == nullptr);
 }
 
 

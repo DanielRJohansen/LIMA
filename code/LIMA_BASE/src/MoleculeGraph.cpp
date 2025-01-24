@@ -117,9 +117,8 @@ MoleculeTree MoleculeGraph::ConstructMoleculeTree() const {
 }
 
 
-std::unordered_map<int, int> MoleculeGraph::ComputeNumDownstreamNodes() const 
+std::unordered_map<int, int> MoleculeGraph::ComputeNumDownstreamNodes(const MoleculeTree& moleculeTree) const
 {
-	MoleculeTree moleculeTree = ConstructMoleculeTree();
 
 	std::stack<const Node*> processStack; // The order in which to actually process NumDownstreamNodes
 	for (const Node& node : BFS(root->atomid)) {

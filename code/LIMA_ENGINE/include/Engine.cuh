@@ -24,7 +24,7 @@ struct CompoundQuickData;
 struct ForceEnergyInterims;
 
 namespace PME { class Controller; };
-
+namespace NlistUtil{struct IdAndRelshift;}
 
 
 
@@ -109,6 +109,8 @@ private:
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 	NeighborList* neighborlistsPtr = nullptr; // dont own data!
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
+    uint16_t* nNonbondedNeighborsPtr = nullptr;// dont own data!
+    NlistUtil::IdAndRelshift* nonbondedNeighborsPtr = nullptr;// dont own data!
 
 
 	std::unique_ptr<PME::Controller> pmeController;

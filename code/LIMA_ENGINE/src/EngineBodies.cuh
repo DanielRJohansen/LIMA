@@ -110,34 +110,50 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 
+namespace NlistUtil {
+    static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 
+    static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
+    struct IdAndRelshift {
+        int id;
+        Float3 relShift;
+    };
+
+    __device__ inline bool AddCompound(uint16_t new_id, const Float3& relshift, IdAndRelshift* const neighborIds, uint16_t& nNeighbors) {
+        // OPTIM only check when not LIMA_PUSH
+        if (nNeighbors >= maxCompounds) {
+            printf("\nFailed to insert compound neighbor id %d!\n", new_id);
+            return false;
+            //throw std::runtime_error("Neighborlist overflow");
+        }
+        neighborIds[nNeighbors++] = { (int)new_id, relshift };
+        return true;
+    }
+}
 
 
 
 
 // OPTIM use alignas 128 here
 class alignas(128) NeighborList {
-	static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
+
 public:
-	struct IdAndRelshift {
-		int id;
-		Float3 relShift;
-	};
 
-	__device__ __host__ bool addCompound(uint16_t new_id, const Float3& relshift) {
-		// OPTIM only check when not LIMA_PUSH
-		if (nNonbondedNeighbors >= maxCompounds) {
-			printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-			return false;
-			//throw std::runtime_error("Neighborlist overflow");
-		}
-		nonbondedNeighborCompounds[nNonbondedNeighbors++] = { (int)new_id, relshift };
-		return true;
-	}
 
-	static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
+    //__device__ __host__ bool addCompound(uint16_t new_id, const Float3& relshift) {
+    //	// OPTIM only check when not LIMA_PUSH
+    //	if (nNonbondedNeighbors >= maxCompounds) {
+    //		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
+    //		return false;
+    //		//throw std::runtime_error("Neighborlist overflow");
+    //	}
+    //	nonbondedNeighborCompounds[nNonbondedNeighbors++] = { (int)new_id, relshift };
+    //	return true;
+    //}
 
-	IdAndRelshift nonbondedNeighborCompounds[maxCompounds];
+
+
+    //IdAndRelshift nonbondedNeighborCompounds[maxCompounds];
 
 #ifdef ENABLE_SOLVENTS
 	// returns false if an error occured
@@ -156,3 +172,4 @@ public:
 #endif
 	int nNonbondedNeighbors = 0;
 };
+

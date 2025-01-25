@@ -104,6 +104,8 @@ struct SimulationDevice {
 
 	// Compounds can see which compounds are near them
 	NeighborList* compound_neighborlists = nullptr;
+    uint16_t* nNonbondedNeighborsBuffer = nullptr;
+    NlistUtil::IdAndRelshift* nonbondedNeighborsBuffer = nullptr;
 
 	// Module used to move solvents to a new block, in parallel
 	SolventBlockTransfermodule* transfermodule_array = nullptr;

@@ -45,20 +45,21 @@
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState boxState, const BoxConfig boxConfig, const NeighborList* const compoundNeighborlists, 
-    bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer)
+__global__ void compoundFarneighborShortrangeInteractionsKernel(const NeighborList* const compoundNeighborlists,
+    bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer, const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer)
 {
     const int batchsize = 32;
 
-    __shared__ CompoundQuickData compoundQuickData;
-    __shared__ NodeIndex compoundOrigo;
+    __shared__ CompoundQuickData compoundQuickData; // 768 bytes
+    __shared__ int nParticles;
 
-	__shared__ NeighborList::IdAndRelshift neighborCompounds[batchsize];
-
-    const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
-    const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
+    __shared__ NlistUtil::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
+    __shared__ int nNonbondedCompoundNeighbors;
+    nParticles = MAX_COMPOUND_PARTICLES;
+    //const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
     if (threadIdx.x == 0)
-        compoundOrigo = boxState.compoundOrigos[blockIdx.x];
+        nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
+        //nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
 
 	float potE_sum{};
 	Float3 force{};
@@ -72,6 +73,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];
     const float myCharge = enableES ? compoundQuickData.charges[threadIdx.x] : 0.f;
     const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
+    if (myParams.sigmaHalf == -1.f)
+        nParticles = atomicMin(&nParticles, threadIdx.x);
 
 	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
     __shared__ int neighborNParticlesVote;
@@ -82,7 +85,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
         for (int batchIndex = 0; batchIndex < nNonbondedCompoundNeighbors/batchsize + 1; batchIndex++) {
 			__syncthreads();
 
-			cooperative_groups::memcpy_async(block, neighborCompounds, &compoundNeighborlists[blockIdx.x].nonbondedNeighborCompounds[batchIndex * batchsize], sizeof(NeighborList::IdAndRelshift) * batchsize);
+            //cooperative_groups::memcpy_async(block, neighborCompounds, &compoundNeighborlists[blockIdx.x].nonbondedNeighborCompounds[batchIndex * batchsize], sizeof(NeighborList::IdAndRelshift) * batchsize);
+            cooperative_groups::memcpy_async(block, neighborCompounds, &nonbondedNeighborsBuffer[blockIdx.x * NlistUtil::maxCompounds + batchIndex * batchsize], sizeof(NlistUtil::IdAndRelshift) * batchsize);
 			cooperative_groups::wait(block);
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);

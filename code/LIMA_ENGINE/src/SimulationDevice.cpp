@@ -157,7 +157,7 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 {
 	// Allocate structures for keeping track of solvents and compounds
 	compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
-	cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS);
+    cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS); // OPTIM hunt down and removed managed mem
 
 	cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
 
@@ -167,6 +167,14 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	}
 
 	//genericCopyToDevice(params_host, &params, 1);
+
+    uint16_t* nNonbondedNeighborsBuffer = nullptr;
+    NlistUtil::IdAndRelshift* nonbondedNeighborsBuffer = nullptr;
+
+    cudaMallocManaged(&nNonbondedNeighborsBuffer, sizeof(uint16_t) * box_host->boxparams.n_compounds);
+    cudaMallocManaged(&nonbondedNeighborsBuffer, sizeof(NlistUtil::IdAndRelshift) * box_host->boxparams.n_compounds * NlistUtil::maxCompounds);
+    cudaMemset(nNonbondedNeighborsBuffer, 0, sizeof(uint16_t) * box_host->boxparams.n_compounds);
+
 
 	potE_buffer = databuffers.potE_buffer;
 	traj_buffer = databuffers.traj_buffer;
@@ -192,6 +200,9 @@ void SimulationDevice::FreeMembers() {
 	cudaFree(compound_neighborlists);
 	cudaFree(transfermodule_array);
 	cudaFree(signals);
+
+    cudaFree(nNonbondedNeighborsBuffer);
+    cudaFree(nonbondedNeighborsBuffer);
 
 	if (adamState != nullptr)
 		cudaFree(adamState);

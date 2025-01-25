@@ -90,7 +90,8 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 	const Float3* const key_positions_self, int offset, int n_compounds, int compound_id, const CompoundInteractionBoundary& boundary_self,
 	const CompoundInteractionBoundary* const boundaries_others,
 	int n_bonded_compounds, const int* const bonded_compound_ids,
-	const NodeIndex& myCompoundOrigo, const NodeIndex* const compoundOrigos
+    const NodeIndex& myCompoundOrigo, const NodeIndex* const compoundOrigos,
+    uint16_t& nNonbondedNeighbors, NlistUtil::IdAndRelshift* const nonbondedNeighbors
 	)
 {
 	// Now add all compounds nearby we are NOT bonded to. (They were added before this)
@@ -117,9 +118,11 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
 			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
 
+            //if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
+            //    return false;
 
-			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
-				return false;
+            //if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
+                //return false;
 		}
 	}
 	return true;
@@ -142,6 +145,9 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		: NodeIndex{};
 
 	NeighborList nlist;
+
+    uint16_t nNonbondedNeighbors = 0;
+    NlistUtil::IdAndRelshift nonbondedNeighbors[NlistUtil::maxCompounds];
 
 	Float3 key_positions_self[CompoundInteractionBoundary::k];
 	if (compound_active)
@@ -180,7 +186,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
 			const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds,
-				compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos);
+                compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos, nNonbondedNeighbors, nonbondedNeighbors);
 			if (!success) {
 				sim_dev->signals->critical_error_encountered = true;
 			}
@@ -225,6 +231,11 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	// Push the new nlist
 	if (compound_active) {
 		sim_dev->compound_neighborlists[compound_id] = nlist;
+        sim_dev->nNonbondedNeighborsBuffer[compound_id] = nNonbondedNeighbors;
+        //for (int i = 0; i < nNonbondedNeighbors; i++)
+        //    sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
+        //cudaMemcpy(&sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds], nonbondedNeighbors, sizeof(NlistUtil::IdAndRelshift) * nNonbondedNeighbors, cudaMemcpyDeviceToDevice);
+        //sim_dev->nonbondedNeighborsBuffer[compound_id] = nonbondedNeighbors;
 	}
 }
 
@@ -295,8 +306,8 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams)
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
 		updateCompoundNlistsKernel<BoundaryCondition><<<n_blocks, threads_in_compoundnlist_kernel>>>( sim_dev);
 	}
-
-	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
+    LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
+    cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
 	//printf("\n");
 
 	if (boxparams.n_solvents > 0) {

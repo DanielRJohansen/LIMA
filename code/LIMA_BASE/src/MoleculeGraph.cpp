@@ -4,7 +4,7 @@
 #include "unordered_set"
 #include <stack>
 #include <algorithm>
-
+#include <ranges>
 #include <unordered_map>
 
 using namespace LimaMoleculeGraph;
@@ -16,10 +16,12 @@ using std::vector;
 MoleculeTree::MoleculeTree(int rootId) {
 	tree.insert({ rootId, {} });
 }
-std::vector<int> MoleculeTree::GetAllChildIdsAndSelf(int parentId, std::unordered_map<int, int> nodeIdsNumDownstreamNodes) const {
-	std::vector<int> ids;
-	ids.reserve(nodeIdsNumDownstreamNodes.at(parentId));
 
+void MoleculeTree::ForSelfAndAllChildrenIds(
+	int parentId,
+	const std::function<void(int)>& visitor
+) const
+{
 	std::stack<int> nodeStack;
 	nodeStack.push(parentId);
 
@@ -27,17 +29,12 @@ std::vector<int> MoleculeTree::GetAllChildIdsAndSelf(int parentId, std::unordere
 		int currentId = nodeStack.top();
 		nodeStack.pop();
 
-		ids.push_back(currentId);
+		visitor(currentId);
 
 		for (const int childId : tree.at(currentId)) {
 			nodeStack.push(childId);
 		}
 	}
-
-	if (ids.size() != nodeIdsNumDownstreamNodes.at(parentId))
-		throw std::runtime_error("Number of nodes in tree does not match number of nodes in numDownstreamNodes");
-
-	return ids;
 }
 
 

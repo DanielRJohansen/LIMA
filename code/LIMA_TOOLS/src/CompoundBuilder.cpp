@@ -393,7 +393,7 @@ bool AreBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<
 
 	
 
-std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unordered_map<int,int> nodeIdToNumDownstream, int spaceLeft) {
+std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unordered_map<int,int>& nodeIdToNumDownstream, int spaceLeft) {
 	std::vector<int> bestOrder = ids;
 	int maxElements = 0;
 
@@ -438,7 +438,7 @@ const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& pa
 		std::vector<std::pair<int, std::string>> atoms;
 		atoms.reserve(particleIdsInMolecule.size());
 		for (int pid : particleIdsInMolecule) {
-			atoms.push_back({ pid, topology.particles[pid].topologyAtom.type });
+			atoms.emplace_back( pid, topology.particles[pid].topologyAtom.type );
 		}
 
 		std::unordered_set<int> bondIdsInMolecule;
@@ -451,7 +451,7 @@ const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& pa
 		std::vector<std::array<int, 2>> edges;
 		edges.reserve(bondIdsInMolecule.size());
 		for (int bid : bondIdsInMolecule) {
-			edges.push_back(topology.singlebonds[bid].global_atom_indexes);
+			edges.emplace_back(topology.singlebonds[bid].global_atom_indexes);
 		}
 
 
@@ -464,14 +464,14 @@ const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& pa
 		std::stack<const MoleculeGraph::Node*> nodeStack;
 		nodeStack.push(molGraph.root);
 
-		atomGroups.push_back({});
+		atomGroups.emplace_back();
 
 		while (!nodeStack.empty()) {
 			const MoleculeGraph::Node* node = nodeStack.top();
 			nodeStack.pop();
 
 			if (MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size() == 0)
-				atomGroups.push_back({});
+				atomGroups.emplace_back();
 			atomGroups.back().atomIds.emplace_back(node->atomid);
 
 			std::vector<int> nodeChildren = moleculeTree.GetChildIds(node->atomid);
@@ -492,12 +492,11 @@ const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& pa
 
 				for (int id : nodeChildrenIdsIdealOrder) {
 					if (nodeIdNumDownstreamNodes.at(id) > MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size())
-						atomGroups.push_back({});
+						atomGroups.emplace_back();
 
-					std::vector<int> allChildIds = moleculeTree.GetAllChildIdsAndSelf(id, nodeIdNumDownstreamNodes);
-					for (int childId : allChildIds) {
-						atomGroups.back().atomIds.emplace_back(childId);
-					}
+					moleculeTree.ForSelfAndAllChildrenIds(id,
+						[&atomGroups](int _id) { atomGroups.back().atomIds.emplace_back(_id); }
+					);
 				}
 			}
 		}

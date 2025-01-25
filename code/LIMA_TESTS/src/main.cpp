@@ -137,7 +137,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
-		//Benchmarks::PrepareSimulation_stmv(envmode);
+		Benchmarks::PrepareSimulation_stmv(envmode);
 		// 
 		RunAllUnitTests();
 	}

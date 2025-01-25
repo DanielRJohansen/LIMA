@@ -17,7 +17,7 @@
 #include <optional>
 #include <type_traits>
 #include <map>
-
+#include <functional>
 
 namespace LimaMoleculeGraph {
 	namespace fs = std::filesystem;
@@ -36,8 +36,7 @@ namespace LimaMoleculeGraph {
 			return tree.at(parentId);
 		}
 
-		// Get all children recursively
-		std::vector<int> GetAllChildIdsAndSelf(int parentId, std::unordered_map<int,int> nodeIdsNumDownstreamNodes) const;
+		void ForSelfAndAllChildrenIds(int parentId, const std::function<void(int)>& visitor) const;
 	};
 
 

@@ -228,6 +228,7 @@ namespace ElectrostaticsTests {
 		simparams.dt = 1.f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
+		simparams.stepsPerNlistupdate = 1;
 		simparams.enable_electrostatics = true;
 		simparams.cutoff_nm = 2.f;
 		auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);

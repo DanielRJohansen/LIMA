@@ -68,6 +68,7 @@ SimParams::SimParams(const fs::path& path) {
 	Readf(dict, dt, "dt", [](auto val) {return val * FEMTO_TO_NANO; });
 	Readb(dict, em_variant, "em");
 	Readf(dict, em_force_tolerance, "em_force_tolerance");
+	Readi(dict, stepsPerNlistupdate, "stepsPerNlistupdate");
 
 	overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
 		[](const string& value) {return convertStringvalueToValue<BoundaryConditionSelect>({ {"pbc", PBC }, {"nobc", NoBC} }, "boundarycondition", value); }
@@ -98,6 +99,7 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "dt=" << static_cast<int>(std::round(dt * NANO_TO_FEMTO)) << " # [fs]\n";
 	file << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
 	file << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm] - only relevant if em=true\n";
+	file << "stepsPerNlistupdate=" << stepsPerNlistupdate << " # [steps]\n";
 
 	file << "\n// Physics params\n";
 	file << "boundarycondition=" << (bc_select == PBC ? "PBC" : "No Boundary Condition") << " # (PBC, NoBC)\n";

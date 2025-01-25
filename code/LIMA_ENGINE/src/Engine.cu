@@ -72,7 +72,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, boxparams);
+	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, boxparams);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -157,10 +157,10 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 				cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 		}
 		
-		HandleEarlyStoppingInEM();
-
-		NeighborLists::updateNlists(sim_dev, simulation->getStep(), simulation->simparams_host.bc_select, simulation->box_host->boxparams);
+		HandleEarlyStoppingInEM();		
 	}
+	if (simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1)
+		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams);
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();
@@ -337,10 +337,11 @@ void Engine::_deviceMaster() {
 		cudaStreamSynchronize(cudaStreams[i]);
 	}
 
+	const bool updateNlistsAfterThisStep = simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1;
 	if (boxparams.n_compounds > 0) {
 		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, *forceEnergyInterims, compoundQuickData);
+			(sim_dev, step, *forceEnergyInterims, compoundQuickData, updateNlistsAfterThisStep);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 

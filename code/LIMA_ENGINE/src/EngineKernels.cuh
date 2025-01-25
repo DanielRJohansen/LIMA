@@ -320,15 +320,17 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricFi
 	}
 }
 
+// Instead of updating origo every step (which doesnt really give us precision, as the relpos can stretch very far from origo no problem), we only update 
+// just before a new NLIST update. This means, nlists can precompute all compound-compound interactions relshift once
 template<typename BoundaryCondition, bool emvariant>
-__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, CompoundQuickData* const compoundQuickData) {
-	
+__global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, CompoundQuickData* const compoundQuickData, bool updateOrigo) {
+
 	__shared__ CompoundCoords compound_coords;
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
 	if (threadIdx.x == 0) {
 		compound_coords.origo = sim->boxState->compoundOrigos[blockIdx.x];
-	}	
+	}
 	compound_coords.rel_positions[threadIdx.x] = sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x];
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
@@ -341,9 +343,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 			forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
 		}
 	}
-	
 
-	
+
+
 	__syncthreads();
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
@@ -383,7 +385,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	__syncthreads();
 
 	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
-	{
+	if (updateOrigo) {
 		__shared__ Coord shift_lm;	// Use utility coord for this?
 		if (threadIdx.x == 0) {
 			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords, sim->boxConfig.compounds[blockIdx.x].centerparticle_index);
@@ -392,9 +394,10 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 		LIMAPOSITIONSYSTEM_HACK::shiftRelPos(compound_coords, shift_lm);
 		__syncthreads();
+
+		LIMAPOSITIONSYSTEM_HACK::applyBC<BoundaryCondition>(compound_coords);
+		__syncthreads();
 	}
-	LIMAPOSITIONSYSTEM_HACK::applyBC<BoundaryCondition>(compound_coords);
-	__syncthreads();
 
 	Float3 force_LJ_sol{};	// temp
 	EngineUtils::LogCompoundData(sim->boxConfig.compounds[blockIdx.x], sim->boxparams.total_particles_upperbound, compound_coords, &forceEnergy.potE, forceEnergy.force,

@@ -26,6 +26,7 @@ struct SimParams {
 	float dt = 2.f * FEMTO_TO_NANO;				// [ns]
 	bool em_variant = false;
 	float em_force_tolerance = 1000; // [kJ/mol/nm]
+	int stepsPerNlistupdate = 5;
 
 	// Physics params
 	BoundaryConditionSelect bc_select{ PBC };
@@ -40,7 +41,7 @@ struct SimParams {
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
 
 	// Thermostat
-	int64_t steps_per_temperature_measurement = 200;
+	int64_t steps_per_temperature_measurement = 200;	
 	bool apply_thermostat = false;
 
 };

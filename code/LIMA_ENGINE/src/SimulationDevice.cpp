@@ -168,9 +168,6 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 
 	//genericCopyToDevice(params_host, &params, 1);
 
-    uint16_t* nNonbondedNeighborsBuffer = nullptr;
-    NlistUtil::IdAndRelshift* nonbondedNeighborsBuffer = nullptr;
-
     cudaMallocManaged(&nNonbondedNeighborsBuffer, sizeof(uint16_t) * box_host->boxparams.n_compounds);
     cudaMallocManaged(&nonbondedNeighborsBuffer, sizeof(NlistUtil::IdAndRelshift) * box_host->boxparams.n_compounds * NlistUtil::maxCompounds);
     cudaMemset(nNonbondedNeighborsBuffer, 0, sizeof(uint16_t) * box_host->boxparams.n_compounds);

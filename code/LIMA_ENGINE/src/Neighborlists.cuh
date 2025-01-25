@@ -118,8 +118,8 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
 			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
 
-            //if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
-            //    return false;
+            if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
+                return false;
 
             //if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
                 //return false;
@@ -232,8 +232,8 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	if (compound_active) {
 		sim_dev->compound_neighborlists[compound_id] = nlist;
         sim_dev->nNonbondedNeighborsBuffer[compound_id] = nNonbondedNeighbors;
-        //for (int i = 0; i < nNonbondedNeighbors; i++)
-        //    sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
+        for (int i = 0; i < nNonbondedNeighbors; i++)
+            sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
         //cudaMemcpy(&sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds], nonbondedNeighbors, sizeof(NlistUtil::IdAndRelshift) * nNonbondedNeighbors, cudaMemcpyDeviceToDevice);
         //sim_dev->nonbondedNeighborsBuffer[compound_id] = nonbondedNeighbors;
 	}

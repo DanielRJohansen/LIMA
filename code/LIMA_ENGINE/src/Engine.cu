@@ -295,7 +295,7 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
-            (neighborlistsPtr, simulation->simparams_host.enable_electrostatics,
+            (simulation->simparams_host.enable_electrostatics,
                 forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nNonbondedNeighborsPtr, nonbondedNeighborsPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 

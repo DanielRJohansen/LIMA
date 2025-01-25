@@ -45,8 +45,7 @@
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(const NeighborList* const compoundNeighborlists,
-    bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer, const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer)
+__global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer, const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer)
 {
     const int batchsize = 32;
 
@@ -56,13 +55,12 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const NeighborLi
     __shared__ NlistUtil::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
     __shared__ int nNonbondedCompoundNeighbors;
     nParticles = MAX_COMPOUND_PARTICLES;
-    //const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
+
     if (threadIdx.x == 0)
         nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
-        //nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
 
-	float potE_sum{};
-	Float3 force{};
+    float potE_sum{};
+    Float3 force{};
 
     {
         auto block = cooperative_groups::this_thread_block();
@@ -76,18 +74,17 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const NeighborLi
     if (myParams.sigmaHalf == -1.f)
         nParticles = atomicMin(&nParticles, threadIdx.x);
 
-	static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
+    static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
     __shared__ int neighborNParticlesVote;
-	// --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
-	{
+    // --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
+    {
         auto block = cooperative_groups::this_thread_block();
 
         for (int batchIndex = 0; batchIndex < nNonbondedCompoundNeighbors/batchsize + 1; batchIndex++) {
-			__syncthreads();
+            __syncthreads();
 
-            //cooperative_groups::memcpy_async(block, neighborCompounds, &compoundNeighborlists[blockIdx.x].nonbondedNeighborCompounds[batchIndex * batchsize], sizeof(NeighborList::IdAndRelshift) * batchsize);
             cooperative_groups::memcpy_async(block, neighborCompounds, &nonbondedNeighborsBuffer[blockIdx.x * NlistUtil::maxCompounds + batchIndex * batchsize], sizeof(NlistUtil::IdAndRelshift) * batchsize);
-			cooperative_groups::wait(block);
+            cooperative_groups::wait(block);
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);
             for (int indexInBatch = 0; indexInBatch < nElementsInBatch; indexInBatch++) {
@@ -100,13 +97,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const NeighborLi
                 __syncthreads();
 
                 if (threadIdx.x < nParticles) {
-					force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
-						compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+                    force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
+                        compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
                 }
             }
-		}
-	}
-	// ------------------------------------------------------------------------------------------------------------------------------------------------------ //
+        }
+    }
+    // ------------------------------------------------------------------------------------------------------------------------------------------------------ //
 
     static_assert(sizeof(CompoundQuickData) >= sizeof(ForceEnergy) * MAX_COMPOUND_PARTICLES);
     ForceEnergy* forceEnergyOut = (ForceEnergy*)&compoundQuickData;

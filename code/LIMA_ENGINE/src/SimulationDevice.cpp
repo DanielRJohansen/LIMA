@@ -210,6 +210,7 @@ CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation)
 	for (int cid = 0; cid < simulation.box_host->compounds.size(); cid++) {
 		const Compound& compound = simulation.box_host->compounds[cid];
 		CompoundQuickData& quickData = compoundQuickDataHost[cid];
+        quickData.nParticles = compound.n_particles;
 		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
 			if (pid < compound.n_particles) {
 				quickData.relPos[pid] = simulation.box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();

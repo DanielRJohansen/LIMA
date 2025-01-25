@@ -53,14 +53,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
     __shared__ int nParticles;
 
     __shared__ NlistUtil::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
-    __shared__ int nNonbondedCompoundNeighbors;
-    nParticles = MAX_COMPOUND_PARTICLES;
-
-    if (threadIdx.x == 0)
-        nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
-
-    float potE_sum{};
-    Float3 force{};
+    __shared__ int nNonbondedCompoundNeighbors;    
 
     {
         auto block = cooperative_groups::this_thread_block();
@@ -68,14 +61,19 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
         cooperative_groups::wait(block);
     }
 
+    if (threadIdx.x == 0) {
+        nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
+        nParticles = compoundQuickData.nParticles;
+    }
+
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];
     const float myCharge = enableES ? compoundQuickData.charges[threadIdx.x] : 0.f;
     const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
-    if (myParams.sigmaHalf == -1.f)
-        nParticles = atomicMin(&nParticles, threadIdx.x);
 
     static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
-    __shared__ int neighborNParticlesVote;
+
+    float potE_sum{};
+    Float3 force{};
     // --------------------------------------------------------------- Intercompound forces --------------------------------------------------------------- //
     {
         auto block = cooperative_groups::this_thread_block();
@@ -88,18 +86,14 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);
             for (int indexInBatch = 0; indexInBatch < nElementsInBatch; indexInBatch++) {
-                neighborNParticlesVote = MAX_COMPOUND_PARTICLES;// Assume all are active
                 cooperative_groups::memcpy_async(block, &compoundQuickData, &compoundQuickDataBuffer[neighborCompounds[indexInBatch].id], sizeof(CompoundQuickData));
                 cooperative_groups::wait(block);
 
-                if (compoundQuickData.ljParams[threadIdx.x].sigmaHalf == -1.f)
-                    atomicMin(&neighborNParticlesVote, threadIdx.x);
-                __syncthreads();
-
                 if (threadIdx.x < nParticles) {
                     force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
-                        compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+                        compoundQuickData.relPos, compoundQuickData.nParticles, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
                 }
+                __syncthreads();
             }
         }
     }

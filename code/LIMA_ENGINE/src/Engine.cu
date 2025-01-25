@@ -23,7 +23,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 {
 	simulation = std::move(_sim);
 
-	verifyEngine();
+    verifyEngine();
 
 	const BoxParams boxparams = simulation->box_host->boxparams;
 

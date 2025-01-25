@@ -10,7 +10,7 @@ class TopologySectionGetter {
 	int dihedralCount = 0;
 	int dihedraltypesCount = 0;
 public:
-	TopologySection operator()(const std::string& directive) {
+	constexpr TopologySection operator()(const std::string_view& directive) {
 		if (directive == "molecules") return molecules;
 		if (directive == "moleculetype") return moleculetype;
 		if (directive == "atoms") return atoms;
@@ -47,16 +47,22 @@ public:
 	}
 };
 
-inline std::string extractSectionName(const std::string& line) {
+constexpr std::string_view extractSectionName(const std::string& line) {
 	size_t start = line.find('[');
 	size_t end = line.find(']', start);
 	if (start != std::string::npos && end != std::string::npos) {
-		// Extract the text between '[' and ']'
-		std::string sectionName = line.substr(start + 1, end - start - 1);
-		removeWhitespace(sectionName);
-		return sectionName;
+		// Extract the view of the text between '[' and ']'
+		std::string_view sectionView(line.c_str() + start + 1, end - start - 1);
+
+		// Remove whitespace
+		size_t firstNonWhitespace = sectionView.find_first_not_of(" \t\n\r");
+		size_t lastNonWhitespace = sectionView.find_last_not_of(" \t\n\r");
+		if (firstNonWhitespace == std::string_view::npos) {
+			return {}; // The section is all whitespace
+		}
+		return sectionView.substr(firstNonWhitespace, lastNonWhitespace - firstNonWhitespace + 1);
 	}
-	return "";
+	return {}; // Return an empty string_view
 }
 
 
@@ -83,17 +89,16 @@ inline std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::st
 }
 
 
-template <int n>
-inline bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, int ids[n]) {
-	for (int i = 0; i < n; i++) {
-		if (ids[i] >= groIdToLimaId.size() || groIdToLimaId[ids[i]] == -1)
+constexpr bool VerifyAllParticlesInBondExists(const std::vector<int>& groIdToLimaId, std::span<const int> ids) {
+	for (const auto id : ids) {
+		if (id >= groIdToLimaId.size() || groIdToLimaId[id] == -1)
 			return false;
 	}
 	return true;
 }
 
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
-inline bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
+constexpr bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
 
 	if (line.empty() && currentSection == TopologySection::title) {
 		currentSection = no_section;
@@ -106,7 +111,7 @@ inline bool HandleTopologySectionStartAndStop(const std::string& line, TopologyS
 
 	return false; // We did not change section, and should continue parsing the current line
 }
-inline bool isOnlySpacesAndTabs(const std::string& str) {
+constexpr bool isOnlySpacesAndTabs(const std::string& str) {
 	return std::all_of(str.begin(), str.end(), [](char c) {
 		return c == ' ' || c == '\t';
 		});
@@ -155,7 +160,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		TopologyFile::SingleBond singlebond{};
 		int groIds[2];
 		iss >> groIds[0] >> groIds[1] >> singlebond.funct;
-		if (!VerifyAllParticlesInBondExists<2>(moleculetype->groIdToLimaId, groIds))
+		if (!VerifyAllParticlesInBondExists(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 2; i++)
 			singlebond.ids[i] = moleculetype->groIdToLimaId[groIds[i]];
@@ -173,7 +178,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		TopologyFile::PairBond pairbond{};
 		int groIds[2];
 		iss >> groIds[0] >> groIds[1] >> pairbond.funct;
-		if (!VerifyAllParticlesInBondExists<2>(moleculetype->groIdToLimaId, groIds))
+		if (!VerifyAllParticlesInBondExists(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 2; i++)
 			pairbond.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
@@ -190,7 +195,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		TopologyFile::AngleBond angle{};
 		int groIds[3];
 		iss >> groIds[0] >> groIds[1] >> groIds[2] >> angle.funct;
-		if (!VerifyAllParticlesInBondExists<3>(moleculetype->groIdToLimaId, groIds))
+		if (!VerifyAllParticlesInBondExists(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 3; i++)
 			angle.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
@@ -207,7 +212,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		TopologyFile::DihedralBond dihedral{};
 		int groIds[4];
 		iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> dihedral.funct;
-		if (!VerifyAllParticlesInBondExists<4>(moleculetype->groIdToLimaId, groIds))
+		if (!VerifyAllParticlesInBondExists(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 4; i++)
 			dihedral.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
@@ -225,7 +230,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		TopologyFile::ImproperDihedralBond improper{};
 		int groIds[4];
 		iss >> groIds[0] >> groIds[1] >> groIds[2] >> groIds[3] >> improper.funct;
-		if (!VerifyAllParticlesInBondExists<4>(moleculetype->groIdToLimaId, groIds))
+		if (!VerifyAllParticlesInBondExists(moleculetype->groIdToLimaId, groIds))
 			break;
 		for (int i = 0; i < 4; i++)
 			improper.ids[i] = moleculetype->groIdToLimaId.at(groIds[i]);
@@ -271,10 +276,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
 
 				topology.forcefieldInclude.emplace(ForcefieldInclude(fs::path{includefileName.value_or("forcefield.itp")}));
-				//topology.forcefieldInclude = ForcefieldInclude(includefileName.value_or(path.filename().string()), path);				
 			}
-
-
 			continue;
 		}
 
@@ -294,14 +296,13 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
 			continue;
 
-		std::istringstream iss(line);
 
 
 		if (line[0] == '#') {
 
 			if (line.size() > 8 && line.substr(0, 8) == "#include") {
 				// take second word, remove "
-
+				std::istringstream iss(line);
 				std::string _, pathWithQuotes;
 				iss >> _ >> pathWithQuotes;
 				if (pathWithQuotes.size() < 3)
@@ -335,6 +336,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			break;
 		case TopologySection::moleculetype:
 		{
+			std::istringstream iss(line);
 			std::string moleculetypename;
 			int nrexcl;
 			iss >> moleculetypename >> nrexcl;
@@ -355,6 +357,8 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			break;
 		}
 		case TopologySection::molecules: {
+			std::istringstream iss(line);
+
 			std::string molname;
 			int cnt = 0;
 			iss >> molname >> cnt;
@@ -396,7 +400,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 
 TopologyFile::TopologyFile() {}
-TopologyFile::TopologyFile(const fs::path& path, TopologyFile* parentTop) : path(path)
+TopologyFile::TopologyFile(const fs::path& path) : path(path)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");

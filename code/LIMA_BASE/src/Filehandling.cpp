@@ -22,15 +22,6 @@ using std::string;
 /// </summary>
 using SetSectionFunction = std::function<bool(const std::vector<string>& row, string& section, int& skipCnt)>;
 
-bool ignoreRow(const std::vector<char>& ignores, const string& line) {
-	if (line.length() == 0)
-		return true;
-	for (auto& c : ignores) {
-		if (line[0] == c)
-			return true;
-	}
-	return false;
-}
 
 void FileUtils::removeWhitespace(std::string& str) {
 	str.erase(std::remove_if(str.begin(), str.end(), 
@@ -85,23 +76,10 @@ std::unordered_map<std::string, std::string> FileUtils::parseINIFile(const std::
 	return dict;
 }
 
-std::string FileUtils::ExtractBetweenQuotemarks(const std::string& input) {
-	auto start = input.find('"') + 1;
-	return input.substr(start, input.find('"', start) - start);
-}
-
-void replaceTabs(std::string& str) {
-	// Find the first occurrence of '\t' in the string
-	size_t found = str.find('\t');
-
-	// Continue replacing '\t' with spaces until no more occurrences are found
-	while (found != std::string::npos) {
-		// Replace the '\t' character with a space (' ')
-		str[found] = ' ';
-
-		// Find the next occurrence of '\t', starting from the next position
-		found = str.find('\t', found + 1);
-	}
+std::string_view FileUtils::ExtractBetweenQuotemarks(const std::string& input) {
+	return std::count(input.begin(), input.end(), '"') == 2
+		? std::string_view(input.c_str() + input.find('"') + 1, input.find('"', input.find('"') + 1) - input.find('"') - 1)
+		: std::string_view{};
 }
 
 
@@ -131,13 +109,15 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 
 void FileUtils::SkipIfdefBlock(std::ifstream& file) {
 	std::string line;
-	while (getline(file, line)) {
-		auto pos = line.find_first_not_of(" ");
+	while (std::getline(file, line)) {
+		// Trim leading whitespace in-place
+		auto pos = line.find_first_not_of(" \t");
 		if (pos == std::string::npos) continue; // Skip empty or whitespace-only lines
 
-		line = line.substr(pos);
-
-		if (line.starts_with("#else") || line.starts_with("#endif")) return;
+		// Check for preprocessor directives directly
+		if (line.compare(pos, 5, "#else") == 0 || line.compare(pos, 6, "#endif") == 0) {
+			return;
+		}
 	}
 	throw std::runtime_error("Failed to find #endif in file\n");
 }

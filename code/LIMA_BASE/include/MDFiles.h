@@ -223,7 +223,7 @@ public:
 	};
 
 	TopologyFile();										// Create an empty file	
-	TopologyFile(const fs::path& path, TopologyFile* parentTop=nullptr);	// Load a file from path	
+	TopologyFile(const fs::path& path);	// Load a file from path	
 
 	/// <summary>
 	/// Recursively write topology + all includes + forcefieldfiles to the parentpath of the dir

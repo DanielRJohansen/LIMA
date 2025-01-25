@@ -232,9 +232,7 @@ namespace Benchmarks {
 		env.prepareForRun();
 		const std::chrono::duration<double> elapsedTime = timer.elapsed();
 		
-		//env.run();
-
-		const std::chrono::duration<double> maxTime{ 30. }; // [s]
+		const std::chrono::duration<double> maxTime{ 15. }; // [s]
 		
 		return LimaUnittestResult{ elapsedTime < maxTime, std::format("Elapsed time: {:.2f} [s] Allowed: {:.2f} [s]", elapsedTime.count(), maxTime.count()), envmode != Headless };
 	}

@@ -1,19 +1,18 @@
 // For generic file utilities, for specialized features use MDFiles.h instead
 #pragma once
 
-#include <iostream>
-#include <vector>
-#include <string>
-
-#include <unordered_map>
-#include <unordered_set>
 #include <cassert>
 #include <cstdint>
-#include <limits>
-#include <optional>
 #include <filesystem>
 #include <fstream>
-
+#include <iostream>
+#include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 
 namespace FileUtils {
@@ -27,7 +26,7 @@ namespace FileUtils {
 
 	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
 
-	std::string ExtractBetweenQuotemarks(const std::string& input);
+	std::string_view ExtractBetweenQuotemarks(const std::string& input);
 
 	// Return the top level LIMA dir
 	fs::path GetLimaDir();

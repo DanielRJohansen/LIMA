@@ -89,7 +89,9 @@ template <typename BoundaryCondition>
 __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const key_positions_others /*[n_compounds, k]*/,
 	const Float3* const key_positions_self, int offset, int n_compounds, int compound_id, const CompoundInteractionBoundary& boundary_self,
 	const CompoundInteractionBoundary* const boundaries_others,
-	int n_bonded_compounds, const int* const bonded_compound_ids)
+	int n_bonded_compounds, const int* const bonded_compound_ids,
+	const NodeIndex& myCompoundOrigo, const NodeIndex* const compoundOrigos
+	)
 {
 	// Now add all compounds nearby we are NOT bonded to. (They were added before this)
 	for (int i = 0; i < blockDim.x; i++) {
@@ -112,7 +114,11 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 		const Float3* const positionsbegin_other = &key_positions_others[i * CompoundInteractionBoundary::k];
 		if (canCompoundsInteract<BoundaryCondition>(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
 		{
-			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id)))
+			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
+			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
+
+
+			if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
 				return false;
 		}
 	}
@@ -131,6 +137,9 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	const int n_compounds = sim_dev->boxparams.n_compounds;
 	const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool compound_active = compound_id < n_compounds;
+	const NodeIndex myCompoundOrigo = compound_active
+		? sim_dev->boxState->compoundOrigos[compound_id]
+		: NodeIndex{};
 
 	NeighborList nlist;
 
@@ -152,9 +161,11 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
+	__shared__ NodeIndex compoundOrigos[threads_in_compoundnlist_kernel];
 
 	// Loop over all compounds and add all nearbys
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
+
 		// All threads help load a batch of compound_positions
 		const int query_compound_id = threadIdx.x + offset;
 		__syncthreads();
@@ -162,13 +173,14 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
 			getCompoundAbspositions<BoundaryCondition>(*sim_dev, query_compound_id, positionsbegin);
 			boundaries[threadIdx.x] = sim_dev->boxConfig.compounds[query_compound_id].interaction_boundary;
+			compoundOrigos[threadIdx.x] = sim_dev->boxState->compoundOrigos[query_compound_id];
 		}
 		__syncthreads();
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
 			const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds,
-				compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids);
+				compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos);
 			if (!success) {
 				sim_dev->signals->critical_error_encountered = true;
 			}
@@ -277,6 +289,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 template <typename BoundaryCondition>
 void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams)
 {
+	cudaDeviceSynchronize();
 // OPTIM: Pass a stream here, avoid the sync
 	if (boxparams.n_compounds > 0) {
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
@@ -284,7 +297,7 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams)
 	}
 
 	cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
-
+	//printf("\n");
 
 	if (boxparams.n_solvents > 0) {
 		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;

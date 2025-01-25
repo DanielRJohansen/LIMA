@@ -53,8 +53,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
     __shared__ CompoundQuickData compoundQuickData;
     __shared__ NodeIndex compoundOrigo;
 
-    __shared__ Float3 relshifts[batchsize];	// [nm]
-    __shared__ uint16_t neighborIds[batchsize]; // either compoundID or solventblockID
+	__shared__ NeighborList::IdAndRelshift neighborCompounds[batchsize];
 
     const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
     const int nNonbondedCompoundNeighbors = compoundNeighborlists[blockIdx.x].nNonbondedNeighbors;
@@ -80,26 +79,16 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
 	{
         auto block = cooperative_groups::this_thread_block();
 
-		// This part is scary, but it also takes up by far the majority of compute time. We use the utilitybuffer twice simultaneously, so be careful when making changes
-		int indexInBatch = batchsize;
         for (int batchIndex = 0; batchIndex < nNonbondedCompoundNeighbors/batchsize + 1; batchIndex++) {
 			__syncthreads();
-            const int indexInNeighborlist = batchIndex * batchsize + threadIdx.x;
-            if (indexInNeighborlist < nNonbondedCompoundNeighbors) {
-                neighborIds[threadIdx.x] = compoundNeighborlists[blockIdx.x].nonbondedNeighborcompoundIds[indexInNeighborlist];
 
-                // calc Relative LimaPosition Shift from the origo-shift
-                const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compoundOrigo, boxState.compoundOrigos[neighborIds[threadIdx.x]]);   // TODO: Consider adding safety here, that origo isn't too far..
-                relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, compoundOrigo);
-            }
-
-            indexInBatch = 0;
-            __syncthreads();
+			cooperative_groups::memcpy_async(block, neighborCompounds, &compoundNeighborlists[blockIdx.x].nonbondedNeighborCompounds[batchIndex * batchsize], sizeof(NeighborList::IdAndRelshift) * batchsize);
+			cooperative_groups::wait(block);
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);
             for (int indexInBatch = 0; indexInBatch < nElementsInBatch; indexInBatch++) {
                 neighborNParticlesVote = MAX_COMPOUND_PARTICLES;// Assume all are active
-                cooperative_groups::memcpy_async(block, &compoundQuickData, &compoundQuickDataBuffer[neighborIds[indexInBatch]], sizeof(CompoundQuickData));
+                cooperative_groups::memcpy_async(block, &compoundQuickData, &compoundQuickDataBuffer[neighborCompounds[indexInBatch].id], sizeof(CompoundQuickData));
                 cooperative_groups::wait(block);
 
                 if (compoundQuickData.ljParams[threadIdx.x].sigmaHalf == -1.f)
@@ -107,8 +96,8 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(const BoxState b
                 __syncthreads();
 
                 if (threadIdx.x < nParticles) {
-                    force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - relshifts[indexInBatch], potE_sum,
-                        compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+					force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
+						compoundQuickData.relPos, neighborNParticlesVote, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
                 }
             }
 		}

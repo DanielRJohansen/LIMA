@@ -161,12 +161,13 @@ namespace LJ {
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
+        const float cutoff_recip = DeviceConstants::cutoffNmSquaredReciprocal;
 
 		for (int neighborparticle_id = 0; neighborparticle_id < neighbor_n_particles; neighborparticle_id++) {
 			
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) {
+            if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal, cutoff_recip)) {
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     myParams.sigmaHalf + neighborParams[neighborparticle_id].sigmaHalf,
                     myParams.epsilonSqrt * neighborParams[neighborparticle_id].epsilonSqrt,

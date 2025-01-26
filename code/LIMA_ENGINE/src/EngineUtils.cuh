@@ -179,6 +179,14 @@ namespace EngineUtils {
 		return false;
 	}
 
+    __device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal, const float cutoff_reciprocal) {
+        if constexpr (HARD_CUTOFF) {
+            return dist_sq_reciprocal < cutoff_reciprocal;
+        }
+        return false;
+    }
+
+
 
 	template <typename BoundaryCondition>
 	__device__ inline void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const NodeIndex& queryOrigo, const Float3* const queryRelpositions,

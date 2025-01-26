@@ -115,20 +115,10 @@ namespace NlistUtil {
 
     static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
     struct IdAndRelshift {
-        int id;
+        uint16_t id;
+        uint16_t nParticles;
         Float3 relShift;
     };
-
-    __device__ inline bool AddCompound(uint16_t new_id, const Float3& relshift, IdAndRelshift* const neighborIds, uint16_t& nNeighbors) {
-        // OPTIM only check when not LIMA_PUSH
-        if (nNeighbors >= maxCompounds) {
-            printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-            return false;
-            //throw std::runtime_error("Neighborlist overflow");
-        }
-        neighborIds[nNeighbors++] = { (int)new_id, relshift };
-        return true;
-    }
 }
 
 

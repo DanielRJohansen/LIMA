@@ -45,15 +45,17 @@
 
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer, const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer)
+__global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer,
+                    const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer, const uint8_t* const nParticlesInCompoundsBuffer)
 {
     const int batchsize = 32;
 
     __shared__ CompoundQuickData compoundQuickData; // 768 bytes
-    __shared__ int nParticles;
-
     __shared__ NlistUtil::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
+
     __shared__ int nNonbondedCompoundNeighbors;    
+    __shared__ int nParticles;
+    //__shared__ int neighborNParticles;
 
     {
         auto block = cooperative_groups::this_thread_block();
@@ -63,7 +65,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
     if (threadIdx.x == 0) {
         nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
-        nParticles = compoundQuickData.nParticles;
+        nParticles = nParticlesInCompoundsBuffer[blockIdx.x];
     }
 
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];
@@ -91,7 +93,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
                 if (threadIdx.x < nParticles) {
                     force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
-                        compoundQuickData.relPos, compoundQuickData.nParticles, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+                        compoundQuickData.relPos, neighborCompounds[indexInBatch].nParticles, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
                 }
                 __syncthreads();
             }

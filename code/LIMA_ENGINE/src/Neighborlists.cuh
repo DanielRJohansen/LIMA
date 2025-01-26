@@ -91,7 +91,7 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 	const CompoundInteractionBoundary* const boundaries_others,
 	int n_bonded_compounds, const int* const bonded_compound_ids,
     const NodeIndex& myCompoundOrigo, const NodeIndex* const compoundOrigos,
-    uint16_t& nNonbondedNeighbors, NlistUtil::IdAndRelshift* const nonbondedNeighbors
+    uint16_t& nNonbondedNeighbors, NlistUtil::IdAndRelshift* const nonbondedNeighbors, const uint16_t* const compoundsNParticles
 	)
 {
 	// Now add all compounds nearby we are NOT bonded to. (They were added before this)
@@ -118,8 +118,16 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
 			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
 
-            if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
+            // TODO only check when not pusjing
+            if (nNonbondedNeighbors >= NlistUtil::maxCompounds) {
+                printf("\nFailed to insert compound neighbor id %d!\n", query_compound_id);
                 return false;
+                //throw std::runtime_error("Neighborlist overflow");
+            }
+            nonbondedNeighbors[nNonbondedNeighbors++] = { static_cast<uint16_t>(query_compound_id), compoundsNParticles[i], relshift };
+
+            //if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
+            //    return false;
 
             //if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
                 //return false;
@@ -168,6 +176,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	__shared__ Float3 key_positions_buffer[threads_in_compoundnlist_kernel * CompoundInteractionBoundary::k];
 	__shared__ CompoundInteractionBoundary boundaries[threads_in_compoundnlist_kernel];
 	__shared__ NodeIndex compoundOrigos[threads_in_compoundnlist_kernel];
+    __shared__ uint16_t compoundNParticles[threads_in_compoundnlist_kernel];
 
 	// Loop over all compounds and add all nearbys
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
@@ -180,13 +189,14 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 			getCompoundAbspositions<BoundaryCondition>(*sim_dev, query_compound_id, positionsbegin);
 			boundaries[threadIdx.x] = sim_dev->boxConfig.compounds[query_compound_id].interaction_boundary;
 			compoundOrigos[threadIdx.x] = sim_dev->boxState->compoundOrigos[query_compound_id];
-		}
+            compoundNParticles[threadIdx.x] = sim_dev->boxConfig.compounds[query_compound_id].n_particles;// OPTIM inefficient read
+        }
 		__syncthreads();
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
 			const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds,
-                compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos, nNonbondedNeighbors, nonbondedNeighbors);
+                compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos, nNonbondedNeighbors, nonbondedNeighbors, compoundNParticles);
 			if (!success) {
 				sim_dev->signals->critical_error_encountered = true;
 			}

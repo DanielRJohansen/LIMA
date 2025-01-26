@@ -47,6 +47,12 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
     nNonbondedNeighborsPtr = sim_dev->nNonbondedNeighborsBuffer;
     nonbondedNeighborsPtr = sim_dev->nonbondedNeighborsBuffer;
 
+    //cudaMalloc(&nParticlesInCompoundsBuffer, sizeof(uint8_t)*simulation->box_host->boxparams.n_compounds);
+    std::vector<uint8_t> nParticlesInCompoundsVec(simulation->box_host->boxparams.n_compounds);
+    for (int i = 0; i < simulation->box_host->boxparams.n_compounds; i++) {
+        nParticlesInCompoundsVec[i] = simulation->box_host->compounds[i].n_particles;
+    }
+    nParticlesInCompoundsBuffer = GenericCopyToDevice(nParticlesInCompoundsVec);
 
     std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
@@ -296,7 +302,7 @@ void Engine::_deviceMaster() {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->simparams_host.enable_electrostatics,
-                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nNonbondedNeighborsPtr, nonbondedNeighborsPtr);
+                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nNonbondedNeighborsPtr, nonbondedNeighborsPtr, nParticlesInCompoundsBuffer);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 

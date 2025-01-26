@@ -6,6 +6,7 @@ class NoBoundaryCondition {
 public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
+	__device__ constexpr static NodeIndex applyBC(const NodeIndex& nodeindex, int nodesPerDim) { return nodeindex; }
 
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 

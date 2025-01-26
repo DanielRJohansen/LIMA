@@ -113,7 +113,8 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 namespace NlistUtil {
     static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 
-    static const int maxCompounds = 256;	// TODO: We need to work on getting this number down!
+	// This value is only high because the electrostaticmanyparticles has the particles as compounds, when they should be tinymol. But pme doesnt yet support tinymol...
+    static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
     struct IdAndRelshift {
         uint16_t id;
         uint16_t nParticles;

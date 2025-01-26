@@ -191,9 +191,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 	for (int i = 0; i < nNonbondedNeighborsTotal; i++) {
 		simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
 	}
-    for (int i = nNonbondedNeighborsTotal; i < NlistUtil::maxCompounds; i++) {
-        simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds + i] = NlistUtil::IdAndRelshift{UINT16_MAX, {}, {}}; // Write maxvals to the rest, so we can sort // OPTIM do this in the sort kernel instead
-    }
+
 	simDev->nNonbondedNeighborsBuffer[compoundId] = nNonbondedNeighborsTotal;
 }
 
@@ -236,6 +234,10 @@ __global__ void SortNonbondedNeighborcompoundIds(SimulationDevice* const simDev)
     auto block = cooperative_groups::this_thread_block();
     cooperative_groups::memcpy_async(block, neighbors, &simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds], sizeof(NlistUtil::IdAndRelshift) * NlistUtil::maxCompounds);
     cooperative_groups::wait(block);
+
+    if (threadIdx.x >= simDev->nNonbondedNeighborsBuffer[compoundId])
+        neighbors[threadIdx.x].id = UINT16_MAX;
+    __syncthreads();
 
     Sort(neighbors, NlistUtil::maxCompounds);
 

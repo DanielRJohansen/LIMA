@@ -79,7 +79,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, boxparams);
+    NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, boxparams, cudaStreams[0], cudaStreams[1], cudaStreams[2]);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -167,7 +167,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		HandleEarlyStoppingInEM();		
 	}
 	if (simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1)
-		NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams);
+        NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, cudaStreams[0], cudaStreams[1], cudaStreams[2]);
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();

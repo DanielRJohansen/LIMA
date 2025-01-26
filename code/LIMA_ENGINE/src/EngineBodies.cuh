@@ -113,7 +113,7 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 namespace NlistUtil {
     static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 
-    static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
+    static const int maxCompounds = 256;	// TODO: We need to work on getting this number down!
     struct IdAndRelshift {
         uint16_t id;
         uint16_t nParticles;
@@ -129,37 +129,12 @@ class alignas(128) NeighborList {
 
 public:
 
-
-    //__device__ __host__ bool addCompound(uint16_t new_id, const Float3& relshift) {
-    //	// OPTIM only check when not LIMA_PUSH
-    //	if (nNonbondedNeighbors >= maxCompounds) {
-    //		printf("\nFailed to insert compound neighbor id %d!\n", new_id);
-    //		return false;
-    //		//throw std::runtime_error("Neighborlist overflow");
-    //	}
-    //	nonbondedNeighborCompounds[nNonbondedNeighbors++] = { (int)new_id, relshift };
-    //	return true;
-    //}
-
-
-
-    //IdAndRelshift nonbondedNeighborCompounds[maxCompounds];
-
 #ifdef ENABLE_SOLVENTS
-	// returns false if an error occured
-	__device__ __host__ bool addGridnode(int gridnode_id) {
-		if (n_gridnodes >= max_gridnodes) {
-			printf("No room for more nearby gridnodes\n");
-			return false;
-		}
-		gridnode_ids[n_gridnodes++] = gridnode_id;
-		return true;
-	}
 
-	static const int max_gridnodes = 128;	// Arbitrary value
+
+    static const int max_gridnodes = 128-1;	// Arbitrary value
 	int gridnode_ids[max_gridnodes];
 	int n_gridnodes = 0;
 #endif
-	int nNonbondedNeighbors = 0;
 };
 

@@ -15,7 +15,7 @@ set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 23)
 #set(CMAKE_BUILD_TYPE Debug)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+#set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CUDA_SEPARABLE_COMPILATION ON)
 
 
@@ -34,15 +34,14 @@ else()
 endif()
 
 
-
 find_package(OpenGL REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-find_package(PythonLibs REQUIRED)
+#find_package(PythonLibs REQUIRED)
 
 if (UNIX)
-	find_package(TBB REQUIRED)
-	find_package(glm REQUIRED)
-	find_package(glfw3 REQUIRED)
+    find_package(TBB REQUIRED)
+    find_package(glm REQUIRED)
+    find_package(glfw3 REQUIRED)
 endif()
 
 # Set the installation prefix

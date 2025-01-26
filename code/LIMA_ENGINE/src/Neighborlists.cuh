@@ -8,7 +8,7 @@
 
 
 namespace NeighborLists {
-	void updateNlists(SimulationDevice*, BoundaryConditionSelect, const BoxParams&);
+    void updateNlists(SimulationDevice*, BoundaryConditionSelect, const BoxParams&, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3);
 };
 
 
@@ -118,12 +118,6 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, const Flo
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
 			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);    
             nonbondedNeighbors[nNonbondedNeighbors++] = { static_cast<uint16_t>(query_compound_id), compoundsNParticles[i], relshift };
-
-            //if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
-            //    return false;
-
-            //if (!nlist.addCompound(static_cast<uint16_t>(query_compound_id), relshift))
-                //return false;
 		}
 	}
 	return true;
@@ -330,42 +324,36 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 
 
 template <typename BoundaryCondition>
-void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams)
+void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3)
 {
 	cudaDeviceSynchronize();
-// OPTIM: Pass a stream here, avoid the sync
 	if (boxparams.n_compounds > 0) {
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
-		updateCompoundNlistsKernel<BoundaryCondition><<<n_blocks, threads_in_compoundnlist_kernel>>>( sim_dev);
-        LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
+        updateCompoundNlistsKernel<BoundaryCondition><<<n_blocks, threads_in_compoundnlist_kernel, 0, s1>>>( sim_dev);
+        LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: compounds");
 
-        updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32>>>(sim_dev);
+        updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32, 0, s2>>>(sim_dev);
+        LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: gridnodes");
 	}
-    LIMA_UTILS::genericErrorCheck("Error during updateNlists: gridnodes");
-
-
-
-    cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
-	//printf("\n");
 
 	if (boxparams.n_solvents > 0) {
 		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
-		updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel>>>(sim_dev);
+        updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel, 0, s3>>>(sim_dev);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
 }
 
-void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSelect bc_select, const BoxParams& boxparams)
+void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSelect bc_select, const BoxParams& boxparams, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3)
 {
 	switch (bc_select) {
 		
 	case NoBC: 
-		_updateNlists<NoBoundaryCondition>(sim_dev, boxparams);
+        _updateNlists<NoBoundaryCondition>(sim_dev, boxparams, s1, s2, s3);
 			break;
 		
 	case PBC:
-		_updateNlists<PeriodicBoundaryCondition>(sim_dev, boxparams);
+        _updateNlists<PeriodicBoundaryCondition>(sim_dev, boxparams, s1, s2, s3);
 			break;		
 	default:
 			throw std::runtime_error("Unsupported boundary condition in updateNlists");

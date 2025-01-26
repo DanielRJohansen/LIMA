@@ -86,7 +86,7 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 
 // Returns false if an error occured
 template <typename BoundaryCondition>
-__device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborList& nlist, const Float3* const key_positions_others /*[n_compounds, k]*/,
+__device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, const Float3* const key_positions_others /*[n_compounds, k]*/,
 	const Float3* const key_positions_self, int offset, int n_compounds, int compound_id, const CompoundInteractionBoundary& boundary_self,
 	const CompoundInteractionBoundary* const boundaries_others,
 	int n_bonded_compounds, const int* const bonded_compound_ids,
@@ -116,14 +116,7 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 		if (canCompoundsInteract<BoundaryCondition>(boundary_self, boundaries_others[i], key_positions_self, positionsbegin_other))
 		{
 			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, compoundOrigos[i]);
-			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
-
-            // TODO only check when not pusjing
-            if (nNonbondedNeighbors >= NlistUtil::maxCompounds) {
-                printf("\nFailed to insert compound neighbor id %d!\n", query_compound_id);
-                return false;
-                //throw std::runtime_error("Neighborlist overflow");
-            }
+			const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);    
             nonbondedNeighbors[nNonbondedNeighbors++] = { static_cast<uint16_t>(query_compound_id), compoundsNParticles[i], relshift };
 
             //if (!NlistUtil::AddCompound(static_cast<uint16_t>(query_compound_id), relshift, nonbondedNeighbors, nNonbondedNeighbors))
@@ -141,7 +134,7 @@ __device__ bool addAllNearbyCompounds(const SimulationDevice& sim_dev, NeighborL
 // This kernel creates a new nlist and pushes that to the kernel. Any other kernels that may
 // interact with the neighborlist should come AFTER this kernel. Also, they should only run if this
 // has run, and thus it is not allowed to comment out this kernel call.
-const int threads_in_compoundnlist_kernel = 256;
+const int threads_in_compoundnlist_kernel = 64;
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
@@ -152,10 +145,9 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		? sim_dev->boxState->compoundOrigos[compound_id]
 		: NodeIndex{};
 
-	NeighborList nlist;
-
-    uint16_t nNonbondedNeighbors = 0;
-    NlistUtil::IdAndRelshift nonbondedNeighbors[NlistUtil::maxCompounds];
+    uint16_t nNonbondedNeighborsTotal = 0;
+	uint16_t nNonbondedNeighborsBatch = 0;
+    NlistUtil::IdAndRelshift nonbondedNeighbors[threads_in_compoundnlist_kernel];
 
 	Float3 key_positions_self[CompoundInteractionBoundary::k];
 	if (compound_active)
@@ -195,15 +187,52 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 		// All active-compound threads now loop through the batch
 		if (compound_active) {
-			const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, nlist, key_positions_buffer, key_positions_self, offset, n_compounds,
-                compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos, nNonbondedNeighbors, nonbondedNeighbors, compoundNParticles);
+            const bool success = addAllNearbyCompounds<BoundaryCondition>(*sim_dev, key_positions_buffer, key_positions_self, offset, n_compounds,
+                compound_id, boundary_self, boundaries, n_bonded_compounds, bonded_compound_ids, myCompoundOrigo, compoundOrigos, nNonbondedNeighborsBatch, nonbondedNeighbors, compoundNParticles);
 			if (!success) {
 				sim_dev->signals->critical_error_encountered = true;
 			}
-		}
-	}        
 
-#ifdef ENABLE_SOLVENTS
+			// Push the neighbors found in this batch
+			for (int i = 0; i < nNonbondedNeighborsBatch; i++) {
+				sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds + nNonbondedNeighborsTotal + i] = nonbondedNeighbors[i];
+			}
+			nNonbondedNeighborsTotal += nNonbondedNeighborsBatch;
+			nNonbondedNeighborsBatch = 0;
+
+			// TODO only check when not pusjing
+            if (nNonbondedNeighborsTotal >= NlistUtil::maxCompounds) {
+                printf("\nFailed to insert compound neighbor id %d!\n", query_compound_id);
+            }
+
+		}
+    }
+
+    if (compound_active)
+        sim_dev->nNonbondedNeighborsBuffer[compound_id] = nNonbondedNeighborsTotal;
+}
+
+template <typename BoundaryCondition>
+__global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
+
+    const int n_compounds = sim_dev->boxparams.n_compounds;
+    const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const bool compound_active = compound_id < n_compounds;
+    const NodeIndex myCompoundOrigo = compound_active
+        ? sim_dev->boxState->compoundOrigos[compound_id]
+        : NodeIndex{};
+
+    Float3 key_positions_self[CompoundInteractionBoundary::k];
+    if (compound_active)
+        getCompoundAbspositions<BoundaryCondition>(*sim_dev, compound_id, key_positions_self);
+
+    const CompoundInteractionBoundary boundary_self = compound_active
+        ? sim_dev->boxConfig.compounds[compound_id].interaction_boundary
+        : CompoundInteractionBoundary{};
+
+    int gridnode_ids[NeighborList::max_gridnodes];
+    int n_gridnodes = 0;
+
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
@@ -227,25 +256,18 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 
 					if (canCompoundInteractWithPoint<BoundaryCondition>(boundary_self, key_positions_self, querynode_pos)) {
-						const bool success = nlist.addGridnode(querynode_id);
-						if (!success) {
+                        gridnode_ids[n_gridnodes++] = querynode_id;
+                        if (n_gridnodes > NeighborList::max_gridnodes) {
 							sim_dev->signals->critical_error_encountered = true;
 						}
 					}
 				}
 			}
 		}
-	}
-#endif
 
-	// Push the new nlist
-	if (compound_active) {
-		sim_dev->compound_neighborlists[compound_id] = nlist;
-        sim_dev->nNonbondedNeighborsBuffer[compound_id] = nNonbondedNeighbors;
-        for (int i = 0; i < nNonbondedNeighbors; i++)
-            sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
-        //cudaMemcpy(&sim_dev->nonbondedNeighborsBuffer[compound_id * NlistUtil::maxCompounds], nonbondedNeighbors, sizeof(NlistUtil::IdAndRelshift) * nNonbondedNeighbors, cudaMemcpyDeviceToDevice);
-        //sim_dev->nonbondedNeighborsBuffer[compound_id] = nonbondedNeighbors;
+        for (int i= 0; i < n_gridnodes; i++)
+            sim_dev->compound_neighborlists[compound_id].gridnode_ids[i] = gridnode_ids[i];
+        sim_dev->compound_neighborlists[compound_id].n_gridnodes = n_gridnodes;
 	}
 }
 
@@ -315,8 +337,14 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams)
 	if (boxparams.n_compounds > 0) {
 		const int n_blocks = boxparams.n_compounds / threads_in_compoundnlist_kernel + 1;
 		updateCompoundNlistsKernel<BoundaryCondition><<<n_blocks, threads_in_compoundnlist_kernel>>>( sim_dev);
+        LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
+
+        updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32>>>(sim_dev);
 	}
-    LIMA_UTILS::genericErrorCheck("Error during updateNlists: compounds");
+    LIMA_UTILS::genericErrorCheck("Error during updateNlists: gridnodes");
+
+
+
     cudaDeviceSynchronize();	// The above kernel overwrites the nlists, while the below fills ut the nlists present, so the above must be completed before progressing
 	//printf("\n");
 

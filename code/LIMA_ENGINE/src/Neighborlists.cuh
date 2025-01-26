@@ -56,10 +56,10 @@ __device__ bool canCompoundsInteract(const CompoundInteractionBoundary& left, co
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 		for (int iright = 0; iright < CompoundInteractionBoundary::k; iright++) {
 
-			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], positionsRight[iright]); // OPTIM: Just distSq
+            const float distSquared = LIMAPOSITIONSYSTEM::calcHyperDistSquaredNM<BoundaryCondition>(positionsLeft[ileft], positionsRight[iright]);
 			const float max_dist = DeviceConstants::cutoffNM + left.radii[ileft] + right.radii[iright];
 
-			if (dist < max_dist)
+            if (distSquared < max_dist*max_dist)
 				return true;
 		}
 	}
@@ -72,10 +72,10 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 {
 	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
 
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM<BoundaryCondition>(positionsLeft[ileft], point);
+        const float distSq = LIMAPOSITIONSYSTEM::calcHyperDistSquaredNM<BoundaryCondition>(positionsLeft[ileft], point);
 		const float max_dist = DeviceConstants::cutoffNM + boundary.radii[ileft];
 
-		if (dist < max_dist)
+        if (distSq < max_dist*max_dist)
 			return true;
 
 	}
@@ -126,7 +126,7 @@ __device__ void addAllNearbyCompounds(const SimulationDevice& sim_dev, const Flo
 // This kernel creates a new nlist and pushes that to the kernel. Any other kernels that may
 // interact with the neighborlist should come AFTER this kernel. Also, they should only run if this
 // has run, and thus it is not allowed to comment out this kernel call.
-const int threads_in_compoundnlist_kernel = 64;
+const int threads_in_compoundnlist_kernel = 32;
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
@@ -168,7 +168,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
 
 		// All threads help load a batch of compound_positions
-		const int query_compound_id = threadIdx.x + offset;
 		__syncthreads();
 
 		auto block = cooperative_groups::this_thread_block();
@@ -178,6 +177,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 		cooperative_groups::memcpy_async(block, compoundNParticles, &sim_dev->nParticlesInCompoundsBuffer[offset], sizeof(uint8_t) * nElements);
 		cooperative_groups::wait(block);
 
+        const int query_compound_id = threadIdx.x + offset;
 		if (query_compound_id < n_compounds) {
 			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
 			getCompoundAbspositions<BoundaryCondition>(*sim_dev, query_compound_id, positionsbegin, compoundOrigos[threadIdx.x], boundaries[threadIdx.x]);
@@ -198,7 +198,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* sim_dev) {
 
 			// TODO only check when not pusjing
             if (nNonbondedNeighborsTotal >= NlistUtil::maxCompounds) {
-                printf("\nFailed to insert compound neighbor id %d!\n", query_compound_id);
+                printf("\nFailed to insert compound neighbor id!\n");
             }
 
 		}

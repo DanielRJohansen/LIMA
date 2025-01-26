@@ -172,6 +172,13 @@ namespace LIMAPOSITIONSYSTEM {
 		return (p1 - temp).len();
 	}
 
+    template <typename BoundaryCondition>
+    __device__ __host__ static float calcHyperDistSquaredNM(const Float3& p1, const Float3& p2) {
+        Float3 temp = p2;
+        BoundaryCondition::applyHyperposNM(p1, temp);
+        return (p1 - temp).lenSquared();
+    }
+
 	//__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue_Host& coords, int64_t step, int compoundIndex, int particleIndex) {
 	//	return GetAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
 	//}

@@ -55,7 +55,6 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
     __shared__ int nNonbondedCompoundNeighbors;    
     __shared__ int nParticles;
-    //__shared__ int neighborNParticles;
 
     {
         auto block = cooperative_groups::this_thread_block();
@@ -510,7 +509,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
 	{		
 		if (threadActive) {
-            //utility_buffer[threadIdx.x] = relpos_self;
             positionsBuffer_relpos[threadIdx.x] = relpos_self;
 			utility_buffer_small[threadIdx.x] = tinymolTypeId;
 		}

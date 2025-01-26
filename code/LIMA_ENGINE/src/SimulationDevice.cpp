@@ -172,6 +172,17 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
     cudaMallocManaged(&nonbondedNeighborsBuffer, sizeof(NlistUtil::IdAndRelshift) * box_host->boxparams.n_compounds * NlistUtil::maxCompounds);
     cudaMemset(nNonbondedNeighborsBuffer, 0, sizeof(uint16_t) * box_host->boxparams.n_compounds);
 
+	std::vector<uint8_t> nParticlesInCompoundsVec(boxparams.n_compounds);
+	for (int i = 0; i < boxparams.n_compounds; i++) {
+		nParticlesInCompoundsVec[i] = box_host->compounds[i].n_particles;
+	}
+	nParticlesInCompoundsBuffer = GenericCopyToDevice(nParticlesInCompoundsVec);
+
+	std::vector<CompoundInteractionBoundary> compoundInteractionBoundariesVec(boxparams.n_compounds);
+	for (int i = 0; i < boxparams.n_compounds; i++) {
+		compoundInteractionBoundariesVec[i] = box_host->compounds[i].interaction_boundary;
+	}
+	compoundsInteractionBoundaryBuffer = GenericCopyToDevice(compoundInteractionBoundariesVec);
 
 	potE_buffer = databuffers.potE_buffer;
 	traj_buffer = databuffers.traj_buffer;
@@ -191,7 +202,8 @@ void SimulationDevice::FreeMembers() {
 	boxState->FreeMembers();
 	cudaFree(boxState);
 
-
+	cudaFree(nParticlesInCompoundsBuffer);
+	cudaFree(compoundsInteractionBoundaryBuffer);
 
 	cudaFree(compound_grid);
 	cudaFree(compound_neighborlists);

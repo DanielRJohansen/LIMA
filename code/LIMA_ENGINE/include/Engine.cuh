@@ -111,7 +111,7 @@ private:
 	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
     uint16_t* nNonbondedNeighborsPtr = nullptr;// dont own data!
     NlistUtil::IdAndRelshift* nonbondedNeighborsPtr = nullptr;// dont own data!
-    uint8_t* nParticlesInCompoundsBuffer = nullptr;
+	uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
 
 	std::unique_ptr<PME::Controller> pmeController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;

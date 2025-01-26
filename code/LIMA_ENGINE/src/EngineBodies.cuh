@@ -114,7 +114,7 @@ namespace NlistUtil {
     static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
 
 	// This value is only high because the electrostaticmanyparticles has the particles as compounds, when they should be tinymol. But pme doesnt yet support tinymol...
-    static const int maxCompounds = 512;	// TODO: We need to work on getting this number down!
+    static const int maxCompounds = 256+256;	// TODO: We need to work on getting this number down!
     struct IdAndRelshift {
         uint16_t id;
         uint16_t nParticles;

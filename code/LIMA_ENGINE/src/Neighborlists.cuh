@@ -16,12 +16,13 @@ namespace NeighborLists {
 		int compoundId = -1;
 	};
 
-	struct Gridnode {
-		static const int maxCompoundsInNode = 16 - 1;
+    struct alignas(32) Gridnode {
+        static const int maxCompoundsInNode = 16;
 
 		CompoundInfo compoundInfos[maxCompoundsInNode];
 		int nCompoundsInNode;
 	};
+    //static_assert(sizeof(Gridnode) == 256);
 };
 
 
@@ -149,7 +150,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 				const NodeIndex queryNode = BoundaryCondition::applyBC(myCompoundOrigo + NodeIndex{ xOff, yOff, zOff }, nodesPerDim);
 
 				const int queryNodeIndex = BoxGrid::Get1dIndex(queryNode, nodesPerDim);
-
 				const NeighborLists::Gridnode& gridnode = grid[queryNodeIndex];
 
 				for (int i = 0; i < gridnode.nCompoundsInNode; i++) {
@@ -191,8 +191,60 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 	for (int i = 0; i < nNonbondedNeighborsTotal; i++) {
 		simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
 	}
+    for (int i = nNonbondedNeighborsTotal; i < NlistUtil::maxCompounds; i++) {
+        simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds + i] = NlistUtil::IdAndRelshift{UINT16_MAX, {}, {}}; // Write maxvals to the rest, so we can sort // OPTIM do this in the sort kernel instead
+    }
 	simDev->nNonbondedNeighborsBuffer[compoundId] = nNonbondedNeighborsTotal;
 }
+
+
+
+
+__device__ inline void Sort(NlistUtil::IdAndRelshift* const data, int nElements) { // Assuming that data is already in shared memory.
+    int tid = threadIdx.x;
+    for (int k = 2; k <= nElements; k <<= 1) {
+        for (int j = k >> 1; j > 0; j >>= 1) {
+            int ixj = tid ^ j;
+            if (ixj > tid) {
+                if ((tid & k) == 0) {
+                    if (data[tid].id > data[ixj].id) {
+                        // Swap data[tid] and data[ixj]
+                        auto temp = data[tid];
+                        data[tid] = data[ixj];
+                        data[ixj] = temp;
+                    }
+                }
+                else {
+                    if (data[tid].id < data[ixj].id) {
+                        // Swap data[tid] and data[ixj]
+                        auto temp = data[tid];
+                        data[tid] = data[ixj];
+                        data[ixj] = temp;
+                    }
+                }
+            }
+            __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+        }
+    }
+}
+
+__global__ void SortNonbondedNeighborcompoundIds(SimulationDevice* const simDev) {
+    __shared__ NlistUtil::IdAndRelshift neighbors[NlistUtil::maxCompounds];
+
+    const int compoundId = blockIdx.x;
+
+    auto block = cooperative_groups::this_thread_block();
+    cooperative_groups::memcpy_async(block, neighbors, &simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds], sizeof(NlistUtil::IdAndRelshift) * NlistUtil::maxCompounds);
+    cooperative_groups::wait(block);
+
+    Sort(neighbors, NlistUtil::maxCompounds);
+
+    cooperative_groups::memcpy_async(block, &simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds], neighbors, sizeof(NlistUtil::IdAndRelshift) * NlistUtil::maxCompounds);
+}
+
+
+
+
 
 
 
@@ -229,9 +281,7 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
-
 		const NodeIndex compound_origo = sim_dev->boxState->compoundOrigos[compound_id];
-
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
@@ -339,6 +389,7 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams, cudaSt
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateCompoundNlistsKernel");
 		//cudaDeviceSynchronize();
 
+        SortNonbondedNeighborcompoundIds<<<boxparams.n_compounds, NlistUtil::maxCompounds, 0, s1>>>(sim_dev);
 
 		// Stream 2
         updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32, 0, s2>>>(sim_dev);

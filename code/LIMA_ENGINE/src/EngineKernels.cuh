@@ -65,6 +65,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
     if (threadIdx.x == 0) {
         nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
         nParticles = nParticlesInCompoundsBuffer[blockIdx.x];
+
+        //if (blockIdx.x == 726) {
+        //    printf("\n\n\n new\n\n\n");
+        //    for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
+        //        printf("%d\n", nonbondedNeighborsBuffer[blockIdx.x * NlistUtil::maxCompounds + i].id);
+        //    }
+        //}
     }
 
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];

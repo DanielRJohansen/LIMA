@@ -11,8 +11,8 @@ namespace NeighborLists {
     void updateNlists(SimulationDevice*, BoundaryConditionSelect, const BoxParams&, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3, NeighborLists::Gridnode* const grid);
 
 	struct CompoundInfo {
-		Float3 keyPositions[CompoundInteractionBoundary::k];
-		float radii[CompoundInteractionBoundary::k];
+		Float3 keyPositions[CompoundInteractionBoundary::k];	// [nm] absolute pos
+		float radii[CompoundInteractionBoundary::k];			// [nm]
 		int compoundId = -1;
 	};
 
@@ -40,7 +40,8 @@ __global__ void PushCompoundsToGrid(const SimulationDevice* const simDev, Neighb
 		compoundInfo.compoundId = compoundId;
 
 		for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
-			compoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundOrigo, simDev->boxState->compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + i]);			
+			const int particleLocalIndex = simDev->compoundsInteractionBoundaryBuffer[compoundId].key_particle_indices[i];
+			compoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundOrigo, simDev->boxState->compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + particleLocalIndex]);
 			compoundInfo.radii[i] = simDev->boxConfig.compounds[compoundId].interaction_boundary.radii[i];
 		}
 
@@ -101,6 +102,19 @@ __device__ bool canCompoundInteractWithPoint(const CompoundInteractionBoundary& 
 
 	}
 
+	return false;
+}
+
+template <typename BoundaryCondition>
+__device__ bool canCompoundInteractWithPoint(const NeighborLists::CompoundInfo& queryCompound, const Float3& point)
+{
+	for (int ileft = 0; ileft < CompoundInteractionBoundary::k; ileft++) {
+		const float distSq = LIMAPOSITIONSYSTEM::calcHyperDistSquaredNM<BoundaryCondition>(queryCompound.keyPositions[ileft], point);
+		const float max_dist = DeviceConstants::cutoffNM + queryCompound.radii[ileft];
+
+		if (distSq < max_dist * max_dist)
+			return true;
+	}
 	return false;
 }
 
@@ -320,13 +334,14 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 
 const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
+__global__ void updateBlockgridKernel(SimulationDevice* sim_dev, const NeighborLists::Gridnode* const grid, int nodesPerDim)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
-	const bool block_active = block_id < BoxGrid::BlocksTotal(DeviceConstants::boxSize.blocksPerDim);
-	const int n_compounds = sim_dev->boxparams.n_compounds;
+	const bool block_active = block_id < BoxGrid::BlocksTotal(nodesPerDim);
+	if (!block_active)
+		return;
 
-	CompoundGridNode gridnode;
+	CompoundGridNode compoundGridnode;
 
 	const NodeIndex block_origo = block_active
 		? BoxGrid::Get3dIndex(block_id, DeviceConstants::boxSize.boxSizeNM_i)
@@ -334,45 +349,54 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev)
 
 	const Float3 block_abspos = LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(block_origo);
 
-	__shared__ Float3 key_positions_buffer[nthreads_in_blockgridkernel * CompoundInteractionBoundary::k];
-	__shared__ CompoundInteractionBoundary boundaries[nthreads_in_blockgridkernel];
 
-	// Loop over all compounds in batches
-	for (int offset = 0; offset < n_compounds; offset += blockDim.x) {
-		const int compound_id = offset + threadIdx.x;
-		__syncthreads();
-		if (compound_id < n_compounds) {
-			const NodeIndex compoundOrigo = sim_dev->boxState->compoundOrigos[compound_id];
-			const CompoundInteractionBoundary boundary = sim_dev->compoundsInteractionBoundaryBuffer[compound_id];
+	const int range = 2;
+	for (int zOff = -range; zOff <= range; zOff++) {
+		for (int yOff = -range; yOff <= range; yOff++) {
+			for (int xOff = -range; xOff <= range; xOff++) {
+				const NodeIndex queryNode = BoundaryCondition::applyBC(block_origo + NodeIndex{ xOff, yOff, zOff }, nodesPerDim);
 
-			Float3* const positionsbegin = &key_positions_buffer[threadIdx.x * CompoundInteractionBoundary::k];
-			getCompoundAbspositions<BoundaryCondition>(*sim_dev, compound_id, positionsbegin, compoundOrigo, boundary);
-			boundaries[threadIdx.x] = sim_dev->boxConfig.compounds[compound_id].interaction_boundary;
-		}
-		__syncthreads();
+				const int queryNodeIndex = BoxGrid::Get1dIndex(queryNode, nodesPerDim);
+				const NeighborLists::Gridnode& gridnode = grid[queryNodeIndex];
 
-		if (block_active) {
-			for (int i = 0; i < blockDim.x; i++) {
-				const int querycompound_id = i + offset;
+				for (int i = 0; i < gridnode.nCompoundsInNode; i++) {
+					const NeighborLists::CompoundInfo& queryCompoundInfo = gridnode.compoundInfos[i];
 
-				if (querycompound_id >= n_compounds) { break; }
+					const int queryCompoundId = queryCompoundInfo.compoundId;
 
-				Float3* const positionsbegin = &key_positions_buffer[i * CompoundInteractionBoundary::k];
-				if (canCompoundInteractWithPoint<BoundaryCondition>(boundaries[i], positionsbegin, block_abspos)) {
-					if (!gridnode.addNearbyCompound(querycompound_id)) {
-						sim_dev->signals->critical_error_encountered = true;
+					// OPTIM: This should be treated as a point but as a box. This would lower the number of hits, making the force kernel faster
+					if (canCompoundInteractWithPoint<BoundaryCondition>(queryCompoundInfo, block_abspos)) {
+						if (!compoundGridnode.addNearbyCompound(queryCompoundId)) {
+							printf("Adding too many compound to blockgrid\n");
+						}
 					}
 				}
 			}
 		}
 	}
-	if (block_active) {
-		CompoundGridNode* gridnode_global = BoxGrid::GetNodePtr(sim_dev->compound_grid, block_id);
-		gridnode_global->loadData(gridnode);
-	}
+
+	CompoundGridNode* gridnode_global = BoxGrid::GetNodePtr(sim_dev->compound_grid, block_id);
+	gridnode_global->loadData(compoundGridnode);
 }
 
+__global__ void SortCompoundGridnodes(SimulationDevice* const simDev) {
+	__shared__ uint16_t compoundIds[CompoundGridNode::max_nearby_compounds];
 
+	const int nodeIndex = blockIdx.x;
+
+
+	auto block = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(block, compoundIds, simDev->compound_grid[nodeIndex].compoundidsWithinLjCutoff, sizeof(uint16_t) * CompoundGridNode::max_nearby_compounds);
+	cooperative_groups::wait(block);
+
+	if (threadIdx.x >= simDev->compound_grid[nodeIndex].n_nearby_compounds)
+		compoundIds[threadIdx.x] = UINT16_MAX;
+	__syncthreads();
+
+	LAL::Sort<uint16_t>(compoundIds, CompoundGridNode::max_nearby_compounds);
+
+	cooperative_groups::memcpy_async(block, simDev->compound_grid[nodeIndex].compoundidsWithinLjCutoff, compoundIds, sizeof(uint16_t) * CompoundGridNode::max_nearby_compounds);
+}
 
 
 
@@ -387,22 +411,32 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams, cudaSt
 		PushCompoundsToGrid<<<(boxparams.n_compounds + 31) / 32, 32, 0, s1 >> > (sim_dev, grid, boxparams.n_compounds);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: PushCompoundsToGrid");
 
+		cudaStreamSynchronize(s1);
+
 		updateCompoundNlistsKernel<BoundaryCondition> << <(boxparams.n_compounds + 31) / 32, 32, 0, s1 >> > (sim_dev, grid, boxparams.n_compounds, boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateCompoundNlistsKernel");
 		//cudaDeviceSynchronize();
 
         SortNonbondedNeighborcompoundIds<<<boxparams.n_compounds, NlistUtil::maxCompounds, 0, s1>>>(sim_dev);
+		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: SortNonbondedNeighborcompoundIds");
 
 		// Stream 2
         updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32, 0, s2>>>(sim_dev);
-        LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: gridnodes");
+        LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateCompoundGridnodes");
+
+
+		if (boxparams.n_solvents > 0) {
+			// Stream 3
+			const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
+			updateBlockgridKernel<BoundaryCondition> << <n_blocks, nthreads_in_blockgridkernel, 0, s3 >> > (sim_dev, grid, boxparams.boxSize);
+			LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateBlockgridKernel");
+
+			SortCompoundGridnodes << < BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), CompoundGridNode::max_nearby_compounds, 0, s3 >> > (sim_dev);
+			LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: SortCompoundGridnodes");
+		}
 	}
-	//cudaDeviceSynchronize();
-	if (boxparams.n_solvents > 0) {
-		// Stream 3
-		const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
-        updateBlockgridKernel<BoundaryCondition> <<<n_blocks, nthreads_in_blockgridkernel, 0, s3>>>(sim_dev);
-	}
+
+
 
 	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
 }

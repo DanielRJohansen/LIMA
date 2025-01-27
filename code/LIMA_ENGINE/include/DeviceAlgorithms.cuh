@@ -99,36 +99,67 @@ namespace LAL {
 		}
 	}
 
-    //template <typename T>
-    //__device__ inline void Sort(T* data, int nElements) { // Assuming that data is already in shared memory.
+    template <typename T>
+    __device__ inline void Sort(T* data, int nElements) { // Assuming that data is already in shared memory.
 
-    //    int tid = threadIdx.x;
+        int tid = threadIdx.x;
 
-    //    for (int k = 2; k <= nElements; k <<= 1) {
-    //        for (int j = k >> 1; j > 0; j >>= 1) {
-    //            int ixj = tid ^ j;
-    //            if (ixj > tid) {
-    //                if ((tid & k) == 0) {
-    //                    if (data[tid] > data[ixj]) {
-    //                        // Swap data[tid] and data[ixj]
-    //                        T temp = data[tid];
-    //                        data[tid] = data[ixj];
-    //                        data[ixj] = temp;
-    //                    }
-    //                }
-    //                else {
-    //                    if (data[tid] < data[ixj]) {
-    //                        // Swap data[tid] and data[ixj]
-    //                        T temp = data[tid];
-    //                        data[tid] = data[ixj];
-    //                        data[ixj] = temp;
-    //                    }
-    //                }
-    //            }
-    //            __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
-    //        }
-    //    }
-    //}
+        for (int k = 2; k <= nElements; k <<= 1) {
+            for (int j = k >> 1; j > 0; j >>= 1) {
+                int ixj = tid ^ j;
+                if (ixj > tid) {
+                    if ((tid & k) == 0) {
+                        if (data[tid] > data[ixj]) {
+                            // Swap data[tid] and data[ixj]
+                            T temp = data[tid];
+                            data[tid] = data[ixj];
+                            data[ixj] = temp;
+                        }
+                    }
+                    else {
+                        if (data[tid] < data[ixj]) {
+                            // Swap data[tid] and data[ixj]
+                            T temp = data[tid];
+                            data[tid] = data[ixj];
+                            data[ixj] = temp;
+                        }
+                    }
+                }
+                __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+            }
+        }
+    }
+
+
+	//template <typename T, typename Accessor = decltype([](const T& a) { return a; }) >
+	//__device__ inline void Sort(T* data, int nElements, Accessor accessor = [](const T& a) { return a; }) {
+	//	int tid = threadIdx.x;
+
+	//	for (int k = 2; k <= nElements; k <<= 1) {
+	//		for (int j = k >> 1; j > 0; j >>= 1) {
+	//			int ixj = tid ^ j;
+	//			if (ixj > tid) {
+	//				if ((tid & k) == 0) {
+	//					if (accessor(data[tid]) > accessor(data[ixj])) {
+	//						// Swap data[tid] and data[ixj]
+	//						T temp = data[tid];
+	//						data[tid] = data[ixj];
+	//						data[ixj] = temp;
+	//					}
+	//				}
+	//				else {
+	//					if (accessor(data[tid]) < accessor(data[ixj])) {
+	//						// Swap data[tid] and data[ixj]
+	//						T temp = data[tid];
+	//						data[tid] = data[ixj];
+	//						data[ixj] = temp;
+	//					}
+	//				}
+	//			}
+	//			__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+	//		}
+	//	}
+	//}
 
 
 }

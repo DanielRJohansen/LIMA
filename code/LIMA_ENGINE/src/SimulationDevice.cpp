@@ -157,7 +157,10 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 {
 	// Allocate structures for keeping track of solvents and compounds
 	compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
+	cudaMemset(compound_grid, 0, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)) * sizeof(CompoundGridNode));
+
     cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS); // OPTIM hunt down and removed managed mem
+	
 
 	cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
 

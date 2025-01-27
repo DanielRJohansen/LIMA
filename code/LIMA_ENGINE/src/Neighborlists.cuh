@@ -209,37 +209,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 	simDev->nNonbondedNeighborsBuffer[compoundId] = nNonbondedNeighborsTotal;
 }
 
-
-
-
-__device__ inline void Sort(NlistUtil::IdAndRelshift* const data, int nElements) { // Assuming that data is already in shared memory.
-    int tid = threadIdx.x;
-    for (int k = 2; k <= nElements; k <<= 1) {
-        for (int j = k >> 1; j > 0; j >>= 1) {
-            int ixj = tid ^ j;
-            if (ixj > tid) {
-                if ((tid & k) == 0) {
-                    if (data[tid].id > data[ixj].id) {
-                        // Swap data[tid] and data[ixj]
-                        auto temp = data[tid];
-                        data[tid] = data[ixj];
-                        data[ixj] = temp;
-                    }
-                }
-                else {
-                    if (data[tid].id < data[ixj].id) {
-                        // Swap data[tid] and data[ixj]
-                        auto temp = data[tid];
-                        data[tid] = data[ixj];
-                        data[ixj] = temp;
-                    }
-                }
-            }
-            __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
-        }
-    }
-}
-
 __global__ void SortNonbondedNeighborcompoundIds(SimulationDevice* const simDev) {
     __shared__ NlistUtil::IdAndRelshift neighbors[NlistUtil::maxCompounds];
 
@@ -253,7 +222,7 @@ __global__ void SortNonbondedNeighborcompoundIds(SimulationDevice* const simDev)
         neighbors[threadIdx.x].id = UINT16_MAX;
     __syncthreads();
 
-    Sort(neighbors, NlistUtil::maxCompounds);
+    LAL::Sort(neighbors, NlistUtil::maxCompounds, [](const NlistUtil::IdAndRelshift& a){return a.id;});
 
     cooperative_groups::memcpy_async(block, &simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds], neighbors, sizeof(NlistUtil::IdAndRelshift) * NlistUtil::maxCompounds);
 }
@@ -393,7 +362,7 @@ __global__ void SortCompoundGridnodes(SimulationDevice* const simDev) {
 		compoundIds[threadIdx.x] = UINT16_MAX;
 	__syncthreads();
 
-	LAL::Sort<uint16_t>(compoundIds, CompoundGridNode::max_nearby_compounds);
+    LAL::Sort(compoundIds, CompoundGridNode::max_nearby_compounds, [](const uint16_t& a) {return a;});
 
 	cooperative_groups::memcpy_async(block, simDev->compound_grid[nodeIndex].compoundidsWithinLjCutoff, compoundIds, sizeof(uint16_t) * CompoundGridNode::max_nearby_compounds);
 }

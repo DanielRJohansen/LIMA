@@ -18,15 +18,13 @@ class DatabuffersDeviceController;
 class Thermostat;
 class BoxState;
 class BoxConfig;
-class NeighborList;
 class CompoundGridNode;
 struct CompoundQuickData;
 struct ForceEnergyInterims;
-class NeighborListController;
+namespace NeighborList { class Controller; }
 
 namespace PME { class Controller; };
-namespace NlistUtil{struct IdAndRelshift;}
-namespace NeighborLists { struct Gridnode; }
+namespace NeighborList{struct IdAndRelshift;}
 
 
 struct RunStatus {
@@ -95,7 +93,6 @@ private:
 	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
-	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
 	std::unique_ptr<Simulation> simulation;
 
@@ -108,22 +105,17 @@ private:
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
-	NeighborList* neighborlistsPtr = nullptr; // dont own data!
-	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
-    uint16_t* nNonbondedNeighborsPtr = nullptr;// dont own data!
-    NlistUtil::IdAndRelshift* nonbondedNeighborsPtr = nullptr;// dont own data!
+
 	uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
 
 	std::unique_ptr<PME::Controller> pmeController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
-	std::unique_ptr<NeighborListController> nlistController;
+	std::unique_ptr<NeighborList::Controller> nlistController;
 
-	//NeighborLists::Gridnode* nlistGridInternal;
 
 	const BoundaryConditionSelect bc_select;
-
 };
 
  

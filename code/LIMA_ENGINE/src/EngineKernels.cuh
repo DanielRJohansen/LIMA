@@ -9,6 +9,7 @@
 #include "BoundaryCondition.cuh"
 #include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "NeighborLists.cuh"
 
 //#include <cuda/pipeline>
 #include "KernelConstants.cuh"
@@ -46,12 +47,12 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer,
-                    const uint16_t* const nNonbondedNeighborsBuffer, const NlistUtil::IdAndRelshift* const nonbondedNeighborsBuffer, const uint8_t* const nParticlesInCompoundsBuffer)
+                    const uint16_t* const compoundsNNeighborNonbondedCompounds, const NeighborList::IdAndRelshift* const compoundsNeighborNonbondedCompounds, const uint8_t* const nParticlesInCompoundsBuffer)
 {
     const int batchsize = 32;
 
     __shared__ CompoundQuickData compoundQuickData; // 768 bytes
-    __shared__ NlistUtil::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
+    __shared__ NeighborList::IdAndRelshift neighborCompounds[batchsize]; // 512 bytes
 
     __shared__ int nNonbondedCompoundNeighbors;    
     __shared__ int nParticles;
@@ -63,13 +64,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
     }
 
     if (threadIdx.x == 0) {
-        nNonbondedCompoundNeighbors = nNonbondedNeighborsBuffer[blockIdx.x];
+        nNonbondedCompoundNeighbors = compoundsNNeighborNonbondedCompounds[blockIdx.x];
         nParticles = nParticlesInCompoundsBuffer[blockIdx.x];
 
         //if (blockIdx.x == 726) {
         //    printf("\n\n\n new\n\n\n");
         //    for (int i = 0; i < nNonbondedCompoundNeighbors; i++) {
-        //        printf("%d\n", nonbondedNeighborsBuffer[blockIdx.x * NlistUtil::maxCompounds + i].id);
+        //        printf("%d\n", compoundsNeighborNonbondedCompounds[blockIdx.x * NeighborList::compoundsMaxNearbyCompounds + i].id);
         //    }
         //}
     }
@@ -89,7 +90,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
         for (int batchIndex = 0; batchIndex < nNonbondedCompoundNeighbors/batchsize + 1; batchIndex++) {
             __syncthreads();
 
-            cooperative_groups::memcpy_async(block, neighborCompounds, &nonbondedNeighborsBuffer[blockIdx.x * NlistUtil::maxCompounds + batchIndex * batchsize], sizeof(NlistUtil::IdAndRelshift) * batchsize);
+            cooperative_groups::memcpy_async(block, neighborCompounds, &compoundsNeighborNonbondedCompounds[blockIdx.x * NeighborList::compoundsMaxNearbyCompounds + batchIndex * batchsize], sizeof(NeighborList::IdAndRelshift) * batchsize);
             cooperative_groups::wait(block);
 
             const int nElementsInBatch = min(nNonbondedCompoundNeighbors-batchIndex*batchsize, batchsize);
@@ -120,7 +121,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
 #define compound_index blockIdx.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
-__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step, ForceEnergy* const forceEnergy) {
+__global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(SimulationDevice* sim, const int64_t step, ForceEnergy* const forceEnergy, NeighborList::Buffers nlistBuffers) {
 	__shared__ CompoundCompact compound;				// Mostly bond information
 	__shared__ Float3 compound_positions[MAX_COMPOUND_PARTICLES]; // [nm]
 
@@ -155,7 +156,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
-			nGridnodes = sim->compound_neighborlists[blockIdx.x].n_gridnodes;
+			nGridnodes = nlistBuffers.compoundsNNearbyGridnodes[blockIdx.x];//  sim->compound_neighborlists[blockIdx.x].n_gridnodes;
 		}
 
 		cooperative_groups::memcpy_async(block, &forcefield_shared, &DeviceConstants::forcefield, sizeof(ForceField_NB));
@@ -246,7 +247,9 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			__syncthreads();
 			if (indexInBatch == batchsize) {
 				if (threadIdx.x < batchsize && threadIdx.x + i < nGridnodes) {
-					neighborIds[threadIdx.x] = sim->compound_neighborlists[blockIdx.x].gridnode_ids[i + threadIdx.x];
+					//printf("Load index %d\n", blockIdx.x * NeighborList::compoundsMaxNearbyGridnodes + i + threadIdx.x);
+					neighborIds[threadIdx.x] = nlistBuffers.compoundsNearbyGridnodes[blockIdx.x * NeighborList::compoundsMaxNearbyGridnodes + i + threadIdx.x];
+						//rbyBlocks  sim->compound_neighborlists[blockIdx.x].gridnode_ids[i + threadIdx.x];
 
 					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], DeviceConstants::boxSize.boxSizeNM_i));
@@ -407,7 +410,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const CompoundGridNode* const compoundGrid, int64_t step, ForceEnergy* const forceEnergies) {
+__global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxConfig boxConfig, const NeighborList::Buffers nlistBuffers, int64_t step, ForceEnergy* const forceEnergies) {
 	__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int neighborblockNumElements;
@@ -441,14 +444,14 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 	// --------------------------------------------------------------- Molecule Interactions --------------------------------------------------------------- //	
 	{
 		// Thread 0 finds n nearby compounds
-		const CompoundGridNode* compoundgridnode = BoxGrid::GetNodePtr(compoundGrid, blockIdx.x);
-		if (threadIdx.x == 0) { neighborblockNumElements = compoundgridnode->n_nearby_compounds; }
+		const uint16_t* const neighborcompound_indices = &nlistBuffers.gridnodesNearbyCompounds[blockIdx.x * NeighborList::gridnodesMaxNearbyCompounds];
+		if (threadIdx.x == 0) { neighborblockNumElements = nlistBuffers.gridnodesNNearbyCompounds[blockIdx.x]; }
 		__syncthreads();
 
 
 
 		for (int i = 0; i < neighborblockNumElements; i++) {
-			const uint16_t neighborcompound_index = compoundgridnode->compoundidsWithinLjCutoff[i];
+			const uint16_t neighborcompound_index = neighborcompound_indices[i];
 			const Compound* neighborcompound = &boxConfig.compounds[neighborcompound_index];
 			const int n_compound_particles = neighborcompound->n_particles;
 

@@ -99,13 +99,8 @@ struct SimulationDevice {
 	// Recursively free members. Use cudaFree on *this immediately after
 	void FreeMembers();
 
-	// Compounds signal where they are on a grid, handled by NLists. Used by solvents to load nearby compounds.
-	CompoundGridNode* compound_grid = nullptr;
-
-	// Compounds can see which compounds are near them
-	NeighborList* compound_neighborlists = nullptr;
-    uint16_t* nNonbondedNeighborsBuffer = nullptr;
-    NlistUtil::IdAndRelshift* nonbondedNeighborsBuffer = nullptr;
+	
+	
 
 	// Module used to move solvents to a new block, in parallel
 	SolventBlockTransfermodule* transfermodule_array = nullptr;

@@ -216,9 +216,9 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
 		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 1.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 5.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			},
-			5.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
+			2.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
 		);
 
 		const int nSteps = 1000;

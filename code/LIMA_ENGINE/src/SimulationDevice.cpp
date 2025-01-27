@@ -155,25 +155,12 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
-	// Allocate structures for keeping track of solvents and compounds
-	compound_grid = BoxGrid::MallocOnDevice<CompoundGridNode>(box_host->boxparams.boxSize);
-	cudaMemset(compound_grid, 0, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)) * sizeof(CompoundGridNode));
-
-    cudaMallocManaged(&compound_neighborlists, sizeof(NeighborList) * MAX_COMPOUNDS); // OPTIM hunt down and removed managed mem
-	
-
 	cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
 
 	{
 		SimSignals temp{};
 		genericCopyToDevice(temp, &signals, 1);
 	}
-
-	//genericCopyToDevice(params_host, &params, 1);
-
-    cudaMallocManaged(&nNonbondedNeighborsBuffer, sizeof(uint16_t) * box_host->boxparams.n_compounds);
-    cudaMallocManaged(&nonbondedNeighborsBuffer, sizeof(NlistUtil::IdAndRelshift) * box_host->boxparams.n_compounds * NlistUtil::maxCompounds);
-    cudaMemset(nNonbondedNeighborsBuffer, 0, sizeof(uint16_t) * box_host->boxparams.n_compounds);
 
 	std::vector<uint8_t> nParticlesInCompoundsVec(boxparams.n_compounds);
 	for (int i = 0; i < boxparams.n_compounds; i++) {
@@ -208,13 +195,9 @@ void SimulationDevice::FreeMembers() {
 	cudaFree(nParticlesInCompoundsBuffer);
 	cudaFree(compoundsInteractionBoundaryBuffer);
 
-	cudaFree(compound_grid);
-	cudaFree(compound_neighborlists);
 	cudaFree(transfermodule_array);
 	cudaFree(signals);
 
-    cudaFree(nNonbondedNeighborsBuffer);
-    cudaFree(nonbondedNeighborsBuffer);
 
 	if (adamState != nullptr)
 		cudaFree(adamState);

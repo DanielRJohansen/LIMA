@@ -5,32 +5,8 @@
 #include "KernelConstants.cuh"
 
 #include <cuda_runtime.h>
-#include <cuda_fp8.h>
+//#include <cuda_fp8.h>
 
-struct CompoundGridNode {
-	__device__ __host__ bool addNearbyCompound(uint16_t compound_id) {
-		if (n_nearby_compounds >= max_nearby_compounds) {
-			printf("Failed to add compound to CompoundGridNode\n");
-			return false;
-		}
-		compoundidsWithinLjCutoff[n_nearby_compounds++] = compound_id;
-		return true;
-	}
-
-	__device__ void loadData(const CompoundGridNode& other) {
-		n_nearby_compounds = other.n_nearby_compounds;
-		for (int i = 0; i < n_nearby_compounds; i++) {
-			compoundidsWithinLjCutoff[i] = other.compoundidsWithinLjCutoff[i];
-		}
-	}
-	// Compounds that are near this specific node
-	// A particle belonging to this node coord, can iterate through this list
-	// to find all appropriate nearby compounds;	// This is insanely high
-	static_assert(MAX_COMPOUNDS <= UINT16_MAX-1, "CompoundGridNode cannot handle such large compound ids");
-	static const int max_nearby_compounds = 128;
-	uint16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
-	int n_nearby_compounds = 0;
-};
 
 // Extra functions that require access to kernel constants
 namespace BoxGrid {
@@ -122,32 +98,6 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 //};
 
 
-namespace NlistUtil {
-    static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-
-	// This value is only high because the electrostaticmanyparticles has the particles as compounds, when they should be tinymol. But pme doesnt yet support tinymol...
-    static const int maxCompounds = 256+256;	// TODO: We need to work on getting this number down!
-    struct IdAndRelshift {
-        uint16_t id;
-        uint16_t nParticles;
-        Float3 relShift;
-    };
-}
 
 
-
-
-// OPTIM use alignas 128 here
-class alignas(128) NeighborList {
-
-public:
-
-#ifdef ENABLE_SOLVENTS
-
-
-    static const int max_gridnodes = 128-1;	// Arbitrary value
-	int gridnode_ids[max_gridnodes];
-	int n_gridnodes = 0;
-#endif
-};
 

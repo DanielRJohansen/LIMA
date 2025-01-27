@@ -5,7 +5,7 @@
 #include "KernelConstants.cuh"
 
 #include <cuda_runtime.h>
-
+#include <cuda_fp8.h>
 
 struct CompoundGridNode {
 	__device__ __host__ bool addNearbyCompound(uint16_t compound_id) {
@@ -29,7 +29,6 @@ struct CompoundGridNode {
 	static_assert(MAX_COMPOUNDS <= UINT16_MAX-1, "CompoundGridNode cannot handle such large compound ids");
 	static const int max_nearby_compounds = 128;
 	uint16_t compoundidsWithinLjCutoff[max_nearby_compounds]{};
-	uint16_t compoundidsWithinShortRangeESCutoff[max_nearby_compounds]{};
 	int n_nearby_compounds = 0;
 };
 
@@ -107,7 +106,20 @@ using SRemainQueue = SolventTransferqueue<SolventBlock::MAX_SOLVENTS_IN_BLOCK>;
 
 
 
-
+//class SmallShift {
+//    __nv_fp8_e4m3 data[4];
+//
+//    SmallShift() {}
+//    constexpr SmallShift(const Float3& shift) {
+//        data[0] = __float2fp8(shift.x);
+//        data[1] = __float2fp8(shift.y);
+//        data[2] = __float2fp8(shift.z);
+//    }
+//
+//    constexpr Float3 ToFloat3() const {
+//        return Float3 { __fp82float(data[0]), __fp82float(data[1]), __fp82float(data[2]) }
+//    }
+//};
 
 
 namespace NlistUtil {

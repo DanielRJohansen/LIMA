@@ -25,7 +25,7 @@ struct ForceEnergyInterims;
 
 namespace PME { class Controller; };
 namespace NlistUtil{struct IdAndRelshift;}
-
+namespace NeighborLists { struct Gridnode; }
 
 
 struct RunStatus {
@@ -117,6 +117,8 @@ private:
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
+
+	NeighborLists::Gridnode* nlistGridInternal;
 
 	const BoundaryConditionSelect bc_select;
 

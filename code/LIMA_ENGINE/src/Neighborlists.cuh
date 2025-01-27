@@ -13,7 +13,7 @@ namespace NeighborLists {
 	struct CompoundInfo {
 		Float3 keyPositions[CompoundInteractionBoundary::k];	// [nm] absolute pos
 		float radii[CompoundInteractionBoundary::k];			// [nm]
-		int compoundId = -1;
+        uint16_t compoundId = -1;
 	};
 
     struct alignas(32) Gridnode {
@@ -121,26 +121,25 @@ __device__ bool canCompoundInteractWithPoint(const NeighborLists::CompoundInfo& 
 template <typename BoundaryCondition>
 __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const NeighborLists::Gridnode* const grid, int nCompounds, int nodesPerDim) {
 
-	const int compoundId = blockIdx.x * blockDim.x + threadIdx.x;
-	const bool compoundActive = compoundId < nCompounds;
+    const bool compoundActive = blockIdx.x * blockDim.x + threadIdx.x < nCompounds;
 
 	if (!compoundActive)
 		return;
 
-	const NodeIndex myCompoundOrigo = compoundActive ? simDev->boxState->compoundOrigos[compoundId] : NodeIndex{};
+    const uint16_t compoundId = blockIdx.x * blockDim.x + threadIdx.x;
+    const NodeIndex myCompoundOrigo = simDev->boxState->compoundOrigos[compoundId];
 
 	uint16_t nNonbondedNeighborsTotal = 0;
 	NlistUtil::IdAndRelshift nonbondedNeighbors[NlistUtil::maxCompounds];
 
-	const CompoundInteractionBoundary boundary_self = compoundActive ? simDev->compoundsInteractionBoundaryBuffer[compoundId] : CompoundInteractionBoundary{};
+    const CompoundInteractionBoundary boundary_self = simDev->compoundsInteractionBoundaryBuffer[compoundId];
 
 	Float3 key_positions_self[CompoundInteractionBoundary::k];
-	if (compoundActive)
-		getCompoundAbspositions<BoundaryCondition>(*simDev, compoundId, key_positions_self, myCompoundOrigo, boundary_self);
+    getCompoundAbspositions<BoundaryCondition>(*simDev, compoundId, key_positions_self, myCompoundOrigo, boundary_self);
 
 	// Load bonded compounds so we dont add them again
-	int bondedCompoundIds[Compound::max_bonded_compounds];
-	const int n_bonded_compounds = compoundActive ? simDev->boxConfig.compounds[compoundId].n_bonded_compounds : 0;
+    uint16_t bondedCompoundIds[Compound::max_bonded_compounds];
+    const int n_bonded_compounds = simDev->boxConfig.compounds[compoundId].n_bonded_compounds;
 	for (int i = 0; i < n_bonded_compounds; i++) {
 		bondedCompoundIds[i] = simDev->boxConfig.compounds[compoundId].bonded_compound_ids[i];
 	}
@@ -169,7 +168,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 				for (int i = 0; i < gridnode.nCompoundsInNode; i++) {
 					const NeighborLists::CompoundInfo& queryCompoundInfo = gridnode.compoundInfos[i];
 
-					const int queryCompoundId = queryCompoundInfo.compoundId;
+                    const uint16_t queryCompoundId = queryCompoundInfo.compoundId;
 
 					if (queryCompoundId == compoundId) { continue; }	// dont add self to self
 					// Dont add bonded compounds to list again
@@ -205,7 +204,6 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 	for (int i = 0; i < nNonbondedNeighborsTotal; i++) {
 		simDev->nonbondedNeighborsBuffer[compoundId * NlistUtil::maxCompounds + i] = nonbondedNeighbors[i];
 	}
-
 	simDev->nNonbondedNeighborsBuffer[compoundId] = nNonbondedNeighborsTotal;
 }
 

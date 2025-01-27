@@ -4,11 +4,13 @@
 #include "LimaPositionSystem.cuh"
 #include "Simulation.cuh"
 #include "SimulationDevice.cuh"
+#include <span>
+
 
 
 
 namespace NeighborLists {
-    void updateNlists(SimulationDevice*, BoundaryConditionSelect, const BoxParams&, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3, NeighborLists::Gridnode* const grid);
+    //void updateNlists(SimulationDevice*, BoundaryConditionSelect, const BoxParams&, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3, NeighborLists::Gridnode* const grid);
 
 	struct CompoundInfo {
 		Float3 keyPositions[CompoundInteractionBoundary::k];	// [nm] absolute pos
@@ -23,6 +25,21 @@ namespace NeighborLists {
 		int nCompoundsInNode;
 	};
     //static_assert(sizeof(Gridnode) == 256);
+};
+
+class NeighborListController {
+	NeighborLists::Gridnode* grid = nullptr;
+
+	template <typename BoundaryCondition>
+	void _UpdateNlist(SimulationDevice* const simDev, const BoxParams&, std::array<cudaStream_t, 5>&);
+
+public:
+	NeighborListController(const BoxParams& boxParams) {
+		cudaMalloc(&grid, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)) * sizeof(NeighborLists::Gridnode));
+		cudaMemset(grid, 0, sizeof(NeighborLists::Gridnode) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)));
+	}
+
+	void UpdateNlist(SimulationDevice* const simDev, const BoxParams&, BoundaryConditionSelect, std::array<cudaStream_t,5>&);
 };
 
 
@@ -61,9 +78,9 @@ __global__ void PushCompoundsToGrid(const SimulationDevice* const simDev, Neighb
 
 // Assumes the compound is active
 template <typename BoundaryCondition>
-__device__ void getCompoundAbspositions(const SimulationDevice& sim_dev, int compound_id, Float3* result, const NodeIndex& compoundOrigo, const CompoundInteractionBoundary& compoundInteractionBoundary)
+__device__ void getCompoundAbspositions(const SimulationDevice& simDev, int compound_id, Float3* result, const NodeIndex& compoundOrigo, const CompoundInteractionBoundary& compoundInteractionBoundary)
 {
-	const Float3* const relPositions = &sim_dev.boxState->compoundsRelposNm[compound_id * MAX_COMPOUND_PARTICLES];
+	const Float3* const relPositions = &simDev.boxState->compoundsRelposNm[compound_id * MAX_COMPOUND_PARTICLES];
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = compoundInteractionBoundary.key_particle_indices[i];
@@ -239,22 +256,22 @@ __global__ void SortNonbondedNeighborcompoundIds(SimulationDevice* const simDev)
 
 
 template <typename BoundaryCondition>
-__global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
+__global__ void updateCompoundGridnodes(SimulationDevice* simDev) {
 
-    const int n_compounds = sim_dev->boxparams.n_compounds;
+    const int n_compounds = simDev->boxparams.n_compounds;
     const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
     const bool compound_active = compound_id < n_compounds;
     const NodeIndex myCompoundOrigo = compound_active
-        ? sim_dev->boxState->compoundOrigos[compound_id]
+        ? simDev->boxState->compoundOrigos[compound_id]
         : NodeIndex{};
 
 	const CompoundInteractionBoundary boundary_self = compound_active
-		? sim_dev->boxConfig.compounds[compound_id].interaction_boundary
+		? simDev->boxConfig.compounds[compound_id].interaction_boundary
 		: CompoundInteractionBoundary{};
 
     Float3 key_positions_self[CompoundInteractionBoundary::k];
     if (compound_active)
-        getCompoundAbspositions<BoundaryCondition>(*sim_dev, compound_id, key_positions_self, myCompoundOrigo, boundary_self);
+        getCompoundAbspositions<BoundaryCondition>(*simDev, compound_id, key_positions_self, myCompoundOrigo, boundary_self);
 
     
 
@@ -264,7 +281,7 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
-		const NodeIndex compound_origo = sim_dev->boxState->compoundOrigos[compound_id];
+		const NodeIndex compound_origo = simDev->boxState->compoundOrigos[compound_id];
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {
@@ -284,7 +301,7 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 					if (canCompoundInteractWithPoint<BoundaryCondition>(boundary_self, key_positions_self, querynode_pos)) {
                         gridnode_ids[n_gridnodes++] = querynode_id;
                         if (n_gridnodes > NeighborList::max_gridnodes) {
-							sim_dev->signals->critical_error_encountered = true;
+							simDev->signals->critical_error_encountered = true;
 						}
 					}
 				}
@@ -292,8 +309,8 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 		}
 
         for (int i= 0; i < n_gridnodes; i++)
-            sim_dev->compound_neighborlists[compound_id].gridnode_ids[i] = gridnode_ids[i];
-        sim_dev->compound_neighborlists[compound_id].n_gridnodes = n_gridnodes;
+            simDev->compound_neighborlists[compound_id].gridnode_ids[i] = gridnode_ids[i];
+        simDev->compound_neighborlists[compound_id].n_gridnodes = n_gridnodes;
 	}
 }
 
@@ -301,7 +318,7 @@ __global__ void updateCompoundGridnodes(SimulationDevice* sim_dev) {
 
 const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(SimulationDevice* sim_dev, const NeighborLists::Gridnode* const grid, int nodesPerDim)
+__global__ void updateBlockgridKernel(SimulationDevice* simDev, const NeighborLists::Gridnode* const grid, int nodesPerDim)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool block_active = block_id < BoxGrid::BlocksTotal(nodesPerDim);
@@ -342,7 +359,7 @@ __global__ void updateBlockgridKernel(SimulationDevice* sim_dev, const NeighborL
 		}
 	}
 
-	CompoundGridNode* gridnode_global = BoxGrid::GetNodePtr(sim_dev->compound_grid, block_id);
+	CompoundGridNode* gridnode_global = BoxGrid::GetNodePtr(simDev->compound_grid, block_id);
 	gridnode_global->loadData(compoundGridnode);
 }
 
@@ -368,37 +385,37 @@ __global__ void SortCompoundGridnodes(SimulationDevice* const simDev) {
 
 
 template <typename BoundaryCondition>
-void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3, NeighborLists::Gridnode* const grid)
+void NeighborListController::_UpdateNlist(SimulationDevice* simDev, const BoxParams& boxparams, std::array<cudaStream_t,5>& streams)
 {
 	cudaDeviceSynchronize();
 	if (boxparams.n_compounds > 0) {
 		// Stream one
-		cudaMemsetAsync(grid, 0, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) * sizeof(NeighborLists::Gridnode), s1);
+		cudaMemsetAsync(grid, 0, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) * sizeof(NeighborLists::Gridnode), streams[0]);
 
-		PushCompoundsToGrid<<<(boxparams.n_compounds + 31) / 32, 32, 0, s1 >> > (sim_dev, grid, boxparams.n_compounds);
+		PushCompoundsToGrid<<<(boxparams.n_compounds + 31) / 32, 32, 0, streams[0] >> > (simDev, grid, boxparams.n_compounds);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: PushCompoundsToGrid");
 
-		cudaStreamSynchronize(s1);
+		cudaStreamSynchronize(streams[0]);
 
-		updateCompoundNlistsKernel<BoundaryCondition> << <(boxparams.n_compounds + 31) / 32, 32, 0, s1 >> > (sim_dev, grid, boxparams.n_compounds, boxparams.boxSize);
+		updateCompoundNlistsKernel<BoundaryCondition> << <(boxparams.n_compounds + 31) / 32, 32, 0, streams[0] >> > (simDev, grid, boxparams.n_compounds, boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateCompoundNlistsKernel");
 		//cudaDeviceSynchronize();
 
-        SortNonbondedNeighborcompoundIds<<<boxparams.n_compounds, NlistUtil::maxCompounds, 0, s1>>>(sim_dev);
+        SortNonbondedNeighborcompoundIds<<<boxparams.n_compounds, NlistUtil::maxCompounds, 0, streams[0]>>>(simDev);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: SortNonbondedNeighborcompoundIds");
 
 		// Stream 2
-        updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32, 0, s2>>>(sim_dev);
+        updateCompoundGridnodes<BoundaryCondition><<<(boxparams.n_compounds+31)/32, 32, 0, streams[1] >>>(simDev);
         LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateCompoundGridnodes");
 
 
 		if (boxparams.n_solvents > 0) {
 			// Stream 3
 			const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
-			updateBlockgridKernel<BoundaryCondition> << <n_blocks, nthreads_in_blockgridkernel, 0, s3 >> > (sim_dev, grid, boxparams.boxSize);
+			updateBlockgridKernel<BoundaryCondition> << <n_blocks, nthreads_in_blockgridkernel, 0, streams[2] >> > (simDev, grid, boxparams.boxSize);
 			LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: updateBlockgridKernel");
 
-			SortCompoundGridnodes << < BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), CompoundGridNode::max_nearby_compounds, 0, s3 >> > (sim_dev);
+			SortCompoundGridnodes << < BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), CompoundGridNode::max_nearby_compounds, 0, streams[2] >> > (simDev);
 			LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: SortCompoundGridnodes");
 		}
 	}
@@ -408,16 +425,16 @@ void _updateNlists(SimulationDevice* sim_dev, const BoxParams& boxparams, cudaSt
 	LIMA_UTILS::genericErrorCheck("Error during updateNlists: blockGrid");
 }
 
-void NeighborLists::updateNlists(SimulationDevice* sim_dev, BoundaryConditionSelect bc_select, const BoxParams& boxparams, cudaStream_t& s1, cudaStream_t& s2, cudaStream_t& s3, NeighborLists::Gridnode* const grid)
+void NeighborListController::UpdateNlist(SimulationDevice* simDev, const BoxParams& boxparams, BoundaryConditionSelect bc_select, std::array<cudaStream_t,5>& streams)
 {
 	switch (bc_select) {
 		
 	case NoBC: 
-        _updateNlists<NoBoundaryCondition>(sim_dev, boxparams, s1, s2, s3, grid);
+        _UpdateNlist<NoBoundaryCondition>(simDev, boxparams, streams);
 			break;
 		
 	case PBC:
-        _updateNlists<PeriodicBoundaryCondition>(sim_dev, boxparams, s1, s2, s3, grid);
+        _UpdateNlist<PeriodicBoundaryCondition>(simDev, boxparams, streams);
 			break;		
 	default:
 			throw std::runtime_error("Unsupported boundary condition in updateNlists");

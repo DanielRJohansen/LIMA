@@ -22,6 +22,7 @@ class NeighborList;
 class CompoundGridNode;
 struct CompoundQuickData;
 struct ForceEnergyInterims;
+class NeighborListController;
 
 namespace PME { class Controller; };
 namespace NlistUtil{struct IdAndRelshift;}
@@ -117,8 +118,9 @@ private:
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
+	std::unique_ptr<NeighborListController> nlistController;
 
-	NeighborLists::Gridnode* nlistGridInternal;
+	//NeighborLists::Gridnode* nlistGridInternal;
 
 	const BoundaryConditionSelect bc_select;
 

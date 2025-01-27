@@ -70,13 +70,12 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
 
-	cudaMalloc(&nlistGridInternal, sizeof(NeighborLists::Gridnode) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)));
-	cudaMemset(nlistGridInternal, 0, sizeof(NeighborLists::Gridnode) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)));
+	nlistController = std::make_unique<NeighborListController>(boxparams);
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-    NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, boxparams, cudaStreams[0], cudaStreams[1], cudaStreams[2], nlistGridInternal);
+	nlistController->UpdateNlist(sim_dev, boxparams, simulation->simparams_host.bc_select, cudaStreams);
 	m_logger->finishSection("Engine Ready");
 }
 
@@ -164,7 +163,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		HandleEarlyStoppingInEM();		
 	}
 	if (simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1)
-        NeighborLists::updateNlists(sim_dev, simulation->simparams_host.bc_select, simulation->box_host->boxparams, cudaStreams[0], cudaStreams[1], cudaStreams[2], nlistGridInternal);
+		nlistController->UpdateNlist(sim_dev, simulation->box_host->boxparams, simulation->simparams_host.bc_select, cudaStreams);
 
 	// Handle status
 	runstatus.current_step = simulation->getStep();

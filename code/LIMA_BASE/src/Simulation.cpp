@@ -187,32 +187,3 @@ void Simulation::PrepareDataBuffers() {
 #endif
 	}
 }
-
-std::unique_ptr<MDFiles::TrrFile> Simulation::ToTracjectoryFile() const{	
-	auto trrFile = std::make_unique<MDFiles::TrrFile>(Float3{ box_host->boxparams.boxSize });
-
-	assert(simparams_host.data_logging_interval == traj_buffer->GetLoggingInterval());
-	const int nLoggedSteps = step / simparams_host.data_logging_interval;
-	trrFile->positions.reserve(nLoggedSteps);
-
-	for (int64_t step = 0; step < step; step += simparams_host.data_logging_interval) {
-
-		std::vector<Float3> row(box_host->boxparams.total_particles);
-	    int index = 0; 
-
-	    // Todo: this can be optimized with some insert magic, but i do not have the brain capacity. Ask gpt?
-	    for (int compound_id = 0; compound_id < box_host->boxparams.n_compounds; compound_id++) {
-	        for (int pid = 0; pid < box_host->compounds[compound_id].n_particles; pid++) {
-				row[index++] = traj_buffer->GetMostRecentCompoundparticleDatapoint(compound_id, pid, step);
-	        }
-	    }
-
-	    for (int solvent_index = 0; solvent_index < box_host->boxparams.n_solvents; solvent_index++) {
-	        row[index++] = traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(solvent_index, step);
-	    }
-
-		trrFile->positions.emplace_back(std::move(row));
-	}
-
-	return std::move(trrFile);
-}

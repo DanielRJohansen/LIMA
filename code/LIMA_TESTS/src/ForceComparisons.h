@@ -65,7 +65,17 @@ namespace ForceComparisons {
 		const fs::path workdir = simulations_dir / "forcecomparison" / "T4Lysozyme";
 		auto env = LoadAndRunSim(workdir);
 
-		env->getSimPtr()->ToTracjectoryFile()->Dump(workdir / "limaTraj.trr");
+		Trajectory traj = env->WriteSimToTrajectory();
+		MDFiles::Dump(traj, workdir / "limaTraj.trr");
+
+		const fs::path scriptPath = FileUtils::GetLimaDir() / "dev" / "PyTools" / "CompareRMSD.py";
+		const std::string arguments =
+			" " + (workdir / "gromacsTraj.trr").string() +
+			" " + (workdir / "limaTraj.trr").string() +			
+			" " + (workdir / "conf.gro").string();
+		const std::string command = "python " + scriptPath.string() + arguments;
+		std::system(command.c_str());
+
 		// Call maybe a python script to compare the rmsd and rmsf?
 		return true;
 	}
@@ -75,6 +85,8 @@ namespace ForceComparisons {
 		ASSERT(PoolNoES(), "PoolNoES failed");
 		//ASSERT(PoolES(), "PoolES failed"); // The gromacs part is wrong here
 		ASSERT(Singlebond(), "Singlebond failed");
+
+		//ASSERT(T4RmsdAndRmsf(), "T4RmsdAndRmsf failed");
 
 		return LimaUnittestResult{ true, "", envmode==Full };
 	}

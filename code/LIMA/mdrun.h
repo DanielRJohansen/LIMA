@@ -101,10 +101,10 @@ Example:
     grofile.printToFile(conf_out);
 
     if (!trajOut.empty()) {
-        env->getSimPtr()->ToTracjectoryFile()->Dump(trajOut);
+        Trajectory traj = env->WriteSimToTrajectory();
+		MDFiles::Dump(traj, trajOut);
     }
 
-    // Calculate total time simulated (in nanoseconds)
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
 	PrintTiming(enginetime, total_ns_simulated);
 

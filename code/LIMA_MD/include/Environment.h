@@ -4,6 +4,7 @@
 #include "Bodies.cuh"
 #include "TimeIt.h"
 #include "MDFiles.h"
+#include "Trajectory.h"
 
 #include <memory>
 #include <chrono>
@@ -64,7 +65,9 @@ public:
 	void WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> step=std::nullopt);
 
 	// Returns a vector of forces (in kJ/mol/nm) for each particle, in the order they were in the gro file
-	std::vector<Float3> GetForces(int64_t step);
+	std::vector<Float3> GetForces(int64_t step) const;
+
+	Trajectory WriteSimToTrajectory() const;
 
 	void RenderSimulation();
 	

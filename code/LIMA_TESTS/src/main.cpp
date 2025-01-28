@@ -135,6 +135,7 @@ int main() {
 
 		//TestForces1To1(envmode);
 
+		//ForceComparisons::T4RmsdAndRmsf();
 		//ForceComparisons::DoAllForceComparisons(envmode);
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		

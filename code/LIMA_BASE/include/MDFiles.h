@@ -4,6 +4,7 @@
 
 #include "Bodies.cuh"
 #include "Filehandling.h"
+#include "Trajectory.h"
 
 #include <optional>
 #include <filesystem>
@@ -138,15 +139,7 @@ namespace MDFiles {
 		std::unique_ptr<TopologyFile> topfile;
 	};
 	
-	struct TrrFile {
-		//TrrFile(const fs::path& path);
-		TrrFile(Float3 boxSize) : boxSize(boxSize) {};
-		void Dump(const fs::path& path) const;
-		std::vector<std::vector<Float3>> positions;
-
-	private:
-		Float3 boxSize;
-	};
+	void Dump(Trajectory& trajectory, const fs::path& path);
 }
 
 

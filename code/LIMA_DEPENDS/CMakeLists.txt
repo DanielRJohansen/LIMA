@@ -40,12 +40,19 @@ add_library(LIMA_DEPENDS STATIC
     qhull/src/libqhull_r/user_r.c
     qhull/src/libqhull_r/rboxlib_r.c
     qhull/src/libqhull_r/global_r.c
+
+    mdtraj/xtc/src/xdrfile.c
+    mdtraj/xtc/src/xdrfile_trr.c
+    mdtraj/xtc/src/xdrfile_xtc.c
+    mdtraj/xtc/src/xdr_seek.c
 )
 
 target_include_directories(LIMA_DEPENDS PUBLIC
     glew-2.1.0/include/
 
     qhull/src
+
+    mdtraj/xtc/include/
 )
 
 

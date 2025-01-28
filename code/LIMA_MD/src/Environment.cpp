@@ -273,35 +273,72 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 
 	return outputfile;
 }
-std::vector<Float3> Environment::GetForces(int64_t step) {
+std::vector<Float3> Environment::GetForces(int64_t step) const {
 	int particlesUpdated = 0;
 
 	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm]
 
-	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
-		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
-			forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
-			particlesUpdated++;
+
+
+		for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+			for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+				forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
+				particlesUpdated++;
+			}
 		}
-	}
 
-	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
-		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
-		const int nAtomsInTinymol = tinymol.nParticles;
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+			const int nAtomsInTinymol = tinymol.nParticles;
 
-		for (int i = 0; i < nAtomsInTinymol; i++) {
-			forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
-			particlesUpdated++;
+			for (int i = 0; i < nAtomsInTinymol; i++) {
+				forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
+				particlesUpdated++;
+			}
 		}
-	}
 
-	if (particlesUpdated != boximage->grofile.atoms.size()) {
-		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
-	}
+		if (particlesUpdated != boximage->grofile.atoms.size()) {
+			throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
+		}
+	
 
 	return forces;
 }
 
+Trajectory Environment::WriteSimToTrajectory() const {
+
+	const int nSteps = simulation->getStep();
+	const int nAtoms = boximage->grofile.atoms.size();
+
+	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simparams_host.dt);
+
+
+	for (int step = 0; step < nSteps; step += simulation->simparams_host.data_logging_interval) {
+
+		for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+			for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+				const int atomIndex = boximage->compounds[cid].indicesInGrofile[pid];
+				trajectory.Set(step, atomIndex, simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step));
+			}
+		}
+
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+			const int nAtomsInTinymol = tinymol.nParticles;
+
+			const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
+			const Float3 deltaPos = new_position - boximage->grofile.atoms[tinymol.firstParticleIdInGrofile].position;
+
+			for (int i = 0; i < nAtomsInTinymol; i++) {
+				const int atomId = tinymol.firstParticleIdInGrofile + i;
+				const Float3 newPos = boximage->grofile.atoms[atomId].position + deltaPos;
+				trajectory.Set(step, atomId, newPos);
+			}
+		}
+	}
+
+	return trajectory;
+}
 
 
 void Environment::handleStatus(const int64_t step) {

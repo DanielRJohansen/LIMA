@@ -1,6 +1,8 @@
 // For generic file utilities, for specialized features use MDFiles.h instead
 #pragma once
 
+#include "LimaTypes.cuh"
+
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
@@ -82,6 +84,8 @@ namespace FileUtils {
 	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines);
 
 	std::optional<std::string> ChechlineForDefine(const std::string& line);
+
+	std::vector<Float3> ReadCsvAsVectorOfFloat3(const fs::path& path);
 };
 
 

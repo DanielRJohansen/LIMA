@@ -9,6 +9,8 @@
 #include "SetupTests.h"
 #include "Userinterface.h"
 #include "Display.h"
+#include "ForceComparisons.h"
+
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -133,13 +135,15 @@ int main() {
 
 		//TestForces1To1(envmode);
 
+		ForceComparisons::DoAllForceComparisons(envmode);
+
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20"); 
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

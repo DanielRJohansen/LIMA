@@ -63,6 +63,9 @@ public:
 	GroFile WriteBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
 	void WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> step=std::nullopt);
 
+	// Returns a vector of forces (in kJ/mol/nm) for each particle, in the order they were in the gro file
+	std::vector<Float3> GetForces(int64_t step);
+
 	void RenderSimulation();
 	
 	

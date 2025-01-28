@@ -176,6 +176,9 @@ struct Float3 {
 		else
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
+	__host__ void print(const std::string& str) const {
+		printf("%s %.6f %.6f %.6f\n", str.c_str(), x, y, z);
+	}
 
 	std::string toString() const {
 		//return std::format("{} {} {}", x, y, z);

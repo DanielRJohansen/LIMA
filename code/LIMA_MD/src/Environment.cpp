@@ -277,6 +277,34 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 
 	return outputfile;
 }
+std::vector<Float3> Environment::GetForces(int64_t step) {
+	int particlesUpdated = 0;
+
+	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm]
+
+	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+			forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
+			particlesUpdated++;
+		}
+	}
+
+	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+		const int nAtomsInTinymol = tinymol.nParticles;
+
+		for (int i = 0; i < nAtomsInTinymol; i++) {
+			forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
+			particlesUpdated++;
+		}
+	}
+
+	if (particlesUpdated != boximage->grofile.atoms.size()) {
+		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
+	}
+
+	return forces;
+}
 
 
 void Environment::postRunEvents() {

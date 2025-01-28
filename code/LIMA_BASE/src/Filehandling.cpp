@@ -155,6 +155,38 @@ std::optional<std::string> FileUtils::ChechlineForDefine(const std::string& line
 	return std::nullopt;
 }
 
+std::vector<Float3> FileUtils::ReadCsvAsVectorOfFloat3(const fs::path& path) {
+	std::vector<Float3> result;
+	std::ifstream file(path);
+
+	if (!file.is_open()) {
+		throw std::runtime_error("Could not open file: " + path.string());
+	}
+
+	std::string line;
+	while (std::getline(file, line)) {
+		if (line.empty())
+			continue;
+
+		std::istringstream lineStream(line);
+		std::string value;
+		Float3 temp;
+
+		if (std::getline(lineStream, value, ',')) {
+			temp.x = std::stof(value);
+		}
+		if (std::getline(lineStream, value, ',')) {
+			temp.y = std::stof(value);
+		}
+		if (std::getline(lineStream, value, ',')) {
+			temp.z = std::stof(value);
+		}
+
+		result.push_back(temp);
+	}
+
+	return result;
+}
 
 //void FileUtils::SkipIfdefBlock(std::ifstream& file) {
 //	std::string line;

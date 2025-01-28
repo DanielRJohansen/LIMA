@@ -9,7 +9,7 @@
 #include "BoundaryCondition.cuh"
 #include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
-#include "NeighborLists.cuh"
+#include "Neighborlists.cuh"
 
 //#include <cuda/pipeline>
 #include "KernelConstants.cuh"

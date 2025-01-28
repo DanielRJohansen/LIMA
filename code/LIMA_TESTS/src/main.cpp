@@ -135,7 +135,7 @@ int main() {
 
 		//TestForces1To1(envmode);
 
-		ForceComparisons::DoAllForceComparisons(envmode);
+		//ForceComparisons::DoAllForceComparisons(envmode);
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
@@ -143,7 +143,7 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -208,6 +208,9 @@ void RunAllUnitTests() {
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
+
+	// Gromacs correctness
+	ADD_TEST("ForceComparisons", ForceComparisons::DoAllForceComparisons(envmode));
 
 	//ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
 

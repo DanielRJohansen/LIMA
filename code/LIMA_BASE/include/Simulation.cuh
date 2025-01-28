@@ -36,7 +36,6 @@ struct SimParams {
 
 	// Output params
 	int data_logging_interval = 5;
-	bool save_trajectory = false;
 	bool save_energy = false;
 	ColoringMethod coloring_method = ColoringMethod::Atomname;
 
@@ -177,9 +176,9 @@ public:
 	bool finished = false;
 
 
-	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;// [nm]
-	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;	// [J/mol]
-	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
+	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;	// [nm]
+	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;		// [J/mol]
+	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;		// [m/s]
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [J/mol/nm] // For debug only
 
 	std::vector<float> temperature_buffer;	

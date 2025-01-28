@@ -251,7 +251,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 			params.data_logging_interval = 1;
 			params.em_variant = true;
 			env.CreateSimulation(grofile, topfile, params);
-			env.run(false);
+			env.run();
 			auto sim = env.getSim();
 
 			if (displayEachLipidAndHalt) {

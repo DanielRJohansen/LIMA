@@ -111,7 +111,7 @@ namespace Benchmarks {
 		ip.enable_electrostatics = true;
 		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(false);
+		env.run();
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
 
@@ -148,7 +148,7 @@ namespace Benchmarks {
 		ip.n_steps = 4000;
 		Environment env{ workDir , envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(false);
+		env.run();
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
 
@@ -184,7 +184,7 @@ namespace Benchmarks {
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);
-		env.run(false);
+		env.run();
 
 		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");

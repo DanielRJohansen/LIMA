@@ -15,7 +15,8 @@ namespace ForceComparisons {
 	std::unique_ptr<Environment> LoadAndRunSim(const fs::path& workdir) {
 		GroFile grofile{ workdir / "conf.gro" };
 		TopologyFile topfile{ workdir / "topol.top" };
-		SimParams simparams{ workdir.parent_path() /  "sim_params.txt" };
+		const fs::path paramsPath = fs::exists(workdir / "sim_params.txt") ? workdir / "sim_params.txt" : workdir.parent_path() / "sim_params.txt";
+		SimParams simparams{ paramsPath };
 		auto env = std::make_unique<Environment>( workdir, Headless ); 
 		env->CreateSimulation(grofile, topfile, simparams);
 		env->run();
@@ -60,6 +61,14 @@ namespace ForceComparisons {
 		return CompareForces(workdir, 0.001);
 	}
 
+	bool T4RmsdAndRmsf() {
+		const fs::path workdir = simulations_dir / "forcecomparison" / "T4Lysozyme";
+		auto env = LoadAndRunSim(workdir);
+
+		env->getSimPtr()->ToTracjectoryFile()->Dump(workdir / "limaTraj.trr");
+		// Call maybe a python script to compare the rmsd and rmsf?
+		return true;
+	}
 
 
 	LimaUnittestResult DoAllForceComparisons(EnvMode envmode) {

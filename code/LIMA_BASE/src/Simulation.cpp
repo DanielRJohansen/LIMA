@@ -78,7 +78,6 @@ SimParams::SimParams(const fs::path& path) {
 	// Skip SNF for now	
 
 	Readi(dict, data_logging_interval, "data_logging_interval");	
-	Readb(dict, save_trajectory, "save_trajectory");
 	Readb(dict, save_energy, "save_energy");
 	// Skip colormethod for now
 
@@ -109,7 +108,6 @@ void SimParams::dumpToFile(const fs::path& filename) {
 
 	file << "\n// Output params\n";
 	file << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
-	file << "save_trajectory=" << (save_trajectory ? "true" : "false") << "\n";
 	file << "save_energy=" << (save_energy ? "true" : "false") << " # (Save kinetic and potential energy to file)" << "\n";
 	// Skip colormethod for now
 	

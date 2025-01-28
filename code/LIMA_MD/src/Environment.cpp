@@ -1,6 +1,7 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 #include "Environment.h"
 #include "MDFiles.h"
@@ -177,9 +178,8 @@ void Environment::sayHello() {
 
 	std::cout << file_contents;
 }
-#include <optional>
 
-std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
+std::chrono::duration<double> Environment::run() {
 	const bool emVariant = simulation->simparams_host.em_variant;
     if (!prepareForRun()) { return {}; }
 
@@ -225,10 +225,6 @@ std::chrono::duration<double> Environment::run(bool doPostRunEvents) {
 
 	
 	m_logger.finishSection("Simulation Finished");
-
-	if (simulation->finished && doPostRunEvents) {
-		postRunEvents();
-	}
 
     return t1-t0;
 }
@@ -304,31 +300,6 @@ std::vector<Float3> Environment::GetForces(int64_t step) {
 	}
 
 	return forces;
-}
-
-
-void Environment::postRunEvents() {
-	if (simulation->getStep() == 0) { return; }
-
-	const fs::path out_dir = work_dir / ("Steps_" + std::to_string(simulation->getStep()));
-	std::filesystem::create_directories(out_dir);
-
-	// Nice to have for matlab stuff
-	if (m_mode != Headless) {
-		//printH2();
-		//LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->box_host->boxparams.n_solvents,
-		//	"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->box_host->boxparams.n_compounds, "total p upperbound", simulation->box_host->boxparams.total_particles_upperbound);
-		//printH2();
-	}
-	
-	if (simulation->simparams_host.save_trajectory)
-		simulation->ToTracjectoryFile()->Dump(out_dir / "trajectory.trr");
-
-	/*if (simulation->simparams_host.save_energy)
-		FileUtils::dumpToFile(postsim_anal_package.energy_data.data(), postsim_anal_package.energy_data.size(), out_dir.string() + "energy.bin");*/
-
-	simulation->ready_to_run = false;
-	m_logger.finishSection("Post-run events finished Finished");
 }
 
 

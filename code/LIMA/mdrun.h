@@ -8,7 +8,7 @@
 namespace fs = std::filesystem;
 
 struct MdrunSetup {
-    MdrunSetup(int argc, char** argv) : work_dir(fs::current_path()) {
+    MdrunSetup(int argc, char** argv) : work_dir(fs::current_path()) { // TODO: This should use the same function as the other programs
         for (int i = 2; i < argc; ++i) {
             std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
@@ -48,6 +48,14 @@ struct MdrunSetup {
                     exit(1);
                 }
             }
+            else if (arg == "-trr") {
+                if (i + 1 < argc)
+                    trajOut = work_dir / argv[++i];
+                else {
+                    std::cerr << "-trr expects a path argument." << std::endl;
+                    exit(1);
+                }
+            }
             else if (arg == "-help" || arg == "-h") {
                 std::cout << helpText;
                 exit(0);
@@ -67,6 +75,7 @@ struct MdrunSetup {
     fs::path topol = work_dir / "topol.top";
     fs::path simpar = work_dir / "sim_params.txt";
     fs::path conf_out = work_dir / "out.gro";
+    std::optional<fs::path> trajOut = std::nullopt;
 
 private:
     const std::string helpText = R"(
@@ -99,6 +108,21 @@ Example:
     )";
 };
 
+void PrintTiming(const std::chrono::duration<double> enginetime, double totalNsSimulated) {
+    const double wall_time_sec = enginetime.count();
+
+    // Calculate performance metrics
+    const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+    const double hr_per_ns = (wall_time_sec / totalNsSimulated) / 3600.0;    // convert to hours per ns
+
+    // Print time and performance info in the GROMACS-like format
+    printf("\n");
+    printf("               Wall t (s)\n");
+    printf("       Time:    %10.3f\n", wall_time_sec);
+    printf("                 (ns/day)    (hour/ns)\n");
+    printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
+}
+
 int mdrun(int argc, char** argv) {
     MdrunSetup setup(argc, argv);
     auto env = std::make_unique<Environment>(setup.work_dir, setup.envmode);
@@ -120,20 +144,13 @@ int mdrun(int argc, char** argv) {
     env->WriteBoxCoordinatesToFile(grofile);
     grofile.printToFile(setup.conf_out);
 
+    if (setup.trajOut.has_value()) {
+        env->getSimPtr()->ToTracjectoryFile()->Dump(setup.trajOut.value());
+    }
+
     // Calculate total time simulated (in nanoseconds)
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
-    const double wall_time_sec = enginetime.count();
-
-    // Calculate performance metrics
-    const double ns_per_day = total_ns_simulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-    const double hr_per_ns = (wall_time_sec / total_ns_simulated) / 3600.0;    // convert to hours per ns
-
-    // Print time and performance info in the GROMACS-like format
-    printf("\n");
-    printf("               Wall t (s)\n");
-    printf("       Time:    %10.3f\n", wall_time_sec);
-    printf("                 (ns/day)    (hour/ns)\n");
-    printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
+	PrintTiming(enginetime, total_ns_simulated);
 
     return 0;
 }

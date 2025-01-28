@@ -52,7 +52,7 @@ public:
 
 	// Run a standard MD sim
     /// <returns>Elapsed Engine time in seconds</returns>
-    std::chrono::duration<double> run(bool doPostRunEvents=true);
+    std::chrono::duration<double> run();
 
 	/// <summary>
 	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
@@ -95,7 +95,6 @@ private:
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void postRunEvents();
 	void handleStatus(int64_t step);
 
 	// Returns false if display has been closed by user

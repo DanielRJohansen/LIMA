@@ -179,7 +179,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 		env.CreateSimulation(*env.getSim(), params);
 	else
 		env.CreateSimulation(grofile, topfile, params);
-	env.run(false);
+	env.run();
 
 	const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
 	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),

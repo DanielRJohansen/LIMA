@@ -108,20 +108,10 @@ namespace LIMA_MOLECULEBUILD {
 class CompoundFactory : public Compound, public CompoundInterimState {
 public:
 	CompoundFactory() {}
-	CompoundFactory(const int id) : 
-		id(id)
-	{
-		//memset(forceEnergyFarneighborShortrange, 0, sizeof(forceEnergyFarneighborShortrange));
-		//memset(forceEnergyImmediateneighborShortrange, 0, sizeof(forceEnergyImmediateneighborShortrange));
-		//memset(forceEnergyBonds, 0, sizeof(forceEnergyBonds));
-		//memset(forceEnergyBridge, 0, sizeof(forceEnergyBridge));
-		/*memset(forces_interim, 0, sizeof(forces_interim));
-		memset(potE_interim, 0, sizeof(potE_interim));*/
-	}
 
 	void addParticle(const ParticleFactory&,int global_id, float boxlen_nm, BoundaryConditionSelect bc);
 
-	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
+	bool hasRoomForRes(int n_particles_in_res) const {
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
 	}
 
@@ -131,8 +121,6 @@ public:
 
 	static void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
 
-
-	int id = -1;	// unique lima id
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
 	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug ddont like this TODO TODO DELETE

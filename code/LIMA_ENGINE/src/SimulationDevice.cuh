@@ -9,7 +9,7 @@ struct BoxConfig {
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
 	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
 	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
-	void FreeMembers() const;// Free *this immediately after calling this function
+	void FreeMembers() const;
 
 	// CompoundData used ALOT, kept here for memory locality
 	const uint8_t* const compoundsAtomtypes;
@@ -25,9 +25,9 @@ struct BoxConfig {
 struct BoxState {
 	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
 		SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
-	static BoxState* Create(const Box& boxHost); // Returns a ptr to device
+	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
-	void FreeMembers();// Free *this immediately after calling this function
+	void FreeMembers() const;
 
 	CompoundInterimState* const compoundsInterimState;
 	NodeIndex* const compoundOrigos;
@@ -94,7 +94,7 @@ struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
 	SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
-	BoxState* boxState, const DatabuffersDeviceController&);
+	const BoxState& boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
 	void FreeMembers();
@@ -109,7 +109,7 @@ struct SimulationDevice {
 	SimSignals* signals = nullptr;
 
 	const BoxConfig boxConfig;
-	BoxState* const boxState;
+	const BoxState boxState;
 	const BoxParams boxparams;
 
 	uint8_t* nParticlesInCompoundsBuffer = nullptr;

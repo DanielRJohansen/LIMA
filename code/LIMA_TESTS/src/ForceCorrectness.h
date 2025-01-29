@@ -193,9 +193,8 @@ namespace ForceCorrectness {
 
 		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
 
-		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x; // TODO: Why do the change here and not in the grofile directly?
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
 
 
 
@@ -373,8 +372,6 @@ namespace ForceCorrectness {
 
 		env.run();
 		LIMA_UTILS::genericErrorCheck("Error during test");
-
-		// TODO: Also test explicitly if the force should be attractive or repulsive, and that it actually is. This is to make sure the sign is correct
 
 		const auto sim = env.getSim();
 

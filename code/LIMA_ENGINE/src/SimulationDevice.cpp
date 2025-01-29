@@ -46,11 +46,11 @@ BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, TinyMolSt
 	SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
 	compoundOrigos(compoundOrigos), compoundsRelposNm(compoundsRelpos), tinyMols(tinyMols), solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
 {}
-BoxState* BoxState::Create(const Box& boxHost) {
+BoxState BoxState::Create(const Box& boxHost) {
 	std::vector<NodeIndex> compoundsOrigos;
 	std::vector<Float3> compoundsRelPos;
 	for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
-		compoundsOrigos.push_back(compoundCoords.origo);
+		compoundsOrigos.emplace_back(compoundCoords.origo);
 		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
 			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].ToRelpos());
 		}
@@ -58,18 +58,13 @@ BoxState* BoxState::Create(const Box& boxHost) {
 
 	
 
-	BoxState boxState(		
+	return BoxState{
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
 		GenericCopyToDevice(boxHost.tinyMols),
-		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),		
-		GenericCopyToDevice(boxHost.compoundInterimStates));
-
-	BoxState* boxStateDev;
-	cudaMallocManaged(&boxStateDev, sizeof(BoxState)); // TODO not managed
-	cudaMemcpy(boxStateDev, &boxState, sizeof(BoxState), cudaMemcpyHostToDevice);
-
-	return boxStateDev;
+		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),
+		GenericCopyToDevice(boxHost.compoundInterimStates) 
+	};
 }
 void BoxState::CopyDataToHost(Box& boxHost) const {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
@@ -94,7 +89,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(boxtemp.solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
 	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
-void BoxState::FreeMembers() {
+void BoxState::FreeMembers() const {
 	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
@@ -150,7 +145,7 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
-	BoxState* boxState, const DatabuffersDeviceController& databuffers) : 
+	const BoxState& boxState, const DatabuffersDeviceController& databuffers) : 
 	boxConfig(boxConfig), boxState(boxState), params(params_host),
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
@@ -189,8 +184,8 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 
 void SimulationDevice::FreeMembers() {
 	boxConfig.FreeMembers();
-	boxState->FreeMembers();
-	cudaFree(boxState);
+	boxState.FreeMembers();
+
 
 	cudaFree(nParticlesInCompoundsBuffer);
 	cudaFree(compoundsInteractionBoundaryBuffer);

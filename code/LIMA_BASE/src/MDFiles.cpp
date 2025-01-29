@@ -247,10 +247,10 @@ PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 			strncpy(atom.charge, line.substr(78, 2).c_str(), 2);
 
 			if (isATOM) {
-				ATOMS.push_back(atom);
+				ATOMS.emplace_back(atom);
 			}
 			else if (isHETATM) {
-				HETATMS.push_back(atom);
+				HETATMS.emplace_back(atom);
 			}
 		}
 	}

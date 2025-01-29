@@ -44,7 +44,7 @@ void Environment::CreateSimulation(float boxsize_nm) {
 	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
-void Environment::CreateSimulation(std::string gro_path, std::string topol_path, const SimParams params) {
+void Environment::CreateSimulation(const std::string& gro_path, const std::string& topol_path, const SimParams& params) {
 	const auto groFile = std::make_unique<GroFile>(gro_path);
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);

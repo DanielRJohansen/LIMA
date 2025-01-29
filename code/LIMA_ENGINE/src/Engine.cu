@@ -40,7 +40,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	setDeviceConstantMemory();
 	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr, nullptr);
 	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr, nullptr);
-	cudaMemcpy(boxStateCopy.get(), sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);	
 	nParticlesInCompoundsBufferPtr = sim_dev->nParticlesInCompoundsBuffer;
 
@@ -175,7 +175,7 @@ void Engine::terminateSimulation() {
 	const int64_t stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	offloadLoggingData(stepsReadyToTransfer);
 
-	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState.CopyDataToHost(*simulation->box_host);
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }

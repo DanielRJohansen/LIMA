@@ -9,7 +9,7 @@
 
 std::unique_ptr<Simulation> Engine::takeBackSim() {
 	assert(sim_dev);
-	sim_dev->boxState->CopyDataToHost(*simulation->box_host);
+	sim_dev->boxState.CopyDataToHost(*simulation->box_host);
 	return std::move(simulation);
 }
 

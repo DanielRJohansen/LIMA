@@ -136,7 +136,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 	__shared__ uint8_t neighborAtomstypes[MAX_COMPOUND_PARTICLES];
 
-	BoxState* const boxState = sim->boxState;
+	const BoxState& boxState = sim->boxState;
 	const BoxConfig& boxConfig = sim->boxConfig;
 	const SimParams& simparams = sim->params;
 
@@ -151,8 +151,8 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	{
 		auto block = cooperative_groups::this_thread_block();
 
-		compound_origo = boxState->compoundOrigos[blockIdx.x];
-		cooperative_groups::memcpy_async(block, compound_positions, &boxState->compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Coord) * MAX_COMPOUND_PARTICLES);
+		compound_origo = boxState.compoundOrigos[blockIdx.x];
+		cooperative_groups::memcpy_async(block, compound_positions, &boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES], sizeof(Coord) * MAX_COMPOUND_PARTICLES);
 
 		if (threadIdx.x == 0) {
 			compound.loadMeta(&boxConfig.compounds[blockIdx.x]);
@@ -205,7 +205,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		if (threadIdx.x < compound.n_bonded_compounds) {
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[threadIdx.x];
 
-			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, boxState->compoundOrigos[neighborId]);
+			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, boxState.compoundOrigos[neighborId]);
 			relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, compound_origo);
 			compoundPairLutPtrs[threadIdx.x] = BondedParticlesLUTHelpers::get(sim->boxConfig.bpLUTs, compound_index, neighborId);
 		}
@@ -215,7 +215,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			const uint16_t neighborId = boxConfig.compounds[compound_index].bonded_compound_ids[i];
 			const int neighborNParticles = boxConfig.compounds[neighborId].n_particles;
 			
-			neighborPositions[threadIdx.x] = boxState->compoundsRelposNm[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[i];
+			neighborPositions[threadIdx.x] = boxState.compoundsRelposNm[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x] + relshifts[i];
 			neighborAtomstypes[threadIdx.x] = boxConfig.compoundsAtomtypes[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 			neighborParticlescharges[threadIdx.x] = boxConfig.compoundsAtomCharges[neighborId * MAX_COMPOUND_PARTICLES + threadIdx.x];
 			bpLUT.load(*compoundPairLutPtrs[i]);
@@ -251,7 +251,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 					neighborIds[threadIdx.x] = nlistBuffers.compoundsNearbyGridnodes[blockIdx.x * NeighborList::compoundsMaxNearbyGridnodes + i + threadIdx.x];
 						//rbyBlocks  sim->compound_neighborlists[blockIdx.x].gridnode_ids[i + threadIdx.x];
 
-					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
+					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], DeviceConstants::boxSize.boxSizeNM_i));
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(solventblock_hyperorigo, compound_origo);
 					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->n_solvents;
@@ -324,9 +324,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
 	if (threadIdx.x == 0) {
-		compound_coords.origo = sim->boxState->compoundOrigos[blockIdx.x];
+		compound_coords.origo = sim->boxState.compoundOrigos[blockIdx.x];
 	}
-	compound_coords.rel_positions[threadIdx.x] = sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x];
+	compound_coords.rel_positions[threadIdx.x] = sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x];
 	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
 	// Fetch interims from other kernels
@@ -362,8 +362,8 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 		}
 		else {
-			const Float3 force_prev = sim->boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-			const Float3 vel_prev = sim->boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+			const Float3 force_prev = sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+			const Float3 vel_prev = sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, forceEnergy.force, sim->params.dt, mass);
 			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, forceEnergy.force, mass, sim->params.dt);
 			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
@@ -371,8 +371,8 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 			Float3 velScaled;
 			velScaled = vel_now * DeviceConstants::thermostatScalar;
 
-			sim->boxState->compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
-			sim->boxState->compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
+			sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
+			sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
 
 			speed = velScaled.len();
 		}
@@ -401,9 +401,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 	// Push positions for next step
 	if (threadIdx.x == 0)
-		sim->boxState->compoundOrigos[blockIdx.x] = compound_coords.origo;
-	sim->boxState->compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
-	sim->boxState->compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
+		sim->boxState.compoundOrigos[blockIdx.x] = compound_coords.origo;
+	sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
+	sim->boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
 	compoundQuickData[blockIdx.x].relPos[threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
 }
 
@@ -586,9 +586,9 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
 
-	BoxState* boxState = sim->boxState;
+	const BoxState& boxState = sim->boxState;
 	const SimParams& simparams = sim->params;
-	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
+	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
 	const Float3 force = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force;
 	const float potE = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE;
@@ -605,7 +605,7 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 	//Coord relpos_next{};
 	if (solventActive) {
-		TinyMolState& tinyMols_ref = boxState->tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
+		TinyMolState& tinyMols_ref = boxState.tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
 		const float mass = DeviceConstants::tinymolForcefield.types[tinyMols_ref.tinymolTypeIndex].mass;
 
 		if constexpr (energyMinimize) {
@@ -641,10 +641,10 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 
 	// Push new SolventCoord to global mem
-	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
+	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
 
 	if constexpr (transferOutThisStep) {
-		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];		// TODO: Use template to make identical kernel, so the kernel with transfer is slower and larger, and the rest remain fast!!!!
+		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];
 		__shared__ NodeIndex transferDirections[SolventBlock::MAX_SOLVENTS_IN_BLOCK]; // TODO: should be Direction3 instead
 		// 
 		// Init queue, otherwise it will contain wierd values 
@@ -669,12 +669,12 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 // This is run before step.inc(), but will always publish results to the first array in grid!
 template <typename BoundaryCondition>
 __global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
-	BoxState* boxState = sim->boxState;
+	const BoxState& boxState = sim->boxState;
 
 	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
 	
-	SolventBlock* solventblock_current = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
-	SolventBlock* solventblock_next = SolventBlocksCircularQueue::getBlockPtr(boxState->solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
+	SolventBlock* solventblock_current = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
+	SolventBlock* solventblock_next = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
 
 	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
 

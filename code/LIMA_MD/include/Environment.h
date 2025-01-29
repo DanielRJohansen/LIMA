@@ -35,7 +35,7 @@ public:
 	/// <summary>
 	/// Create a simulation from existing files
 	/// </summary>
-	void CreateSimulation(const std::string conf_filename, std::string topol_filename, SimParams);	// TODO make constref
+	void CreateSimulation(const std::string& conf_filename, const std::string& topol_filename, const SimParams&);
 
 	// The basic createSim
 	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);

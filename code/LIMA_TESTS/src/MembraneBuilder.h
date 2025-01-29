@@ -99,10 +99,10 @@ namespace TestMembraneBuilder {
 		std::vector<std::string> targets;
 		for (const auto& entry : fs::directory_iterator(path)) {
 			if (entry.path().extension() == ".gro") {
-				std::string base_name = entry.path().stem().string();
-				fs::path itp_file = path / (base_name + ".itp");
+				const std::string base_name = entry.path().stem().string();
+				const fs::path itp_file = path / (base_name + ".itp");
 				if (fs::exists(itp_file)) {
-					targets.push_back(base_name);
+					targets.emplace_back(base_name);
 				}
 			}
 		}

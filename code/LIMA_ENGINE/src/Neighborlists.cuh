@@ -113,13 +113,13 @@ __global__ void PushCompoundsToGrid(const SimulationDevice* const simDev, Neighb
 	const int compoundId = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (compoundId < nCompounds) {
-		const NodeIndex compoundOrigo = simDev->boxState->compoundOrigos[compoundId];
+		const NodeIndex compoundOrigo = simDev->boxState.compoundOrigos[compoundId];
 		NeighborList::CompoundInfo compoundInfo;
 		compoundInfo.compoundId = compoundId;
 
 		for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 			const int particleLocalIndex = simDev->compoundsInteractionBoundaryBuffer[compoundId].key_particle_indices[i];
-			compoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundOrigo, simDev->boxState->compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + particleLocalIndex]);
+			compoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compoundOrigo, simDev->boxState.compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + particleLocalIndex]);
 			compoundInfo.radii[i] = simDev->compoundsInteractionBoundaryBuffer[compoundId].radii[i];
 		}
 
@@ -141,7 +141,7 @@ __global__ void PushCompoundsToGrid(const SimulationDevice* const simDev, Neighb
 template <typename BoundaryCondition>
 __device__ void getCompoundAbspositions(const SimulationDevice& simDev, int compound_id, Float3* result, const NodeIndex& compoundOrigo, const CompoundInteractionBoundary& compoundInteractionBoundary)
 {
-	const Float3* const relPositions = &simDev.boxState->compoundsRelposNm[compound_id * MAX_COMPOUND_PARTICLES];
+	const Float3* const relPositions = &simDev.boxState.compoundsRelposNm[compound_id * MAX_COMPOUND_PARTICLES];
 
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
 		const int particle_index = compoundInteractionBoundary.key_particle_indices[i];
@@ -205,7 +205,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 		return;
 
     const uint16_t compoundId = blockIdx.x * blockDim.x + threadIdx.x;
-    const NodeIndex myCompoundOrigo = simDev->boxState->compoundOrigos[compoundId];
+    const NodeIndex myCompoundOrigo = simDev->boxState.compoundOrigos[compoundId];
 
 	uint16_t nNonbondedNeighborsTotal = 0;
 	NeighborList::IdAndRelshift nonbondedNeighbors[NeighborList::compoundsMaxNearbyCompounds];
@@ -226,7 +226,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 	NeighborList::CompoundInfo myCompoundInfo;
 	myCompoundInfo.compoundId = compoundId;
 	for (int i = 0; i < CompoundInteractionBoundary::k; i++) {
-		myCompoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(myCompoundOrigo, simDev->boxState->compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + i]);
+		myCompoundInfo.keyPositions[i] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(myCompoundOrigo, simDev->boxState.compoundsRelposNm[compoundId * MAX_COMPOUND_PARTICLES + i]);
 		myCompoundInfo.radii[i] = simDev->compoundsInteractionBoundaryBuffer[compoundId].radii[i];
 	}
 
@@ -264,7 +264,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 					if (canCompoundsInteract<BoundaryCondition>(myCompoundInfo, queryCompoundInfo)) {
 						const uint8_t queryCompoundNParticles = simDev->nParticlesInCompoundsBuffer[queryCompoundId];
 
-						const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, simDev->boxState->compoundOrigos[queryCompoundId]);
+						const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, simDev->boxState.compoundOrigos[queryCompoundId]);
 						const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
 
 						if constexpr (!LIMA_PUSH) {
@@ -323,7 +323,7 @@ __global__ void UpdateCompoundsNeighborGridnodes(SimulationDevice* simDev, Neigh
     const int compound_id = blockIdx.x * blockDim.x + threadIdx.x;
     const bool compound_active = compound_id < n_compounds;
     const NodeIndex myCompoundOrigo = compound_active
-        ? simDev->boxState->compoundOrigos[compound_id]
+        ? simDev->boxState.compoundOrigos[compound_id]
         : NodeIndex{};
 
 	const CompoundInteractionBoundary boundary_self = compound_active
@@ -342,7 +342,7 @@ __global__ void UpdateCompoundsNeighborGridnodes(SimulationDevice* simDev, Neigh
 	// Loop over the nearby gridnodes, and add them if they're within range
 	if (compound_active)
 	{
-		const NodeIndex compound_origo = simDev->boxState->compoundOrigos[compound_id];
+		const NodeIndex compound_origo = simDev->boxState.compoundOrigos[compound_id];
 		for (int x = -GRIDNODE_QUERY_RANGE; x <= GRIDNODE_QUERY_RANGE; x++) {
 			for (int y = -GRIDNODE_QUERY_RANGE; y <= GRIDNODE_QUERY_RANGE; y++) {
 				for (int z = -GRIDNODE_QUERY_RANGE; z <= GRIDNODE_QUERY_RANGE; z++) {

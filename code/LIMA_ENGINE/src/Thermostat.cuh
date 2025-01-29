@@ -83,11 +83,11 @@ public:
 	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams) {
 		// Step 1: Calculate kinetic energy for each compound particle and store in the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nCompounds * MAX_COMPOUND_PARTICLES),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState->compoundsInterimState, simDev->boxConfig.compounds));
+			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.compoundsInterimState, simDev->boxConfig.compounds));
 
 		// Step 2: Calculate kinetic energy for each solvent particle and store in the next segment of the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nSolvents),
-			intermediate + (nCompounds * MAX_COMPOUND_PARTICLES), _Thermostat::TotalKineticEnergySolvents(simDev->boxState->tinyMols));
+			intermediate + (nCompounds * MAX_COMPOUND_PARTICLES), _Thermostat::TotalKineticEnergySolvents(simDev->boxState.tinyMols));
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)
 		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + totalParticlesUpperbound, 0.0);

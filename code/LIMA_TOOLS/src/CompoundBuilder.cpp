@@ -531,7 +531,7 @@ std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, floa
 				throw std::runtime_error(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
 			}
 
-			compounds.push_back(CompoundFactory{ static_cast<int>(compounds.size()) });
+			compounds.emplace_back(CompoundFactory{});
 		}
 		
 		atomGroupToCompoundIdMap[atomgroupIndex] = compounds.size() - 1;

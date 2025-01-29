@@ -255,14 +255,6 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 }
 
 void Display::PrepareNewRenderTask(Rendering::CompoundsTask& task) {
-    /*std::vector<Float3> positions;
-
-			positions.push_back(task.compounds[i].positions[j]);
-		}
-	}*/
-    //const int nAtoms = positions.size();
-
-  //  renderAtomsTemp.resize(nAtoms);
     renderAtomsTemp.resize(0);
     for (int i = 0; i < task.compounds.size(); i++) {
         for (int j = 0; j < task.compounds[i].n_particles; j++) {
@@ -270,7 +262,7 @@ void Display::PrepareNewRenderTask(Rendering::CompoundsTask& task) {
             float4 position = task.positions[i][j].Tofloat4(radius);
             float4 color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / task.compounds.size());
             
-            renderAtomsTemp.push_back(RenderAtom{ position, color });
+            renderAtomsTemp.emplace_back(position, color);
         }
     }
     task.nAtoms = renderAtomsTemp.size();

@@ -20,7 +20,6 @@ const int THREADS_PER_SOLVENTBLOCK_ANALYZER = 128;
 
 void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceField_NB* const forcefield, const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out) {		// everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!
 	__shared__ Float3 energy[MAX_COMPOUND_PARTICLES];
-	__shared__ Compound compound;
 
 
 	const int64_t step = blockIdx.x;	// Step relative to current batch
@@ -31,16 +30,15 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 
 	if (particle_index == 0) {
 		data_out[compound_index + (step) * boxparams.n_compounds] = Float3{};
-		compound = compounds[compound_index]; // TODO: this is silly, just use the global one directly
 	}
 	__syncthreads();
 
-	if (particle_index >= compound.n_particles) {
+	if (particle_index >= compounds[compound_index].n_particles) {
 		return;
 	}
 	__syncthreads();
 
-	const float mass = compound.atomMasses[particle_index];
+	const float mass = compounds[compound_index].atomMasses[particle_index];
 
 	const int64_t compound_offset = compound_index * MAX_COMPOUND_PARTICLES;
 	const int64_t step_offset = step * boxparams.total_particles_upperbound;

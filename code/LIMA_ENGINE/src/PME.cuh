@@ -161,7 +161,7 @@ constexpr bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorind
 
 constexpr Int3 FloorIndex3d(const Float3& relpos) {
 	return Int3{
-		static_cast<int>(floorf(relpos.x * gridpointsPerNm_f)),// TODO should this mul not be in int for precision?
+		static_cast<int>(floorf(relpos.x * gridpointsPerNm_f)),
 		static_cast<int>(floorf(relpos.y * gridpointsPerNm_f)),
 		static_cast<int>(floorf(relpos.z * gridpointsPerNm_f))
 	};

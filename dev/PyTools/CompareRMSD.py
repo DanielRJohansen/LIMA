@@ -10,11 +10,9 @@ def CompareRMSD(trr1Path, trr2Path, groPath):
     traj2 = mda.Universe(groPath, trr2Path)
     print("traj2")
 
-
-
-    # Define reference structure from traj1
-    ref = traj1.select_atoms("backbone")
-    traj1.trajectory[0]  # Set the reference frame to the first frame of traj1
+    # Load reference structure from gro file
+    ref_universe = mda.Universe(groPath)
+    ref = ref_universe.select_atoms("backbone")  # Reference selection
 
     # Align trajectories to reference
     rmsd1 = RMSD(traj1, ref, select="backbone")

@@ -8,7 +8,7 @@
 // sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
 // somewhere in the code
 //#define LIMASAFEMODE
-const bool LIMA_PUSH = true;
+const bool LIMA_PUSH = false;
 
 #if defined LIMA_PUSH && defined LIMASAFEMODE
 #error These are mutually exclusive

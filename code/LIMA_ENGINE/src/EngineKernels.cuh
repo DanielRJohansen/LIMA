@@ -575,7 +575,117 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 }
 
 
-template <typename BoundaryCondition, bool energyMinimize, bool transferOutThisStep>
+
+
+static_assert(BondgroupTinymol::maxSinglebonds <= BondgroupTinymol::maxParticles, "Not enough threads to load all singlebonds");
+static_assert(BondgroupTinymol::maxAnglebonds <= BondgroupTinymol::maxParticles, "Not enough threads to load all anglebonds");
+// Spawn 1 block per solventblock, blockDim(SOlventblock::MAX_BONDGROUPS, BondgroupTinymol::maxParticles)
+template <bool emvariant>
+__global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const int16_t step, const BondgroupTinymol* const bondgroupsBuffer, ForceEnergy* const forceEnergies) {
+	//__shared__ ForceEnergy
+	static_assert(sizeof(Coord) == sizeof(Float3), "Coord and Float3 must be the same size");
+	__shared__ Float3 positions[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+
+	const int solventblockId = blockIdx.x;
+
+	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, step);
+	const int nParticlesInBlock = solventblockGlobalPtr->n_solvents;
+	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
+
+	// Load positions
+	{
+		Coord* positionsAsCoord = (Coord*)positions;
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, positionsAsCoord, solventblockGlobalPtr->rel_pos, sizeof(Coord) * nParticlesInBlock);
+		cooperative_groups::wait(block);
+
+		if (threadIdx.y * blockDim.x + threadIdx.x < SolventBlock::MAX_SOLVENTS_IN_BLOCK) {
+			positions[threadIdx.y * blockDim.x + threadIdx.x] = positionsAsCoord[threadIdx.y * blockDim.x + threadIdx.x].ToRelpos();
+		}
+	}
+
+	__shared__ ForceEnergy forceEnergyInterrimsShared[SolventBlock::MAX_SOLVENTS_IN_BLOCK];	
+	static_assert(SolventBlock::maxBondgroups * BondgroupTinymol::maxParticles <= SolventBlock::MAX_SOLVENTS_IN_BLOCK, "Not enough threads");
+	if (threadIdx.y * blockDim.x + threadIdx.x < BondgroupTinymol::maxParticles) {
+		forceEnergyInterrimsShared[threadIdx.y * blockDim.x + threadIdx.x] = ForceEnergy{};
+	}
+
+	// Singlebonds
+	{
+		const BondgroupTinymol* bondgroupPtr = nullptr;
+		const int bondgroupsFirstAtomIndexInSolventblock = -1;
+		float potE{};
+		Float3 forces[SingleBond::nAtoms];
+		SingleBond singlebond;
+
+		if (threadIdx.x < nBondgroupsInBlock) {
+			bondgroupPtr = &bondgroupsBuffer[solventblockId * SolventBlock::maxBondgroups + threadIdx.x];
+			bondgroupsFirstAtomIndexInSolventblock = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+
+			if (threadIdx.y < bondgroupPtr->maxSinglebonds) {
+				singlebond = bondgroupPtr->singlebonds[threadIdx.y];				
+
+				// Sets force and pot, not adding
+				LimaForcecalc::calcSinglebondForces<emvariant>(
+					positions[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
+					positions[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
+					singlebond, forces[threadIdx.y], potE, false);
+			}
+		}
+
+		// We can safely assume there's no overlap between the bondgroups used particles, thus 1 thread per bondgroup can write to shared mem at a time
+		for (int i = 0; i < BondgroupTinymol::maxParticles; i++) {
+			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->maxSinglebonds) {
+				forceEnergyInterrimsShared[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE * 0.5f };
+				forceEnergyInterrimsShared[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE * 0.5f };
+			}
+			__syncthreads();
+		}
+	}
+
+	// Anglebonds
+	{
+		const BondgroupTinymol* bondgroupPtr = nullptr;
+		const int bondgroupsFirstAtomIndexInSolventblock = -1;
+		float potE{};
+		Float3 forces[AngleUreyBradleyBond::nAtoms];
+		AngleUreyBradleyBond anglebond;
+
+		if (threadIdx.x < nBondgroupsInBlock) {
+			bondgroupPtr = &bondgroupsBuffer[solventblockId * SolventBlock::maxBondgroups + threadIdx.x];
+			bondgroupsFirstAtomIndexInSolventblock = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+
+			if (threadIdx.y < bondgroupPtr->maxAnglebonds) {
+				anglebond = bondgroupPtr->anglebonds[threadIdx.y];
+
+				// Sets force and pot, not adding
+				LimaForcecalc::calcAnglebondForces<emvariant>(
+					positions[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
+					positions[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
+					positions[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock],
+					anglebond, forces[threadIdx.y], potE, false);
+			}
+		}
+
+		// We can safely assume there's no overlap between the bondgroups used particles, thus 1 thread per bondgroup can write to shared mem at a time
+		for (int i = 0; i < BondgroupTinymol::maxParticles; i++) {
+			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->maxAnglebonds) {
+				forceEnergyInterrimsShared[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE / 3.f }; // OPTIM mul with 0.333?
+				forceEnergyInterrimsShared[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE / 3.f };
+				forceEnergyInterrimsShared[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[2], potE / 3.f };
+			}
+			__syncthreads();
+		}
+	}
+
+	// Write forceenergy to global mem
+	{
+		auto block = cooperative_groups::this_thread_block();
+		cooperative_groups::memcpy_async(block, &forceEnergies[solventblockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x], forceEnergyInterrimsShared, sizeof(Coord) * nParticlesInBlock);
+	}	
+}
+
+template <typename BoundaryCondition, bool energyMinimize>
 __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step, const ForceEnergy* const forceEnergiesCompoundinteractions, const ForceEnergy* const forceEnergiesTinymolinteractions) {
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
@@ -642,69 +752,198 @@ __global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, i
 
 	// Push new SolventCoord to global mem
 	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
-
-	if constexpr (transferOutThisStep) {
-		__shared__ SolventTransferqueue<SolventBlockTransfermodule::max_queue_size> transferqueues[6];
-		__shared__ NodeIndex transferDirections[SolventBlock::MAX_SOLVENTS_IN_BLOCK]; // TODO: should be Direction3 instead
-		// 
-		// Init queue, otherwise it will contain wierd values 
-		if (threadIdx.x < 6) {
-			transferqueues[threadIdx.x] = SolventTransferqueue<SolventBlockTransfermodule::max_queue_size>{};
-		}
-		utility_buffer_small[threadIdx.x] = 0;
-		__syncthreads();
-		SolventBlockTransfers::transferOutAndCompressRemainders<BoundaryCondition>(solventblock, solventblock_next_ptr, relPositionsNext, utility_buffer_small, sim->transfermodule_array, transferqueues, transferDirections);
-	}
-	else {
-		solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
-		solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
-		solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
-		if (threadIdx.x == 0) {
-			solventblock_next_ptr->n_solvents = solventblock.n_solvents;
-		}
-	}
-}
-
-
-// This is run before step.inc(), but will always publish results to the first array in grid!
-template <typename BoundaryCondition>
-__global__ void solventTransferKernel(SimulationDevice* sim, int64_t step) {
-	const BoxState& boxState = sim->boxState;
-
-	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
-	
-	SolventBlock* solventblock_current = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
-	SolventBlock* solventblock_next = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
-
-	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
-
-	// Handling incoming transferring solvents
-	int n_solvents_next = transfermodule->n_remain;
-	for (int queue_index = 0; queue_index < SolventBlockTransfermodule::n_queues; queue_index++) {
-		auto* queue = &transfermodule->transfer_queues[queue_index];
-		if (threadIdx.x < queue->n_elements) {
-			const int incoming_index = n_solvents_next + threadIdx.x;
-
-			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
-			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];
-			solventblock_next->atomtypeIds[incoming_index] = queue->atomtypeIds[threadIdx.x];
-		}
-		n_solvents_next += queue->n_elements;
-
-		// Signal that all elements of the queues have been moved
-		__syncthreads();
-		if (threadIdx.x == 0) {
-			queue->n_elements = 0;
-		}
-	}
-
-	SolventTransferWarnings::assertMaxPlacedSolventsIsWithinLimits(n_solvents_next, sim->signals->critical_error_encountered);
-
-	// Finally update the solventblock_next with how many solvents it now contains
+	solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
+	solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
+	solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
 	if (threadIdx.x == 0) {
-		solventblock_next->n_solvents = n_solvents_next;
+		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+	}
+	
+}
+
+template <typename BoundaryCondition>
+__global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
+	const NodeIndex directions[6]{
+		{1, 0, 0},
+		{-1, 0, 0},
+		{0, 1, 0},
+		{0, -1, 0},
+		{0, 0, 1},
+		{0, 0, -1}
+	};
+	
+	__shared__ int directionIndexOfParticles[SolventBlock::MAX_SOLVENTS_IN_BLOCK]; // -1 for stay
+
+
+	const int solventblockId = blockIdx.x;
+	const int stepToLoadFrom = _step + 1;
+	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+	const int nParticlesInBlock = solventblockGlobalPtr->n_solvents;
+	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
+	const NodeIndex BlockOrigo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
+
+	// Each threads is responsible for where it's particle is going
+	if (threadIdx.x < nParticlesInBlock) {
+		const NodeIndex direction = LIMAPOSITIONSYSTEM::getTransferDirection(solventblockGlobalPtr->rel_pos[threadIdx.x]);
+		directionIndexOfParticles[threadIdx.x] = -1;
+		for (int i = 0; i < 6; i++) {
+			if (direction == directions[i]) {
+				directionIndexOfParticles[threadIdx.x] = i;
+				break;
+			}
+		}
+	}	
+	__syncthreads;
+
+	// First 6 threads are responsible for marking a direction
+	__shared__ int nParticlesThisDirection[6];
+	__shared__ int particleIdsThisDirection[TinymolTransferModule::maxOutgoingParticles * 6];
+	if (threadIdx.x < 6) {
+		int myCount = 0;
+		for (int i = 0; i < nParticlesInBlock; i++) {
+			if (directionIndexOfParticles[i] == threadIdx.x)
+				particleIdsThisDirection[threadIdx.x * TinymolTransferModule::maxOutgoingParticles + myCount++] = i;
+		}
+		if (myCount> TinymolTransferModule::maxOutgoingParticles)
+			printf("Too many particles in one direction");
+		nParticlesThisDirection[threadIdx.x] = myCount;
+	}
+	__syncthreads();
+
+	// Now all threads loop over the direction, and if they have a particle, they push it directy to the incoming queue in global memory
+	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
+		const int particleIndex = particleIdsThisDirection[directionIndex * TinymolTransferModule::maxOutgoingParticles + threadIdx.x];
+		const NodeIndex direction = directions[directionIndex];
+		const NodeIndex targetBlock = BoundaryCondition::applyBC(BlockOrigo + direction, DeviceConstants::boxSize.blocksPerDim);
+		const int targetBlockId = BoxGrid::Get1dIndex(targetBlock, DeviceConstants::boxSize.boxSizeNM_i);
+		const Coord relposShift = Coord{ -direction.toFloat3()};
+
+		if (targetBlockId >= DeviceConstants::boxSize.blocksPerDim * DeviceConstants::boxSize.blocksPerDim * DeviceConstants::boxSize.blocksPerDim)
+			printf("Target block was out of bounds");
+
+		// Write results directly to global mem
+		if (threadIdx.x == 0) {
+			tinymolTransferModule.nIncomingParticles[targetBlockId * 6 + directionIndex] = nParticlesThisDirection[directionIndex];
+		}
+		if (threadIdx.x < nParticlesThisDirection[directionIndex]) {
+			const int targetIndex = targetBlockId * 6 * TinymolTransferModule::maxOutgoingParticles
+				+ directionIndex * TinymolTransferModule::maxOutgoingParticles
+				+ threadIdx.x;
+			tinymolTransferModule.incomingPositions[targetIndex] = solventblockGlobalPtr->rel_pos[particleIndex] + relposShift;
+			tinymolTransferModule.incomingIds[targetIndex] = solventblockGlobalPtr->ids[particleIndex];
+			tinymolTransferModule.incomingAtomtypeIds[targetIndex] = solventblockGlobalPtr->atomtypeIds[particleIndex];
+		}
+	}
+	__syncthreads();
+
+	// Finally compress remainders. Reuse the direction-of-particle buffer as prefixsum buffer
+	bool myParticleRemains = threadIdx.x < nParticlesInBlock && directionIndexOfParticles[threadIdx.x] == -1;
+	directionIndexOfParticles[threadIdx.x] = myParticleRemains;
+	__syncthreads();
+
+	const int nParticlesRemain = __syncthreads_count(myParticleRemains);
+
+	LAL::SequentialPrefixSum(directionIndexOfParticles, nParticlesInBlock);
+	const int newIndexInBlock = directionIndexOfParticles[threadIdx.x];
+	
+	const Coord myCoord = myParticleRemains ? solventblockGlobalPtr->rel_pos[threadIdx.x] : Coord{};
+	const uint32_t myId = myParticleRemains ? solventblockGlobalPtr->ids[threadIdx.x] : uint32_t{};
+	const uint8_t myAtomtypeId = myParticleRemains ? solventblockGlobalPtr->atomtypeIds[threadIdx.x] : uint8_t{};
+	__syncthreads;
+	if (myParticleRemains) {
+		if (newIndexInBlock == -1)
+			printf("index was -1");
+		if (newIndexInBlock > SolventBlock::MAX_SOLVENTS_IN_BLOCK)
+			printf("index was too large");
+
+		solventblockGlobalPtr->rel_pos[newIndexInBlock] = myCoord;
+		solventblockGlobalPtr->ids[newIndexInBlock] = myId;
+		solventblockGlobalPtr->atomtypeIds[newIndexInBlock] = myAtomtypeId;
+	}
+	if (threadIdx.x == 0) {
+		solventblockGlobalPtr->n_solvents = nParticlesRemain;
 	}
 }
+
+__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule)  {	
+	__shared__ int nParticlesInBlock;
+	__shared__ int nBondgroupsInBlock;
+
+	const int solventblockId = blockIdx.x;
+	const int stepToLoadFrom = _step + 1;
+	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+
+	if (threadIdx.x == 0) {
+		nParticlesInBlock = solventblockGlobalPtr->n_solvents;
+		nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
+	}
+	__syncthreads;
+
+	// All threads loop over the directions. If it has an incoming particle, it copies it directy to global mem
+	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
+		const int nIncomingParticles = tinymolTransferModule.nIncomingParticles[blockIdx.x * 6 + directionIndex];
+		const int srcIndex = solventblockId * 6 * TinymolTransferModule::maxOutgoingParticles 
+			+ directionIndex * TinymolTransferModule::maxOutgoingParticles 
+			+ threadIdx.x;
+
+		if (threadIdx.x < nIncomingParticles) {
+			solventblockGlobalPtr->rel_pos[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingPositions[srcIndex];
+			solventblockGlobalPtr->ids[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingIds[srcIndex];
+			solventblockGlobalPtr->atomtypeIds[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingAtomtypeIds[srcIndex];
+		}
+		__syncthreads();
+		if (threadIdx.x == 0) {
+			nParticlesInBlock += nIncomingParticles;
+		}
+		__syncthreads();
+	}
+
+	// Finally we write to global mem how many particles there are in the block now
+	if (threadIdx.x == 0) {
+		solventblockGlobalPtr->n_solvents = nParticlesInBlock;
+	}
+}
+
+//
+//
+//// This is run before step.inc(), but will always publish results to the first array in grid!
+//__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t step) {
+//	const BoxState& boxState = sim->boxState;
+//
+//	SolventBlockTransfermodule* transfermodule = &sim->transfermodule_array[blockIdx.x];
+//	
+//	SolventBlock* solventblock_current = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
+//	SolventBlock* solventblock_next = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
+//
+//	SolventTransferWarnings::assertSolventsEqualNRemain(*solventblock_next, *transfermodule);
+//
+//	// Handling incoming transferring solvents
+//	int n_solvents_next = transfermodule->n_remain;
+//	for (int queue_index = 0; queue_index < SolventBlockTransfermodule::n_queues; queue_index++) {
+//		auto* queue = &transfermodule->transfer_queues[queue_index];
+//		if (threadIdx.x < queue->n_elements) {
+//			const int incoming_index = n_solvents_next + threadIdx.x;
+//
+//			solventblock_next->rel_pos[incoming_index] = queue->rel_positions[threadIdx.x];
+//			solventblock_next->ids[incoming_index] = queue->ids[threadIdx.x];
+//			solventblock_next->atomtypeIds[incoming_index] = queue->atomtypeIds[threadIdx.x];
+//		}
+//		n_solvents_next += queue->n_elements;
+//
+//		// Signal that all elements of the queues have been moved
+//		__syncthreads();
+//		if (threadIdx.x == 0) {
+//			queue->n_elements = 0;
+//		}
+//	}
+//
+//	SolventTransferWarnings::assertMaxPlacedSolventsIsWithinLimits(n_solvents_next, sim->signals->critical_error_encountered);
+//
+//	// Finally update the solventblock_next with how many solvents it now contains
+//	if (threadIdx.x == 0) {
+//		solventblock_next->n_solvents = n_solvents_next;
+//	}
+//}
 
 
 static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;

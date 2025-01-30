@@ -295,6 +295,21 @@ struct BondGroup {
 	int nImproperdihedralbonds = 0;
 };
 
+// TODO: OPTIM: THese should actually be cached in constant memory and accessed with a single id,
+// because most tinymols are identical, just with different positions
+struct BondgroupTinymol {
+	
+	static const int maxParticles = 4;
+	static const int maxSinglebonds = 4;
+	static const int maxAnglebonds = 4;
+
+	
+	//uint8_t particleIndicesRelativeToTinymol[maxParticles];
+	// All indices are relative to the tinymol, so add the tinymols indexOfFirstInSolventlblock when accessing particle pos
+	SingleBond singlebonds[maxSinglebonds];
+	AngleUreyBradleyBond anglebonds[maxAnglebonds];
+};
+
 
 
 struct ParticleReference {

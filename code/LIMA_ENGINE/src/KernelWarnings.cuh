@@ -56,30 +56,30 @@ namespace KernelHelpersWarnings {
 #endif		
 	}
 
-	__device__ static void transferOutDebug(STransferQueue* queue_global, 
-		const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
-#if defined LIMASAFEMODE
-		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
-			) {
-			printf("\n");
-			transferdir_queue.print('t');
-			queue_local.rel_positions[threadIdx.x].print('q');
-			queue_global->rel_positions[threadIdx.x].print('Q');
-		}
-
-		if (threadIdx.x == 0 && queue_global->n_elements != 0) {
-			printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
-			transferdir_queue.print('d');
-		}
-#endif
-#ifndef LIMA_PUSH
-		if (threadIdx.x == 0 && queue_local.n_elements > 15) {
-			printf("\nTransferring %d elements\n", queue_local.n_elements);
-		}
-#endif
-	}
+//	__device__ static void transferOutDebug(STransferQueue* queue_global, 
+//		const STransferQueue& queue_local, const NodeIndex& transferdir_queue, const int queue_index) {
+//#if defined LIMASAFEMODE
+//		if (queue_global->rel_positions[threadIdx.x].x < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].x > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+//			|| queue_global->rel_positions[threadIdx.x].y < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].y > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+//			|| queue_global->rel_positions[threadIdx.x].z < -2 * static_cast<int32_t>(NANO_TO_LIMA) || queue_global->rel_positions[threadIdx.x].z > 2 * static_cast<int32_t>(NANO_TO_LIMA)
+//			) {
+//			printf("\n");
+//			transferdir_queue.print('t');
+//			queue_local.rel_positions[threadIdx.x].print('q');
+//			queue_global->rel_positions[threadIdx.x].print('Q');
+//		}
+//
+//		if (threadIdx.x == 0 && queue_global->n_elements != 0) {
+//			printf("\nN elements was: %d in queue %d\n", queue_global->n_elements, queue_index);
+//			transferdir_queue.print('d');
+//		}
+//#endif
+//#ifndef LIMA_PUSH
+//		if (threadIdx.x == 0 && queue_local.n_elements > 15) {
+//			printf("\nTransferring %d elements\n", queue_local.n_elements);
+//		}
+//#endif
+//	}
 }
 
 
@@ -94,13 +94,13 @@ namespace SolventWarnings {
 
 
 namespace SolventTransferWarnings {
-	__device__ static void assertSolventsEqualNRemain(const SolventBlock& solventblock_next, const SolventBlockTransfermodule& transfermodule) {
-#if defined LIMASAFEMODE
-		if (solventblock_next.n_solvents != transfermodule.n_remain) {
-			printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next.n_solvents, transfermodule.n_remain);
-		}
-#endif
-	};
+//	__device__ static void assertSolventsEqualNRemain(const SolventBlock& solventblock_next, const SolventBlockTransfermodule& transfermodule) {
+//#if defined LIMASAFEMODE
+//		if (solventblock_next.n_solvents != transfermodule.n_remain) {
+//			printf("Solventblock_next size doesn't match remain-size %d %d\n", solventblock_next.n_solvents, transfermodule.n_remain);
+//		}
+//#endif
+//	};
 	
 	__device__ inline void assertMaxPlacedSolventsIsWithinLimits(int n_solvents_next, bool& critical_error_encountered) {
 #if defined LIMASAFEMODE

@@ -31,6 +31,16 @@ namespace LAL {
 		return fma(t, v1, fma(-t, v0, v0));
 	}
 
+	__device__ inline void SequentialPrefixSum(int* const data, int nElements) {
+		if (threadIdx.x == 0) {
+			for (int i = 1; i < nElements; i++) {
+				data[i] += data[i - 1];
+			}
+		}
+		__syncthreads();
+		data[threadIdx.x] -= 1;
+	}
+
 	// TODO These functions are NOT what their names elude they are, fix that
 	// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 	__device__ inline void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {

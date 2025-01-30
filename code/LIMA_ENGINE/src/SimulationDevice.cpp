@@ -150,7 +150,7 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
-	cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
+	//cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
 
 	{
 		SimSignals temp{};
@@ -190,7 +190,7 @@ void SimulationDevice::FreeMembers() {
 	cudaFree(nParticlesInCompoundsBuffer);
 	cudaFree(compoundsInteractionBoundaryBuffer);
 
-	cudaFree(transfermodule_array);
+	//cudaFree(transfermodule_array);
 	cudaFree(signals);
 
 

@@ -350,10 +350,10 @@ void Engine::_deviceMaster() {
 	if (boxparams.n_solvents > 0) {
 		const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(step);
 
-		TinymolIntegrationLoggingAndTransferout<BoundaryCondition, emvariant>
+		TinymolIntegrateAndLogKernel<BoundaryCondition, emvariant>
 			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
 			(sim_dev, step, forceEnergyInterims->forceEnergiesCompoundinteractions, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrationLoggingAndTransferout");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrateAndLogKernel");
 
 
 

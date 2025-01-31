@@ -17,6 +17,8 @@ struct SolventBlock {
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		n_solvents = block.n_solvents;
+		nBondgroups = block.nBondgroups;
+
 		if constexpr (!LIMA_PUSH) {
 			if (n_solvents >= MAX_SOLVENTS_IN_BLOCK) {
 				printf("Too many solvents in block!\n");
@@ -35,23 +37,26 @@ struct SolventBlock {
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
+
+			bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = block.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+			bondgroups[threadIdx.x] = block.bondgroups[threadIdx.x];
 		}
 	}
-
-	__device__ static void Transfer(const SolventBlock& src, SolventBlock* const dst, 
-		const int newIndex, const Coord& relposNext) {
-		dst->rel_pos[newIndex] = relposNext;
-		dst->ids[newIndex] = src.ids[threadIdx.x];
-		dst->atomtypeIds[newIndex] = src.atomtypeIds[threadIdx.x];
-	}
-
 	__host__ bool addSolvent(const Coord& rel_position, uint32_t id, uint8_t atomtypeId) {
 		if (n_solvents == MAX_SOLVENTS_IN_BLOCK) {
 			return false;
 		}
 		ids[n_solvents] = id;
 		atomtypeIds[n_solvents] = atomtypeId;
-		rel_pos[n_solvents++] = rel_position;
+		rel_pos[n_solvents] = rel_position;
+
+		bondgroupsFirstAtomindexInSolventblock[n_solvents] = n_solvents;
+		bondgroups[nBondgroups] = BondgroupTinymol{};
+		bondgroups[nBondgroups].nParticles = 1;
+
+
+		nBondgroups++;
+		n_solvents++;
 		return true;
 	}
 	 
@@ -59,9 +64,11 @@ struct SolventBlock {
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t bondgroupsFirstAtomindexInSolventblock[maxBondgroups];
-	int n_solvents = 0;
-	int nBondgroups;
 
+
+	BondgroupTinymol bondgroups[maxBondgroups];
+	int n_solvents = 0;
+	int nBondgroups = 0;
 };
 
 

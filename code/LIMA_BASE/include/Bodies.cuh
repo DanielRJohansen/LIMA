@@ -308,6 +308,9 @@ struct BondgroupTinymol {
 	// All indices are relative to the tinymol, so add the tinymols indexOfFirstInSolventlblock when accessing particle pos
 	SingleBond singlebonds[maxSinglebonds];
 	AngleUreyBradleyBond anglebonds[maxAnglebonds];
+	int nParticles = 0;
+	int nSinglebonds = 0;
+	int nAnglebonds = 0;
 };
 
 

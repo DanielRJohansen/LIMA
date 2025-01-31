@@ -55,6 +55,7 @@ public:
 
 	// TODO: This should just be an index into a variant of the bondgroup kept in constant memory
 	BondgroupTinymol* incomingBondgroups; // 64 elements per block 
+	int* incomingBondgroupsParticlesOffset;
 
 	static TinymolTransferModule Create(int nBlocksTotal) {
 		TinymolTransferModule transferModule;
@@ -67,6 +68,7 @@ public:
 		cudaMalloc(&transferModule.incomingAtomtypeIds, sizeof(uint8_t) * 6 * maxOutgoingParticles * nBlocksTotal);
 
 		cudaMalloc(&transferModule.incomingBondgroups, sizeof(BondgroupTinymol) * 6 * maxOutgoingBondgroups * nBlocksTotal);
+		cudaMalloc(&transferModule.incomingBondgroupsParticlesOffset, sizeof(int) * 6 * maxOutgoingBondgroups  * nBlocksTotal);
 
 		return transferModule;
 	}
@@ -79,6 +81,7 @@ public:
 		cudaFree(incomingAtomtypeIds);
 
 		cudaFree(incomingBondgroups);
+		cudaFree(incomingBondgroupsParticlesOffset);
 	}
 };
 

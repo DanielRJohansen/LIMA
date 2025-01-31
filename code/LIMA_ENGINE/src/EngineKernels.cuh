@@ -686,7 +686,7 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 }
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolIntegrationLoggingAndTransferout(SimulationDevice* sim, int64_t step, const ForceEnergy* const forceEnergiesCompoundinteractions, const ForceEnergy* const forceEnergiesTinymolinteractions) {
+__global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step, const ForceEnergy* const forceEnergiesCompoundinteractions, const ForceEnergy* const forceEnergiesTinymolinteractions) {
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
@@ -771,50 +771,70 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 		{0, 0, 1},
 		{0, 0, -1}
 	};
-	
-	__shared__ int directionIndexOfParticles[SolventBlock::MAX_SOLVENTS_IN_BLOCK]; // -1 for stay
 
+	__shared__ int directionIndexOfBondgroups[SolventBlock::maxBondgroups]; // -1 for stay
+	if (threadIdx.x < SolventBlock::maxBondgroups) {
+		directionIndexOfBondgroups[threadIdx.x] = -1;
+	}
 
 	const int solventblockId = blockIdx.x;
 	const int stepToLoadFrom = _step + 1;
 	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
-	const int nParticlesInBlock = solventblockGlobalPtr->n_solvents;
 	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
-	const NodeIndex BlockOrigo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
 
-	// Each threads is responsible for where it's particle is going
-	if (threadIdx.x < nParticlesInBlock) {
-		const NodeIndex direction = LIMAPOSITIONSYSTEM::getTransferDirection(solventblockGlobalPtr->rel_pos[threadIdx.x]);
-		directionIndexOfParticles[threadIdx.x] = -1;
-		for (int i = 0; i < 6; i++) {
-			if (direction == directions[i]) {
-				directionIndexOfParticles[threadIdx.x] = i;
+	__shared__ int nParticlesInBondgroups[SolventBlock::maxBondgroups];
+	if (threadIdx.x < nBondgroupsInBlock) {
+		nParticlesInBondgroups[threadIdx.x] = solventblockGlobalPtr->bondgroups[threadIdx.x].nParticles;
+	}
+
+	__shared__ int bondgroupsIndexOfFirstParticleInSolventblock[SolventBlock::maxBondgroups];
+	if (threadIdx.x < nBondgroupsInBlock) {
+		bondgroupsIndexOfFirstParticleInSolventblock[threadIdx.x] = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+	}
+
+	// Each thread is responsible for where it's bondgroup go
+	if (threadIdx.x < nBondgroupsInBlock) {
+		const int indexInBlockOfFirstParticle = bondgroupsIndexOfFirstParticleInSolventblock[threadIdx.x];
+		const NodeIndex direction = LIMAPOSITIONSYSTEM::getTransferDirection(solventblockGlobalPtr->rel_pos[indexInBlockOfFirstParticle]);
+		for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
+			if (direction == directions[directionIndex]) {
+				directionIndexOfBondgroups[threadIdx.x] = directionIndex;
 				break;
 			}
 		}
-	}	
+	}
 	__syncthreads;
 
 	// First 6 threads are responsible for marking a direction
+	__shared__ int nBondgroupsThisDirection[6];
 	__shared__ int nParticlesThisDirection[6];
-	__shared__ int particleIdsThisDirection[TinymolTransferModule::maxOutgoingParticles * 6];
+	__shared__ int bondgroupIdsThisDirection[TinymolTransferModule::maxOutgoingBondgroups * 6];
+	__shared__ int bondgroupsFirstAtomindexInThisDirection[TinymolTransferModule::maxOutgoingBondgroups * 6];
 	if (threadIdx.x < 6) {
-		int myCount = 0;
-		for (int i = 0; i < nParticlesInBlock; i++) {
-			if (directionIndexOfParticles[i] == threadIdx.x)
-				particleIdsThisDirection[threadIdx.x * TinymolTransferModule::maxOutgoingParticles + myCount++] = i;
+		int myBondgroupCount = 0;
+		int myParticleCount = 0;
+		for (int bondgroupIndex = 0; bondgroupIndex < nBondgroupsInBlock; bondgroupIndex++) {
+			if (directionIndexOfBondgroups[bondgroupIndex] == threadIdx.x) {
+				bondgroupIdsThisDirection[threadIdx.x * TinymolTransferModule::maxOutgoingBondgroups + myBondgroupCount] = bondgroupIndex;
+				bondgroupsFirstAtomindexInThisDirection[threadIdx.x * TinymolTransferModule::maxOutgoingBondgroups + myBondgroupCount] = myParticleCount;
+				myBondgroupCount++;
+				myParticleCount += nParticlesInBondgroups[bondgroupIndex];
+			}
 		}
-		if (myCount> TinymolTransferModule::maxOutgoingParticles)
-			printf("Too many particles in one direction");
-		nParticlesThisDirection[threadIdx.x] = myCount;
+
+		if (myBondgroupCount > TinymolTransferModule::maxOutgoingBondgroups)
+			printf("Too many bondgroups in one direction");
+
+		nBondgroupsThisDirection[threadIdx.x] = myBondgroupCount;
+		nParticlesThisDirection[threadIdx.x] = myParticleCount;
 	}
 	__syncthreads();
 
 	// Now all threads loop over the direction, and if they have a particle, they push it directy to the incoming queue in global memory
 	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
-		const int particleIndex = particleIdsThisDirection[directionIndex * TinymolTransferModule::maxOutgoingParticles + threadIdx.x];
 		const NodeIndex direction = directions[directionIndex];
-		const NodeIndex targetBlock = BoundaryCondition::applyBC(BlockOrigo + direction, DeviceConstants::boxSize.blocksPerDim);
+		const NodeIndex blockOrigo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
+		const NodeIndex targetBlock = BoundaryCondition::applyBC(blockOrigo + direction, DeviceConstants::boxSize.blocksPerDim);
 		const int targetBlockId = BoxGrid::Get1dIndex(targetBlock, DeviceConstants::boxSize.boxSizeNM_i);
 		const Coord relposShift = Coord{ -direction.toFloat3()};
 
@@ -824,44 +844,66 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 		// Write results directly to global mem
 		if (threadIdx.x == 0) {
 			tinymolTransferModule.nIncomingParticles[targetBlockId * 6 + directionIndex] = nParticlesThisDirection[directionIndex];
+			tinymolTransferModule.nIncomingBondgroups[targetBlockId * 6 + directionIndex] = nBondgroupsThisDirection[directionIndex];
 		}
-		if (threadIdx.x < nParticlesThisDirection[directionIndex]) {
-			const int targetIndex = targetBlockId * 6 * TinymolTransferModule::maxOutgoingParticles
-				+ directionIndex * TinymolTransferModule::maxOutgoingParticles
+		if (threadIdx.x < nBondgroupsThisDirection[directionIndex]) {
+			const int bondgroupIndex = bondgroupIdsThisDirection[directionIndex * TinymolTransferModule::maxOutgoingBondgroups + threadIdx.x];
+			const int bondgroupTargetIndex = targetBlockId * 6 * TinymolTransferModule::maxOutgoingBondgroups
+				+ directionIndex * TinymolTransferModule::maxOutgoingBondgroups
 				+ threadIdx.x;
-			tinymolTransferModule.incomingPositions[targetIndex] = solventblockGlobalPtr->rel_pos[particleIndex] + relposShift;
-			tinymolTransferModule.incomingIds[targetIndex] = solventblockGlobalPtr->ids[particleIndex];
-			tinymolTransferModule.incomingAtomtypeIds[targetIndex] = solventblockGlobalPtr->atomtypeIds[particleIndex];
+			tinymolTransferModule.incomingBondgroups[bondgroupTargetIndex] = solventblockGlobalPtr->bondgroups[bondgroupIndex];
+			tinymolTransferModule.incomingBondgroupsParticlesOffset[bondgroupTargetIndex] = bondgroupsFirstAtomindexInThisDirection[directionIndex * TinymolTransferModule::maxOutgoingBondgroups + threadIdx.x];
+			
+			const int destOffsetOfFirstParticle = bondgroupsFirstAtomindexInThisDirection[directionIndex * TinymolTransferModule::maxOutgoingBondgroups + threadIdx.x];
+			const int sourceOffsetOfFirstParticle = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[bondgroupIndex];
+			for (int particleIndexInBondgroup = 0; particleIndexInBondgroup < nParticlesInBondgroups[bondgroupIndex]; particleIndexInBondgroup++) {
+				const int particleDestIndex = targetBlockId * 6 * TinymolTransferModule::maxOutgoingParticles
+					+ directionIndex * TinymolTransferModule::maxOutgoingParticles
+					+ destOffsetOfFirstParticle + particleIndexInBondgroup;
+				const int particleSourceIndex = sourceOffsetOfFirstParticle + particleIndexInBondgroup;
+
+				tinymolTransferModule.incomingPositions[particleDestIndex] = solventblockGlobalPtr->rel_pos[particleSourceIndex] + relposShift;
+				tinymolTransferModule.incomingIds[particleDestIndex] = solventblockGlobalPtr->ids[particleSourceIndex];
+				tinymolTransferModule.incomingAtomtypeIds[particleDestIndex] = solventblockGlobalPtr->atomtypeIds[particleSourceIndex];
+			}
 		}
 	}
 	__syncthreads();
+
 
 	// Finally compress remainders. Reuse the direction-of-particle buffer as prefixsum buffer
-	bool myParticleRemains = threadIdx.x < nParticlesInBlock && directionIndexOfParticles[threadIdx.x] == -1;
-	directionIndexOfParticles[threadIdx.x] = myParticleRemains;
-	__syncthreads();
-
-	const int nParticlesRemain = __syncthreads_count(myParticleRemains);
-
-	LAL::SequentialPrefixSum(directionIndexOfParticles, nParticlesInBlock);
-	const int newIndexInBlock = directionIndexOfParticles[threadIdx.x];
-	
-	const Coord myCoord = myParticleRemains ? solventblockGlobalPtr->rel_pos[threadIdx.x] : Coord{};
-	const uint32_t myId = myParticleRemains ? solventblockGlobalPtr->ids[threadIdx.x] : uint32_t{};
-	const uint8_t myAtomtypeId = myParticleRemains ? solventblockGlobalPtr->atomtypeIds[threadIdx.x] : uint8_t{};
-	__syncthreads;
-	if (myParticleRemains) {
-		if (newIndexInBlock == -1)
-			printf("index was -1");
-		if (newIndexInBlock > SolventBlock::MAX_SOLVENTS_IN_BLOCK)
-			printf("index was too large");
-
-		solventblockGlobalPtr->rel_pos[newIndexInBlock] = myCoord;
-		solventblockGlobalPtr->ids[newIndexInBlock] = myId;
-		solventblockGlobalPtr->atomtypeIds[newIndexInBlock] = myAtomtypeId;
+	__shared__ int bondgroupRemains[SolventBlock::maxBondgroups];
+	__shared__ int nBondgroupsRemaining;
+	__shared__ int nParticlesRemaining;
+	if (threadIdx.x < SolventBlock::maxBondgroups) {
+		bondgroupRemains[threadIdx.x] = directionIndexOfBondgroups[threadIdx.x] == -1;
 	}
+	
+	__syncthreads();
 	if (threadIdx.x == 0) {
-		solventblockGlobalPtr->n_solvents = nParticlesRemain;
+		nBondgroupsRemaining = 0;
+		nParticlesRemaining = 0;
+
+		for (int bondgroupIndex = 0; bondgroupIndex < nBondgroupsInBlock; bondgroupIndex++) {
+			if (bondgroupRemains[bondgroupIndex]) {
+
+
+				solventblockGlobalPtr->bondgroups[nBondgroupsRemaining] = solventblockGlobalPtr->bondgroups[bondgroupIndex];
+				solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[nBondgroupsRemaining] = nParticlesRemaining;
+				nBondgroupsRemaining++;
+
+				for (int particleIndex = 0; particleIndex < nParticlesInBondgroups[bondgroupIndex]; particleIndex++) {
+					const int srcIndex = bondgroupsIndexOfFirstParticleInSolventblock[bondgroupIndex] + particleIndex;
+					solventblockGlobalPtr->rel_pos[nParticlesRemaining] = solventblockGlobalPtr->rel_pos[srcIndex];
+					solventblockGlobalPtr->ids[nParticlesRemaining] = solventblockGlobalPtr->ids[srcIndex];
+					solventblockGlobalPtr->atomtypeIds[nParticlesRemaining] = solventblockGlobalPtr->atomtypeIds[srcIndex];
+					nParticlesRemaining++;
+				}
+			}
+		}
+
+		solventblockGlobalPtr->nBondgroups = nBondgroupsRemaining;
+		solventblockGlobalPtr->n_solvents = nParticlesRemaining;
 	}
 }
 
@@ -882,18 +924,28 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	// All threads loop over the directions. If it has an incoming particle, it copies it directy to global mem
 	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
 		const int nIncomingParticles = tinymolTransferModule.nIncomingParticles[blockIdx.x * 6 + directionIndex];
-		const int srcIndex = solventblockId * 6 * TinymolTransferModule::maxOutgoingParticles 
-			+ directionIndex * TinymolTransferModule::maxOutgoingParticles 
-			+ threadIdx.x;
-
+		const int nIncomingBondgroups = tinymolTransferModule.nIncomingBondgroups[blockIdx.x * 6 + directionIndex];
+		
 		if (threadIdx.x < nIncomingParticles) {
+			const int srcIndex = solventblockId * 6 * TinymolTransferModule::maxOutgoingParticles
+				+ directionIndex * TinymolTransferModule::maxOutgoingParticles
+				+ threadIdx.x;
 			solventblockGlobalPtr->rel_pos[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingPositions[srcIndex];
 			solventblockGlobalPtr->ids[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingIds[srcIndex];
 			solventblockGlobalPtr->atomtypeIds[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingAtomtypeIds[srcIndex];
 		}
+		if (threadIdx.x < nIncomingBondgroups) {
+			const int srcIndex = solventblockId * 6 * TinymolTransferModule::maxOutgoingBondgroups
+				+ directionIndex * TinymolTransferModule::maxOutgoingBondgroups
+				+ threadIdx.x;
+			solventblockGlobalPtr->bondgroups[nBondgroupsInBlock + threadIdx.x] = tinymolTransferModule.incomingBondgroups[srcIndex];
+			solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[nBondgroupsInBlock + threadIdx.x] = nParticlesInBlock + tinymolTransferModule.incomingBondgroupsParticlesOffset[srcIndex];
+		}
+
 		__syncthreads();
 		if (threadIdx.x == 0) {
 			nParticlesInBlock += nIncomingParticles;
+			nBondgroupsInBlock += nIncomingBondgroups;
 		}
 		__syncthreads();
 	}
@@ -901,6 +953,7 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	// Finally we write to global mem how many particles there are in the block now
 	if (threadIdx.x == 0) {
 		solventblockGlobalPtr->n_solvents = nParticlesInBlock;
+		solventblockGlobalPtr->nBondgroups = nBondgroupsInBlock;
 	}
 }
 

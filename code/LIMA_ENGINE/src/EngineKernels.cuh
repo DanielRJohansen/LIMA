@@ -254,7 +254,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], DeviceConstants::boxSize.boxSizeNM_i));
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(solventblock_hyperorigo, compound_origo);
-					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->n_solvents;
+					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->nParticles;
 				}
 				indexInBatch = 0;
 				__syncthreads();
@@ -429,7 +429,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 	}
 
 	if (threadIdx.x == 0) {
-		nElementsInBlock = solventblock_ptr->n_solvents;
+		nElementsInBlock = solventblock_ptr->nParticles;
 	}
 	__syncthreads();
 
@@ -504,7 +504,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}
 
 	if (threadIdx.x == 0) {
-		nElementsInBlock = solventblock_ptr->n_solvents;
+		nElementsInBlock = solventblock_ptr->nParticles;
 	}
 	__syncthreads();
 	
@@ -516,7 +516,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
 
 
-	// --------------------------------------------------------------- Intrablock TinyMolState Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Intrablock TinyMolParticleState Interactions ----------------------------------------------------- //
 	{		
 		if (threadActive) {
             positionsBuffer_relpos[threadIdx.x] = relpos_self;
@@ -529,7 +529,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-	// --------------------------------------------------------------- Interblock TinyMolState Interactions ----------------------------------------------------- //
+	// --------------------------------------------------------------- Interblock TinyMolParticleState Interactions ----------------------------------------------------- //
 	__shared__ BoxGrid::TinymolBlockAdjacency::BlockRef nearbyBlock[BoxGrid::TinymolBlockAdjacency::nNearbyBlocks];
     static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= BoxGrid::TinymolBlockAdjacency::nNearbyBlocks);
 	if (threadIdx.x < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks) {
@@ -542,7 +542,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		const int blockindex_neighbor = nearbyBlock[i].blockId;
 
 		const SolventBlock* solventblock_neighbor = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockindex_neighbor, step);
-		const int nsolvents_neighbor = solventblock_neighbor->n_solvents;
+		const int nsolvents_neighbor = solventblock_neighbor->nParticles;
 
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
         __syncthreads();
@@ -581,7 +581,7 @@ static_assert(BondgroupTinymol::maxSinglebonds <= BondgroupTinymol::maxParticles
 static_assert(BondgroupTinymol::maxAnglebonds <= BondgroupTinymol::maxParticles, "Not enough threads to load all anglebonds");
 // Spawn 1 block per solventblock, blockDim(SOlventblock::MAX_BONDGROUPS, BondgroupTinymol::maxParticles)
 template <bool emvariant>
-__global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const int16_t step, const BondgroupTinymol* const bondgroupsBuffer, ForceEnergy* const forceEnergies) {
+__global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const int16_t step, ForceEnergy* const forceEnergies) {
 	//__shared__ ForceEnergy
 	static_assert(sizeof(Coord) == sizeof(Float3), "Coord and Float3 must be the same size");
 	__shared__ Float3 positions[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
@@ -589,7 +589,7 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 	const int solventblockId = blockIdx.x;
 
 	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, step);
-	const int nParticlesInBlock = solventblockGlobalPtr->n_solvents;
+	const int nParticlesInBlock = solventblockGlobalPtr->nParticles;
 	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
 
 	// Load positions
@@ -605,37 +605,53 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 	}
 
 	__shared__ ForceEnergy forceEnergyInterrimsShared[SolventBlock::MAX_SOLVENTS_IN_BLOCK];	
-	static_assert(SolventBlock::maxBondgroups * BondgroupTinymol::maxParticles <= SolventBlock::MAX_SOLVENTS_IN_BLOCK, "Not enough threads");
+	static_assert(SolventBlock::maxBondgroups * BondgroupTinymol::maxParticles >= SolventBlock::MAX_SOLVENTS_IN_BLOCK, "Not enough threads");
 	if (threadIdx.y * blockDim.x + threadIdx.x < BondgroupTinymol::maxParticles) {
 		forceEnergyInterrimsShared[threadIdx.y * blockDim.x + threadIdx.x] = ForceEnergy{};
 	}
 
 	// Singlebonds
 	{
-		const BondgroupTinymol* bondgroupPtr = nullptr;
-		const int bondgroupsFirstAtomIndexInSolventblock = -1;
+		BondgroupTinymol* bondgroupPtr = nullptr;
+		int bondgroupsFirstAtomIndexInSolventblock = -1;
 		float potE{};
 		Float3 forces[SingleBond::nAtoms];
 		SingleBond singlebond;
 
 		if (threadIdx.x < nBondgroupsInBlock) {
-			bondgroupPtr = &bondgroupsBuffer[solventblockId * SolventBlock::maxBondgroups + threadIdx.x];
+			//bondgroupPtr = &bondgroupsBuffer[solventblockId * SolventBlock::maxBondgroups + threadIdx.x];
+			bondgroupPtr = &solventblockGlobalPtr->bondgroups[threadIdx.x];
 			bondgroupsFirstAtomIndexInSolventblock = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+			//printf("N singlebonds %d Indices %d %d\n", , singlebond.atom_indexes[0], singlebond.atom_indexes[1]);
+			//printf("Abs indices %d %d\n", singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock, singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock);
 
-			if (threadIdx.y < bondgroupPtr->maxSinglebonds) {
+			if (threadIdx.y < bondgroupPtr->nSinglebonds) {
 				singlebond = bondgroupPtr->singlebonds[threadIdx.y];				
+				//printf("N singlebonds %d Indices %d %d\n", bondgroupPtr->nSinglebonds, singlebond.atom_indexes[0], singlebond.atom_indexes[1]);
 
 				// Sets force and pot, not adding
 				LimaForcecalc::calcSinglebondForces<emvariant>(
 					positions[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
 					positions[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
-					singlebond, forces[threadIdx.y], potE, false);
+					singlebond.params, forces, potE, false);
 			}
 		}
 
 		// We can safely assume there's no overlap between the bondgroups used particles, thus 1 thread per bondgroup can write to shared mem at a time
 		for (int i = 0; i < BondgroupTinymol::maxParticles; i++) {
-			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->maxSinglebonds) {
+			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->nSinglebonds) {
+				//printf("Params %f %f\n", singlebond.params.b0, singlebond.params.kb);
+				//if (threadIdx.y == 0) {
+				//	forces[0].print('y');
+				//	forces[1].print('Y');
+				//	(positions[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] - positions[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock]).print('d');
+				//}
+				//if (threadIdx.y == 1) {
+				//	forces[0].print('x');
+				//	forces[1].print('X');
+				//	(positions[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] - positions[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock]).print('D');
+				//}
+
 				forceEnergyInterrimsShared[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE * 0.5f };
 				forceEnergyInterrimsShared[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE * 0.5f };
 			}
@@ -643,33 +659,38 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 		}
 	}
 
+	//if (threadIdx.y == 0 && threadIdx.x < 3)
+	//	printf("id %d force %f %f %f\n", threadIdx.x, forceEnergyInterrimsShared[threadIdx.x].force.x, forceEnergyInterrimsShared[threadIdx.x].force.y, forceEnergyInterrimsShared[threadIdx.x].force.z);
+
 	// Anglebonds
 	{
-		const BondgroupTinymol* bondgroupPtr = nullptr;
-		const int bondgroupsFirstAtomIndexInSolventblock = -1;
+		BondgroupTinymol* bondgroupPtr = nullptr;
+		int bondgroupsFirstAtomIndexInSolventblock = -1;
 		float potE{};
 		Float3 forces[AngleUreyBradleyBond::nAtoms];
 		AngleUreyBradleyBond anglebond;
 
 		if (threadIdx.x < nBondgroupsInBlock) {
-			bondgroupPtr = &bondgroupsBuffer[solventblockId * SolventBlock::maxBondgroups + threadIdx.x];
+			bondgroupPtr = &solventblockGlobalPtr->bondgroups[threadIdx.x];
 			bondgroupsFirstAtomIndexInSolventblock = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
 
-			if (threadIdx.y < bondgroupPtr->maxAnglebonds) {
+			if (threadIdx.y < bondgroupPtr->nAnglebonds) {
 				anglebond = bondgroupPtr->anglebonds[threadIdx.y];
 
+				printf("ids %d %d %d params %f %f\n", anglebond.atom_indexes[0], anglebond.atom_indexes[1], anglebond.atom_indexes[2], anglebond.params.ub0, anglebond.params.theta0);
+
 				// Sets force and pot, not adding
-				LimaForcecalc::calcAnglebondForces<emvariant>(
+				LimaForcecalc::calcAnglebondForces(
 					positions[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
 					positions[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
 					positions[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock],
-					anglebond, forces[threadIdx.y], potE, false);
+					anglebond, forces, potE);
 			}
 		}
 
 		// We can safely assume there's no overlap between the bondgroups used particles, thus 1 thread per bondgroup can write to shared mem at a time
 		for (int i = 0; i < BondgroupTinymol::maxParticles; i++) {
-			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->maxAnglebonds) {
+			if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->nAnglebonds) {
 				forceEnergyInterrimsShared[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE / 3.f }; // OPTIM mul with 0.333?
 				forceEnergyInterrimsShared[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE / 3.f };
 				forceEnergyInterrimsShared[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[2], potE / 3.f };
@@ -678,15 +699,20 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 		}
 	}
 
+	//if (threadIdx.y == 0 && threadIdx.x < nParticlesInBlock) {
+	//	printf("\nid %d force %f %f %f\n", threadIdx.x, forceEnergyInterrimsShared[threadIdx.x].force.x, forceEnergyInterrimsShared[threadIdx.x].force.y, forceEnergyInterrimsShared[threadIdx.x].force.z);
+	//}
+
+
 	// Write forceenergy to global mem
 	{
 		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, &forceEnergies[solventblockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x], forceEnergyInterrimsShared, sizeof(Coord) * nParticlesInBlock);
+		cooperative_groups::memcpy_async(block, &forceEnergies[solventblockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK], forceEnergyInterrimsShared, sizeof(ForceEnergy) * nParticlesInBlock);
 	}	
 }
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step, const ForceEnergy* const forceEnergiesCompoundinteractions, const ForceEnergy* const forceEnergiesTinymolinteractions) {
+__global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies) {
 	__shared__ SolventBlock solventblock;
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
@@ -700,14 +726,17 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	const SimParams& simparams = sim->params;
 	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
-	const Float3 force = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].force;
-	const float potE = forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE + forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x].potE;
+	/*const ForceEnergy myForceEnergy = forceEnergies.forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		+ forceEnergies.forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		+ forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];*/
+
+	const ForceEnergy myForceEnergy = forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];
 
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
 	}
 	__syncthreads();
-	const bool solventActive = threadIdx.x < solventblock.n_solvents;
+	const bool solventActive = threadIdx.x < solventblock.nParticles;
 	solventblock.loadData(*solventblock_ptr);
 	__syncthreads();
 
@@ -715,40 +744,43 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 
 	//Coord relpos_next{};
 	if (solventActive) {
-		TinyMolState& tinyMols_ref = boxState.tinyMols[solventblock.ids[threadIdx.x]];	// TinyMolState private data, for VVS
+		TinyMolParticleState& tinyMols_ref = boxState.tinyMolParticlesState[solventblock.ids[threadIdx.x]];	// TinyMolParticleState private data, for VVS
 		const float mass = DeviceConstants::tinymolForcefield.types[tinyMols_ref.tinymolTypeIndex].mass;
 
 		if constexpr (energyMinimize) {
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(force);
+			const Float3 safeForce = EngineUtils::ForceActivationFunction(myForceEnergy.force);
 			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
 			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
 
 			relPositionsNext[threadIdx.x] = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
-				force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+				myForceEnergy.force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
             if constexpr (!LIMA_PUSH) {
-                if (force.isNan() || force.lenSquared() >= FLT_MAX)
-                    force.print('S');
+                if (myForceEnergy.force.isNan() || myForceEnergy.force.lenSquared() >= FLT_MAX)
+					myForceEnergy.force.print('S');
             }
 
-			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref.force_prev, force, simparams.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, force, mass, simparams.dt);
+			Float3 vel_now = EngineUtils::integrateVelocityVVS(tinyMols_ref.vel_prev, tinyMols_ref.force_prev, myForceEnergy.force, simparams.dt, mass);
+			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, myForceEnergy.force, mass, simparams.dt);
 
 			vel_now = vel_now * DeviceConstants::thermostatScalar;
 
+			myForceEnergy.force.print((int)threadIdx.x);
+			//vel_now.print((int)threadIdx.x);
+
 			tinyMols_ref.vel_prev = vel_now;
-			tinyMols_ref.force_prev = force;
+			tinyMols_ref.force_prev = myForceEnergy.force;
 
 			// Save pos locally, but only push to box as this kernel ends
 			relPositionsNext[threadIdx.x] = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
-				force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+				myForceEnergy.force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 	}
 
-
+	// TODO: LONG: stop using a circular queue for solvents, just have the data 1 place now that we sync before integration anyways
 
 	// Push new SolventCoord to global mem
 	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
@@ -756,7 +788,12 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
 	solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
 	if (threadIdx.x == 0) {
-		solventblock_next_ptr->n_solvents = solventblock.n_solvents;
+		solventblock_next_ptr->nParticles = solventblock.nParticles;
+		solventblock_next_ptr->nBondgroups = solventblock.nBondgroups;
+	}
+	if (threadIdx.x < solventblock.nBondgroups) {
+		solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
+		solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
 	}
 	
 }
@@ -903,7 +940,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 		}
 
 		solventblockGlobalPtr->nBondgroups = nBondgroupsRemaining;
-		solventblockGlobalPtr->n_solvents = nParticlesRemaining;
+		solventblockGlobalPtr->nParticles = nParticlesRemaining;
 	}
 }
 
@@ -916,7 +953,7 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
 
 	if (threadIdx.x == 0) {
-		nParticlesInBlock = solventblockGlobalPtr->n_solvents;
+		nParticlesInBlock = solventblockGlobalPtr->nParticles;
 		nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
 	}
 	__syncthreads;
@@ -952,7 +989,7 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 
 	// Finally we write to global mem how many particles there are in the block now
 	if (threadIdx.x == 0) {
-		solventblockGlobalPtr->n_solvents = nParticlesInBlock;
+		solventblockGlobalPtr->nParticles = nParticlesInBlock;
 		solventblockGlobalPtr->nBondgroups = nBondgroupsInBlock;
 	}
 }

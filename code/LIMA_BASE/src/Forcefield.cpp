@@ -256,9 +256,9 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
 	LoadFileIntoForcefield(file);
 
-	// TEMP while we force solvents to be singleparticle
-	if (tinymolTypes->_getAll().contains("OW"))
-		tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
+	//// TEMP while we force solvents to be singleparticle
+	//if (tinymolTypes->_getAll().contains("OW"))
+	//	tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
 }
 
 LIMAForcefield::~LIMAForcefield() {}
@@ -370,6 +370,11 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 			>> kT		// [kJ/mol/rad^2]
 			>> ub0		// [nm]
 			>> kUB;		// [kJ/mol/nm^2]
+
+		if (anglebondtype.func != 5) {// 5 is for UB, for all other we assume harmonic. TEMP LONG TODO This is a bandaid, we need to parse ALL forcefield types based on the func...
+			ub0 = 0;
+			kUB = 0;
+		}
 
 		anglebondtype.params = AngleUreyBradleyBond::Parameters::CreateFromCharmm(t0, kT, ub0, kUB);
 

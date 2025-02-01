@@ -55,7 +55,8 @@ struct BoxParams {
 	int boxSize = 0;	// [nm]
 	int n_compounds = 0;
 	int n_bridges = 0;
-	int n_solvents = 0;
+	int nTinymols = 0;
+	int nTinymolParticles = 0;
 	int total_particles_upperbound = 0;
 	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
@@ -145,7 +146,7 @@ struct Box {
 	std::vector<CompoundInterimState> compoundInterimStates;
 	std::vector<CompoundCoords> compoundCoordsBuffer;
 
-	std::vector<TinyMolState> tinyMols;
+	std::vector<TinyMolParticleState> tinyMolParticlesState;
 	std::vector<SolventBlock> solventblockgrid_circularqueue;
 
 	std::vector<BondedParticlesLUT> bpLutCollection;

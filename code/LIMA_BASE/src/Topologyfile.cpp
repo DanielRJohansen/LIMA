@@ -167,7 +167,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		singlebond.sourceLine = line;
 
 		float b0, kb;
-		if (iss >> b0 >> kb) {
+		if (iss >> b0 >> kb) {																						// TODO LONG: it is a very bad idea that we interprete ff params both here and in forcefield.cpp, we should ONLY do that 1 plac
 			singlebond.parameters = Bondtypes::SingleBond::Parameters::CreateFromCharmm(b0, kb);
 		}
 
@@ -203,6 +203,11 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 		float theta0, ktheta, ub0, kUb;
 		if (iss >> theta0 >> ktheta >> ub0 >> kUb) {
 			angle.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb);
+			if (angle.funct != 5) {
+				angle.parameters->kUB = 0;
+				angle.parameters->ub0 = 0;
+			}
+
 		}
 
 		moleculetype->anglebonds.emplace_back(angle);

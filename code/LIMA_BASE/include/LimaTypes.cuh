@@ -179,6 +179,9 @@ struct Float3 {
 	__host__ void print(const std::string& str) const {
 		printf("%s %.6f %.6f %.6f\n", str.c_str(), x, y, z);
 	}
+	__host__ __device__ void print(int i) const {
+		printf("%d %.6f %.6f %.6f\n", i, x, y, z);
+	}
 
 	std::string toString() const {
 		//return std::format("{} {} {}", x, y, z);
@@ -226,12 +229,17 @@ struct Float3 {
 };
 
 struct ForceEnergy {
-	Float3 force;	// [J/mol/nm]
-	float potE;		// [J/mol]
+	Float3 force{};	// [J/mol/nm]
+	float potE{};		// [J/mol]
 
-	__host__ __device__ inline ForceEnergy operator+ (const ForceEnergy& a) const {
+	constexpr ForceEnergy operator+ (const ForceEnergy& a) const {
 		return ForceEnergy{ force + a.force, potE + a.potE };
 	}		
+	constexpr void operator+= (const ForceEnergy& a) {
+		force += a.force;
+		potE += a.potE;
+	}
+	
 };
 
 struct Double3 {

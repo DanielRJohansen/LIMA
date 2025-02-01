@@ -106,7 +106,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
                 index++;
             }
         }
-        for (int sid = 0; sid < task.boxparams.n_solvents; sid++) {
+        for (int sid = 0; sid < task.boxparams.nTinymolParticles; sid++) {
             renderAtomsTemp[index].position = task.positions[MAX_COMPOUND_PARTICLES * task.compounds.size() + sid].Tofloat4(RenderUtilities::getRadius(RenderUtilities::ATOM_TYPE::SOL));
 
             renderAtomsTemp[index].color = RenderUtilities::getColor(RenderUtilities::ATOM_TYPE::SOL);

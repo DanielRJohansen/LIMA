@@ -166,6 +166,8 @@ namespace EngineUtils {
 			const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
 				loggingInterval, boxparams.total_particles_upperbound);
 
+			//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
+
 			trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
 			poteBuffer[index] = potE;
 			velBuffer[index] = velocity.len();

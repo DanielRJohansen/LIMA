@@ -64,7 +64,7 @@ void __global__ monitorCompoundEnergyKernel(Compound* compounds, const ForceFiel
 
 
 
-void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out, const TinyMolState* const tinyMols, const ForcefieldTinymol* const forcefield) {
+void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* potE_buffer, float* vel_buffer, Float3* data_out, const TinyMolParticleState* const tinyMols, const ForcefieldTinymol* const forcefield) {
 	__shared__ Float3 energy[THREADS_PER_SOLVENTBLOCK_ANALYZER];
 
 
@@ -77,7 +77,7 @@ void __global__ monitorSolventEnergyKernel(const BoxParams boxparams, float* pot
 	if (threadIdx.x == 0) {
 		data_out[(step) * gridDim.y + blockIdx.y] = energy[0];
 	}
-	if (solvent_index >= boxparams.n_solvents) { return; }
+	if (solvent_index >= boxparams.nTinymolParticles) { return; }
 
 	const float mass = forcefield->types[tinyMols[solvent_index].tinymolTypeIndex].mass;
 	const float velocity = vel_buffer[step_offset + compounds_offset + solvent_index];
@@ -148,14 +148,14 @@ __global__ void potEHistogramKernel(Compound* compounds, int total_particles_upp
 
 
 
-std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps, float* potE_buffer_device, float* vel_buffer_device, const ForcefieldTinymol* const forcefield_device, const TinyMolState* const tinyMols) {
+std::vector<Float3> analyzeSolvateEnergy(Simulation* simulation, uint64_t n_steps, float* potE_buffer_device, float* vel_buffer_device, const ForcefieldTinymol* const forcefield_device, const TinyMolParticleState* const tinyMols) {
 	// Start by creating array of energies of value 0
 	std::vector<Float3> average_solvent_energy(n_steps);
 
-	int blocks_per_solventkernel = (int)ceil((float)simulation->box_host->boxparams.n_solvents / (float)THREADS_PER_SOLVENTBLOCK_ANALYZER);
+	int blocks_per_solventkernel = (int)ceil((float)simulation->box_host->boxparams.nTinymolParticles / (float)THREADS_PER_SOLVENTBLOCK_ANALYZER);
 
 	// If any solvents are present, fill above array
-	if (simulation->box_host->boxparams.n_solvents > 0) {
+	if (simulation->box_host->boxparams.nTinymolParticles > 0) {
 
 		std::vector<Float3> average_solvent_energy_blocked(n_steps * blocks_per_solventkernel);
 		Float3* data_out;
@@ -232,7 +232,7 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 	cudaMemcpy(forcefield_device, &simulation->forcefield, sizeof(ForceField_NB), cudaMemcpyHostToDevice);
 
 	ForcefieldTinymol* tinymolForcefield_device = GenericCopyToDevice(&simulation->forcefieldTinymol, 1);
-	TinyMolState* tinymols = GenericCopyToDevice(simulation->box_host->tinyMols);
+	TinyMolParticleState* tinymols = GenericCopyToDevice(simulation->box_host->tinyMolParticlesState);
 
 	if (simulation->box_host->boxparams.n_compounds > 0) {
 		cudaMalloc(&compounds_device, sizeof(Compound) * simulation->box_host->boxparams.n_compounds);

@@ -15,8 +15,8 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_UPDATE = 100;
-constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
+const int STEPS_PER_UPDATE = 1;
+constexpr float MIN_STEP_TIME = 50.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::Environment(const fs::path& workdir, EnvMode mode)
@@ -111,7 +111,7 @@ void Environment::verifyBox() {
 
 	
 
-	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.n_solvents != 0) {
+	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.nTinymols != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}	
 
@@ -242,7 +242,7 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		}
 	}
 
-	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
 
 		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 		const int nAtomsInTinymol = tinymol.nParticles;
@@ -250,7 +250,7 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, stepToLoadFrom);
 		const Float3 deltaPos = new_position - grofile.atoms[tinymol.firstParticleIdInGrofile].position;
 
-		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomType[0]);
+		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomTypes[0][0]);
 
 		for (int i = 0; i < nAtomsInTinymol; i++) {
 			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
@@ -287,7 +287,7 @@ std::vector<Float3> Environment::GetForces(int64_t step) const {
 			}
 		}
 
-		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
 			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 			const int nAtomsInTinymol = tinymol.nParticles;
 
@@ -322,7 +322,7 @@ Trajectory Environment::WriteSimToTrajectory() const {
 			}
 		}
 
-		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
 			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 			const int nAtomsInTinymol = tinymol.nParticles;
 

@@ -478,7 +478,7 @@ void NeighborList::Controller::_UpdateNlist(SimulationDevice* simDev, const BoxP
         LIMA_UTILS::genericErrorCheckNoSync("Error during updateNlists: UpdateCompoundsNeighborGridnodes");
 
 
-		if (boxparams.n_solvents > 0) {
+		if (boxparams.nTinymols > 0) {
 			// Stream 3
 			const int n_blocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) / nthreads_in_blockgridkernel + 1;
 			updateBlockgridKernel<BoundaryCondition> << <n_blocks, nthreads_in_blockgridkernel, 0, streams[2] >> > (grid, boxparams.boxSize, buffers);

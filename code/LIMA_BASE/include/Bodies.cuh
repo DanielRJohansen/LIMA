@@ -35,7 +35,7 @@ namespace Bondtypes {
 			static Parameters CreateFromCharmm(float b0, float kB);
 		};
 
-		SingleBond() {}
+		constexpr SingleBond() {}
 		SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
 		Parameters params;
@@ -83,7 +83,7 @@ namespace Bondtypes {
 			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb);
 		};
 
-		AngleUreyBradleyBond() {}
+		constexpr AngleUreyBradleyBond() {}
 		AngleUreyBradleyBond(std::array<uint8_t, 3> ids, const Parameters&);
 
 		Parameters params;
@@ -157,7 +157,7 @@ struct CompoundCoords {
 
 
 // struct with data that only the solvent itself needs
-struct TinyMolState {
+struct TinyMolParticleState {
 	Float3 vel_prev{};
 	Float3 force_prev{};
 	int tinymolTypeIndex = -1; // wrong place to have this

@@ -169,6 +169,52 @@ void AddBondsFromMap(auto& bondGroup, const auto& bondMap, auto& availableBondId
 	}
 };
 
+std::vector<BondgroupTinymol> TinyMolFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<std::vector<int>>& tinymolParticlesIds) {
+	std::vector<BondgroupTinymol> bondgroups(tinymolParticlesIds.size());
+
+	// TODO: OPTIM: Waste that we make these maps both for compounds and tinymols, they could reuse the same
+	const std::vector<std::vector<int>> pid2SinglebondIdMap = mapParticleToBondIds(topology.singlebonds, topology.particles.size());
+	const std::vector<std::vector<int>> pid2AnglebondIdMap = mapParticleToBondIds(topology.anglebonds, topology.particles.size());
+
+	for (int tid = 0; tid < tinymolParticlesIds.size(); tid++) {
+		bondgroups[tid].nParticles = tinymolParticlesIds[tid].size();
+
+		// First find the bonds that are in this tinymol
+		std::set<int> availableSinglebondIds;
+		std::set<int> availableAnglebondIds;
+		for (int pid = 0; pid < tinymolParticlesIds[tid].size(); pid++) {
+			const int particleId = tinymolParticlesIds[tid][pid];
+			for (int singlebondId : pid2SinglebondIdMap[particleId]) {
+				availableSinglebondIds.insert(singlebondId);
+			}
+			for (int anglebondId : pid2AnglebondIdMap[particleId]) {
+				availableAnglebondIds.insert(anglebondId);
+			}
+		}
+
+		assert(availableSinglebondIds.size() <= BondGroup::maxSinglebonds);
+		assert(availableAnglebondIds.size() <= BondGroup::maxAnglebonds);
+
+		for (int singlebondId : availableSinglebondIds) {
+			std::array<uint8_t, 2> idsLocalToTinymol = {
+				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0])
+			};
+			bondgroups[tid].singlebonds[bondgroups[tid].nSinglebonds++] = SingleBond(idsLocalToTinymol, topology.singlebonds[singlebondId].params );
+		}
+		for (int anglebondId : availableAnglebondIds) {
+			std::array<uint8_t, 3> idsLocalToTinymol = {
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[2] - tinymolParticlesIds[tid][0])
+			};
+			bondgroups[tid].anglebonds[bondgroups[tid].nAnglebonds++] = AngleUreyBradleyBond(idsLocalToTinymol, topology.anglebonds[anglebondId].params);
+		}
+	}
+
+	return bondgroups;
+}
+
 
 std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap) {
 

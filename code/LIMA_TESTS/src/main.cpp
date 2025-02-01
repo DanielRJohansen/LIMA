@@ -59,7 +59,7 @@ int main() {
 		//Display::TestDisplay();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
-		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
+		doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
 		//UreyBradleyForceAndPotentialSanityCheck(envmode);
 		//SinglebondOscillationTest(envmode);
@@ -144,7 +144,7 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		RunAllUnitTests();
+	//	RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

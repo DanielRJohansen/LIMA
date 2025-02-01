@@ -19,7 +19,7 @@
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc)
 	, m_logger(std::move(logger))
-	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.n_solvents, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size()))
+	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.nTinymols, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size()))
 {
 	simulation = std::move(_sim);
 
@@ -64,7 +64,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	compoundQuickData = CompoundQuickData::CreateBuffer(*simulation);
 
-	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.n_solvents, boxparams.total_particles_upperbound);
+	thermostat = std::make_unique<Thermostat>(boxparams.n_compounds, boxparams.nTinymolParticles, boxparams.total_particles_upperbound);
 
 	nlistController = std::make_unique<NeighborList::Controller>(boxparams);
 	
@@ -306,18 +306,25 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
 	}
 
-	if (boxparams.n_solvents > 0) {
+	if (boxparams.nTinymols > 0) {
+		const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
 		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
 		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
-			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
+			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
+		// TODO: Need a list of tinymol identifiers, so we dont compute LJ with own molecule
 		// TODO: Too many threads, we rarely get close to filling the block
-		solventForceKernel<BoundaryCondition, emvariant> 
-			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
+		/*solventForceKernel<BoundaryCondition, emvariant> 
+			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");*/
+
+		TinymolBondgroupsKernel<emvariant>
+			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, BondgroupTinymol::maxParticles, 1), 0, cudaStreams[2] >> >
+			(sim_dev, step, forceEnergyInterims->forceEnergiesTinymolBondgroups);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolBondgroupsKernel");
 	}
 	
 
@@ -347,17 +354,13 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
-	if (boxparams.n_solvents > 0) {
-		const bool isTransferStep = SolventBlocksCircularQueue::isTransferStep(step);
-
+	if (boxparams.nTinymols > 0) {	
 		TinymolIntegrateAndLogKernel<BoundaryCondition, emvariant>
 			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
-			(sim_dev, step, forceEnergyInterims->forceEnergiesCompoundinteractions, forceEnergyInterims->forceEnergiesTinymolinteractions);
+			(sim_dev, step, *forceEnergyInterims);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrateAndLogKernel");
 
-
-
-		if (isTransferStep) {
+		if (SolventBlocksCircularQueue::isTransferStep(step)) {
 			SolventPretransferKernel<BoundaryCondition> 
 				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1]>>> 
 				(sim_dev, step, *tinymolTransferModule);
@@ -367,15 +370,6 @@ void Engine::_deviceMaster() {
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventTransferKernel");
 
 		}
-
-
-		/*if (isTransferStep) {
-			cudaDeviceSynchronize();
-			solventTransferKernel<BoundaryCondition> 
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlockTransfermodule::max_queue_size, 0, cudaStreams[1]>>> 
-				(sim_dev, step);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after solventTransferKernel");
-		}*/
 	}	
 }
 
@@ -448,7 +442,7 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 	case BoxEdgePotential:
 		if (simulation->box_host->boxparams.n_compounds > 0)
 			SupernaturalForces::BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
-		if (simulation->box_host->boxparams.n_solvents > 0)
+		if (simulation->box_host->boxparams.nTinymols > 0)
 			SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simulation->getStep());
 		break;
 	}

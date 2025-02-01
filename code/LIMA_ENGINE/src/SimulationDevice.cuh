@@ -23,7 +23,7 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolState* tinyMols,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolParticleState* tinyMolParticlesState,
 		SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
@@ -33,7 +33,7 @@ struct BoxState {
 	NodeIndex* const compoundOrigos;
 	Float3* const compoundsRelposNm;
 
-	TinyMolState* const tinyMols;
+	TinyMolParticleState* const tinyMolParticlesState;
 	SolventBlock* const solventblockgrid_circularqueue;
 };
 
@@ -126,7 +126,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks, int nBondgroups);
+	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups);
 	void Free() const;
 
 	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
@@ -153,4 +153,5 @@ struct ForceEnergyInterims {
 	// Tinymol
 	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
 	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
+	ForceEnergy* forceEnergiesTinymolBondgroups = nullptr;
 };

@@ -58,6 +58,7 @@ namespace ForceCorrectness {
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
+		params.data_logging_interval = 1;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 		std::vector<float> particle_temps{ 400, 1200 };
@@ -82,10 +83,15 @@ namespace ForceCorrectness {
 			}
 
 			// Give the solvent a velocty
-			{	
-				const float solventMass = env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMols[0].tinymolTypeIndex].mass;
-				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
-				env.getSimPtr()->box_host->tinyMols[0].vel_prev = Float3{ -1, 0, 0 } * vel;
+			{
+				float solventMass = 0;
+				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+					solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
+				}
+				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass) * 0;	// [m/s] <=> [nm/ns]
+				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+					env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
+				}
 			}
 
 

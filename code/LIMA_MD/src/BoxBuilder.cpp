@@ -49,31 +49,45 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	for (const auto& tinyMol : tinyMols) {
-		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
+		if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
-		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+		auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+		SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
+		
+		std::vector<Coord> relPos(tinyMol.nParticles);
+		std::vector<uint32_t> ids(tinyMol.nParticles);
+		std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
+		for (int i = 0; i < tinyMol.nParticles; i++) {
+			relPos[i] = Coord{tinyMol.positions[i] - nodeIndexOfTinymol.toFloat3()};			
+			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
+			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
+		}
 
-		SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndex, 0, box.boxparams.boxSize).addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
-		box.boxparams.n_solvents++;
+		solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup); // TEMP 
+		box.boxparams.nTinymolParticles += tinyMol.nParticles;
+		box.boxparams.nTinymols++;
 	}
 
 	std::mt19937 gen(1238971);
-	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
+	std::uniform_real_distribution<float> distribution(-1.f, 1.f); // TODO: GROMACS COMPARISON: This is why we dont match gromacs in RMSD
 
 	// Setup forces and vel's for VVS
-	box.tinyMols.reserve(box.boxparams.n_solvents);
-	for (int i = 0; i < box.boxparams.n_solvents; i++) {
-		
-		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
-		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
+	box.tinyMolParticlesState.resize(0);
+	box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
+	for (int i = 0; i < box.boxparams.nTinymols; i++) {
+		for (int j = 0; j < tinyMols[i].nParticles; j++)
+			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
 
-		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
+		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
+		/*const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);*/
+
+		//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}    
-	box.boxparams.total_particles += box.boxparams.n_solvents;
-	return box.boxparams.n_solvents;
+	box.boxparams.total_particles += box.boxparams.nTinymolParticles;
+	return box.boxparams.nTinymolParticles;
 }
 
 
@@ -102,7 +116,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 #endif
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
+	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.nTinymolParticles; // Compounds often read/write uncompressed, while tinymols always read/write compressed
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
 	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;

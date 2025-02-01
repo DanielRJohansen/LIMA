@@ -26,6 +26,9 @@ class BondedParticlesLUTManagerFactory {
 				const ParticleToCompoundMapping& mappingSelf = particleToCompoundMap[gid_self];
 				const ParticleToCompoundMapping& mappingOther = particleToCompoundMap[gid_other];
 
+				if (mappingOther.compoundId == -1 && mappingSelf.compoundId == -1)
+					return; // This bond is in an tinymol, and LJignore is not relevant
+
 				if (mappingOther.compoundId == -1 || mappingSelf.compoundId == -1)
 					throw std::runtime_error("compoundId is -1");
 
@@ -105,7 +108,7 @@ std::array<int, n> TransformBondIds(const std::array<int, n>& ids, int offset) {
 
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
 void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, 
-	std::vector<BondtypeFactory>& topology, const std::unordered_set<int>& ignoredParticles)
+	std::vector<BondtypeFactory>& topology)
 {
 	for (const auto& bondTopol : bondsInTopfile) {
 		std::array<int, BondType::nAtoms> globalIds;
@@ -113,8 +116,6 @@ void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile
 
 		bool bondExists = true;
 		for (int i = 0; i < BondType::nAtoms; ++i) {
-			if (ignoredParticles.contains(bondTopol.ids[i]))
-				bondExists = false;
 			if (bondTopol.ids[i] + atomIdOffset >= particles.size()) {
 				bondExists = false;
 				break;
@@ -163,8 +164,6 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 		const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
 
-		std::unordered_set<int> ignoredParticles;
-
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
 
@@ -178,11 +177,11 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			indexInGrofile++;
 		}
 
-		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds, ignoredParticles);
-		LoadBondsIntoTopology<PairBond, PairBondFactory, TopologyFile::PairBond>(molType.pairbonds, particleIdOffset, forcefield, pairbonds, ignoredParticles);
-		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds, ignoredParticles);
-		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds, ignoredParticles);
-		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds, ignoredParticles);
+		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds);
+		LoadBondsIntoTopology<PairBond, PairBondFactory, TopologyFile::PairBond>(molType.pairbonds, particleIdOffset, forcefield, pairbonds);
+		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds);
+		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds);
+		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds);
 	}
 }
 
@@ -212,36 +211,36 @@ void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelec
 	}
 }
 
-template<typename BondtypeFactory>
-std::vector<BondtypeFactory> _RemoveBondsFromTinymol(const std::vector<BondtypeFactory>& bonds, const std::vector<ParticleToCompoundMapping>& p2cMap) {
-	std::vector<bool> bondsThatBelongToCompounds(bonds.size(), true);
-
-	for (int bid = 0; bid < bonds.size(); bid++) {
-		for (int i = 0; i < BondtypeFactory::nAtoms; i++) {
-			if (p2cMap[bonds[bid].global_atom_indexes[i]].compoundId == -1) {
-				bondsThatBelongToCompounds[bid] = false;
-				break;
-			}
-		}
-	}
-
-	std::vector<BondtypeFactory> newBonds;
-	newBonds.reserve(bonds.size());
-	for (int bid = 0; bid < bonds.size(); bid++) {
-		if (bondsThatBelongToCompounds[bid])
-			newBonds.emplace_back(bonds[bid]);
-	}
-
-	return newBonds;
-}
-
-void SuperTopology::RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>& p2cMap) {
-	singlebonds = _RemoveBondsFromTinymol(singlebonds, p2cMap);
-	pairbonds = _RemoveBondsFromTinymol(pairbonds, p2cMap);
-	anglebonds = _RemoveBondsFromTinymol(anglebonds, p2cMap);
-	dihedralbonds = _RemoveBondsFromTinymol(dihedralbonds, p2cMap);
-	improperdihedralbonds = _RemoveBondsFromTinymol(improperdihedralbonds, p2cMap);
-}
+//template<typename BondtypeFactory>
+//std::vector<BondtypeFactory> _RemoveBondsFromTinymol(const std::vector<BondtypeFactory>& bonds, const std::vector<ParticleToCompoundMapping>& p2cMap) {
+//	std::vector<bool> bondsThatBelongToCompounds(bonds.size(), true);
+//
+//	for (int bid = 0; bid < bonds.size(); bid++) {
+//		for (int i = 0; i < BondtypeFactory::nAtoms; i++) {
+//			if (p2cMap[bonds[bid].global_atom_indexes[i]].compoundId == -1) {
+//				bondsThatBelongToCompounds[bid] = false;
+//				break;
+//			}
+//		}
+//	}
+//
+//	std::vector<BondtypeFactory> newBonds;
+//	newBonds.reserve(bonds.size());
+//	for (int bid = 0; bid < bonds.size(); bid++) {
+//		if (bondsThatBelongToCompounds[bid])
+//			newBonds.emplace_back(bonds[bid]);
+//	}
+//
+//	return newBonds;
+//}
+//
+//void SuperTopology::RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>& p2cMap) {
+//	singlebonds = _RemoveBondsFromTinymol(singlebonds, p2cMap);
+//	pairbonds = _RemoveBondsFromTinymol(pairbonds, p2cMap);
+//	anglebonds = _RemoveBondsFromTinymol(anglebonds, p2cMap);
+//	dihedralbonds = _RemoveBondsFromTinymol(dihedralbonds, p2cMap);
+//	improperdihedralbonds = _RemoveBondsFromTinymol(improperdihedralbonds, p2cMap);
+//}
 
 
 
@@ -323,18 +322,25 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 	std::vector<TinyMolFactory> tinyMols;
 	tinyMols.reserve(topology.particles.size()); // not accurate
 
-	for (const std::vector<int>& particleIds : particleidsInTinymols) {
 
-		// FOr now ignore that there are multiple atoms in a tinymol. LOOONG TODO
-		const int onlyParticleToTake = particleIds[0];
+	std::vector<BondgroupTinymol> bondgroups = TinyMolFactory::MakeBondgroups(topology, particleidsInTinymols);
 
-		tinyMols.emplace_back(TinyMolFactory{ 
-			topology.particles[onlyParticleToTake].position,
-			forcefield.GetActiveTinymoltypeIndex(topology.particles[onlyParticleToTake].topologyAtom.type),
-			topology.particles[onlyParticleToTake].topologyAtom.type,
-			static_cast<int>(particleIds.size()),
-			topology.particles[onlyParticleToTake].indexInGrofile
-			});
+	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {
+		const auto particleIds = particleidsInTinymols[tinymolIndex];
+
+		std::vector<Float3> positions(particleIds.size());
+		std::vector<int> tinymolTypeIndices(particleIds.size());
+		std::vector<std::string> atomTypes(particleIds.size());
+		std::vector<Float3> velocities(particleIds.size());
+		for (int i = 0; i < particleIds.size(); i++) {
+			positions[i] = topology.particles[particleIds[i]].position;
+			tinymolTypeIndices[i] = forcefield.GetActiveTinymoltypeIndex(topology.particles[particleIds[i]].topologyAtom.type);
+			atomTypes[i] = topology.particles[particleIds[i]].topologyAtom.type;
+			velocities[i] = Float3{};
+		}
+	
+
+		tinyMols.emplace_back(positions, tinymolTypeIndices, atomTypes, static_cast<int>(particleIds.size()), topology.particles[particleIds[0]].indexInGrofile, velocities, bondgroups[tinymolIndex]);
 	}
 
 	return tinyMols;
@@ -632,7 +638,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
 
-	superTopology.RemoveBondsFromTinymol(particleToCompoundidMap);
+	//superTopology.RemoveBondsFromTinymol(particleToCompoundidMap);
 
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);
@@ -657,6 +663,9 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 
 	for (int i = 0; i < particleToCompoundidMap.size(); i++) {
+		if (particleToCompoundidMap[i].compoundId == -1)
+			break;// We've reached tinymols. This is not good code...
+
 		const auto cRef = particleToCompoundidMap[i];
 		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
 

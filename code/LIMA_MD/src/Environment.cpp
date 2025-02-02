@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_UPDATE = 1;
-constexpr float MIN_STEP_TIME = 50.f;		// [ms] Set to 0 for full speed sim
+constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::Environment(const fs::path& workdir, EnvMode mode)
@@ -181,6 +181,7 @@ void Environment::sayHello() {
 
 std::chrono::duration<double> Environment::run() {
 	const bool emVariant = simulation->simparams_host.em_variant;
+	const bool stepwise = simulation->simparams_host.stepwise;
     if (!prepareForRun()) { return {}; }
 
 	std::unique_ptr<Display> display = nullptr;
@@ -195,7 +196,7 @@ std::chrono::duration<double> Environment::run() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(compounds, boxparams, display.get(), emVariant)) {
+		if (!handleDisplay(compounds, boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -365,7 +366,7 @@ void Environment::handleStatus(const int64_t step) {
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant) {
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
 	if (m_mode != Full) {
 		return true;
 	}
@@ -383,7 +384,7 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 
 		display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
-		));
+		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;
 	}

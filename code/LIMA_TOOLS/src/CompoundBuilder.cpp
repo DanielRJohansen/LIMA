@@ -325,14 +325,16 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 
 	std::vector<BondgroupTinymol> bondgroups = TinyMolFactory::MakeBondgroups(topology, particleidsInTinymols);
 
-	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {
-		const auto particleIds = particleidsInTinymols[tinymolIndex];
+	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {		
+		const std::vector<int>& particleIds = particleidsInTinymols[tinymolIndex];
+		const int nParticlesToTake = particleIds.size();
 
-		std::vector<Float3> positions(particleIds.size());
-		std::vector<int> tinymolTypeIndices(particleIds.size());
-		std::vector<std::string> atomTypes(particleIds.size());
-		std::vector<Float3> velocities(particleIds.size());
-		for (int i = 0; i < particleIds.size(); i++) {
+
+		std::vector<Float3> positions(nParticlesToTake);
+		std::vector<int> tinymolTypeIndices(nParticlesToTake);
+		std::vector<std::string> atomTypes(nParticlesToTake);
+		std::vector<Float3> velocities(nParticlesToTake);
+		for (int i = 0; i < nParticlesToTake; i++) {
 			positions[i] = topology.particles[particleIds[i]].position;
 			tinymolTypeIndices[i] = forcefield.GetActiveTinymoltypeIndex(topology.particles[particleIds[i]].topologyAtom.type);
 			atomTypes[i] = topology.particles[particleIds[i]].topologyAtom.type;
@@ -340,7 +342,7 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 		}
 	
 
-		tinyMols.emplace_back(positions, tinymolTypeIndices, atomTypes, static_cast<int>(particleIds.size()), topology.particles[particleIds[0]].indexInGrofile, velocities, bondgroups[tinymolIndex]);
+		tinyMols.emplace_back(positions, tinymolTypeIndices, atomTypes, nParticlesToTake, topology.particles[particleIds[0]].indexInGrofile, velocities, bondgroups[tinymolIndex]);
 	}
 
 	return tinyMols;
@@ -680,8 +682,9 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
-	const std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
-	//const std::vector<TinyMolFactory> tinyMols{};
+	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
+	//tinyMols[0] = tinyMols[2];
+	tinyMols.resize(20);
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 	return std::make_unique<BoxImage>(

@@ -101,7 +101,7 @@ private:
 	void handleStatus(int64_t step);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
 
 	void sayHello();
 

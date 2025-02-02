@@ -60,7 +60,11 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 		std::vector<uint32_t> ids(tinyMol.nParticles);
 		std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
 		for (int i = 0; i < tinyMol.nParticles; i++) {
-			relPos[i] = Coord{tinyMol.positions[i] - nodeIndexOfTinymol.toFloat3()};			
+			Float3 hyperPos = tinyMol.positions[i];
+			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, static_cast<float>(box.boxparams.boxSize), PBC);
+			//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
+			relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.boxSize, PBC);
+			//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
 			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
 			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
 		}

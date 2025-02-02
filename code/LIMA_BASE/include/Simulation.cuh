@@ -43,6 +43,10 @@ struct SimParams {
 	int64_t steps_per_temperature_measurement = 200;	
 	bool apply_thermostat = false;
 
+
+
+	// Debug params
+	bool stepwise = false; // Wait for user input key "N" before each step
 };
 
 struct SimSignals {

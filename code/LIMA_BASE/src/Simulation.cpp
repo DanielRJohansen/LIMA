@@ -83,6 +83,8 @@ SimParams::SimParams(const fs::path& path) {
 
 	Readi(dict, steps_per_temperature_measurement, "steps_per_temperature_measurement");
 	Readb(dict, apply_thermostat, "apply_thermostat");
+
+	Readb(dict, stepwise, "stepwise");
 }
 
 
@@ -115,6 +117,9 @@ void SimParams::dumpToFile(const fs::path& filename) {
 	file << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
 	file << "apply_thermostat=" << (apply_thermostat ? "true" : "false") << " # will speed up or slow down particles to achieve the desired temperature\n";
 	file << "# desired_temperature - not currently available forced to be 300 [k]\n";
+
+	file << "\n// Debug params\n";
+	file << "stepwise=" << (stepwise ? "true" : "false") << " # Wait for user to input key 'N' before each step\n";
 
 	file.close();
 }

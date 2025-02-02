@@ -251,6 +251,16 @@ void Engine::bootstrapTrajbufferWithCoords() {
 		}
 	}
 
+	for (int blockId = 0; blockId < BoxGrid::BlocksTotal(simulation->box_host->boxparams.boxSize); blockId++) {
+		const SolventBlock& solventBlock = *SolventBlocksCircularQueue::getBlockPtr(simulation->box_host->solventblockgrid_circularqueue.data(), BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize), blockId, 0);
+		const NodeIndex origo = BoxGrid::Get3dIndexWithNNodes(blockId, BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+
+		for (int pid = 0; pid < solventBlock.nParticles; pid++) {
+			const int solventId = solventBlock.ids[pid];
+			const Float3 pos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, solventBlock.rel_pos[pid].ToRelpos());
+			simulation->traj_buffer->getSolventparticleDatapointAtIndex(solventId, 0) = pos;
+		}		
+	}
 	step_at_last_traj_transfer = 0.f;
 	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(0);
 
@@ -314,12 +324,11 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
-		// TODO: Need a list of tinymol identifiers, so we dont compute LJ with own molecule
 		// TODO: Too many threads, we rarely get close to filling the block
-		/*solventForceKernel<BoundaryCondition, emvariant> 
+		solventForceKernel<BoundaryCondition, emvariant> 
 			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");*/
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 
 		TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, BondgroupTinymol::maxParticles, 1), 0, cudaStreams[2] >> >

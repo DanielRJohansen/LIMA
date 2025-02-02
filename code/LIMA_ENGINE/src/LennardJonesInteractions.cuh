@@ -185,14 +185,18 @@ namespace LJ {
 	}
 
 	// Specific to solvent kernel	
-	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, const bool exclude_own_index, float& potE_sum,
-		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {
+	template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
+	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
+		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
 		Float3 force{};
 
 		for (int i = 0; i < n_elements; i++) {
 			// If computing within block, dont compute force against thread's solvent
-			if (exclude_own_index && threadIdx.x == i) { continue; }
+			//if (exclude_own_index && threadIdx.x == i) { continue; }
+
+			if constexpr (checkForSameTinymolId) {
+				if (tinymolIds[threadIdx.x] == tinymolIds[i]) { continue; }
+			}
 
 			const Float3 diff = (relpos_others[i] - relpos_self);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
@@ -201,7 +205,7 @@ namespace LJ {
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
 				CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
 				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-				exclude_own_index ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
+				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
 				threadIdx.x, i
 			);
 		}

@@ -74,6 +74,8 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
+
+const bool AllAtomSolvent = false;	// If false, only the first atom in the solvent is used for the solvent
 // -------------------------------------------------------------------------------------------------------------- //
 
 

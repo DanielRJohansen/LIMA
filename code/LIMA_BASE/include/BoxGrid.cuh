@@ -37,6 +37,7 @@ struct SolventBlock {
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
+			particlesBondgroupIds[threadIdx.x] = block.particlesBondgroupIds[threadIdx.x];
 			// TODO: Only do if blockActive?
 			bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = block.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
 			bondgroups[threadIdx.x] = block.bondgroups[threadIdx.x];
@@ -59,7 +60,8 @@ struct SolventBlock {
 		for (int i = 0; i < rel_positions.size(); i++) {
 			this->rel_pos[nParticles] = rel_positions[i];
 			this->ids[nParticles] = ids[i];
-			this->atomtypeIds[nParticles] = atomtypeIds[i];			
+			this->atomtypeIds[nParticles] = atomtypeIds[i];
+			this->particlesBondgroupIds[nParticles] = nBondgroups - 1;
 			nParticles++;
 		}
 		return true;
@@ -68,10 +70,11 @@ struct SolventBlock {
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
-	uint8_t bondgroupsFirstAtomindexInSolventblock[maxBondgroups];
-
+	uint8_t particlesBondgroupIds[MAX_SOLVENTS_IN_BLOCK];
 
 	BondgroupTinymol bondgroups[maxBondgroups];
+	uint8_t bondgroupsFirstAtomindexInSolventblock[maxBondgroups];
+	
 	int nParticles = 0;
 	int nBondgroups = 0;
 };

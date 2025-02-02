@@ -52,6 +52,7 @@ public:
 	Coord* incomingPositions;
 	uint32_t* incomingIds;
 	uint8_t* incomingAtomtypeIds;
+	uint8_t* incomingBondgroupIds;
 
 	// TODO: This should just be an index into a variant of the bondgroup kept in constant memory
 	BondgroupTinymol* incomingBondgroups; // 64 elements per block 
@@ -66,6 +67,7 @@ public:
 		cudaMalloc(&transferModule.incomingPositions, sizeof(Coord) * 6 * maxOutgoingParticles * nBlocksTotal);
 		cudaMalloc(&transferModule.incomingIds, sizeof(uint32_t) * 6 * maxOutgoingParticles * nBlocksTotal);
 		cudaMalloc(&transferModule.incomingAtomtypeIds, sizeof(uint8_t) * 6 * maxOutgoingParticles * nBlocksTotal);
+		cudaMalloc(&transferModule.incomingBondgroupIds, sizeof(uint8_t) * 6 * maxOutgoingParticles * nBlocksTotal);
 
 		cudaMalloc(&transferModule.incomingBondgroups, sizeof(BondgroupTinymol) * 6 * maxOutgoingBondgroups * nBlocksTotal);
 		cudaMalloc(&transferModule.incomingBondgroupsParticlesOffset, sizeof(int) * 6 * maxOutgoingBondgroups  * nBlocksTotal);
@@ -79,6 +81,7 @@ public:
 		cudaFree(incomingPositions);
 		cudaFree(incomingIds);
 		cudaFree(incomingAtomtypeIds);
+		cudaFree(incomingBondgroupIds);
 
 		cudaFree(incomingBondgroups);
 		cudaFree(incomingBondgroupsParticlesOffset);

@@ -683,8 +683,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
-	//tinyMols[0] = tinyMols[2];
-	tinyMols.resize(20);
+
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 	return std::make_unique<BoxImage>(

@@ -45,8 +45,8 @@ ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSol
 	}
 
 	if (nBondgroups > 0) {
-		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * nBondgroups * BondGroup::maxParticles);
-		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * nBondgroups * BondGroup::maxParticles);
+		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * SolventBlock::MAX_SOLVENTS_IN_BLOCK * nSolventblocks);
+		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * SolventBlock::MAX_SOLVENTS_IN_BLOCK * nSolventblocks);
 	}
 
 	if (nTinymols > 0) {

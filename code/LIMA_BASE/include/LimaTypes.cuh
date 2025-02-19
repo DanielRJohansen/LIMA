@@ -109,6 +109,7 @@ struct Float3 {
 		return Float3{};
 	}
 	__host__ __device__ Float3 norm() const {
+		//norm3d(x, y, z): TODO: OPTIM: Use the cuda math api for this and similar functions
 		const float l = len();
 		if (l)
 			return *this * (1.f / l);

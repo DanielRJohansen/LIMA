@@ -38,7 +38,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 		sim_dev = genericMoveToDevice(sim_dev, 1);
 	}
 	setDeviceConstantMemory();
-	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr, nullptr);
+	boxStateCopy = std::make_unique<BoxState>(nullptr, nullptr, nullptr, nullptr); // TODO, just plain copy it now
 	boxConfigCopy = std::make_unique<BoxConfig>(nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);	
@@ -151,7 +151,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % simulation->simparams_host.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
-			auto [temperature, thermostatScalar] = thermostat->Temperature(sim_dev, simulation->box_host->boxparams, simulation->simparams_host);
+			auto [temperature, thermostatScalar] = thermostat->Temperature(sim_dev, simulation->box_host->boxparams, simulation->simparams_host, simulation->getStep());
 			simulation->temperature_buffer.push_back(temperature);
 			runstatus.current_temperature = temperature;
 
@@ -330,8 +330,11 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 
-		TinymolBondgroupsKernel<emvariant>
+		/*TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, BondgroupTinymol::maxParticles, 1), 0, cudaStreams[2] >> >
+			(sim_dev, step, forceEnergyInterims->forceEnergiesTinymolBondgroups);*/
+		TinymolBondgroupsKernel<emvariant>
+			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >
 			(sim_dev, step, forceEnergyInterims->forceEnergiesTinymolBondgroups);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolBondgroupsKernel");
 	}
@@ -377,7 +380,6 @@ void Engine::_deviceMaster() {
 
 			SolventTransferKernel<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>> (sim_dev, step, *tinymolTransferModule);
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventTransferKernel");
-
 		}
 	}	
 }

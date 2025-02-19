@@ -12,7 +12,7 @@ static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 // blocks are notcentered 
 struct SolventBlock {
 	static constexpr int maxBondgroups = 64;
-    static constexpr int MAX_SOLVENTS_IN_BLOCK = MAX_PARTICLES_IN_BOXGRIDNODE + 32; // ought to be bondgroups*3...
+    static constexpr int MAX_SOLVENTS_IN_BLOCK = 192; // ought to be bondgroups*3...
 	
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
@@ -38,19 +38,22 @@ struct SolventBlock {
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];
 			particlesBondgroupIds[threadIdx.x] = block.particlesBondgroupIds[threadIdx.x];
-			// TODO: Only do if blockActive?
+			states[threadIdx.x] = block.states[threadIdx.x];			
+		}
+		if (threadIdx.x < nBondgroups) {
 			bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = block.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
 			bondgroups[threadIdx.x] = block.bondgroups[threadIdx.x];
 		}
+
 	}
 	__host__ bool addSolvent(std::span<const Coord> rel_positions, std::span<const uint32_t> ids, 
-		std::span<const uint8_t> atomtypeIds, const BondgroupTinymol& bondgroup) 
+		std::span<const uint8_t> atomtypeIds, const BondgroupTinymol& bondgroup, 
+		std::span<const TinyMolParticleState> states)
 	{
-		if (nParticles + rel_positions.size() == MAX_SOLVENTS_IN_BLOCK) {
-			return false;// TODO: This should throw instead
-		}
-		if (nBondgroups == SolventBlock::maxBondgroups)
-			return false;// TODO: This should throw instead
+		if (nParticles + rel_positions.size() > MAX_SOLVENTS_IN_BLOCK) 
+			throw std::runtime_error("Too many solvents in block!\n");
+		if (nBondgroups >= SolventBlock::maxBondgroups)
+			throw std::runtime_error("Too many bondgroups in block!\n");
 
 		bondgroupsFirstAtomindexInSolventblock[nBondgroups] = nParticles;
 		bondgroups[nBondgroups] = bondgroup;
@@ -62,6 +65,7 @@ struct SolventBlock {
 			this->ids[nParticles] = ids[i];
 			this->atomtypeIds[nParticles] = atomtypeIds[i];
 			this->particlesBondgroupIds[nParticles] = nBondgroups - 1;
+			this->states[nParticles] = states[i];
 			nParticles++;
 		}
 		return true;
@@ -71,6 +75,7 @@ struct SolventBlock {
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t particlesBondgroupIds[MAX_SOLVENTS_IN_BLOCK];
+	TinyMolParticleState states[MAX_SOLVENTS_IN_BLOCK];
 
 	BondgroupTinymol bondgroups[maxBondgroups];
 	uint8_t bondgroupsFirstAtomindexInSolventblock[maxBondgroups];

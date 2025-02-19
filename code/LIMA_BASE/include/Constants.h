@@ -8,7 +8,10 @@
 // sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
 // somewhere in the code
 //#define LIMASAFEMODE
-const bool LIMA_PUSH = false;
+const bool INDEXING_CHECKS = false;
+
+// TODO: Move towards remove this option, and instead only have opt-in safety features: indexchecking, forcechecking, kernelsyncing
+const bool LIMA_PUSH = true;
 
 #if defined LIMA_PUSH && defined LIMASAFEMODE
 #error These are mutually exclusive

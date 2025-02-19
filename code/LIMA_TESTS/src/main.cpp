@@ -74,7 +74,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -105,7 +105,7 @@ int main() {
 		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
-
+		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
@@ -121,7 +121,7 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

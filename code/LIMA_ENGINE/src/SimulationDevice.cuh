@@ -23,7 +23,8 @@ struct BoxConfig {
 };
 
 struct BoxState {
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, TinyMolParticleState* tinyMolParticlesState,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, 
+		//TinyMolParticleState* tinyMolParticlesState,
 		SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundInterimState);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
@@ -33,7 +34,7 @@ struct BoxState {
 	NodeIndex* const compoundOrigos;
 	Float3* const compoundsRelposNm;
 
-	TinyMolParticleState* const tinyMolParticlesState;
+	//TinyMolParticleState* const tinyMolParticlesState;
 	SolventBlock* const solventblockgrid_circularqueue;
 };
 

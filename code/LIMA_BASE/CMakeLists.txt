@@ -20,6 +20,7 @@ add_library(LIMA_BASE STATIC
     src/Topologyfile.cpp
     src/BoxGrid.cpp
     src/PlotUtils.cpp
+    src/SimParams.cpp
  )
 
 target_include_directories(LIMA_BASE PRIVATE 

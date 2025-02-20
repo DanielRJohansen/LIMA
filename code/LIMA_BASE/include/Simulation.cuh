@@ -5,49 +5,11 @@
 #include <memory>
 #include <filesystem>
 #include "BoxGrid.cuh"
+#include "SimParams.h"
 
 namespace MDFiles { struct TrrFile; }
 
-enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
-enum BoundaryConditionSelect{NoBC, PBC};
-
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
-
-struct SimParams {
-	SimParams() {}
-	SimParams(const std::filesystem::path& path);
-	SimParams(std::initializer_list<int>) = delete;
-
-	void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
-
-	// Main params
-	uint64_t n_steps = 1000;
-	float dt = 2.f * FEMTO_TO_NANO;				// [ns]
-	bool em_variant = false;
-	float em_force_tolerance = 1000; // [kJ/mol/nm]
-	int stepsPerNlistupdate = 5;
-
-	// Physics params
-	BoundaryConditionSelect bc_select{ PBC };
-	bool enable_electrostatics = true;
-	float cutoff_nm = 1.2f;
-	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
-
-	// Output params
-	int data_logging_interval = 5;
-	bool save_energy = false;
-	ColoringMethod coloring_method = ColoringMethod::Atomname;
-
-	// Thermostat
-	int64_t steps_per_temperature_measurement = 200;	
-	bool apply_thermostat = false;
-
-
-
-	// Debug params
-	bool stepwise = false; // Wait for user input key "N" before each step
-};
 
 struct SimSignals {
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels

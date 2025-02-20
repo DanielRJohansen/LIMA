@@ -47,6 +47,7 @@ constexpr double FEMTO = 1e-15;
 constexpr double NANO_TO_FEMTO = 1e6;
 constexpr double FEMTO_TO_NANO = 1e-6;
 constexpr double NANO_TO_PICO = 1e3;
+constexpr double PICO_TO_NANO = 1e-3;
 
 constexpr float PI = 3.14159f;
 constexpr float kcalToJoule = 4184.f;

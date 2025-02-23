@@ -741,6 +741,7 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 			printf("Illegal count %d\n", nParticlesInBlock);
 		}
 	}
+
 	// Load positions
 	{
 		Coord* positionsAsCoord = (Coord*)positions;
@@ -783,60 +784,36 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 			forceEnergyInterrimsShared[singlebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE * 0.5f };
 			forceEnergyInterrimsShared[singlebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE * 0.5f };
 		}
+
+		for (int bid = 0; bid < bondgroupPtr->nAnglebonds; bid++) {
+			float potE{};
+			Float3 forces[AngleUreyBradleyBond::nAtoms];
+			AngleUreyBradleyBond anglebond = bondgroupPtr->anglebonds[bid];
+
+			if constexpr (!LIMA_PUSH) {
+				for (int i = 0; i < 3; i++)
+					if (anglebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock < 0 || anglebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock >= nParticlesInBlock)
+						printf("Illegal index %d\n", anglebond.atom_indexes[i]);
+			}
+
+			// Sets force and pot, not adding
+			LimaForcecalc::calcAnglebondForces(
+				positions[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
+				positions[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
+				positions[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock],
+				anglebond, forces, potE);
+
+			forceEnergyInterrimsShared[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE / 3.f }; // OPTIM mul with 0.333?
+			forceEnergyInterrimsShared[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE / 3.f };
+			forceEnergyInterrimsShared[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[2], potE / 3.f };
+		}
+
 	}
 	
-
-	// Anglebonds
-	{
-		//BondgroupTinymol* bondgroupPtr = nullptr;
-		//int bondgroupsFirstAtomIndexInSolventblock = -1;
-		//float potE{};
-		//Float3 forces[AngleUreyBradleyBond::nAtoms];
-		//AngleUreyBradleyBond anglebond;
-
-		//if (threadIdx.x < nBondgroupsInBlock) {
-		//	bondgroupPtr = &solventblockGlobalPtr->bondgroups[threadIdx.x];
-		//	bondgroupsFirstAtomIndexInSolventblock = solventblockGlobalPtr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
-
-		//	if (threadIdx.y < bondgroupPtr->nAnglebonds) {
-		//		anglebond = bondgroupPtr->anglebonds[threadIdx.y];
-
-		//		if constexpr (!LIMA_PUSH) {
-		//			for (int i = 0; i < 3; i++)
-		//				if (anglebond.atom_indexes[i] < 0 || anglebond.atom_indexes[i] >= nParticlesInBlock)
-		//					printf("Illegal index %d\n", anglebond.atom_indexes[i]);
-		//		}
-
-		//		// Sets force and pot, not adding
-		//		LimaForcecalc::calcAnglebondForces(
-		//			positions[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock],
-		//			positions[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock],
-		//			positions[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock],
-		//			anglebond, forces, potE);
-		//	}
-//		}
-
-		//// We can safely assume there's no overlap between the bondgroups used particles, thus 1 thread per bondgroup can write to shared mem at a time
-		//for (int i = 0; i < BondgroupTinymol::maxParticles; i++) {
-		//	if (threadIdx.x < nBondgroupsInBlock && threadIdx.y == i && threadIdx.y < bondgroupPtr->nAnglebonds) {
-		//		forceEnergyInterrimsShared[anglebond.atom_indexes[0] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[0], potE / 3.f }; // OPTIM mul with 0.333?
-		//		forceEnergyInterrimsShared[anglebond.atom_indexes[1] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[1], potE / 3.f };
-		//		forceEnergyInterrimsShared[anglebond.atom_indexes[2] + bondgroupsFirstAtomIndexInSolventblock] += ForceEnergy{ forces[2], potE / 3.f };
-		//	}
-		//	__syncthreads();
-		//}
-	}
-
-	//if (threadIdx.y == 0 && threadIdx.x < nParticlesInBlock) {
-	//	printf("\nid %d force %f %f %f\n", threadIdx.x, forceEnergyInterrimsShared[threadIdx.x].force.x, forceEnergyInterrimsShared[threadIdx.x].force.y, forceEnergyInterrimsShared[threadIdx.x].force.z);
-	//}
-
 
 	// Write forceenergy to global mem
 	if (nParticlesInBlock > 0) {
 		__syncthreads();
-		/*if (threadIdx.x < nParticlesInBlock && forceEnergyInterrimsShared[threadIdx.x].force.lenSquared() == 0.f)
-			printf("No Force. touched %d pot %f\n", touched[threadIdx.x], forceEnergyInterrimsShared[threadIdx.x].potE);*/
 		auto block = cooperative_groups::this_thread_block();
 		cooperative_groups::memcpy_async(block, &forceEnergies[solventblockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK], forceEnergyInterrimsShared, sizeof(ForceEnergy) * nParticlesInBlock);
 	}

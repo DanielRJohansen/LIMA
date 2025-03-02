@@ -259,7 +259,7 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		}		
 	}
 
-	if (particlesUpdated != grofile.atoms.size()) {
+	if (AllAtom && particlesUpdated != grofile.atoms.size()) {
 		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 	}
 }

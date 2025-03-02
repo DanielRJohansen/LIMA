@@ -309,8 +309,13 @@ std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int
 
 		if (collection.size() > 3 || collectionIsCustomLimaMolecule)
 			molecules.emplace_back(collection);
-		else
-			tinyMolecules.emplace_back(collection);
+		else //{
+			/*if constexpr (AllAtom)*/
+				tinyMolecules.emplace_back(collection);
+		//	else
+		//		tinyMolecules.emplace_back(std::vector{ collection[0] });
+		//}
+			
 	}
 
 	return { molecules, tinyMolecules };

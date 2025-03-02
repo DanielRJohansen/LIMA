@@ -5,6 +5,7 @@
 
 #include <random>
 #include <format>
+#include <numeric>
 
 using namespace LIMA_Print;
 
@@ -83,12 +84,21 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 	box.tinyMolParticlesState.resize(0);
 	box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
 	for (int i = 0; i < box.boxparams.nTinymols; i++) {
-		for (int j = 0; j < tinyMols[i].nParticles; j++)
-			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
-
+		
 		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
-		/*const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);*/
+
+		const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
+			[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
+		);
+		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
+
+		for (int j = 0; j < tinyMols[i].nParticles; j++) {
+			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
+			box.tinyMolParticlesState.back().vel_prev = direction * velocity;
+		}
+
+		
 
 		//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}    

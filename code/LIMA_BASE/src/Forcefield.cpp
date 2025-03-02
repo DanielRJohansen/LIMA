@@ -256,9 +256,11 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
 	LoadFileIntoForcefield(file);
 
-	//// TEMP while we force solvents to be singleparticle
-	//if (tinymolTypes->_getAll().contains("OW"))
-	//	tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
+	// TEMP while we force solvents to be singleparticle
+	if constexpr (!AllAtom) {
+		if (tinymolTypes->_getAll().contains("OW"))
+			tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
+	}
 }
 
 LIMAForcefield::~LIMAForcefield() {}

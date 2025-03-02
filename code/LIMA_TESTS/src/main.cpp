@@ -86,7 +86,7 @@ int main() {
 
 		
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 		//const fs::path work_dir = simulations_dir / "test";
@@ -166,8 +166,8 @@ void RunAllUnitTests() {
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.224e-3, 2e-5));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 8.3e-5, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.184e-4, 2e-5));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

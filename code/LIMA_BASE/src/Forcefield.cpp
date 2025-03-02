@@ -307,6 +307,8 @@ ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
 	for (int i = 0; i < activeParameters.size(); i++) {
 		const AtomType& at = activeParameters[i];
 		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigmaHalf, at.parameters.epsilonSqrt, at.mass, at.charge };
+		if (!AllAtom)
+			forcefieldTinymol.types[i].charge = 0;
 	}
 	return forcefieldTinymol;
 }

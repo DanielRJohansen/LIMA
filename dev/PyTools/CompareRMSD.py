@@ -23,8 +23,8 @@ def CompareRMSD(trr1Path, trr2Path, groPath):
     print("rmsd2")
 
     # Plot RMSD comparison
-    plt.plot(rmsd1.results.rmsd[:, 1], rmsd1.results.rmsd[:, 2], label="Run 1")
-    plt.plot(rmsd2.results.rmsd[:, 1], rmsd2.results.rmsd[:, 2], label="Run 2")
+    plt.plot(rmsd1.results.rmsd[:, 1], rmsd1.results.rmsd[:, 2], label=trr1Path)
+    plt.plot(rmsd2.results.rmsd[:, 1], rmsd2.results.rmsd[:, 2], label=trr2Path)
     plt.xlabel("Time (ps)")
     plt.ylabel("RMSD (nm)")
     plt.legend()

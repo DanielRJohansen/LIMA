@@ -272,7 +272,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 				__syncthreads();
 
 				if (threadIdx.x < compound.n_particles) {
-					force += LJ::computeSolventToCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], n_elements_this_stride, 
+					force += LJ::computeSolventToCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], particleCharge, n_elements_this_stride,
 						utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared, forcefieldTinymol_shared, neighborAtomstypes);
 				}
 				__syncthreads();
@@ -342,10 +342,11 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	__syncthreads();
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
-#ifdef FORCE_NAN_CHECK
-	if (isnan(forceEnergy.force.len()))
-		printf("NAN\n");
-#endif
+
+	if constexpr (FORCE_CHECKS)
+		if (isnan(forceEnergy.force.len()))
+			printf("NAN\n");
+
 	float speed = 0.f;
 	if (threadIdx.x < nParticles) {
 		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
@@ -465,10 +466,12 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 			}
 			__syncthreads();
 
+			const float* const charges = &boxConfig.compoundsAtomCharges[neighborcompound_index * MAX_COMPOUND_PARTICLES];
+
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 			if (threadActive) {// TODO: use computePote template param here
 				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum,
-					utility_buffer_small, idSelf, DeviceConstants::tinymolForcefield, tinymolTypeId);
+					utility_buffer_small, idSelf, DeviceConstants::tinymolForcefield, tinymolTypeId, charges);
 			}
 			__syncthreads();
 		}

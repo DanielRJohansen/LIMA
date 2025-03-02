@@ -72,9 +72,9 @@ namespace PhysicsUtilsDevice {
 	// <param name="diff">[nm]</param>
 	// <returns>[J/mol   /   modifiedCoulombConstant ]</returns>
 	//constexpr float modifiedCoulombConstant = 1.f;
-	__device__ inline float CalcCoulumbPotential_optim(const float myCharge, const float otherCharge, const Float3& diff)
+	__device__ inline float CalcCoulumbPotential_optim(const float chargeProduct, const Float3& diff)
 	{
-		float potential = (myCharge * otherCharge) * rsqrtf(diff.lenSquared());
+		float potential = (chargeProduct) * rsqrtf(diff.lenSquared());
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
 

@@ -4,18 +4,12 @@
 #include <math.h>
 
 
-// LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
-// sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
-// somewhere in the code
-//#define LIMASAFEMODE
-const bool INDEXING_CHECKS = false;
+// -------------------------------------------- Debug Parameters -------------------------------------------- //
+constexpr bool INDEXING_CHECKS = false;
+constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
+constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
+constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
 
-// TODO: Move towards remove this option, and instead only have opt-in safety features: indexchecking, forcechecking, kernelsyncing
-const bool LIMA_PUSH = true;
-
-#if defined LIMA_PUSH && defined LIMASAFEMODE
-#error These are mutually exclusive
-#endif
 
 //#define FORCE_NAN_CHECK
 

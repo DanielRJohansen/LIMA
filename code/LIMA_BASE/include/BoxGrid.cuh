@@ -18,22 +18,10 @@ struct SolventBlock {
 	__device__ __host__ void loadMeta(const SolventBlock& block) {
 		nParticles = block.nParticles;
 		nBondgroups = block.nBondgroups;
-
-		if constexpr (!LIMA_PUSH) {
-			if (nParticles >= MAX_SOLVENTS_IN_BLOCK) {
-				printf("Too many solvents in block!\n");
-			}
-		}
 	}
 	__device__ __host__ void loadData(const SolventBlock& block) {
 		rel_pos[threadIdx.x] = Coord{};	// temp
 		if (threadIdx.x < nParticles) {
-
-			if constexpr (!LIMA_PUSH) {
-				if (block.rel_pos[threadIdx.x] == Coord{ 0 }) {
-					printf("Loading zeroes blockid %d nsol %d\n", blockIdx.x, nParticles);
-				}
-			}
 			rel_pos[threadIdx.x] = block.rel_pos[threadIdx.x];
 			ids[threadIdx.x] = block.ids[threadIdx.x];
 			atomtypeIds[threadIdx.x] = block.atomtypeIds[threadIdx.x];

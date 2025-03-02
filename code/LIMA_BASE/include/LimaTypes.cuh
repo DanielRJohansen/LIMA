@@ -322,7 +322,7 @@ struct Coord {
 		y(static_cast<int32_t>(pos.y * nanoToLima_f)),
 		z(static_cast<int32_t>(pos.z * nanoToLima_f))
 		{
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (POSITION_CHECKS) {
 			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
 				printf("pos %f %f %f\n", pos.x, pos.y, pos.z);
 			}
@@ -331,7 +331,7 @@ struct Coord {
 
 	__device__ __host__ explicit Coord(const NodeIndex& nodeIndex) 
 		: x(nodeIndex.x*nanoToLima_i), y(nodeIndex.y* nanoToLima_i), z(nodeIndex.z* nanoToLima_i) {
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (POSITION_CHECKS) {
 			if (std::abs(nodeIndex.x) > 1000 || std::abs(nodeIndex.y) > 1000 || std::abs(nodeIndex.z) > 1000) {// TODO magic nr,relates to intmax, fix!
 				printf("NodeIndex %d %d %d\n", nodeIndex.x, nodeIndex.y, nodeIndex.z);
 			}
@@ -482,19 +482,15 @@ namespace BondedParticlesLUTHelpers {
 		return 1u << index;
 	}
 
-	__device__ static void VerifyInputs(int idSelf, int idOther) {
-		if (std::abs(idSelf-idOther) > 2 || idSelf < 0 || idOther < 0)
-			printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
-	}
+	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int idSelf, int idOther) {
 
-	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
-
-		if constexpr(!LIMA_PUSH)
-			VerifyInputs(id_self, id_other);
+		if constexpr (INDEXING_CHECKS)
+			if (std::abs(idSelf - idOther) > 2 || idSelf < 0 || idOther < 0)
+				printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
 
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
-		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
+		return &bpLutCollection[getGlobalIndex(getLocalIndex(idSelf, idOther), idSelf)];
 	}
 }
 

@@ -330,9 +330,6 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 
-		/*TinymolBondgroupsKernel<emvariant>
-			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, BondgroupTinymol::maxParticles, 1), 0, cudaStreams[2] >> >
-			(sim_dev, step, forceEnergyInterims->forceEnergiesTinymolBondgroups);*/
 		TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >
 			(sim_dev, step, forceEnergyInterims->forceEnergiesTinymolBondgroups);

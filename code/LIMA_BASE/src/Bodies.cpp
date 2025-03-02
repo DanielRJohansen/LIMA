@@ -24,7 +24,10 @@ AngleUreyBradleyBond::AngleUreyBradleyBond(std::array<uint8_t, nAtoms> ids, cons
 		atom_indexes[i] = ids[i];
 	}
 }
-AngleUreyBradleyBond::Parameters AngleUreyBradleyBond::Parameters::CreateFromCharmm(float theta0, float kTheta, float r0, float kUB) {
+AngleUreyBradleyBond::Parameters AngleUreyBradleyBond::Parameters::CreateFromCharmm(float theta0, float kTheta, float r0, float kUB, int func) {
+	if (func != 5) {// 5 is for UB, for all other we assume harmonic. TEMP LONG TODO This is a bandaid, we need to parse ALL forcefield types based on the func...
+		return Parameters{ theta0 * DEG_TO_RAD, kTheta * KILO, 0, 0};
+	}
 	return Parameters{ theta0 * DEG_TO_RAD, kTheta * KILO, r0, kUB * KILO };
 }
 

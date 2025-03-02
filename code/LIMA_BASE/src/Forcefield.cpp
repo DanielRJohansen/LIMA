@@ -373,12 +373,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 			>> ub0		// [nm]
 			>> kUB;		// [kJ/mol/nm^2]
 
-		if (anglebondtype.func != 5) {// 5 is for UB, for all other we assume harmonic. TEMP LONG TODO This is a bandaid, we need to parse ALL forcefield types based on the func...
-			ub0 = 0;
-			kUB = 0;
-		}
-
-		anglebondtype.params = AngleUreyBradleyBond::Parameters::CreateFromCharmm(t0, kT, ub0, kUB);
+		anglebondtype.params = AngleUreyBradleyBond::Parameters::CreateFromCharmm(t0, kT, ub0, kUB, anglebondtype.func);
 
 		anglebondParameters->insert(anglebondtype);
 	}

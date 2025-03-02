@@ -17,8 +17,6 @@
 #include "LennardJonesInteractions.cuh"
 
 
-#include <cfloat>
-
 #pragma warning(push)
 #pragma warning(disable:E0020)
 #pragma warning(push)
@@ -625,7 +623,7 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 			SingleBond singlebond = bondgroupPtr->singlebonds[bid];
 
 
-			if constexpr (!LIMA_PUSH) {
+			if constexpr (INDEXING_CHECKS) {
 				for (int i = 0; i < 2; i++)
 					if (singlebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock < 0 || singlebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock >= nParticlesInBlock)
 						printf("Illegal index %d\n", singlebond.atom_indexes[i]);
@@ -646,7 +644,7 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 			Float3 forces[AngleUreyBradleyBond::nAtoms];
 			AngleUreyBradleyBond anglebond = bondgroupPtr->anglebonds[bid];
 
-			if constexpr (!LIMA_PUSH) {
+			if constexpr (INDEXING_CHECKS) {
 				for (int i = 0; i < 3; i++)
 					if (anglebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock < 0 || anglebond.atom_indexes[i] + bondgroupsFirstAtomIndexInSolventblock >= nParticlesInBlock)
 						printf("Illegal index %d\n", anglebond.atom_indexes[i]);
@@ -693,10 +691,8 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	const ForceEnergy myForceEnergy = 
 		forceEnergies.forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
 		+ forceEnergies.forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ 
-		forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];
+		+ forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];
 
-	//const ForceEnergy myForceEnergy = forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];
 
 	if (threadIdx.x == 0) {
 		solventblock.loadMeta(*solventblock_ptr);
@@ -708,7 +704,6 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 
 
 	TinyMolParticleState state{};
-	//Coord relpos_next{};
 	if (solventActive) {
 		state = solventblock.states[threadIdx.x];
 
@@ -724,7 +719,7 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 				myForceEnergy.force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
 		}
 		else {
-            if constexpr (!LIMA_PUSH) {
+            if constexpr (FORCE_CHECKS) {
                 if (myForceEnergy.force.isNan() || myForceEnergy.force.lenSquared() >= FLT_MAX)
 					myForceEnergy.force.print('S');
             }

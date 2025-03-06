@@ -4,7 +4,6 @@
 
 #include <unordered_map>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
-#include <concepts>
 #include <functional>
 
 using std::string;
@@ -15,7 +14,7 @@ using Dictionary = std::unordered_map<string, string>;
 void ParseMdp(const Dictionary &mdp_dict, SimParams &params);
 
 template <typename T>
-constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
+constexpr T convertStringvalueToValue(const std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
 	for (auto& pair : pairs) {
 		if (pair.first == val_str) {
 			return pair.second;
@@ -26,7 +25,7 @@ constexpr T convertStringvalueToValue(std::vector<std::pair<string, T>> pairs, c
 }
 // Helper function for overwriting templates
 template <typename T>
-constexpr void overwriteParamNonNumbers(std::unordered_map<std::string, std::string>& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
+constexpr void overwriteParamNonNumbers(Dictionary& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
 	if (dict.count(key)) {
 		val = transform(dict[key]);
 	}
@@ -44,19 +43,19 @@ void Readb(const Dictionary& dict, bool& value, const std::string& key_name) {
 	value = (value_str == "true");
 }
 template <std::integral T>
-constexpr void Readi(std::unordered_map<std::string, std::string>& dict, T& param,
+constexpr void Readi(const Dictionary& dict, T& param,
 	const std::string& key, std::function<T(const T&)> transform = [](const T& v) { return v; })
 {
 	if (dict.count(key)) {
-		param = static_cast<T>(transform(std::stoll(dict[key])));
+		param = static_cast<T>(transform(std::stoll(dict.at(key))));
 	}
 }
 template <std::floating_point T, typename Transform = std::function<T(const T&)>>
-constexpr void Readf(std::unordered_map<std::string, std::string>& dict, T& param,
+constexpr void Readf(const Dictionary& dict, T& param,
 	const std::string& key, Transform transform = [](const T& v) { return v; })
 {
 	if (dict.count(key)) {
-		param = static_cast<T>(transform(std::stod(dict[key])));
+		param = static_cast<T>(transform(std::stod(dict.at(key))));
 	}
 }
 
@@ -169,14 +168,6 @@ void SimParams::dumpToFile(const fs::path& filename) {
     // buffer << "ref_t=" << ref_t << " # Reference temperature [K] (critical)\n";
     // buffer << "tau_t=" << tau_t << " # Temperature coupling constant [ps] (critical)\n";
     // buffer << "tcoupl=" << tcoupl << " # Temperature coupling algorithm (important)\n";
-
-    // Barostat (Pressure Coupling) parameters
-    buffer << "\n// Barostat params\n";
-    // Uncomment the following lines when needed:
-    // buffer << "pcoupl=" << pcoupl << " # Pressure coupling algorithm (critical)\n";
-    // buffer << "ref_p=" << ref_p << " # Reference pressure [bar] (critical)\n";
-    // buffer << "tau_p=" << tau_p << " # Pressure coupling constant [ps] (critical)\n";
-    // buffer << "compressibility=" << compressibility << " # Isothermal compressibility [bar^-1] (important)\n";
 
     // Integration parameters
     buffer << "\n// Integration params\n";

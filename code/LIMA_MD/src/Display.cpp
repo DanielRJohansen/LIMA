@@ -227,16 +227,16 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _RenderAtomsFromCudaresource(Float3{ taskPtr->boxparams.boxSize }, taskPtr->boxparams.total_particles);
+                    _RenderAtoms(Float3{ taskPtr->boxparams.boxSize }, taskPtr->boxparams.total_particles, true);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
                 }
                 else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->grofile.box_size, taskPtr->nAtoms);
+                    _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
 				}
                 else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
-                    _RenderAtomsFromCudaresource(taskPtr->boxSize, taskPtr->nAtoms);
+                    _RenderAtoms(taskPtr->boxSize, taskPtr->nAtoms, true);
                 }
                 }, currentRenderTask);
         }

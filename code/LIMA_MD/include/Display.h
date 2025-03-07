@@ -14,7 +14,7 @@
 
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
-class DrawAtomsShader;
+template <bool>class DrawAtomsShader;
 class DrawNormalsShader;
 
 class Camera;
@@ -117,7 +117,7 @@ private:
 
 	bool initGLFW();
 
-	void _RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles);
+	void _RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda);
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
 	void PrepareTask(Rendering::Task& task);
@@ -147,7 +147,8 @@ private:
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
-	std::unique_ptr<DrawAtomsShader> drawAtomsShader;
+	std::unique_ptr<DrawAtomsShader<true>> drawAtomsFromCudaShader;
+	std::unique_ptr<DrawAtomsShader<false>> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;

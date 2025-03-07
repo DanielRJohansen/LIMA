@@ -342,7 +342,7 @@ public:
     }
 };
 
-
+template <bool isCUDA>
 class DrawAtomsShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
     #version 430 core 
@@ -405,11 +405,12 @@ class DrawAtomsShader : public Shader {
     )";
 
     GLuint VBO;
-    SSBO renderAtomsBuffer{};
 public:
+    SSBO renderAtomsBuffer{};
+
     const int numAtomsReservedInRenderatomsBuffer;
 
-    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCUDA) : 
+    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferSource) : 
         Shader(vertexShaderSource, fragmentShaderSource),
         numAtomsReservedInRenderatomsBuffer(numAtoms)
     {
@@ -418,10 +419,12 @@ public:
     glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
-    // Allocate the renderAtomsbuffer, and register it with CUDA
-    renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
-    cudaGraphicsGLRegisterBuffer(renderAtomsBufferCUDA, renderAtomsBuffer.GetID(), cudaGraphicsMapFlagsWriteDiscard);
-
+    if constexpr (isCUDA) {
+        // Allocate the renderAtomsbuffer, and register it with CUDA
+        renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
+        cudaGraphicsGLRegisterBuffer(renderAtomsBufferSource, renderAtomsBuffer.GetID(), cudaGraphicsMapFlagsWriteDiscard);
+    }
+    //Otherwise, whoever preps will write directly to our renderAtomsBuffer. That is bad tho, they should maybe just call another constructor of my class with the SSBO ready?
     // Allocate space for the VBO. We assume `sizeof(RenderAtom)` is the size of the data.
     glBufferData(GL_ARRAY_BUFFER, numAtoms * sizeof(RenderAtom), nullptr, GL_DYNAMIC_DRAW);
 

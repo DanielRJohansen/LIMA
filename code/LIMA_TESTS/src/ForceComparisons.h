@@ -24,7 +24,8 @@ namespace ForceComparisons {
 		return env;
 	}
 
-	bool CompareForces(const fs::path& workdir, float errorThreshold) {
+	bool CompareForces(const std::string& dir, float errorThreshold=1e-3) {
+		const fs::path workdir = simulations_dir / "CompareWithOtherMdEngines/Forcecomparison1step" / dir;
 		auto env = LoadAndRunSim(workdir);
 
 		const std::vector<Float3> gromacsForces = FileUtils::ReadCsvAsVectorOfFloat3(workdir / "forces.csv");
@@ -46,23 +47,8 @@ namespace ForceComparisons {
 
 	}
 
-	bool PoolNoES() {
-		const fs::path workdir = simulations_dir / "forcecomparison" / "PoolNoES";
-		return CompareForces(workdir, 0.001);
-	} 
-
-	bool PoolES() {
-		const fs::path workdir = simulations_dir / "forcecomparison" / "PoolES";
-		return CompareForces(workdir, 0.001);
-	}
-
-	bool Singlebond() {
-		const fs::path workdir = simulations_dir / "forcecomparison" / "Singlebond";
-		return CompareForces(workdir, 0.001);
-	}
-
 	bool T4RmsdAndRmsf() {
-		const fs::path workdir = simulations_dir / "forcecomparison" / "T4Lysozyme";
+		const fs::path workdir = simulations_dir / "CompareWithOtherMdEngines/Forcecomparison1step" / "T4Lysozyme";
 		auto env = LoadAndRunSim(workdir);
 
 		Trajectory traj = env->WriteSimToTrajectory();
@@ -82,9 +68,12 @@ namespace ForceComparisons {
 
 
 	LimaUnittestResult DoAllForceComparisons(EnvMode envmode) {
-		ASSERT(PoolNoES(), "PoolNoES failed");
-		//ASSERT(PoolES(), "PoolES failed"); // The gromacs part is wrong here
-		ASSERT(Singlebond(), "Singlebond failed");
+		ASSERT(CompareForces("PoolNoES"), "PoolNoES failed");
+		//ASSERT(CompareForces("PoolES"), "PoolES failed"); /// gromacs part is wrong
+		ASSERT(CompareForces("Singlebond"), "Singlebond failed");
+		ASSERT(CompareForces("Anglebond"), "Anglebond failed");
+		ASSERT(CompareForces("Dihedralbond"), "Dihedralbond failed");
+
 
 		//ASSERT(T4RmsdAndRmsf(), "T4RmsdAndRmsf failed");
 

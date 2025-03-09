@@ -202,12 +202,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 
 		float theta0, ktheta, ub0, kUb;
 		if (iss >> theta0 >> ktheta >> ub0 >> kUb) {
-			angle.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb);
-			if (angle.funct != 5) {
-				angle.parameters->kUB = 0;
-				angle.parameters->ub0 = 0;
-			}
-
+			angle.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb, angle.funct);
 		}
 
 		moleculetype->anglebonds.emplace_back(angle);

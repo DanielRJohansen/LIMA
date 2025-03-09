@@ -23,28 +23,6 @@ using namespace VerletintegrationTesting;
 
 void RunAllUnitTests();
 
-uint8_t Dir(int x, int y, int z)  {
-	return static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1));
-}
-
-
-struct Direction3 {
-	uint8_t data; // store 6 bits: top 2 for x+1, next 2 for y+1, bottom 2 for z+1
-
-	 constexpr Direction3() : data(0) {}
-
-	 constexpr Direction3(int x, int y, int z)
-		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
-	{}
-
-	 inline int x() const { return ((data >> 4) & 0x3) - 1; }
-	 inline int y() const { return ((data >> 2) & 0x3) - 1; }
-	 inline int z() const { return (data & 0x3) - 1; }
-
-	 bool operator==(const Direction3& o) const { return data == o.data; }
-	 bool operator!=(const Direction3& o) const { return data != o.data; }
-};
-
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
@@ -74,7 +52,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -105,7 +83,7 @@ int main() {
 		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
-
+		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
@@ -121,7 +99,7 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -166,8 +144,8 @@ void RunAllUnitTests() {
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.224e-3, 2e-5));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

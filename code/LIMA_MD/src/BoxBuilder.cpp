@@ -5,6 +5,7 @@
 
 #include <random>
 #include <format>
+#include <numeric>
 
 using namespace LIMA_Print;
 
@@ -59,6 +60,7 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 		std::vector<Coord> relPos(tinyMol.nParticles);
 		std::vector<uint32_t> ids(tinyMol.nParticles);
 		std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
+		std::vector<TinyMolParticleState> states(tinyMol.nParticles);
 		for (int i = 0; i < tinyMol.nParticles; i++) {
 			Float3 hyperPos = tinyMol.positions[i];
 			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, static_cast<float>(box.boxparams.boxSize), PBC);
@@ -67,9 +69,10 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 			//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
 			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
 			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
+			states[i] = tinyMol.states[i];
 		}
 
-		solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup); // TEMP 
+		solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup, states);
 		box.boxparams.nTinymolParticles += tinyMol.nParticles;
 		box.boxparams.nTinymols++;
 	}
@@ -81,12 +84,21 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 	box.tinyMolParticlesState.resize(0);
 	box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
 	for (int i = 0; i < box.boxparams.nTinymols; i++) {
-		for (int j = 0; j < tinyMols[i].nParticles; j++)
-			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
-
+		
 		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
-		/*const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);*/
+
+		const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
+			[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
+		);
+		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
+
+		for (int j = 0; j < tinyMols[i].nParticles; j++) {
+			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
+			box.tinyMolParticlesState.back().vel_prev = direction * velocity;
+		}
+
+		
 
 		//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}    

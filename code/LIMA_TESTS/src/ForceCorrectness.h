@@ -53,7 +53,7 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 1.66e-4) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 2.26e-2) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};

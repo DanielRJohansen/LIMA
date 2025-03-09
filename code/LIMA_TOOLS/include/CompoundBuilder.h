@@ -145,7 +145,8 @@ struct TinyMolFactory {
 	TinyMolFactory(std::span<const Float3> pos, std::span<const int> tinymolTypeIndices,
 		std::span<const std::string> _atomTypes, int nParticles, int firstParticleIdInGrofile,
 		std::span<const Float3> velocities, const BondgroupTinymol& bondgroup
-	) : nParticles(nParticles), firstParticleIdInGrofile(firstParticleIdInGrofile), bondgroup(bondgroup)
+	) : 
+		nParticles(AllAtom ? nParticles : 1), firstParticleIdInGrofile(firstParticleIdInGrofile), bondgroup(AllAtom ? bondgroup : BondgroupTinymol{})
 	{
 		assert(pos.size() == nParticles);
 		for (int i = 0; i < nParticles; i++) {

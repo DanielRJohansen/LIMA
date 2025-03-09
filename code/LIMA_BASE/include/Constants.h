@@ -4,15 +4,12 @@
 #include <math.h>
 
 
-// LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
-// sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
-// somewhere in the code
-//#define LIMASAFEMODE
-const bool LIMA_PUSH = false;
+// -------------------------------------------- Debug Parameters -------------------------------------------- //
+constexpr bool INDEXING_CHECKS = false;
+constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
+constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
+constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
 
-#if defined LIMA_PUSH && defined LIMASAFEMODE
-#error These are mutually exclusive
-#endif
 
 //#define FORCE_NAN_CHECK
 
@@ -75,8 +72,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
-
-const bool AllAtomSolvent = false;	// If false, only the first atom in the solvent is used for the solvent
+constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //
 
 

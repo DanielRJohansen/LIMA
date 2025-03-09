@@ -211,44 +211,6 @@ void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelec
 	}
 }
 
-//template<typename BondtypeFactory>
-//std::vector<BondtypeFactory> _RemoveBondsFromTinymol(const std::vector<BondtypeFactory>& bonds, const std::vector<ParticleToCompoundMapping>& p2cMap) {
-//	std::vector<bool> bondsThatBelongToCompounds(bonds.size(), true);
-//
-//	for (int bid = 0; bid < bonds.size(); bid++) {
-//		for (int i = 0; i < BondtypeFactory::nAtoms; i++) {
-//			if (p2cMap[bonds[bid].global_atom_indexes[i]].compoundId == -1) {
-//				bondsThatBelongToCompounds[bid] = false;
-//				break;
-//			}
-//		}
-//	}
-//
-//	std::vector<BondtypeFactory> newBonds;
-//	newBonds.reserve(bonds.size());
-//	for (int bid = 0; bid < bonds.size(); bid++) {
-//		if (bondsThatBelongToCompounds[bid])
-//			newBonds.emplace_back(bonds[bid]);
-//	}
-//
-//	return newBonds;
-//}
-//
-//void SuperTopology::RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>& p2cMap) {
-//	singlebonds = _RemoveBondsFromTinymol(singlebonds, p2cMap);
-//	pairbonds = _RemoveBondsFromTinymol(pairbonds, p2cMap);
-//	anglebonds = _RemoveBondsFromTinymol(anglebonds, p2cMap);
-//	dihedralbonds = _RemoveBondsFromTinymol(dihedralbonds, p2cMap);
-//	improperdihedralbonds = _RemoveBondsFromTinymol(improperdihedralbonds, p2cMap);
-//}
-
-
-
-
-
-
-
-
 
 
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
@@ -309,8 +271,9 @@ std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int
 
 		if (collection.size() > 3 || collectionIsCustomLimaMolecule)
 			molecules.emplace_back(collection);
-		else
+		else {
 			tinyMolecules.emplace_back(collection);
+		}			
 	}
 
 	return { molecules, tinyMolecules };
@@ -430,7 +393,7 @@ std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unorde
 
 
 
-const std::vector<AtomGroup> GroupAtoms2(const std::vector<std::vector<int>>& particleidsInMolecules, const SuperTopology& topology) {
+const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& particleidsInMolecules, const SuperTopology& topology) {
 	std::vector<AtomGroup> atomGroups;
 
 
@@ -617,30 +580,12 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	auto [molecules, tinyMolecules] = SeparateMolecules(superTopology);
 
-	const std::vector<AtomGroup> atomGroups = GroupAtoms2(molecules, superTopology);
+	const std::vector<AtomGroup> atomGroups = GroupAtoms(molecules, superTopology);
 
 
 	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size.x, atomGroups, simparams.bc_select);
 
-	//Display d;
-	//std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
-	//for (const auto& compound : compounds) {
-	//	positions.push_back({});
-	//	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-	//		positions.back()[i] = compound.positions[i];
-	//	}
-	//}
-	//std::vector<Compound> compounds2;
-	//for (const auto& compound : compounds) {
-	//	compounds2.push_back(compound);
-	//}	
-	//d.Render(std::make_unique<Rendering::CompoundsTask>(compounds2, positions, grofile.box_size), true);
-
-	//printf("%d compounds\n", compounds.size());
-
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
-
-	//superTopology.RemoveBondsFromTinymol(particleToCompoundidMap);
 
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);
@@ -683,8 +628,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
 
 	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
-	//tinyMols[0] = tinyMols[2];
-	tinyMols.resize(20);
+
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
 	return std::make_unique<BoxImage>(

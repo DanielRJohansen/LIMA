@@ -34,7 +34,7 @@ namespace LIMA_UTILS {
     }
 
     static void genericErrorCheckNoSync(const char* text) {
-        if constexpr (!LIMA_PUSH)
+        if constexpr (SYNC_ALL_KERNELS)
             cudaDeviceSynchronize();
 
         cudaError_t cuda_status = cudaGetLastError();

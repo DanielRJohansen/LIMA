@@ -129,12 +129,6 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
-			//float a = calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield);
-			//float b = __half2float(DeviceConstants::nonbondedinteractionParams[atomtype_self * ForceField_NB::MAX_TYPES + neighborparticle_atomtype].epsilon);
-			//if (std::abs(a - b) / a > 1e-5) {
-			//	printf("Epsilon mismatch %f %f\n", a, b);
-			//}
-
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,
@@ -142,8 +136,9 @@ namespace LJ {
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf* charges[neighborparticle_id], -diff);
-				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, charges[neighborparticle_id], diff);
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * charges[neighborparticle_id], -diff);
+				if constexpr (computePotE)
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf * charges[neighborparticle_id], diff);
 			}
 		}
 
@@ -174,9 +169,11 @@ namespace LJ {
 					CalcLJOrigin::ComComInter
 				);
 
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
-				if constexpr (computePotE && ENABLE_POTE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf, chargeNeighbors[neighborparticle_id], diff);
+				if constexpr (ENABLE_ES_SR) {
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
+					if constexpr (computePotE && ENABLE_POTE)
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf * chargeNeighbors[neighborparticle_id], diff);
+				}
 			}
 		}		
 
@@ -189,11 +186,11 @@ namespace LJ {
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
 		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
 		Float3 force{};
+		Float3 electrostaticForce{};
+		float electrostaticPotential{};
 
 		for (int i = 0; i < n_elements; i++) {
 			// If computing within block, dont compute force against thread's solvent
-			//if (exclude_own_index && threadIdx.x == i) { continue; }
-
 			if constexpr (checkForSameTinymolId) {
 				if (tinymolIds[threadIdx.x] == tinymolIds[i]) { continue; }
 			}
@@ -208,16 +205,25 @@ namespace LJ {
 				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
 				threadIdx.x, i
 			);
+
+			if constexpr (ENABLE_ES_SR) {
+				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
+				if constexpr (computePotE)
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
+			}
 		}
-		return force * 24.f;
+
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
-	// False fix the hardcoded template params here
 	template<bool computePotE, bool emvariant>
-	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
+	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, float myCharge, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
 		const ForceField_NB& forcefield, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
 		Float3 force{};
-
+		Float3 electrostaticForce{};
+		float electrostaticPotential{};
 
 		for (int i = 0; i < n_particles; i++) {
 
@@ -233,15 +239,27 @@ namespace LJ {
 				CalcLJOrigin::SolCom,
 				atomtype_self, -1
 			);
+
+			if constexpr (ENABLE_ES_SR) {
+				const float chargeProduct = myCharge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
+				if constexpr (computePotE)
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
+			}
 		}
-		return force * 24.f;
+
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 	
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
-		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t tinymolTypeId)
+		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t tinymolTypeId,
+		const float* const charges)
 	{
 		Float3 force(0.f);
+		Float3 electrostaticForce{};
+		float electrostaticPotential{};
 
 		for (int i = 0; i < n_particles; i++) {
 			 
@@ -257,7 +275,16 @@ namespace LJ {
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);
+
+			if constexpr (ENABLE_ES_SR) {
+				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeId].charge * charges[i];
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
+				if constexpr (computePotE)
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
+			}
 		}
-		return force * 24.f;
+
+		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 }

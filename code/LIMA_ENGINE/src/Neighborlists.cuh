@@ -127,7 +127,7 @@ __global__ void PushCompoundsToGrid(const SimulationDevice* const simDev, Neighb
 		const int localIndexInNode = atomicAdd(&grid[gridIndex].nCompoundsInNode, 1);
 		grid[gridIndex].compoundInfos[localIndexInNode] = compoundInfo;
 
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (INDEXING_CHECKS) {
 			if (localIndexInNode >= NeighborList::Gridnode::maxCompoundsInNode) {
 				printf("Too many compounds in node");
 			}
@@ -267,7 +267,7 @@ __global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const Neigh
 						const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(myCompoundOrigo, simDev->boxState.compoundOrigos[queryCompoundId]);
 						const Float3 relshift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, myCompoundOrigo);
 
-						if constexpr (!LIMA_PUSH) {
+						if constexpr (INDEXING_CHECKS) {
 							if (nNonbondedNeighborsTotal >= NeighborList::compoundsMaxNearbyCompounds) 
 								printf("Too many nonbonded neighbors %d %d\n", nNonbondedNeighborsTotal, compoundId);							
 						}
@@ -414,7 +414,7 @@ __global__ void updateBlockgridKernel(const NeighborList::Gridnode* const grid, 
 					// OPTIM: This should be treated as a point but as a box. This would lower the number of hits, making the force kernel faster
 					if (canCompoundInteractWithPoint<BoundaryCondition>(queryCompoundInfo, block_abspos)) {
 
-						if constexpr (!LIMA_PUSH) {
+						if constexpr (INDEXING_CHECKS) {
 							if (nNearbyCompounds >= NeighborList::gridnodesMaxNearbyCompounds) {
 								printf("Too many compounds in blockgrid\n");
 							}

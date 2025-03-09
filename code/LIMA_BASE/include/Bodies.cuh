@@ -80,7 +80,7 @@ namespace Bondtypes {
 			/// <param name="kTheta">[kJ/mol/rad^2]</param>
 			/// <param name="ub0">[nm]</param>
 			/// <param name="kUb">[kJ/molnm]</param>
-			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb);
+			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb, int func);
 		};
 
 		constexpr AngleUreyBradleyBond() {}

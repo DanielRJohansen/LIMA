@@ -2,14 +2,13 @@
 #include "BoundaryConditionPublic.h"
 
 
-BoxGrid::TinymolBlockAdjacency::BlockRef* BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(int boxlenNM, float ljCutoffNm) {
+BoxGrid::TinymolBlockAdjacency::BlockRef* BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm) {
 
     const float maxAllowedCutoff = sqrt(1*1+1*1+0);
     //if (ljCutoffNm > maxAllowedCutoff)
     //    throw std::invalid_argument(std::format("Due to harcoded optimizations of neighborlists, LIMA does not allow a cutoff above {}, was {})", maxAllowedCutoff, ljCutoffNm);
 
-	const int blocksPerDim = NodesPerDim(boxlenNM);
-	const int blocksTotal = BlocksTotal(blocksPerDim);
+	const int blocksTotal = BoxGrid::BlocksTotal(boxlenNM);
 
 	std::vector<BlockRef> nearbyBlockIds(blocksTotal * nNearbyBlocks);
 	int globalIndex = 0;

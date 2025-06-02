@@ -93,7 +93,7 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 		total_percentage += lipid.percentage;
 	}
 	if (std::abs(total_percentage - 100) > 0.00001f) {
-		throw std::runtime_error("Invalid lipid selection, did not add up to 100%");
+		throw std::runtime_error(std::format("Invalid lipid selection, did not add up to 100% {:.2f}", total_percentage));
 	}
 
 	for (const auto& lipid : lipidselection) {
@@ -219,15 +219,15 @@ struct ParticlePlaceholder {
 template<typename T>
 class BoxGrid_ {	// TODO: Rename
 	std::vector<std::vector<T>> nodes;
-	int nodesPerDim = 0;
+	Int3 nodesPerDim = 0;
 
 public:
-	BoxGrid_(int nodesPerDim) : nodesPerDim(nodesPerDim) {
-		nodes.resize(nodesPerDim * nodesPerDim * nodesPerDim);
+	BoxGrid_(Int3 nodesPerDim) : nodesPerDim(nodesPerDim) {
+		nodes.resize(nodesPerDim.x * nodesPerDim.y * nodesPerDim.z);
 	}
 	
-	int GetIndex(NodeIndex nodeindex) {
-		return nodeindex.z * nodesPerDim * nodesPerDim + nodeindex.y * nodesPerDim + nodeindex.x;
+	int GetIndex(const NodeIndex& nodeindex) {
+		return nodeindex.z * nodesPerDim.x * nodesPerDim.y + nodeindex.y * nodesPerDim.x + nodeindex.x;
 	}
 
 	std::vector<T>& operator[](NodeIndex index3d) {
@@ -245,7 +245,7 @@ public:
 void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
 	for (const auto& atom : grofile.atoms) {
 		Float3 absPosHyper = atom.position;
-		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size.x, BoundaryConditionSelect::PBC);
+		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size, BoundaryConditionSelect::PBC);
 
 		const NodeIndex nodeindex = NodeIndex{ static_cast<int>(std::floor(absPosHyper.x)), static_cast<int>(std::floor(absPosHyper.y)), static_cast<int>(std::floor(absPosHyper.z)) };
 
@@ -268,9 +268,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	}
 
 	
-	const int nodesPerDim = static_cast<int>(grofile.box_size.x);
+	const Int3 gridDim = grofile.box_size.ToInt3();
 	int nAtomsInput = grofile.atoms.size();
-	BoxGrid_<ParticlePlaceholder> boxgrid{ nodesPerDim };
+	BoxGrid_<ParticlePlaceholder> boxgrid{ gridDim };
 
 	DistributeGrofileparticlesInGrid(boxgrid, grofile);
 
@@ -280,13 +280,13 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 
 	// First add excessive solvents to all blocks
 	// TODO: Make OMP
-	for (int x = 0; x < nodesPerDim; x++) {
+	for (int x = 0; x < gridDim.x; x++) {
 		// The x-column decides the seed
 		std::mt19937 rng(x);
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
-		for (int y = 0; y < nodesPerDim; y++) {
-			for (int z = 0; z < nodesPerDim; z++) {
+		for (int y = 0; y < gridDim.y; y++) {
+			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
 				auto& particles = boxgrid[nodeindex];
 				for (int i = 0; i < desiredSolventsPerNm3 + 20; i++) {	// +20 so we can remove any particles that are too close
@@ -301,9 +301,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	const float distanceThreshold = 0.12;	// [nm]
 
 	// Now mark all particles too close to another for deletion, if said particle is the "lower" id/block compared to the other
-	for (int x = 0; x < nodesPerDim; x++) {
-		for (int y = 0; y < nodesPerDim; y++) {
-			for (int z = 0; z < nodesPerDim; z++) {
+	for (int x = 0; x < gridDim.x; x++) {
+		for (int y = 0; y < gridDim.y; y++) {
+			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
 				auto& particles = boxgrid[nodeindex];
 				
@@ -337,7 +337,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 								continue;
 
 							NodeIndex otherNodeIndex = NodeIndex{ x + offsetX, y + offsetY, z + offsetZ };
-							BoundaryConditionPublic::applyBC(otherNodeIndex, nodesPerDim);
+							BoundaryConditionPublic::applyBC(otherNodeIndex, gridDim);
 
 							const Float3 relPosOffsetOther = Float3{ static_cast<float>(offsetX), static_cast<float>(offsetY), static_cast<float>(offsetZ) };
 
@@ -371,9 +371,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 	}
 	
 	int countTotal = 0;
-	for (int x = 0; x < nodesPerDim; x++) {
-		for (int y = 0; y < nodesPerDim; y++) {
-			for (int z = 0; z < nodesPerDim; z++) {
+	for (int x = 0; x < gridDim.x; x++) {
+		for (int y = 0; y < gridDim.y; y++) {
+			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
 				int countBlock = 0;
 				for (const auto& particle : boxgrid[nodeindex]) {

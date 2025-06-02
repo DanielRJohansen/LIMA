@@ -6,7 +6,7 @@ import sys
 def read_binary_float_matrices(filename, num_slices, gridpoints_per_dim):
     with open(filename, "rb") as file:
         data = np.frombuffer(file.read(), dtype=np.float32)
-    return data.reshape(num_slices, gridpoints_per_dim, gridpoints_per_dim)
+    return data.reshape(num_slices, gridpoints_per_dim[1], gridpoints_per_dim[0])
 
 
 def plot_colormaps(axes, slices, indices, data_min, data_max):
@@ -73,14 +73,14 @@ def plot_binary_float_matrices(num_slices, gridpoints_per_dim, center_slice, spa
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: python plot_slices.py <num_slices> <gridpoints_per_dim> <center_slice> <spacing>")
+    if len(sys.argv) != 7:
+        print("Usage: python plot_slices.py <num_slices> <gridpoints_per_dim.x> <gridpoints_per_dim.y> <gridpoints_per_dim.z> <center_slice> <spacing>")
         sys.exit(1)
 
     num_slices = int(sys.argv[1])
-    gridpoints_per_dim = int(sys.argv[2])
-    center_slice = int(sys.argv[3])
-    spacing = int(sys.argv[4])
+    gridpoints_per_dim = (int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
+    center_slice = int(sys.argv[5])
+    spacing = int(sys.argv[6])
 
     print("Num slices", num_slices, " Center slice ", center_slice)
 

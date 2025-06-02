@@ -30,7 +30,7 @@ public:
 	/// Create a simulation, and create the necessary files in process, if the defaults
 	/// (conf.gro and topol.top and simparams.txt) are not available
 	/// </summary>
-	void CreateSimulation(float boxsize_nm);
+	void CreateSimulation(const Float3& boxsize_nm);
 
 	/// <summary>
 	/// Create a simulation from existing files

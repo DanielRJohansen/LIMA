@@ -25,11 +25,11 @@ namespace BoxGrid {
 	}
 
 	__device__ constexpr static NodeIndex Get3dIndex(int index1d) {
-		const int bpd = NodesPerDim(DeviceConstants::boxSize.boxSizeNM_i);
-		int z = index1d / (bpd * bpd);
-		index1d -= z * bpd * bpd;
-		int y = index1d / bpd;
-		index1d -= y * bpd;
+		const Int3 bpd = NodesPerDim(DeviceConstants::boxSize.boxSizeNM_i);
+		int z = index1d / (bpd.x * bpd.y);
+		index1d -= z * bpd.x * bpd.y;
+		int y = index1d / bpd.x;
+		index1d -= y * bpd.x;
 		int x = index1d;
 		return NodeIndex{ x, y, z };
 	}

@@ -18,7 +18,7 @@ struct SimSignals {
 
 
 struct BoxParams {
-	int boxSize = 0;	// [nm]
+	Int3 boxSize{};	// [nm]
 	int n_compounds = 0;
 	int n_bridges = 0;
 	int nTinymols = 0;
@@ -27,6 +27,10 @@ struct BoxParams {
 	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 	int64_t degreesOfFreedom=0;
+
+	__host__ Float3 BoxSizeFloat() const {
+		return Float3{ static_cast<float>(boxSize.x), static_cast<float>(boxSize.y), static_cast<float>(boxSize.z) };
+	}
 };
 
 

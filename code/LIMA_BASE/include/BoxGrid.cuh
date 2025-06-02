@@ -80,22 +80,24 @@ struct SolventBlock {
 namespace BoxGrid {
 	static const int blocksizeNM = 1;
 	constexpr int NodesPerDim(int boxlenNM) { return boxlenNM; }
-	constexpr int BlocksTotal(int blocksPerDim) { return blocksPerDim * blocksPerDim * blocksPerDim; }
+	constexpr Int3 NodesPerDim(Int3 boxlenNM) {
+		return Int3{ NodesPerDim(boxlenNM.x), NodesPerDim(boxlenNM.y), NodesPerDim(boxlenNM.z) };
+	}
+	constexpr int BlocksTotal(Int3 blocksPerDim) { return NodesPerDim(blocksPerDim.x) * NodesPerDim(blocksPerDim.y) * NodesPerDim(blocksPerDim.z); }
 
-	constexpr int Get1dIndex(const NodeIndex& index3d, int boxSizeNM) {
-		const int bpd = NodesPerDim(boxSizeNM);
-		return index3d.x + index3d.y * bpd + index3d.z * bpd * bpd;
+	constexpr int Get1dIndex(const NodeIndex& index3d, Int3 boxSizeNM) {
+		return index3d.x + index3d.y * NodesPerDim(boxSizeNM.x) + index3d.z * NodesPerDim(boxSizeNM.x) * NodesPerDim(boxSizeNM.y);
 	}
 
-	constexpr NodeIndex Get3dIndexWithNNodes(int index1d, int npd) {
-		int z = index1d / (npd * npd);
-		index1d -= z * npd * npd;
-		int y = index1d / npd;
-		index1d -= y * npd;
+	constexpr NodeIndex Get3dIndexWithNNodes(int index1d, Int3 npd) {
+		int z = index1d / (npd.x * npd.y);
+		index1d -= z * npd.x * npd.y;
+		int y = index1d / npd.x;
+		index1d -= y * npd.x;
 		int x = index1d;
 		return NodeIndex{ x, y, z };
 	}
-	constexpr NodeIndex Get3dIndex(int index1d, int boxlenNM) {
+	constexpr NodeIndex Get3dIndex(int index1d, const Int3& boxlenNM) {
 		return Get3dIndexWithNNodes(index1d, NodesPerDim(boxlenNM));
 	}
 
@@ -130,7 +132,7 @@ namespace BoxGrid {
 		};
 
 		// Returns a cudapointer to the data
-        BlockRef* PrecomputeNeabyBlockIds(int boxlenNM, float ljCutoffNm);
+        BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);
 
 		__device__ static const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
 			return &nearbyBlockIdsData[blockId * nNearbyBlocks];
@@ -145,11 +147,11 @@ namespace SolventBlocksCircularQueue {
 	static const int queue_len = STEPS_PER_SOLVENTBLOCKTRANSFER;
 
 
-	constexpr int nElementsTotal(int boxlenNM) {
-		return BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxlenNM)) * queue_len;
+	constexpr int nElementsTotal(Int3 boxlenNM) {
+		return BoxGrid::BlocksTotal(boxlenNM) * queue_len;
 	}
 
-	static std::vector<SolventBlock> createQueue(int boxlenNM) {
+	static std::vector<SolventBlock> createQueue(Int3 boxlenNM) {
 		return std::vector<SolventBlock>(nElementsTotal(boxlenNM));
 	}
 
@@ -161,13 +163,13 @@ namespace SolventBlocksCircularQueue {
 	}
 
 	// This function assumes the user has used PBC
-	__device__ __host__ static SolventBlock* getBlockPtr(SolventBlock* queue, int blocksPerDim, const size_t index1d, const size_t step) {
-		const size_t step_offset = (step % queue_len) * BoxGrid::BlocksTotal(blocksPerDim);
+	__device__ __host__ static SolventBlock* getBlockPtr(SolventBlock* queue, Int3 boxlenNM, const size_t index1d, const size_t step) {
+		const size_t step_offset = (step % queue_len) * BoxGrid::BlocksTotal(boxlenNM);
 		return &queue[index1d + step_offset];
 	}
 
-	__host__ static SolventBlock& GetBlockRef(std::vector<SolventBlock>& queue, NodeIndex index3d, const int64_t step, int boxSizeNm) {
-		if (index3d.x >= boxSizeNm || index3d.y >= boxSizeNm || index3d.z >= boxSizeNm
+	__host__ static SolventBlock& GetBlockRef(std::vector<SolventBlock>& queue, NodeIndex index3d, const int64_t step, Int3 boxSizeNm) {
+		if (index3d.x >= boxSizeNm.x || index3d.y >= boxSizeNm.y || index3d.z >= boxSizeNm.z
 			|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
 			throw std::runtime_error("Bad 3d index for blockptr\n");
 		}

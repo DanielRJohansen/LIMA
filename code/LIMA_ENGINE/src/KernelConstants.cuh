@@ -6,18 +6,18 @@ static_assert(sizeof(ForceField_NB) < 64000, "ForceFieldNB too large for constan
 
 
 struct BoxSize {
-	void Set(int boxSizeNM) {
+	void Set(Int3 boxSizeNM) {
 		//assert(NANO_TO_LIMA_i * boxSizeNM < INT32_MAX);
 		boxSizeNM_i = boxSizeNM;
-		boxSizeNM_f = static_cast<float>(boxSizeNM);
-		blocksPerDim = BoxGrid::NodesPerDim(boxSizeNM);
-                blocksPerDimHalf = blocksPerDim/2;
+		boxSizeNM_f = Float3{ boxSizeNM.x, boxSizeNM.y, boxSizeNM.z };
+		blocksPerDim = Int3{ BoxGrid::NodesPerDim(boxSizeNM.x), BoxGrid::NodesPerDim(boxSizeNM.y), BoxGrid::NodesPerDim(boxSizeNM.z) };
+        blocksPerDimHalf = blocksPerDim/2;
 	}
 
-	int boxSizeNM_i = 0;
-	float boxSizeNM_f = 0;
-	int blocksPerDim = 0;	// for boxGrid
-        int blocksPerDimHalf = 0;
+	Int3 boxSizeNM_i{};
+	Float3 boxSizeNM_f{};
+	Int3 blocksPerDim{};	// for boxGrid
+	Int3 blocksPerDimHalf{};
 };
 
 namespace DeviceConstants {

@@ -12,6 +12,8 @@
 
 #include <array>
 
+// TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
+// 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
 struct Int3 {
 	constexpr Int3() {}
 	constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
@@ -31,6 +33,7 @@ struct Int3 {
 	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
+	constexpr int InnerProduct() const { return x * y * z; }
 
 	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
@@ -73,7 +76,7 @@ struct Float3 {
 	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
 	constexpr float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
 	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
-
+	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 
 
 	__host__ inline float operator[] (int index) const {
@@ -247,7 +250,7 @@ struct Double3 {
 	__host__ __device__ Double3() {}
 	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}
 	__host__ __device__ Double3(double x, double y, double z) : x(x), y(y), z(z) {}
-	__host__ __device__ Double3(Float3 a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
+	__host__ __device__ Double3(const Float3& a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
 
 	__host__ __device__ inline Double3 operator + (const Float3 a) const {
 		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
@@ -295,8 +298,8 @@ struct NodeIndex : public Int3 {
 		);
 	}
 
-	constexpr bool isInBox(int nodes_per_dim) const {
-		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
+	constexpr bool isInBox(const Int3& gridDim) const {
+		if (x < 0 || y < 0 || z < 0 || x >= gridDim.x || y >= gridDim.y|| z >= gridDim.z)
 			return false;
 		return true;
 	}

@@ -38,10 +38,9 @@ Environment::Environment(const fs::path& workdir, EnvMode mode)
 
 Environment::~Environment() {}
 
-void Environment::CreateSimulation(float boxsize_nm) {
+void Environment::CreateSimulation(const Float3& boxsize_nm) {
 	SimParams simparams{};
 	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm)));
-	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
 void Environment::CreateSimulation(const std::string& gro_path, const std::string& topol_path, const SimParams& params) {

@@ -91,7 +91,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 		
 		const Coord relposShift = Coord{ -direction.toFloat3() };
 
-		if (targetBlockId >= DeviceConstants::boxSize.blocksPerDim * DeviceConstants::boxSize.blocksPerDim * DeviceConstants::boxSize.blocksPerDim)
+		if (targetBlockId >= DeviceConstants::boxSize.blocksPerDim.x * DeviceConstants::boxSize.blocksPerDim.y * DeviceConstants::boxSize.blocksPerDim.z)
 			printf("Target block was out of bounds");
 
 		// Write results directly to global mem

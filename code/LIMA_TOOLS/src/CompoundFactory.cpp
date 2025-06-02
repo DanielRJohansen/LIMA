@@ -1,7 +1,7 @@
 #include "CompoundBuilder.h"
 
 
-void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id, float boxlen_nm, BoundaryConditionSelect bc) {
+void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 	if (n_particles >= MAX_COMPOUND_PARTICLES) {
 		throw std::runtime_error("Failed to add particle to compound");
 	}
@@ -31,7 +31,7 @@ void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id
 
 
 
-std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* const positions, int n_elems, float boxlen_nm, BoundaryConditionSelect bc) {
+std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float3* const positions, int n_elems, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 	const int k = CompoundInteractionBoundary::k;
 	std::array<int, k> center_indices{};
 
@@ -100,8 +100,9 @@ std::array<int, CompoundInteractionBoundary::k> kMeansClusterCenters(const Float
 }
 
 
-std::array<float, CompoundInteractionBoundary::k> clusterRadii(const Float3* const positions, int n_particles, const std::array<Float3, CompoundInteractionBoundary::k>& key_positions,
-	float boxlen_nm, BoundaryConditionSelect bc) {
+std::array<float, CompoundInteractionBoundary::k> clusterRadii(const Float3* const positions, int n_particles, 
+	const std::array<Float3, CompoundInteractionBoundary::k>& key_positions, const Float3& boxlen_nm, BoundaryConditionSelect bc) 
+{
 	std::array<float, CompoundInteractionBoundary::k> radii;
 	std::vector<int> labels(n_particles);  // Holds the index of the closest key particle for each particle
 
@@ -137,7 +138,7 @@ std::array<float, CompoundInteractionBoundary::k> clusterRadii(const Float3* con
 	return radii;
 }
 
-Float3 calcCOM(const Float3* positions, int n_elems, float boxlen_nm, BoundaryConditionSelect bc) {
+Float3 calcCOM(const Float3* positions, int n_elems, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 	Float3 com{};
 	const Float3& designatedCenterPosition = positions[0];
 	for (int i = 0; i < n_elems; i++) {
@@ -149,7 +150,7 @@ Float3 calcCOM(const Float3* positions, int n_elems, float boxlen_nm, BoundaryCo
 }
 
 
-int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com, float boxlen_nm, BoundaryConditionSelect bc) {
+int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 	int closest_particle_index = 0;
 	float closest_particle_distance = std::numeric_limits<float>::infinity();
 	for (int i = 0; i < n_elems; i++) {
@@ -163,7 +164,7 @@ int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Floa
 }
 
 
-void CompoundFactory::CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select) {
+void CompoundFactory::CalcCompoundMetaInfo(const Float3& boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select) {
 	//#pragma omp parallel for // TODO Add OMP here, 
 		//for (CompoundFactory& compound : compounds) {
 	for (int cid = 0; cid < compounds.size(); cid++) {

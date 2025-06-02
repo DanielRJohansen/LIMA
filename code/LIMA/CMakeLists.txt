@@ -8,6 +8,7 @@ add_executable(lima
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(lima LIMA_MD)

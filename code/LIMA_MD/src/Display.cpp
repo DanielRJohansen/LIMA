@@ -227,7 +227,7 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _RenderAtoms(Float3{ taskPtr->boxparams.boxSize }, taskPtr->boxparams.total_particles, true);
+                    _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), taskPtr->boxparams.total_particles, true);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
@@ -370,7 +370,7 @@ void Display::TestDisplay() {
 	compound.n_particles = 1;
 	compound.atomLetters[0] = '_';
 	BoxParams params;
-	params.boxSize = 2;
+    params.boxSize = { 3, 2, 1 };
 	params.total_compound_particles = 1;
 	params.total_particles = 1;
 	params.total_particles_upperbound = 1;

@@ -43,7 +43,7 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
+	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
 		Float3 hyperPos = absPosNM;
 		const Float3 nodePos = nodeIndexToAbsolutePosition(nodeindex);
@@ -63,11 +63,11 @@ namespace LIMAPOSITIONSYSTEM {
 		return Coord{ relpos };
 	}
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, float boxlen_nm, BoundaryConditionSelect bc) {
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, const Int3& boxlen_nm, BoundaryConditionSelect bc) {
 		NodeIndex nodeindex = PositionToNodeIndexNM(position);	// TEMP
 		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
 
-		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
+		const Coord relpos = getRelativeCoord(position, nodeindex, 1, Float3::FromInt3(boxlen_nm), bc);
 		return std::make_tuple(nodeindex, relpos);
 	}
 
@@ -84,7 +84,7 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
+	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, Int3 boxlen_nm, BoundaryConditionSelect bc) {
 		CompoundCoords compoundcoords{};
 
 		compoundcoords.origo = PositionToNodeIndexNM(positions[key_particle_index]);
@@ -92,7 +92,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, Float3::FromInt3(boxlen_nm), bc);
 
 		}
 		return compoundcoords;

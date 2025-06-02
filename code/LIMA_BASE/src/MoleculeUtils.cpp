@@ -44,7 +44,7 @@ void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, con
 				continue;
 
 			Float3& neighborPosition = grofile.atoms[neighbor->atomid].position;
-			BoundaryConditionPublic::applyHyperposNM(nodePostion, neighborPosition, grofile.box_size.x, BoundaryConditionSelect::PBC);
+			BoundaryConditionPublic::applyHyperposNM(nodePostion, neighborPosition, grofile.box_size, BoundaryConditionSelect::PBC);
 
 			visited.insert(neighbor->atomid);
 		}

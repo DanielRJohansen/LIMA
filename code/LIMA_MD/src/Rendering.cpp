@@ -68,7 +68,7 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
-    camera.Update(Float3{ task.boxparams.boxSize });
+    camera.Update(task.boxparams.BoxSizeFloat());
 
     if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
         throw std::runtime_error("Invalid number of compounds");

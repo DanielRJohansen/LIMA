@@ -197,7 +197,7 @@ __device__ bool canCompoundInteractWithPoint(const NeighborList::CompoundInfo& q
 }
 
 template <typename BoundaryCondition>
-__global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const NeighborList::Gridnode* const grid, int nCompounds, int nodesPerDim, NeighborList::Buffers nlistBuffers) {
+__global__ void updateCompoundNlistsKernel(SimulationDevice* simDev, const NeighborList::Gridnode* const grid, int nCompounds, Int3 nodesPerDim, NeighborList::Buffers nlistBuffers) {
 
     const bool compoundActive = blockIdx.x * blockDim.x + threadIdx.x < nCompounds;
 
@@ -379,7 +379,7 @@ __global__ void UpdateCompoundsNeighborGridnodes(SimulationDevice* simDev, Neigh
 
 const int nthreads_in_blockgridkernel = 128;
 template <typename BoundaryCondition>
-__global__ void updateBlockgridKernel(const NeighborList::Gridnode* const grid, int nodesPerDim, NeighborList::Buffers nlistBuffers)
+__global__ void updateBlockgridKernel(const NeighborList::Gridnode* const grid, Int3 nodesPerDim, NeighborList::Buffers nlistBuffers)
 {
 	const int block_id = blockIdx.x * blockDim.x + threadIdx.x;
 	const bool block_active = block_id < BoxGrid::BlocksTotal(nodesPerDim);

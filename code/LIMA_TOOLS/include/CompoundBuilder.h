@@ -76,7 +76,7 @@ namespace LIMA_MOLECULEBUILD {
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
 
 
-		void VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
+		void VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
 
 
 		//Temporary, untill how i know how to deal with bonds in tinymols
@@ -108,7 +108,7 @@ class CompoundFactory : public Compound, public CompoundInterimState {
 public:
 	CompoundFactory() {}
 
-	void addParticle(const ParticleFactory&,int global_id, float boxlen_nm, BoundaryConditionSelect bc);
+	void addParticle(const ParticleFactory&,int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc);
 
 	bool hasRoomForRes(int n_particles_in_res) const {
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
@@ -118,7 +118,7 @@ public:
 
 	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
 
-	static void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
+	static void CalcCompoundMetaInfo(const Float3& boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
 
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]

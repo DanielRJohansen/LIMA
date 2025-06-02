@@ -185,7 +185,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 	}
 }
 
-void SuperTopology::VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const {
+void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const {
 	const float allowedScalar = energyMinimizationMode ? 7.f : 3.f;//1.9999f;
 
 	for (const auto& bond : singlebonds)
@@ -485,7 +485,8 @@ const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& par
 }
 
 
-std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, float boxlen_nm, const std::vector<AtomGroup>& atomGroups, BoundaryConditionSelect bc_select)
+std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, const Float3& boxlen_nm, 
+	const std::vector<AtomGroup>& atomGroups, BoundaryConditionSelect bc_select)
 {
 	std::vector<CompoundFactory> compounds;
 	std::vector<int> atomGroupToCompoundIdMap(atomGroups.size());
@@ -576,14 +577,14 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude->contents };
 
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
-	superTopology.VerifyBondsAreStable(grofile.box_size.x, simparams.bc_select, simparams.em_variant);
+	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
 	auto [molecules, tinyMolecules] = SeparateMolecules(superTopology);
 
 	const std::vector<AtomGroup> atomGroups = GroupAtoms(molecules, superTopology);
 
 
-	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size.x, atomGroups, simparams.bc_select);
+	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size, atomGroups, simparams.bc_select);
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
 
@@ -625,7 +626,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
-	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size.x, compounds, simparams.bc_select);
+	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size, compounds, simparams.bc_select);
 
 	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
 

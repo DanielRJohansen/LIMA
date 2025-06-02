@@ -28,7 +28,7 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 
 	/*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
 	coords_now = */
-	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select));
+	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, box.boxparams.boxSize, simparams.bc_select));
 	if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
 	}
@@ -54,7 +54,7 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
-		auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+		auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], box.boxparams.boxSize, simparams.bc_select);
 		SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
 		
 		std::vector<Coord> relPos(tinyMol.nParticles);
@@ -63,9 +63,9 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 		std::vector<TinyMolParticleState> states(tinyMol.nParticles);
 		for (int i = 0; i < tinyMol.nParticles; i++) {
 			Float3 hyperPos = tinyMol.positions[i];
-			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, static_cast<float>(box.boxparams.boxSize), PBC);
+			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, box.boxparams.BoxSizeFloat(), PBC);
 			//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
-			relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.boxSize, PBC);
+			relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.BoxSizeFloat(), PBC);
 			//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
 			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
 			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
@@ -210,10 +210,10 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, (float) sim.box_host->boxparams.boxSize, sim.simparams_host.bc_select);
+			BoundaryConditionPublic::applyBCNM(pos, sim.box_host->boxparams.BoxSizeFloat(), sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (static_cast<float>(sim.box_host->boxparams.boxSize) - padding)) {
+				if (pos[i] < padding || pos[i] > (sim.box_host->boxparams.BoxSizeFloat()[i] - padding)) {
 					//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}

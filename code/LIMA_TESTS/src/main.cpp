@@ -10,6 +10,7 @@
 #include "Userinterface.h"
 #include "Display.h"
 #include "ForceComparisons.h"
+#include "ProgramsTests.h"
 
 
 using namespace TestUtils;
@@ -99,7 +100,11 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
-		RunAllUnitTests();
+
+		ProgramsTests::TestBuildMembrane(envmode);
+
+
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

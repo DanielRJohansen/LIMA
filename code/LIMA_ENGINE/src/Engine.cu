@@ -58,7 +58,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	}
 	cudaStreamCreate(&pmeStream);
 
-	pmeController = std::make_unique<PME::Controller>(boxparams.boxSize, *simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
+	pmeController = std::make_unique<PME::Controller>(*simulation->box_host, simulation->simparams_host.cutoff_nm, pmeStream);
 
 	bondgroups = GenericCopyToDevice(simulation->box_host->bondgroups);
 

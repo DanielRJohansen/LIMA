@@ -78,6 +78,7 @@ Example:
 	parser.AddOption({ "-conf_out", "-co" }, false, conf_out);
 	parser.AddOption({ "-trajectory", "-trr", "-traj"}, false, trajOut);
 	parser.AddFlag({ "-display", "-d" }, [&render]() { render = true; });
+    parser.Parse(argc, argv);
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
@@ -587,4 +587,108 @@ struct RenderAtom {
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
+};
+
+// A super compressed representation of H2O
+class CompressedSolvent {
+	uint64_t wordHi;  // bits 127…64
+	uint64_t wordLo;  // bits  63… 0
+
+	// 2 unused bits
+	// Oxygen: 3x28 bits (84) 
+	// Hydrogen1: 3x7 bits (21)
+	// Hydrogen2: 3x7 bits (21)
+
+
+	static const int oBits = 28;
+	static const int hBits = 7; 
+	static constexpr uint64_t oMask = (uint64_t(1) << oBits) - 1;
+	static constexpr uint64_t hMask = (uint64_t(1) << hBits) - 1;
+
+	static constexpr float hydrogenMaxDist = 0.13f; // [nm]
+	static constexpr float oxygenScalar = 5e+7f; // {-2.68 -> 2.68} [nm]
+	static constexpr float hydrogenScalar = (float)(1u << (hBits-1)) / hydrogenMaxDist; 
+	static constexpr float highestOxygenInput = (float)(1u << (oBits-1)) / oxygenScalar;
+
+public:
+	CompressedSolvent() {}
+	__host__ __device__
+		CompressedSolvent(const Float3& o, const Float3& h1, const Float3& h2) {
+		// quantize O
+		uint64_t xi = uint64_t(int32_t(roundf(o.x * oxygenScalar))) & oMask;
+		uint64_t yi = uint64_t(int32_t(roundf(o.y * oxygenScalar))) & oMask;
+		uint64_t zi = uint64_t(int32_t(roundf(o.z * oxygenScalar))) & oMask;
+
+		// quantize H1 rel O
+		int32_t h1xi = int32_t(roundf((h1.x - o.x) * hydrogenScalar));
+		int32_t h1yi = int32_t(roundf((h1.y - o.y) * hydrogenScalar));
+		int32_t h1zi = int32_t(roundf((h1.z - o.z) * hydrogenScalar));
+
+		// quantize H2 rel O
+		int32_t h2xi = int32_t(roundf((h2.x - o.x) * hydrogenScalar));
+		int32_t h2yi = int32_t(roundf((h2.y - o.y) * hydrogenScalar));
+		int32_t h2zi = int32_t(roundf((h2.z - o.z) * hydrogenScalar));
+
+		uint64_t h1xu = uint64_t(h1xi) & hMask;
+		uint64_t h1yu = uint64_t(h1yi) & hMask;
+		uint64_t h1zu = uint64_t(h1zi) & hMask;
+		uint64_t h2xu = uint64_t(h2xi) & hMask;
+		uint64_t h2yu = uint64_t(h2yi) & hMask;
+		uint64_t h2zu = uint64_t(h2zi) & hMask;
+
+		// pack high 64 bits: [O.x(28) @bits127-100] [O.y(28) @99-72] [O.z upper 8 @71-64]
+		wordHi = (xi << 36) | (yi << 8) | (zi >> 20);
+
+		// pack low 64 bits: [O.z lower20 @bits63-44] [H1.x(7) @43-37] [H1.y7 @36-30] [H1.z7@29-23]
+		//               [H2.x7@22-16] [H2.y7@15-9] [H2.z7@8-2]  [unused2 @1-0]
+		wordLo = ((zi & ((1u << 20) - 1)) << 44)
+			| (h1xu << 37)
+			| (h1yu << 30)
+			| (h1zu << 23)
+			| (h2xu << 16)
+			| (h2yu << 9)
+			| (h2zu << 2);
+	}
+
+	__host__ __device__
+		void UnPack(Float3& o, Float3& h1, Float3& h2) const {
+		// helper for sign‐extension
+		auto signExt = [&](uint64_t v, int bits) {
+			return int32_t(v << (32 - bits)) >> (32 - bits);
+			};
+
+		// load
+		uint64_t hi = wordHi, lo = wordLo;
+
+		// O.x = bits127-100 >>36
+		int32_t xi = signExt(hi >> 36, oBits);
+		// O.y = bits99-72 >>8 & oMask
+		int32_t yi = signExt((hi >> 8) & oMask, oBits);
+		// O.z = ( (hi&0xFF)<<20 | lo>>44 ) 
+		uint64_t zhi = hi & 0xFF;
+		uint64_t zlo = lo >> 44;
+		int32_t zi = signExt((zhi << 20) | zlo, oBits);
+
+		o.x = float(xi) / oxygenScalar;
+		o.y = float(yi) / oxygenScalar;
+		o.z = float(zi) / oxygenScalar;
+
+		// H1
+		int32_t h1xi = signExt((lo >> 37) & hMask, hBits);
+		int32_t h1yi = signExt((lo >> 30) & hMask, hBits);
+		int32_t h1zi = signExt((lo >> 23) & hMask, hBits);
+
+		// H2
+		int32_t h2xi = signExt((lo >> 16) & hMask, hBits);
+		int32_t h2yi = signExt((lo >> 9) & hMask, hBits);
+		int32_t h2zi = signExt((lo >> 2) & hMask, hBits);
+
+		h1.x = o.x + float(h1xi) / hydrogenScalar;
+		h1.y = o.y + float(h1yi) / hydrogenScalar;
+		h1.z = o.z + float(h1zi) / hydrogenScalar;
+		h2.x = o.x + float(h2xi) / hydrogenScalar;
+		h2.y = o.y + float(h2yi) / hydrogenScalar;
+		h2.z = o.z + float(h2zi) / hydrogenScalar;
+	}
+
 };

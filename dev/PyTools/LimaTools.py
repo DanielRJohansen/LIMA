@@ -10,6 +10,8 @@ import Energies
 import math
 from scipy.special import erfc
 import Plotdata
+from HydrogenDensityCloud import PlotHydrogenDensity
+
 def read_histogram_data(filename):
     with open(filename, 'rb') as f:
         # Read the number of steps
@@ -109,11 +111,7 @@ def PlotErfcScalar():
 
 if __name__ == "__main__":
 
-    #print(math.erfc(3))
-
-    Plotdata.PlotData()
-
-    #count_lines_in_directory()
+    PlotHydrogenDensity()
     exit(0)
 
     # Get the current folder path

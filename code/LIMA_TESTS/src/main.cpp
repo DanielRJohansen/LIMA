@@ -11,7 +11,7 @@
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
-
+#include "InternalTypes.h"
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -27,6 +27,8 @@ void RunAllUnitTests();
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+		InternalTypes::TestCompression(envmode);
 
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
@@ -101,7 +103,7 @@ int main() {
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
 
-		ProgramsTests::TestBuildMembrane(envmode);
+		//ProgramsTests::TestBuildMembrane(envmode);
 
 
 		//RunAllUnitTests();

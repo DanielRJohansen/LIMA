@@ -48,7 +48,7 @@ struct RenderSetup {
     fs::path conf = "./conf.gro";
     fs::path topol = "./topol.top";
     bool whole = false;
-    bool hideWater = true;
+    bool hideWater = false;
 private:
     const std::string helpText = R"(
 Usage: render [OPTIONS]

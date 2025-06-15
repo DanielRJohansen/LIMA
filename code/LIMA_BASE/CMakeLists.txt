@@ -21,7 +21,7 @@ add_library(LIMA_BASE STATIC
     src/BoxGrid.cpp
     src/PlotUtils.cpp
     src/SimParams.cpp
- )
+  "include/UpgradeableFileFormat.h")
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal

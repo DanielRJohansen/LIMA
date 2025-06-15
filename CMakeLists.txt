@@ -46,7 +46,7 @@ endif()
 
 # Set the installation prefix
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/applications")
-
+ 
 add_compile_definitions(GLEW_STATIC)
 
 add_subdirectory(code/LIMA_DEPENDS)

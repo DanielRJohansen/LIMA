@@ -9,6 +9,7 @@
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
+#include "UpgradeableFileFormat.h"
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -340,6 +341,16 @@ Trajectory Environment::WriteSimToTrajectory() const {
 	return trajectory;
 }
 
+void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
+	const int nSteps = simulation->getStep();
+	const int nAtoms = boximage->grofile.atoms.size();
+
+	UpgradeableFileFormat file(path);
+
+	file.WriteSection("numAtoms", std::vector{ nAtoms });
+	file.WriteSection("numFrames", std::vector{nSteps / simulation->simparams_host.data_logging_interval});
+	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
+}
 
 void Environment::handleStatus(const int64_t step) {
 	if (m_mode == Headless) {

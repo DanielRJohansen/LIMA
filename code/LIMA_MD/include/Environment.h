@@ -68,6 +68,7 @@ public:
 	std::vector<Float3> GetForces(int64_t step) const;
 
 	Trajectory WriteSimToTrajectory() const;
+	void WriteTrajectoryAsUff(const fs::path& path) const;
 
 	void RenderSimulation();
 	

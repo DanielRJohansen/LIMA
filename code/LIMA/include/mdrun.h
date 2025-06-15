@@ -53,6 +53,9 @@ Options:
 
     -trajectory, -trr [path]
 		Output path for the trajectory file. Defaults to not outputting a trajectory file
+    
+    -uff
+        Export UpgradeableFileFormat data (for ML training). Defaults to false
 
     -help, -h
         Display this help text and exit.
@@ -71,6 +74,7 @@ Example:
     fs::path trajOut{};
 
     bool render = false;
+	bool uff = false;
 
     parser.AddOption({ "-conf", "-c" }, false, conf);
 	parser.AddOption({ "-topology", "-top", "-t"}, false, topol);
@@ -78,6 +82,7 @@ Example:
 	parser.AddOption({ "-conf_out", "-co" }, false, conf_out);
 	parser.AddOption({ "-trajectory", "-trr", "-traj"}, false, trajOut);
 	parser.AddFlag({ "-display", "-d" }, [&render]() { render = true; });
+    parser.AddFlag({ "-uff" }, [&uff]() {uff = true; });
     parser.Parse(argc, argv);
 
     EnvMode envmode = render ? Full : ConsoleOnly;
@@ -104,6 +109,11 @@ Example:
     if (!trajOut.empty()) {
         Trajectory traj = env->WriteSimToTrajectory();
 		MDFiles::Dump(traj, trajOut);
+    }
+
+    if (uff) {
+		fs::path path = work_dir / "trajectory.uff";
+        env->WriteTrajectoryAsUff(path);
     }
 
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;

@@ -46,6 +46,10 @@ public:
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
 
+	const std::vector<T>& GetBuffer() {
+		return buffer;
+	}
+
 	// Get entryindex from LIMALOGSYSTEM
 	T* getBufferAtIndex(size_t entryindex) {
 		return &buffer[n_particles_upperbound * entryindex];

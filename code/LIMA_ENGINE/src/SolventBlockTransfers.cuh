@@ -27,6 +27,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 	const int solventblockId = blockIdx.x;
 	const int stepToLoadFrom = _step + 1;
 	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+	SolventBlockCompressedPositions* const solventPositions = &sim->boxState.compressedSolvents[solventblockId];
 	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
 
 	__shared__ int nParticlesInBondgroups[SolventBlock::maxBondgroups];
@@ -164,6 +165,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 					solventblockGlobalPtr->atomtypeIds[nParticlesRemaining] = solventblockGlobalPtr->atomtypeIds[srcIndex];
 					solventblockGlobalPtr->particlesBondgroupIds[nParticlesRemaining] = nBondgroupsRemaining - 1;
 					solventblockGlobalPtr->states[nParticlesRemaining] = solventblockGlobalPtr->states[srcIndex];
+					solventPositions->positions[nParticlesRemaining] = solventblockGlobalPtr->rel_pos[srcIndex].ToRelpos();
 					nParticlesRemaining++;
 				}
 			}
@@ -186,6 +188,7 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	const int solventblockId = blockIdx.x;
 	const int stepToLoadFrom = _step + 1;
 	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+	SolventBlockCompressedPositions* const solventPositions = &sim->boxState.compressedSolvents[solventblockId];
 
 	if (threadIdx.x == 0) {
 		nParticlesInBlock = solventblockGlobalPtr->nParticles;
@@ -219,6 +222,7 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 			solventblockGlobalPtr->atomtypeIds[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingAtomtypeIds[srcIndex];
 			solventblockGlobalPtr->particlesBondgroupIds[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingBondgroupIds[srcIndex] + nBondgroupsInBlock;
 			solventblockGlobalPtr->states[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingStates[srcIndex];
+			solventPositions->positions[nParticlesInBlock + threadIdx.x] = tinymolTransferModule.incomingPositions[srcIndex].ToRelpos();
 		}
 		if (threadIdx.x < nIncomingBondgroups) {
 			const int srcIndex = solventblockId * 6 * TinymolTransferModule::maxOutgoingBondgroups

@@ -23,7 +23,7 @@ Box::Box(Float3 boxSizeNM) {
 	}
 
 	boxparams.boxSize = boxSizeNM.ToInt3();
-	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxparams.boxSize);
+	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue<SolventBlock>(boxparams.boxSize);
 }
 
 

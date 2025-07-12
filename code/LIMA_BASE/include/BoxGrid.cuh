@@ -72,7 +72,9 @@ struct SolventBlock {
 	int nBondgroups = 0;
 };
 
-
+struct SolventBlockCompressedPositions {
+	Float3 positions[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+};
 
 
 
@@ -151,8 +153,18 @@ namespace SolventBlocksCircularQueue {
 		return BoxGrid::BlocksTotal(boxlenNM) * queue_len;
 	}
 
-	static std::vector<SolventBlock> createQueue(Int3 boxlenNM) {
-		return std::vector<SolventBlock>(nElementsTotal(boxlenNM));
+	template <typename BlockType>
+	static std::vector<BlockType> createQueue(Int3 boxlenNM) {
+		return std::vector<BlockType>(nElementsTotal(boxlenNM));
+	}
+
+	template <typename BlockType>
+	static BlockType* CreateBuffer(Int3 boxsize) {
+		const size_t bytesize = sizeof(BlockType) * nElementsTotal(boxsize);
+		BlockType* queue_dev = nullptr;
+		cudaMalloc(&queue_dev, bytesize);
+		cudaMemset(queue_dev, 0, bytesize);
+		return queue_dev;
 	}
 
 	constexpr bool isTransferStep(int64_t step) {

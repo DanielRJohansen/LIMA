@@ -51,6 +51,10 @@ namespace TestMDStability {
 		return loadAndRunBasicSimulation("8ResNoSol", envmode, 3.87e-4, 2e-5);
 	}
 
+	LimaUnittestResult SolventStability(EnvMode envmode) {		
+		return loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7);
+	}
+
 	static bool doMoleculeTranslationTest(std::string foldername) {
 		//auto env = TestUtils::basicSetup(foldername, SimulationParams{100, 10000});
 

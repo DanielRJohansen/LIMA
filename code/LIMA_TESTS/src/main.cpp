@@ -28,7 +28,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		InternalTypes::TestCompression(envmode);
+		//InternalTypes::TestCompression(envmode);
 
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
@@ -55,7 +55,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+		SolventStability(envmode);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -106,7 +106,7 @@ int main() {
 		//ProgramsTests::TestBuildMembrane(envmode);
 
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -151,7 +151,7 @@ void RunAllUnitTests() {
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7));
+	ADD_TEST("SolventBenchmark", SolventStability(envmode));
 	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
 
 	// Electrostatics

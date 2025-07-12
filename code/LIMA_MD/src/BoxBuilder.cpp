@@ -193,7 +193,7 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 
 		// Clear all of the data
 		//delete simulation.box_host->solventblockgrid_circularqueue;
-		simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation.box_host->boxparams.boxSize);
+		simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue<SolventBlock>(simulation.box_host->boxparams.boxSize);
 
 
 		// Copy the temporary storage back into the queue

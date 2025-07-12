@@ -235,6 +235,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
 	__shared__ SolventBlock* solventblockPtrs[batchsize];
+	__shared__ SolventBlockCompressedPositions* compressedSolventPtrs[batchsize];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES)
 		forcefieldTinymol_shared.types[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x];
@@ -250,6 +251,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 						//rbyBlocks  sim->compound_neighborlists[blockIdx.x].gridnode_ids[i + threadIdx.x];
 
 					solventblockPtrs[threadIdx.x] = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, neighborIds[threadIdx.x], step);
+					compressedSolventPtrs[threadIdx.x] = &boxState.compressedSolvents[neighborIds[threadIdx.x]];
 					const NodeIndex solventblock_hyperorigo = BoundaryCondition::applyHyperpos_Return(compound_origo, BoxGrid::Get3dIndex(neighborIds[threadIdx.x], DeviceConstants::boxSize.boxSizeNM_i));
 					relshifts[threadIdx.x] = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(solventblock_hyperorigo, compound_origo);
 					neighborNParticles[threadIdx.x] = solventblockPtrs[threadIdx.x]->nParticles;
@@ -266,7 +268,8 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 				// Load the positions and add rel shift
 				if (queryIndex < neighborNParticles[indexInBatch]) {
-					utility_buffer_f3[threadIdx.x] = solventblockPtrs[indexInBatch]->rel_pos[queryIndex].ToRelpos() + relshifts[indexInBatch];
+					//utility_buffer_f3[threadIdx.x] = solventblockPtrs[indexInBatch]->rel_pos[queryIndex].ToRelpos() + relshifts[indexInBatch];
+					utility_buffer_f3[threadIdx.x] = compressedSolventPtrs[indexInBatch]->positions[queryIndex] + relshifts[indexInBatch];
 					neighborAtomstypes[threadIdx.x] = solventblockPtrs[indexInBatch]->atomtypeIds[queryIndex];
 				}
 				__syncthreads();
@@ -546,6 +549,8 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		const SolventBlock* solventblock_neighbor = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockindex_neighbor, step);
 		const int nsolvents_neighbor = solventblock_neighbor->nParticles;
 
+		const SolventBlockCompressedPositions* const solventblockCompressedNeighbor = &boxState.compressedSolvents[blockindex_neighbor];
+
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
         __syncthreads();
 
@@ -556,7 +561,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
         //positionsBuffer_relpos[threadIdx.x] = positionsBuffer_coord[threadIdx.x].ToRelpos();
 
         if (threadIdx.x < nsolvents_neighbor) {
-            positionsBuffer_relpos[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos();
+			positionsBuffer_relpos[threadIdx.x] = solventblockCompressedNeighbor->positions[threadIdx.x];
             utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
         }
 		__syncthreads();
@@ -745,20 +750,26 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	// TODO: LONG: stop using a circular queue for solvents, just have the data 1 place now that we sync before integration anyways
 
 	// Push new SolventCoord to global mem
-	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
-	solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
-	solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
-	solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
-	solventblock_next_ptr->particlesBondgroupIds[threadIdx.x] = solventblock.particlesBondgroupIds[threadIdx.x];
-	solventblock_next_ptr->states[threadIdx.x] = state;
+	{
+		SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
+		solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
+		solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
+		solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
+		solventblock_next_ptr->particlesBondgroupIds[threadIdx.x] = solventblock.particlesBondgroupIds[threadIdx.x];
+		solventblock_next_ptr->states[threadIdx.x] = state;
 
-	if (threadIdx.x == 0) {
-		solventblock_next_ptr->nParticles = solventblock.nParticles;
-		solventblock_next_ptr->nBondgroups = solventblock.nBondgroups;
+		if (threadIdx.x == 0) {
+			solventblock_next_ptr->nParticles = solventblock.nParticles;
+			solventblock_next_ptr->nBondgroups = solventblock.nBondgroups;
+		}
+		if (threadIdx.x < solventblock.nBondgroups) {
+			solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
+			solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+		}
 	}
-	if (threadIdx.x < solventblock.nBondgroups) {
-		solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
-		solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+	// Push Compressed positions
+	{
+		boxState.compressedSolvents[blockIdx.x].positions[threadIdx.x] = relPositionsNext[threadIdx.x].ToRelpos();
 	}
 }
 

@@ -157,7 +157,7 @@ struct CompoundCoords {
 
 
 // struct with data that only the solvent itself needs
-struct TinyMolParticleState {
+struct TinyMolParticleState {	// OPTIM: pack this in 128 bytes??
 	Float3 vel_prev{};
 	Float3 force_prev{};
 	int tinymolTypeIndex = -1; // wrong place to have this

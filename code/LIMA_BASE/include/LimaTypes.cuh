@@ -589,6 +589,10 @@ struct RenderAtom {
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
 };
 
+//class CompressedSolvent {
+//	Float3 position;
+//};
+
 // A super compressed representation of H2O
 class CompressedSolvent {
 	uint64_t wordHi;  // bits 127…64

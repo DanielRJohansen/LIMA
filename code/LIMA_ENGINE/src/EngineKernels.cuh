@@ -75,7 +75,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
 
     const Float3 myPos = compoundQuickData.relPos[threadIdx.x];
     const float myCharge = enableES ? compoundQuickData.charges[threadIdx.x] : 0.f;
-    const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
+    const LJParams myParams = compoundQuickData.ljParams[threadIdx.x];
 
     static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
 
@@ -235,11 +235,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
 #ifdef ENABLE_SOLVENTS
 	__shared__ SolventBlock* solventblockPtrs[batchsize];
-	__shared__ SolventBlockCompressedPositions* compressedSolventPtrs[batchsize];
-	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
-	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES)
-		forcefieldTinymol_shared.types[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x];
-
+	__shared__ SolventBlockCompressedPositions* compressedSolventPtrs[batchsize];	
 	{
 		int indexInBatch = batchsize;
 		for (int i = 0; i < nGridnodes; i++) {
@@ -262,12 +258,16 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 			// There are many more solvents in a block, than threads in this kernel, so we need to loop in strides of blockdim.x
 			__syncthreads();	// Dont load buffer before all are finished with the previous iteration
-			for (uint32_t offset = 0; offset < neighborNParticles[indexInBatch]; offset += blockDim.x) {
+			const uint32_t maxStride = LIMA_UTILS::HighestMultipleOf(MAX_COMPOUND_PARTICLES, 3); // Multiple of 3, less than blockgrid.x
+			for (uint32_t offset = 0; offset < neighborNParticles[indexInBatch]; offset += maxStride) {
 				const uint32_t queryIndex = offset + threadIdx.x;
-				const int n_elements_this_stride = LAL::min(neighborNParticles[indexInBatch] - offset, blockDim.x);
-
+				const int n_elements_this_stride = LAL::min(neighborNParticles[indexInBatch] - offset, maxStride);
+			/*for (uint32_t offset = 0; offset < neighborNParticles[indexInBatch]; offset += blockDim.x) {
+				const uint32_t queryIndex = offset + threadIdx.x;
+				const int n_elements_this_stride = LAL::min(neighborNParticles[indexInBatch] - offset, blockDim.x);*/
 				// Load the positions and add rel shift
 				if (queryIndex < neighborNParticles[indexInBatch]) {
+					
 					//utility_buffer_f3[threadIdx.x] = solventblockPtrs[indexInBatch]->rel_pos[queryIndex].ToRelpos() + relshifts[indexInBatch];
 					utility_buffer_f3[threadIdx.x] = compressedSolventPtrs[indexInBatch]->positions[queryIndex] + relshifts[indexInBatch];
 					neighborAtomstypes[threadIdx.x] = solventblockPtrs[indexInBatch]->atomtypeIds[queryIndex];
@@ -276,7 +276,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeSolventToCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], particleCharge, n_elements_this_stride,
-						utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared, forcefieldTinymol_shared, neighborAtomstypes);
+						utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared, boxConfig.solventForcefield, neighborAtomstypes);
 				}
 				__syncthreads();
 			}
@@ -417,18 +417,12 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int neighborblockNumElements;
 	__shared__ Float3 utility_float3;
-	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 	__shared__ int nElementsInBlock;
 
 	// Doubles as block_index_3d!
 	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
 
 	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
-
-
-	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
-		forcefieldTinymol_shared.types[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x]; // TODO Check that im using this and not the __constant??
-	}
 
 	if (threadIdx.x == 0) {
 		nElementsInBlock = solventblock_ptr->nParticles;
@@ -474,7 +468,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 			//  We can optimize here by loading and calculate the paired sigma and eps, jsut remember to loop threads, if there are many aomttypes.
 			if (threadActive) {// TODO: use computePote template param here
 				force += LJ::computeCompoundToSolventLJForces<true, energyMinimize>(relpos_self, n_compound_particles, utility_buffer, potE_sum,
-					utility_buffer_small, idSelf, DeviceConstants::tinymolForcefield, tinymolTypeId, charges);
+					utility_buffer_small, idSelf, boxConfig.solventForcefield, tinymolTypeId, charges);
 			}
 			__syncthreads();
 		}
@@ -489,23 +483,16 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
     //__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
     static const int utilityBufferBytesize = sizeof(ForceEnergy) * SolventBlock::MAX_SOLVENTS_IN_BLOCK;
-    static_assert(utilityBufferBytesize >= sizeof(Float3) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(ForcefieldTinymol));
     static_assert(sizeof(Coord) == sizeof(Float3));
     __shared__ uint8_t utilityBuffer[utilityBufferBytesize];
     Coord* positionsBuffer_coord = (Coord*)&utilityBuffer[0];
     Float3* positionsBuffer_relpos = (Float3*)&utilityBuffer[0];
-    ForcefieldTinymol* forcefieldTinymolShared = (ForcefieldTinymol*)&utilityBuffer[sizeof(Float3) * SolventBlock::MAX_SOLVENTS_IN_BLOCK];
     ForceEnergy* forceEnergyOut = (ForceEnergy*)utilityBuffer; // Overlaps all of the buffers above
 
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int nElementsInBlock;
 
 	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
-
-
-	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
-        forcefieldTinymolShared->types[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x]; // TODO Check that im using this and not the __constant??
-	}
 
 	if (threadIdx.x == 0) {
 		nElementsInBlock = solventblock_ptr->nParticles;
@@ -529,7 +516,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		__syncthreads();
 		if (threadActive) {
             force += LJ::computeSolventToSolventLJForces<true, energyMinimize, true>
-				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, *forcefieldTinymolShared, utility_buffer_small, solventblock_ptr->particlesBondgroupIds);
+				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, boxConfig.solventForcefield, utility_buffer_small, solventblock_ptr->particlesBondgroupIds);
 		}
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -569,7 +556,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 		if (threadActive) {
             force += LJ::computeSolventToSolventLJForces<true, energyMinimize, false>
-				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, *forcefieldTinymolShared, utility_buffer_small, nullptr);
+				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, boxConfig.solventForcefield, utility_buffer_small, nullptr);
 		}
 	}
 
@@ -694,6 +681,7 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 
 	const BoxState& boxState = sim->boxState;
 	const SimParams& simparams = sim->params;
+	const SolventForcefield& solventForcefield = sim->boxConfig.solventForcefield;
 	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
 	const ForceEnergy myForceEnergy = 
@@ -715,8 +703,8 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	if (solventActive) {
 		state = solventblock.states[threadIdx.x];
 
-		const float mass = DeviceConstants::tinymolForcefield.types[state.tinymolTypeIndex].mass;
-
+		const float mass = threadIdx.x % 3 == 0 ? solventForcefield.Get(SolventForcefield::O).mass : solventForcefield.Get(SolventForcefield::H).mass;
+	
 		if constexpr (energyMinimize) {
 			const Float3 safeForce = EngineUtils::ForceActivationFunction(myForceEnergy.force);
 			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];

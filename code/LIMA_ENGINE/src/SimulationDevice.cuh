@@ -7,8 +7,8 @@
 
 struct BoxConfig {	
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
-	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, const SolventForcefield&);
+	static BoxConfig Create(const Box& boxHost, const SolventForcefield& solventForcefield); // Returns a ptr to device
 	void FreeMembers() const;
 
 	// CompoundData used ALOT, kept here for memory locality
@@ -20,6 +20,8 @@ struct BoxConfig {
 	const BondedParticlesLUT* const bpLUTs;
 
 	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds;
+
+	const SolventForcefield solventForcefield;
 };
 
 struct BoxState {
@@ -50,7 +52,7 @@ struct AdamState {
 
 struct alignas(128) CompoundQuickData {
 	Float3 relPos[MAX_COMPOUND_PARTICLES];
-	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
+	LJParams ljParams[MAX_COMPOUND_PARTICLES];
 	float charges[MAX_COMPOUND_PARTICLES];
 
 	// Returns ptr to device buffer

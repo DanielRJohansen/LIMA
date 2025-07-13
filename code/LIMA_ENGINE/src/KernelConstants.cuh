@@ -23,7 +23,6 @@ struct BoxSize {
 namespace DeviceConstants {
 
 	__constant__ ForceField_NB forcefield;
-	__constant__ ForcefieldTinymol tinymolForcefield;
 	__constant__ BoxSize boxSize;
 	__constant__ float cutoffNM;
 	__constant__ float cutoffNmReciprocal;

@@ -213,7 +213,7 @@ struct BoxImage {
 
 	const ForceField_NB forcefield;
 
-	const ForcefieldTinymol tinymolTypes;
+	const SolventForcefield solventForcefield;
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 

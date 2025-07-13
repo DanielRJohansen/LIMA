@@ -2,16 +2,17 @@
 #include "Utilities.h"
 
 
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, const SolventForcefield& solventFF) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
 	bpLUTs(bpLUTs),
-	tinymolNearbyBlockIds(tinymolNearbyBlockIds)
+	tinymolNearbyBlockIds(tinymolNearbyBlockIds),
+	solventForcefield(solventFF)
 	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
-BoxConfig BoxConfig::Create(const Box& boxHost) {
+BoxConfig BoxConfig::Create(const Box& boxHost, const SolventForcefield& solventForcefield) {
 	std::vector<uint8_t> compoundsAtomTypes;
 	std::vector<float> compoundsAtomCharges;
 	compoundsAtomTypes.reserve(MAX_COMPOUND_PARTICLES * boxHost.boxparams.n_compounds);
@@ -27,11 +28,12 @@ BoxConfig BoxConfig::Create(const Box& boxHost) {
 		GenericCopyToDevice(compoundsAtomTypes),
 		GenericCopyToDevice(compoundsAtomCharges), 
 		GenericCopyToDevice(boxHost.bpLutCollection), 
-        BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
+        BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f),// TODO: MAGIC nr, use the actual cutoff from simparams
+		solventForcefield
 	);
 }
 void BoxConfig::FreeMembers() const {
-	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
+	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, SolventForcefield{});
 	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
 
 	cudaFree((void*)boxtemp.compounds);
@@ -229,7 +231,7 @@ CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation)
 			}
 			else {
 				quickData.relPos[pid] = Float3{};
-				quickData.ljParams[pid] = ForceField_NB::ParticleParameters{};
+				quickData.ljParams[pid] = LJParams{};
 				quickData.charges[pid] = 0.f;
 			}
 		}

@@ -337,31 +337,39 @@ struct NonbondedInteractionParams {
 };
 
 
-struct ForceField_NB {
-	static const int MAX_TYPES = 64;
-
-	struct ParticleParameters {	//Nonbonded
-		//float mass = -1;		//[kg/mol]	or 
-		// Values at a format for efficient parameter computation
-		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm]
-	};
-
-	ParticleParameters particle_parameters[MAX_TYPES];
+// Lennard-Jones parameters
+struct LJParams {
+	float sigmaHalf = -1;		// [nm]
+	float epsilonSqrt = -1;		// [J/mol/nm]
 };
 
-struct ForcefieldTinymol {
-	static const int MAX_TYPES = 16;
+struct ForceField_NB {
+	static const int MAX_TYPES = 64;
+	LJParams particle_parameters[MAX_TYPES];
+};
 
-	// Can make mass and epsilon half
-	struct TinyMolType {
-		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm]
-		float mass = -1;		// [kg/mol]
+
+struct SolventForcefield {
+	enum Select {O=0, H=1};
+	struct Params {
+		LJParams ljParams;
+		float mass = -1;			// [kg/mol]
 		float charge = -1;		// [kC/mol]
-	};
+	} types[2];
 
-	TinyMolType types[MAX_TYPES];
+	SolventForcefield() {};
+	SolventForcefield(const Params& o, const Params& h) {
+		types[O] = o;
+		types[H] = h;
+	}
+
+	constexpr const Params& Get(Select select) const {
+		return types[select];
+	}
+
+	float MoleculeMass() const {
+		return types[O].mass + 2.f * types[H].mass;
+	}
 };
 
 

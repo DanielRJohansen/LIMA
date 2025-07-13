@@ -16,6 +16,10 @@
 
 namespace LIMA_UTILS {
 
+    constexpr int HighestMultipleOf(int num, int multiple) {
+        return (num / multiple) * multiple;
+	}
+
 	static int roundUp(int numToRound, int multiple)
 	{
 		assert(multiple);

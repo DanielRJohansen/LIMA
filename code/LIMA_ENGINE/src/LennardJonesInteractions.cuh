@@ -18,11 +18,11 @@ namespace LJ {
 		return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
 	}
 
-	constexpr float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
+	constexpr float CalcSigma(SolventForcefield::Select t1, SolventForcefield::Select t2, const SolventForcefield& forcefield) {
+		return forcefield.Get(t1).ljParams.sigmaHalf + forcefield.Get(t2).ljParams.sigmaHalf;		
 	}
-	constexpr float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
+	constexpr float CalcEpsilon(SolventForcefield::Select t1, SolventForcefield::Select t2, const SolventForcefield& forcefield) {
+		return forcefield.Get(t1).ljParams.epsilonSqrt * forcefield.Get(t2).ljParams.epsilonSqrt;
 	}
 
 	constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
@@ -151,7 +151,7 @@ namespace LJ {
     __device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, float& potE_sum,
         const Float3* const neighbor_positions, const int neighbor_n_particles,
         const float chargeSelf, const float* const chargeNeighbors,
-        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams)
+        const LJParams& myParams, const LJParams* const neighborParams)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -184,10 +184,12 @@ namespace LJ {
 	// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
-		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
+		const SolventForcefield& solventForcefield, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
 		Float3 force{};
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
+
+		auto selectSelf = threadIdx.x % 3 == 0 ? SolventForcefield::Select::O : SolventForcefield::Select::H;
 
 		for (int i = 0; i < n_elements; i++) {
 			// If computing within block, dont compute force against thread's solvent
@@ -195,19 +197,21 @@ namespace LJ {
 				if (tinymolIds[threadIdx.x] == tinymolIds[i]) { continue; }
 			}
 
+			auto selectOther = i % 3 == 0 ? SolventForcefield::Select::O : SolventForcefield::Select::H;
+
 			const Float3 diff = (relpos_others[i] - relpos_self);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
-				CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+				CalcSigma(selectSelf, selectOther, solventForcefield),
+				CalcEpsilon(selectSelf, selectOther, solventForcefield),
 				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
 				threadIdx.x, i
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
+				const float chargeProduct = solventForcefield.Get(selectSelf).charge * solventForcefield.Get(selectOther).charge;
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
 				if constexpr (computePotE)
 					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
@@ -220,28 +224,37 @@ namespace LJ {
 
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, float myCharge, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
-		const ForceField_NB& forcefield, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
+		const ForceField_NB& forcefield, const SolventForcefield& solventForcefield, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
 		Float3 force{};
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
 
+		const float sigmaWithH = CalcSigma(forcefield.particle_parameters[atomtype_self].sigmaHalf, solventForcefield.Get(SolventForcefield::Select::H).ljParams.sigmaHalf);
+		const float sigmaWithO = CalcSigma(forcefield.particle_parameters[atomtype_self].sigmaHalf, solventForcefield.Get(SolventForcefield::Select::O).ljParams.sigmaHalf);
+		const float epsilonWithH = CalcEpsilon(forcefield.particle_parameters[atomtype_self].epsilonSqrt, solventForcefield.Get(SolventForcefield::Select::H).ljParams.epsilonSqrt);
+		const float epsilonWithO = CalcEpsilon(forcefield.particle_parameters[atomtype_self].epsilonSqrt, solventForcefield.Get(SolventForcefield::Select::O).ljParams.epsilonSqrt);
+		const float chargeproductWithH = myCharge * solventForcefield.Get(SolventForcefield::Select::H).charge;
+		const float chargeproductWithO = myCharge * solventForcefield.Get(SolventForcefield::Select::O).charge;
+
 		for (int i = 0; i < n_particles; i++) {
 
+			//TOOD: Make an unrolled loop here, avoid modulo
 			const Float3 diff = (positions[i] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
-
+			float sigma = i % 3 == 0 ? sigmaWithO : sigmaWithH;
+			float epsilon = i % 3 == 0 ? epsilonWithO : epsilonWithH;
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(forcefield.particle_parameters[atomtype_self].sigmaHalf, forcefieldTinymol_shared.types[tinymolTypeIds[i]].sigmaHalf),
-				CalcEpsilon(forcefield.particle_parameters[atomtype_self].epsilonSqrt, forcefieldTinymol_shared.types[tinymolTypeIds[i]].epsilonSqrt),
+				sigma,
+				epsilon,
 				CalcLJOrigin::SolCom,
 				atomtype_self, -1
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = myCharge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
+				float chargeProduct = i % 3 == 0 ? chargeproductWithO : chargeproductWithH;
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
 				if constexpr (computePotE)
 					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
@@ -254,12 +267,16 @@ namespace LJ {
 	
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeCompoundToSolventLJForces(const Float3& self_pos, const int n_particles, const Float3* const positions,
-		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id, const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t tinymolTypeId,
+		float& potE_sum, const uint8_t* atomtypes_others, const int sol_id, const SolventForcefield& solventForcefield, const uint8_t tinymolTypeId,
 		const float* const charges)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
+
+		float mySigma = threadIdx.x % 3 == 0 ? solventForcefield.Get(SolventForcefield::Select::O).ljParams.sigmaHalf : solventForcefield.Get(SolventForcefield::Select::H).ljParams.sigmaHalf;
+		float myEpsilon = threadIdx.x % 3 == 0 ? solventForcefield.Get(SolventForcefield::Select::O).ljParams.epsilonSqrt : solventForcefield.Get(SolventForcefield::Select::H).ljParams.epsilonSqrt;
+		float myCharge = threadIdx.x % 3 == 0 ? solventForcefield.Get(SolventForcefield::Select::O).charge : solventForcefield.Get(SolventForcefield::Select::H).charge;
 
 		for (int i = 0; i < n_particles; i++) {
 			 
@@ -270,14 +287,15 @@ namespace LJ {
 			const auto& otherType = DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]];
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
-				CalcSigma(forcefieldTinymol_shared.types[tinymolTypeId].sigmaHalf, otherType.sigmaHalf),
-				CalcEpsilon(forcefieldTinymol_shared.types[tinymolTypeId].epsilonSqrt, otherType.epsilonSqrt),
+				CalcSigma(mySigma, otherType.sigmaHalf),
+				CalcEpsilon(myEpsilon, otherType.epsilonSqrt),
 				CalcLJOrigin::ComSol,
 				sol_id, -1
 			);
 
 			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeId].charge * charges[i];
+				const float chargeProduct = myCharge * charges[i];
+
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
 				if constexpr (computePotE)
 					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);

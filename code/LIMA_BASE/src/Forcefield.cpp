@@ -299,18 +299,29 @@ int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
 	return tinymolTypes->GetActiveIndex(query);
 }
 
-ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
-	ForcefieldTinymol forcefieldTinymol{};
-	const std::vector<AtomType>& activeParameters = tinymolTypes->GetActiveParameters();
-	if (activeParameters.size() > ForcefieldTinymol::MAX_TYPES)
-		throw std::runtime_error("Too many atom types");
-	for (int i = 0; i < activeParameters.size(); i++) {
-		const AtomType& at = activeParameters[i];
-		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigmaHalf, at.parameters.epsilonSqrt, at.mass, at.charge };
-		if (!AllAtom)
-			forcefieldTinymol.types[i].charge = 0;
+
+SolventForcefield LIMAForcefield::GetSolventForcefield() {
+	std::vector<AtomType>& activeParameters = tinymolTypes->GetActiveParameters();
+
+	if (activeParameters.size() == 0)
+		return SolventForcefield{};
+
+	if (activeParameters.size() != 2) {
+		throw std::runtime_error(std::format("Expected 2 tinymol types, got {}", activeParameters.size()));
 	}
-	return forcefieldTinymol;
+
+	if (activeParameters[0].name[0] != 'O')
+		std::swap(activeParameters[0], activeParameters[1]); // Make sure the first is always the oxygen, and the second is the hydrogen
+
+	if (activeParameters[0].name[0] != 'O' || activeParameters[1].name[0] != 'H') {
+		throw std::runtime_error(std::format("Expected tinymol types to be OW and HW, got {} and {}", activeParameters[0].name, activeParameters[1].name));
+	}
+
+
+	return SolventForcefield{
+		SolventForcefield::Params{activeParameters[0].parameters, activeParameters[0].mass, activeParameters[0].charge },
+		SolventForcefield::Params{activeParameters[1].parameters, activeParameters[1].mass, activeParameters[1].charge }
+	};
 }
 
 void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file) 

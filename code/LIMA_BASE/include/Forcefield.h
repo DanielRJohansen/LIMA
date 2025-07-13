@@ -17,7 +17,7 @@
 struct AtomType {
 	std::string name{};
 	int atNum{};
-	ForceField_NB::ParticleParameters parameters{};
+	LJParams parameters{};
 	float charge{}; // [kilo C/mol]
 	float mass{}; // [kg/mol]
 	char ptype{};
@@ -76,7 +76,7 @@ public:
 	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
 	int GetActiveTinymoltypeIndex(const std::string& query);
-	ForcefieldTinymol GetTinymolTypes();
+	SolventForcefield GetSolventForcefield();
 	
 
 	template<typename GenericBond>

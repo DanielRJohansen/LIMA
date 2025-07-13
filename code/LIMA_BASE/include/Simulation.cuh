@@ -171,7 +171,7 @@ public:
 	SimParams simparams_host;
 
 	ForceField_NB forcefield;
-	ForcefieldTinymol forcefieldTinymol;
+	SolventForcefield solventForcefield;
 	std::vector<NonbondedInteractionParams> forcefieldTest;
 
 

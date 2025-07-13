@@ -33,11 +33,12 @@ namespace _Thermostat {
 		}
 	};
 
-	__global__ void CalcKineticEnergySolvents(const SolventBlock* const blocks, float* outbufferRelativeToSolventId) {
+	__global__ void CalcKineticEnergySolvents(const SolventBlock* const blocks, float* outbufferRelativeToSolventId, SolventForcefield solventForcefield) {
 		if (threadIdx.x >= blocks[blockIdx.x].nParticles)
 			return;
 
-		const float mass = DeviceConstants::tinymolForcefield.types[blocks[blockIdx.x].states[threadIdx.x].tinymolTypeIndex].mass;
+		const float mass = threadIdx.x % 3 == 0 ? solventForcefield.Get(SolventForcefield::O).mass : solventForcefield.Get(SolventForcefield::H).mass;
+
 		const Float3& velocity = blocks[blockIdx.x].states[threadIdx.x].vel_prev;		
 		const float kinE = PhysicsUtils::calcKineticEnergy(velocity.len(), mass);
 
@@ -77,7 +78,7 @@ public:
 	}
 
 	// {temp,thermostatScalar}
-	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step) {
+	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step, const SolventForcefield& solventForcefield) {
 		// Step 1: Calculate kinetic energy for each compound particle and store in the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nCompounds * MAX_COMPOUND_PARTICLES),
 			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.compoundsInterimState, simDev->boxConfig.compounds));
@@ -91,7 +92,7 @@ public:
 
 		cudaDeviceSynchronize();
 		const size_t indexForFirstParticle = nCompounds * MAX_COMPOUND_PARTICLES;
-		_Thermostat::CalcKineticEnergySolvents << <BoxGrid::BlocksTotal(boxparams.boxSize), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (solventblockBufferAtStep, &intermediate[indexForFirstParticle]);
+		_Thermostat::CalcKineticEnergySolvents << <BoxGrid::BlocksTotal(boxparams.boxSize), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (solventblockBufferAtStep, &intermediate[indexForFirstParticle], solventForcefield);
 		cudaDeviceSynchronize();
 		LIMA_UTILS::genericErrorCheckNoSync("CalcKineticEnergySolvents");
 

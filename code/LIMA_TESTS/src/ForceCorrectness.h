@@ -84,10 +84,7 @@ namespace ForceCorrectness {
 
 			// Give the solvent a velocty
 			{
-				float solventMass = 0;
-				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
-					solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
-				}
+				const float solventMass = env.getSimPtr()->solventForcefield.MoleculeMass();	// [kg/mol]
 				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
 				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
 					env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };

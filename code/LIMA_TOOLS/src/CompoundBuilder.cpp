@@ -639,7 +639,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		std::move(tinyMols),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
-		forcefield.GetTinymolTypes(),
+		forcefield.GetSolventForcefield(),
 		superTopology,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups)

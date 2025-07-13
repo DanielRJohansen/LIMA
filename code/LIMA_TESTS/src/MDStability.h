@@ -55,6 +55,10 @@ namespace TestMDStability {
 		return loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7);
 	}
 
+	LimaUnittestResult T4Stability(EnvMode envmode) {
+		return loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
+	}
+
 	static bool doMoleculeTranslationTest(std::string foldername) {
 		//auto env = TestUtils::basicSetup(foldername, SimulationParams{100, 10000});
 

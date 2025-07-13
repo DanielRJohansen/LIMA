@@ -47,7 +47,7 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
-int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int SolvateBox(Box& box, const SolventForcefield& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	for (const auto& tinyMol : tinyMols) {
 		if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
@@ -87,11 +87,8 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 		
 		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
 
-		const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
-			[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
-		);
 		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.MoleculeMass());
 
 		for (int j = 0; j < tinyMols[i].nParticles; j++) {
 			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
@@ -128,7 +125,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
 
 #ifdef ENABLE_SOLVENTS
-	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
+	SolvateBox(*box, boxImage.solventForcefield, simparams, boxImage.solvent_positions);
 #endif
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;

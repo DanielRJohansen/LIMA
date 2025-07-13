@@ -55,7 +55,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		SolventStability(envmode);
+		//SolventStability(envmode);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -88,7 +88,7 @@ int main() {
 
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
 
-
+		//T4Stability(envmode);
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 		
 		//TestForces1To1(envmode);
@@ -152,7 +152,7 @@ void RunAllUnitTests() {
 
 	// Larger tests
 	ADD_TEST("SolventBenchmark", SolventStability(envmode));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
+	ADD_TEST("T4Lysozyme", T4Stability(envmode));
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

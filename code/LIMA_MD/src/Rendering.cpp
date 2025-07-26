@@ -228,7 +228,9 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
         for (int i = 0; i < nAtoms; i++) {
 			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
-            if (task.coloringMethod == GradientFromAtomid)
+            if (task.highlightedAtoms.contains(i)) 
+				renderAtomsTemp[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f) ; // Highlighted atoms are pink
+            else if (task.coloringMethod == GradientFromAtomid)
                 renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
             else 
 			    renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));

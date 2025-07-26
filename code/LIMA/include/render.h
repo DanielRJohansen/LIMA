@@ -4,52 +4,14 @@
 #include "CommandlineUtils.h"
 #include "MoleculeUtils.h"
 #include "Display.h"
+#include "argparser.h"
+
 
 namespace fs = std::filesystem;
 
-struct RenderSetup {
-    RenderSetup(int argc, char** argv) {
-        for (int i = 2; i < argc; ++i) {
-            std::string arg = CmdLineUtils::ToLowercase(argv[i]);
 
-            if (arg == "-conf") {
-                if (i + 1 < argc) {
-                    conf = argv[++i];
-                }
-                else {
-                    std::cerr << "-conf expects a path argument." << std::endl;
-                    exit(1);
-                }
-            }
-            else if (arg == "-topology") {
-                if (i + 1 < argc) {
-                    topol = argv[++i];
-                }
-                else {
-                    std::cerr << "-topology expects a path argument." << std::endl;
-                    exit(1);
-                }
-            }
-            else if (arg == "-whole")
-                whole = true;                
-            else if (arg == "-hidewater")
-                hideWater = true;
-            else if (arg == "-help" || arg == "-h") {
-                std::cout << helpText;
-                exit(0);
-            }
-            else {
-                std::cerr << "Unknown argument: " << arg << std::endl;
-                exit(1);
-            }
-        }
-    }
 
-    fs::path conf = "./conf.gro";
-    fs::path topol = "./topol.top";
-    bool whole = false;
-    bool hideWater = false;
-private:
+int render(int argc, char** argv) {
     const std::string helpText = R"(
 Usage: render [OPTIONS]
 
@@ -70,29 +32,49 @@ Options:
     -hidewater
         Hides water molecules from the rendering. Defaults to false.
 
+    -highlight, -hl [list of idxs]
+        Highlights the atoms with the given indices in the rendering. Specify indices, NOT .gro ids.
+        Indices are 0-indexed, so the first atom is 0, the second is 1, etc.
+
 Example:
-    render -conf myconf.gro -topology mytopol.top -whole
+    render -conf myconf.gro -topology mytopol.top -whole -highlight 0 1 4 5
     )";
-};
 
-int render(int argc, char** argv) {
 
-    RenderSetup setup{ argc, argv };
+    ArgParser parser(helpText);
 
-    GroFile grofile{ setup.conf };
+	fs::path conf = "./conf.gro";
+	fs::path topol = "./topol.top";
+    bool whole = false;
+    bool hidewater = false;
+    std::vector<int> highlightAtomsInput{};
 
-    if (setup.hideWater) {
+    parser.AddOption({ "-conf", "-c" }, false, conf);
+    parser.AddOption({ "-topology", "-top", "-t" }, false, topol);    
+	parser.AddFlag({ "-whole", "-w" }, [&whole]() { whole = true; });
+	parser.AddFlag({ "-hidewater", "-hw" }, [&hidewater]() { hidewater = true; });
+	parser.AddOption({ "-highlight", "-hl" }, false, highlightAtomsInput);
+    parser.Parse(argc, argv);
+
+    GroFile grofile{ conf };
+
+    if (hidewater) {
         while (grofile.atoms.back().residueName == "SOL") {
             grofile.atoms.pop_back();
         }
     }
 
-    if (setup.whole) {
-        TopologyFile topfile{ setup.topol };
+    if (whole) {
+        TopologyFile topfile{ topol };
         MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
     }
+
+    std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
+
     Display d{};
-    d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
+    auto renderTask = std::make_unique<Rendering::GrofileTask>(grofile);
+	renderTask->highlightedAtoms = highlightedAtoms;
+    d.Render(std::move(renderTask), true);
 
     return 0;
 }

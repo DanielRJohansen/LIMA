@@ -102,6 +102,27 @@ public:
                 }
             });
     }
+    void AddOption(const std::vector<std::string>& aliases, bool required, std::vector<int>& target) {
+        AddOption(aliases, required,
+            [&target, name = aliases[0]](auto const& args) {
+                if (args.size() > 0) {}
+                else {
+                    std::cerr << std::format("Got empty list\n", name, args.size());
+                    std::exit(1);
+                }
+
+                try {
+                    for (const auto& arg : args) {
+                        target.push_back(std::stoi(arg));
+					}
+                }
+                catch (...) {
+                    std::cerr << std::format("Argument {} expected 3 floats, invalid value in {}\n", name, args[0]);
+                    std::exit(1);
+                }
+            });
+    }
+
 
     void AddFlag(const std::vector<std::string>& aliases, FlagCallback callback) {
         for (auto& a : aliases) aliasMap[a] = aliases[0];

@@ -196,10 +196,12 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 		const float bondRelaxedDist = bond.params.b0;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}", hyper_dist, bond.params.b0));
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}. AtomIndices: {} {}", 
+				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));
 		}
 		if (hyper_dist < bondRelaxedDist * 0.001)
-			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.b0));
+			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}. AtomIndices: {} {}", 
+				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));
 	}
 	for (const auto& bond : anglebonds)
 	{

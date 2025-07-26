@@ -11,8 +11,8 @@ Options:
     -boxsize [int]
         Size of the box in nm. Defaults to 10 nm. <Required>
 
-    -conf_name [path]
-        Path to output conf file. Defaults to ./conf.gro
+    -name [string]
+        The name for the output conf and top file. Defaults to conf
 
     -top_name [path]
         Path to output top file. Defaults to ./topol.top
@@ -27,24 +27,29 @@ Example:
 
     ArgParser parser(helpText);
 
-    fs::path confname = "./conf.gro";
-    fs::path topname = "./topol.top";
+    std::string name ="";
     int boxsize{};
 
     // Add options to parser
-    parser.AddOption({ "-boxsize" }, true, boxsize);
-    parser.AddOption({ "-conf_name" }, false, confname);
-    parser.AddOption({ "-top_name" }, false, topname);
+    parser.AddOption({ "-boxsize", "-b" }, true, boxsize);
+    parser.AddOption({ "-name", "-n"}, false, name);
+    
     parser.Parse(argc, argv);
+
+	const fs::path confPath = fs::absolute(!name.empty() ? fs::path(name + ".gro") : "conf.gro");
+	const fs::path topPath  = fs::absolute(!name.empty() ? fs::path(name + ".top") : "topol.top");
+
+    //printf("Creating files: \n\t%s\n\t%s\n", confPath.string(), topPath.string());
+
 
     // Use the paths in your program
     GroFile grofile{};
-    grofile.m_path = fs::absolute(confname);  // Convert to absolute path
+    grofile.m_path = confPath;
     grofile.box_size = Float3{ static_cast<float>(boxsize) };
     grofile.printToFile();
 
     TopologyFile topfile{};
-    topfile.path = fs::absolute(topname);  // Convert to absolute path
+    topfile.path = topPath;
     topfile.printToFile();
 
     return 0;

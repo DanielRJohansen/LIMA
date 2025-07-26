@@ -11,6 +11,7 @@
 #include <variant>
 #include <mutex>
 #include <condition_variable>
+#include <set>
 
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
@@ -69,6 +70,7 @@ namespace Rendering {
 		bool drawSolvent = true;
 		ColoringMethod coloringMethod = Atomname;
 		int nAtoms;
+		std::set<int> highlightedAtoms;
 	};
 
 	struct CompoundsTask {

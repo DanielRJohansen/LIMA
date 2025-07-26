@@ -409,12 +409,12 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 }
 
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
+	GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {
-	// TODO Should we can CenterMol, so it is whole here?
+	MoleculeUtils::CenterMolecule(submolGro, submolTop->GetMoleculeType());
 
 	if (submolTop->moleculetypes.size() > 1)
-		throw std::invalid_argument("Source topology contains more than 1 moleculetype, which is not allowed. Check your file for possible #include with moleculetype definitions");
+		throw std::invalid_argument("Source topology contains more than 1 moleculetype, which is not allowed. Check your file for possible #include with moleculetype defidisnitions");
 
 	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 	const float molRadius = MoleculeUtils::Radius(submolGro, molCenter) * 1.1f;

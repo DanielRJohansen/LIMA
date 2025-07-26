@@ -262,21 +262,15 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			for (uint32_t offset = 0; offset < neighborNParticles[indexInBatch]; offset += maxStride) {
 				const uint32_t queryIndex = offset + threadIdx.x;
 				const int n_elements_this_stride = LAL::min(neighborNParticles[indexInBatch] - offset, maxStride);
-			/*for (uint32_t offset = 0; offset < neighborNParticles[indexInBatch]; offset += blockDim.x) {
-				const uint32_t queryIndex = offset + threadIdx.x;
-				const int n_elements_this_stride = LAL::min(neighborNParticles[indexInBatch] - offset, blockDim.x);*/
-				// Load the positions and add rel shift
+
 				if (queryIndex < neighborNParticles[indexInBatch]) {
-					
-					//utility_buffer_f3[threadIdx.x] = solventblockPtrs[indexInBatch]->rel_pos[queryIndex].ToRelpos() + relshifts[indexInBatch];
 					utility_buffer_f3[threadIdx.x] = compressedSolventPtrs[indexInBatch]->positions[queryIndex] + relshifts[indexInBatch];
-					neighborAtomstypes[threadIdx.x] = solventblockPtrs[indexInBatch]->atomtypeIds[queryIndex];
 				}
 				__syncthreads();
 
 				if (threadIdx.x < compound.n_particles) {
 					force += LJ::computeSolventToCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], particleCharge, n_elements_this_stride,
-						utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared, boxConfig.solventForcefield, neighborAtomstypes);
+						utility_buffer_f3, potE_sum, compound.atom_types[threadIdx.x], forcefield_shared, boxConfig.solventForcefield);
 				}
 				__syncthreads();
 			}
@@ -488,8 +482,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
     Coord* positionsBuffer_coord = (Coord*)&utilityBuffer[0];
     Float3* positionsBuffer_relpos = (Float3*)&utilityBuffer[0];
     ForceEnergy* forceEnergyOut = (ForceEnergy*)utilityBuffer; // Overlaps all of the buffers above
-
-	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int nElementsInBlock;
 
 	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
@@ -511,12 +503,11 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	{		
 		if (threadActive) {
             positionsBuffer_relpos[threadIdx.x] = relpos_self;
-			utility_buffer_small[threadIdx.x] = tinymolTypeId;
 		}
 		__syncthreads();
 		if (threadActive) {
             force += LJ::computeSolventToSolventLJForces<true, energyMinimize, true>
-				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, boxConfig.solventForcefield, utility_buffer_small, solventblock_ptr->particlesBondgroupIds);
+				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, boxConfig.solventForcefield, solventblock_ptr->particlesBondgroupIds);
 		}
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -549,14 +540,13 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
         if (threadIdx.x < nsolvents_neighbor) {
 			positionsBuffer_relpos[threadIdx.x] = solventblockCompressedNeighbor->positions[threadIdx.x];
-            utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
         }
 		__syncthreads();
 
 
 		if (threadActive) {
             force += LJ::computeSolventToSolventLJForces<true, energyMinimize, false>
-				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, boxConfig.solventForcefield, utility_buffer_small, nullptr);
+				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, boxConfig.solventForcefield, nullptr);
 		}
 	}
 

@@ -184,7 +184,7 @@ namespace LJ {
 	// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
-		const SolventForcefield& solventForcefield, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
+		const SolventForcefield& solventForcefield, const uint8_t* const tinymolIds) {
 		Float3 force{};
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
@@ -224,7 +224,7 @@ namespace LJ {
 
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, float myCharge, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,
-		const ForceField_NB& forcefield, const SolventForcefield& solventForcefield, const uint8_t* const tinymolTypeIds) {	// Specific to solvent kernel
+		const ForceField_NB& forcefield, const SolventForcefield& solventForcefield) {	// Specific to solvent kernel
 		Float3 force{};
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};

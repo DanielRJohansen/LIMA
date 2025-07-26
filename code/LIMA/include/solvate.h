@@ -14,10 +14,10 @@ Options:
         Path to input conf file. Defaults to ./conf.gro
     
     -output [.gro file]
-        Path to output gro file. Defaults to ./conf_solvated.gro
+        Path to output gro file. Defaults to ./solvated.gro
         
-    -pressure [??/??]
-        Not yet implemented
+    -pressure [int]
+        Defaults to 34 solvents/nm3. 
 
     -help, -h
         Display this help text and exit.
@@ -30,20 +30,24 @@ Example:
     ArgParser parser(helpText);
 
     fs::path input = "./conf.gro";
-	fs::path output = "./conf_solvated.gro";
-
-	float pressure = 0.f;  // Placeholder, not yet implemented
+	fs::path output = "./solvated.gro";
+	int pressure = SimulationBuilder::defaultSolventsPerNm3; // [solvents/nm3]
 
     // Add options to parser
-    parser.AddOption({ "-conf", "-c", "input"}, false, input);
-	parser.AddOption({ "-output", "-o", "outputconf" }, false, output);
+    parser.AddOption({ "-conf", "-c", "-input"}, false, input);
+	parser.AddOption({ "-output", "-o", "-outputconf" }, false, output);
     parser.AddOption({ "-pressure", "-p"}, false, pressure);
     parser.Parse(argc, argv);
 
-    // Use the paths in your program
-    GroFile grofile{input};
+    if (!fs::exists(input)) {
+        std::cerr << "Input file does not exist: " << input.string() << "\n";
+        return 1;
+	}
 
-    SimulationBuilder::SolvateGrofile(grofile); // TODO: This only generates O, needs the H2...
+    // Use the paths in your program
+    GroFile grofile{ input };
+
+    SimulationBuilder::SolvateGrofile(grofile);
 
 	grofile.printToFile(output);
 

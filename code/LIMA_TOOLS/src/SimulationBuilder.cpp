@@ -59,6 +59,25 @@ public:
 	}
 };
 
+class RandomUniformGeneratorUnitvector {
+	std::mt19937 generator;
+	std::uniform_real_distribution<float> distribution;
+public:
+	RandomUniformGeneratorUnitvector(int seed = 1238971) : generator(seed), distribution(-1.f, 1.f) {}
+
+	inline Float3 Generate() {
+		return Float3(distribution(generator), distribution(generator), distribution(generator));
+	}
+	Float3 operator()() {
+		Float3 val = Generate();
+		while (val.lenSquared() < 1e-5)
+			val = Generate();
+		
+		return val.norm();
+	}
+};
+
+
 void addAtomToFile(GroFile& outputgrofile, const GroRecord& input_atom_gro, int atom_offset, int residue_offset, 
 	std::function<void(Float3&)> position_transform) 
 {
@@ -262,7 +281,7 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 }
 
 
-void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
+void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerNm3) {
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
 	}
@@ -276,7 +295,6 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 
 	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
 	// but it will be slightly more complex code
-	const int desiredSolventsPerNm3 = 34;	// 33.4 is the density of water at 300K, but in some nodes we may have less solvents due to collisions, so we aim a bit higher
 
 	// First add excessive solvents to all blocks
 	// TODO: Make OMP
@@ -370,24 +388,42 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile) {
 		}
 	}
 	
-	int countTotal = 0;
+	const float bondLen = 0.1f;	// probably shouldnt be hardcoded here...
+	const float bondAngle = 109.47f * PI / 180.f;	// [rad] 
+	const Float3 _h1Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -bondLen), Float3(0,1,0), -bondAngle * 0.5f);
+	const Float3 _h2Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -bondLen), Float3(0, 1, 0), bondAngle * 0.5f);
+
+	//float zOffset = -h1Pos.z * 0.5f;
+	RandomUniformGeneratorUnitvector genRandomUnitVector(1238971);	// Seed offset so we can get different random vectors for each simulation
+	RandomUniformGenerator genRandomAngle(-PI, PI);
+
+	int atomCount = 0;
+	int solventCount = 0;
 	for (int x = 0; x < gridDim.x; x++) {
 		for (int y = 0; y < gridDim.y; y++) {
 			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
-				int countBlock = 0;
-				for (const auto& particle : boxgrid[nodeindex]) {
-					if (particle.markedForDeletion || particle.presentInInputfile)
+				int nSolventsInBlock = 0;
+				for (const auto& solvent : boxgrid[nodeindex]) {
+					if (solvent.markedForDeletion || solvent.presentInInputfile)
 						continue;
 
 
-					const Float3 absPos = particle.relPos + Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
-					grofile.atoms.push_back(GroRecord{ 1, "SOL", "O", countTotal % 100000, absPos, std::nullopt});
+					Float3 rotVector = genRandomUnitVector();
+					float rotAngle = genRandomAngle();
 
-					countTotal++;
-					countBlock++;
+					Float3 h1Pos = Float3::rodriguesRotatation(_h1Pos, rotVector, rotAngle);
+					Float3 h2Pos = Float3::rodriguesRotatation(_h2Pos, rotVector, rotAngle);
 
-					if (countBlock == desiredSolventsPerNm3)
+					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
+					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "OW",  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
+					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "HW1", (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
+					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "HW2", (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
+
+					nSolventsInBlock++;
+					atomCount += 3;
+					solventCount++;
+					if (nSolventsInBlock >= desiredSolventsPerNm3)
 						break;
 				}
 			}

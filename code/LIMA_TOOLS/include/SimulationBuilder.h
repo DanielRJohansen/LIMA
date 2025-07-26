@@ -23,7 +23,9 @@ namespace SimulationBuilder {
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);
 
 
-	void SolvateGrofile(GroFile& grofile);
+	// 33.4 is the density of water at 300K, but in some nodes we may have less solvents due to collisions, so we aim a bit higher
+	const int defaultSolventsPerNm3 = 34;
+	void SolvateGrofile(GroFile& grofile, int desiredSolventsPerNm3 = defaultSolventsPerNm3);
 
 	void InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 		const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter);

@@ -201,7 +201,16 @@ struct Float3 {
 		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.z);
 	}
 
-	__host__ __device__ static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
+	constexpr Float3 RotateAroundOrigo(Float3 pitch_yaw_roll) const {	//pitch around x, yaw around z, tilt around y
+		// pitch and yaw is relative to global coordinates. 
+		Float3 point = *this;
+		point = rodriguesRotatation(point, Float3(1, 0, 0), pitch_yaw_roll.x);
+		point = rodriguesRotatation(point, Float3(0, 1, 0), pitch_yaw_roll.y);
+		point = rodriguesRotatation(point, Float3(0, 0, 1), pitch_yaw_roll.z);
+		return point;
+	}
+
+	constexpr static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
 	}
 

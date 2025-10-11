@@ -100,9 +100,31 @@ int main() {
 		//Benchmarks::Benchmark("manyt4"); 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
+		//TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
 
-		ProgramsTests::TestBuildMembrane(envmode);
 
+		//{
+		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.gro)" };
+		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.top)" };
+		//	SimulationBuilder::SolvateGrofile(grofile, topfile);
+
+		//	grofile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" });
+		//	topfile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" });
+		//}
+
+		//{
+		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" };
+		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" };
+		//	Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+		//}
+		GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
+		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
+		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv)", EnvMode::Full);
+		env.CreateSimulation(grofile, topfile, SimParams{});
+		env.run();
+		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+		
+		
 
 		//RunAllUnitTests();
 	}

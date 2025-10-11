@@ -11,8 +11,8 @@ static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 // blocks are notcentered 
 struct SolventBlock {
-	static constexpr int maxBondgroups = 64;
-    static constexpr int MAX_SOLVENTS_IN_BLOCK = 192; // ought to be bondgroups*3...
+	static constexpr int maxBondgroups = 64 + 32;
+    static constexpr int MAX_SOLVENTS_IN_BLOCK = maxBondgroups*3; // ought to be bondgroups*3...
 	
 
 	__device__ __host__ void loadMeta(const SolventBlock& block) {

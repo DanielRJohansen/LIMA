@@ -16,6 +16,7 @@
 #include "solvate.h"
 
 namespace fs = std::filesystem;
+//	solvate				Solvate a .gro file with water molecules.
 
 
 static const std::string helpText = R"(
@@ -37,7 +38,6 @@ Programs:
     insertmolecules     Inserts a molecule into a box multiple times
     editconf            Edit a .gro file.
     em                  Energy minimize a simulation with default parameters.
-	solvate				Solvate a .gro file with water molecules.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
 		else if (program == "editconf") { editconf(argc, argv); }
 		else if (program == "em") { em(argc, argv); }
-		else if (program == "solvate") { solvate(argc, argv); }
+		//else if (program == "solvate") { solvate(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

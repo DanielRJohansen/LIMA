@@ -100,7 +100,7 @@ void AddGroAndTopToGroAndTopfile(GroFile& outputgrofile, const GroFile& inputgro
 	}
 
 	if (inputTopology->GetMoleculeTypePtr() == nullptr)
-		printf("nullptr here");
+		throw std::runtime_error("nullptr here");
 
 	outputTopologyFile.AppendMoleculetype(inputTopology->GetMoleculeTypePtr(), inputTopology->forcefieldInclude);
 }
@@ -281,15 +281,28 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 }
 
 
-void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerNm3) {
+void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3) {
+
+	throw std::runtime_error("SolvateGrofile is not implemented yet");
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
 	}
 
 	
 	const Int3 gridDim = grofile.box_size.ToInt3();
-	int nAtomsInput = grofile.atoms.size();
+	const int nAtomsInput = grofile.atoms.size();
+	const int startResidueId = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
+
 	BoxGrid_<ParticlePlaceholder> boxgrid{ gridDim };
+
+
+	//BoxGrid_<Float3> nonSolventPositions{ gridDim };	// This is used to store the positions of the particles that are not solvents, so we can remove them later
+	//for (auto elem : grofile.atoms) {				
+	//	NodeIndex nodeindex = NodeIndex{ static_cast<int>(std::floor(elem.position.x)), static_cast<int>(std::floor(elem.position.y)), static_cast<int>(std::floor(elem.position.z)) };
+	//	Float3 relpos = elem.position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
+
+	//	nonSolventPositions[nodeindex].emplace_back(relpos);
+	//}
 
 	DistributeGrofileparticlesInGrid(boxgrid, grofile);
 
@@ -325,7 +338,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerN
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
 				auto& particles = boxgrid[nodeindex];
 				
-				// First search through all particles in this block
+				// First search through all solvent particles in this block
 				for (int pid = 0; pid < particles.size(); pid++) {
 					if (particles[pid].presentInInputfile)	// Cant delete any particles we did not place
 						continue;
@@ -346,6 +359,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerN
 						}
 					}
 				}
+				// Now search nonsolvents in block
+
+
 
 				// Now search through all surrounding blocks
 				for (int offsetX = -1; offsetX < 2; offsetX++) {
@@ -397,7 +413,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerN
 	RandomUniformGeneratorUnitvector genRandomUnitVector(1238971);	// Seed offset so we can get different random vectors for each simulation
 	RandomUniformGenerator genRandomAngle(-PI, PI);
 
-	int atomCount = 0;
+	int atomCount = nAtomsInput;
 	int solventCount = 0;
 	for (int x = 0; x < gridDim.x; x++) {
 		for (int y = 0; y < gridDim.y; y++) {
@@ -416,9 +432,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerN
 					Float3 h2Pos = Float3::rodriguesRotatation(_h2Pos, rotVector, rotAngle);
 
 					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
-					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "OW",  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
-					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "HW1", (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
-					grofile.atoms.push_back(GroRecord{ (solventCount+1) % 100000, "SOL", "HW2", (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "OW",  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "HW1", (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "HW2", (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
 
 					nSolventsInBlock++;
 					atomCount += 3;
@@ -429,6 +445,14 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, int desiredSolventsPerN
 			}
 		}
 	}
+
+	//topfile.AppendSolvents(solventCount, FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp");
+	//topfile.AppendSolvents()
+	/*TopologyFile solventTop{ FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp" };
+	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr(), solventTop.forcefieldInclude);
+	for (size_t i = 0; i < solventCount; i++) {
+		topfile.AppendMolecule("SOL");
+	}*/
 }
 
 void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,

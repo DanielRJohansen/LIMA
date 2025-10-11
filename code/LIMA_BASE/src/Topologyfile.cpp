@@ -548,6 +548,22 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 	}
 	AppendMolecule(moleculetype->name);
 }
+//
+//void TopologyFile::AppendSolvents(int count, const fs::path& solventFF) {
+//
+//	ParseFileIntoTopology(*this, solventFF);
+//
+//
+//	//TopologyFile solventTopology(solventFF);
+//
+//	for (int i = 0; i < count; i++)
+//		AppendMolecule("SOL");
+//		//AppendMoleculetype(solventTopology.GetMoleculeTypePtr(), std::nullopt);
+//
+//	/*for (const auto& molecule : m_system.molecules) {
+//		
+//	}*/
+//}
 
 void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();

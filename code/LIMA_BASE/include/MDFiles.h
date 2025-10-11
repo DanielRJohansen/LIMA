@@ -207,6 +207,7 @@ public:
 	struct MoleculeEntry {
 		std::string name{};
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
+		//int count = 0; // TODO implement this
 	};
 	struct System {
 		std::string title{ "noSystem" };
@@ -301,11 +302,12 @@ public:
 	}
 
 	// Append a molecule of which the type is already known by the file
-	void AppendMolecule(const std::string& moleculename);
+	void AppendMolecule(const std::string& moleculename); // Its quite silly that mols like SOL are appened N times, instead of just once with N as an internal param
 	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
 	void AppendMolecules(const std::vector<MoleculeEntry>&);
+//	void AppendSolvents(int count, const fs::path& solventFF);
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	fs::path path;

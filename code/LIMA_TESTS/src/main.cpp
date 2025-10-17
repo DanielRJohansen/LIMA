@@ -81,7 +81,7 @@ int main() {
 		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//TestBuildmembraneSmall(envmode, false);
+		TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
@@ -117,16 +117,16 @@ int main() {
 		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" };
 		//	Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		//}
-		GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
+		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
 		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
 		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv)", EnvMode::Full);
 		env.CreateSimulation(grofile, topfile, SimParams{});
-		env.run();
+		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

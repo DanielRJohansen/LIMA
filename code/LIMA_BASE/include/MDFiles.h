@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include <queue>
 #include <ranges>
+#include <map>
 
 const bool ENABLE_FILE_CACHING = true;
 
@@ -168,8 +169,8 @@ public:
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 
 		// Only used during parsing!
-		std::string mostRecentAtomsSectionName{};
-		std::vector<int> groIdToLimaId;
+		//std::string mostRecentAtomsSectionName{};
+		std::unordered_map<int, int> groIdToLimaId; // Relative to moleculetype??! I dont like this
 
 		void ToFile(const fs::path& dir) const;
 
@@ -329,10 +330,20 @@ private:
 	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
 		std::optional<std::string> includefileName =std::nullopt);
 
+	void ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile);
+
 	// Packs atoms and bond information in the moleculetype ptr
 	// Returns the next section in the topologyfile
 	static void ParseMoleculetypeEntry(TopologySection section, 
 		const std::string& entry, std::shared_ptr<Moleculetype> moleculetype);
+
+	static void ParseAtomsEntry(std::string_view sv, TopologyFile::AtomsEntry& atom, std::vector<int>& limaIdToGroId, int index /*relative to moleculetype*/);
+	static void ParseSingleBond(std::string_view line, TopologyFile::SingleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParsePairBond(std::string_view line, TopologyFile::PairBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseAngleBond(std::string_view line, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseDihedralBond(std::string_view line, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseImproperDihedralBond(std::string_view line, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+
 
 	System m_system{};
 };
@@ -365,12 +376,12 @@ struct TopologyFile::GenericBond{
 	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
-	std::array<int,N> ids{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
+	std::array<int,N> ids{-1};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 	int funct{};
 
 	std::optional<ParametersType> parameters = std::nullopt;
 
-	std::string sourceLine{};	// used for debugging	TODO: remove
+	//std::string sourceLine{};	// used for debugging	TODO: remove
 
 	void composeString(std::ostringstream & oss) const {
 		const int width = 10;

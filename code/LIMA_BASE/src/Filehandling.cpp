@@ -29,7 +29,7 @@ void FileUtils::removeWhitespace(std::string& str) {
 		str.end());
 }
 
-bool FileUtils::firstNonspaceCharIs(const std::string& str, char query) {
+bool FileUtils::firstNonspaceCharIs(const std::string_view& str, char query) {
 	auto first_non_space = std::find_if(str.begin(), str.end(), [](unsigned char ch) {
 		return !std::isspace(static_cast<int>(ch));
 	});

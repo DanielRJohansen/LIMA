@@ -28,9 +28,9 @@ if (UNIX)
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
 else()
-	set(set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++26 /W4" ))
-	#set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
-	#add_compile_options(/external:W0 /external:anglebrackets)
+	#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++26 /W4" )
+	#add_compile_options(/Zc:__cplusplus)
+	#add_compile_options(/std:c++latest /Zc:__cplusplus /W4)
 endif()
 
 

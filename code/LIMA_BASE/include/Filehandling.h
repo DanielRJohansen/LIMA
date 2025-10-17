@@ -24,7 +24,7 @@ namespace FileUtils {
 
 	void removeWhitespace(std::string& str);
 
-	bool firstNonspaceCharIs(const std::string& str, char query);
+	bool firstNonspaceCharIs(const std::string_view& str, char query);
 
 	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
 
@@ -86,6 +86,11 @@ namespace FileUtils {
 	std::optional<std::string> ChechlineForDefine(const std::string& line);
 
 	std::vector<Float3> ReadCsvAsVectorOfFloat3(const fs::path& path);
+
+
+	// Preprocess a file, with include dirs and tracking of seen files
+	// Handles directives: #include, #define, #undef, #ifdef, #ifndef, #else, #endif
+	std::string PreprocessFile(const fs::path& file, const std::vector<fs::path>& includeDirs, std::unordered_set<std::string>& defines);
 };
 
 

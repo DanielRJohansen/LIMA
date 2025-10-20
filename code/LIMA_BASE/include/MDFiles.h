@@ -351,7 +351,7 @@ private:
 
 // Variable names are from .itp file
 struct TopologyFile::AtomsEntry {
-	std::optional<std::string> section_name{};// Either a residue or lipid_section
+	std::optional<std::string> section_name{};// Either a residue or lipid_section // Currently not used...
 
 	//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
 	int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
@@ -366,7 +366,11 @@ struct TopologyFile::AtomsEntry {
 
 	void composeString(std::ostringstream& oss) const;
 
-	bool operator==(const AtomsEntry&) const = default;
+	// Compare all but sectionname
+	bool operator==(const AtomsEntry& a) const {
+		return id == a.id && type == a.type && resnr == a.resnr && residue == a.residue &&
+			atomname == a.atomname && cgnr == a.cgnr && charge == a.charge && mass == a.mass;
+	}
 };
 
 

@@ -576,8 +576,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 ) 
 {
-	LIMAForcefield forcefield{ topol_file.forcefieldInclude->contents };
-
+	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
+		
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 

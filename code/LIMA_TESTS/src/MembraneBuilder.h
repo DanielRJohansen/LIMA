@@ -18,7 +18,7 @@ namespace TestMembraneBuilder {
 		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
 		Lipids::Selection lipidselection;
-		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "Cholesterol", "DOPC" };
+		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
@@ -32,6 +32,15 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		TopologyFile refTop{ mol_dir / "membrane_reference.top" };
 
+		//std::ostringstream oss;
+		//const auto& newAtoms = newTop.GetAllElements<TopologyFile::AtomsEntry>();
+		//const auto& refAtoms = refTop.GetAllElements<TopologyFile::AtomsEntry>();
+		//if (auto [a, b] = std::ranges::mismatch(newAtoms, refAtoms);
+		//	a != newAtoms.end() || b != refAtoms.end()) {
+		//	a->composeString(oss); b->composeString(oss);
+		//	std::string str = oss.str();
+		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
+		//}
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology Atom Mismatch");
@@ -48,7 +57,13 @@ namespace TestMembraneBuilder {
 			auto b = (newGro.atoms[i].position - refGro.atoms[i].position).len();
 			if (newGro.atoms[i].position != refGro.atoms[i].position)
 				int a=0;
-			ASSERT(newGro.atoms[i].position == refGro.atoms[i].position, "Atom position mismatch");
+
+			std::string errStr = std::format("Atom position mismatch at atom {}: got ({:.5f},{:.5f},{:.5f}), expected ({:.5f},{:.5f},{:.5f}), diff len {:.5f}", 
+				i,
+				newGro.atoms[i].position.x, newGro.atoms[i].position.y, newGro.atoms[i].position.z,
+				refGro.atoms[i].position.x, refGro.atoms[i].position.y, refGro.atoms[i].position.z,
+				b);
+			ASSERT(newGro.atoms[i].position == refGro.atoms[i].position, errStr);
 		}
 
 		// Finally test if we can stabilize the simulation
@@ -81,6 +96,15 @@ namespace TestMembraneBuilder {
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		GroFile newGro{ mol_dir / "membrane.gro" };
 
+		//std::ostringstream oss;
+		//const auto& newAtoms = newTop.GetAllElements<TopologyFile::AtomsEntry>();
+		//const auto& refAtoms = top->GetAllElements<TopologyFile::AtomsEntry>();
+		//if (auto [a, b] = std::ranges::mismatch(newAtoms, refAtoms);
+		//	a != newAtoms.end() || b != refAtoms.end()) {
+		//	a->composeString(oss); b->composeString(oss);
+		//	std::string str = oss.str();
+		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
+		//}
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top->GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 
 

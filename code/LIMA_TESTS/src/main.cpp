@@ -81,11 +81,13 @@ int main() {
 		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		TestBuildmembraneSmall(envmode, false);
+		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
-		//TestLimaChosesSameBondparametersAsGromacs(envmode);
+		//Lipids::_MakeLipid("cholesterol");
 
+		//TestLimaChosesSameBondparametersAsGromacs(envmode);
+		
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 		

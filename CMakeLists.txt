@@ -65,4 +65,15 @@ if (UNIX)
 else()
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION ${CMAKE_BINARY_DIR}/resources)
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/dev/ DESTINATION ${CMAKE_BINARY_DIR}/dev)
+
+	# Run the program once after install to register file association
+    install(CODE "
+        execute_process(
+            COMMAND \"\$<TARGET_FILE:lima>\" setregistry
+            RESULT_VARIABLE result
+        )
+        if(NOT result EQUAL 0)
+            message(WARNING \"LIMA registry setup failed with code \${result}\")
+        endif()
+    ")
 endif()

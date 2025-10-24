@@ -4,7 +4,7 @@
 # Now compile rest
 add_executable(lima
     lima.cpp
- )
+  "include/SetWindowsRegistry.h")
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}
@@ -22,4 +22,6 @@ if (UNIX)
     install(TARGETS lima DESTINATION /usr/bin)
 else()
     install(TARGETS lima DESTINATION ${CMAKE_BINARY_DIR})
+
+    target_sources(lima PRIVATE ${CMAKE_SOURCE_DIR}/resources/logo/logoicon.rc)
 endif()

@@ -235,7 +235,7 @@ bool LoadIds(std::string_view& sv, std::array<int, n>& ids, const std::unordered
 }
 void TopologyFile::ParseSingleBond(std::string_view sv, TopologyFile::SingleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
 	SkipLeadingWhitespace(sv);
-	if (!LoadIds(sv, bond.ids, groIdToLimaId, error))
+    if (!LoadIds<2>(sv, bond.ids, groIdToLimaId, error))
 		return;
 
 	float b0, kb;	
@@ -250,7 +250,7 @@ void TopologyFile::ParseSingleBond(std::string_view sv, TopologyFile::SingleBond
 
 void TopologyFile::ParsePairBond(std::string_view sv, TopologyFile::PairBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
 	SkipLeadingWhitespace(sv);
-	if (!LoadIds(sv, bond.ids, groIdToLimaId, error))
+    if (!LoadIds<2>(sv, bond.ids, groIdToLimaId, error))
 		return;
 
 	float sigma, epsilon;
@@ -265,7 +265,7 @@ void TopologyFile::ParsePairBond(std::string_view sv, TopologyFile::PairBond& bo
 
 void TopologyFile::ParseAngleBond(std::string_view sv, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
 	SkipLeadingWhitespace(sv);
-	if (!LoadIds(sv, bond.ids, groIdToLimaId, error))
+    if (!LoadIds<3>(sv, bond.ids, groIdToLimaId, error))
 		return;
 	
 
@@ -282,7 +282,7 @@ void TopologyFile::ParseAngleBond(std::string_view sv, TopologyFile::AngleBond& 
 
 void TopologyFile::ParseDihedralBond(std::string_view sv, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
 	SkipLeadingWhitespace(sv);
-	if (!LoadIds(sv, bond.ids, groIdToLimaId, error))
+    if (!LoadIds<4>(sv, bond.ids, groIdToLimaId, error))
 		return;
 
 	bool err = false;
@@ -297,7 +297,7 @@ void TopologyFile::ParseDihedralBond(std::string_view sv, TopologyFile::Dihedral
 
 void TopologyFile::ParseImproperDihedralBond(std::string_view sv, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
 	SkipLeadingWhitespace(sv);
-	if (!LoadIds(sv, bond.ids, groIdToLimaId, error))
+    if (!LoadIds<4>(sv, bond.ids, groIdToLimaId, error))
 		return;
 
 	float phi0, kphi;

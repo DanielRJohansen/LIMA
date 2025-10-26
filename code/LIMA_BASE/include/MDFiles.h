@@ -31,7 +31,7 @@ struct GroRecord {
 };
 
 struct GroFile {
-	constexpr GroFile() {};
+    GroFile() {};
 	GroFile(const fs::path& path);
 
 	// Contents inside file

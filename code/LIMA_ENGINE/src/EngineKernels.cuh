@@ -489,7 +489,6 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
     static_assert(utilityBufferBytesize >= sizeof(Float3) * SolventBlock::MAX_SOLVENTS_IN_BLOCK + sizeof(ForcefieldTinymol));
     static_assert(sizeof(Coord) == sizeof(Float3));
     __shared__ uint8_t utilityBuffer[utilityBufferBytesize];
-    Coord* positionsBuffer_coord = (Coord*)&utilityBuffer[0];
     Float3* positionsBuffer_relpos = (Float3*)&utilityBuffer[0];
     ForcefieldTinymol* forcefieldTinymolShared = (ForcefieldTinymol*)&utilityBuffer[sizeof(Float3) * SolventBlock::MAX_SOLVENTS_IN_BLOCK];
     ForceEnergy* forceEnergyOut = (ForceEnergy*)utilityBuffer; // Overlaps all of the buffers above

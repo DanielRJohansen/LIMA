@@ -61,3 +61,26 @@ namespace PhysicsUtils {
 		return 3.f / cutoffNM; // erfc(3) will yield a tolerance of 2e-5.. 
 	}
 }
+
+namespace LJ {
+    constexpr float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+        return forcefield.particle_parameters[atomtype1].sigmaHalf + forcefield.particle_parameters[atomtype2].sigmaHalf;
+    }
+    constexpr float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
+        return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
+    }
+
+    constexpr float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+        return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
+    }
+    constexpr float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
+        return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
+    }
+
+    constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
+        return sigma1Half + sigma2Half;
+    }
+    constexpr float CalcEpsilon(float eps1Sqrt, float eps2Sqrt) {
+        return eps1Sqrt * eps2Sqrt;
+    }
+}

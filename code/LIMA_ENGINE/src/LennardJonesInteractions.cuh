@@ -11,26 +11,7 @@
 
 namespace LJ {
 	// __shared__ mem version
-	constexpr float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-		return forcefield.particle_parameters[atomtype1].sigmaHalf + forcefield.particle_parameters[atomtype2].sigmaHalf;
-	}
-	constexpr float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-		return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
-	}
 
-	constexpr float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
-	}
-	constexpr float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-		return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
-	}
-
-	constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
-		return sigma1Half + sigma2Half;
-	}
-	constexpr float CalcEpsilon(float eps1Sqrt, float eps2Sqrt) {
-		return eps1Sqrt * eps2Sqrt;
-	}
 
 	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
 
@@ -189,6 +170,9 @@ namespace LJ {
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
 
+
+        bool isO = threadIdx.x % 3 == 0;
+
 		for (int i = 0; i < n_elements; i++) {
 			// If computing within block, dont compute force against thread's solvent
 			if constexpr (checkForSameTinymolId) {
@@ -199,9 +183,16 @@ namespace LJ {
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
 
+            bool queryIsO = i % 3 == 0;
+
+            auto params = DeviceConstants::tinymolPrecomputedParams[isO + queryIsO];
+
+            printf("%d %d - %f %f\n", isO, queryIsO, params.sigma, CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared));
+
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
-				CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-				CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+                params.sigma, params.epsilon,
+                //CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+                //CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
 				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
 				threadIdx.x, i
 			);

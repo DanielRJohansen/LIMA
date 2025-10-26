@@ -351,7 +351,7 @@ struct ForceField_NB {
 };
 
 struct ForcefieldTinymol {
-	static const int MAX_TYPES = 16;
+    static const int MAX_TYPES = 16; // TODO OPTIM change to 4
 
 	// Can make mass and epsilon half
 	struct TinyMolType {

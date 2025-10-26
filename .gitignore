@@ -70,3 +70,13 @@ dev/VMDscripts/*.gro
 dev/VMDscripts/*.trr
 
 */tmp.bin
+
+#qt creator bullshit
+.clang-format
+.clang-tidy
+.cmake-format.yaml
+.editorconfig
+.gitattributes
+.github/
+.pre-commit-config.yaml
+tools/

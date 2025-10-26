@@ -101,6 +101,27 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(DeviceConstants::forcefield, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaMemcpyToSymbol(DeviceConstants::tinymolForcefield, &simulation->forcefieldTinymol, sizeof(ForcefieldTinymol), 0, cudaMemcpyHostToDevice);
 
+    // Precompute super common interactions
+    {
+
+        auto t0 = simulation->forcefieldTinymol.types[0];
+        auto t1 = simulation->forcefieldTinymol.types[1];
+        if (std::abs(t0.mass * KILO - 16) > 0.1 || std::abs(t1.mass* KILO-1) > 0.1){
+            printf("Invalid solvent precompute hack %f %f\n", t0.mass, t1.mass);
+            throw std::runtime_error("Solvent masses not as expected, the precompute hack is invalid!"); // TODO: check that theyr type is O and H isntead...
+        }
+        NonbondedInteractionParams tinymolParams[3] {
+            NonbondedInteractionParams{LJ::CalcSigma(t0.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt,t0.epsilonSqrt)},            
+            NonbondedInteractionParams{LJ::CalcSigma(t1.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt,t0.epsilonSqrt)},
+            NonbondedInteractionParams{LJ::CalcSigma(t1.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt,t1.epsilonSqrt)}
+        };
+
+        for (int i = 0; i < 3; i++)
+            printf("Making hack %f %f\n", tinymolParams[i].sigma, tinymolParams[i].epsilon);
+        cudaMemcpyToSymbol(DeviceConstants::tinymolPrecomputedParams, tinymolParams, sizeof(NonbondedInteractionParams) * 3, 0, cudaMemcpyHostToDevice);
+    }
+
+
 	BoxSize boxSize_host;
 	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
 	cudaMemcpyToSymbol(DeviceConstants::boxSize, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);

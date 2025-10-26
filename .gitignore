@@ -35,6 +35,8 @@
 #*CMakeSettings*
 #CMakeSettings.json
 */code/obsolete*
+CMakeLists.txt.user
+*.user*
 
 # Ignore contents of build, but not build
 build/*

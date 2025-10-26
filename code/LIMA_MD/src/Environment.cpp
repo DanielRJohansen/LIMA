@@ -248,13 +248,17 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 		const int nAtomsInTinymol = tinymol.nParticles;
 
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, stepToLoadFrom);
+		if (nAtomsInTinymol != 3)
+			throw std::runtime_error("Only support 3-atom tinymols in WriteBoxCoordinatesToFile for now");
+
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId*3, stepToLoadFrom);	
 		const Float3 deltaPos = new_position - grofile.atoms[tinymol.firstParticleIdInGrofile].position;
 
 		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomTypes[0][0]);
 
 		for (int i = 0; i < nAtomsInTinymol; i++) {
-			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
+			//grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
+			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId * 3 + i, stepToLoadFrom);
 			particlesUpdated++;
 		}		
 	}

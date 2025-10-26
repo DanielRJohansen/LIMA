@@ -160,27 +160,33 @@ namespace Benchmarks {
 	}
 
 	// Returns {avg ms/step, stdDev}
-	static std::pair<float, float> Benchmark(const fs::path& dir) {
+	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt) {
 
 		const fs::path workDir = simulations_dir / "benchmarking"/dir;
 		fs::path topPath, groPath;
 
-		for (const auto& entry : fs::directory_iterator(workDir)) {
-			auto ext = entry.path().extension();
-			if (ext == ".top") {
-				if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
-				topPath = entry.path();
-			}
-			else if (ext == ".gro") {
-				if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
-				groPath = entry.path();
+		if (name) {
+			groPath = workDir / (*name + ".gro");
+			topPath = workDir / (*name + ".top");
+		}
+		else {
+			for (const auto& entry : fs::directory_iterator(workDir)) {
+				auto ext = entry.path().extension();
+				if (ext == ".top") {
+					if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
+					topPath = entry.path();
+				}
+				else if (ext == ".gro") {
+					if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
+					groPath = entry.path();
+				}
 			}
 		}
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
 		SimParams params{ workDir / "../sim_params.txt" };
-		params.dt = 1.f * FEMTO_TO_NANO; 		
+		//params.dt = 1.f * FEMTO_TO_NANO; 		
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);

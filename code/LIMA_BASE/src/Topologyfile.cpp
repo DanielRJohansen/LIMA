@@ -439,7 +439,7 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 	}
 }
 
-void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path, std::optional<std::string> includefileName) {
+void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path, std::optional<fs::path> includefileName) {
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
@@ -530,7 +530,8 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		switch (current_section)
 		{
 		case TopologySection::title:
-			topology.title.append(line + "\n");	// +\n because getline implicitly strips it away.
+			if (!includefileName.has_value())	// Only use main top title
+				topology.title.append(line + "\n");	// +\n because getline implicitly strips it away.
 			break;
 		case TopologySection::moleculetype:
 		{
@@ -542,9 +543,9 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			if (moleculetypename.empty())
 				throw std::runtime_error("Moleculetype name is empty in file: " + path.string());
 
-			mostRecentMoleculetype = std::make_shared<Moleculetype>();
-			mostRecentMoleculetype->name = moleculetypename;
-			mostRecentMoleculetype->nrexcl = nrexcl;
+			mostRecentMoleculetype = std::make_shared<Moleculetype>(moleculetypename, nrexcl, includefileName);
+			//mostRecentMoleculetype->name = moleculetypename;
+			//mostRecentMoleculetype->nrexcl = nrexcl;
 
 			//auto nextSection = ParseMoleculetype(file, moleculetype);
 			assert(!topology.moleculetypes.contains(moleculetypename));
@@ -692,154 +693,154 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 	ParseBonds(dihedralbondStrings, mostRecentMoleculetype->dihedralbonds, ParseDihedralBond, error);
 	ParseBonds(improperbondStrings, mostRecentMoleculetype->improperdihedralbonds, ParseImproperDihedralBond, error);
 }
-
-void TopologyFile::ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile) {
-	//topology.defines.insert("FLEXIBLE");// Cant handle gromacs definition of rigid water right now
-
-	std::istringstream file(preprocessedFile);
-
-	TopologySection current_section{ TopologySection::title };
-	TopologySectionGetter getTopolSection{};
-	std::shared_ptr<Moleculetype> mostRecentMoleculetype = nullptr;
-
-	std::string line{};
-
-
-	while (getline(file, line)) {
-		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
-
-			// Directives where the directive itself is enough
-			if (current_section == defaults) {
-				// This file is a forcefield. We add it to the includes, and return to parent topol
-				if (forcefieldInclude != std::nullopt)
-					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
-
-				// TODO: I dunno wtf this is, maybe not have this at all anymore?
-				//forcefieldInclude.emplace(ForcefieldInclude(fs::path{ includefileName.value_or("forcefield.itp") }));
-			}
-			continue;
-		}
-
-		if (line.empty() || isOnlySpacesAndTabs(line))
-			continue;
-
-		// Check if current line is commented
-		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
-			continue;
-		}	// Only title-sections + atoms reads the comments
-
-		/*if (FileUtils::ChechlineForDefine(line)) {
-			topology.defines.insert(FileUtils::ChechlineForDefine(line).value());
-			continue;
-		}*/
-
-		/*if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
-			continue;*/
-
-
-
-		//if (line[0] == '#') {
-
-		//	if (line.size() > 8 && line.substr(0, 8) == "#include") {
-		//		// take second word, remove "
-		//		std::istringstream iss(line);
-		//		std::string _, pathWithQuotes;
-		//		iss >> _ >> pathWithQuotes;
-		//		if (pathWithQuotes.size() < 3)
-		//			throw std::runtime_error("Include is not formatted as expected: " + line);
-
-		//		std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
-
-		//		// TODO: Check that we havent' already parsed this file
-
-		//		if (filename.find("posre") != std::string::npos) {
-		//			// Do nothing, not yet supported
-		//		}
-		//		else if (filename.find(".itp") != std::string::npos) {
-		//			const fs::path filepath(path.parent_path() / filename);
-		//			if (fs::exists(filepath))
-		//				ParseFileIntoTopology(topology, path.parent_path() / filename, filename);
-		//			else if (fs::exists(FileUtils::GetLimaDir() / "resources/forcefields" / filename))
-		//				ParseFileIntoTopology(topology, FileUtils::GetLimaDir() / "resources/forcefields" / filename, filename);
-		//			else
-		//				throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", filename, path.parent_path().string()));
-		//		}
-		//	}
-		//	continue;
-		//}
-
-		// Directives where w eread the contents
-		switch (current_section)
-		{
-		case TopologySection::title:
-			title.append(line + "\n");	// +\n because getline implicitly strips it away.
-			break;
-		case TopologySection::moleculetype:
-		{
-			std::istringstream iss(line);
-			std::string moleculetypename;
-			int nrexcl;
-			iss >> moleculetypename >> nrexcl;
-
-			if (moleculetypename.empty())
-				throw std::runtime_error("Moleculetype name is empty");
-
-			mostRecentMoleculetype = std::make_shared<Moleculetype>();
-			mostRecentMoleculetype->name = moleculetypename;
-			mostRecentMoleculetype->nrexcl = nrexcl;
-
-			//auto nextSection = ParseMoleculetype(file, moleculetype);
-			assert(!moleculetypes.contains(moleculetypename));
-			moleculetypes.insert({ moleculetypename, mostRecentMoleculetype });
-
-			//current_section = nextSection;
-			break;
-		}
-		case TopologySection::_system: {
-			SetSystem(line);
-			break;
-		}
-		case TopologySection::molecules: {
-			std::istringstream iss(line);
-
-			std::string molname;
-			int cnt = 0;
-			iss >> molname >> cnt;
-
-			if (m_system.title == "noSystem")
-				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
-			if (!moleculetypes.contains(molname))
-				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
-			for (int i = 0; i < cnt; i++)
-				m_system.molecules.emplace_back(MoleculeEntry{ molname, moleculetypes.at(molname) });
-			break;
-		}
-		case TopologySection::atoms:
-		case TopologySection::bonds:
-		case TopologySection::pairs:
-		case TopologySection::angles:
-		case TopologySection::dihedrals:
-		case TopologySection::impropers:
-			if (mostRecentMoleculetype == nullptr)
-				throw std::invalid_argument("Moleculetype not set before parsing atoms/bonds/pairs/angles/dihedrals/impropers");
-			ParseMoleculetypeEntry(current_section, line, mostRecentMoleculetype);
-			break;
-		case TopologySection::atomtypes:
-		case TopologySection::pairtypes:
-		case TopologySection::bondtypes:
-		case TopologySection::constainttypes:
-		case TopologySection::angletypes:
-		case TopologySection::dihedraltypes:
-		case TopologySection::impropertypes:
-			forcefieldInclude->AddEntry(current_section, line);
-			break;
-		default:
-			// Do nothing
-			//throw std::runtime_error("Illegal state");
-			break;
-		}
-	}
-}
+//
+//void TopologyFile::ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile) {
+//	//topology.defines.insert("FLEXIBLE");// Cant handle gromacs definition of rigid water right now
+//
+//	std::istringstream file(preprocessedFile);
+//
+//	TopologySection current_section{ TopologySection::title };
+//	TopologySectionGetter getTopolSection{};
+//	std::shared_ptr<Moleculetype> mostRecentMoleculetype = nullptr;
+//
+//	std::string line{};
+//
+//
+//	while (getline(file, line)) {
+//		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
+//
+//			// Directives where the directive itself is enough
+//			if (current_section == defaults) {
+//				// This file is a forcefield. We add it to the includes, and return to parent topol
+//				if (forcefieldInclude != std::nullopt)
+//					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
+//
+//				// TODO: I dunno wtf this is, maybe not have this at all anymore?
+//				//forcefieldInclude.emplace(ForcefieldInclude(fs::path{ includefileName.value_or("forcefield.itp") }));
+//			}
+//			continue;
+//		}
+//
+//		if (line.empty() || isOnlySpacesAndTabs(line))
+//			continue;
+//
+//		// Check if current line is commented
+//		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {
+//			continue;
+//		}	// Only title-sections + atoms reads the comments
+//
+//		/*if (FileUtils::ChechlineForDefine(line)) {
+//			topology.defines.insert(FileUtils::ChechlineForDefine(line).value());
+//			continue;
+//		}*/
+//
+//		/*if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
+//			continue;*/
+//
+//
+//
+//		//if (line[0] == '#') {
+//
+//		//	if (line.size() > 8 && line.substr(0, 8) == "#include") {
+//		//		// take second word, remove "
+//		//		std::istringstream iss(line);
+//		//		std::string _, pathWithQuotes;
+//		//		iss >> _ >> pathWithQuotes;
+//		//		if (pathWithQuotes.size() < 3)
+//		//			throw std::runtime_error("Include is not formatted as expected: " + line);
+//
+//		//		std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
+//
+//		//		// TODO: Check that we havent' already parsed this file
+//
+//		//		if (filename.find("posre") != std::string::npos) {
+//		//			// Do nothing, not yet supported
+//		//		}
+//		//		else if (filename.find(".itp") != std::string::npos) {
+//		//			const fs::path filepath(path.parent_path() / filename);
+//		//			if (fs::exists(filepath))
+//		//				ParseFileIntoTopology(topology, path.parent_path() / filename, filename);
+//		//			else if (fs::exists(FileUtils::GetLimaDir() / "resources/forcefields" / filename))
+//		//				ParseFileIntoTopology(topology, FileUtils::GetLimaDir() / "resources/forcefields" / filename, filename);
+//		//			else
+//		//				throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", filename, path.parent_path().string()));
+//		//		}
+//		//	}
+//		//	continue;
+//		//}
+//
+//		// Directives where w eread the contents
+//		switch (current_section)
+//		{
+//		case TopologySection::title:
+//			title.append(line + "\n");	// +\n because getline implicitly strips it away.
+//			break;
+//		case TopologySection::moleculetype:
+//		{
+//			std::istringstream iss(line);
+//			std::string moleculetypename;
+//			int nrexcl;
+//			iss >> moleculetypename >> nrexcl;
+//
+//			if (moleculetypename.empty())
+//				throw std::runtime_error("Moleculetype name is empty");
+//
+//			mostRecentMoleculetype = std::make_shared<Moleculetype>();
+//			mostRecentMoleculetype->name = moleculetypename;
+//			mostRecentMoleculetype->nrexcl = nrexcl;
+//
+//			//auto nextSection = ParseMoleculetype(file, moleculetype);
+//			assert(!moleculetypes.contains(moleculetypename));
+//			moleculetypes.insert({ moleculetypename, mostRecentMoleculetype });
+//
+//			//current_section = nextSection;
+//			break;
+//		}
+//		case TopologySection::_system: {
+//			SetSystem(line);
+//			break;
+//		}
+//		case TopologySection::molecules: {
+//			std::istringstream iss(line);
+//
+//			std::string molname;
+//			int cnt = 0;
+//			iss >> molname >> cnt;
+//
+//			if (m_system.title == "noSystem")
+//				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
+//			if (!moleculetypes.contains(molname))
+//				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
+//			for (int i = 0; i < cnt; i++)
+//				m_system.molecules.emplace_back(MoleculeEntry{ molname, moleculetypes.at(molname) });
+//			break;
+//		}
+//		case TopologySection::atoms:
+//		case TopologySection::bonds:
+//		case TopologySection::pairs:
+//		case TopologySection::angles:
+//		case TopologySection::dihedrals:
+//		case TopologySection::impropers:
+//			if (mostRecentMoleculetype == nullptr)
+//				throw std::invalid_argument("Moleculetype not set before parsing atoms/bonds/pairs/angles/dihedrals/impropers");
+//			ParseMoleculetypeEntry(current_section, line, mostRecentMoleculetype);
+//			break;
+//		case TopologySection::atomtypes:
+//		case TopologySection::pairtypes:
+//		case TopologySection::bondtypes:
+//		case TopologySection::constainttypes:
+//		case TopologySection::angletypes:
+//		case TopologySection::dihedraltypes:
+//		case TopologySection::impropertypes:
+//			forcefieldInclude->AddEntry(current_section, line);
+//			break;
+//		default:
+//			// Do nothing
+//			//throw std::runtime_error("Illegal state");
+//			break;
+//		}
+//	}
+//}
 
 TopologyFile::TopologyFile() {}
 TopologyFile::TopologyFile(const fs::path& path) : path(path)
@@ -1029,9 +1030,9 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		}
 		file << "\n";
 
-		for (const auto& moleculetype : moleculetypes) {
-			moleculetype.second->ToFile(path.parent_path());
-			file << "#include \"" << moleculetype.second->name << ".itp\"\n";
+		for (const auto& [_, moleculetype] : moleculetypes) {
+			moleculetype->ToFile(path.parent_path());
+			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name)).string() << "\"\n";
 		}
 		file << "\n";
 

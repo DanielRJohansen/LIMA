@@ -52,6 +52,9 @@ struct GroFile {
 	void printToFile(const std::string& name) const {
 		printToFile(m_path.parent_path() / name);
 	}
+	void printToFile(const char* str) const {
+		printToFile(std::string(str));
+	}
 };
 
 enum TopologySection {
@@ -157,8 +160,9 @@ public:
 	struct ImproperDihedralBond;
 	struct Moleculetype {
 		Moleculetype() = default;
-		Moleculetype(const std::string& name, int nrexcl) : name(name), nrexcl(nrexcl) {};
+		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt ) : name(name), includePath(includePath), nrexcl(nrexcl) {};
 		std::string name{};
+		std::optional<fs::path> includePath;	// Not present if the moleculetype is defined inline in the topology file
 		int nrexcl{}; // How many consecutive bonds before LJ is enabled again
 
 		std::vector<AtomsEntry> atoms;
@@ -229,6 +233,9 @@ public:
 	void printToFile() const { printToFile(path); };
 	void printToFile(const std::string& name) const {
 		printToFile(fs::path(path.parent_path() / name));
+	}
+	void printToFile(const char* str) const {
+		printToFile(std::string(str));
 	}
 	
 
@@ -328,7 +335,7 @@ private:
 	/// <param name="name">If this is called on an include file, 
 	/// this is the name of that include file in the parent file</param>
 	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
-		std::optional<std::string> includefileName =std::nullopt);
+		std::optional<fs::path> includefileName =std::nullopt);
 
 	void ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile);
 

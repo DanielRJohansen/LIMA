@@ -64,7 +64,7 @@ int main() {
 		//TestIntegration(envmode);
 
 		
-		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
@@ -98,8 +98,9 @@ int main() {
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		//Benchmarks::Benchmark("membrane20"); 
-		//Benchmarks::Benchmark("manyt4"); 
+		Benchmarks::Benchmark("membrane20", "membranesolvated_em"); 
+		//Benchmarks::Benchmark("manyt4", "manyt4sol");
+		//Benchmarks::Benchmark("stmv");
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		 
 		//TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
@@ -115,9 +116,12 @@ int main() {
 		//}
 
 		//{
-		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" };
-		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" };
+		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
+		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
 		//	Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+
+		//	grofile.printToFile("membranesolvated_em.gro");
+		//	topfile.printToFile("membranesolvated_em.top");
 		//}
 		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
 		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
@@ -127,7 +131,6 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		
-
 		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

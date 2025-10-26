@@ -159,7 +159,7 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 				cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 		}
 		
-		HandleEarlyStoppingInEM();		
+		HandleEarlyStoppingInEM();
 	}
 	if (simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1)
 		nlistController->UpdateNlist(sim_dev, simulation->box_host->boxparams, simulation->simparams_host.bc_select, cudaStreams);
@@ -179,6 +179,10 @@ void Engine::terminateSimulation() {
 	offloadLoggingData(stepsReadyToTransfer);
 
 	sim_dev->boxState.CopyDataToHost(*simulation->box_host);
+
+	const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep() - 1), simulation->forceBuffer->EntriesPerStep());
+	runstatus.greatestForce = greatestForce / KILO; // Convert [J/mol/nm] to [kJ/mol/nm]
+	simulation->maxForceBuffer.emplace_back(std::pair<int64_t, float>{ simulation->getStep(), runstatus.greatestForce });
 
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
@@ -266,6 +270,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
+
 
 void Engine::HandleEarlyStoppingInEM() {
 	if (!simulation->simparams_host.em_variant || simulation->getStep() == simulation->simparams_host.n_steps)

@@ -114,7 +114,7 @@ namespace ElectrostaticsTests {
 
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {
-			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3 );
+			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3);
 			moltype->atoms.push_back(atom.atomtype);
 			simfiles.topfile->moleculetypes.insert({ atom.atomtype.atomname, moltype });
 		}

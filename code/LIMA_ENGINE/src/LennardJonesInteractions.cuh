@@ -143,7 +143,7 @@ namespace LJ {
 			
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-            if (!EngineUtils::isOutsideCutoff(dist_sq_reciprocal, cutoff_recip)) {
+            if (!EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal, cutoff_recip)) {
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     myParams.sigmaHalf + neighborParams[neighborparticle_id].sigmaHalf,
                     myParams.epsilonSqrt * neighborParams[neighborparticle_id].epsilonSqrt,
@@ -170,9 +170,6 @@ namespace LJ {
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
 
-
-        bool isO = threadIdx.x % 3 == 0;
-
 		for (int i = 0; i < n_elements; i++) {
 			// If computing within block, dont compute force against thread's solvent
 			if constexpr (checkForSameTinymolId) {
@@ -181,21 +178,18 @@ namespace LJ {
 
 			const Float3 diff = (relpos_others[i] - relpos_self);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }	// OPTIM. Do the check without recip, to save the division in some cases??!
 
-            bool queryIsO = i % 3 == 0;
-
-            auto params = DeviceConstants::tinymolPrecomputedParams[isO + queryIsO];
-
-            printf("%d %d - %f %f\n", isO, queryIsO, params.sigma, CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared));
-
-			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,				
-                params.sigma, params.epsilon,
-                //CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-                //CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
-				threadIdx.x, i
-			);
+			auto params = DeviceConstants::tinymolPrecomputedParams[tinymolTypeIdSelf + tinymolTypeIds[i]];
+			if (params.epsilon != 0) {
+				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+					params.sigma, params.epsilon,
+					//CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+					//CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
+					checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
+					threadIdx.x, i
+				);
+			}
 
 			if constexpr (ENABLE_ES_SR) {
 				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
@@ -220,7 +214,7 @@ namespace LJ {
 
 			const Float3 diff = (positions[i] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }
 
 
 
@@ -256,7 +250,7 @@ namespace LJ {
 			 
 			const Float3 diff = (positions[i] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(dist_sq_reciprocal)) { continue; }
+			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }
 
 			const auto& otherType = DeviceConstants::forcefield.particle_parameters[atomtypes_others[i]];
 

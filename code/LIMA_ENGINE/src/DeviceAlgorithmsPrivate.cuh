@@ -35,6 +35,12 @@ namespace LAL {
 namespace PhysicsUtilsDevice {
 	using PhysicsUtils::modifiedCoulombConstant;
 
+	/// <summary>
+	/// Calculate the force without multiplying the coulumbConstant, so caller must do that!!
+	/// </summary>
+	/// <param name="chargeProduct"></param>
+	/// <param name="diff"></param>
+	/// <returns>[]</returns>
 	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff)
 	{
 		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
@@ -77,7 +83,6 @@ namespace PhysicsUtilsDevice {
 		float potential = (chargeProduct) * rsqrtf(diff.lenSquared());
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
-
 				potential *= erfc(diff.len() * DeviceConstants::ewaldKappa);
 			}
 			else {

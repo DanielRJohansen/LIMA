@@ -27,6 +27,7 @@ namespace DeviceConstants {
     __constant__ NonbondedInteractionParams tinymolPrecomputedParams[3]; // [O-O, O-H, H-H]
 	__constant__ BoxSize boxSize;
 	__constant__ float cutoffNM;
+	__constant__ float cutoffNMSquared;
 	__constant__ float cutoffNmReciprocal;
 	__constant__ float cutoffNmSquaredReciprocal;
 	__constant__ float ewaldKappa;

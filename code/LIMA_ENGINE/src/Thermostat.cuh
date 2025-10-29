@@ -29,7 +29,7 @@ namespace _Thermostat {
 			const float mass = compounds[compoundIdx].atomMasses[particleIdx];
 
 			const Float3& velocity = states[compoundIdx].vels_prev[particleIdx];
-			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO: calcKineticEnergy can use lenSquared instead, save a sqrtf!!		
+			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO OPTIM: calcKineticEnergy can use lenSquared instead, save a sqrtf!!		
 		}
 	};
 
@@ -74,6 +74,7 @@ public:
 		nSolvents(nSolvents)
 	{
 		cudaMalloc(&intermediate, sizeof(float) * totalParticlesUpperbound); // totalParticlesUpperbound = MAX_COMPOUND_PARTICLES * nCompounds + nSolvents
+		cudaMemset(intermediate, 0, sizeof(float) * totalParticlesUpperbound);
 	}
 
 	// {temp,thermostatScalar}

@@ -101,26 +101,16 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(DeviceConstants::forcefield, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 	cudaMemcpyToSymbol(DeviceConstants::tinymolForcefield, &simulation->forcefieldTinymol, sizeof(ForcefieldTinymol), 0, cudaMemcpyHostToDevice);
 
-    // Precompute super common interactions
-    {
-
-        auto t0 = simulation->forcefieldTinymol.types[0];
-        auto t1 = simulation->forcefieldTinymol.types[1];
-        if (std::abs(t0.mass * KILO - 16) > 0.1 || std::abs(t1.mass* KILO-1) > 0.1){
-            printf("Invalid solvent precompute hack %f %f\n", t0.mass, t1.mass);
-            throw std::runtime_error("Solvent masses not as expected, the precompute hack is invalid!"); // TODO: check that theyr type is O and H isntead...
-        }
-        NonbondedInteractionParams tinymolParams[3] {
-            NonbondedInteractionParams{LJ::CalcSigma(t0.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt,t0.epsilonSqrt)},            
-            NonbondedInteractionParams{LJ::CalcSigma(t1.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt,t0.epsilonSqrt)},
-            NonbondedInteractionParams{LJ::CalcSigma(t1.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt,t1.epsilonSqrt)}
-        };
-
-        for (int i = 0; i < 3; i++)
-            printf("Making hack %f %f\n", tinymolParams[i].sigma, tinymolParams[i].epsilon);
-        cudaMemcpyToSymbol(DeviceConstants::tinymolPrecomputedParams, tinymolParams, sizeof(NonbondedInteractionParams) * 3, 0, cudaMemcpyHostToDevice);
-    }
-
+	{
+		auto t0 = simulation->forcefieldTinymol.types[0];
+		auto t1 = simulation->forcefieldTinymol.types[1];
+		NonbondedInteractionParams precomputedParams[3]{
+			{LJ::CalcSigma(t0.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t0.epsilonSqrt)},
+			{LJ::CalcSigma(t0.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t1.epsilonSqrt)},
+			{LJ::CalcSigma(t1.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt, t1.epsilonSqrt)}
+		};
+		cudaMemcpyToSymbol(DeviceConstants::tinymolPrecomputedParams, precomputedParams, sizeof(NonbondedInteractionParams) * 3, 0, cudaMemcpyHostToDevice);
+	}
 
 	BoxSize boxSize_host;
 	boxSize_host.Set(simulation->box_host->boxparams.boxSize);
@@ -133,6 +123,8 @@ void Engine::setDeviceConstantMemory() {
 	cudaMemcpyToSymbol(DeviceConstants::cutoffNmSquaredReciprocal, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
 	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simparams_host.cutoff_nm);
 	cudaMemcpyToSymbol(DeviceConstants::ewaldKappa, &ewaldKappa, sizeof(float), 0, cudaMemcpyHostToDevice);
+	const float cutoffNmSquared = simulation->simparams_host.cutoff_nm * simulation->simparams_host.cutoff_nm;
+	cudaMemcpyToSymbol(DeviceConstants::cutoffNMSquared, &cutoffNmSquared, sizeof(float), 0, cudaMemcpyHostToDevice);
 
 	const float initialThermostatScalar = 1.f;
 	cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
@@ -351,7 +343,7 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
 		// TODO: Too many threads, we rarely get close to filling the block
-		solventForceKernel<BoundaryCondition, emvariant> 
+		solventForceKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");

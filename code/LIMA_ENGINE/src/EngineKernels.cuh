@@ -481,7 +481,7 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 }
 
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
-template <typename BoundaryCondition, bool energyMinimize>
+template <typename BoundaryCondition, bool energyMinimize, bool computePotE>
 __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step, ForceEnergy* const forceEnergies) {
     //__shared__ Float3 utility_buffer[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 
@@ -524,7 +524,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		}
 		__syncthreads();
 		if (threadActive) {
-            force += LJ::computeSolventToSolventLJForces<true, energyMinimize, true>
+            force += LJ::computeSolventToSolventLJForces<computePotE, energyMinimize, true>
 				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, *forcefieldTinymolShared, utility_buffer_small, solventblock_ptr->particlesBondgroupIds);
 		}
 	}	
@@ -548,21 +548,15 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
         __syncthreads();
 
-        //auto block = cooperative_groups::this_thread_block();
-        //cooperative_groups::memcpy_async(block, positionsBuffer_coord, solventblock_neighbor->rel_pos, sizeof(Coord) * SolventBlock::MAX_SOLVENTS_IN_BLOCK);
-        //cooperative_groups::memcpy_async(block, utility_buffer_small, solventblock_neighbor->atomtypeIds, sizeof(uint8_t) * SolventBlock::MAX_SOLVENTS_IN_BLOCK);
-        //cooperative_groups::wait(block);
-        //positionsBuffer_relpos[threadIdx.x] = positionsBuffer_coord[threadIdx.x].ToRelpos();
-
-        if (threadIdx.x < nsolvents_neighbor) {
-            positionsBuffer_relpos[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos();
-            utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
-        }
+		if (threadIdx.x < nsolvents_neighbor) {
+			positionsBuffer_relpos[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos();
+			utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
+		}
 		__syncthreads();
 
 
 		if (threadActive) {
-            force += LJ::computeSolventToSolventLJForces<true, energyMinimize, false>
+			force += LJ::computeSolventToSolventLJForces<computePotE, energyMinimize, false> // TODO OPTIM use computePotE template param here
 				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, *forcefieldTinymolShared, utility_buffer_small, nullptr);
 		}
 	}

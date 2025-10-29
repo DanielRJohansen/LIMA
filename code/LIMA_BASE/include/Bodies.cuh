@@ -245,14 +245,11 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
-	constexpr Compound() {}
-
 	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
     float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
-
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
 
@@ -363,6 +360,11 @@ struct ForcefieldTinymol {
 
 	TinyMolType types[MAX_TYPES];
 };
+
+//struct PrecomputedSolventForcefield {
+//	NonbondedInteractionParams ljParams[3]; // [O-O, O-H, H-H]
+//	float chargeProducts[3]; // [O-O, O-H, H-H]
+//};
 
 
 class UniformElectricField {

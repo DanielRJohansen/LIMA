@@ -106,7 +106,9 @@ namespace LIMA_MOLECULEBUILD {
 
 class CompoundFactory : public Compound, public CompoundInterimState {
 public:
-	CompoundFactory() {}
+	CompoundFactory() {
+		memset(this, 0, sizeof(CompoundFactory));
+	}
 
 	void addParticle(const ParticleFactory&,int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc);
 

@@ -11,7 +11,7 @@ static const int MAX_PARTICLES_IN_BOXGRIDNODE = 64;
 
 // blocks are notcentered 
 struct SolventBlock {
-	static constexpr int maxBondgroups = 64 + 32;
+	static constexpr int maxBondgroups = 64;
     static constexpr int MAX_SOLVENTS_IN_BLOCK = maxBondgroups*3; // ought to be bondgroups*3...
 	
 
@@ -58,7 +58,10 @@ struct SolventBlock {
 		}
 		return true;
 	}
-	 
+	
+	/*just like compounds we need to revamp this class into a meta informatin class, with accompanying memory buffers that actually store the data
+	similar to compounds, we want a fast buffer with the positions as float3, and a buffer only used when incrementing the exact position
+		Honestly why even that? What is the point of the coord system anymore..?*/
 	Coord rel_pos[MAX_SOLVENTS_IN_BLOCK];	// Pos rel to lower left forward side of block, or floor() of pos
 	uint32_t ids[MAX_SOLVENTS_IN_BLOCK];
 	uint8_t atomtypeIds[MAX_SOLVENTS_IN_BLOCK];

@@ -47,6 +47,7 @@ constexpr double NANO_TO_PICO = 1e3;
 constexpr double PICO_TO_NANO = 1e-3;
 
 constexpr float PI = 3.14159f;
+constexpr float PI_sqrt = 1.77245385091f; // Motherfucker, give me c++26 alreadYY!!!
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;

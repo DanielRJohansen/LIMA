@@ -174,12 +174,12 @@ namespace EngineUtils {
 		}
 	}
 
-	//__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
-	//	if constexpr (HARD_CUTOFF) {
-	//		return dist_sq > DeviceConstants::cutoffNMSquared;	// (CUTOFF_LM * CUTOFF_LM);
-	//	}
-	//	return false;
-	//}
+	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
+		if constexpr (HARD_CUTOFF) {
+			return dist_sq > DeviceConstants::cutoffNMSquared;	// (CUTOFF_LM * CUTOFF_LM);
+		}
+		return false;
+	}
 
 	__device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {

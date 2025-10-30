@@ -165,7 +165,7 @@ namespace LJ {
 	// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
 	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
-		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds) {
+		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds, const NonbondedInteractionParams* const nbparams_shared) {
 		Float3 force{};
 		Float3 electrostaticForce{};
 		float electrostaticPotential{};
@@ -177,12 +177,15 @@ namespace LJ {
 			}
 
 			const Float3 diff = (relpos_others[i] - relpos_self);
-			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }	// OPTIM. Do the check without recip, to save the division in some cases??!
+			//const float dist_sq_reciprocal = 1.f / diff.lenSquared();
+			//			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }	// OPTIM. Do the check without recip, to save the division in some cases??!
+			const float distSq = diff.lenSquared();
+			if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
 
-			auto params = DeviceConstants::tinymolPrecomputedParams[tinymolTypeIdSelf + tinymolTypeIds[i]];
+			//auto params1 = DeviceConstants::tinymolPrecomputedParams[tinymolTypeIdSelf + tinymolTypeIds[i]];
+			const auto params = nbparams_shared[tinymolTypeIdSelf + tinymolTypeIds[i]];
 			if (params.epsilon != 0) {
-				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
+				force += calcLJForceOptim<computePotE, emvariant>(diff, 1./distSq, potE_sum,
 					params.sigma, params.epsilon,
 					//CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
 					//CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
@@ -193,7 +196,7 @@ namespace LJ {
 
 			if constexpr (ENABLE_ES_SR) {
 				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff);
+				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff, distSq);
 				if constexpr (computePotE)
 					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
 			}

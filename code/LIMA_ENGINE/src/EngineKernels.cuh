@@ -480,6 +480,8 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 	forceEnergies[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x] = ForceEnergy{ force, potE_sum };
 }
 
+
+//TODO OPTIM. Use  32 threads instead!!
 static_assert(SolventBlock::MAX_SOLVENTS_IN_BLOCK >= MAX_COMPOUND_PARTICLES, "solventForceKernel was about to reserve an insufficient amount of memory");
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE>
 __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig, int64_t step, ForceEnergy* const forceEnergies) {
@@ -495,9 +497,13 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
 	__shared__ int nElementsInBlock;
+	__shared__ NonbondedInteractionParams ljPrecomputed[3];
 
 	const SolventBlock* const solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
+	
+	if (threadIdx.x < 3)
+		ljPrecomputed[threadIdx.x] = DeviceConstants::tinymolPrecomputedParams[threadIdx.x];
 
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES) {
         forcefieldTinymolShared->types[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x]; // TODO Check that im using this and not the __constant??
@@ -505,6 +511,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 	if (threadIdx.x == 0) {
 		nElementsInBlock = solventblock_ptr->nParticles;
+//		printf("%d,", nElementsInBlock);
 	}
 	__syncthreads();
 	
@@ -514,8 +521,8 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	float potE_sum{};
 	const Float3 relpos_self = solventblock_ptr->rel_pos[threadIdx.x].ToRelpos();
 	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
-
-
+	
+	
 	// --------------------------------------------------------------- Intrablock TinyMolParticleState Interactions ----------------------------------------------------- //
 	{		
 		if (threadActive) {
@@ -525,7 +532,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		__syncthreads();
 		if (threadActive) {
             force += LJ::computeSolventToSolventLJForces<computePotE, energyMinimize, true>
-				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, *forcefieldTinymolShared, utility_buffer_small, solventblock_ptr->particlesBondgroupIds);
+				(relpos_self, tinymolTypeId, positionsBuffer_relpos, nElementsInBlock, potE_sum, *forcefieldTinymolShared, utility_buffer_small, solventblock_ptr->particlesBondgroupIds, ljPrecomputed);
 		}
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -543,12 +550,12 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 		const int blockindex_neighbor = nearbyBlock[i].blockId;
 
 		const SolventBlock* solventblock_neighbor = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockindex_neighbor, step);
-		const int nsolvents_neighbor = solventblock_neighbor->nParticles;
+		const int nParticlesNeighbor = solventblock_neighbor->nParticles;
 
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
         __syncthreads();
 
-		if (threadIdx.x < nsolvents_neighbor) {
+		if (threadIdx.x < nParticlesNeighbor) {
 			positionsBuffer_relpos[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos();
 			utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
 		}
@@ -557,7 +564,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 		if (threadActive) {
 			force += LJ::computeSolventToSolventLJForces<computePotE, energyMinimize, false> // TODO OPTIM use computePotE template param here
-				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nsolvents_neighbor, potE_sum, *forcefieldTinymolShared, utility_buffer_small, nullptr);
+				(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nParticlesNeighbor, potE_sum, *forcefieldTinymolShared, utility_buffer_small, nullptr, ljPrecomputed);
 		}
 	}
 

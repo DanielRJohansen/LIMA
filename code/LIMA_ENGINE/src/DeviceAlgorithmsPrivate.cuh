@@ -35,6 +35,18 @@ namespace LAL {
 namespace PhysicsUtilsDevice {
 	using PhysicsUtils::modifiedCoulombConstant;
 
+
+	/*inline float CalcErfcScalar(float dist, float distSq) {
+		const float erfcTerm = erfc(dist * DeviceConstants::ewaldKappaHardcoded);
+		const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappaHardcoded / PI_sqrt * dist * exp(-DeviceConstants::ewaldKappaHardcoded * DeviceConstants::ewaldKappaHardcoded * distSq);
+		return scalar;
+	}*/
+	inline float CalcErfcScalar(float dist, float distSq) {
+		const float erfcTerm = erfc(dist * DeviceConstants::ewaldKappa);
+		const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappa / PI_sqrt * dist * exp(-DeviceConstants::ewaldKappa * DeviceConstants::ewaldKappa * distSq);
+		return scalar;
+	}
+
 	/// <summary>
 	/// Calculate the force without multiplying the coulumbConstant, so caller must do that!!
 	/// </summary>
@@ -56,6 +68,35 @@ namespace PhysicsUtilsDevice {
 				const float erfcTerm = erfc(diff.len() * DeviceConstants::ewaldKappa);
 				const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappa / sqrt(PI) * diff.len() * exp(-DeviceConstants::ewaldKappa * DeviceConstants::ewaldKappa * diff.lenSquared());
 				force *= scalar;
+			}
+			else {
+				const int N = DeviceConstants::ERFC_LUT_SIZE;
+				const float distanceInArray = fminf(diff.len() * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
+				const int index = static_cast<int>(std::floor(distanceInArray));
+				const int indexNext = std::min(index + 1, N - 1);
+				const float frac = distanceInArray - static_cast<float>(index);
+				const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
+
+				force *= scalar;
+			}
+		}
+
+		return force;
+	}
+
+	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff, const float distSq)
+	{
+		const float invLen = rsqrtf(distSq);                  // Computes 1 / sqrt(lenSquared)
+		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
+
+		Float3 force = diff * chargeProduct * invLenCubed;
+#ifdef FORCE_NAN_CHECK
+		if (force.isNan())
+			force.print('E');
+#endif
+		if constexpr (ENABLE_ERFC_FOR_EWALD) {
+			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
+				force *= CalcErfcScalar(1.f / invLen, distSq);
 			}
 			else {
 				const int N = DeviceConstants::ERFC_LUT_SIZE;

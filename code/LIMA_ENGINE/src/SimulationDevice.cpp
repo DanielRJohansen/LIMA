@@ -42,15 +42,16 @@ void BoxConfig::FreeMembers() const {
 }
 
 
-BoxState::BoxState(NodeIndex* compoundOrigos, Float3* compoundsRelpos, 
+BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundsInterimState,
 	//TinyMolParticleState* tinyMolParticlesState,
-	SolventBlock* solventblockgrid_circularqueue, CompoundInterimState* compoundsInterimState) :
-	compoundOrigos(compoundOrigos), compoundsRelposNm(compoundsRelpos), 
+	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, Float3* solventsRelposNm, uint8_t* solventsAtomtypeIds) :
+	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), compoundsInterimState(compoundsInterimState),
 	//tinyMolParticlesState(tinyMolParticlesState), 
-	solventblockgrid_circularqueue(solventblockgrid_circularqueue), compoundsInterimState(compoundsInterimState)
+	solventblockgrid_circularqueue(solventblockgrid_circularqueue), nParticlesInSolventblock(nParticlesInSolventblock), solventsRelposNm(solventsRelposNm), solventsAtomtypeIds(solventsAtomtypeIds)
 {}
+
 BoxState BoxState::Create(const Box& boxHost) {
-	std::vector<NodeIndex> compoundsOrigos;
+	std::vector<NodeIndex> compoundsOrigos;	// OPTIM Initiate with correct size!
 	std::vector<Float3> compoundsRelPos;
 	for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
 		compoundsOrigos.emplace_back(compoundCoords.origo);
@@ -59,18 +60,32 @@ BoxState BoxState::Create(const Box& boxHost) {
 		}
 	}
 
-	
+	const size_t nSolventblocks = BoxGrid::BlocksTotal(boxHost.boxparams.boxSize);
+	std::vector<int> nParticlesInSolventblock(nSolventblocks, 0);
+	std::vector<Float3> solventsRelposNm(nSolventblocks * SolventBlock::maxParticles, Float3{});
+	std::vector<uint8_t> solventsAtomtypeIds(nSolventblocks * SolventBlock::maxParticles, 0);
+	for (int i = 0; i < nSolventblocks; i++) {
+		nParticlesInSolventblock[i] = boxHost.solventblockgrid_circularqueue[i].nParticles;
+		for (int j = 0; j < boxHost.solventblockgrid_circularqueue[i].nParticles; j++) {
+			solventsRelposNm[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos();
+			solventsAtomtypeIds[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j];
+		}
+	}
 
 	return BoxState{
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
+		GenericCopyToDevice(boxHost.compoundInterimStates),
 		//GenericCopyToDevice(boxHost.tinyMolParticlesState),
 		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),
-		GenericCopyToDevice(boxHost.compoundInterimStates) 
+		//nullptr, nullptr,nullptr
+		GenericCopyToDevice(nParticlesInSolventblock),
+		GenericCopyToDevice(solventsRelposNm),
+		GenericCopyToDevice(solventsAtomtypeIds)
 	};
 }
 void BoxState::CopyDataToHost(Box& boxHost) const {
-	BoxState boxtemp( nullptr, nullptr, nullptr, nullptr);
+	BoxState boxtemp( nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
@@ -93,7 +108,7 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() const {
-	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr); // TODO No longer necessary, as this is no longer a device ptr
+	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr); // TODO No longer necessary, as this is no longer a device ptr
 	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	cudaFree(boxtemp.compoundsInterimState);

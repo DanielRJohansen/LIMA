@@ -458,6 +458,8 @@ template <typename BoundaryCondition>
 void NeighborList::Controller::_UpdateNlist(SimulationDevice* simDev, const BoxParams& boxparams, std::array<cudaStream_t,5>& streams)
 {
 	cudaDeviceSynchronize();
+	LIMA_UTILS::genericErrorCheckNoSync("Error before UpdateNList");
+
 	if (boxparams.n_compounds > 0) {
 		// Stream one
 		cudaMemsetAsync(grid, 0, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)) * sizeof(NeighborList::Gridnode), streams[0]);

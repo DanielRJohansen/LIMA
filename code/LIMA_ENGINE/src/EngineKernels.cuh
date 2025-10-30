@@ -510,8 +510,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}
 
 	if (threadIdx.x == 0) {
-		nElementsInBlock = solventblock_ptr->nParticles;
-//		printf("%d,", nElementsInBlock);
+		nElementsInBlock = boxState.nParticlesInSolventblock[blockIdx.x];
 	}
 	__syncthreads();
 	
@@ -519,9 +518,9 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 	Float3 force{};
 	float potE_sum{};
-	const Float3 relpos_self = solventblock_ptr->rel_pos[threadIdx.x].ToRelpos();
-	const uint8_t tinymolTypeId = solventblock_ptr->atomtypeIds[threadIdx.x];
-	
+	const Float3 relpos_self = boxState.solventsRelposNm[blockIdx.x * SolventBlock::maxParticles + threadIdx.x];
+	const uint8_t tinymolTypeId = boxState.solventsAtomtypeIds[blockIdx.x * SolventBlock::maxParticles + threadIdx.x];
+
 	
 	// --------------------------------------------------------------- Intrablock TinyMolParticleState Interactions ----------------------------------------------------- //
 	{		
@@ -549,15 +548,15 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	for (int i = 0; i < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks; i++) {
 		const int blockindex_neighbor = nearbyBlock[i].blockId;
 
-		const SolventBlock* solventblock_neighbor = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockindex_neighbor, step);
-		const int nParticlesNeighbor = solventblock_neighbor->nParticles;
+		const int nParticlesNeighbor = boxState.nParticlesInSolventblock[blockindex_neighbor];
 
 		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
         __syncthreads();
 
 		if (threadIdx.x < nParticlesNeighbor) {
-			positionsBuffer_relpos[threadIdx.x] = solventblock_neighbor->rel_pos[threadIdx.x].ToRelpos();
-			utility_buffer_small[threadIdx.x] = solventblock_neighbor->atomtypeIds[threadIdx.x];
+			size_t index = blockindex_neighbor * SolventBlock::maxParticles + threadIdx.x;
+			positionsBuffer_relpos[threadIdx.x] = boxState.solventsRelposNm[index];
+			utility_buffer_small[threadIdx.x] = boxState.solventsAtomtypeIds[index];
 		}
 		__syncthreads();
 
@@ -759,6 +758,10 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	if (threadIdx.x < solventblock.nBondgroups) {
 		solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
 		solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+	}
+	if (threadIdx.x < solventblock.nParticles) {
+		const size_t index = blockIdx.x * SolventBlock::maxParticles + threadIdx.x;
+		boxState.solventsRelposNm[index] = relPositionsNext[threadIdx.x].ToRelpos();
 	}
 }
 

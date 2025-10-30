@@ -242,4 +242,14 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 		solventblockGlobalPtr->nParticles = nParticlesInBlock;
 		solventblockGlobalPtr->nBondgroups = nBondgroupsInBlock;
 	}
+
+	// AfterFinally we set up the quickaccess data
+	if (threadIdx.x == 0) {
+		sim->boxState.nParticlesInSolventblock[solventblockId] = nParticlesInBlock;
+	}
+	if (threadIdx.x < nParticlesInBlock) {
+		size_t index = solventblockId * SolventBlock::maxParticles + threadIdx.x;
+		sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
+		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];
+	}
 }

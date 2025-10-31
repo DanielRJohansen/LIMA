@@ -105,9 +105,9 @@ void Engine::setDeviceConstantMemory() {
 		auto t0 = simulation->forcefieldTinymol.types[0];
 		auto t1 = simulation->forcefieldTinymol.types[1];
 		NonbondedInteractionParams precomputedParams[3]{
-			{LJ::CalcSigma(t0.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t0.epsilonSqrt)},
-			{LJ::CalcSigma(t0.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t1.epsilonSqrt)},
-			{LJ::CalcSigma(t1.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt, t1.epsilonSqrt)}
+			{LJ::CalcSigma(t0.sigmaHalf, t0.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t0.epsilonSqrt), t0.charge*t0.charge},
+			{LJ::CalcSigma(t0.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t0.epsilonSqrt, t1.epsilonSqrt), t0.charge*t1.charge},
+			{LJ::CalcSigma(t1.sigmaHalf, t1.sigmaHalf), LJ::CalcEpsilon(t1.epsilonSqrt, t1.epsilonSqrt), t1.charge*t1.charge}
 		};
 		cudaMemcpyToSymbol(DeviceConstants::tinymolPrecomputedParams, precomputedParams, sizeof(NonbondedInteractionParams) * 3, 0, cudaMemcpyHostToDevice);
 	}
@@ -129,8 +129,8 @@ void Engine::setDeviceConstantMemory() {
 	const float initialThermostatScalar = 1.f;
 	cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
 
-	assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
-	cudaMemcpyToSymbol(DeviceConstants::nonbondedinteractionParams, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);
+	/*assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
+	cudaMemcpyToSymbol(DeviceConstants::nonbondedinteractionParams, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);*/
 
 	// Prepare precomputed values on device
 	const float cutoffNM = simulation->simparams_host.cutoff_nm;
@@ -344,7 +344,7 @@ void Engine::_deviceMaster() {
 
 		// TODO: Too many threads, we rarely get close to filling the block
 		solventForceKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[3]>>>
+			<<<nSolventblocks, nSolventForceKernelThreads, 0, cudaStreams[3]>>>
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 

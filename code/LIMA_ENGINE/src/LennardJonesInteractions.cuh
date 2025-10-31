@@ -162,49 +162,145 @@ namespace LJ {
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
-	// Specific to solvent kernel	
-	template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
-	__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
-		const ForcefieldTinymol& forcefieldTinymol_shared, const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds, const NonbondedInteractionParams* const nbparams_shared) {
-		Float3 force{};
-		Float3 electrostaticForce{};
-		float electrostaticPotential{};
+	//// Specific to solvent kernel	
+	//template<bool computePotE, bool emvariant, bool checkForSameTinymolId>
+	//__device__ Float3 computeSolventToSolventLJForces(const Float3& relpos_self, const uint8_t tinymolTypeIdSelf, const Float3* const relpos_others, int n_elements, float& potE_sum,
+	//	const uint8_t* const tinymolTypeIds, const uint8_t* const tinymolIds, const NonbondedInteractionParams* const nbparams_shared) {
+	//	Float3 force{};
+	//	Float3 electrostaticForce{};
+	//	float electrostaticPotential{};
 
-		for (int i = 0; i < n_elements; i++) {
-			// If computing within block, dont compute force against thread's solvent
-			if constexpr (checkForSameTinymolId) {
-				if (tinymolIds[threadIdx.x] == tinymolIds[i]) { continue; }
+	//	for (int i = 0; i < n_elements; i++) {
+	//		// If computing within block, dont compute force against thread's solvent
+	//		if constexpr (checkForSameTinymolId) {
+	//			not valid!
+	//			//if (tinymolIds[threadIdx.x] == tinymolIds[i]) { continue; }
+	//		}
+
+	//		const Float3 diff = (relpos_others[i] - relpos_self);
+	//		const float distSq = diff.lenSquared();
+	//		if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
+
+	//		const auto params = nbparams_shared[tinymolTypeIdSelf + tinymolTypeIds[i]];
+	//		if (params.epsilon != 0) {
+	//			force += calcLJForceOptim<computePotE, emvariant>(diff, 1./distSq, potE_sum,
+	//				params.sigma, params.epsilon,
+	//				checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
+	//				threadIdx.x, i
+	//			);
+	//		}
+
+	//		if constexpr (ENABLE_ES_SR) {
+	//			//const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
+	//			electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(params.chargeProduct, -diff, distSq);
+	//			if constexpr (computePotE)
+	//				electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(params.chargeProduct, diff);
+	//		}
+	//	}
+
+	//	potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+	//	return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+	//}
+
+		// Specific to solvent kernel	
+	template<bool computePotE, bool emvariant>
+	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy* const forceEnergies, const uint8_t* const tinymolTypeIds, const Float3* const positions,
+		NonbondedInteractionParams* precomputedParams, int nParticles) 
+	{
+		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
+		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
+		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
+			const int index = batchIndex * blockDim.x + threadIdx.x;
+			if (index >= nParticles)
+				return;
+
+			// Split these for accuracy, but might now be worth the extra 4 registers....
+			Float3 ljForce{};
+			float ljPotential{};
+			Float3 electrostaticForce{};
+			float electrostaticPotential{};
+			
+
+			for (int queryIndex = 0; queryIndex < nParticles; queryIndex++) {
+				//const bool sameAtom = index == queryIndex; 
+				const bool sameMolecule = index / 3 == queryIndex / 3; //Not needed since H_epsilon is 0... // This is only valid for water-like molecules with 3 atoms each
+
+				if (sameMolecule) // TODO: THis is worng. We should still do ES inside molecules, just not LJ
+					continue;
+
+				const Float3 diff = positions[queryIndex] - positions[index];
+				const float distSq = diff.lenSquared();
+				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
+
+				const auto params = precomputedParams[tinymolTypeIds[index] + tinymolTypeIds[queryIndex]];
+				if (params.epsilon != 0) {
+					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
+						params.sigma, params.epsilon,
+						CalcLJOrigin::SolSolIntra,
+						index, queryIndex
+					);
+				}
+
+				if constexpr (ENABLE_ES_SR) {
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(params.chargeProduct, -diff, distSq);
+					if constexpr (computePotE)
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(params.chargeProduct, diff);
+				}
 			}
 
-			const Float3 diff = (relpos_others[i] - relpos_self);
-			//const float dist_sq_reciprocal = 1.f / diff.lenSquared();
-			//			if (EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal)) { continue; }	// OPTIM. Do the check without recip, to save the division in some cases??!
-			const float distSq = diff.lenSquared();
-			if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
-
-			//auto params1 = DeviceConstants::tinymolPrecomputedParams[tinymolTypeIdSelf + tinymolTypeIds[i]];
-			const auto params = nbparams_shared[tinymolTypeIdSelf + tinymolTypeIds[i]];
-			if (params.epsilon != 0) {
-				force += calcLJForceOptim<computePotE, emvariant>(diff, 1./distSq, potE_sum,
-					params.sigma, params.epsilon,
-					//CalcSigmaTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-					//CalcEpsilonTinymol(tinymolTypeIdSelf, tinymolTypeIds[i], forcefieldTinymol_shared),
-					checkForSameTinymolId ? CalcLJOrigin::SolSolIntra : CalcLJOrigin::SolSolInter,
-					threadIdx.x, i
-				);
-			}
-
-			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeIdSelf].charge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
-				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff, distSq);
-				if constexpr (computePotE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
-			}
+			forceEnergies[batchIndex].force += ljForce * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+			forceEnergies[batchIndex].potE += ljPotential + electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
 		}
-
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
+
+	template<bool computePotE, bool emvariant>
+	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, const uint8_t* const tinymolTypeIds, const Float3* const positions,
+		NonbondedInteractionParams* precomputedParams, int nParticles,
+		const Float3* const positionsQuery, const uint8_t* atomTypesQuery, int nParticlesQueryThisBatch)
+	{
+		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
+		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
+		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
+			const int index = batchIndex * blockDim.x + threadIdx.x;
+			if (index >= nParticles)
+				return;
+
+			// Split these for accuracy, but might now be worth the extra 4 registers....
+			Float3 ljForce{};
+			float ljPotential{};
+			Float3 electrostaticForce{};
+			float electrostaticPotential{};
+			bool isO = tinymolTypeIds[index] == 0;
+
+			for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
+				const Float3 diff = positionsQuery[queryIndex] - positions[index];
+				const float distSq = diff.lenSquared();
+				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
+
+
+				//const auto params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
+				if (isO && atomTypesQuery[queryIndex] == 0) {
+					const auto& params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
+					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
+						params.sigma, params.epsilon,
+						CalcLJOrigin::SolSolInter,
+						index, queryIndex
+					);
+				}
+
+				if constexpr (ENABLE_ES_SR) {
+					const auto& params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(params.chargeProduct, -diff, distSq);
+					if constexpr (computePotE)
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(params.chargeProduct, diff);
+				}
+			}
+
+			forceEnergies[batchIndex].force += ljForce * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+			forceEnergies[batchIndex].potE += ljPotential + electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		}
+	}
+
 
 	template<bool computePotE, bool emvariant>
 	__device__ Float3 computeSolventToCompoundLJForces(const Float3& self_pos, float myCharge, const int n_particles, const Float3* const positions, float& potE_sum, const uint8_t atomtype_self,

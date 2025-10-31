@@ -287,7 +287,7 @@ std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionP
 			nonbondedInteractionParams[i * ForceField_NB::MAX_TYPES + j] = NonbondedInteractionParams{
 				(activeParameters[i].parameters.sigmaHalf + activeParameters[j].parameters.sigmaHalf),
                 activeParameters[i].parameters.epsilonSqrt * activeParameters[j].parameters.epsilonSqrt
-                    //,activeParameters[i].charge* activeParameters[j].charge
+                    ,activeParameters[i].charge* activeParameters[j].charge
 			};
 		}
 	}

@@ -34,7 +34,7 @@ namespace DeviceConstants {
 
 	__constant__ float thermostatScalar;
 
-	__constant__ NonbondedInteractionParams nonbondedinteractionParams[ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES];
+	//__constant__ NonbondedInteractionParams nonbondedinteractionParams[ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES];
 
 
 	// Precomputed values

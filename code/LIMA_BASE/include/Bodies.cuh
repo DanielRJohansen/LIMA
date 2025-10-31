@@ -330,7 +330,7 @@ struct ParticleReference {
 struct NonbondedInteractionParams {
 	float sigma;
     float epsilon;
-    //float chargeProduct;
+    float chargeProduct;
 };
 
 

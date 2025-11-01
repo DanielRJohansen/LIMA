@@ -75,7 +75,55 @@ struct SolventBlock {
 	int nBondgroups = 0;
 };
 
+struct SolventBlockOccupancyTracker {
+	static constexpr int maxParticlesSparse = 32;
+	static constexpr int maxParticlesMedium = 128;
+	static constexpr int maxParticlesDense = SolventBlock::maxParticles;
 
+	SolventBlockOccupancyTracker(){}
+
+	__host__ void Init(int nBlocksTotal, const std::vector<int>& idsSparse, const std::vector<int>& idsMedium, const std::vector<int> idsDense) {
+		cudaMalloc(&nSolventblocksCounts, sizeof(int) * 3);
+		cudaMalloc(&solventBlocksIdsSparse, sizeof(int) * nBlocksTotal);
+		cudaMalloc(&solventBlocksIdsMedium, sizeof(int) * nBlocksTotal);
+		cudaMalloc(&solventBlocksIdsDense, sizeof(int) * nBlocksTotal);
+
+		//std::vector<int> counts{ (int)idsSparse.size(), (int)idsDense.size() };
+		//cudaMemcpy(nSolventblocksCounts, counts.data(), sizeof(int) * 2, cudaMemcpyHostToDevice);
+
+		cudaMemcpy(solventBlocksIdsSparse, idsSparse.data(), sizeof(int) * idsSparse.size(), cudaMemcpyHostToDevice);
+		cudaMemcpy(solventBlocksIdsMedium, idsMedium.data(), sizeof(int) * idsMedium.size(), cudaMemcpyHostToDevice);
+		cudaMemcpy(solventBlocksIdsDense, idsDense.data(), sizeof(int) * idsDense.size(), cudaMemcpyHostToDevice);
+
+		//LIMA_UTILS::genericErrorCheck("Error during BootstrapSolventblockDistributeFromDensity");
+		//printf("N solvent blocks sparse: %d, dense: %d\n", (int)idsSparse.size(), (int)idsDense.size());
+	}
+
+	__host__ void Free() {
+		if (nSolventblocksCounts)
+			cudaFree(nSolventblocksCounts);
+		if (solventBlocksIdsSparse)
+			cudaFree(solventBlocksIdsSparse);
+		if (solventBlocksIdsMedium)
+			cudaFree(solventBlocksIdsMedium);
+		if (solventBlocksIdsDense)
+			cudaFree(solventBlocksIdsDense);
+	}
+
+	// Reads and clears the counts
+	__host__ std::array<int, 3> ConsumeCounts() {
+		std::array<int, 3> counts;
+		cudaMemcpy(counts.data(), nSolventblocksCounts, sizeof(int) * 3, cudaMemcpyDeviceToHost);
+		cudaMemset(nSolventblocksCounts, 0, sizeof(int) * 3);
+		return counts;
+	}
+
+
+	int* nSolventblocksCounts = nullptr; // {sparse, medium, dense}
+	int* solventBlocksIdsSparse = nullptr;
+	int* solventBlocksIdsMedium = nullptr;
+	int* solventBlocksIdsDense = nullptr;
+};
 
 
 

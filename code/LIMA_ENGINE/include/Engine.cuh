@@ -86,6 +86,8 @@ private:
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
 
+	void BootstrapSolventblockDistributeFromDensity();
+
 	void HandleEarlyStoppingInEM();
 	int64_t stepAtLastEarlystopCheck = 0;
 
@@ -117,8 +119,12 @@ private:
 	std::unique_ptr<NeighborList::Controller> nlistController;
 	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
 
-
 	const BoundaryConditionSelect bc_select;
+
+	SolventBlockOccupancyTracker solventBlockOccupancyTracker;
+	int nSolventblocksSparse=-1;
+	int nSolventblocksMedium=-1;
+	int nSolventblocksDense=-1;
 };
 
  

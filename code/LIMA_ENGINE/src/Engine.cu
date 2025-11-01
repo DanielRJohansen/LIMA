@@ -74,6 +74,8 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
+	BootstrapSolventblockDistributeFromDensity();
+
 	nlistController->UpdateNlist(sim_dev, boxparams, simulation->simparams_host.bc_select, cudaStreams);
 	m_logger->finishSection("Engine Ready");
 }
@@ -284,6 +286,30 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
+void Engine::BootstrapSolventblockDistributeFromDensity() {
+	std::vector<int> blockIdsSparse;
+	std::vector<int> blockIdsmedium;
+	std::vector<int> blockIdsDense;
+
+	const int nSolventblocksTotal = BoxGrid::BlocksTotal(simulation->box_host->boxparams.boxSize);
+
+	// TODO: This aint safe, there are multiple places where we treat this circular queue as a normal buffer. We dont need it to be circular anymore, so that part just needs to be refactored out!
+	for (int i = 0; i < nSolventblocksTotal; i++) {
+		int nSolventsInBlock = SolventBlocksCircularQueue::getBlockPtr(simulation->box_host->solventblockgrid_circularqueue.data(), BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize), i, 0)->nParticles;
+		if (nSolventsInBlock <= SolventBlockOccupancyTracker::maxParticlesSparse)
+			blockIdsSparse.push_back(i);
+		else if (nSolventsInBlock <= SolventBlockOccupancyTracker::maxParticlesMedium)
+			blockIdsmedium.push_back(i);
+		else
+			blockIdsDense.push_back(i);
+	}
+
+	solventBlockOccupancyTracker.Init(nSolventblocksTotal, blockIdsSparse, blockIdsmedium, blockIdsDense);
+	nSolventblocksSparse = (int)blockIdsSparse.size();
+	nSolventblocksDense = (int)blockIdsDense.size();
+}
+
+
 
 void Engine::HandleEarlyStoppingInEM() {
 	if (!simulation->simparams_host.em_variant || simulation->getStep() == simulation->simparams_host.n_steps)
@@ -343,10 +369,44 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
 		// TODO: Too many threads, we rarely get close to filling the block
-		solventForceKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<nSolventblocks, nSolventForceKernelThreads, 0, cudaStreams[3]>>>
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 0, SolventBlockOccupancyTracker::maxParticlesSparse>
+			<<<nSolventblocks, 32, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");
+
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesSparse+1, SolventBlockOccupancyTracker::maxParticlesMedium>
+			<<<nSolventblocks, 64, 0, cudaStreams[3]>>>
+			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
+
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesMedium+1, SolventBlockOccupancyTracker::maxParticlesDense>
+			<< <nSolventblocks, 64, 0, cudaStreams[3] >> >
+			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense2");
+
+		//// TODO: Too many threads, we rarely get close to filling the block
+		//solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 0, 32>
+		//	<<<nSolventblocksSparse, 32, 0, cudaStreams[3] >> >	// DANGER DONT HARDCODE 32 and 64
+		//	(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions, solventBlockOccupancyTracker.solventBlocksIdsSparse);
+		//LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");
+
+
+		//solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, 33, SolventBlock::MAX_SOLVENTS_IN_BLOCK>
+		//	<< <nSolventblocksDense, 64, 0, cudaStreams[3] >> >
+		//	(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions, solventBlockOccupancyTracker.solventBlocksIdsDense);
+		//LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
+
+		//		// TODO: Too many threads, we rarely get close to filling the block
+		//solventForceKernel<BoundaryCondition, emvariant, computePotE, false>
+		//	<< <nSolventblocks, 32, 0, cudaStreams[3] >> >	// DANGER DONT HARDCODE 32 and 64
+		//	(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
+		//LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");
+
+
+		//solventForceKernel<BoundaryCondition, emvariant, computePotE, true>
+		//	<< <nSolventblocks, 64, 0, cudaStreams[3] >> >
+		//	(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
+		//LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
 
 		TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >
@@ -393,10 +453,19 @@ void Engine::_deviceMaster() {
 				(sim_dev, step, *tinymolTransferModule);
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
 
-			SolventTransferKernel<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>> (sim_dev, step, *tinymolTransferModule);
+			SolventTransferKernel<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>> (sim_dev, step, *tinymolTransferModule, solventBlockOccupancyTracker);
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventTransferKernel");
 		}
-	}	
+	}
+
+	if (SolventBlocksCircularQueue::isTransferStep(step)) {
+		cudaDeviceSynchronize();
+		auto counts = solventBlockOccupancyTracker.ConsumeCounts();
+		nSolventblocksSparse = counts[0];
+		nSolventblocksMedium = counts[1];
+		nSolventblocksDense = counts[2];
+		//printf("Step %d: Sparse solventblocks: %d, Dense solventblocks: %d\n", step, nSolventblocksSparse, nSolventblocksDense);
+	}
 }
 
 

@@ -204,13 +204,16 @@ namespace LJ {
 
 		// Specific to solvent kernel	
 	template<bool computePotE, bool emvariant>
-	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy* const forceEnergies, const uint8_t* const tinymolTypeIds, const Float3* const positions,
-		NonbondedInteractionParams* precomputedParams, int nParticles) 
+	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy* const forceEnergies, 
+		const uint8_t* const myAtomtypes, const Float3* const myPositions,
+		const uint8_t* const queryAtomtypes, const Float3* const queryPositions,
+		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesThisBatch, int batchOffset) 
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
-		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
+		const int batchSize = blockDim.x;
+		const int nBatches = (nParticles + batchSize - 1) / batchSize;
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
-			const int index = batchIndex * blockDim.x + threadIdx.x;
+			const int index = batchIndex * batchSize + threadIdx.x;
 			if (index >= nParticles)
 				return;
 
@@ -220,24 +223,25 @@ namespace LJ {
 			Float3 electrostaticForce{};
 			float electrostaticPotential{};
 			
-
-			for (int queryIndex = 0; queryIndex < nParticles; queryIndex++) {
+			
+			for (int queryIndexRel = 0; queryIndexRel < nParticlesThisBatch; queryIndexRel++) {
 				//const bool sameAtom = index == queryIndex; 
-				const bool sameMolecule = index / 3 == queryIndex / 3; //Not needed since H_epsilon is 0... // This is only valid for water-like molecules with 3 atoms each
+				const int queryIndexAbs = batchOffset + queryIndexRel;
+				const bool sameMolecule = index / 3 == queryIndexAbs / 3; //Not needed since H_epsilon is 0... // This is only valid for water-like molecules with 3 atoms each
 
 				if (sameMolecule) // TODO: THis is worng. We should still do ES inside molecules, just not LJ
 					continue;
 
-				const Float3 diff = positions[queryIndex] - positions[index];
+				const Float3 diff = queryPositions[queryIndexRel] - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
 				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
 
-				const auto params = precomputedParams[tinymolTypeIds[index] + tinymolTypeIds[queryIndex]];
+				const auto params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndexRel]];
 				if (params.epsilon != 0) {
 					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
 						params.sigma, params.epsilon,
 						CalcLJOrigin::SolSolIntra,
-						index, queryIndex
+						index, queryIndexRel
 					);
 				}
 
@@ -254,9 +258,10 @@ namespace LJ {
 	}
 
 	template<bool computePotE, bool emvariant>
-	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, const uint8_t* const tinymolTypeIds, const Float3* const positions,
-		NonbondedInteractionParams* precomputedParams, int nParticles,
-		const Float3* const positionsQuery, const uint8_t* atomTypesQuery, int nParticlesQueryThisBatch)
+	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, 
+		const uint8_t* const myAtomtypes, const Float3* const myPositions,
+		const uint8_t* const queryAtomtypes, const Float3* const queryPositions,
+		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesQueryThisBatch)
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
 		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
@@ -270,17 +275,17 @@ namespace LJ {
 			float ljPotential{};
 			Float3 electrostaticForce{};
 			float electrostaticPotential{};
-			bool isO = tinymolTypeIds[index] == 0;
+			bool isO = myAtomtypes[batchIndex] == 0;
 
 			for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
-				const Float3 diff = positionsQuery[queryIndex] - positions[index];
+				const Float3 diff = queryPositions[queryIndex] - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
 				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
 
 
 				//const auto params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
-				if (isO && atomTypesQuery[queryIndex] == 0) {
-					const auto& params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
+				if (isO && queryAtomtypes[queryIndex] == 0) {
+					const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
 					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
 						params.sigma, params.epsilon,
 						CalcLJOrigin::SolSolInter,
@@ -289,7 +294,7 @@ namespace LJ {
 				}
 
 				if constexpr (ENABLE_ES_SR) {
-					const auto& params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
+					const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(params.chargeProduct, -diff, distSq);
 					if constexpr (computePotE)
 						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(params.chargeProduct, diff);

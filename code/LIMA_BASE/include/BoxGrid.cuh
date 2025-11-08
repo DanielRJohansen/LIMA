@@ -178,14 +178,16 @@ namespace BoxGrid {
         static const int nNearbyBlocks = 32;
 
 		struct BlockRef {
-			int blockId = -1;
-			Float3 relShift{};
+			/*int blockId = -1;
+			Float3 relShift{};*/
+			uint16_t blockId = 0xFFFFFFFF;
+			Float3Compressed relShift{};
 		};
 
 		// Returns a cudapointer to the data
         BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);
 
-		__device__ static const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
+		__device__ inline const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
 			return &nearbyBlockIdsData[blockId * nNearbyBlocks];
 		}
 	}

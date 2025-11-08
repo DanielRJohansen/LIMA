@@ -26,7 +26,13 @@ BoxGrid::TinymolBlockAdjacency::BlockRef* BoxGrid::TinymolBlockAdjacency::Precom
 
                         NodeIndex nearbyIndex = NodeIndex{ index3d.x + x, index3d.y + y, index3d.z + z };
                         BoundaryConditionPublic::applyBC(nearbyIndex, boxlenNM);
-                        nearbyBlockIds[globalIndex++] = BlockRef{ Get1dIndex(nearbyIndex, boxlenNM), NodeIndex{x,y,z}.toFloat3()};
+						assert(Get1dIndex(nearbyIndex, boxlenNM) < UINT16_MAX);
+
+						Float3 a = NodeIndex{ x,y,z }.toFloat3();
+						assert(a.x >= -2 && a.x <= 2);
+						assert(a.y >= -2 && a.y <= 2);
+						assert(a.z >= -2 && a.z <= 2);
+                        nearbyBlockIds[globalIndex++] = BlockRef{ static_cast<uint16_t>(Get1dIndex(nearbyIndex, boxlenNM)), Float3Compressed(NodeIndex{x,y,z}.toFloat3())};
                     }
 				}
 			}

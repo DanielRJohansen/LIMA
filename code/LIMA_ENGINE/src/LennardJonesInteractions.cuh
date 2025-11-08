@@ -261,7 +261,7 @@ namespace LJ {
 	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, 
 		const uint8_t* const myAtomtypes, const Float3* const myPositions,
 		const uint8_t* const queryAtomtypes, const Float3* const queryPositions,
-		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesQueryThisBatch)
+		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesQueryThisBatch, float cutoffNmSq)
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
 		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
@@ -280,7 +280,9 @@ namespace LJ {
 			for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
 				const Float3 diff = queryPositions[queryIndex] - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
-				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
+				//if (EngineUtils::isOutsideCutoff(distSq)) 
+				if (distSq > cutoffNmSq)
+					continue;
 
 
 				//const auto params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];

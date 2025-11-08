@@ -241,6 +241,27 @@ struct Float3 {
 
 };
 
+// Can only present integer values
+struct Float3Compressed {
+
+	Float3Compressed(){}
+	Float3Compressed(const Float3& a) {
+		const std::uint16_t x = (static_cast<int>(a.x) + 2) & 0x7u;
+		const std::uint16_t y = (static_cast<int>(a.y) + 2) & 0x7u;
+		const std::uint16_t z = (static_cast<int>(a.z) + 2) & 0x7u;
+		data = static_cast<std::uint16_t>(x | (y << 3) | (z << 6));
+	}
+
+	constexpr Float3 Decode() const {
+		const int x = static_cast<int>((data & 0x7u)) - 2;
+		const int y = static_cast<int>(((data >> 3) & 0x7u)) - 2;
+		const int z = static_cast<int>(((data >> 6) & 0x7u)) - 2;
+		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
+	}
+
+	uint16_t data;
+};
+
 struct ForceEnergy {
 	Float3 force{};	// [J/mol/nm]
 	float potE{};		// [J/mol]

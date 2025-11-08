@@ -567,7 +567,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	}
 	__syncthreads();
 
-
+	const float cutoffNMSq = DeviceConstants::cutoffNMSquared;
 	for (int i = 0; i < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks; i++) {
 		const int blockindex_neighbor = nearbyBlock[i].blockId;
 		const int nParticlesNeighbor = boxState.nParticlesInSolventblock[blockindex_neighbor];
@@ -581,36 +581,32 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 			const int offset = batchIndex * batchSize;
 			const int nParticlesThisBatch = std::min(nParticlesNeighbor - offset, batchSize);
 
-			// Load positions
-			if (threadIdx.x < nParticlesThisBatch) {
-				const size_t index = blockindex_neighbor * SolventBlock::maxParticles + offset + threadIdx.x;
-				queryPositions[threadIdx.x] = boxState.solventsRelposNm[index] + nearbyBlock[i].relShift;
-				queryTypeIds[threadIdx.x] = boxState.solventsAtomtypeIds[index];
+			//// Load positions
+			//if (threadIdx.x < nParticlesThisBatch) {
+			//	const size_t index = blockindex_neighbor * SolventBlock::maxParticles + offset + threadIdx.x;
+			//	queryPositions[threadIdx.x] = boxState.solventsRelposNm[index]; // Flagged by nsight
+			//	queryTypeIds[threadIdx.x] = boxState.solventsAtomtypeIds[index];
+			//	queryPositions[threadIdx.x] += nearbyBlock[i].relShift.Decode();
+			//}
+			//__syncthreads();
+
+
+			{
+				const size_t startIndex = blockindex_neighbor * SolventBlock::maxParticles + offset;
+				auto block = cooperative_groups::this_thread_block();
+				cooperative_groups::memcpy_async(block, queryPositions, &(boxState.solventsRelposNm[startIndex]), sizeof(Float3) * batchSize);
+				cooperative_groups::memcpy_async(block, queryTypeIds, &(boxState.solventsAtomtypeIds[startIndex]), sizeof(uint8_t) * batchSize);
+				cooperative_groups::wait(block);
+				
+				queryPositions[threadIdx.x] += nearbyBlock[i].relShift.Decode();
+				__syncthreads();
 			}
-			__syncthreads();
 
 			
 			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams, nParticlesInBlock, nParticlesThisBatch);
+				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
 			__syncthreads();
 		}
-		
-
-
-
-		//if (threadIdx.x < nParticlesNeighbor) {
-		//	size_t index = blockindex_neighbor * SolventBlock::maxParticles + threadIdx.x;
-		//	positionsBuffer_relpos[threadIdx.x] = boxState.solventsRelposNm[index];
-		//	utility_buffer_small[threadIdx.x] = boxState.solventsAtomtypeIds[index];
-		//	remember relshift here
-		//}
-		//__syncthreads();
-
-
-		//if (threadActive) {
-		//	force += LJ::computeSolventToSolventLJForces<computePotE, energyMinimize, false> // TODO OPTIM use computePotE template param here
-		//		(relpos_self - nearbyBlock[i].relShift, tinymolTypeId, positionsBuffer_relpos, nParticlesNeighbor, potE_sum, utility_buffer_small, nullptr, ljPrecomputed);
-		//}
 	}
 
     // Finally push force and potE for next kernel

@@ -324,14 +324,20 @@ __global__ void SolventPositionsBufferCompress(BoxState boxState, BoxConfig conf
 
 __global__ void SolventBlockAdjacencySequenceUpdate(BoxState state, BoxConfig config, BoxParams params) {
 	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences sequencesShared;
+	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles sequencesParticlesShared;
+
 
 	auto tb = cooperative_groups::this_thread_block();
 	cooperative_groups::memcpy_async(tb, &sequencesShared, &(config.tinymolNearbyBlocksSequences[blockIdx.x]), sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
 	cooperative_groups::wait(tb);
 
+	if (threadIdx.x == 0) {
+		sequencesParticlesShared.nSequences = sequencesShared.nSequences; // This is actually only needed during the bootstrapping run.
+	}
+
 
 	if (threadIdx.x < sequencesShared.nSequences) {
-		auto& sequence = sequencesShared.sequences[threadIdx.x];
+		const auto& sequence = sequencesShared.sequences[threadIdx.x];
 		const int blockIndexStart = sequence.blockIndexStart;
 		const int blockIndexBack = blockIndexStart + sequence.nBlocks - 1;
 		const NodeIndex startBlockId3d = BoxGrid::Get3dIndex(blockIndexStart, params.boxSize);
@@ -342,15 +348,14 @@ __global__ void SolventBlockAdjacencySequenceUpdate(BoxState state, BoxConfig co
 		const int countBack = state.nParticlesInSolventblock[blockIndexBack];
 		const int nParticlesInSequence = prefixBack - prefixStart + countBack;
 
-		//NodeIndex endBlockIndex3d = startBlockIndex3d + NodeIndex{ sequencesShared.sequences[threadIdx.x].nBlocks, 0, 0 }; // end, NOT back!
-
-		//int prefixAtStart = 
-		sequence.indexOfFirstParticleInSequence = particleIndexAtRowStart + prefixStart;
-		sequence.nParticlesInSequence = nParticlesInSequence;
+		auto& sequenceParticles = sequencesParticlesShared.sequences[threadIdx.x];
+		sequenceParticles.indexOfFirstParticleInSequence = particleIndexAtRowStart + prefixStart;
+		sequenceParticles.nParticlesInSequence = nParticlesInSequence;
+		//printf("%d,", sequenceParticles.nParticlesInSequence);
 	}
 	__syncthreads();
 
 
 	// Push back to global mem
-	cooperative_groups::memcpy_async(tb, &(config.tinymolNearbyBlocksSequences[blockIdx.x]), &sequencesShared, sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
+	cooperative_groups::memcpy_async(tb, &(state.tinymolNearbyBlocksSequences[blockIdx.x]), &sequencesParticlesShared, sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
 }

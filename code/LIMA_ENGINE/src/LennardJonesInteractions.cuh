@@ -206,8 +206,9 @@ namespace LJ {
 	template<bool computePotE, bool emvariant>
 	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy* const forceEnergies, 
 		const uint8_t* const myAtomtypes, const Float3* const myPositions,
-		const uint8_t* const queryAtomtypes, const Float3* const queryPositions,
-		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesThisBatch, int batchOffset) 
+		const uint8_t* const queryAtomtypes, const float4* const queryPositions,
+		const NonbondedInteractionParams* const precomputedParams, 
+		int nParticles, int nParticlesThisBatch, int batchOffset) 
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
 		const int batchSize = blockDim.x;
@@ -232,7 +233,7 @@ namespace LJ {
 				if (sameMolecule) // TODO: THis is worng. We should still do ES inside molecules, just not LJ
 					continue;
 
-				const Float3 diff = queryPositions[queryIndexRel] - myPositions[batchIndex];
+				const Float3 diff = Float3(queryPositions[queryIndexRel]) - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
 				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
 
@@ -257,15 +258,16 @@ namespace LJ {
 		}
 	}
 
-	template<bool computePotE, bool emvariant>
+	template<bool computePotE, bool emvariant, int nBatchesPerThread>
 	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, 
 		const uint8_t* const myAtomtypes, const Float3* const myPositions,
-		const uint8_t* const queryAtomtypes, const Float3* const queryPositions,
-		NonbondedInteractionParams* precomputedParams, int nParticles, int nParticlesQueryThisBatch, float cutoffNmSq)
+		const uint8_t* const queryAtomtypes, const float4* const queryPositions,
+		const NonbondedInteractionParams& precomputedOO, const float* const charges, /*{O, H}*/
+		int nParticles, int nParticlesQueryThisBatch, float cutoffNmSq)
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
-		const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
-		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
+		//const int nBatches = (nParticles + blockDim.x - 1) / blockDim.x;
+		for (int batchIndex = 0; batchIndex < nBatchesPerThread; batchIndex++) {
 			const int index = batchIndex * blockDim.x + threadIdx.x;
 			if (index >= nParticles)
 				return;
@@ -278,28 +280,25 @@ namespace LJ {
 			bool isO = myAtomtypes[batchIndex] == 0;
 
 			for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
-				const Float3 diff = queryPositions[queryIndex] - myPositions[batchIndex];
+				const Float3 diff = Float3(queryPositions[queryIndex]) - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
-				//if (EngineUtils::isOutsideCutoff(distSq)) 
 				if (distSq > cutoffNmSq)
 					continue;
 
-
-				//const auto params = precomputedParams[tinymolTypeIds[index] + atomTypesQuery[queryIndex]];
 				if (isO && queryAtomtypes[queryIndex] == 0) {
-					const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
 					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
-						params.sigma, params.epsilon,
+						precomputedOO.sigma, precomputedOO.epsilon,
 						CalcLJOrigin::SolSolInter,
 						index, queryIndex
 					);
 				}
 
 				if constexpr (ENABLE_ES_SR) {
-					const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
-					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(params.chargeProduct, -diff, distSq);
+					const float chargeProduct = charges[myAtomtypes[batchIndex]] * charges[queryAtomtypes[queryIndex]];
+					//const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
+					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff, distSq);
 					if constexpr (computePotE)
-						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(params.chargeProduct, diff);
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
 				}
 			}
 

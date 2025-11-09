@@ -383,11 +383,11 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
-		// TODO: Too many threads, we rarely get close to filling the block
+
 		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 0, SolventBlockOccupancyTracker::maxParticlesSparse>
 			<<<nSolventblocks, 32, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");		
 
 		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesSparse+1, SolventBlockOccupancyTracker::maxParticlesMedium>
 			<<<nSolventblocks, 64, 0, cudaStreams[3]>>>
@@ -452,7 +452,7 @@ void Engine::_deviceMaster() {
 				(*boxStateCopy, *boxConfigCopy, boxparams);
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPositionsBufferCompress");
 
-			SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), 64, 0, cudaStreams[1] >> >
+			SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), 32, 0, cudaStreams[1] >> >
 				(*boxStateCopy, *boxConfigCopy, boxparams);
 		}
 	}

@@ -492,12 +492,14 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	static_assert(batchSize >= BoxGrid::TinymolBlockAdjacency::nNearbyBlocks, "Not enough threads to load all nearby blocks metainfo");
 
 
-	__shared__ BoxGrid::TinymolBlockAdjacency::BlockRef nearbyBlock[BoxGrid::TinymolBlockAdjacency::nNearbyBlocks];
-	__shared__ ParticleQuickData queryDataBuffer[batchSize]; // Dont use directly
-	Float3* queryPositions = reinterpret_cast<Float3*>(queryDataBuffer);
-	uint8_t* queryTypeIds = reinterpret_cast<uint8_t*>(&(queryPositions[batchSize]));
+	//__shared__ BoxGrid::TinymolBlockAdjacency::BlockRef nearbyBlock[BoxGrid::TinymolBlockAdjacency::nNearbyBlocks];
+	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles nearbyBlockSequences;
+	//__shared__ ParticleQuickData queryDataBuffer[batchSize]; // Dont use directly
+	__shared__ float4 queryPositions[batchSize];// = reinterpret_cast<Float3*>(queryDataBuffer);
+	__shared__ uint8_t queryTypeIds[batchSize];// = reinterpret_cast<uint8_t*>(&(queryPositions[batchSize]));
 
 	__shared__ NonbondedInteractionParams precomputedParams[3];
+	__shared__ float charges[2];
 	__shared__ int nParticlesInBlock;
 	__shared__ int startIndexInCompressedPositions;
 	constexpr int particlesPerThread = (maxParticlesThisBlock + batchSize - 1) / batchSize;
@@ -519,23 +521,18 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	if (nParticlesInBlock < minParticlesThisBlock || nParticlesInBlock > maxParticlesThisBlock) 
 		return;
 
+	if (threadIdx.x < 2) {
+		charges[threadIdx.x] = DeviceConstants::tinymolForcefield.types[threadIdx.x].charge;
+	}
+
 	if (threadIdx.x < 3)
-		precomputedParams[threadIdx.x] = DeviceConstants::tinymolPrecomputedParams[threadIdx.x];
+		precomputedParams[threadIdx.x] = DeviceConstants::tinymolPrecomputedParams[threadIdx.x];	
+
 
 	for (int i = 0; i < particlesPerThread; i++) {
-		//const size_t globalParticleId = solventBlockId * SolventBlock::maxParticles + i * batchSize + threadIdx.x;
-		//ParticleQuickData particleData = boxState.solventsParticleQuickData[globalParticleId];
-
 		ParticleQuickData particleData = boxState.solventsParticleQuickDataCompressed[startIndexInCompressedPositions + i * batchSize + threadIdx.x];
-		/*if (i * batchSize + threadIdx.x < nParticlesInBlock && pdCompressed.relPos != particleData.relPos) {
-			printf("Decompressed data mismatch at block %d particle %d\n", solventBlockId, i * batchSize + threadIdx.x);
-		}*/
-
 		positionsLocal[i] = particleData.relPos;
 		atomTypesLocal[i] = particleData.atomType;
-
-
-
 
 		forceEnergiesLocal[i] = {};
 	}
@@ -544,7 +541,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	{
 		const int nBatches = (nParticlesInBlock + batchSize - 1) / batchSize;
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
-			queryPositions[threadIdx.x] = positionsLocal[batchIndex];
+			queryPositions[threadIdx.x] = positionsLocal[batchIndex].Tofloat4();
 			queryTypeIds[threadIdx.x] = atomTypesLocal[batchIndex];
 
 			const int offset = batchIndex * batchSize;
@@ -561,62 +558,49 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 	// --------------------------------------------------------------- Interblock TinyMolParticleState Interactions ----------------------------------------------------- //
 	
-	if (threadIdx.x < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks) {
+	/*if (threadIdx.x < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks) {
 		nearbyBlock[threadIdx.x] = BoxGrid::TinymolBlockAdjacency::GetPtrToNearbyBlockids(solventBlockId, boxConfig.tinymolNearbyBlockIds)[threadIdx.x];
-	}
+	}*/
+	auto tb = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(tb, &nearbyBlockSequences, &(boxState.tinymolNearbyBlocksSequences[solventBlockId]), sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
+	cooperative_groups::wait(tb);
+
 	__syncthreads();
 
 	
 	const float cutoffNMSq = DeviceConstants::cutoffNMSquared;
-	for (int i = 0; i < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks; i++) {
-		const int blockindex_neighbor = nearbyBlock[i].blockId;
-		const int nParticlesNeighbor = boxState.nParticlesInSolventblock[blockindex_neighbor];
 
-		// All threads help loading the solvent, and shifting it's relative position reletive to this solventblock
-        __syncthreads();
-
-		const int nBatches = (nParticlesNeighbor + batchSize - 1) / batchSize;
-
-
-		NodeIndex queryBlockId3d = BoxGrid::Get3dIndex(blockindex_neighbor, DeviceConstants::boxSize.boxSizeNM_i);
-		int queryBlockIdAtRowStart = BoxGrid::Get1dIndex(NodeIndex(0, queryBlockId3d.y, queryBlockId3d.z), DeviceConstants::boxSize.boxSizeNM_i);
-		int queryStartIndexInCompressedPositions = queryBlockIdAtRowStart * SolventBlock::maxParticles + boxState.nParticlesPrefixsumInX[blockindex_neighbor];
-
+	for (int seqIndex = 0; seqIndex < nearbyBlockSequences.nSequences; seqIndex++) {
+		const auto sequence = nearbyBlockSequences.sequences[seqIndex];
+		const int nParticlesInSequence = sequence.nParticlesInSequence;
+		const int nBatches = (nParticlesInSequence + batchSize - 1) / batchSize;
 
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
 			const int batchOffset = batchIndex * batchSize;
-			const int nParticlesThisBatch = std::min(nParticlesNeighbor - batchOffset, batchSize);
+			const int nParticlesThisBatch = std::min(nParticlesInSequence - batchOffset, batchSize);
+			const int batchStartIndex = sequence.indexOfFirstParticleInSequence + batchOffset;
 
-			// Load positions
-			//const size_t startIndex = blockindex_neighbor * SolventBlock::maxParticles + batchOffset;
-			//auto block = cooperative_groups::this_thread_block();
-			//cooperative_groups::memcpy_async(block, queryDataBuffer, &(boxState.solventsParticleQuickData[startIndex]), sizeof(ParticleQuickData) * batchSize);
-			//cooperative_groups::wait(block);
-			//__syncthreads();
-
-			const int startIndex = queryStartIndexInCompressedPositions + batchOffset;
-			auto tb = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(tb, queryDataBuffer, &(boxState.solventsParticleQuickDataCompressed[startIndex]), sizeof(ParticleQuickData) * batchSize);
-			cooperative_groups::wait(tb);
+			const ParticleQuickData pqd = threadIdx.x < nParticlesThisBatch ?
+				boxState.solventsParticleQuickDataCompressed[batchStartIndex + threadIdx.x] :
+				ParticleQuickData{};
 			__syncthreads();
 
-			auto gi = queryDataBuffer[threadIdx.x].gridIndex;
-			NodeIndex queryNI{ (int)gi[0], (int)gi[1], (int)gi[2] };
+			NodeIndex queryNI{ (int)pqd.gridIndex[0], (int)pqd.gridIndex[1], (int)pqd.gridIndex[2] };
 			const NodeIndex shift = BoundaryCondition::applyHyperpos_Return(blockId3d, queryNI) - blockId3d;
-			const Float3 queryParticleRelpos = queryDataBuffer[threadIdx.x].relPos + shift.toFloat3();
-			const uint8_t queryParticleTypeId = queryDataBuffer[threadIdx.x].atomType;
-			__syncthreads();
-			queryPositions[threadIdx.x] = queryParticleRelpos;
+			const Float3 queryParticleRelpos = pqd.relPos + shift.toFloat3();
+			const uint8_t queryParticleTypeId = pqd.atomType;
+			queryPositions[threadIdx.x] = queryParticleRelpos.Tofloat4();
 			queryTypeIds[threadIdx.x] = queryParticleTypeId;
 			__syncthreads();
 
-			
-			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
-			__syncthreads();
+
+
+			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize, particlesPerThread>
+				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams[0], charges, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
 		}
 	}
 
+	__syncthreads();
     // Finally push force and potE for next kernel
 	for (int batchIndex = 0; batchIndex < particlesPerThread; batchIndex++) {
 		if (batchSize * batchIndex + threadIdx.x >= nParticlesInBlock)

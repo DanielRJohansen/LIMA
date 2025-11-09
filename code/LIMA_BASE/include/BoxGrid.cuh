@@ -185,22 +185,29 @@ namespace BoxGrid {
 			Float3Compressed relShift{};
 		};
 
-		struct NearbyBlocksSequences {
 
+		// Constant
+		struct NearbyBlocksSequences {
 			// Optim Pack this info into a single uint32_t?
 			struct Sequence{
-				int blockIndexStart = -1;					// Constant throught sim
-				int nBlocks = -1;							// Constant throught sim
-
-				int indexOfFirstParticleInSequence = -1;	// 
-				int nParticlesInSequence = -1;				// 
+				int blockIndexStart = -1;
+				int nBlocks = -1;
 			};
-
 			static const int maxSequences = 22;
 			
 			Sequence sequences[maxSequences];
 			int nSequences = 0;
 		};
+
+		struct NearbyBlocksSequencesParticles {
+			struct Sequence {
+				int indexOfFirstParticleInSequence = -1;
+				int nParticlesInSequence = -1;
+			};
+			Sequence sequences[NearbyBlocksSequences::maxSequences];
+			int nSequences = 0;
+		};
+
 
 		// Returns a cudapointer to the data
         BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);

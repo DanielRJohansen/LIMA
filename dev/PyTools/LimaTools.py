@@ -108,7 +108,8 @@ def PlotErfcScalar():
     plt.show()
 
 def PlotSolventblockOccupancy():
-    data = np.loadtxt("solventforcesoccupancy.csv", delimiter=',', dtype=int)
+    #data = np.loadtxt("solventforcesoccupancy.csv", delimiter=',', dtype=int)
+    data = np.loadtxt("sequencelengths.csv", delimiter=',', dtype=int)
     data = data.flatten()  # ensure 1D
     data_sorted = np.sort(data)
     cdf = np.arange(1, len(data_sorted) + 1) / len(data_sorted)

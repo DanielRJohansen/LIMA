@@ -21,14 +21,17 @@ struct BoxConfig {
 	const BondedParticlesLUT* const bpLUTs = nullptr;
 
 	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds = nullptr;
-	BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
+	const BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
 };
 
 struct BoxState {
 	BoxState() {};
 	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundInterimState,
 		//TinyMolParticleState* tinyMolParticlesState,
-		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed);
+		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, 
+		ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed,
+		BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
+		);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
@@ -45,6 +48,7 @@ struct BoxState {
 	int* const nParticlesPrefixsumInX = nullptr; // Exclusive. Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality 
 	ParticleQuickData* const solventsParticleQuickData = nullptr;
 	ParticleQuickData* const solventsParticleQuickDataCompressed = nullptr; // TEMP, we should just overwrite the other one above..
+	BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences = nullptr;
 
 	//Float3* const solventsRelposNm=nullptr;
 	//uint8_t* const solventsAtomtypeIds = nullptr; // Not necessary now that we only have h2o, and its always OHH. But futureproofing maybe..

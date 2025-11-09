@@ -58,6 +58,8 @@ struct Float3 {
 	constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
 	constexpr explicit Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr explicit Float3(const float4& a) : x(a.x), y(a.y), z(a.z) {}
+
 
 	constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
 	constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
@@ -74,7 +76,7 @@ struct Float3 {
 	constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
-	constexpr float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+	constexpr float4 Tofloat4(float w=0) const { return float4{ x, y, z, w }; }
 	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
 	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 

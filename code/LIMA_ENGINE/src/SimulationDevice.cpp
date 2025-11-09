@@ -46,11 +46,13 @@ BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, Compound
 	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX
 	, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed
 	//, Float3* solventsRelposNm, uint8_t* solventsAtomtypeIds
+	,BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
 	) :
 	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), compoundsInterimState(compoundsInterimState),
 	//tinyMolParticlesState(tinyMolParticlesState), 
 	solventblockgrid_circularqueue(solventblockgrid_circularqueue), nParticlesInSolventblock(nParticlesInSolventblock), nParticlesPrefixsumInX(nParticlesPrefixsumInX)
 	, solventsParticleQuickData(solventsParticleQuickdata), solventsParticleQuickDataCompressed(solventsParticleQuickDataCompressed)
+	, tinymolNearbyBlocksSequences(tinymolNearbyBlocksSequences)
 	//, solventsRelposNm(solventsRelposNm), solventsAtomtypeIds(solventsAtomtypeIds)
 {}
 
@@ -98,6 +100,8 @@ BoxState BoxState::Create(const Box& boxHost) {
 		}
 	}
 
+	std::vector<BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles> tinymolNearbyBlocksSequences(nSolventblocks);
+
 	return BoxState{
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
@@ -108,7 +112,8 @@ BoxState BoxState::Create(const Box& boxHost) {
 		GenericCopyToDevice(nParticlesInSolventblock),
 		GenericCopyToDevice(nParticlesPrefixsumInX),
 		GenericCopyToDevice(solventsParticleQuickdata),
-		GenericCopyToDevice(solventsParticleQuickdata)
+		GenericCopyToDevice(solventsParticleQuickdata),
+		GenericCopyToDevice(tinymolNearbyBlocksSequences)
 		/*GenericCopyToDevice(solventsRelposNm),
 		GenericCopyToDevice(solventsAtomtypeIds)*/
 	};

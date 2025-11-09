@@ -177,6 +177,7 @@ namespace BoxGrid {
 	namespace TinymolBlockAdjacency {
         static const int nNearbyBlocks = 32;
 
+		
 		struct BlockRef {
 			/*int blockId = -1;
 			Float3 relShift{};*/
@@ -184,8 +185,23 @@ namespace BoxGrid {
 			Float3Compressed relShift{};
 		};
 
+		struct NearbyBlocksSequences {
+
+			// Optim Pack this info into a single uint32_t?
+			struct Sequence{
+				int blockIndexStart = -1;
+				int nBlocks = -1;
+			};
+
+			static const int maxSequences = 22;
+			
+			Sequence sequences[maxSequences];
+			int nSequences = 0;
+		};
+
 		// Returns a cudapointer to the data
         BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);
+		NearbyBlocksSequences* PrecomputeNearbyBlockSequences(Int3 boxlenNM);
 
 		__device__ inline const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
 			return &nearbyBlockIdsData[blockId * nNearbyBlocks];

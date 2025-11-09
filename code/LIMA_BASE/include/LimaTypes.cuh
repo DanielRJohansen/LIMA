@@ -276,6 +276,24 @@ struct ForceEnergy {
 	
 };
 
+struct ParticleQuickData {
+	Float3 relPos{};		// [nm]
+	std::array<int8_t, 3> gridIndex;
+	uint8_t atomType=0x0000;		// dont need all 8 bits for this.
+
+	//constexpr Float3 getRelpos(const Int3& toIndex) const {// TODO: unsure of the & here
+	//	Float3 shift{
+	//		static_cast<int>(gridIndex[0]) - toIndex.x,
+	//		static_cast<int>(gridIndex[1]) - toIndex.y,
+	//		static_cast<int>(gridIndex[2]) - toIndex.z
+	//	};
+	//	return relPos + shift;
+	//}
+};
+
+
+
+
 struct Double3 {
 	__host__ __device__ Double3() {}
 	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}

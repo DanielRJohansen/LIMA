@@ -5,42 +5,49 @@
 #include "Simulation.cuh"
 
 
-struct BoxConfig {	
+struct BoxConfig {
+	BoxConfig() {};
 	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds);
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences);
 	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
 	void FreeMembers() const;
 
 	// CompoundData used ALOT, kept here for memory locality
-	const uint8_t* const compoundsAtomtypes;
-	const float* const compoundsAtomCharges;	// [kC/mol]
-	const Compound* const compounds;
+	const uint8_t* const compoundsAtomtypes = nullptr;
+	const float* const compoundsAtomCharges = nullptr;	// [kC/mol]
+	const Compound* const compounds = nullptr;
 
 	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
-	const BondedParticlesLUT* const bpLUTs;
+	const BondedParticlesLUT* const bpLUTs = nullptr;
 
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds;
+	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds = nullptr;
+	const BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
 };
 
 struct BoxState {
+	BoxState() {};
 	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundInterimState,
 		//TinyMolParticleState* tinyMolParticlesState,
-		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, Float3* solventsRelposNm, uint8_t* solventsAtomtypeIds);
+		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
 
-	CompoundInterimState* const compoundsInterimState;
-	NodeIndex* const compoundOrigos;
-	Float3* const compoundsRelposNm;
+	CompoundInterimState* const compoundsInterimState = nullptr;
+	NodeIndex* const compoundOrigos = nullptr;
+	Float3* const compoundsRelposNm = nullptr;
 
 	//TinyMolParticleState* const tinyMolParticlesState;
-	SolventBlock* const solventblockgrid_circularqueue;
+	SolventBlock* const solventblockgrid_circularqueue = nullptr;
 
 	// TODO: OPTIM: IMPORTANT: For now these are duplicates of whats in SolventBlock. We need a SolventBlockHost and SolventBlockDevice for optimal performance anyway
 	int* const nParticlesInSolventblock = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
-	Float3* const solventsRelposNm=nullptr;
-	uint8_t* const solventsAtomtypeIds = nullptr; // Not necessary now that we only have h2o, and its always OHH. But futureproofing maybe..
+	int* const nParticlesPrefixsumInX = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
+	ParticleQuickData* const solventsParticleQuickData = nullptr;
+	ParticleQuickData* const solventsParticleQuickDataCompressed = nullptr; // TEMP, we should just overwrite the other one above..
+
+	//Float3* const solventsRelposNm=nullptr;
+	//uint8_t* const solventsAtomtypeIds = nullptr; // Not necessary now that we only have h2o, and its always OHH. But futureproofing maybe..
 };
 
 struct AdamState {

@@ -262,7 +262,61 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	}
 	if (threadIdx.x < nParticlesInBlock) {
 		size_t index = solventblockId * SolventBlock::maxParticles + threadIdx.x;
-		sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
-		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];
+		/*sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
+		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];*/
+		
+		const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(solventblockId, DeviceConstants::boxSize.boxSizeNM_i);		
+		sim->boxState.solventsParticleQuickData[index] = ParticleQuickData{
+			solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos(),
+			{(int8_t)blockIndex3D.x, (int8_t)blockIndex3D.y, (int8_t)blockIndex3D.z},
+			solventblockGlobalPtr->atomtypeIds[threadIdx.x]
+		};
+	}
+}
+
+
+
+const int SolventPositionsBufferCompress_maxElements = 64; // TODO: MAX gridsize must actually be 64, since we need the size+1 to know how many to read for the final block
+__global__ void SolventPositionsBufferCompress(BoxState boxState, BoxConfig config, BoxParams params) {
+	__shared__ int counts[SolventPositionsBufferCompress_maxElements];
+	__shared__ int prefixSum[SolventPositionsBufferCompress_maxElements];
+
+	const int zIndex = blockIdx.x / params.boxSize.y;
+	const int yIndex = blockIdx.x % params.boxSize.y;
+	const int indexOfFirstBlockInRow = BoxGrid::Get1dIndex(NodeIndex{ 0, yIndex, zIndex }, params.boxSize);
+	const int nElements = params.boxSize.x;
+
+
+	for (int i = threadIdx.x; i < SolventPositionsBufferCompress_maxElements; i += blockDim.x) {
+		counts[i] = 0;
+		prefixSum[i] = 0;
+	}
+	for (int i = threadIdx.x; i < nElements; i += blockDim.x) {
+		const int globalIndex = indexOfFirstBlockInRow + i;
+		counts[i] = boxState.nParticlesInSolventblock[globalIndex];
+		prefixSum[i] = counts[i];
+	}
+
+	__syncthreads();
+	LAL::ExclusiveScan(prefixSum, SolventPositionsBufferCompress_maxElements);
+	__syncthreads();
+
+
+	// Push the prefixsum to device buffer
+	for (int i = threadIdx.x; i < nElements; i += blockDim.x) {
+		const int globalIndex = indexOfFirstBlockInRow + i;
+		boxState.nParticlesPrefixsumInX[globalIndex] = prefixSum[i];
+	}
+
+	// Push the compressed quickdata
+	for (int blockIndexX = 0; blockIndexX < nElements; blockIndexX++) {
+		const int blockId = indexOfFirstBlockInRow + blockIndexX;
+		const int nParticlesInBlock = counts[blockIndexX];
+
+		for (int i = threadIdx.x; i < nParticlesInBlock; i += blockDim.x) {
+			const int sourceIndex = blockId * SolventBlock::maxParticles + i;
+			const int destIndex = indexOfFirstBlockInRow * SolventBlock::maxParticles + prefixSum[blockIndexX] + i;
+			boxState.solventsParticleQuickDataCompressed[destIndex] = boxState.solventsParticleQuickData[sourceIndex];
+		}
 	}
 }

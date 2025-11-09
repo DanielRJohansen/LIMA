@@ -21,7 +21,7 @@ struct BoxConfig {
 	const BondedParticlesLUT* const bpLUTs = nullptr;
 
 	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds = nullptr;
-	const BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
+	BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
 };
 
 struct BoxState {
@@ -42,7 +42,7 @@ struct BoxState {
 
 	// TODO: OPTIM: IMPORTANT: For now these are duplicates of whats in SolventBlock. We need a SolventBlockHost and SolventBlockDevice for optimal performance anyway
 	int* const nParticlesInSolventblock = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
-	int* const nParticlesPrefixsumInX = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
+	int* const nParticlesPrefixsumInX = nullptr; // Exclusive. Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality 
 	ParticleQuickData* const solventsParticleQuickData = nullptr;
 	ParticleQuickData* const solventsParticleQuickDataCompressed = nullptr; // TEMP, we should just overwrite the other one above..
 

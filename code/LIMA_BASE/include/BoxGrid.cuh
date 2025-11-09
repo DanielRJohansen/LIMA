@@ -189,8 +189,11 @@ namespace BoxGrid {
 
 			// Optim Pack this info into a single uint32_t?
 			struct Sequence{
-				int blockIndexStart = -1;
-				int nBlocks = -1;
+				int blockIndexStart = -1;					// Constant throught sim
+				int nBlocks = -1;							// Constant throught sim
+
+				int indexOfFirstParticleInSequence = -1;	// 
+				int nParticlesInSequence = -1;				// 
 			};
 
 			static const int maxSequences = 22;

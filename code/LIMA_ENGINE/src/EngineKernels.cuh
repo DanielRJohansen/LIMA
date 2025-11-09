@@ -577,16 +577,27 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 		const int nBatches = (nParticlesNeighbor + batchSize - 1) / batchSize;
 
+
+		NodeIndex queryBlockId3d = BoxGrid::Get3dIndex(blockindex_neighbor, DeviceConstants::boxSize.boxSizeNM_i);
+		int queryBlockIdAtRowStart = BoxGrid::Get1dIndex(NodeIndex(0, queryBlockId3d.y, queryBlockId3d.z), DeviceConstants::boxSize.boxSizeNM_i);
+		int queryStartIndexInCompressedPositions = queryBlockIdAtRowStart * SolventBlock::maxParticles + boxState.nParticlesPrefixsumInX[blockindex_neighbor];
+
+
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
-			const int offset = batchIndex * batchSize;
-			const int nParticlesThisBatch = std::min(nParticlesNeighbor - offset, batchSize);
+			const int batchOffset = batchIndex * batchSize;
+			const int nParticlesThisBatch = std::min(nParticlesNeighbor - batchOffset, batchSize);
 
 			// Load positions
+			//const size_t startIndex = blockindex_neighbor * SolventBlock::maxParticles + batchOffset;
+			//auto block = cooperative_groups::this_thread_block();
+			//cooperative_groups::memcpy_async(block, queryDataBuffer, &(boxState.solventsParticleQuickData[startIndex]), sizeof(ParticleQuickData) * batchSize);
+			//cooperative_groups::wait(block);
+			//__syncthreads();
 
-			const size_t startIndex = blockindex_neighbor * SolventBlock::maxParticles + offset;
-			auto block = cooperative_groups::this_thread_block();
-			cooperative_groups::memcpy_async(block, queryDataBuffer, &(boxState.solventsParticleQuickData[startIndex]), sizeof(ParticleQuickData) * batchSize);
-			cooperative_groups::wait(block);
+			const int startIndex = queryStartIndexInCompressedPositions + batchOffset;
+			auto tb = cooperative_groups::this_thread_block();
+			cooperative_groups::memcpy_async(tb, queryDataBuffer, &(boxState.solventsParticleQuickDataCompressed[startIndex]), sizeof(ParticleQuickData) * batchSize);
+			cooperative_groups::wait(tb);
 			__syncthreads();
 
 			auto gi = queryDataBuffer[threadIdx.x].gridIndex;

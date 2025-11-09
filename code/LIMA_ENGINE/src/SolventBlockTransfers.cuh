@@ -6,7 +6,8 @@
 #include "EngineUtils.cuh"
 #include "DeviceAlgorithms.cuh"
 #include "KernelConstants.cuh"
-
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
 
 template <typename BoundaryCondition>
 __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
@@ -319,4 +320,37 @@ __global__ void SolventPositionsBufferCompress(BoxState boxState, BoxConfig conf
 			boxState.solventsParticleQuickDataCompressed[destIndex] = boxState.solventsParticleQuickData[sourceIndex];
 		}
 	}
+}
+
+__global__ void SolventBlockAdjacencySequenceUpdate(BoxState state, BoxConfig config, BoxParams params) {
+	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences sequencesShared;
+
+	auto tb = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(tb, &sequencesShared, &(config.tinymolNearbyBlocksSequences[blockIdx.x]), sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
+	cooperative_groups::wait(tb);
+
+
+	if (threadIdx.x < sequencesShared.nSequences) {
+		auto& sequence = sequencesShared.sequences[threadIdx.x];
+		const int blockIndexStart = sequence.blockIndexStart;
+		const int blockIndexBack = blockIndexStart + sequence.nBlocks - 1;
+		const NodeIndex startBlockId3d = BoxGrid::Get3dIndex(blockIndexStart, params.boxSize);
+		const int particleIndexAtRowStart = BoxGrid::Get1dIndex(NodeIndex{ 0, startBlockId3d.y, startBlockId3d.z }, params.boxSize) * SolventBlock::maxParticles;
+
+		const int prefixStart = state.nParticlesPrefixsumInX[blockIndexStart];
+		const int prefixBack = state.nParticlesPrefixsumInX[blockIndexBack];
+		const int countBack = state.nParticlesInSolventblock[blockIndexBack];
+		const int nParticlesInSequence = prefixBack - prefixStart + countBack;
+
+		//NodeIndex endBlockIndex3d = startBlockIndex3d + NodeIndex{ sequencesShared.sequences[threadIdx.x].nBlocks, 0, 0 }; // end, NOT back!
+
+		//int prefixAtStart = 
+		sequence.indexOfFirstParticleInSequence = particleIndexAtRowStart + prefixStart;
+		sequence.nParticlesInSequence = nParticlesInSequence;
+	}
+	__syncthreads();
+
+
+	// Push back to global mem
+	cooperative_groups::memcpy_async(tb, &(config.tinymolNearbyBlocksSequences[blockIdx.x]), &sequencesShared, sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
 }

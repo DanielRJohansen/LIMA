@@ -314,14 +314,12 @@ void Engine::BootstrapSolventblockDistributeFromDensity() {
 
 
 	// Bootstrap compressed positions
-
 	int nGridblocks = BoxGrid::NodesPerDim(boxSize.y) * BoxGrid::NodesPerDim(boxSize.z);
 	SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
 		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
 
-
-
-
+	SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize)), 64, 0, cudaStreams[1] >> >
+		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
 
 
 }
@@ -451,6 +449,10 @@ void Engine::_deviceMaster() {
 
 			int nGridblocks = BoxGrid::NodesPerDim(boxparams.boxSize.y) * BoxGrid::NodesPerDim(boxparams.boxSize.z);
 			SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
+				(*boxStateCopy, *boxConfigCopy, boxparams);
+			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPositionsBufferCompress");
+
+			SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), 64, 0, cudaStreams[1] >> >
 				(*boxStateCopy, *boxConfigCopy, boxparams);
 		}
 	}

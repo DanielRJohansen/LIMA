@@ -383,7 +383,6 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 
-
 		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 0, SolventBlockOccupancyTracker::maxParticlesSparse>
 			<<<nSolventblocks, 32, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
 			(*boxStateCopy, *boxConfigCopy, step, forceEnergyInterims->forceEnergiesTinymolinteractions);

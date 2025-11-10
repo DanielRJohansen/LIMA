@@ -493,10 +493,12 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 
 	//__shared__ BoxGrid::TinymolBlockAdjacency::BlockRef nearbyBlock[BoxGrid::TinymolBlockAdjacency::nNearbyBlocks];
+	
+	__shared__ ParticleQuickData queryDataBuffer[batchSize]; // Dont use directly
+
 	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles nearbyBlockSequences;
-	//__shared__ ParticleQuickData queryDataBuffer[batchSize]; // Dont use directly
-	__shared__ float4 queryPositions[batchSize];// = reinterpret_cast<Float3*>(queryDataBuffer);
-	__shared__ uint8_t queryTypeIds[batchSize];// = reinterpret_cast<uint8_t*>(&(queryPositions[batchSize]));
+	//__shared__ float4 queryPositions[batchSize];// = reinterpret_cast<Float3*>(queryDataBuffer);
+	//__shared__ uint8_t queryTypeIds[batchSize];// = reinterpret_cast<uint8_t*>(&(queryPositions[batchSize]));
 
 	__shared__ NonbondedInteractionParams precomputedParams[3];
 	__shared__ float charges[2];
@@ -541,8 +543,11 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 	{
 		const int nBatches = (nParticlesInBlock + batchSize - 1) / batchSize;
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
-			queryPositions[threadIdx.x] = positionsLocal[batchIndex].Tofloat4();
-			queryTypeIds[threadIdx.x] = atomTypesLocal[batchIndex];
+			queryDataBuffer[threadIdx.x] = ParticleQuickData{
+				positionsLocal[batchIndex],
+				{0,0,0},
+				atomTypesLocal[batchIndex],				 
+			};
 
 			const int offset = batchIndex * batchSize;
 			const int nParticlesThisBatch = std::min(nParticlesInBlock - offset, batchSize);
@@ -550,7 +555,7 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 
 			__syncthreads();
 			LJ::ComputeSolventToSolventLJForcesIntrablock<computePotE, energyMinimize>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams, nParticlesInBlock, nParticlesThisBatch, offset);
+				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryDataBuffer, precomputedParams, nParticlesInBlock, nParticlesThisBatch, offset);
 			__syncthreads();
 		}
 	}	
@@ -580,23 +585,22 @@ __global__ void solventForceKernel(BoxState boxState, const BoxConfig boxConfig,
 			const int nParticlesThisBatch = std::min(nParticlesInSequence - batchOffset, batchSize);
 			const int batchStartIndex = sequence.indexOfFirstParticleInSequence + batchOffset;
 
-			const ParticleQuickData pqd = threadIdx.x < nParticlesThisBatch ?
+			ParticleQuickData pqd = threadIdx.x < nParticlesThisBatch ?
 				boxState.solventsParticleQuickDataCompressed[batchStartIndex + threadIdx.x] :
 				ParticleQuickData{};
 			__syncthreads();
 
 			NodeIndex queryNI{ (int)pqd.gridIndex[0], (int)pqd.gridIndex[1], (int)pqd.gridIndex[2] };
 			const NodeIndex shift = BoundaryCondition::applyHyperpos_Return(blockId3d, queryNI) - blockId3d;
-			const Float3 queryParticleRelpos = pqd.relPos + shift.toFloat3();
-			const uint8_t queryParticleTypeId = pqd.atomType;
-			queryPositions[threadIdx.x] = queryParticleRelpos.Tofloat4();
-			queryTypeIds[threadIdx.x] = queryParticleTypeId;
+			pqd.relPos += shift.toFloat3();
+			queryDataBuffer[threadIdx.x] = pqd;
+			//queryPositions[threadIdx.x] = queryParticleRelpos.Tofloat4();
+			//queryTypeIds[threadIdx.x] = queryParticleTypeId;
 			__syncthreads();
 
 
-
 			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize, particlesPerThread>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryTypeIds, queryPositions, precomputedParams[0], charges, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
+				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryDataBuffer, precomputedParams[0], charges, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
 		}
 	}
 

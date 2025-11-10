@@ -206,7 +206,7 @@ namespace LJ {
 	template<bool computePotE, bool emvariant>
 	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy* const forceEnergies, 
 		const uint8_t* const myAtomtypes, const Float3* const myPositions,
-		const uint8_t* const queryAtomtypes, const float4* const queryPositions,
+		const ParticleQuickData* const queryParticles,
 		const NonbondedInteractionParams* const precomputedParams, 
 		int nParticles, int nParticlesThisBatch, int batchOffset) 
 	{
@@ -233,11 +233,11 @@ namespace LJ {
 				if (sameMolecule) // TODO: THis is worng. We should still do ES inside molecules, just not LJ
 					continue;
 
-				const Float3 diff = Float3(queryPositions[queryIndexRel]) - myPositions[batchIndex];
+				const Float3 diff = Float3(queryParticles[queryIndexRel].relPos) - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
 				if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
 
-				const auto params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndexRel]];
+				const auto params = precomputedParams[myAtomtypes[batchIndex] + queryParticles[queryIndexRel].atomType];
 				if (params.epsilon != 0) {
 					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
 						params.sigma, params.epsilon,
@@ -259,10 +259,10 @@ namespace LJ {
 	}
 
 	template<bool computePotE, bool emvariant, int nBatchesPerThread>
-	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* const forceEnergies, 
-		const uint8_t* const myAtomtypes, const Float3* const myPositions,
-		const uint8_t* const queryAtomtypes, const float4* const queryPositions,
-		const NonbondedInteractionParams& precomputedOO, const float* const charges, /*{O, H}*/
+	__device__ void ComputeSolventToSolventLJForcesInterblock(ForceEnergy* __restrict__ const forceEnergies, 
+		const uint8_t* __restrict__ const myAtomtypes, const Float3* __restrict__ const myPositions,
+		const ParticleQuickData* __restrict__ const queryParticles,
+		const NonbondedInteractionParams precomputedOO, const float* const charges, /*{O, H}*/
 		int nParticles, int nParticlesQueryThisBatch, float cutoffNmSq)
 	{
 		//for (int index = threadIdx.x; index < nParticles; index += blockDim.x) {
@@ -280,12 +280,13 @@ namespace LJ {
 			bool isO = myAtomtypes[batchIndex] == 0;
 
 			for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
-				const Float3 diff = Float3(queryPositions[queryIndex]) - myPositions[batchIndex];
+
+				const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPositions[batchIndex];
 				const float distSq = diff.lenSquared();
 				if (distSq > cutoffNmSq)
 					continue;
 
-				if (isO && queryAtomtypes[queryIndex] == 0) {
+				if (isO && queryParticles[queryIndex].atomType == 0) {
 					ljForce += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, ljPotential,
 						precomputedOO.sigma, precomputedOO.epsilon,
 						CalcLJOrigin::SolSolInter,
@@ -294,7 +295,7 @@ namespace LJ {
 				}
 
 				if constexpr (ENABLE_ES_SR) {
-					const float chargeProduct = charges[myAtomtypes[batchIndex]] * charges[queryAtomtypes[queryIndex]];
+					const float chargeProduct = charges[myAtomtypes[batchIndex]] * charges[queryParticles[queryIndex].atomType];
 					//const auto& params = precomputedParams[myAtomtypes[batchIndex] + queryAtomtypes[queryIndex]];
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce_optim(chargeProduct, -diff, distSq);
 					if constexpr (computePotE)

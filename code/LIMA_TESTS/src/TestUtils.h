@@ -180,6 +180,7 @@ namespace TestUtils {
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }
+	static void setConsoleTextColorYellow() { std::cout << "\033[33m"; }
 	static void setConsoleTextColorGreen() { std::cout << "\033[32m"; }
 	static void setConsoleTextColorDefault() { std::cout << "\033[0m"; }
 

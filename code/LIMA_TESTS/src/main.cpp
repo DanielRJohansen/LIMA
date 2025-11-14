@@ -155,7 +155,14 @@ void RunAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
-	
+	if (!ALL_PHYSICS_ENABLED) {
+		TestUtils::setConsoleTextColorRed();
+		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
+		TestUtils::setConsoleTextColorDefault();
+	}
+		
+
+
 	// Isolated forces sanity checks
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));

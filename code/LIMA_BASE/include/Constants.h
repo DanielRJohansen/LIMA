@@ -9,22 +9,23 @@ constexpr bool INDEXING_CHECKS = false;
 constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
 constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
 constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
-
+constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS);
 
 //#define FORCE_NAN_CHECK
 
-#define ENABLE_LJ
-#define ENABLE_INTEGRATEPOSITION
+const bool ENABLE_LJ = true;
+const bool ENABLE_INTEGRATEPOSITION = true;
 
 const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
-
-const bool ENABLE_ERFC_FOR_EWALD = true;
-
 const bool ENABLE_UREYBRADLEY = true;
 
+
+const bool ENABLE_ERFC_FOR_EWALD = true;
 const bool USE_PRECOMPUTED_BSPLINES = false;
 const bool USE_PRECOMPUTED_ERFCSCALARS = false;
+
+const bool ALL_PHYSICS_ENABLED = ENABLE_ES_SR && ENABLE_ES_LR && ENABLE_LJ && ENABLE_UREYBRADLEY && ENABLE_INTEGRATEPOSITION;
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE

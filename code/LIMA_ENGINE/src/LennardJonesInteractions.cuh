@@ -34,7 +34,6 @@ namespace LJ {
 		}
 	}
 
-#ifdef ENABLE_LJ
 
 	/// <summary></summary>
 	/// <param name="diff">other minus self, attractive direction [nm]</param>
@@ -48,6 +47,9 @@ namespace LJ {
 		CalcLJOrigin originSelect, /*For debug only*/
 		int type1 = -1, int type2 = -1) {
 
+		if constexpr (!ENABLE_LJ) {
+			return {};
+		}
 
 		// Directly from book
 		float s = (sigma * sigma) * dist_sq_reciprocal;								// [nm^2]/[nm^2] -> unitless	// OPTIM: Only calculate sigma_squared, since we never use just sigma
@@ -61,7 +63,7 @@ namespace LJ {
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan()) {
 			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f s %f distSqRecip %f emvariant %d forceScalar %f firstPart %f\n",
-				   diff.x, diff.y, diff.z, sigma, epsilon, s, dist_sq_reciprocal, emvariant, force_scalar, epsilon * s * dist_sq_reciprocal);
+				diff.x, diff.y, diff.z, sigma, epsilon, s, dist_sq_reciprocal, emvariant, force_scalar, epsilon * s * dist_sq_reciprocal);
 		}
 #endif
 
@@ -71,21 +73,13 @@ namespace LJ {
 
 		if constexpr (emvariant)
 			return EngineUtils::ForceActivationFunction(force, 100.f);
-		
+
 #if defined LIMASAFEMODE
 		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
 #endif
 
 		return force;	// [1/24 J/mol/nm]
 	}
-#else 
-	__device__ static Float3 calcLJForceOptim(const Float3&, float, float& , float , float , CalcLJOrigin, int, int) {
-		return Float3{};
-	}
-#endif
-
-
-
 
 
 

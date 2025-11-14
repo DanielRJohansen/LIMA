@@ -19,7 +19,7 @@ constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switchin
 const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 
-const bool ENABLE_ERFC_FOR_EWALD = false;
+const bool ENABLE_ERFC_FOR_EWALD = true;
 
 const bool ENABLE_UREYBRADLEY = true;
 

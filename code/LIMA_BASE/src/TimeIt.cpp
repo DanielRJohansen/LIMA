@@ -34,6 +34,19 @@ std::chrono::milliseconds TimeIt::elapsed() const {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - start);
 }
 
+// Returns the time with 2 decimals in either ms or s
+std::string TimeIt::ElapsedPretty() const {
+	const auto t = elapsed();
+	const auto ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t).count();
+
+	if (ms < 1000.0)
+		return std::format("{:.2f} [ms]", ms);
+
+	const double s = ms / 1000.0;
+	return std::format("{:.2f} [s]", s);
+}
+
+
 TimeIt::~TimeIt() {
 	if (!manuallyStopped) {
 		end = std::chrono::high_resolution_clock::now();

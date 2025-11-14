@@ -194,7 +194,7 @@ namespace TestUtils {
 		}
 
 
-		void printStatus() const {
+		void printStatus(std::string insert="") const {
 			if (success) {
 				setConsoleTextColorGreen();
 			}
@@ -204,7 +204,7 @@ namespace TestUtils {
 
 
 			if (error_description.length() > 55) { std::cout << "\n\t"; }
-			std::cout << error_description << "\n";
+			std::cout << error_description << insert << "\n";
 
 
 			setConsoleTextColorDefault();
@@ -229,14 +229,18 @@ namespace TestUtils {
 		{}
 
 		void execute() {
+
 			try {
+				TimeIt timer{};
 				std::cout << "Test " << name << " ";
 				testresult = std::make_unique<LimaUnittestResult>(test());
 
 				int str_len = 6 + name.length();
 				while (str_len++ < 61) { std::cout << " "; }
 
-				testresult->printStatus();
+				testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
+
+
 			}
 			catch (const std::runtime_error& ex) {
 				const std::string err_desc = "Test threw exception: " + std::string(ex.what());

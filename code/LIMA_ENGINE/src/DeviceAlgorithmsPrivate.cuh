@@ -41,7 +41,7 @@ namespace PhysicsUtilsDevice {
 		const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappaHardcoded / PI_sqrt * dist * exp(-DeviceConstants::ewaldKappaHardcoded * DeviceConstants::ewaldKappaHardcoded * distSq);
 		return scalar;
 	}*/
-	inline float CalcErfcScalar(float dist, float distSq) {
+	__device__ inline float CalcErfcScalar(float dist, float distSq) {
 		const float erfcTerm = erfc(dist * DeviceConstants::ewaldKappa);
 		const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappa / PI_sqrt * dist * exp(-DeviceConstants::ewaldKappa * DeviceConstants::ewaldKappa * distSq);
 		return scalar;

@@ -599,6 +599,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		case TopologySection::impropers:
 			improperbondStrings.push_back(std::move(line));
 			break;
+		case TopologySection::defaults:
 		case TopologySection::atomtypes:
 		case TopologySection::pairtypes:
 		case TopologySection::bondtypes:

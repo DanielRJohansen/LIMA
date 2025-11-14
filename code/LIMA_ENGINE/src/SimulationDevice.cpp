@@ -38,14 +38,13 @@ void BoxConfig::FreeMembers() const {
 	cudaFree((void*)compoundsAtomCharges);
 	cudaFree((void*)bpLUTs);
 	cudaFree((void*)tinymolNearbyBlockIds);
+	cudaFree((void*)tinymolNearbyBlocksSequences);
 }
 
 
 BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundsInterimState,
-	//TinyMolParticleState* tinyMolParticlesState,
 	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX
 	, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed
-	//, Float3* solventsRelposNm, uint8_t* solventsAtomtypeIds
 	,BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
 	) :
 	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), compoundsInterimState(compoundsInterimState),
@@ -150,10 +149,12 @@ void BoxState::FreeMembers() const {
 	cudaFree(compoundsRelposNm);
 	//cudaFree(boxtemp.tinyMolParticlesState);
 	cudaFree(solventblockgrid_circularqueue);
-	cudaFree(solventsParticleQuickData);
 
-	// TODO MEMLEAK: free the rest of the buffers
-	//cudaFree()
+	cudaFree(nParticlesInSolventblock);
+	cudaFree(nParticlesPrefixsumInX);
+	cudaFree(solventsParticleQuickData);
+	cudaFree(solventsParticleQuickDataCompressed);
+	cudaFree(tinymolNearbyBlocksSequences);
 }
 
 
@@ -256,6 +257,8 @@ void SimulationDevice::FreeMembers() {
 
 CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation) {
 	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box_host->boxparams.n_compounds, CompoundQuickData{});
+	memset(compoundQuickDataHost.data(), 0, sizeof(CompoundQuickData) * compoundQuickDataHost.size());
+
 	for (int cid = 0; cid < simulation.box_host->compounds.size(); cid++) {
 		const Compound& compound = simulation.box_host->compounds[cid];
 		CompoundQuickData& quickData = compoundQuickDataHost[cid];

@@ -180,7 +180,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 	}
 }
 
-__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule, SolventBlockOccupancyTracker solventblockOccupancyTracker) {
+__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
 	__shared__ int nParticlesInBlock;
 	__shared__ int nBondgroupsInBlock;
 
@@ -247,19 +247,6 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	// AfterFinally we set up the quickaccess data
 	if (threadIdx.x == 0) {
 		sim->boxState.nParticlesInSolventblock[solventblockId] = nParticlesInBlock;
-
-		if (nParticlesInBlock <= SolventBlockOccupancyTracker::maxParticlesSparse) {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[0], 1);
-			solventblockOccupancyTracker.solventBlocksIdsSparse[index] = solventblockId;
-		}
-		else if (nParticlesInBlock <= SolventBlockOccupancyTracker::maxParticlesMedium) {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[1], 1);
-			solventblockOccupancyTracker.solventBlocksIdsMedium[index] = solventblockId;
-		}
-		else {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[2], 1);
-			solventblockOccupancyTracker.solventBlocksIdsDense[index] = solventblockId;
-		}		
 	}
 	if (threadIdx.x < nParticlesInBlock) {
 		size_t index = solventblockId * SolventBlock::maxParticles + threadIdx.x;

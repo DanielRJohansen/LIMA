@@ -239,8 +239,8 @@ namespace TestUtils {
 				int str_len = 6 + name.length();
 				while (str_len++ < 61) { std::cout << " "; }
 
-				testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
-
+				//testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
+				testresult->printStatus();
 
 			}
 			catch (const std::runtime_error& ex) {

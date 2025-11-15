@@ -29,9 +29,10 @@ namespace EngineUtils {
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
-#ifndef ENABLE_INTEGRATEPOSITION
-		return pos;
-#endif
+		if constexpr (!ENABLE_INTEGRATEPOSITION) {
+			return pos;
+		}
+
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}

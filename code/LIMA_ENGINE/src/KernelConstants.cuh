@@ -49,5 +49,5 @@ namespace DeviceConstants {
 	__constant__ float erfcPotentialscalarTable[ERFC_LUT_SIZE];
 
 
-	constexpr float ewaldKappaHardcoded = 3.f / 1.2;// TEMP DANGER [nm^-1]
+	//constexpr float ewaldKappaHardcoded = 3.f / 1.2;// TEMP DANGER [nm^-1]
 }

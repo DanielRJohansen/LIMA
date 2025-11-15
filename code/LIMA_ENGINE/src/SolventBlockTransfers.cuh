@@ -6,7 +6,8 @@
 #include "EngineUtils.cuh"
 #include "DeviceAlgorithms.cuh"
 #include "KernelConstants.cuh"
-
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
 
 template <typename BoundaryCondition>
 __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
@@ -179,7 +180,7 @@ __global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, c
 	}
 }
 
-__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule, SolventBlockOccupancyTracker solventblockOccupancyTracker) {
+__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
 	__shared__ int nParticlesInBlock;
 	__shared__ int nBondgroupsInBlock;
 
@@ -246,23 +247,102 @@ __global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, cons
 	// AfterFinally we set up the quickaccess data
 	if (threadIdx.x == 0) {
 		sim->boxState.nParticlesInSolventblock[solventblockId] = nParticlesInBlock;
-
-		if (nParticlesInBlock <= SolventBlockOccupancyTracker::maxParticlesSparse) {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[0], 1);
-			solventblockOccupancyTracker.solventBlocksIdsSparse[index] = solventblockId;
-		}
-		else if (nParticlesInBlock <= SolventBlockOccupancyTracker::maxParticlesMedium) {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[1], 1);
-			solventblockOccupancyTracker.solventBlocksIdsMedium[index] = solventblockId;
-		}
-		else {
-			int index = atomicAdd(&solventblockOccupancyTracker.nSolventblocksCounts[2], 1);
-			solventblockOccupancyTracker.solventBlocksIdsDense[index] = solventblockId;
-		}		
 	}
 	if (threadIdx.x < nParticlesInBlock) {
 		size_t index = solventblockId * SolventBlock::maxParticles + threadIdx.x;
-		sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
-		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];
+		/*sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
+		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];*/
+		
+		const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(solventblockId, DeviceConstants::boxSize.boxSizeNM_i);		
+		sim->boxState.solventsParticleQuickData[index] = ParticleQuickData{
+			solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos(),
+			{(int8_t)blockIndex3D.x, (int8_t)blockIndex3D.y, (int8_t)blockIndex3D.z},
+			solventblockGlobalPtr->atomtypeIds[threadIdx.x]
+		};
 	}
+}
+
+
+
+const int SolventPositionsBufferCompress_maxElements = 64; // TODO: MAX gridsize must actually be 64, since we need the size+1 to know how many to read for the final block
+__global__ void SolventPositionsBufferCompress(BoxState boxState, BoxConfig config, BoxParams params) {
+	__shared__ int counts[SolventPositionsBufferCompress_maxElements];
+	__shared__ int prefixSum[SolventPositionsBufferCompress_maxElements];
+
+	const int zIndex = blockIdx.x / params.boxSize.y;
+	const int yIndex = blockIdx.x % params.boxSize.y;
+	const int indexOfFirstBlockInRow = BoxGrid::Get1dIndex(NodeIndex{ 0, yIndex, zIndex }, params.boxSize);
+	const int nElements = params.boxSize.x;
+
+
+	for (int i = threadIdx.x; i < SolventPositionsBufferCompress_maxElements; i += blockDim.x) {
+		counts[i] = 0;
+		prefixSum[i] = 0;
+	}
+	for (int i = threadIdx.x; i < nElements; i += blockDim.x) {
+		const int globalIndex = indexOfFirstBlockInRow + i;
+		counts[i] = boxState.nParticlesInSolventblock[globalIndex];
+		prefixSum[i] = counts[i];
+	}
+
+	__syncthreads();
+	LAL::ExclusiveScan(prefixSum, SolventPositionsBufferCompress_maxElements);
+	__syncthreads();
+
+
+	// Push the prefixsum to device buffer
+	for (int i = threadIdx.x; i < nElements; i += blockDim.x) {
+		const int globalIndex = indexOfFirstBlockInRow + i;
+		boxState.nParticlesPrefixsumInX[globalIndex] = prefixSum[i];
+	}
+
+	// Push the compressed quickdata
+	for (int blockIndexX = 0; blockIndexX < nElements; blockIndexX++) {
+		const int blockId = indexOfFirstBlockInRow + blockIndexX;
+		const int nParticlesInBlock = counts[blockIndexX];
+
+		for (int i = threadIdx.x; i < nParticlesInBlock; i += blockDim.x) {
+			const int sourceIndex = blockId * SolventBlock::maxParticles + i;
+			const int destIndex = indexOfFirstBlockInRow * SolventBlock::maxParticles + prefixSum[blockIndexX] + i;
+			boxState.solventsParticleQuickDataCompressed[destIndex] = boxState.solventsParticleQuickData[sourceIndex];
+		}
+	}
+}
+
+__global__ void SolventBlockAdjacencySequenceUpdate(BoxState state, BoxConfig config, BoxParams params) {
+	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences sequencesShared;
+	__shared__ BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles sequencesParticlesShared;
+
+
+	auto tb = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(tb, &sequencesShared, &(config.tinymolNearbyBlocksSequences[blockIdx.x]), sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
+	cooperative_groups::wait(tb);
+
+	if (threadIdx.x == 0) {
+		sequencesParticlesShared.nSequences = sequencesShared.nSequences; // This is actually only needed during the bootstrapping run.
+	}
+
+
+	if (threadIdx.x < sequencesShared.nSequences) {
+		const auto& sequence = sequencesShared.sequences[threadIdx.x];
+		const int blockIndexStart = sequence.blockIndexStart;
+		const int blockIndexBack = blockIndexStart + sequence.nBlocks - 1;
+		const NodeIndex startBlockId3d = BoxGrid::Get3dIndex(blockIndexStart, params.boxSize);
+		const int particleIndexAtRowStart = BoxGrid::Get1dIndex(NodeIndex{ 0, startBlockId3d.y, startBlockId3d.z }, params.boxSize) * SolventBlock::maxParticles;
+
+		const int prefixStart = state.nParticlesPrefixsumInX[blockIndexStart];
+		const int prefixBack = state.nParticlesPrefixsumInX[blockIndexBack];
+		const int countBack = state.nParticlesInSolventblock[blockIndexBack];
+		const int nParticlesInSequence = prefixBack - prefixStart + countBack;
+
+		auto& sequenceParticles = sequencesParticlesShared.sequences[threadIdx.x];
+		sequenceParticles.indexOfFirstParticleInSequence = particleIndexAtRowStart + prefixStart;
+		sequenceParticles.nParticlesInSequence = nParticlesInSequence;
+		//printf("%d,", sequenceParticles.nParticlesInSequence);
+	}
+	__syncthreads();
+
+
+	// Push back to global mem
+	cooperative_groups::memcpy_async(tb, &(state.tinymolNearbyBlocksSequences[blockIdx.x]), &sequencesParticlesShared, sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
 }

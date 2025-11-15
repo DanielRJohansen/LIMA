@@ -44,3 +44,77 @@ BoxGrid::TinymolBlockAdjacency::BlockRef* BoxGrid::TinymolBlockAdjacency::Precom
 }
 
 
+BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* BoxGrid::TinymolBlockAdjacency::PrecomputeNearbyBlockSequences(Int3 boxlenNM) {
+	const int blocksTotal = BoxGrid::BlocksTotal(boxlenNM);
+	std::vector<NearbyBlocksSequences> nearbyBlockIds(blocksTotal);
+	
+
+	auto InsertSequence = [](NearbyBlocksSequences& nearbySequence, std::vector<int>& sequence) {
+		if (nearbySequence.nSequences >= NearbyBlocksSequences::maxSequences)
+			throw std::runtime_error("Exceeded max nearby block sequences");
+
+		//printf("Sequence:");
+		//for (const int bidx : sequence) {
+		//	printf("%d ", bidx);
+		//}
+		//printf("\n");
+
+		nearbySequence.sequences[nearbySequence.nSequences].blockIndexStart = sequence.front();
+		nearbySequence.sequences[nearbySequence.nSequences].nBlocks = static_cast<int>(sequence.size());
+		nearbySequence.nSequences++;
+		sequence.clear();
+		};
+
+
+	for (int i = 0; i < blocksTotal; i++) {
+		NodeIndex index3d = Get3dIndex(i, boxlenNM);
+
+		const int query_range = 2;
+		for (int z = -query_range; z <= query_range; z++) {
+			for (int y = -query_range; y <= query_range; y++) {
+
+				std::vector<int> sequence;
+
+				for (int x = -query_range; x <= query_range; x++) {
+					const NodeIndex dir{ x,y,z };
+
+
+					// Blocks mustn't include self in sequence
+					if (dir.largestMagnitudeElement() == 0) {
+						if (sequence.empty())
+							throw std::runtime_error("How is this even possible?");
+						InsertSequence(nearbyBlockIds[i], sequence);
+					}
+
+
+
+					if (!(dir.largestMagnitudeElement() == 1 || (dir.largestMagnitudeElement() == 2 && dir.Magnitude() == 2)))
+						continue;
+
+					NodeIndex nearbyIndex = NodeIndex{ index3d.x + x, index3d.y + y, index3d.z + z };
+					BoundaryConditionPublic::applyBC(nearbyIndex, boxlenNM);
+					assert(Get1dIndex(nearbyIndex, boxlenNM) < UINT16_MAX);
+
+					int globalIndex = Get1dIndex(nearbyIndex, boxlenNM);
+
+					if (sequence.empty())
+						sequence.push_back(globalIndex);
+					else if (sequence.back() + 1 == globalIndex)
+						sequence.push_back(globalIndex);
+					else {
+						// Store sequence
+						InsertSequence(nearbyBlockIds[i], sequence);
+						sequence.push_back(globalIndex);
+					}
+				}
+
+				// Store last sequence
+				if (!sequence.empty()) {
+					InsertSequence(nearbyBlockIds[i], sequence);
+				}
+			}
+		}
+	}
+
+	return GenericCopyToDevice(nearbyBlockIds);
+}

@@ -98,7 +98,7 @@ int main() {
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		Benchmarks::Benchmark("membrane20", "membranesolvated_em"); 
+		//Benchmarks::Benchmark("membrane20", "membranesolvated_em"); 
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv");
 		//Benchmarks::PrepareSimulation_stmv(envmode);
@@ -131,7 +131,7 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -155,7 +155,14 @@ void RunAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
-	
+	if (!ALL_PHYSICS_ENABLED) {
+		TestUtils::setConsoleTextColorRed();
+		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
+		TestUtils::setConsoleTextColorDefault();
+	}
+		
+
+
 	// Isolated forces sanity checks
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));

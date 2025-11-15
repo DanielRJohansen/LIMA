@@ -2,12 +2,13 @@
 #include "Utilities.h"
 
 
-BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds) :
+BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences) :
 	compounds(compounds),
 	compoundsAtomtypes(compoundsAtomTypes), 
 	compoundsAtomCharges(compoundsAtomcharges),
 	bpLUTs(bpLUTs),
-	tinymolNearbyBlockIds(tinymolNearbyBlockIds)
+	tinymolNearbyBlockIds(tinymolNearbyBlockIds),
+	tinymolNearbyBlocksSequences(tinymolNearbyBlocksSequences)
 	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
 	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
 {}
@@ -22,32 +23,36 @@ BoxConfig BoxConfig::Create(const Box& boxHost) {
 		compoundsAtomCharges.insert(compoundsAtomCharges.end(), boxHost.compounds[cid].atom_charges, boxHost.compounds[cid].atom_charges + MAX_COMPOUND_PARTICLES);
 	}
 
-	return BoxConfig (
-		GenericCopyToDevice(boxHost.compounds), 
+	return BoxConfig(
+		GenericCopyToDevice(boxHost.compounds),
 		GenericCopyToDevice(compoundsAtomTypes),
-		GenericCopyToDevice(compoundsAtomCharges), 
-		GenericCopyToDevice(boxHost.bpLutCollection), 
-        BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f)// TODO: MAGIC nr, use the actual cutoff from simparams
+		GenericCopyToDevice(compoundsAtomCharges),
+		GenericCopyToDevice(boxHost.bpLutCollection),
+		BoxGrid::TinymolBlockAdjacency::PrecomputeNeabyBlockIds(boxHost.boxparams.boxSize, 1.2f),// TODO: MAGIC nr, use the actual cutoff from simparams
+		BoxGrid::TinymolBlockAdjacency::PrecomputeNearbyBlockSequences(boxHost.boxparams.boxSize)
 	);
 }
 void BoxConfig::FreeMembers() const {
-	BoxConfig boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr);
-	cudaMemcpy(&boxtemp, this, sizeof(BoxConfig), cudaMemcpyDeviceToHost);
-
-	cudaFree((void*)boxtemp.compounds);
-	cudaFree((void*)boxtemp.compoundsAtomtypes);
-	cudaFree((void*)boxtemp.compoundsAtomCharges);
-	cudaFree((void*)boxtemp.bpLUTs);
-	cudaFree((void*)boxtemp.tinymolNearbyBlockIds);
+	cudaFree((void*)compounds);
+	cudaFree((void*)compoundsAtomtypes);
+	cudaFree((void*)compoundsAtomCharges);
+	cudaFree((void*)bpLUTs);
+	cudaFree((void*)tinymolNearbyBlockIds);
+	cudaFree((void*)tinymolNearbyBlocksSequences);
 }
 
 
 BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundsInterimState,
-	//TinyMolParticleState* tinyMolParticlesState,
-	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, Float3* solventsRelposNm, uint8_t* solventsAtomtypeIds) :
+	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX
+	, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed
+	,BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
+	) :
 	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), compoundsInterimState(compoundsInterimState),
 	//tinyMolParticlesState(tinyMolParticlesState), 
-	solventblockgrid_circularqueue(solventblockgrid_circularqueue), nParticlesInSolventblock(nParticlesInSolventblock), solventsRelposNm(solventsRelposNm), solventsAtomtypeIds(solventsAtomtypeIds)
+	solventblockgrid_circularqueue(solventblockgrid_circularqueue), nParticlesInSolventblock(nParticlesInSolventblock), nParticlesPrefixsumInX(nParticlesPrefixsumInX)
+	, solventsParticleQuickData(solventsParticleQuickdata), solventsParticleQuickDataCompressed(solventsParticleQuickDataCompressed)
+	, tinymolNearbyBlocksSequences(tinymolNearbyBlocksSequences)
+	//, solventsRelposNm(solventsRelposNm), solventsAtomtypeIds(solventsAtomtypeIds)
 {}
 
 BoxState BoxState::Create(const Box& boxHost) {
@@ -62,15 +67,39 @@ BoxState BoxState::Create(const Box& boxHost) {
 
 	const size_t nSolventblocks = BoxGrid::BlocksTotal(boxHost.boxparams.boxSize);
 	std::vector<int> nParticlesInSolventblock(nSolventblocks, 0);
-	std::vector<Float3> solventsRelposNm(nSolventblocks * SolventBlock::maxParticles, Float3{});
-	std::vector<uint8_t> solventsAtomtypeIds(nSolventblocks * SolventBlock::maxParticles, 0);
+	/*std::vector<Float3> solventsRelposNm(nSolventblocks * SolventBlock::maxParticles, Float3{});
+	std::vector<uint8_t> solventsAtomtypeIds(nSolventblocks * SolventBlock::maxParticles, 0);*/
+	std::vector<ParticleQuickData> solventsParticleQuickdata(nSolventblocks * SolventBlock::maxParticles, ParticleQuickData{});
 	for (int i = 0; i < nSolventblocks; i++) {
 		nParticlesInSolventblock[i] = boxHost.solventblockgrid_circularqueue[i].nParticles;
 		for (int j = 0; j < boxHost.solventblockgrid_circularqueue[i].nParticles; j++) {
-			solventsRelposNm[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos();
-			solventsAtomtypeIds[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j];
+			Int3 gridId = BoxGrid::Get3dIndex(i, boxHost.boxparams.boxSize);
+			solventsParticleQuickdata[i * SolventBlock::maxParticles + j] = ParticleQuickData{
+				boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos(),
+				{(int8_t)gridId.x, (int8_t)gridId.y, (int8_t)gridId.z},
+				boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j]
+			};
+			/*solventsRelposNm[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos();
+			solventsAtomtypeIds[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j];*/
 		}
 	}
+
+	std::vector<int> nParticlesPrefixsumInX(nSolventblocks, 0);
+	{
+		for (int z = 0; z < boxHost.boxparams.boxSize.z; z++) {
+			for (int y = 0; y < boxHost.boxparams.boxSize.y; y++) {
+
+				int prefixSum = 0;
+				for (int x = 0; x < boxHost.boxparams.boxSize.x; x++) {
+					int idx = BoxGrid::Get1dIndex(Int3{ x, y, z }, boxHost.boxparams.boxSize);
+					nParticlesPrefixsumInX[idx] = prefixSum;
+					prefixSum += boxHost.solventblockgrid_circularqueue[idx].nParticles;
+				}
+			}
+		}
+	}
+
+	std::vector<BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles> tinymolNearbyBlocksSequences(nSolventblocks);
 
 	return BoxState{
 		GenericCopyToDevice(compoundsOrigos),
@@ -80,23 +109,27 @@ BoxState BoxState::Create(const Box& boxHost) {
 		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),
 		//nullptr, nullptr,nullptr
 		GenericCopyToDevice(nParticlesInSolventblock),
-		GenericCopyToDevice(solventsRelposNm),
-		GenericCopyToDevice(solventsAtomtypeIds)
+		GenericCopyToDevice(nParticlesPrefixsumInX),
+		GenericCopyToDevice(solventsParticleQuickdata),
+		GenericCopyToDevice(solventsParticleQuickdata),
+		GenericCopyToDevice(tinymolNearbyBlocksSequences)
+		/*GenericCopyToDevice(solventsRelposNm),
+		GenericCopyToDevice(solventsAtomtypeIds)*/
 	};
 }
 void BoxState::CopyDataToHost(Box& boxHost) const {
-	BoxState boxtemp( nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
-	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
+	//BoxState boxtemp( nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+	//cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
 //	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost); // This should NOT be necessary since the state dont change
-	cudaMemcpy(boxHost.compoundInterimStates.data(), boxtemp.compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxHost.compoundInterimStates.data(), compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
 	//cudaMemcpy(boxHost.tinyMolParticlesState.data(), boxtemp.tinyMolParticlesState, sizeof(TinyMolParticleState) * boxHost.tinyMolParticlesState.size(), cudaMemcpyDeviceToHost);
 
 	std::vector<NodeIndex> compoundsOrigos;
 	std::vector<CompoundInterimState> compoundStates;
-	GenericCopyToHost(boxtemp.compoundOrigos, compoundsOrigos, boxHost.compounds.size());
-	GenericCopyToHost(boxtemp.compoundsInterimState, compoundStates, boxHost.compounds.size());
+	GenericCopyToHost(compoundOrigos, compoundsOrigos, boxHost.compounds.size());
+	GenericCopyToHost(compoundsInterimState, compoundStates, boxHost.compounds.size());
 	for (int cid = 0; cid < boxHost.compoundCoordsBuffer.size(); cid++) {
 		boxHost.compoundCoordsBuffer[cid].origo = compoundsOrigos[cid];
 		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++)
@@ -104,18 +137,24 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 	}
 
 
-	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(boxtemp.solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
+	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
 	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() const {
-	BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr); // TODO No longer necessary, as this is no longer a device ptr
-	cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
+	//BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr); // TODO No longer necessary, as this is no longer a device ptr
+	//cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
-	cudaFree(boxtemp.compoundsInterimState);
-	cudaFree(boxtemp.compoundOrigos);
-	cudaFree(boxtemp.compoundsRelposNm);
+	cudaFree(compoundsInterimState);
+	cudaFree(compoundOrigos);
+	cudaFree(compoundsRelposNm);
 	//cudaFree(boxtemp.tinyMolParticlesState);
-	cudaFree(boxtemp.solventblockgrid_circularqueue);
+	cudaFree(solventblockgrid_circularqueue);
+
+	cudaFree(nParticlesInSolventblock);
+	cudaFree(nParticlesPrefixsumInX);
+	cudaFree(solventsParticleQuickData);
+	cudaFree(solventsParticleQuickDataCompressed);
+	cudaFree(tinymolNearbyBlocksSequences);
 }
 
 
@@ -218,6 +257,8 @@ void SimulationDevice::FreeMembers() {
 
 CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation) {
 	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box_host->boxparams.n_compounds, CompoundQuickData{});
+	memset(compoundQuickDataHost.data(), 0, sizeof(CompoundQuickData) * compoundQuickDataHost.size());
+
 	for (int cid = 0; cid < simulation.box_host->compounds.size(); cid++) {
 		const Compound& compound = simulation.box_host->compounds[cid];
 		CompoundQuickData& quickData = compoundQuickDataHost[cid];

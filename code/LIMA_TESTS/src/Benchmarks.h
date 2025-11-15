@@ -161,6 +161,13 @@ namespace Benchmarks {
 
 	// Returns {avg ms/step, stdDev}
 	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt) {
+		
+		if (!IS_FAST_MODE) {
+			TestUtils::setConsoleTextColorYellow();
+			printf("Warning: Benchmarking with debug mode enabled. Results may be significantly slower than expected.\n");
+			TestUtils::setConsoleTextColorDefault();
+		}
+
 
 		const fs::path workDir = simulations_dir / "benchmarking"/dir;
 		fs::path topPath, groPath;

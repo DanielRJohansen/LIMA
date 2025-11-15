@@ -1033,7 +1033,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 
 		for (const auto& [_, moleculetype] : moleculetypes) {
 			moleculetype->ToFile(path.parent_path());
-			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name)).string() << "\"\n";
+			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name + ".itp")).string() << "\"\n";
 		}
 		file << "\n";
 
@@ -1119,7 +1119,7 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
 		}
 
-		file << name << "\n\n";
+		file << "; " << name << "\n\n";
 
 		file << "[ moleculetype ]\n";
 		file << generateLegend({ "name", "nrexcl" }) + "\n";

@@ -75,55 +75,61 @@ struct SolventBlock {
 	int nBondgroups = 0;
 };
 
-struct SolventBlockOccupancyTracker {
+namespace SolventBlockOccupancyTracker {
 	static constexpr int maxParticlesSparse = 32;
 	static constexpr int maxParticlesMedium = 128;
 	static constexpr int maxParticlesDense = SolventBlock::maxParticles;
+}
 
-	SolventBlockOccupancyTracker(){}
-
-	__host__ void Init(int nBlocksTotal, const std::vector<int>& idsSparse, const std::vector<int>& idsMedium, const std::vector<int> idsDense) {
-		cudaMalloc(&nSolventblocksCounts, sizeof(int) * 3);
-		cudaMalloc(&solventBlocksIdsSparse, sizeof(int) * nBlocksTotal);
-		cudaMalloc(&solventBlocksIdsMedium, sizeof(int) * nBlocksTotal);
-		cudaMalloc(&solventBlocksIdsDense, sizeof(int) * nBlocksTotal);
-
-		//std::vector<int> counts{ (int)idsSparse.size(), (int)idsDense.size() };
-		//cudaMemcpy(nSolventblocksCounts, counts.data(), sizeof(int) * 2, cudaMemcpyHostToDevice);
-
-		cudaMemcpy(solventBlocksIdsSparse, idsSparse.data(), sizeof(int) * idsSparse.size(), cudaMemcpyHostToDevice);
-		cudaMemcpy(solventBlocksIdsMedium, idsMedium.data(), sizeof(int) * idsMedium.size(), cudaMemcpyHostToDevice);
-		cudaMemcpy(solventBlocksIdsDense, idsDense.data(), sizeof(int) * idsDense.size(), cudaMemcpyHostToDevice);
-
-		//LIMA_UTILS::genericErrorCheck("Error during BootstrapSolventblockDistributeFromDensity");
-		//printf("N solvent blocks sparse: %d, dense: %d\n", (int)idsSparse.size(), (int)idsDense.size());
-	}
-
-	__host__ void Free() {
-		if (nSolventblocksCounts)
-			cudaFree(nSolventblocksCounts);
-		if (solventBlocksIdsSparse)
-			cudaFree(solventBlocksIdsSparse);
-		if (solventBlocksIdsMedium)
-			cudaFree(solventBlocksIdsMedium);
-		if (solventBlocksIdsDense)
-			cudaFree(solventBlocksIdsDense);
-	}
-
-	// Reads and clears the counts
-	__host__ std::array<int, 3> ConsumeCounts() {
-		std::array<int, 3> counts;
-		cudaMemcpy(counts.data(), nSolventblocksCounts, sizeof(int) * 3, cudaMemcpyDeviceToHost);
-		cudaMemset(nSolventblocksCounts, 0, sizeof(int) * 3);
-		return counts;
-	}
-
-
-	int* nSolventblocksCounts = nullptr; // {sparse, medium, dense}
-	int* solventBlocksIdsSparse = nullptr;
-	int* solventBlocksIdsMedium = nullptr;
-	int* solventBlocksIdsDense = nullptr;
-};
+//struct SolventBlockOccupancyTracker {
+//	static constexpr int maxParticlesSparse = 32;
+//	static constexpr int maxParticlesMedium = 128;
+//	static constexpr int maxParticlesDense = SolventBlock::maxParticles;
+//
+//	SolventBlockOccupancyTracker(){}
+//
+//	__host__ void Init(int nBlocksTotal, const std::vector<int>& idsSparse, const std::vector<int>& idsMedium, const std::vector<int> idsDense) {
+//		cudaMalloc(&nSolventblocksCounts, sizeof(int) * 3);
+//		cudaMalloc(&solventBlocksIdsSparse, sizeof(int) * nBlocksTotal);
+//		cudaMalloc(&solventBlocksIdsMedium, sizeof(int) * nBlocksTotal);
+//		cudaMalloc(&solventBlocksIdsDense, sizeof(int) * nBlocksTotal);
+//
+//		//std::vector<int> counts{ (int)idsSparse.size(), (int)idsDense.size() };
+//		//cudaMemcpy(nSolventblocksCounts, counts.data(), sizeof(int) * 2, cudaMemcpyHostToDevice);
+//
+//		cudaMemcpy(solventBlocksIdsSparse, idsSparse.data(), sizeof(int) * idsSparse.size(), cudaMemcpyHostToDevice);
+//		cudaMemcpy(solventBlocksIdsMedium, idsMedium.data(), sizeof(int) * idsMedium.size(), cudaMemcpyHostToDevice);
+//		cudaMemcpy(solventBlocksIdsDense, idsDense.data(), sizeof(int) * idsDense.size(), cudaMemcpyHostToDevice);
+//
+//		//LIMA_UTILS::genericErrorCheck("Error during BootstrapSolventblockDistributeFromDensity");
+//		//printf("N solvent blocks sparse: %d, dense: %d\n", (int)idsSparse.size(), (int)idsDense.size());
+//	}
+//
+//	__host__ void Free() {
+//		if (nSolventblocksCounts)
+//			cudaFree(nSolventblocksCounts);
+//		if (solventBlocksIdsSparse)
+//			cudaFree(solventBlocksIdsSparse);
+//		if (solventBlocksIdsMedium)
+//			cudaFree(solventBlocksIdsMedium);
+//		if (solventBlocksIdsDense)
+//			cudaFree(solventBlocksIdsDense);
+//	}
+//
+//	// Reads and clears the counts
+//	__host__ std::array<int, 3> ConsumeCounts() {
+//		std::array<int, 3> counts;
+//		cudaMemcpy(counts.data(), nSolventblocksCounts, sizeof(int) * 3, cudaMemcpyDeviceToHost);
+//		cudaMemset(nSolventblocksCounts, 0, sizeof(int) * 3);
+//		return counts;
+//	}
+//
+//
+//	int* nSolventblocksCounts = nullptr; // {sparse, medium, dense}
+//	int* solventBlocksIdsSparse = nullptr;
+//	int* solventBlocksIdsMedium = nullptr;
+//	int* solventBlocksIdsDense = nullptr;
+//};
 
 
 
@@ -177,6 +183,7 @@ namespace BoxGrid {
 	namespace TinymolBlockAdjacency {
         static const int nNearbyBlocks = 32;
 
+		
 		struct BlockRef {
 			/*int blockId = -1;
 			Float3 relShift{};*/
@@ -184,8 +191,33 @@ namespace BoxGrid {
 			Float3Compressed relShift{};
 		};
 
+
+		// Constant
+		struct NearbyBlocksSequences {
+			// Optim Pack this info into a single uint32_t?
+			struct Sequence{
+				int blockIndexStart = -1;
+				int nBlocks = -1;
+			};
+			static const int maxSequences = 22;
+			
+			Sequence sequences[maxSequences];
+			int nSequences = 0;
+		};
+
+		struct NearbyBlocksSequencesParticles {
+			struct Sequence {
+				int indexOfFirstParticleInSequence = -1;
+				int nParticlesInSequence = -1;
+			};
+			Sequence sequences[NearbyBlocksSequences::maxSequences];
+			int nSequences = 0;
+		};
+
+
 		// Returns a cudapointer to the data
         BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);
+		NearbyBlocksSequences* PrecomputeNearbyBlockSequences(Int3 boxlenNM);
 
 		__device__ inline const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
 			return &nearbyBlockIdsData[blockId * nNearbyBlocks];

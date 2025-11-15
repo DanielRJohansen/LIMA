@@ -108,7 +108,8 @@ def PlotErfcScalar():
     plt.show()
 
 def PlotSolventblockOccupancy():
-    data = np.loadtxt("solventforcesoccupancy.csv", delimiter=',', dtype=int)
+    #data = np.loadtxt("solventforcesoccupancy.csv", delimiter=',', dtype=int)
+    data = np.loadtxt("sequencelengths.csv", delimiter=',', dtype=int)
     data = data.flatten()  # ensure 1D
     data_sorted = np.sort(data)
     cdf = np.arange(1, len(data_sorted) + 1) / len(data_sorted)
@@ -120,11 +121,95 @@ def PlotSolventblockOccupancy():
     plt.grid(True, alpha=0.3)
     plt.show()
 
+
+# def PlotSqrtLerpError():
+#     xs = np.linspace(0, 2, 2000)
+#     true = np.sqrt(xs)
+
+#     def approx_error(n, gamma):
+#         # build nonuniform grid
+#         t = np.linspace(0, 1, n)
+#         grid_x = (t ** gamma) * 2.0
+#         grid_y = np.sqrt(grid_x)
+
+#         # piecewise linear interpolation on nonuniform grid
+#         approx = np.interp(xs, grid_x, grid_y)
+#         return np.abs(true - approx)
+
+#     plt.figure(figsize=(8,5))
+
+#     for n in [64, 128, 256]:
+#         err = approx_error(n, gamma=4.0)
+#         plt.plot(xs, err, label=f"n={n}")
+
+#     plt.title("Error for sqrt(x) with γ=4 warped grid")
+#     plt.xlabel("x")
+#     plt.ylabel("abs error")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
+
+def PlotSqrtLerpError():
+    xs = np.linspace(0, 0.2, 2000)
+    true = np.sqrt(xs)
+
+    def build_table(n, gamma):
+        t = np.linspace(0, 1, n)
+        gx = (t ** gamma) * 2.0
+        gy = np.sqrt(gx)
+        return gx, gy
+
+    def lerp_interp(x, gx, gy):
+        return np.interp(x, gx, gy)
+
+    def quad_interp(x, gx, gy):
+        # local quadratic interpolation:
+        # find segment index i so that gx[i] <= x <= gx[i+1]
+        i = np.searchsorted(gx, x) - 1
+        i = np.clip(i, 1, len(gx)-2)
+
+        # three points: (x0,y0), (x1,y1), (x2,y2)
+        x0, x1, x2 = gx[i-1], gx[i], gx[i+1]
+        y0, y1, y2 = gy[i-1], gy[i], gy[i+1]
+
+        # barycentric form of quadratic interpolation (fast, stable)
+        L0 = ((x - x1)*(x - x2)) / ((x0 - x1)*(x0 - x2))
+        L1 = ((x - x0)*(x - x2)) / ((x1 - x0)*(x1 - x2))
+        L2 = ((x - x0)*(x - x1)) / ((x2 - x0)*(x2 - x1))
+
+        return L0*y0 + L1*y1 + L2*y2
+
+    plt.figure(figsize=(8,5))
+
+    for n in [128, 256]:
+        gx, gy = build_table(n, gamma=4.0)
+
+        err_lerp = np.abs(true - lerp_interp(xs, gx, gy))
+        err_quad = np.abs(true - quad_interp(xs, gx, gy))
+
+        plt.plot(xs, err_quad, label=f"quad n={n}")
+        plt.plot(xs, err_lerp, label=f"lerp n={n}")
+
+    plt.title("Error: sqrt(x) approximation using quadratic interpolation")
+    plt.xlabel("x")
+    plt.ylabel("abs error")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+
+
+
 if __name__ == "__main__":
-    PlotSolventblockOccupancy()
+
+
+    PlotSqrtLerpError()
+
+    #PlotSolventblockOccupancy()
     #print(math.erfc(3))
 
-    Plotdata.PlotData()
+    #Plotdata.PlotData()
 
     #count_lines_in_directory()
     exit(0)

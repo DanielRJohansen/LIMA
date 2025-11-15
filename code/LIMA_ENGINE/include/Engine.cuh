@@ -120,11 +120,6 @@ private:
 	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
 
 	const BoundaryConditionSelect bc_select;
-
-	SolventBlockOccupancyTracker solventBlockOccupancyTracker;
-	int nSolventblocksSparse=-1;
-	int nSolventblocksMedium=-1;
-	int nSolventblocksDense=-1;
 };
 
  

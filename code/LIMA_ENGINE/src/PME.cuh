@@ -580,7 +580,7 @@ void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state
 		return;
 
 	Int3 bpd = boxlenNm.ToInt3();
-
+	// TODO: BIGTASK: Still missing solvents in PME
 	DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, bpd);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
 	ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);

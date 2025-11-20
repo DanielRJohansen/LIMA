@@ -168,6 +168,12 @@ namespace Benchmarks {
 			TestUtils::setConsoleTextColorDefault();
 		}
 
+		if (!ALL_PHYSICS_ENABLED) {
+			TestUtils::setConsoleTextColorYellow();
+			printf("Warning: Benchmarking with some physics disabled. Results may be significantly faster than expected.\n");
+			TestUtils::setConsoleTextColorDefault();
+		}
+
 
 		const fs::path workDir = simulations_dir / "benchmarking"/dir;
 		fs::path topPath, groPath;

@@ -64,59 +64,25 @@ namespace PhysicsUtilsDevice {
 	}
 
 
-	/*inline float CalcErfcScalar(float dist, float distSq) {
-		const float erfcTerm = erfc(dist * DeviceConstants::ewaldKappaHardcoded);
-		const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappaHardcoded / PI_sqrt * dist * exp(-DeviceConstants::ewaldKappaHardcoded * DeviceConstants::ewaldKappaHardcoded * distSq);
-		return scalar;
-	}*/
 	__device__ inline float CalcErfcScalar(float dist, float distSq) {
-		//float kappa = 3.f / 1.2f;
-		float kappa = DeviceConstants::ewaldKappa;
-		float erfcTerm = fasterfc(dist * kappa);
-		//const float erfcTerm = erfc(dist * kappa);
-		float scalar = erfcTerm + 2.f * kappa / PI_sqrt * dist * exp(-kappa * kappa * distSq);
+		if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
+			float kappa = DeviceConstants::ewaldKappa;
+			float erfcTerm = fasterfc(dist * kappa);
+			//const float erfcTerm = erfc(dist * kappa);
+			float scalar = erfcTerm + 2.f * kappa / PI_sqrt * dist * exp(-kappa * kappa * distSq);
 
-		return scalar;
-	}
-
-	/// <summary>
-	/// Calculate the force without multiplying the coulumbConstant, so caller must do that!!
-	/// </summary>
-	/// <param name="chargeProduct"></param>
-	/// <param name="diff"></param>
-	/// <returns>[]</returns>
-	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff)
-	{
-		const float invLen = rsqrtf(diff.lenSquared());                  // Computes 1 / sqrt(lenSquared)
-		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
-
-		Float3 force = diff * chargeProduct * invLenCubed;
-#ifdef FORCE_NAN_CHECK
-		if (force.isNan())
-			force.print('E');
-#endif
-		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
-				/*const float erfcTerm = erfc(diff.len() * DeviceConstants::ewaldKappa);
-				const float scalar = erfcTerm + 2.f * DeviceConstants::ewaldKappa / sqrt(PI) * diff.len() * exp(-DeviceConstants::ewaldKappa * DeviceConstants::ewaldKappa * diff.lenSquared());
-				force *= scalar;*/
-
-				float len = 1.f / invLen;
-				force *= CalcErfcScalar(len, len*len);
-			}
-			else {
-				const int N = DeviceConstants::ERFC_LUT_SIZE;
-				const float distanceInArray = fminf(diff.len() * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
-				const int index = static_cast<int>(std::floor(distanceInArray));
-				const int indexNext = std::min(index + 1, N - 1);
-				const float frac = distanceInArray - static_cast<float>(index);
-				const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
-
-				force *= scalar;
-			}
+			return scalar;
 		}
+		else {
+			const int N = DeviceConstants::ERFC_LUT_SIZE;
+			const float distanceInArray = fminf(dist * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
+			const int index = static_cast<int>(std::floor(distanceInArray));
+			const int indexNext = std::min(index + 1, N - 1);
+			const float frac = distanceInArray - static_cast<float>(index);
+			const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
 
-		return force;
+			return scalar;
+		}
 	}
 
 	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff, const float distSq)
@@ -130,23 +96,18 @@ namespace PhysicsUtilsDevice {
 			force.print('E');
 #endif
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
-				force *= CalcErfcScalar(1.f / invLen, distSq);
-			}
-			else {
-				const int N = DeviceConstants::ERFC_LUT_SIZE;
-				const float distanceInArray = fminf(1.f/invLen * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
-				const int index = static_cast<int>(std::floor(distanceInArray));
-				const int indexNext = std::min(index + 1, N - 1);
-				const float frac = distanceInArray - static_cast<float>(index);
-				const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
-
-				force *= scalar;
-			}
+			float len = 1.f / invLen;
+			force *= CalcErfcScalar(len, distSq);
 		}
 
 		return force;
 	}
+
+	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff) {
+		return CalcCoulumbForce_optim(chargeProduct, diff, diff.lenSquared());
+	}
+
+
 
 	// <summary>Calculate the potential without multiplying the coulumbConstant, so called must do that!!</summary>
 	// <param name="myCharge">[kilo C/mol]</param>

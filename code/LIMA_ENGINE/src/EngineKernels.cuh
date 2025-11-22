@@ -481,10 +481,6 @@ __global__ void TinymolCompoundinteractionsKernel(BoxState boxState, const BoxCo
 }
 
 
-
-
-
-// Batchsize must equal blockDim.x
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, int batchSize, int minParticlesThisBlock, int maxParticlesThisBlock>
 __global__ void solventForceKernel(BoxState boxState, ForceEnergy* const forceEnergiesGlobalMem)
 {	
@@ -497,10 +493,9 @@ __global__ void solventForceKernel(BoxState boxState, ForceEnergy* const forceEn
 	__shared__ int nParticlesInBlock;
 	__shared__ int startIndexInCompressedPositions;
 
-	constexpr int particlesPerThread = (maxParticlesThisBlock + batchSize - 1) / batchSize;
-	ForceEnergy forceEnergiesLocal[particlesPerThread]; // each thread fully owns the FE of every n particles, where n=batchsize
-	Float3 positionsLocal[particlesPerThread];
-	uint8_t atomTypesLocal[particlesPerThread];
+	ForceEnergy myForceenergy{};
+	Float3 myPosition{};
+	uint8_t myAtomtype{};
 
 	const int solventBlockId = blockIdx.x;
 	NodeIndex blockId3d = BoxGrid::Get3dIndex(solventBlockId, DeviceConstants::boxSize.boxSizeNM_i);
@@ -523,41 +518,41 @@ __global__ void solventForceKernel(BoxState boxState, ForceEnergy* const forceEn
 	}
 
 
-
-	for (int i = 0; i < particlesPerThread; i++) {
-		ParticleQuickData particleData = boxState.solventsParticleQuickDataCompressed[startIndexInCompressedPositions + i * batchSize + threadIdx.x];
-		positionsLocal[i] = particleData.relPos;
-		atomTypesLocal[i] = particleData.atomType;
-
-		forceEnergiesLocal[i] = {};
+	if (threadIdx.x < nParticlesInBlock) {
+		ParticleQuickData particleData = boxState.solventsParticleQuickDataCompressed[startIndexInCompressedPositions + threadIdx.x];
+		myPosition = particleData.relPos;
+		myAtomtype = particleData.atomType;
+		myForceenergy = {};
 	}
 
 	// --------------------------------------------------------------- Intrablock TinyMolParticleState Interactions ----------------------------------------------------- //
 	{
 		const int nBatches = (nParticlesInBlock + batchSize - 1) / batchSize;
 		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
-			queryDataBuffer[threadIdx.x] = ParticleQuickData{
-				positionsLocal[batchIndex],
-				{0,0,0},
-				atomTypesLocal[batchIndex],				 
-			};
+
+			int indexInBatch = static_cast<int>(threadIdx.x) - (batchIndex * batchSize);
+			
+			if (indexInBatch >= 0 && indexInBatch < batchSize && threadIdx.x < nParticlesInBlock) {
+				queryDataBuffer[indexInBatch] = ParticleQuickData{ 
+					myPosition, 
+					{0,0,0}, 
+					myAtomtype 
+				};
+			}
 
 			const int offset = batchIndex * batchSize;
 			const int nParticlesThisBatch = std::min(nParticlesInBlock - offset, batchSize);
 
 			__syncthreads();
 			LJ::ComputeSolventToSolventLJForcesIntrablock<computePotE, energyMinimize>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryDataBuffer, OOparams, charges, nParticlesInBlock, nParticlesThisBatch, offset);
+				(myForceenergy, myAtomtype, myPosition, queryDataBuffer, OOparams, charges, nParticlesInBlock, nParticlesThisBatch, offset);
 			__syncthreads();
 		}
 	}	
 	// ----------------------------------------------------------------------------------------------------------------------------------------------------- //
 
 	// --------------------------------------------------------------- Interblock TinyMolParticleState Interactions ----------------------------------------------------- //
-	
-	/*if (threadIdx.x < BoxGrid::TinymolBlockAdjacency::nNearbyBlocks) {
-		nearbyBlock[threadIdx.x] = BoxGrid::TinymolBlockAdjacency::GetPtrToNearbyBlockids(solventBlockId, boxConfig.tinymolNearbyBlockIds)[threadIdx.x];
-	}*/
+
 	auto tb = cooperative_groups::this_thread_block();
 	cooperative_groups::memcpy_async(tb, &nearbyBlockSequences, &(boxState.tinymolNearbyBlocksSequences[solventBlockId]), sizeof(BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences));
 	cooperative_groups::wait(tb);
@@ -572,7 +567,7 @@ __global__ void solventForceKernel(BoxState boxState, ForceEnergy* const forceEn
 		const int nParticlesInSequence = sequence.nParticlesInSequence;
 		const int nBatches = (nParticlesInSequence + batchSize - 1) / batchSize;
 
-		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {
+		for (int batchIndex = 0; batchIndex < nBatches; batchIndex++) {			
 			const int batchOffset = batchIndex * batchSize;
 			const int nParticlesThisBatch = std::min(nParticlesInSequence - batchOffset, batchSize);
 			const int batchStartIndex = sequence.indexOfFirstParticleInSequence + batchOffset;
@@ -582,27 +577,23 @@ __global__ void solventForceKernel(BoxState boxState, ForceEnergy* const forceEn
 				ParticleQuickData{};
 			__syncthreads();
 
-			NodeIndex queryNI{ (int)pqd.gridIndex[0], (int)pqd.gridIndex[1], (int)pqd.gridIndex[2] };
-			const NodeIndex shift = BoundaryCondition::applyHyperpos_Return(blockId3d, queryNI) - blockId3d;
-			pqd.relPos += shift.toFloat3();
-			queryDataBuffer[threadIdx.x] = pqd;
-			//queryPositions[threadIdx.x] = queryParticleRelpos.Tofloat4();
-			//queryTypeIds[threadIdx.x] = queryParticleTypeId;
+			if (threadIdx.x < nParticlesThisBatch) {
+				NodeIndex queryNI{ (int)pqd.gridIndex[0], (int)pqd.gridIndex[1], (int)pqd.gridIndex[2] };
+				const NodeIndex shift = BoundaryCondition::applyHyperpos_Return(blockId3d, queryNI) - blockId3d;
+				pqd.relPos += shift.toFloat3();
+				queryDataBuffer[threadIdx.x] = pqd;
+			}
 			__syncthreads();
 
 
-			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize, particlesPerThread>
-				(forceEnergiesLocal, atomTypesLocal, positionsLocal, queryDataBuffer, OOparams, charges, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
+			LJ::ComputeSolventToSolventLJForcesInterblock<computePotE, energyMinimize>
+				(myForceenergy, myAtomtype, myPosition, queryDataBuffer, OOparams, charges, nParticlesInBlock, nParticlesThisBatch, cutoffNMSq);
 		}
 	}
 
 	__syncthreads();
-    // Finally push force and potE for next kernel
-	for (int batchIndex = 0; batchIndex < particlesPerThread; batchIndex++) {
-		if (batchSize * batchIndex + threadIdx.x >= nParticlesInBlock)
-			break;
-
-		forceEnergiesGlobalMem[solventBlockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK + batchSize * batchIndex + threadIdx.x] = forceEnergiesLocal[batchIndex];
+	if (threadIdx.x < nParticlesInBlock) {
+		forceEnergiesGlobalMem[solventBlockId * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x] = myForceenergy;
 	}
 }
 

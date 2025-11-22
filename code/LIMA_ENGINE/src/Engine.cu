@@ -356,21 +356,21 @@ void Engine::_deviceMaster() {
 			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
-
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 0, SolventBlockOccupancyTracker::maxParticlesSparse>
-			<<<nSolventblocks, 32, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
+	 
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 1, SolventBlockOccupancyTracker::maxParticlesSparse>
+			<<<nSolventblocks, SolventBlockOccupancyTracker::maxParticlesSparse, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
 			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");		
 
 		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesSparse+1, SolventBlockOccupancyTracker::maxParticlesMedium>
-			<<<nSolventblocks, 64, 0, cudaStreams[3]>>>
+			<<<nSolventblocks, SolventBlockOccupancyTracker::maxParticlesMedium, 0, cudaStreams[3]>>>
 			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - medium");
 
 		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesMedium+1, SolventBlockOccupancyTracker::maxParticlesDense>
-			<< <nSolventblocks, 64, 0, cudaStreams[3] >> >
+			<< <nSolventblocks, SolventBlockOccupancyTracker::maxParticlesDense, 0, cudaStreams[3] >> >
 			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense2");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
 
 		TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >

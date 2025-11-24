@@ -357,20 +357,22 @@ void Engine::_deviceMaster() {
 			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->forceEnergiesCompoundinteractions);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
 	 
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, 32, 1, SolventBlockOccupancyTracker::maxParticlesSparse>
-			<<<nSolventblocks, SolventBlockOccupancyTracker::maxParticlesSparse, 0, cudaStreams[3]>>>	// DANGER DONT HARDCODE 32 and 64
-			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - sparse");		
 
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesSparse+1, SolventBlockOccupancyTracker::maxParticlesMedium>
-			<<<nSolventblocks, SolventBlockOccupancyTracker::maxParticlesMedium, 0, cudaStreams[3]>>>
+		constexpr auto occRanges = SolventBlockOccupancy::ranges;
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[0].batchsize, occRanges[0].min, occRanges[0].max>
+			<<<nSolventblocks, occRanges[0].max, 0, cudaStreams[3] >> >
 			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - medium");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");		
 
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, 64, SolventBlockOccupancyTracker::maxParticlesMedium+1, SolventBlockOccupancyTracker::maxParticlesDense>
-			<< <nSolventblocks, SolventBlockOccupancyTracker::maxParticlesDense, 0, cudaStreams[3] >> >
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[1].batchsize, occRanges[1].min, occRanges[1].max>
+			<<<nSolventblocks, occRanges[1].max, 0, cudaStreams[3] >> >
 			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel - dense");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+
+		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[2].batchsize, occRanges[2].min, occRanges[2].max>
+			<<<nSolventblocks, occRanges[2].max, 0, cudaStreams[3] >> >
+			(*boxStateCopy, forceEnergyInterims->forceEnergiesTinymolinteractions);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
 
 		TinymolBondgroupsKernel<emvariant>
 			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >

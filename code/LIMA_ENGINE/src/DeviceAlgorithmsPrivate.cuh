@@ -28,6 +28,17 @@ namespace LAL {
 			w[3] = lerp(DeviceConstants::bsplineTable[idxInv], DeviceConstants::bsplineTable[idxInvUp], fracInv);
 		}		
 	}
+
+	template<int order>
+	__device__ __forceinline__
+		float EvalPoly(const float x, const std::array<float, order>& coeffs)
+	{
+		float acc = coeffs[order];
+#pragma unroll
+		for (int i = order - 1; i >= 0; --i)
+			acc = acc * x + coeffs[i];
+		return acc;
+	}
 }
 
 
@@ -65,7 +76,44 @@ namespace PhysicsUtilsDevice {
 
 
 	__device__ inline float CalcErfcScalar(float dist, float distSq) {
-		if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
+		if constexpr (USE_PRECOMPUTED_ERFCSCALARS) {
+			const int N = DeviceConstants::ERFC_LUT_SIZE;
+			const float distanceInArray = fminf(dist * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
+			const int index = static_cast<int>(std::floor(distanceInArray));
+			const int indexNext = std::min(index + 1, N - 1);
+			const float frac = distanceInArray - static_cast<float>(index);
+			const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
+			
+			return scalar;
+			
+		}
+		else if constexpr (ERFC_USE_CHEBYSHEV_APPROXIMATION) {
+			constexpr float a0 = 1.0021710689;
+			constexpr float a1 = -0.1573428973;
+			constexpr float a2 = 2.6808707411;
+			constexpr float a3 = -29.9956062655;
+			constexpr float a4 = 57.2335637829;
+			constexpr float a5 = -28.4043932874;
+			constexpr float a6 = -22.0595037569;
+			constexpr float a7 = 27.4957110932;
+			constexpr float a8 = -7.7900877300;
+
+			float x = dist;
+
+			float scalar =  (((((((a8 * x + a7) * x + a6) * x + a5) * x + a4) * x + a3) * x + a2) * x + a1) * x + a0;
+
+			// TODO: WARNING: DANGER: This is being called with dist > 2, figure out where that comes from!!
+			//if constexpr (FORCE_CHECKS) {
+			//	if (scalar < -0.1f || scalar > 1.1f)
+			//		printf("Scalar out of bounds: %f  dist: %f\n", scalar, dist);
+			//}
+
+			// handle small numeric errors
+			scalar = std::clamp(scalar, 0.f, 1.f);
+
+			return scalar;
+		}
+		else {
 			float kappa = DeviceConstants::ewaldKappa;
 			float erfcTerm = fasterfc(dist * kappa);
 			//const float erfcTerm = erfc(dist * kappa);
@@ -73,19 +121,9 @@ namespace PhysicsUtilsDevice {
 
 			return scalar;
 		}
-		else {
-			const int N = DeviceConstants::ERFC_LUT_SIZE;
-			const float distanceInArray = fminf(dist * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
-			const int index = static_cast<int>(std::floor(distanceInArray));
-			const int indexNext = std::min(index + 1, N - 1);
-			const float frac = distanceInArray - static_cast<float>(index);
-			const float scalar = LAL::lerp(DeviceConstants::erfcForcescalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
-
-			return scalar;
-		}
 	}
 
-	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff, const float distSq)
+	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq)
 	{
 		const float invLen = rsqrtf(distSq);                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
@@ -103,8 +141,81 @@ namespace PhysicsUtilsDevice {
 		return force;
 	}
 
-	__device__ inline Float3 CalcCoulumbForce_optim(const float chargeProduct, const Float3& diff) {
-		return CalcCoulumbForce_optim(chargeProduct, diff, diff.lenSquared());
+	//__device__ inline Float3 CalcCoulumbForceChebyshev(const float chargeProduct, const Float3& diff, const float distSq)
+	//{
+	//	// ApproximationCutoff
+	//	if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
+	//		return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq);
+	//	}
+
+
+	//	constexpr float a0 = 81.8869829271;
+	//	constexpr float a1 = -994.1834195934;
+	//	constexpr float a2 = 5251.1528499177;
+	//	constexpr float a3 = -15345.7257415252;
+	//	constexpr float a4 = 26873.9011166293;
+	//	constexpr float a5 = -28831.2495036422;
+	//	constexpr float a6 = 18538.9981271726;
+	//	constexpr float a7 = -6553.1557863429;
+	//	constexpr float a8 = 978.3199500712;
+	//	
+	//	const float invLenCubedTimesErfcScalarApprox =
+	//		fmaf(distSq, fmaf(distSq,
+	//			fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, a8, a7),
+	//				a6), a5), a4), a3), a2), a1), a0);	
+	//	
+	//	return diff * chargeProduct * invLenCubedTimesErfcScalarApprox;
+	//}
+
+
+	__device__ inline Float3 CalcCoulumbForceChebyshevPiecewise(
+		const float chargeProduct, const Float3& diff, const float distSq) 
+	{
+		if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
+			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq);
+		}
+
+		const float domainCutoff = 0.5f;
+		static constexpr std::array<float, 9> coeffsNeardomain{
+			187.7238724824,
+			-4014.1788106412,
+			41185.4079517427,
+			-251099.5537387842,
+			968430.6814281681,
+			-2386421.5553119550,
+			3643489.5602366733,
+			-3139832.7458249126,
+			1167337.1327849999,
+		};
+
+		static constexpr std::array<float, 9> coeffsFardomain{
+			15.3497439236,
+			-106.5149330052,
+			332.1234300295,
+			-601.7258661806,
+			687.7123528098,
+			-505.0208577000,
+			231.8314792008,
+			-60.6654824767,
+			6.9160030527,
+		};
+
+		const auto& a = distSq < domainCutoff ? coeffsNeardomain : coeffsFardomain;
+		const float invLenCubedTimesErfcScalarApprox = LAL::EvalPoly<9>(distSq, a);
+
+		return diff * chargeProduct * invLenCubedTimesErfcScalarApprox;
+	}
+
+
+	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq) {
+		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)			
+			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, diff, distSq);
+		else
+			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared());
+	}
+
+	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff) {
+		return CalcCoulumbForce(chargeProduct, diff, diff.lenSquared());
 	}
 
 
@@ -135,4 +246,7 @@ namespace PhysicsUtilsDevice {
 
 		return potential;
 	}
+
+
+
 }

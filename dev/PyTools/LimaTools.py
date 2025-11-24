@@ -10,6 +10,10 @@ import Energies
 import math
 from scipy.special import erfc
 import Plotdata
+
+from ErfcScalarPolynomialApprox import ApproxBoth, ApproxSqrt
+
+
 def read_histogram_data(filename):
     with open(filename, 'rb') as f:
         # Read the number of steps
@@ -203,8 +207,9 @@ def PlotSqrtLerpError():
 
 if __name__ == "__main__":
 
-
-    PlotSqrtLerpError()
+    ApproxSqrt()
+    #ApproxBoth()
+    #PlotSqrtLerpError()
 
     #PlotSolventblockOccupancy()
     #print(math.erfc(3))

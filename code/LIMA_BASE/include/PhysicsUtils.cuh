@@ -1,7 +1,6 @@
 #pragma once
 
 namespace PhysicsUtils {
-
 	constexpr float modifiedCoulombConstant = COULOMBCONSTANT / NANO / AVOGADROSNUMBER * KILO * KILO;	// [J/mol*nm / (kilo C/mol)^2]
 
 	/// <summary></summary>

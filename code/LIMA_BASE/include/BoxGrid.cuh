@@ -75,10 +75,19 @@ struct SolventBlock {
 	int nBondgroups = 0;
 };
 
-namespace SolventBlockOccupancyTracker {
-	static constexpr int maxParticlesSparse = 32;
-	static constexpr int maxParticlesMedium = 128;
-	static constexpr int maxParticlesDense = SolventBlock::maxParticles;
+namespace SolventBlockOccupancy {
+	struct Occupancy {
+		int min; int max; int batchsize;
+	};
+	static constexpr std::array<Occupancy, 3> ranges{
+	Occupancy{1, 32, 32},
+	Occupancy{33, 128, 64},
+	//Occupancy{33, 64, 64},
+	//Occupancy{65, 128, 64},
+	Occupancy{129, SolventBlock::maxParticles, 64}
+	};
+
+
 }
 
 //struct SolventBlockOccupancyTracker {

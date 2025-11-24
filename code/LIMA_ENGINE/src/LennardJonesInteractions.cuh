@@ -10,9 +10,6 @@
 #include <cfloat>
 
 namespace LJ {
-	// __shared__ mem version
-
-
 	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
 
 
@@ -118,7 +115,7 @@ namespace LJ {
 		}
 
 		potE_sum += electrostaticPotential;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		return force * 24.f + electrostaticForce;
 	}
 
 	// For non bonded-to compounds
@@ -153,7 +150,7 @@ namespace LJ {
 		}		
 
 		potE_sum += electrostaticPotential;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		return force * 24.f + electrostaticForce;
 	}
 
 
@@ -191,10 +188,9 @@ namespace LJ {
 			}
 			if constexpr (ENABLE_ES_SR) {
 				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndexRel].atomType];
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq) * PhysicsUtilsDevice::modifiedCoulombConstant;
+				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
 				if constexpr (computePotE)
 					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
-					//fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
 			}
 		}
 	}
@@ -228,10 +224,9 @@ namespace LJ {
 
 			if constexpr (ENABLE_ES_SR) {
 				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndex].atomType];
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq) * PhysicsUtilsDevice::modifiedCoulombConstant;
+				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
 				if constexpr (computePotE)
 					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
-					//fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
 			}
 		}
 	}
@@ -268,7 +263,7 @@ namespace LJ {
 		}
 
 		potE_sum += electrostaticPotential;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		return force * 24.f + electrostaticForce;
 	}
 	
 	template<bool computePotE, bool emvariant>
@@ -304,6 +299,6 @@ namespace LJ {
 		}
 
 		potE_sum += electrostaticPotential;
-		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
+		return force * 24.f + electrostaticForce;
 	}
 }

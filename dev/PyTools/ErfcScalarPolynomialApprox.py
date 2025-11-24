@@ -102,8 +102,9 @@ def InvLenCubeFunc(distSq):
     invLen = 1. / np.sqrt(distSq)
     return invLen * invLen * invLen
 
-def BothFunc(distSq):
-    return InvLenCubeFunc(distSq) * ErfcScalarFunc(distSq)
+def CoulumbForce(distSq):
+    modifiedCoulumbConstant = 14.924181
+    return InvLenCubeFunc(distSq) * ErfcScalarFunc(distSq) * modifiedCoulumbConstant
 
 def CoulumbPotential(distSq):
     kappa = 2.5
@@ -164,7 +165,7 @@ def ApproxInvlenCube():
 
     DoApproximation(InvLenCubeFunc, domain, degrees)
 
-def ApproxBoth():
+def ApproxCoulumbForce():
     #cutoff = 1.2    
     #domainNear = (0.01, 0.1)
     #domainMedium = (0.1, 0.4)
@@ -178,7 +179,7 @@ def ApproxBoth():
     
     res = []
     for domain in domains:
-        res.append(DoApproximation(BothFunc, domain, degrees))
+        res.append(DoApproximation(CoulumbForce, domain, degrees))
 
     plot_approximations(res, title="Approximation")
 
@@ -209,5 +210,5 @@ if __name__ == "__main__":
     #ApproxErfcScalar()
     #ApproxInvlenCube()
     #ApproxSqrt()
-    #ApproxBoth()
-    ApproxCoulumbPotential()
+    ApproxCoulumbForce()
+    #ApproxCoulumbPotential()

@@ -129,7 +129,7 @@ namespace PhysicsUtilsDevice {
 		const float invLen = rsqrtf(distSq);                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
 
-		Float3 force = diff * chargeProduct * invLenCubed;
+		Float3 force = diff * chargeProduct * invLenCubed * modifiedCoulombConstant;
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan())
 			force.print('E');
@@ -142,32 +142,6 @@ namespace PhysicsUtilsDevice {
 		return force;
 	}
 
-	//__device__ inline Float3 CalcCoulumbForceChebyshev(const float chargeProduct, const Float3& diff, const float distSq)
-	//{
-	//	// ApproximationCutoff
-	//	if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
-	//		return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq);
-	//	}
-
-
-	//	constexpr float a0 = 81.8869829271;
-	//	constexpr float a1 = -994.1834195934;
-	//	constexpr float a2 = 5251.1528499177;
-	//	constexpr float a3 = -15345.7257415252;
-	//	constexpr float a4 = 26873.9011166293;
-	//	constexpr float a5 = -28831.2495036422;
-	//	constexpr float a6 = 18538.9981271726;
-	//	constexpr float a7 = -6553.1557863429;
-	//	constexpr float a8 = 978.3199500712;
-	//	
-	//	const float invLenCubedTimesErfcScalarApprox =
-	//		fmaf(distSq, fmaf(distSq,
-	//			fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, fmaf(distSq, a8, a7),
-	//				a6), a5), a4), a3), a2), a1), a0);	
-	//	
-	//	return diff * chargeProduct * invLenCubedTimesErfcScalarApprox;
-	//}
-
 
 	__device__ inline Float3 CalcCoulumbForceChebyshevPiecewise(
 		const float chargeProduct, const Float3& diff, const float distSq) 
@@ -178,27 +152,27 @@ namespace PhysicsUtilsDevice {
 
 		const float domainCutoff = 0.5f;
 		static constexpr std::array<float, 9> coeffsNeardomain{
-			187.7238724824,
-			-4014.1788106412,
-			41185.4079517427,
-			-251099.5537387842,
-			968430.6814281681,
-			-2386421.5553119550,
-			3643489.5602366733,
-			-3139832.7458249126,
-			1167337.1327849999,
-		};
+			2801.6250509480,
+			-59908.3311363743,
+			614658.4828306455,
+			-3747455.1890168283,
+			14453034.7755872533,
+			-35615387.2337769344,
+			54376097.6685821563,
+			-46859432.2084176466,
+			17421550.6577042267,
+		}; // The magnitude of these is quite an issue...
 
 		static constexpr std::array<float, 9> coeffsFardomain{
-			15.3497439236,
-			-106.5149330052,
-			332.1234300295,
-			-601.7258661806,
-			687.7123528098,
-			-505.0208577000,
-			231.8314792008,
-			-60.6654824767,
-			6.9160030527,
+			229.0823566196,
+			-1589.6481393717,
+			4956.6701841007,
+			-8980.2657392603,
+			10263.5436292686,
+			-7537.0226890896,
+			3459.8949570903,
+			-905.3826409340,
+			103.2156813554,
 		};
 
 		const auto& a = distSq < domainCutoff ? coeffsNeardomain : coeffsFardomain;

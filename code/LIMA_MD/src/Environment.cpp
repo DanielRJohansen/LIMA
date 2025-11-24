@@ -93,6 +93,9 @@ void Environment::createSimulationFiles(float boxlen) {
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
+	if (simulation->simparams_host.cutoff_nm != 1.2f) {// TODO: DANGER
+		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
+	}
 }
 
 void Environment::verifyBox() {
@@ -146,6 +149,7 @@ bool Environment::prepareForRun() {
 
 	simulation->PrepareDataBuffers();
 	
+	verifySimulationParameters();
 	verifyBox();
 	simulation->ready_to_run = true;
 

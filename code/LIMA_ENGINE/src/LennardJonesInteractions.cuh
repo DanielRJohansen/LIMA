@@ -113,11 +113,11 @@ namespace LJ {
 			if constexpr (ENABLE_ES_SR) {
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf * charges[neighborparticle_id], -diff);
 				if constexpr (computePotE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf * charges[neighborparticle_id], diff);
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf * charges[neighborparticle_id], diff.lenSquared());
 			}
 		}
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		potE_sum += electrostaticPotential;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
@@ -147,12 +147,12 @@ namespace LJ {
 				if constexpr (ENABLE_ES_SR) {
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
 					if constexpr (computePotE && ENABLE_POTE)
-						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeSelf * chargeNeighbors[neighborparticle_id], diff);
+						electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential(chargeSelf * chargeNeighbors[neighborparticle_id], diff.lenSquared());
 				}
 			}
 		}		
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		potE_sum += electrostaticPotential;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 
@@ -193,7 +193,8 @@ namespace LJ {
 				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndexRel].atomType];
 				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq) * PhysicsUtilsDevice::modifiedCoulombConstant;
 				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
+					//fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
 			}
 		}
 	}
@@ -229,7 +230,8 @@ namespace LJ {
 				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndex].atomType];
 				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq) * PhysicsUtilsDevice::modifiedCoulombConstant;
 				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
+					//fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff) * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
 			}
 		}
 	}
@@ -261,11 +263,11 @@ namespace LJ {
 				const float chargeProduct = myCharge * forcefieldTinymol_shared.types[tinymolTypeIds[i]].charge;
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
 				if constexpr (computePotE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());
 			}
 		}
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		potE_sum += electrostaticPotential;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 	
@@ -297,11 +299,11 @@ namespace LJ {
 				const float chargeProduct = forcefieldTinymol_shared.types[tinymolTypeId].charge * charges[i];
 				electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
 				if constexpr (computePotE)
-					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential_optim(chargeProduct, diff);
+					electrostaticPotential += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());
 			}
 		}
 
-		potE_sum += electrostaticPotential * PhysicsUtilsDevice::modifiedCoulombConstant * 0.5f;
+		potE_sum += electrostaticPotential;
 		return force * 24.f + electrostaticForce * PhysicsUtilsDevice::modifiedCoulombConstant;
 	}
 }

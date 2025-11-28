@@ -345,63 +345,130 @@ public:
 template <bool isCUDA>
 class DrawAtomsShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
-    #version 430 core 
-    struct RenderAtom { 
+#version 430 core 
+struct RenderAtom { 
     vec4 position; // {posX, posY, posZ, radius} 
     vec4 color;    // {r, g, b, a} 
-    }; 
-     
-    // Uniform block for RenderAtoms, dynamic size 
-    layout(std430, binding = 0) buffer RenderAtoms { 
-        RenderAtom atoms[]; 
-    }; 
-  
-   
-    uniform mat4 View;   // View matrix
-    uniform mat4 Proj;   // Projection matrix
-    uniform int numAtoms; 
-    uniform int numVerticesPerAtom; 
-    uniform float pi = 3.14159265359f; 
+}; 
+ 
+layout(std430, binding = 0) buffer RenderAtoms { 
+    RenderAtom atoms[]; 
+}; 
 
-    out vec4 vertexColor; 
+uniform mat4 View;   // View matrix
+uniform mat4 Proj;   // Projection matrix
+uniform int numAtoms; 
+uniform int numVerticesPerAtom; 
+uniform float pi = 3.14159265359f; 
 
-    void main() { 
-        int numTrianglesPerAtom = numVerticesPerAtom - 2; 
-        float light = (sin(float(gl_VertexID * 2 * pi) / float(numTrianglesPerAtom)) + 1.f) / 2.f;
-        float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom); 
-        vec4 atomPos = atoms[gl_InstanceID].position; 
+out vec4 vertexColor; 
 
-        // Calculate the position of the sphere center in view space
-        vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0); 
-    
-        // Compute the offset in object space to make the sphere face the camera
-        float radius = atomPos.w;
-        vec4 offset = vec4(cos(angle) * radius, sin(angle) * radius, -0.1, 0.0); // 0.01 makes the circles cones, giving the illusion of depth
+void main() { 
+    int numTrianglesPerAtom = numVerticesPerAtom - 2; 
+    float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom); 
+    vec4 atomPos = atoms[gl_InstanceID].position; 
+
+    // Atom center in view space
+    vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0); 
+    float radius = atomPos.w;
+
+    // Build a basis so the cone axis points toward the camera (view-space)
+    vec3 viewDir = normalize(-viewSpacePos.xyz);
+    vec3 up = (abs(viewDir.z) < 0.999f)
+        ? vec3(0.0, 0.0, 1.0)
+        : vec3(0.0, 1.0, 0.0);
+    vec3 right = normalize(cross(up, viewDir));
+    vec3 up2   = cross(viewDir, right);
+
+    vec4 objectSpacePos;
+    float light;
+
+    if (gl_VertexID == 0) {
+        // Center vertex at atom center
+        objectSpacePos = viewSpacePos;
+        light = .7f;
+    } else {
+        // Cone geometry in view space
+        float coneSlope = 0.15f;
+        float coneDepth = radius * coneSlope;
+
+        vec3 offset3 =
+            right * (cos(angle) * radius) +
+            up2   * (sin(angle) * radius) -
+            viewDir * coneDepth;
+
+        objectSpacePos = viewSpacePos + vec4(offset3, 0.0);
         
 
-        // Combine view space position and offset, then apply the projection
-        vec4 objectSpacePos = viewSpacePos + offset;
-        gl_Position = Proj * objectSpacePos;
+        // Use vertical (view-space Y) offset on the circle.
+        float ny = clamp(offset3.y / radius, -1.0f, 1.0f); // -1 bottom, +1 top
+        // Map ny from [-1,1] -> [0,1], then add some ambient floor
+        //light = 0.3f + 0.7f * (0.5f + 0.5f * ny);
+        float light1 = ((ny * 0.5f) * (ny * 0.5f) + 0.5f);
+        light = clamp(ny * 0.5f + 0.6, 0.0f, 1.0f);
+    }
 
-        // Ensure the center vertex of the fan is at the correct position
-        if (gl_VertexID == 0) { 
-            gl_Position = Proj * viewSpacePos; 
-        } 
+    gl_Position = Proj * objectSpacePos;
 
-        vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w); 
-        //vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, 0.25f); 
-    }  
+    vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light,
+                       atoms[gl_InstanceID].color.w); 
+}  
     )";
 
 
     static constexpr const char* fragmentShaderSource = R"(
-    #version 430 core 
-    in vec4 vertexColor; 
-    out vec4 FragColor; 
-     
-    void main() { 
-        FragColor = vertexColor; 
-    } 
+#version 430 core 
+in vec4 vertexColor; 
+out vec4 FragColor; 
+  
+void main() { 
+    FragColor = vertexColor; 
+} 
+
+
+//in vec4 vertexColor;
+//in vec2 localUV;
+//
+//out vec4 FragColor;
+//
+//void main() {
+//    float r2 = dot(localUV, localUV);
+//    if (r2 > 1.0)
+//        discard;
+//
+//    // simple radial attenuation (edge darker)
+//    float radial = 1.0 - r2;
+//
+//    FragColor = vec4(vertexColor.rgb * radial, vertexColor.a);
+//}
+
+
+
+//    #version 430 core 
+//    in vec4 vertexColor; 
+//    out vec4 FragColor; 
+//    in vec2 localUV;
+//
+//    void main() { 
+////        FragColor = vertexColor; 
+//        float r2 = dot(localUV, localUV);
+//        if (r2 > 1.0) discard;           // HARD sphere silhouette
+//
+//        float z = sqrt(1.0 - r2);        // sphere depth
+//        vec3 normal = normalize(vec3(localUV, z));
+//
+//        float light = max(normal.z, 0.0);
+//        FragColor = vec4(vertexColor.rgb * light, vertexColor.a);
+//
+//        /*
+//        vec3 lightDir = normalize(vec3(0.3, 0.5, 0.8)); // view-space
+//        float NdotL = max(dot(normal, lightDir), 0.0);
+//
+//        float ambient = 0.2;
+//        vec3 color = vertexColor.rgb * (ambient + 0.8 * NdotL);
+//
+//        FragColor = vec4(color, vertexColor.a);*/        
+//    } 
     )";
 
     GLuint VBO;
@@ -464,7 +531,7 @@ public:
         SetUniformMat4("Proj", projection);
         SetUniformI("numAtoms", nAtoms);
 
-        const int numVerticesPerAtom = 18;
+        const int numVerticesPerAtom = 24;
 		SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
         
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, nAtoms);

@@ -1,11 +1,21 @@
+#include <GL/glew.h>
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
+
+
 #include "Display.h"
 #include "Shaders.h"    
 #include "TimeIt.h"
 #include "MDFiles.h"
 
-#include <GL/glew.h>
+
+
+
 #include <GLFW/glfw3.h>
 #include <algorithm>
+
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -18,6 +28,9 @@
 #elif defined(__linux__) || defined(__APPLE__)
 #include <pthread.h>
 #endif
+
+
+
 
 using namespace Rendering;
 
@@ -199,6 +212,8 @@ void Display::PrepareTask(Task& task) {
 void Display::Mainloop() {
     Rendering::Task currentRenderTask = nullptr;
 
+    Overlay overlay{window, FileUtils::GetLimaDir()};
+
     while (!kill) {
         // Update camera, check if window is closed
         glfwPollEvents();
@@ -206,6 +221,8 @@ void Display::Mainloop() {
             break;
             printf("Window closed");
         }
+
+		overlay.Draw(rendersettings);
 
         // Check if new data
         {
@@ -227,7 +244,8 @@ void Display::Mainloop() {
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                    _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), taskPtr->boxparams.total_particles, true);
+					const int nParticles = rendersettings.showSolvents ? taskPtr->boxparams.total_particles : taskPtr->boxparams.total_compound_particles;
+                    _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
@@ -240,6 +258,10 @@ void Display::Mainloop() {
                 }
                 }, currentRenderTask);
         }
+
+        overlay.Render();
+
+        glfwSwapBuffers(window);
     }
 }
 

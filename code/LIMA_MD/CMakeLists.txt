@@ -1,6 +1,17 @@
 #LIMA_MD
 
 add_library(LIMA_MD STATIC
+
+
+
+    #imgui/imgui.cpp
+    #imgui/imgui_draw.cpp
+    #imgui/imgui_tables.cpp
+    #imgui/imgui_widgets.cpp
+    #imgui/imgui_demo.cpp
+    #imgui/backends/imgui_impl_glfw.cpp
+    #imgui/backends/imgui_impl_opengl3.cpp
+
     src/Analyzer.cu
     src/BoxBuilder.cpp
     src/Display.cpp
@@ -9,6 +20,7 @@ add_library(LIMA_MD STATIC
     src/Programs.cpp
     src/Rendering.cpp
     src/Lipids.cpp
+    src/Overlay.cpp
 )
 
 
@@ -24,10 +36,12 @@ endif()
 target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${GLFW_INCLUDE_DIRS}
+    #${CMAKE_CURRENT_SOURCE_DIR}/imgui/
+    #${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends/
 )
 target_include_directories(LIMA_MD PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/code/dependencies/glm/
+    ${CMAKE_SOURCE_DIR}/code/dependencies/glm/    
 )
 
 
@@ -36,13 +50,13 @@ target_compile_definitions(LIMA_MD PUBLIC GLEW_STATIC)
 
 
 target_link_libraries(LIMA_MD 
+    LIMA_DEPENDS
+    ${GLFW_LIBRARIES}
+    ${OPENGL_LIBRARIES}    
     LIMA_BASE
     LIMA_ENGINE
     LIMA_CONVEXHULLENGINE
     LIMA_TOOLS
-    LIMA_DEPENDS
-    ${GLFW_LIBRARIES}
-    ${OPENGL_LIBRARIES}
 )
 
 
@@ -56,4 +70,4 @@ endif()
 
 # Self-test executable
 add_executable(md_self_test src/Main.cpp "src/Shaders.h")
-target_link_libraries(md_self_test LIMA_MD)
+target_link_libraries(md_self_test LIMA_MD ${GLFW_LIBRARIES})

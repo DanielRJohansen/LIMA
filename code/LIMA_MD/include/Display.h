@@ -4,6 +4,7 @@
 #include "LimaTypes.cuh"
 #include "Utilities.h"
 #include "MoleculeHull.cuh"
+#include "filesystem"
 
 #include <chrono>
 #include <string>
@@ -84,7 +85,9 @@ namespace Rendering {
 }
 
 
-
+struct RenderSettings {
+	bool showSolvents = true;
+};
 
 class Display {
 public:
@@ -141,7 +144,11 @@ private:
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;
+	//bool renderSolvents = true;
+	RenderSettings rendersettings;
 	FPS fps{};
+
+
 
 	Rendering::Task incomingRenderTask = nullptr;
 	std::mutex incomingRenderTaskMutex;
@@ -178,4 +185,14 @@ private:
 
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
+};
+
+
+class Overlay {
+public:
+	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
+	~Overlay();
+
+	void Draw(RenderSettings&);
+	void Render();
 };

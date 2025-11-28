@@ -60,8 +60,7 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
     if (fromCuda)
         drawAtomsFromCudaShader->Draw(view, projection, totalParticles);
     else
-        drawAtomsFromCpuShader->Draw(view, projection, totalParticles);
-	glfwSwapBuffers(window);
+        drawAtomsFromCpuShader->Draw(view, projection, totalParticles);	
 }
 
 
@@ -189,8 +188,6 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 	if (renderFacetsNormals)
 		drawNormalsShader->Draw(VP, molCollection.facets, molCollection.nFacets, boxSize);
 
-	// Swap front and back buffers
-	glfwSwapBuffers(window);
 
 	fps.NewFrame();
 	std::string windowText = window_title + "    FPS: " + std::to_string(fps.GetFps());

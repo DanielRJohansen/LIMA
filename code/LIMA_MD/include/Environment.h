@@ -93,13 +93,15 @@ public:
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 
+	SimStatus simStatus{};
+
 	bool prepareForRun();
 private:
 
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void handleStatus(int64_t step);
+	void handleStatus(int64_t step, bool emVariant);
 
 	// Returns false if display has been closed by user
 	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
@@ -121,6 +123,7 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
+	std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
 
 	ColoringMethod coloringMethod;	// Not ideal to have here..
 

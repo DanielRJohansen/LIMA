@@ -59,6 +59,7 @@ namespace Rendering {
 		/*int64_t step;
 		float temperature;*/
 		ColoringMethod coloringMethod;
+		SimStatus simStatus;
 	};
 
 	struct MoleculehullTask {
@@ -193,6 +194,6 @@ public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&);
+	void Draw(RenderSettings&, const SimStatus&);
 	void Render();
 };

@@ -34,7 +34,6 @@ struct RunStatus {
 	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
 	float current_temperature = NAN;
-
 	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;

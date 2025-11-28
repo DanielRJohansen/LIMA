@@ -81,8 +81,8 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
         drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
 
 
-    std::string windowText = window_title + "\n" + task.siminfo;
-    glfwSetWindowTitle(window, windowText.c_str());
+    //std::string windowText = window_title + "\n" + task.siminfo;
+    //glfwSetWindowTitle(window, windowText.c_str());
 
     // Preprocess the renderAtoms
     {

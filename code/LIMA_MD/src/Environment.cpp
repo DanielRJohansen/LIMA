@@ -186,6 +186,8 @@ void Environment::sayHello() {
 std::chrono::duration<double> Environment::run() {
 	const bool emVariant = simulation->simparams_host.em_variant;
 	const bool stepwise = simulation->simparams_host.stepwise;
+	simparamsCopy = simulation->simparams_host;
+
     if (!prepareForRun()) { return {}; }
 
 	std::unique_ptr<Display> display = nullptr;
@@ -208,7 +210,7 @@ std::chrono::duration<double> Environment::run() {
 		
 		engine->step();
 
-		handleStatus(engine->runstatus.current_step);
+		handleStatus(engine->runstatus.current_step, emVariant);
 		
 		if (engine->runstatus.simulation_finished) {
 			break;
@@ -224,6 +226,7 @@ std::chrono::duration<double> Environment::run() {
 	engine->terminateSimulation();
 
 	simulation = engine->takeBackSim();
+	simparamsCopy.reset();
 
 	simulation->finished = true;
 	simulation->ready_to_run = false ;
@@ -360,7 +363,7 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
-void Environment::handleStatus(const int64_t step) {
+void Environment::handleStatus(const int64_t step, bool emVariant) {
 	if (m_mode == Headless) {
 		return;
 	}
@@ -379,6 +382,20 @@ void Environment::handleStatus(const int64_t step) {
 
 		time0 = std::chrono::steady_clock::now();
 		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
+
+
+
+		SimStatus newStatus{};
+		newStatus.step = engine->runstatus.current_step;
+		newStatus.maxForce = emVariant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
+		newStatus.temperature = !emVariant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
+		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
+		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
+		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
+		const double wall_time_sec = duration.count() * 1e-3;
+		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+		newStatus.simulationPerformance = ns_per_day;
+		simStatus = newStatus;
 	}
 }
 
@@ -394,14 +411,14 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 		std::rethrow_exception(displayException);
 	}
 
-	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
-		
+	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {		
+
 		const std::string info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
+			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
 		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;

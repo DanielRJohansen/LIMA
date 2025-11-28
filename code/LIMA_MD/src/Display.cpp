@@ -221,8 +221,7 @@ void Display::Mainloop() {
             break;
             printf("Window closed");
         }
-
-		overlay.Draw(rendersettings);
+        
 
         // Check if new data
         {
@@ -245,6 +244,7 @@ void Display::Mainloop() {
                 using T = std::decay_t<decltype(taskPtr)>;
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
 					const int nParticles = rendersettings.showSolvents ? taskPtr->boxparams.total_particles : taskPtr->boxparams.total_compound_particles;
+                    overlay.Draw(rendersettings, taskPtr->simStatus);
                     _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {

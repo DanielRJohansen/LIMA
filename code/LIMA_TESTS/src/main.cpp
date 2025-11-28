@@ -66,7 +66,7 @@ int main() {
 		
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
 		SimParams simparams; 
-		simparams.n_steps = 10000;
+		simparams.n_steps = 100000;
 		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 

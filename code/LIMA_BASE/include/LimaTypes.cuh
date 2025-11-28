@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 #include <span>
+#include <optional>
 #include "Constants.h"
 
 #include <array>
@@ -637,4 +638,12 @@ struct RenderAtom {
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
+};
+
+struct SimStatus {
+	size_t step = 0;
+	std::optional<float> temperature = std::nullopt;			// [K]
+	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
+	float avgStepTime = NAN;							// [ms]
+	std::optional<float> simulationPerformance = std::nullopt; // [ns/day]
 };

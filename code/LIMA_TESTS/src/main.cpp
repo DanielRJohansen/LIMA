@@ -63,13 +63,16 @@ int main() {
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 		//TestIntegration(envmode);
 
-		
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
-		SimParams simparams; 
-		simparams.n_steps = 100000;
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-
+		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
+		//SimParams simparams; 
+		//simparams.n_steps = 100000;
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
+		//for (int i = 0; i < 100; i++) {
+		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
+		//	if (!res.success)
+		//		break;
+		//}
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -133,7 +136,7 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -187,6 +190,8 @@ void RunAllUnitTests() {
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7));
 	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
+	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode));
+
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));

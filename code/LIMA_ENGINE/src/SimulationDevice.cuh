@@ -168,7 +168,10 @@ struct ForceEnergyInterims {
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
 
 	// Tinymol
-	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
-	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
-	ForceEnergy* forceEnergiesTinymolBondgroups = nullptr;
+	struct {
+		ForceEnergy* compoundsInteractions = nullptr;
+		ForceEnergy* solventsInteractions = nullptr;
+		ForceEnergy* bondgroupsInteractions = nullptr;
+		ForceEnergy* pmeInteraction = nullptr;
+	} solvents;
 };

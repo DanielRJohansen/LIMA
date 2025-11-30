@@ -385,6 +385,27 @@ namespace TestUtils {
 		std::system(command.c_str());
 	}
 
+	LimaUnittestResult TestIsDeterministic(std::function<LimaUnittestResult()> testFunc, int repetitions, EnvMode envmode) {
+		std::vector<std::string> results;
+		for (int i = 0; i < repetitions; i++) {
+			LimaUnittestResult result = testFunc();
+			results.push_back(result.error_description);
+		}
+		bool allSame = std::all_of(results.begin(), results.end(), [&](const std::string& res) {
+			return res == results[0];
+			});
+		if (!allSame) {
+			std::string errorMsg = "Test produced different results in different runs:\n";
+			for (size_t i = 0; i < results.size(); i++) {
+				errorMsg += std::format("Run {}: {}\n", i + 1, results[i]);
+			}
+			return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+		}
+		else {
+			return LimaUnittestResult{ true, "Success", envmode != Headless };
+		}
+	}
+
 } // namespace TestUtils
 
 

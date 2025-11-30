@@ -712,9 +712,11 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
 
 	const ForceEnergy myForceEnergy = 
-		forceEnergies.forceEnergiesCompoundinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ forceEnergies.forceEnergiesTinymolinteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ forceEnergies.forceEnergiesTinymolBondgroups[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x];
+		forceEnergies.solvents.compoundsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		+ forceEnergies.solvents.solventsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		+ forceEnergies.solvents.bondgroupsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		+ forceEnergies.solvents.pmeInteraction[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+		;
 
 
 	if (threadIdx.x == 0) {

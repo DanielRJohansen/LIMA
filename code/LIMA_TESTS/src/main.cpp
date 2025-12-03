@@ -103,7 +103,7 @@ int main() {
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		//Benchmarks::Benchmark("membrane20", "membranesolvated_em"); 
+		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv");
 		//Benchmarks::PrepareSimulation_stmv(envmode);
@@ -135,8 +135,11 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
-		
-		RunAllUnitTests();
+		int runAll = 1;
+		if (!runAll)
+			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
+		else
+			RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

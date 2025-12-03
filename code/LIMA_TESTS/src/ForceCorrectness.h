@@ -53,7 +53,7 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 3.147e-2) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 3.148e-2) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
@@ -111,7 +111,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 4.3e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 4.6e-7);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

@@ -5,7 +5,7 @@
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
     src/SimulationDevice.cpp
-)
+ )
 
 target_include_directories(LIMA_ENGINE PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -17,13 +17,6 @@ ${CMAKE_CURRENT_SOURCE_DIR}/include
 
 target_link_libraries(LIMA_ENGINE LIMA_BASE CUDA::cufft)
 
-#target_compile_options(LIMA_ENGINE PRIVATE
-#    $<$<COMPILE_LANGUAGE:CUDA>: 
-#        --lcufft_static
-#        --lculibos
-#    >
-#)
-
 
 if (UNIX)
     target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)
@@ -31,5 +24,6 @@ elseif (WIN32)
        target_compile_options(LIMA_ENGINE PRIVATE 
         $<$<CONFIG:Release>:/use_fast_math>
         $<$<CONFIG:Release>:/O2>
+        $<$<COMPILE_LANGUAGE:CUDA>:--maxrregcount=255>
     )
 endif()

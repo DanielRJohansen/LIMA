@@ -37,8 +37,8 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 		for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
 			const int ljtypeIndex = ljtypeIndices[atomIndex++];
 			file << atom.type << " "
-				<< forcefieldNB.particle_parameters[ljtypeIndex].sigma
-				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilon << "\n";
+				<< forcefieldNB.particle_parameters[ljtypeIndex].sigmaHalf * 2.
+				<< " " << forcefieldNB.particle_parameters[ljtypeIndex].epsilonSqrt * forcefieldNB.particle_parameters[ljtypeIndex].epsilonSqrt << "\n";
 		}
 		file << "\n";
 	}
@@ -179,9 +179,11 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 		env.CreateSimulation(*env.getSim(), params);
 	else
 		env.CreateSimulation(grofile, topfile, params);
-	env.run(false);
+	env.run();
 
 	const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
+	if (maxForceBuffer.empty())
+		throw (std::runtime_error("No data in maxForceBuffer after energy minimization, happens for small EM's. This should be solved..."));
 	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
 		[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
 			return a.second < b.second;

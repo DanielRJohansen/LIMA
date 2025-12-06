@@ -8,10 +8,13 @@
 #include <limits>
 #include <vector>
 #include <span>
+#include <optional>
 #include "Constants.h"
 
 #include <array>
 
+// TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
+// 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
 struct Int3 {
 	constexpr Int3() {}
 	constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}
@@ -31,6 +34,7 @@ struct Int3 {
 	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
+	constexpr int InnerProduct() const { return x * y * z; }
 
 	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
@@ -54,7 +58,9 @@ struct Float3 {
 	constexpr Float3(float x, float y, float z) : x(x), y(y), z(z) {}
 	constexpr explicit Float3(int a) : x(static_cast<float>(a)), y(static_cast<float>(a)), z(static_cast<float>(a)) {}
 	constexpr explicit Float3(const int& x, const int& y, const int& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
-	constexpr explicit Float3 (const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr explicit Float3(const double& x, const double& y, const double& z) : x(static_cast<float>(x)), y(static_cast<float>(y)), z(static_cast<float>(z)) {}
+	constexpr explicit Float3(const float4& a) : x(a.x), y(a.y), z(a.z) {}
+
 
 	constexpr Float3 operator - () const { return Float3(-x, -y, -z); }
 	constexpr Float3 operator * (const float a) const { return Float3(x * a, y * a, z * a); }
@@ -71,9 +77,9 @@ struct Float3 {
 	constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
 	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
-	constexpr float4 Tofloat4(float w) const { return float4{ x, y, z, w }; }
+	constexpr float4 Tofloat4(float w=0) const { return float4{ x, y, z, w }; }
 	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
-
+	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 
 
 	__host__ inline float operator[] (int index) const {
@@ -109,6 +115,7 @@ struct Float3 {
 		return Float3{};
 	}
 	__host__ __device__ Float3 norm() const {
+		//norm3d(x, y, z): TODO: OPTIM: Use the cuda math api for this and similar functions
 		const float l = len();
 		if (l)
 			return *this * (1.f / l);
@@ -123,7 +130,7 @@ struct Float3 {
 	}
 	constexpr Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
 	constexpr Float3 square() const { return Float3(x * x, y * y, z * z); }
-	__host__ __device__ inline float len() const { return sqrtf(x * x + y * y + z * z); }
+    __host__ __device__ inline float len() const { return std::sqrt(x * x + y * y + z * z); }
 	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	constexpr float lenSquared() const { return (x * x + y * y + z * z); }
 	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
@@ -131,11 +138,10 @@ struct Float3 {
 	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
 
 
-	__host__ __device__ Float3 Floor() { return Float3(floorf(x), floorf(y), floorf(z));}
+    constexpr Float3 Floor() const { return Float3(std::floor(x), std::floor(y), std::floor(z));}
 
 	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
 		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
-		//if (val > 1.f || val < -1.f) { printf("Val1 %f !!\n", val);}
 		val = val > 1.f ? 1.f : val;
 		val = val < -1.f ? -1.f : val;
 		return acos(val);
@@ -177,6 +183,12 @@ struct Float3 {
 		else
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
+	__host__ void print(const std::string& str) const {
+		printf("%s %.6f %.6f %.6f\n", str.c_str(), x, y, z);
+	}
+	__host__ __device__ void print(int i) const {
+		printf("%d %.6f %.6f %.6f\n", i, x, y, z);
+	}
 
 	std::string toString() const {
 		//return std::format("{} {} {}", x, y, z);
@@ -192,7 +204,16 @@ struct Float3 {
 		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.z);
 	}
 
-	__host__ __device__ static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
+	constexpr Float3 RotateAroundOrigo(Float3 pitch_yaw_roll) const {	//pitch around x, yaw around z, tilt around y
+		// pitch and yaw is relative to global coordinates. 
+		Float3 point = *this;
+		point = rodriguesRotatation(point, Float3(1, 0, 0), pitch_yaw_roll.x);
+		point = rodriguesRotatation(point, Float3(0, 1, 0), pitch_yaw_roll.y);
+		point = rodriguesRotatation(point, Float3(0, 0, 1), pitch_yaw_roll.z);
+		return point;
+	}
+
+	constexpr static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
 	}
 
@@ -223,20 +244,64 @@ struct Float3 {
 
 };
 
-struct ForceEnergy {
-	Float3 force;	// [J/mol/nm]
-	float potE;		// [J/mol]
+// Can only present integer values
+struct Float3Compressed {
 
-	__host__ __device__ inline ForceEnergy operator+ (const ForceEnergy& a) const {
+	Float3Compressed(){}
+	Float3Compressed(const Float3& a) {
+		const std::uint16_t x = (static_cast<int>(a.x) + 2) & 0x7u;
+		const std::uint16_t y = (static_cast<int>(a.y) + 2) & 0x7u;
+		const std::uint16_t z = (static_cast<int>(a.z) + 2) & 0x7u;
+		data = static_cast<std::uint16_t>(x | (y << 3) | (z << 6));
+	}
+
+	constexpr Float3 Decode() const {
+		const int x = static_cast<int>((data & 0x7u)) - 2;
+		const int y = static_cast<int>(((data >> 3) & 0x7u)) - 2;
+		const int z = static_cast<int>(((data >> 6) & 0x7u)) - 2;
+		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
+	}
+
+	uint16_t data;
+};
+
+struct ForceEnergy {
+	Float3 force{};	// [J/mol/nm]
+	float potE{};		// [J/mol]
+
+	constexpr ForceEnergy operator+ (const ForceEnergy& a) const {
 		return ForceEnergy{ force + a.force, potE + a.potE };
 	}		
+	constexpr void operator+= (const ForceEnergy& a) {
+		force += a.force;
+		potE += a.potE;
+	}
+	
 };
+
+struct ParticleQuickData {
+	Float3 relPos{};		// [nm]
+	std::array<int8_t, 3> gridIndex;
+	uint8_t atomType=0x0000;		// dont need all 8 bits for this.
+
+	//constexpr Float3 getRelpos(const Int3& toIndex) const {// TODO: unsure of the & here
+	//	Float3 shift{
+	//		static_cast<int>(gridIndex[0]) - toIndex.x,
+	//		static_cast<int>(gridIndex[1]) - toIndex.y,
+	//		static_cast<int>(gridIndex[2]) - toIndex.z
+	//	};
+	//	return relPos + shift;
+	//}
+};
+
+
+
 
 struct Double3 {
 	__host__ __device__ Double3() {}
 	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}
 	__host__ __device__ Double3(double x, double y, double z) : x(x), y(y), z(z) {}
-	__host__ __device__ Double3(Float3 a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
+	__host__ __device__ Double3(const Float3& a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
 
 	__host__ __device__ inline Double3 operator + (const Float3 a) const {
 		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
@@ -268,7 +333,7 @@ struct NodeIndex : public Int3 {
 	//constexpr NodeIndex operator+(const NodeIndex& a) const { return NodeIndex(x + a.x, y + a.y, z + a.z); }
 
 	// This function does NOT return anything position related, only distance related
-	__host__ __device__ Float3 toFloat3() const {
+	constexpr Float3 toFloat3() const {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
@@ -284,8 +349,8 @@ struct NodeIndex : public Int3 {
 		);
 	}
 
-	__device__ __host__ bool isInBox(int nodes_per_dim) const {
-		if (x < 0 || y < 0 || z < 0 || x >= nodes_per_dim || y >= nodes_per_dim || z >= nodes_per_dim)
+	constexpr bool isInBox(const Int3& gridDim) const {
+		if (x < 0 || y < 0 || z < 0 || x >= gridDim.x || y >= gridDim.y|| z >= gridDim.z)
 			return false;
 		return true;
 	}
@@ -311,25 +376,23 @@ struct Coord {
 		y(static_cast<int32_t>(pos.y * nanoToLima_f)),
 		z(static_cast<int32_t>(pos.z * nanoToLima_f))
 		{
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (POSITION_CHECKS) {
 			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
 				printf("pos %f %f %f\n", pos.x, pos.y, pos.z);
-				//				throw std::runtime_error("NodeIndex out of bounds");
 			}
 		}
 	}
 
 	__device__ __host__ explicit Coord(const NodeIndex& nodeIndex) 
 		: x(nodeIndex.x*nanoToLima_i), y(nodeIndex.y* nanoToLima_i), z(nodeIndex.z* nanoToLima_i) {
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (POSITION_CHECKS) {
 			if (std::abs(nodeIndex.x) > 1000 || std::abs(nodeIndex.y) > 1000 || std::abs(nodeIndex.z) > 1000) {// TODO magic nr,relates to intmax, fix!
 				printf("NodeIndex %d %d %d\n", nodeIndex.x, nodeIndex.y, nodeIndex.z);
-//				throw std::runtime_error("NodeIndex out of bounds");
 			}
 		}
 	}
 
-	__device__ __host__ Float3 ToRelpos() const {
+	constexpr Float3 ToRelpos() const {
 		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } * limaToNano_f;
 	}
 
@@ -348,7 +411,7 @@ struct Coord {
 	constexpr bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
 	constexpr bool operator != (const Coord& a) const { return !(*this == a); }
 	
-	__host__ __device__ int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
+	constexpr int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
 	__host__ __device__ void print(char c = '_', bool nl=1) const { 
 		if (nl) printf(" %c %d %d %d\n", c, x, y, z);
 		else printf(" %c %d %d %d", c, x, y, z);
@@ -356,7 +419,7 @@ struct Coord {
 	// Print in pico, assuming baseline is lima
 	__host__ __device__ void printS(char c = '_') const { 
 		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
-	__host__ __device__ bool isZero() const { return (x == 0 && y == 0 && z == 0); }
+	constexpr bool isZero() const { return (x == 0 && y == 0 && z == 0); }
 
 	__device__ __host__ int32_t maxElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 
@@ -403,25 +466,25 @@ struct BoundingBox {
 			min.y <= b.max.y && max.y >= b.min.y &&
 			min.z <= b.max.z && max.z >= b.min.z;
 	}
-	bool pointIsInBox(Float3 point) const {
+	constexpr bool pointIsInBox(Float3 point) const {
 		return (min < point) && (point < max);
 	}
-	void addPadding(float margin) {
-		min += Float3(-margin);
-		max += Float3(margin);
+	constexpr void addPadding(float padding) {
+		min += Float3(-padding);
+		max += Float3(padding);
 	}
 };
 
 class BondedParticlesLUT {
 public:
-	__device__ BondedParticlesLUT() {}
-	__host__ BondedParticlesLUT(bool val) {
+	__device__ constexpr BondedParticlesLUT() {}
+	__host__ constexpr BondedParticlesLUT(bool val) {
 		for (int i = 0; i < m_size; i++) {
 			matrix[i] = val ? UINT32_MAX : 0;
 		}
 	}
 
-	__host__ __device__ bool get(int i1, int i2) const {
+	constexpr bool get(int i1, int i2) const {
 		int index = i1 + i2 * m_len;
 		int byteIndex = index / 32;
 		int bitIndex = index % 32;
@@ -473,19 +536,15 @@ namespace BondedParticlesLUTHelpers {
 		return 1u << index;
 	}
 
-	__device__ static void VerifyInputs(int idSelf, int idOther) {
-		if (std::abs(idSelf-idOther) > 2 || idSelf < 0 || idOther < 0)
-			printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
-	}
+	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int idSelf, int idOther) {
 
-	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int id_self, int id_other) {
-
-		if constexpr(!LIMA_PUSH)
-			VerifyInputs(id_self, id_other);
+		if constexpr (INDEXING_CHECKS)
+			if (std::abs(idSelf - idOther) > 2 || idSelf < 0 || idOther < 0)
+				printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
 
 		// The around around when this function is called on device, should ensure 
 		// that there is always an entry in the table for the 2 compounds 
-		return &bpLutCollection[getGlobalIndex(getLocalIndex(id_self, id_other), id_self)];
+		return &bpLutCollection[getGlobalIndex(getLocalIndex(idSelf, idOther), idSelf)];
 	}
 }
 
@@ -579,4 +638,12 @@ struct RenderAtom {
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
+};
+
+struct SimStatus {
+	size_t step = 0;
+	std::optional<float> temperature = std::nullopt;			// [K]
+	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
+	float avgStepTime = NAN;							// [ms]
+	std::optional<float> simulationPerformance = std::nullopt; // [ns/day]
 };

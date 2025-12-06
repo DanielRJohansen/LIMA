@@ -10,21 +10,21 @@
 namespace SupernaturalForces {
 
 	// TODO: Move this to LIMA_BASE
-	template<typename T>
-	void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
-		T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
-		for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
-			if ((threadIdx.x + i) < array_len) {
-				temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
-			}
-			__syncthreads();
-			if ((threadIdx.x + i) < array_len) {
+	//template<typename T>
+	//void __device__ distributedSummation(T* arrayptr, int array_len) {				// Places the result at pos 0 of input_array
+	//	T temp;			// This is a lazy soluation, but maybe it is also fast? Definitely simple..
+	//	for (int i = 1; i < array_len; i *= 2) {	// Distributed averaging							// Make a generic and SAFER function for this, PLEASE OK??
+	//		if ((threadIdx.x + i) < array_len) {
+	//			temp = arrayptr[threadIdx.x] + arrayptr[threadIdx.x + i];
+	//		}
+	//		__syncthreads();
+	//		if ((threadIdx.x + i) < array_len) {
 
-				arrayptr[threadIdx.x] = temp;
-			}
-			__syncthreads();
-		}
-	}
+	//			arrayptr[threadIdx.x] = temp;
+	//		}
+	//		__syncthreads();
+	//	}
+	//}
 
 
 
@@ -32,9 +32,9 @@ namespace SupernaturalForces {
 		__device__ void _applyHorizontalSqueeze(const Float3& avg_compound_position_nm, const float& avg_compound_force_z, Float3& particle_force, float particle_mass) {
 			const float box_padding = 0.5f;	// The dist to the box edges (from compound center) we want to enforce, so switching to PBC wont cause immediate collisions
 
-			const float boxlenHalfNM = DeviceConstants::boxSize.boxSizeNM_f / 2.f;
-			const float dist_x = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.x) - boxlenHalfNM + box_padding, 0.f);
-			const float dist_y = LAL::max(std::abs(boxlenHalfNM - avg_compound_position_nm.y) - boxlenHalfNM + box_padding, 0.f);
+			const Float3 boxlenHalfNM = DeviceConstants::boxSize.boxSizeNM_f / 2.f;
+			const float dist_x = LAL::max(std::abs(boxlenHalfNM.x - avg_compound_position_nm.x) - boxlenHalfNM.x + box_padding, 0.f);
+			const float dist_y = LAL::max(std::abs(boxlenHalfNM.y - avg_compound_position_nm.y) - boxlenHalfNM.y + box_padding, 0.f);
 
 
 			// Constant force
@@ -55,9 +55,9 @@ namespace SupernaturalForces {
 			force_y += dist_y * dist_y * exp_factor;*/
 
 			// Apply signed force
-			if (avg_compound_position_nm.x > boxlenHalfNM)
+			if (avg_compound_position_nm.x > boxlenHalfNM.x)
 				force_x *= -1.f;
-			if (avg_compound_position_nm.y > boxlenHalfNM)
+			if (avg_compound_position_nm.y > boxlenHalfNM.y)
 				force_y *= -1.f;
 
 			float mass_factor = particle_mass * 100.f;	// If we scale the forces by their inverted mass, we avoid the problem of lighter molecules being pushed faster than the heavier

@@ -6,31 +6,35 @@ static_assert(sizeof(ForceField_NB) < 64000, "ForceFieldNB too large for constan
 
 
 struct BoxSize {
-	void Set(int boxSizeNM) {
+	void Set(Int3 boxSizeNM) {
 		//assert(NANO_TO_LIMA_i * boxSizeNM < INT32_MAX);
 		boxSizeNM_i = boxSizeNM;
-		boxSizeNM_f = static_cast<float>(boxSizeNM);
-		blocksPerDim = BoxGrid::NodesPerDim(boxSizeNM);
+		boxSizeNM_f = Float3{ boxSizeNM.x, boxSizeNM.y, boxSizeNM.z };
+		blocksPerDim = Int3{ BoxGrid::NodesPerDim(boxSizeNM.x), BoxGrid::NodesPerDim(boxSizeNM.y), BoxGrid::NodesPerDim(boxSizeNM.z) };
+        blocksPerDimHalf = blocksPerDim/2;
 	}
 
-	int boxSizeNM_i = 0;
-	float boxSizeNM_f = 0;
-	int blocksPerDim = 0;	// for boxGrid
+	Int3 boxSizeNM_i{};
+	Float3 boxSizeNM_f{};
+	Int3 blocksPerDim{};	// for boxGrid
+	Int3 blocksPerDimHalf{};
 };
 
 namespace DeviceConstants {
 
 	__constant__ ForceField_NB forcefield;
 	__constant__ ForcefieldTinymol tinymolForcefield;
+    __constant__ NonbondedInteractionParams tinymolPrecomputedParams[3]; // [O-O, O-H, H-H]
 	__constant__ BoxSize boxSize;
 	__constant__ float cutoffNM;
+	__constant__ float cutoffNMSquared;
 	__constant__ float cutoffNmReciprocal;
 	__constant__ float cutoffNmSquaredReciprocal;
 	__constant__ float ewaldKappa;
 
 	__constant__ float thermostatScalar;
 
-	__constant__ NonbondedInteractionParams nonbondedinteractionParams[ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES];
+	//__constant__ NonbondedInteractionParams nonbondedinteractionParams[ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES];
 
 
 	// Precomputed values
@@ -40,7 +44,10 @@ namespace DeviceConstants {
 	__constant__ float bsplineTable[2 * (BSPLINE_LUT_SIZE)]; // precomputed 4th order bsplines [0,1]
 
 
-	static constexpr int ERFC_LUT_SIZE = 64;
+        static constexpr int ERFC_LUT_SIZE = 32;
 	__constant__ float erfcForcescalarTable[ERFC_LUT_SIZE]; // precomputed scalers [0, 1], where 1=cutoffNM
 	__constant__ float erfcPotentialscalarTable[ERFC_LUT_SIZE];
+
+
+	//constexpr float ewaldKappaHardcoded = 3.f / 1.2;// TEMP DANGER [nm^-1]
 }

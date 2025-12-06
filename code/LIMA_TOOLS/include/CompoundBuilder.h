@@ -26,21 +26,12 @@ struct BoxImage;
 
 // --------------------------------- Bond Factories --------------------------------- //
 
-//struct ParticleFactory {
-//	const int activeLjtypeParameterIndex = -1;
-//	const TopologyFile::AtomsEntry* topAtom = nullptr;
-//	//const GroRecord* groAtom = nullptr;
-//	const Float3 position;
-//	const int uniqueResId;
-//	const int indexInGrofile; // 0-indexed
-//};
 
 struct ParticleFactory {
 	ParticleFactory(const TopologyFile::AtomsEntry& topologyAtom, const Float3& pos, int indexInGrofile, int activeLJParamIndex) :
 		topologyAtom(topologyAtom), position(pos), indexInGrofile(indexInGrofile), activeLJParamIndex(activeLJParamIndex) {}
 
 	const TopologyFile::AtomsEntry& topologyAtom;
-//	const GroRecord& groAtom;
 	const Float3 position{};
 	int indexInGrofile = -1; // 0-indexed
 
@@ -79,14 +70,13 @@ namespace LIMA_MOLECULEBUILD {
 
 		template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
 		void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, 
-			int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology,
-			const std::unordered_set<int>& ignoredParticles);
+			int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology);
 
 	public:
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
 
 
-		void VerifyBondsAreStable(float boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
+		void VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
 
 
 		//Temporary, untill how i know how to deal with bonds in tinymols
@@ -116,21 +106,13 @@ namespace LIMA_MOLECULEBUILD {
 
 class CompoundFactory : public Compound, public CompoundInterimState {
 public:
-	CompoundFactory() {}
-	CompoundFactory(const int id) : 
-		id(id)
-	{
-		//memset(forceEnergyFarneighborShortrange, 0, sizeof(forceEnergyFarneighborShortrange));
-		//memset(forceEnergyImmediateneighborShortrange, 0, sizeof(forceEnergyImmediateneighborShortrange));
-		//memset(forceEnergyBonds, 0, sizeof(forceEnergyBonds));
-		//memset(forceEnergyBridge, 0, sizeof(forceEnergyBridge));
-		/*memset(forces_interim, 0, sizeof(forces_interim));
-		memset(potE_interim, 0, sizeof(potE_interim));*/
+	CompoundFactory() {
+		memset(this, 0, sizeof(CompoundFactory));
 	}
 
-	void addParticle(const ParticleFactory&,int global_id, float boxlen_nm, BoundaryConditionSelect bc);
+	void addParticle(const ParticleFactory&,int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc);
 
-	bool hasRoomForRes(int n_particles_in_res) const {					// TODO: Implement, that it checks n atoms in res
+	bool hasRoomForRes(int n_particles_in_res) const {
 		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
 	}
 
@@ -138,10 +120,8 @@ public:
 
 	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
 
-	static void CalcCompoundMetaInfo(float boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
+	static void CalcCompoundMetaInfo(const Float3& boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
 
-
-	int id = -1;	// unique lima id
 
 	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
 	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug ddont like this TODO TODO DELETE
@@ -149,20 +129,45 @@ public:
 	int indicesInGrofile[MAX_COMPOUND_PARTICLES];	// Temp prolly, used to map compounds atoms back to their index in grofile
 };
 
+//
+//struct BondgroupTinymolFactory {
+//	std::vector<SingleBondFactory> singlebonds;
+//	std::vector<AngleBondFactory> anglebonds;
+//	
+//	int nParticles = 0;
+//	int nSinglebonds = 0;
+//	int nAnglebonds = 0;
+//
+//	static std::vector<BondgroupTinymolFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
+//		const std::vector<std::vector<int>>& tinymolParticlesIds);
+//};
 
 struct TinyMolFactory {
 	TinyMolFactory() {}
-    TinyMolFactory(const Float3& pos, int tinymolTypeIndex, 
-		const std::string& atomType, int nParticles, int firstParticleIdInGrofile, Float3 velocity = Float3{}
-	)
-        : position(pos), state(TinyMolState{ velocity,Float3{},tinymolTypeIndex }), nParticles(nParticles),
-		atomType(atomType), firstParticleIdInGrofile(firstParticleIdInGrofile)
-	{}
-	Float3 position{};
-	TinyMolState state;
-    std::string atomType; // Debug only
+	TinyMolFactory(std::span<const Float3> pos, std::span<const int> tinymolTypeIndices,
+		std::span<const std::string> _atomTypes, int nParticles, int firstParticleIdInGrofile,
+		std::span<const Float3> velocities, const BondgroupTinymol& bondgroup
+	) : 
+		nParticles(AllAtom ? nParticles : 1), firstParticleIdInGrofile(firstParticleIdInGrofile), bondgroup(AllAtom ? bondgroup : BondgroupTinymol{})
+	{
+		assert(pos.size() == nParticles);
+		for (int i = 0; i < nParticles; i++) {
+			positions[i] = pos[i];
+			states[i] = TinyMolParticleState{ velocities[i], Float3{}, tinymolTypeIndices[i] };
+			atomTypes[i] = _atomTypes[i]; // Debug only
+		}
+	}
+	std::array<Float3, BondgroupTinymol::maxParticles> positions;
+	std::array<TinyMolParticleState,BondgroupTinymol::maxParticles> states;
+    std::array<std::string,BondgroupTinymol::maxParticles> atomTypes; // Debug only
+
+	BondgroupTinymol bondgroup;
+
 	int nParticles = -1;
 	int firstParticleIdInGrofile = -1;
+
+	static std::vector<BondgroupTinymol> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
+		const std::vector<std::vector<int>>& tinymolParticlesIds);
 };
 
 

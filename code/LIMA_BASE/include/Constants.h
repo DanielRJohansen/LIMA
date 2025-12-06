@@ -1,39 +1,38 @@
 #pragma once
 
-#include <math.h>
 #include <cstdint>
-#include <limits.h>
+#include <math.h>
 
 
-// LIMASAFEMODE slightly alters the outcome of sims. Even overwrite enabling it in impropers, for a
-// sim with no impropers has this effect. It is very weird, and i fear i have some undefined behavior
-// somewhere in the code
-//#define LIMASAFEMODE
-//#define LIMAPUSH
-#if defined LIMAPUSH && defined LIMASAFEMODE
-#error These are mutually exclusive
-#endif
+// -------------------------------------------- Debug Parameters -------------------------------------------- //
+constexpr bool INDEXING_CHECKS = false;
+constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
+constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
+constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
+constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS);
 
-//#define FORCE_NAN_CHECK
-const bool LIMA_PUSH = true;
+//#define FORCE_NAN_CHECK // TODO: make this a const instead
 
-#define ENABLE_LJ
-#define ENABLE_INTEGRATEPOSITION
+const bool ENABLE_LJ = true;
+const bool ENABLE_INTEGRATEPOSITION = true;
 
 const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
-
-const bool ENABLE_ERFC_FOR_EWALD = true;
-
 const bool ENABLE_UREYBRADLEY = true;
 
+
+const bool ENABLE_ERFC_FOR_EWALD = true;
 const bool USE_PRECOMPUTED_BSPLINES = false;
 const bool USE_PRECOMPUTED_ERFCSCALARS = false;
+const bool ERFC_USE_CHEBYSHEV_APPROXIMATION = false;
+
+
+const bool ALL_PHYSICS_ENABLED = ENABLE_ES_SR && ENABLE_ES_LR && ENABLE_LJ && ENABLE_UREYBRADLEY && ENABLE_INTEGRATEPOSITION;
 //#define GENERATETRAINDATA
 
 //#define LIMAKERNELDEBUGMODE
 //#define DONTGENDATA
-
+constexpr bool COULUMB_USE_CHEBYSHEV_APPROXIMATION = true;
 
 
 
@@ -47,8 +46,11 @@ constexpr double FEMTO = 1e-15;
 
 constexpr double NANO_TO_FEMTO = 1e6;
 constexpr double FEMTO_TO_NANO = 1e-6;
+constexpr double NANO_TO_PICO = 1e3;
+constexpr double PICO_TO_NANO = 1e-3;
 
 constexpr float PI = 3.14159f;
+constexpr float PI_sqrt = 1.77245385091f; // Motherfucker, give me c++26 alreadYY!!!
 constexpr float kcalToJoule = 4184.f;
 constexpr float degreeToRad = 2.f * PI / 360.f;
 constexpr float AngToNm = 0.1f;
@@ -74,6 +76,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 #define ENABLE_SOLVENTS				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
+constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //
 
 
@@ -90,8 +93,6 @@ const int GRIDNODE_QUERY_RANGE = 2;
 // If we go larger, a single compound can stretch over 2 nm!
 constexpr int MAX_COMPOUND_PARTICLES = 32;
 const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
-
-const int NEIGHBORLIST_MAX_COMPOUNDS = 512;	// TODO: We need to work on getting this number down!
 
 const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
 

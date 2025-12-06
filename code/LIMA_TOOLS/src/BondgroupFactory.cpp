@@ -60,6 +60,11 @@ public:
 		}
 	}
 
+	void pop() {
+		deleted[first_valid_index] = true;
+		updateFirstValidIndex();
+	}
+
 	// Checks if the element at the given index is not deleted.
 	bool contains(size_t id) const {
 		if (id >= nElements) {
@@ -107,6 +112,14 @@ enum Bondtype
 	single, pair, angle, dihedral, improper
 };
 
+bool ReplaceIfSmaller(int& min, int newVal) {
+	if (newVal < min) {
+		min = newVal;
+		return true;
+	}
+	return false;
+}
+
 Bondtype GetBondtypeWithLowestAvailableParticleId(
 	const LIMA_MOLECULEBUILD::SuperTopology& topology,
 	const RandomAccessDeleteSet& availableSinglebondIds,
@@ -121,28 +134,28 @@ Bondtype GetBondtypeWithLowestAvailableParticleId(
 
 	if (!availableSinglebondIds.empty()) {
 		const auto& ids = topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes;
-		minParticleId = std::min(minParticleId, *std::min_element(ids.begin(), ids.end()));
-		type = single; // TODO: these are all wrong, only set type if we set new min
+		if (ReplaceIfSmaller(minParticleId, *std::min_element(ids.begin(), ids.end())))
+			type = single;		
 	}
 	if (!availablePairbondIds.empty()) {
 		const auto& ids = topology.pairbonds[availablePairbondIds.front()].global_atom_indexes;
-		minParticleId = std::min(minParticleId, *std::min_element(ids.begin(), ids.end()));
-		type = pair;
+		if (ReplaceIfSmaller(minParticleId, *std::min_element(ids.begin(), ids.end())))
+			type = pair;
 	}
 	if (!availableAnglebondIds.empty()) {
 		const auto& ids = topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes;
-		minParticleId = std::min(minParticleId, *std::min_element(ids.begin(), ids.end()));
-		type = angle;
+		if (ReplaceIfSmaller(minParticleId, *std::min_element(ids.begin(), ids.end())))
+			type = angle;
 	}
 	if (!availableDihedralbondIds.empty()) {
 		const auto& ids = topology.dihedralbonds[availableDihedralbondIds.front()].global_atom_indexes;
-		minParticleId = std::min(minParticleId, *std::min_element(ids.begin(), ids.end()));
-		type = dihedral;
+		if (ReplaceIfSmaller(minParticleId, *std::min_element(ids.begin(), ids.end())))
+			type = dihedral;
 	}
 	if (!availableImproperDihedralbondIds.empty()) {
 		const auto& ids = topology.improperdihedralbonds[availableImproperDihedralbondIds.front()].global_atom_indexes;
-		minParticleId = std::min(minParticleId, *std::min_element(ids.begin(), ids.end()));
-		type = improper;
+		if (ReplaceIfSmaller(minParticleId, *std::min_element(ids.begin(), ids.end())))
+			type = improper;
 	}
 
 	return type;
@@ -168,6 +181,52 @@ void AddBondsFromMap(auto& bondGroup, const auto& bondMap, auto& availableBondId
 		}
 	}
 };
+
+std::vector<BondgroupTinymol> TinyMolFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<std::vector<int>>& tinymolParticlesIds) {
+	std::vector<BondgroupTinymol> bondgroups(tinymolParticlesIds.size());
+
+	// TODO: OPTIM: Waste that we make these maps both for compounds and tinymols, they could reuse the same
+	const std::vector<std::vector<int>> pid2SinglebondIdMap = mapParticleToBondIds(topology.singlebonds, topology.particles.size());
+	const std::vector<std::vector<int>> pid2AnglebondIdMap = mapParticleToBondIds(topology.anglebonds, topology.particles.size());
+
+	for (int tid = 0; tid < tinymolParticlesIds.size(); tid++) {
+		bondgroups[tid].nParticles = tinymolParticlesIds[tid].size();
+
+		// First find the bonds that are in this tinymol
+		std::set<int> availableSinglebondIds;
+		std::set<int> availableAnglebondIds;
+		for (int pid = 0; pid < tinymolParticlesIds[tid].size(); pid++) {
+			const int particleId = tinymolParticlesIds[tid][pid];
+			for (int singlebondId : pid2SinglebondIdMap[particleId]) {
+				availableSinglebondIds.insert(singlebondId);
+			}
+			for (int anglebondId : pid2AnglebondIdMap[particleId]) {
+				availableAnglebondIds.insert(anglebondId);
+			}
+		}
+
+		assert(availableSinglebondIds.size() <= BondGroup::maxSinglebonds);
+		assert(availableAnglebondIds.size() <= BondGroup::maxAnglebonds);
+
+		for (int singlebondId : availableSinglebondIds) {
+			std::array<uint8_t, 2> idsLocalToTinymol = {
+				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0])
+			};
+			bondgroups[tid].singlebonds[bondgroups[tid].nSinglebonds++] = SingleBond(idsLocalToTinymol, topology.singlebonds[singlebondId].params );
+		}
+		for (int anglebondId : availableAnglebondIds) {
+			std::array<uint8_t, 3> idsLocalToTinymol = {
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0]),
+				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[2] - tinymolParticlesIds[tid][0])
+			};
+			bondgroups[tid].anglebonds[bondgroups[tid].nAnglebonds++] = AngleUreyBradleyBond(idsLocalToTinymol, topology.anglebonds[anglebondId].params);
+		}
+	}
+
+	return bondgroups;
+}
 
 
 std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap) {
@@ -196,15 +255,38 @@ std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECU
 	int currentParticleIndexInGroup = 0;
 
 	while (MoreWorkToBeDone(availableSinglebondIds, availablePairbondIds, availableAnglebondIds, availableDihedralbondIds, availableImproperDihedralbondIds)) {
+		
+		// To start or continue a group, simple add the bond containing the next lowest particleId
+		const Bondtype typeOfBondWithLowestId = GetBondtypeWithLowestAvailableParticleId(topology, availableSinglebondIds, availablePairbondIds, availableAnglebondIds, availableDihedralbondIds, availableImproperDihedralbondIds);
+		
+		// Check if the bond with the lowest id belongs to compounds, if not pop and continue
+		bool bondBelongsToCompound = true;
+		switch (typeOfBondWithLowestId) {
+		case single:
+			if (particlesToCompoundIdMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[0]].compoundId == -1
+				|| particlesToCompoundIdMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[1]].compoundId == -1) {
+				bondBelongsToCompound = false;
+				availableSinglebondIds.pop();
+			}
+			break;
+		case angle:
+			if (particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[0]].compoundId == -1
+				|| particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[1]].compoundId == -1
+				|| particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[2]].compoundId == -1) {
+				bondBelongsToCompound = false;
+				availableAnglebondIds.pop();
+			}
+			break;
+		}
+		if (!bondBelongsToCompound)
+			continue;
 
 		// Because if we start a new group with a zero-param bond, we skip that bond so this is to avoid empty groups.. 
-			//Annoying to deal with here, maybe discard the bonds as we make the topology instead?
+		//Annoying to deal with here, maybe discard the bonds as we make the topology instead?
 		if (bondgroups.empty() || bondgroups.back().nParticles != 0) 
 			bondgroups.push_back({});
 		currentParticleIndexInGroup = 0;
-
-		// To start or continue a group, simple add the bond containing the next lowest particleId
-		const Bondtype typeOfBondWithLowestId = GetBondtypeWithLowestAvailableParticleId(topology, availableSinglebondIds, availablePairbondIds, availableAnglebondIds, availableDihedralbondIds, availableImproperDihedralbondIds);
+		
 		switch (typeOfBondWithLowestId) {
 		case single:
 			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.singlebonds[availableSinglebondIds.front()]);

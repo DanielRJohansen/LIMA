@@ -97,7 +97,7 @@ namespace TestUtils {
 	// Creates a simulation from the folder which should contain a molecule with conf and topol
 	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
 	// yet been moved to device. I should find a way to enforce this...
-	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, LAL::optional<SimParams> simparams, EnvMode envmode) {
+	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
 		
 		const fs::path work_folder = simulations_dir / foldername;
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
@@ -106,9 +106,7 @@ namespace TestUtils {
 
 		auto env = std::make_unique<Environment>(work_folder, envmode);
 
-		const SimParams ip = simparams.hasValue()
-			? simparams.value()
-			: SimParams{ simpar };
+		const SimParams ip = simparams.value_or(SimParams{ simpar });
 		
 
 		env->CreateSimulation(conf, topol, ip);
@@ -182,6 +180,7 @@ namespace TestUtils {
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }
+	static void setConsoleTextColorYellow() { std::cout << "\033[33m"; }
 	static void setConsoleTextColorGreen() { std::cout << "\033[32m"; }
 	static void setConsoleTextColorDefault() { std::cout << "\033[0m"; }
 
@@ -196,7 +195,7 @@ namespace TestUtils {
 		}
 
 
-		void printStatus() const {
+		void printStatus(std::string insert="") const {
 			if (success) {
 				setConsoleTextColorGreen();
 			}
@@ -206,7 +205,7 @@ namespace TestUtils {
 
 
 			if (error_description.length() > 55) { std::cout << "\n\t"; }
-			std::cout << error_description << "\n";
+			std::cout << error_description << insert << "\n";
 
 
 			setConsoleTextColorDefault();
@@ -231,14 +230,18 @@ namespace TestUtils {
 		{}
 
 		void execute() {
+
 			try {
+				TimeIt timer{};
 				std::cout << "Test " << name << " ";
 				testresult = std::make_unique<LimaUnittestResult>(test());
 
 				int str_len = 6 + name.length();
 				while (str_len++ < 61) { std::cout << " "; }
 
+				//testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
 				testresult->printStatus();
+
 			}
 			catch (const std::runtime_error& ex) {
 				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
@@ -295,7 +298,7 @@ namespace TestUtils {
 		EnvMode envmode,
 		float max_vc = 0.001,
 		float max_gradient=1e-7,
-		LAL::optional<SimParams> ip = {}
+		std::optional<SimParams> ip = {}
 	)
 	{		
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
@@ -380,6 +383,27 @@ namespace TestUtils {
 		FileUtils::WriteVectorToBinaryFile(workDir / "errors.bin", errors);
 		std::string command = "python " + (FileUtils::GetLimaDir() / "dev/PyTools/pdf.py").string() + " \"" + (workDir / "errors.bin").string() + "\"";
 		std::system(command.c_str());
+	}
+
+	LimaUnittestResult TestIsDeterministic(std::function<LimaUnittestResult()> testFunc, int repetitions, EnvMode envmode) {
+		std::vector<std::string> results;
+		for (int i = 0; i < repetitions; i++) {
+			LimaUnittestResult result = testFunc();
+			results.push_back(result.error_description);
+		}
+		bool allSame = std::all_of(results.begin(), results.end(), [&](const std::string& res) {
+			return res == results[0];
+			});
+		if (!allSame) {
+			std::string errorMsg = "Test produced different results in different runs:\n";
+			for (size_t i = 0; i < results.size(); i++) {
+				errorMsg += std::format("Run {}: {}\n", i + 1, results[i]);
+			}
+			return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+		}
+		else {
+			return LimaUnittestResult{ true, "Success", envmode != Headless };
+		}
 	}
 
 } // namespace TestUtils

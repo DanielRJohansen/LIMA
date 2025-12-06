@@ -35,7 +35,7 @@ namespace Bondtypes {
 			static Parameters CreateFromCharmm(float b0, float kB);
 		};
 
-		SingleBond() {}
+		constexpr SingleBond() {}
 		SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
 		Parameters params;
@@ -80,10 +80,10 @@ namespace Bondtypes {
 			/// <param name="kTheta">[kJ/mol/rad^2]</param>
 			/// <param name="ub0">[nm]</param>
 			/// <param name="kUb">[kJ/molnm]</param>
-			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb);
+			static Parameters CreateFromCharmm(float t0, float kTheta, float ub0, float kUb, int func);
 		};
 
-		AngleUreyBradleyBond() {}
+		constexpr AngleUreyBradleyBond() {}
 		AngleUreyBradleyBond(std::array<uint8_t, 3> ids, const Parameters&);
 
 		Parameters params;
@@ -157,7 +157,7 @@ struct CompoundCoords {
 
 
 // struct with data that only the solvent itself needs
-struct TinyMolState {
+struct TinyMolParticleState {
 	Float3 vel_prev{};
 	Float3 force_prev{};
 	int tinymolTypeIndex = -1; // wrong place to have this
@@ -184,14 +184,14 @@ struct TinyMolState {
 
 // Instead of having a single key_particle and an single radius, we now have multiple
 struct CompoundInteractionBoundary {
-	static const int k = 2;
+    static const int k = 2;
 
 	float radii[k];	// [nm]
 	int key_particle_indices[k];
 };
 
 struct alignas(4) CompoundCompact {
-	__host__ __device__ CompoundCompact() {}
+	constexpr CompoundCompact() {}
 
 	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	int n_particles = 0;
@@ -223,20 +223,9 @@ struct alignas(4) CompoundCompact {
 
 
 struct CompoundInterimState {
-	// Interims from the bridgekernel to compoundkernel
-	//float potE_interim[MAX_COMPOUND_PARTICLES];
-	//Float3 forces_interim[MAX_COMPOUND_PARTICLES];	// [GN/mol]
-	//__host__ Float3 sumForce(int particleIndex) const;
-	//__host__ float sumPotentialenergy(int particleIndex) const;
-
-	//ForceEnergy forceEnergyFarneighborShortrange[MAX_COMPOUND_PARTICLES];
-	/*ForceEnergy forceEnergyImmediateneighborShortrange[MAX_COMPOUND_PARTICLES];
-	ForceEnergy forceEnergyBonds[MAX_COMPOUND_PARTICLES];
-	ForceEnergy forceEnergyBridge[MAX_COMPOUND_PARTICLES];*/
-
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // TODO units
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES]; // Get wierd change of outcome if i move this here??
+	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // [J/mol]
+	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
 	Coord coords[MAX_COMPOUND_PARTICLES];
 };
@@ -256,14 +245,11 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
-	__host__ __device__ Compound() {}
-
 	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
     float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
-
 	// For drawing pretty spheres :)
 	char atomLetters[MAX_COMPOUND_PARTICLES];
 
@@ -306,14 +292,29 @@ struct BondGroup {
 	int nImproperdihedralbonds = 0;
 };
 
+// TODO: OPTIM: THese should actually be cached in constant memory and accessed with a single id,
+// because most tinymols are identical, just with different positions
+struct BondgroupTinymol {
+	
+	static const int maxParticles = 4;
+	static const int maxSinglebonds = 4;
+	static const int maxAnglebonds = 4;
+
+	
+	//uint8_t particleIndicesRelativeToTinymol[maxParticles];
+	// All indices are relative to the tinymol, so add the tinymols indexOfFirstInSolventlblock when accessing particle pos
+	SingleBond singlebonds[maxSinglebonds];
+	AngleUreyBradleyBond anglebonds[maxAnglebonds];
+	int nParticles = 0;
+	int nSinglebonds = 0;
+	int nAnglebonds = 0;
+};
+
 
 
 struct ParticleReference {
-	ParticleReference() {}	// TODO: i dont think i need this.
-
-
 	// Used by moleculebuilder only
-	ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
+	constexpr ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
 		compound_id(compound_id), local_id_compound(local_id_compound),
 		compoundid_local_to_bridge(compoundid_local_to_bridge) 
 	{}
@@ -329,7 +330,7 @@ struct ParticleReference {
 struct NonbondedInteractionParams {
 	float sigma;
     float epsilon;
-    //float chargeProduct;
+    float chargeProduct;
 };
 
 
@@ -338,26 +339,32 @@ struct ForceField_NB {
 
 	struct ParticleParameters {	//Nonbonded
 		//float mass = -1;		//[kg/mol]	or 
-		float sigma = -1;		// [nm]
-		float epsilon = -1;		// [J/mol/nm]
+		// Values at a format for efficient parameter computation
+		float sigmaHalf = -1;		// [nm]
+		float epsilonSqrt = -1;		// [J/mol/nm]
 	};
 
 	ParticleParameters particle_parameters[MAX_TYPES];
 };
 
 struct ForcefieldTinymol {
-	static const int MAX_TYPES = 16;
+    static const int MAX_TYPES = 16; // TODO OPTIM change to 4
 
 	// Can make mass and epsilon half
 	struct TinyMolType {
-		float sigma = -1;		// [nm]
-		float epsilon = -1;		// [J/mol/nm]
+		float sigmaHalf = -1;		// [nm]
+		float epsilonSqrt = -1;		// [J/mol/nm]
 		float mass = -1;		// [kg/mol]
 		float charge = -1;		// [kC/mol]
 	};
 
 	TinyMolType types[MAX_TYPES];
 };
+
+//struct PrecomputedSolventForcefield {
+//	NonbondedInteractionParams ljParams[3]; // [O-O, O-H, H-H]
+//	float chargeProducts[3]; // [O-O, O-H, H-H]
+//};
 
 
 class UniformElectricField {

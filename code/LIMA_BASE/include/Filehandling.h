@@ -1,19 +1,20 @@
 // For generic file utilities, for specialized features use MDFiles.h instead
 #pragma once
 
-#include <iostream>
-#include <vector>
-#include <string>
+#include "LimaTypes.cuh"
 
-#include <unordered_map>
-#include <unordered_set>
 #include <cassert>
 #include <cstdint>
-#include <limits>
-#include <optional>
 #include <filesystem>
 #include <fstream>
-
+#include <iostream>
+#include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 
 namespace FileUtils {
@@ -23,11 +24,11 @@ namespace FileUtils {
 
 	void removeWhitespace(std::string& str);
 
-	bool firstNonspaceCharIs(const std::string& str, char query);
+	bool firstNonspaceCharIs(const std::string_view& str, char query);
 
 	std::unordered_map<std::string, std::string> parseINIFile(const std::string& path, bool forceLowercase=false);
 
-	std::string ExtractBetweenQuotemarks(const std::string& input);
+	std::string_view ExtractBetweenQuotemarks(const std::string& input);
 
 	// Return the top level LIMA dir
 	fs::path GetLimaDir();
@@ -83,6 +84,13 @@ namespace FileUtils {
 	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines);
 
 	std::optional<std::string> ChechlineForDefine(const std::string& line);
+
+	std::vector<Float3> ReadCsvAsVectorOfFloat3(const fs::path& path);
+
+
+	// Preprocess a file, with include dirs and tracking of seen files
+	// Handles directives: #include, #define, #undef, #ifdef, #ifndef, #else, #endif
+	std::string PreprocessFile(const fs::path& file, const std::vector<fs::path>& includeDirs, std::unordered_set<std::string>& defines);
 };
 
 

@@ -17,7 +17,7 @@
 #include <optional>
 #include <type_traits>
 #include <map>
-
+#include <functional>
 
 namespace LimaMoleculeGraph {
 	namespace fs = std::filesystem;
@@ -36,8 +36,7 @@ namespace LimaMoleculeGraph {
 			return tree.at(parentId);
 		}
 
-		// Get all children recursively
-		std::vector<int> GetAllChildIdsAndSelf(int parentId, std::unordered_map<int,int> nodeIdsNumDownstreamNodes) const;
+		void ForSelfAndAllChildrenIds(int parentId, const std::function<void(int)>& visitor) const;
 	};
 
 
@@ -156,7 +155,7 @@ namespace LimaMoleculeGraph {
 		// Uses a BFS approach to construct a molecule without cycles
 		MoleculeTree ConstructMoleculeTree() const;
 
-		std::unordered_map<int, int> ComputeNumDownstreamNodes() const;
+		std::unordered_map<int, int> ComputeNumDownstreamNodes(const MoleculeTree& moleculeTree) const;
 
 	/*	void addNode(int node_id, const std::string& atomname) {
 			nodes.emplace(node_id, Node(node_id, atomname) );

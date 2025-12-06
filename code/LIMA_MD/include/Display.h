@@ -4,6 +4,7 @@
 #include "LimaTypes.cuh"
 #include "Utilities.h"
 #include "MoleculeHull.cuh"
+#include "filesystem"
 
 #include <chrono>
 #include <string>
@@ -11,10 +12,11 @@
 #include <variant>
 #include <mutex>
 #include <condition_variable>
+#include <set>
 
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
-class DrawAtomsShader;
+template <bool>class DrawAtomsShader;
 class DrawNormalsShader;
 
 class Camera;
@@ -57,6 +59,7 @@ namespace Rendering {
 		/*int64_t step;
 		float temperature;*/
 		ColoringMethod coloringMethod;
+		SimStatus simStatus;
 	};
 
 	struct MoleculehullTask {
@@ -69,6 +72,7 @@ namespace Rendering {
 		bool drawSolvent = true;
 		ColoringMethod coloringMethod = Atomname;
 		int nAtoms;
+		std::set<int> highlightedAtoms;
 	};
 
 	struct CompoundsTask {
@@ -82,7 +86,9 @@ namespace Rendering {
 }
 
 
-
+struct RenderSettings {
+	bool showSolvents = true;
+};
 
 class Display {
 public:
@@ -117,7 +123,7 @@ private:
 
 	bool initGLFW();
 
-	void _RenderAtomsFromCudaresource(Float3 boxSize, int totalParticles);
+	void _RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda);
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 
 	void PrepareTask(Rendering::Task& task);
@@ -139,7 +145,11 @@ private:
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;
+	//bool renderSolvents = true;
+	RenderSettings rendersettings;
 	FPS fps{};
+
+
 
 	Rendering::Task incomingRenderTask = nullptr;
 	std::mutex incomingRenderTaskMutex;
@@ -147,7 +157,8 @@ private:
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
-	std::unique_ptr<DrawAtomsShader> drawAtomsShader;
+	std::unique_ptr<DrawAtomsShader<true>> drawAtomsFromCudaShader;
+	std::unique_ptr<DrawAtomsShader<false>> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
@@ -175,4 +186,14 @@ private:
 
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
+};
+
+
+class Overlay {
+public:
+	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
+	~Overlay();
+
+	void Draw(RenderSettings&, const SimStatus&);
+	void Render();
 };

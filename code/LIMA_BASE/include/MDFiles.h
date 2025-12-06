@@ -4,6 +4,7 @@
 
 #include "Bodies.cuh"
 #include "Filehandling.h"
+#include "Trajectory.h"
 
 #include <optional>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <unordered_set>
 #include <queue>
 #include <ranges>
+#include <map>
 
 const bool ENABLE_FILE_CACHING = true;
 
@@ -29,7 +31,7 @@ struct GroRecord {
 };
 
 struct GroFile {
-	GroFile() {};
+    GroFile() {};
 	GroFile(const fs::path& path);
 
 	// Contents inside file
@@ -49,6 +51,9 @@ struct GroFile {
 	void printToFile(const fs::path& path) const;
 	void printToFile(const std::string& name) const {
 		printToFile(m_path.parent_path() / name);
+	}
+	void printToFile(const char* str) const {
+		printToFile(std::string(str));
 	}
 };
 
@@ -138,15 +143,7 @@ namespace MDFiles {
 		std::unique_ptr<TopologyFile> topfile;
 	};
 	
-	struct TrrFile {
-		//TrrFile(const fs::path& path);
-		TrrFile(Float3 boxSize) : boxSize(boxSize) {};
-		void Dump(const fs::path& path) const;
-		std::vector<std::vector<Float3>> positions;
-
-	private:
-		Float3 boxSize;
-	};
+	void Dump(Trajectory& trajectory, const fs::path& path);
 }
 
 
@@ -163,8 +160,9 @@ public:
 	struct ImproperDihedralBond;
 	struct Moleculetype {
 		Moleculetype() = default;
-		Moleculetype(const std::string& name, int nrexcl) : name(name), nrexcl(nrexcl) {};
+		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt ) : name(name), includePath(includePath), nrexcl(nrexcl) {};
 		std::string name{};
+		std::optional<fs::path> includePath;	// Not present if the moleculetype is defined inline in the topology file
 		int nrexcl{}; // How many consecutive bonds before LJ is enabled again
 
 		std::vector<AtomsEntry> atoms;
@@ -175,8 +173,8 @@ public:
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 
 		// Only used during parsing!
-		std::string mostRecentAtomsSectionName{};
-		std::vector<int> groIdToLimaId;
+		//std::string mostRecentAtomsSectionName{};
+		std::unordered_map<int, int> groIdToLimaId; // Relative to moleculetype??! I dont like this
 
 		void ToFile(const fs::path& dir) const;
 
@@ -214,6 +212,7 @@ public:
 	struct MoleculeEntry {
 		std::string name{};
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
+		//int count = 0; // TODO implement this
 	};
 	struct System {
 		std::string title{ "noSystem" };
@@ -223,7 +222,7 @@ public:
 	};
 
 	TopologyFile();										// Create an empty file	
-	TopologyFile(const fs::path& path, TopologyFile* parentTop=nullptr);	// Load a file from path	
+	TopologyFile(const fs::path& path);	// Load a file from path	
 
 	/// <summary>
 	/// Recursively write topology + all includes + forcefieldfiles to the parentpath of the dir
@@ -234,6 +233,9 @@ public:
 	void printToFile() const { printToFile(path); };
 	void printToFile(const std::string& name) const {
 		printToFile(fs::path(path.parent_path() / name));
+	}
+	void printToFile(const char* str) const {
+		printToFile(std::string(str));
 	}
 	
 
@@ -308,11 +310,12 @@ public:
 	}
 
 	// Append a molecule of which the type is already known by the file
-	void AppendMolecule(const std::string& moleculename);
+	void AppendMolecule(const std::string& moleculename); // Its quite silly that mols like SOL are appened N times, instead of just once with N as an internal param
 	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
 	void AppendMolecules(const std::vector<MoleculeEntry>&);
+//	void AppendSolvents(int count, const fs::path& solventFF);
 
 	// ----------------------- Meta data not kept in the file ----------------------- //
 	fs::path path;
@@ -332,12 +335,22 @@ private:
 	/// <param name="name">If this is called on an include file, 
 	/// this is the name of that include file in the parent file</param>
 	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
-		std::optional<std::string> includefileName =std::nullopt);
+		std::optional<fs::path> includefileName =std::nullopt);
+
+	void ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile);
 
 	// Packs atoms and bond information in the moleculetype ptr
 	// Returns the next section in the topologyfile
 	static void ParseMoleculetypeEntry(TopologySection section, 
 		const std::string& entry, std::shared_ptr<Moleculetype> moleculetype);
+
+	static void ParseAtomsEntry(std::string_view sv, TopologyFile::AtomsEntry& atom, std::vector<int>& limaIdToGroId, int index /*relative to moleculetype*/);
+	static void ParseSingleBond(std::string_view line, TopologyFile::SingleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParsePairBond(std::string_view line, TopologyFile::PairBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseAngleBond(std::string_view line, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseDihedralBond(std::string_view line, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseImproperDihedralBond(std::string_view line, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+
 
 	System m_system{};
 };
@@ -345,7 +358,7 @@ private:
 
 // Variable names are from .itp file
 struct TopologyFile::AtomsEntry {
-	std::optional<std::string> section_name{};// Either a residue or lipid_section
+	std::optional<std::string> section_name{};// Either a residue or lipid_section // Currently not used...
 
 	//int nr{};		// Not guaranteed to be unique, atleast not with multiple files!
 	int id = -1;	// 0-indexed ID given by LIMA in the order that the atoms are loaded
@@ -360,7 +373,11 @@ struct TopologyFile::AtomsEntry {
 
 	void composeString(std::ostringstream& oss) const;
 
-	bool operator==(const AtomsEntry&) const = default;
+	// Compare all but sectionname
+	bool operator==(const AtomsEntry& a) const {
+		return id == a.id && type == a.type && resnr == a.resnr && residue == a.residue &&
+			atomname == a.atomname && cgnr == a.cgnr && charge == a.charge && mass == a.mass;
+	}
 };
 
 
@@ -370,12 +387,12 @@ struct TopologyFile::GenericBond{
 	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
-	std::array<int,N> ids{};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
+	std::array<int,N> ids{-1};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
 	int funct{};
 
 	std::optional<ParametersType> parameters = std::nullopt;
 
-	std::string sourceLine{};	// used for debugging	TODO: remove
+	//std::string sourceLine{};	// used for debugging	TODO: remove
 
 	void composeString(std::ostringstream & oss) const {
 		const int width = 10;

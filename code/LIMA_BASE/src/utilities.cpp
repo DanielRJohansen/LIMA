@@ -4,9 +4,9 @@
 #include "Printer.h"
 
 using namespace LIMA_Print;
-using std::string;
+namespace fs = std::filesystem;
 
-LimaLogger::LimaLogger(LogMode lm, EnvMode em, const string& name, const fs::path& workfolder)
+LimaLogger::LimaLogger(LogMode lm, EnvMode em, const std::string& name, const fs::path& workfolder)
     : logmode(lm)
     , envmode{em}
     //, enable_logging(workfolder !="")
@@ -38,7 +38,7 @@ void LimaLogger::startSection(const std::string& input)
 void LimaLogger::print(const std::string& input, const bool log) 
 {
     if (envmode != Headless) {
-        string input_copy = input;
+        std::string input_copy = input;
         if (logmode == compact) {
             if (clear_next) { clearLine(); }
             if (!input_copy.empty() && input_copy.back() == '\n') {
@@ -55,7 +55,7 @@ void LimaLogger::print(const std::string& input, const bool log)
     }
 }
 
-void LimaLogger::finishSection(const string& str) {
+void LimaLogger::finishSection(const std::string& str) {
     if (envmode != Headless) {
         if (logmode == compact) {
             std::cout << "\n";
@@ -67,7 +67,7 @@ void LimaLogger::finishSection(const string& str) {
     logToFile(str);
 }
 
-void LimaLogger::logToFile(const string& str)
+void LimaLogger::logToFile(const std::string& str)
 {
 	if (!enable_logging) { return; }
 	if (!logFile.is_open()) {

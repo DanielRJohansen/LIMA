@@ -36,7 +36,7 @@ namespace RenderUtilities {
         switch (atom_type)
         {
         case ATOM_TYPE::SOL:
-            return float4{ 0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, 1.0f };
+            return float4{ 0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, .50f };
         case ATOM_TYPE::H:
             return float4{ 0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 1.0f };
         case ATOM_TYPE::O:

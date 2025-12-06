@@ -18,34 +18,9 @@
 
 
 namespace LIMAPOSITIONSYSTEM {
-	// -------------------------------------------------------- PBC and HyperPos -------------------------------------------------------- //
-
-
-
 
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
 
-
-	
-	template<typename T>
-	inline T floor_div(T num, T denom) {
-		static_assert(std::is_integral<T>::value, "floor_div requires integer types");
-		return (num - (num < 0 ? denom - 1 : 0)) / denom;
-	}
-
-
-	/// <summary>
-	/// Use with care, will overflow if posLM is > 20 nm. Does NOT apply boundary condition
-	/// </summary>
-	__device__ inline NodeIndex PositionToNodeIndex(const Float3& posNM) {
-		NodeIndex nodeindex{
-			static_cast<int>(round(posNM.x)),
-			static_cast<int>(round(posNM.y)),
-			static_cast<int>(round(posNM.z))
-		};
-
-		return nodeindex;
-	}
 
 	__device__ __host__ inline NodeIndex PositionToNodeIndexNM(const Float3& posNM) {
 		NodeIndex nodeindex{
@@ -68,7 +43,7 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, float boxlen_nm, BoundaryConditionSelect bc) {
+	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 		// Subtract nodeindex from abs position to get relative position
 		Float3 hyperPos = absPosNM;
 		const Float3 nodePos = nodeIndexToAbsolutePosition(nodeindex);
@@ -88,11 +63,11 @@ namespace LIMAPOSITIONSYSTEM {
 		return Coord{ relpos };
 	}
 
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, float boxlen_nm, BoundaryConditionSelect bc) {
+	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, const Int3& boxlen_nm, BoundaryConditionSelect bc) {
 		NodeIndex nodeindex = PositionToNodeIndexNM(position);	// TEMP
 		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
 
-		const Coord relpos = getRelativeCoord(position, nodeindex, 1, boxlen_nm, bc);
+		const Coord relpos = getRelativeCoord(position, nodeindex, 1, Float3::FromInt3(boxlen_nm), bc);
 		return std::make_tuple(nodeindex, relpos);
 	}
 
@@ -109,7 +84,7 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, float boxlen_nm, BoundaryConditionSelect bc) {
+	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, Int3 boxlen_nm, BoundaryConditionSelect bc) {
 		CompoundCoords compoundcoords{};
 
 		compoundcoords.origo = PositionToNodeIndexNM(positions[key_particle_index]);
@@ -117,7 +92,7 @@ namespace LIMAPOSITIONSYSTEM {
 
 		for (int i = 0; i < positions.size(); i++) {
 			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, boxlen_nm, bc);
+			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, Float3::FromInt3(boxlen_nm), bc);
 
 		}
 		return compoundcoords;
@@ -197,6 +172,13 @@ namespace LIMAPOSITIONSYSTEM {
 		return (p1 - temp).len();
 	}
 
+    template <typename BoundaryCondition>
+    __device__ __host__ static float calcHyperDistSquaredNM(const Float3& p1, const Float3& p2) {
+        Float3 temp = p2;
+        BoundaryCondition::applyHyperposNM(p1, temp);
+        return (p1 - temp).lenSquared();
+    }
+
 	//__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue_Host& coords, int64_t step, int compoundIndex, int particleIndex) {
 	//	return GetAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);
 	//}
@@ -222,26 +204,14 @@ public:
 	}
 
 
-	// This function is only used in bridge, and can be made alot smarter with that context. TODO
-	// Calculate the shift in [nm] for all relpos belonging to right, so they will share origo with left
-	template <typename BoundaryCondition>
-	__device__ static Coord getRelativeShiftBetweenCoordarrays(const NodeIndex* const compoundOrigosBuffer, int64_t step, int compound_index_left, int compound_index_right) {
-		const NodeIndex& nodeindex_left = compoundOrigosBuffer[compound_index_left]; //   CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_left)->origo;
-		const NodeIndex& nodeindex_right = compoundOrigosBuffer[compound_index_right]; //CompoundcoordsCircularQueueUtils::getCoordarrayRef(coordarray_circular_queue, step, compound_index_right)->origo;
-
-		const NodeIndex hypernodeindex_right = BoundaryCondition::applyHyperpos_Return(nodeindex_left, nodeindex_right);
-		const NodeIndex nodeshift_right_to_left = nodeindex_left - hypernodeindex_right;
-
-		EngineUtilsWarnings::verifyNodeIndexShiftIsSafe(nodeshift_right_to_left);
-
-		// Calculate necessary shift in relative position for all particles of right, so they share origo with left
-		return Coord{ -nodeshift_right_to_left };
-	}
-
-	__device__ static Coord getRelShiftFromOrigoShift(const NodeIndex& from, const NodeIndex& to) { // Really dont like this function, also the result is almost always convert to FLoat3, so can do some optimizastion here TODO TODO TODO IMPORTANT
+	/*__device__ static Coord GetRelShiftFromOrigoShift_Coord(const NodeIndex& from, const NodeIndex& to) {
 		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
 
 		const NodeIndex origo_shift = from - to;
 		return Coord{ origo_shift };
-	}
+	}*/
+    __device__ static constexpr Float3 GetRelShiftFromOrigoShift_Float3(const NodeIndex& from, const NodeIndex& to) {
+        return NodeIndex{from-to}.toFloat3();
+    }
+
 };

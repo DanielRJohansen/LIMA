@@ -55,7 +55,7 @@ namespace ElectrostaticsTests {
 		const Float3 posOtherRel = posOtherAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexOther);
 
 		NodeIndex nodeindexOtherHyper = nodeindexOther;
-		BoundaryConditionPublic::applyHyperpos(nodeindexSelf, nodeindexOtherHyper, 3, PBC);
+		BoundaryConditionPublic::applyHyperpos(nodeindexSelf, nodeindexOtherHyper, Int3(3, 3, 3), PBC);
 		const NodeIndex nodeindexOfOtherRelativeToSelf = nodeindexOtherHyper - nodeindexSelf;
 
 
@@ -82,7 +82,7 @@ namespace ElectrostaticsTests {
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 3.f };
+		grofile.box_size = Float3{ 8.f, 4.f, 4.f };
 		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
 		grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
@@ -114,7 +114,7 @@ namespace ElectrostaticsTests {
 
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {
-			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3 );
+			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3);
 			moltype->atoms.push_back(atom.atomtype);
 			simfiles.topfile->moleculetypes.insert({ atom.atomtype.atomname, moltype });
 		}
@@ -216,9 +216,9 @@ namespace ElectrostaticsTests {
 	static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
 		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
 			AtomsSelection{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 1.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 5.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			},
-			5.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
+			2.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
 		);
 
 		const int nSteps = 1000;
@@ -228,6 +228,7 @@ namespace ElectrostaticsTests {
 		simparams.dt = 1.f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
+		simparams.stepsPerNlistupdate = 1;
 		simparams.enable_electrostatics = true;
 		simparams.cutoff_nm = 2.f;
 		auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);
@@ -350,7 +351,7 @@ namespace ElectrostaticsTests {
 
 
 			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
+			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
 			
 			const Float3 diff = grofile.atoms[0].position - hyperposOther;
 
@@ -424,7 +425,7 @@ namespace ElectrostaticsTests {
 
 
 			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
+			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
 			const Float3 diff = grofile.atoms[0].position - hyperposOther;
 
 //			Float3 ghostforce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - grofile.box_size.x , 0.f, 0.f });
@@ -486,7 +487,7 @@ namespace ElectrostaticsTests {
 		//env.getSimPtr()->box_host->compoundInterimStates[0].vels_prev[0] = Float3{ 5000, 0, 0 };
 
 		Float3 hyperposOther = grofile.atoms[1].position;
-		BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size.x, PBC);
+		BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
 		const Float3 diff = grofile.atoms[0].position - hyperposOther;
 		const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f;
 		const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff);
@@ -519,10 +520,10 @@ namespace ElectrostaticsTests {
 
 	// Create many pos charged Ions as compounds. Set all LJ to 0. Compute exact SR and LR interactions between all particles. Run simulation 1 step, and compare the errors
 	LimaUnittestResult TestLongrangeEsNoLJManyParticles(EnvMode envmode) {
-		const float boxlen = 20.f;
+		const Float3 boxlen{ 20.f };
 		const float chargeExtern = 1.f;
 		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
-		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", boxlen,
+		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", boxlen.x,
 			AtomsSelection{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			},
@@ -543,7 +544,7 @@ namespace ElectrostaticsTests {
 		//topfile.GetSystemMutable().molecules.resize(3);
 
 		env.CreateSimulation(grofile, topfile, params);
-		env.getSimPtr()->forcefield.particle_parameters[0].epsilon = 0.f; // There is only 1 particle type
+		env.getSimPtr()->forcefield.particle_parameters[0].epsilonSqrt = 0.f; // There is only 1 particle type
 		env.run();
 
 

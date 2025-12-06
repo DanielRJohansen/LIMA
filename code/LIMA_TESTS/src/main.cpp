@@ -9,6 +9,9 @@
 #include "SetupTests.h"
 #include "Userinterface.h"
 #include "Display.h"
+#include "ForceComparisons.h"
+#include "ProgramsTests.h"
+
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
@@ -20,28 +23,6 @@ using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 
 void RunAllUnitTests();
-
-uint8_t Dir(int x, int y, int z)  {
-	return static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1));
-}
-
-
-struct Direction3 {
-	uint8_t data; // store 6 bits: top 2 for x+1, next 2 for y+1, bottom 2 for z+1
-
-	 constexpr Direction3() : data(0) {}
-
-	 constexpr Direction3(int x, int y, int z)
-		: data(static_cast<uint8_t>(((x + 1) << 4) | ((y + 1) << 2) | (z + 1)))
-	{}
-
-	 inline int x() const { return ((data >> 4) & 0x3) - 1; }
-	 inline int y() const { return ((data >> 2) & 0x3) - 1; }
-	 inline int z() const { return (data & 0x3) - 1; }
-
-	 bool operator==(const Direction3& o) const { return data == o.data; }
-	 bool operator!=(const Direction3& o) const { return data != o.data; }
-};
 
 int main() {
 	try {
@@ -82,11 +63,16 @@ int main() {
 		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
 		//TestIntegration(envmode);
 
-		
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.8e-3, 2e-5);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-
+		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
+		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
+		//SimParams simparams; 
+		//simparams.n_steps = 100000;
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
+		//for (int i = 0; i < 100; i++) {
+		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
+		//	if (!res.success)
+		//		break;
+		//}
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -103,41 +89,57 @@ int main() {
 		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
+		//Lipids::_MakeLipid("cholesterol");
 
-
+		//TestLimaChosesSameBondparametersAsGromacs(envmode);
+		
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
 		
-
-
-		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs\)";
-		//fs::path dir = R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\)";
-		//GroFile grofile(dir/"conf.gro");
-		//grofile.box_size = Float3(std::ceil(std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z)));
-		////Display::RenderGrofile(grofile, false);
-		//TopologyFile topfile(dir / "topol.top");
-		//Programs::EnergyMinimize(grofile, topfile, true, dir, envmode, false);
-		//grofile.printToFile(std::string{ "em.gro" });
-
-		//SimParams simparams(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\sim_params.txt)");
-		//simparams.dt = 100.f;
-		//////auto sim = Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling)", Full, false);
-		//Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\EAG1-channel_strong-scaling\inputs)", Full);
-		//env.CreateSimulation(grofile, topfile, simparams);
-		//env.run(false);
-
-		/*GroFile grofile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.gro)");
-		TopologyFile topfile(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membrane.top)");
-		Programs::EnergyMinimize(grofile, topfile, true, R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20)", envmode, false);
-		grofile.printToFile(std::string("membrane_em.gro"));*/
-
 		//TestForces1To1(envmode);
+
+		//ForceComparisons::T4RmsdAndRmsf();
+		//ForceComparisons::DoAllForceComparisons(envmode);
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		//Benchmarks::Benchmark("membrane20"); 
-		//Benchmarks::Benchmark("manyt4"); 
-		RunAllUnitTests();
+		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
+		//Benchmarks::Benchmark("manyt4", "manyt4sol");
+		//Benchmarks::Benchmark("stmv");
+		//Benchmarks::PrepareSimulation_stmv(envmode);
+		 
+		//TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
+
+
+		//{
+		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.gro)" };
+		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.top)" };
+		//	SimulationBuilder::SolvateGrofile(grofile, topfile);
+
+		//	grofile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" });
+		//	topfile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" });
+		//}
+
+		//{
+		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
+		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
+		//	Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+
+		//	grofile.printToFile("membranesolvated_em.gro");
+		//	topfile.printToFile("membranesolvated_em.top");
+		//}
+		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
+		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
+		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv)", EnvMode::Full);
+		env.CreateSimulation(grofile, topfile, SimParams{});
+		env.run();*/
+		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+		
+		int runAll = 1;
+		if (!runAll)
+			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
+		else
+			RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
@@ -161,7 +163,14 @@ void RunAllUnitTests() {
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
-	
+	if (!ALL_PHYSICS_ENABLED) {
+		TestUtils::setConsoleTextColorRed();
+		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
+		TestUtils::setConsoleTextColorDefault();
+	}
+		
+
+
 	// Isolated forces sanity checks
 	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
 	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
@@ -182,8 +191,10 @@ void RunAllUnitTests() {
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.224e-3, 2e-5));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
+	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode));
+
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
@@ -202,6 +213,9 @@ void RunAllUnitTests() {
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
+
+	// Gromacs correctness
+	ADD_TEST("ForceComparisons", ForceComparisons::DoAllForceComparisons(envmode));
 
 	//ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
 

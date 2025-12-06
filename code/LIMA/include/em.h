@@ -21,7 +21,7 @@ Options:
     -top, -t [path]
         Path to the source .top file. Defaults to ./topol.top
 
-    -conf_output, -co [path]
+    -conf_out, -co [path]
         Path to the output .gro file. Defaults to ./conf.gro
 
     -emtol [value]

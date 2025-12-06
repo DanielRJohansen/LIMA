@@ -29,9 +29,10 @@ namespace EngineUtils {
 
 	// returns pos_tadd1
 	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
-#ifndef ENABLE_INTEGRATEPOSITION
-		return pos;
-#endif
+		if constexpr (!ENABLE_INTEGRATEPOSITION) {
+			return pos;
+		}
+
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}
@@ -166,18 +167,35 @@ namespace EngineUtils {
 			const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
 				loggingInterval, boxparams.total_particles_upperbound);
 
+			//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
+
 			trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
 			poteBuffer[index] = potE;
 			velBuffer[index] = velocity.len();
 		}
 	}
 
-	__device__ constexpr bool isOutsideCutoff(const float dist_sq_reciprocal) {
+	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
+		if constexpr (HARD_CUTOFF) {
+			return dist_sq > DeviceConstants::cutoffNMSquared;	// (CUTOFF_LM * CUTOFF_LM);
+		}
+		return false;
+	}
+
+	__device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal) {
 		if constexpr (HARD_CUTOFF) {
 			return dist_sq_reciprocal < DeviceConstants::cutoffNmSquaredReciprocal;	//  1. / (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
+
+    __device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal, const float cutoff_reciprocal) {
+        if constexpr (HARD_CUTOFF) {
+            return dist_sq_reciprocal < cutoff_reciprocal;
+        }
+        return false;
+    }
+
 
 
 	template <typename BoundaryCondition>
@@ -189,7 +207,7 @@ namespace EngineUtils {
 			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
 
 			// calc Relative LimaPosition Shift from the origo-shift
-			utility_float3 = LIMAPOSITIONSYSTEM_HACK::getRelShiftFromOrigoShift(querycompound_hyperorigo, origo_self).ToRelpos();
+			utility_float3 = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, origo_self);
 		}
 		__syncthreads();
 

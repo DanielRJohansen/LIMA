@@ -31,6 +31,16 @@ namespace LAL {
 		return fma(t, v1, fma(-t, v0, v0));
 	}
 
+	__device__ inline void SequentialPrefixSum(int* const data, int nElements) {
+		if (threadIdx.x == 0) {
+			for (int i = 1; i < nElements; i++) {
+				data[i] += data[i - 1];
+			}
+		}
+		__syncthreads();
+		data[threadIdx.x] -= 1;
+	}
+
 	// TODO These functions are NOT what their names elude they are, fix that
 	// SLOW - Returns sum of actives before, thus must be -1 for 0-based index :)
 	__device__ inline void doSequentialPrefixSum(uint8_t* onehot_remainers, int n_elements) {
@@ -99,35 +109,35 @@ namespace LAL {
 		}
 	}
 
-	//__device__ inline void Sort(float* data, int nElements) {
-	//	// Assuming that data is already in shared memory.
-	//	int tid = threadIdx.x;
+    template <typename T, typename Accessor = decltype([](const T& a) { return a; }) >
+    __device__ inline void Sort(T* data, int nElements, Accessor accessor = [](const T& a) { return a; }) {
+        int tid = threadIdx.x;
 
-	//	for (int k = 2; k <= nElements; k <<= 1) {
-	//		for (int j = k >> 1; j > 0; j >>= 1) {
-	//			int ixj = tid ^ j;
-	//			if (ixj > tid) {
-	//				if ((tid & k) == 0) {
-	//					if (data[tid] > data[ixj]) {
-	//						// Swap data[tid] and data[ixj]
-	//						float temp = data[tid];
-	//						data[tid] = data[ixj];
-	//						data[ixj] = temp;
-	//					}
-	//				}
-	//				else {
-	//					if (data[tid] < data[ixj]) {
-	//						// Swap data[tid] and data[ixj]
-	//						float temp = data[tid];
-	//						data[tid] = data[ixj];
-	//						data[ixj] = temp;
-	//					}
-	//				}
-	//			}
-	//			__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
-	//		}
-	//	}
-	//}
+        for (int k = 2; k <= nElements; k <<= 1) {
+            for (int j = k >> 1; j > 0; j >>= 1) {
+                int ixj = tid ^ j;
+                if (ixj > tid) {
+                    if ((tid & k) == 0) {
+                        if (accessor(data[tid]) > accessor(data[ixj])) {
+                            // Swap data[tid] and data[ixj]
+                            T temp = data[tid];
+                            data[tid] = data[ixj];
+                            data[ixj] = temp;
+                        }
+                    }
+                    else {
+                        if (accessor(data[tid]) < accessor(data[ixj])) {
+                            // Swap data[tid] and data[ixj]
+                            T temp = data[tid];
+                            data[tid] = data[ixj];
+                            data[ixj] = temp;
+                        }
+                    }
+                }
+                __syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+            }
+        }
+    }
 
 
 }

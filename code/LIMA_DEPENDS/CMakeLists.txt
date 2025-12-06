@@ -40,14 +40,42 @@ add_library(LIMA_DEPENDS STATIC
     qhull/src/libqhull_r/user_r.c
     qhull/src/libqhull_r/rboxlib_r.c
     qhull/src/libqhull_r/global_r.c
+
+    mdtraj/xtc/src/xdrfile.c
+    mdtraj/xtc/src/xdrfile_trr.c
+    mdtraj/xtc/src/xdrfile_xtc.c
+    mdtraj/xtc/src/xdr_seek.c
+
+    imgui/imgui.cpp
+    imgui/imgui_draw.cpp
+    imgui/imgui_tables.cpp
+    imgui/imgui_widgets.cpp
+    imgui/imgui_demo.cpp
+    imgui/backends/imgui_impl_glfw.cpp
+    imgui/backends/imgui_impl_opengl3.cpp
 )
 
 target_include_directories(LIMA_DEPENDS PUBLIC
+    ${CMAKE_SOURCE_DIR}/code/LIMA_DEPENDS/imgui/
+    ${CMAKE_SOURCE_DIR}/code/LIMA_DEPENDS/imgui/backends
     glew-2.1.0/include/
 
     qhull/src
+
+    mdtraj/xtc/include/
+    ${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/include
+
 )
 
+if (NOT UNIX)
+    set(GLFW_LIBRARIES "${CMAKE_SOURCE_DIR}/code/dependencies/GLFW/lib/glfw3.lib")
+else()
+    set(GLFW_LIBRARIES glfw)
+endif()
+target_link_libraries(LIMA_DEPENDS PUBLIC
+    ${GLFW_LIBRARIES}
+    ${OPENGL_LIBRARIES}
+)
 
 target_compile_definitions(LIMA_DEPENDS PUBLIC GLEW_STATIC)
 

@@ -2,7 +2,7 @@
 // Each of these functions will be omitted based on the preprocessor flags.
 // There will be a separate namespace for each kernel!
 
-// Each function determines if its priority is under LIMASAFEMODE or LIMAPUSH
+// Each function determines if its priority is under LIMASAFEMODE or LIMA_PUSH
 
 #pragma once
 
@@ -67,7 +67,7 @@ public:
 	}
 
 	__device__ static void verifyCompoundOrigoshiftDuringIntegrationIsValid(const NodeIndex& shift, const Coord& kp_relpos) {
-		if constexpr (!LIMA_PUSH) {
+		if constexpr (INDEXING_CHECKS) {
 			if (shift.largestMagnitudeElement() > 1) {
 				printf("Compound origo cannot shift more than 1 nodeindex per dim per integration, was %d %d %d.\nKeyparticle Relpos was %d %d %d\n", shift.x, shift.y, shift.z, kp_relpos.x, kp_relpos.y, kp_relpos.z);
 			}

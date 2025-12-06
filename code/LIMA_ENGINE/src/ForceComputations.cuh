@@ -25,7 +25,7 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 		potE = 0.5f * bondParams.kb * (error * error);				// [J/mol]
 	}
 	float force_scalar = -bondParams.kb * error;				// [J/mol/nm]
-
+	//printf("ForceScalar %f error %f\n", force_scalar, error);
 	// In EM mode we might have some VERY long bonds, to avoid explosions, we cap the error used to calculate force to 2*b0
 	// Note that we still get the correct value for potE
 	if constexpr (energyMinimize) {

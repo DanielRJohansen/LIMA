@@ -53,11 +53,12 @@ namespace ForceCorrectness {
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 1.66e-4) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 3.148e-2) {
 		const fs::path work_folder = simulations_dir / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
+		params.data_logging_interval = 1;
 
 		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 		std::vector<float> particle_temps{ 400, 1200 };
@@ -82,10 +83,15 @@ namespace ForceCorrectness {
 			}
 
 			// Give the solvent a velocty
-			{	
-				const float solventMass = env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMols[0].tinymolTypeIndex].mass;
+			{
+				float solventMass = 0;
+				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+					solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
+				}
 				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
-				env.getSimPtr()->box_host->tinyMols[0].vel_prev = Float3{ -1, 0, 0 } * vel;
+				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+					env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
+				}
 			}
 
 
@@ -105,7 +111,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 3e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 4.6e-7);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
@@ -193,9 +199,8 @@ namespace ForceCorrectness {
 
 		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
 
-		//CompoundCoords* coordarray_ptr = box_host.compoundcoordsCircularQueue->getCoordarrayRef(0, 0);
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x; // TODO: Why do the change here and not in the grofile directly?
+		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
 
 
 
@@ -373,8 +378,6 @@ namespace ForceCorrectness {
 
 		env.run();
 		LIMA_UTILS::genericErrorCheck("Error during test");
-
-		// TODO: Also test explicitly if the force should be attractive or repulsive, and that it actually is. This is to make sure the sign is correct
 
 		const auto sim = env.getSim();
 

@@ -221,6 +221,46 @@ void Lipids::OrganizeLipidIntoCompoundsizedSections(GroFile& grofile, TopologyFi
 }
 
 
+void Lipids::_MakeLipid(const std::string& name) {
+	fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
+	auto groPath = dir / (name + ".gro");
+	auto itpPath = dir / (name + ".itp");
+
+	GroFile grofile{ groPath };
+	TopologyFile topfile(itpPath);
+	grofile.box_size = Float3{ 5.f };
+	OrganizeLipidIntoCompoundsizedSections(grofile, topfile.GetMoleculeType());
+
+	// Chicken before egg issue, cant load the lipid as it is not correctly part of the ff yet?
+	{
+		std::unique_ptr<Display> display = std::make_unique<Display>();
+		display->Render(std::make_unique<Rendering::GrofileTask>(grofile, true), true);
+
+
+		//Environment env{ grofile.m_path.parent_path(), Headless };
+		//SimParams params;
+		//params.n_steps = 2;
+		//params.dt = 0;
+		//params.data_logging_interval = 1;
+		//params.em_variant = true;
+		//env.CreateSimulation(grofile, topfile, params);
+		//env.run();
+		//auto sim = env.getSim();
+
+		//if (true) {
+		//	std::unique_ptr<Display> display = true ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
+		//	display->Render(
+		//		std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
+		//		true);
+		//}
+	}
+
+	if (true) {
+		grofile.printToFile();
+		topfile.printToFile();
+	}
+}
+
 void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 	fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
 
@@ -243,6 +283,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 		OrganizeLipidIntoCompoundsizedSections(grofile, topfile.GetMoleculeType());
 
 		// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
+		// Chicken before egg issue, cant load the lipid as it is not correctly part of the ff yet?
 		{
 			Environment env{ grofile.m_path.parent_path(), Headless};
 			SimParams params;
@@ -251,7 +292,7 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 			params.data_logging_interval = 1;
 			params.em_variant = true;
 			env.CreateSimulation(grofile, topfile, params);
-			env.run(false);
+			env.run();
 			auto sim = env.getSim();
 
 			if (displayEachLipidAndHalt) {

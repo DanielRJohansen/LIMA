@@ -4,6 +4,7 @@
 #include "Bodies.cuh"
 #include "TimeIt.h"
 #include "MDFiles.h"
+#include "Trajectory.h"
 
 #include <memory>
 #include <chrono>
@@ -29,12 +30,12 @@ public:
 	/// Create a simulation, and create the necessary files in process, if the defaults
 	/// (conf.gro and topol.top and simparams.txt) are not available
 	/// </summary>
-	void CreateSimulation(float boxsize_nm);
+	void CreateSimulation(const Float3& boxsize_nm);
 
 	/// <summary>
 	/// Create a simulation from existing files
 	/// </summary>
-	void CreateSimulation(const std::string conf_filename, std::string topol_filename, SimParams);	// TODO make constref
+	void CreateSimulation(const std::string& conf_filename, const std::string& topol_filename, const SimParams&);
 
 	// The basic createSim
 	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);
@@ -51,7 +52,8 @@ public:
 	void createSimulationFiles(float boxlen);
 
 	// Run a standard MD sim
-	void run(bool doPostRunEvents=true);
+    /// <returns>Elapsed Engine time in seconds</returns>
+    std::chrono::duration<double> run();
 
 	/// <summary>
 	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
@@ -61,6 +63,12 @@ public:
 	/// <returns></returns>
 	GroFile WriteBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
 	void WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> step=std::nullopt);
+
+	// Returns a vector of forces (in kJ/mol/nm) for each particle, in the order they were in the gro file
+	std::vector<Float3> GetForces(int64_t step) const;
+
+	Trajectory WriteSimToTrajectory() const;
+	void WriteTrajectoryAsUff(const fs::path& path) const;
 
 	void RenderSimulation();
 	
@@ -85,20 +93,22 @@ public:
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 
+	SimStatus simStatus{};
+
+	bool prepareForRun();
 private:
 
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void postRunEvents();
-	void handleStatus(int64_t step);
+	void handleStatus(int64_t step, bool emVariant);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant);
+	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
 
 	void sayHello();
 
-	bool prepareForRun();
+	
 
 
 	EnvMode m_mode;
@@ -113,6 +123,7 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
+	std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
 
 	ColoringMethod coloringMethod;	// Not ideal to have here..
 

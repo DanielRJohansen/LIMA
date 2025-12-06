@@ -111,7 +111,7 @@ namespace Benchmarks {
 		ip.enable_electrostatics = true;
 		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(false);
+		env.run();
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
 
@@ -148,7 +148,7 @@ namespace Benchmarks {
 		ip.n_steps = 4000;
 		Environment env{ workDir , envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run(false);
+		env.run();
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
 
@@ -160,31 +160,50 @@ namespace Benchmarks {
 	}
 
 	// Returns {avg ms/step, stdDev}
-	static std::pair<float, float> Benchmark(const fs::path& dir) {
+	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt) {
+		
+		if (!IS_FAST_MODE) {
+			TestUtils::setConsoleTextColorYellow();
+			printf("Warning: Benchmarking with debug mode enabled. Results may be significantly slower than expected.\n");
+			TestUtils::setConsoleTextColorDefault();
+		}
+
+		if (!ALL_PHYSICS_ENABLED) {
+			TestUtils::setConsoleTextColorYellow();
+			printf("Warning: Benchmarking with some physics disabled. Results may be significantly faster than expected.\n");
+			TestUtils::setConsoleTextColorDefault();
+		}
+
 
 		const fs::path workDir = simulations_dir / "benchmarking"/dir;
 		fs::path topPath, groPath;
 
-		for (const auto& entry : fs::directory_iterator(workDir)) {
-			auto ext = entry.path().extension();
-			if (ext == ".top") {
-				if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
-				topPath = entry.path();
-			}
-			else if (ext == ".gro") {
-				if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
-				groPath = entry.path();
+		if (name) {
+			groPath = workDir / (*name + ".gro");
+			topPath = workDir / (*name + ".top");
+		}
+		else {
+			for (const auto& entry : fs::directory_iterator(workDir)) {
+				auto ext = entry.path().extension();
+				if (ext == ".top") {
+					if (!topPath.empty()) throw std::runtime_error("Multiple .top files found");
+					topPath = entry.path();
+				}
+				else if (ext == ".gro") {
+					if (!groPath.empty()) throw std::runtime_error("Multiple .gro files found");
+					groPath = entry.path();
+				}
 			}
 		}
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
 		SimParams params{ workDir / "../sim_params.txt" };
-		params.dt = 1.f * FEMTO_TO_NANO; 		
+		//params.dt = 1.f * FEMTO_TO_NANO; 		
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);
-		env.run(false);
+		env.run();
 
 		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");
@@ -216,5 +235,26 @@ namespace Benchmarks {
 				<< std::endl;
 		}
 	}	
+
+	static LimaUnittestResult PrepareSimulation_stmv(EnvMode envmode) {
+		TimeIt timer("Load Sim");
+		const fs::path work_dir = simulations_dir / "benchmarking"/"stmv";
+
+		GroFile grofile{ work_dir / "conf.gro" };
+		TopologyFile topfile{ work_dir /  "topol.top" };
+		SimParams ip{};
+		ip.n_steps = 1;
+		ip.data_logging_interval = 20;
+		ip.enable_electrostatics = true;
+		Environment env{ work_dir, envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.prepareForRun();
+		const std::chrono::duration<double> elapsedTime = timer.elapsed();
+		
+		const std::chrono::duration<double> maxTime{ 15. }; // [s]
+		
+		return LimaUnittestResult{ elapsedTime < maxTime, std::format("Elapsed time: {:.2f} [s] Allowed: {:.2f} [s]", elapsedTime.count(), maxTime.count()), envmode != Headless };
+	}
+
 
 }

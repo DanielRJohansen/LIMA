@@ -19,6 +19,9 @@ namespace Lipids {
 
 	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile::Moleculetype&);
 
+	// These functions are not for runtime, they prepare data once and for all
+	void _MakeLipid(const std::string& name);
 	void _MakeLipids(bool writeToFile, bool displayEachLipidAndHalt);
+
 };
 

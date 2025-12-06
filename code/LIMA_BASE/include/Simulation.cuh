@@ -5,45 +5,11 @@
 #include <memory>
 #include <filesystem>
 #include "BoxGrid.cuh"
+#include "SimParams.h"
 
 namespace MDFiles { struct TrrFile; }
 
-enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
-enum BoundaryConditionSelect{NoBC, PBC};
-
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
-
-struct SimParams {
-	SimParams() {}
-	SimParams(const std::filesystem::path& path);
-	SimParams(std::initializer_list<int>) = delete;
-
-	void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
-
-	// Main params
-	uint64_t n_steps = 1000;
-	float dt = 2.f * FEMTO_TO_NANO;				// [ns]
-	bool em_variant = false;
-	float em_force_tolerance = 1000; // [kJ/mol/nm]
-
-	// Physics params
-	BoundaryConditionSelect bc_select{ PBC };
-	bool enable_electrostatics = true;
-	float cutoff_nm = 1.2f;
-	SupernaturalForcesSelect snf_select{ None };	// This should probably be a bitmask instead
-
-	// Output params
-	int data_logging_interval = 5;
-	bool save_trajectory = false;
-	bool save_energy = false;
-	ColoringMethod coloring_method = ColoringMethod::Atomname;
-
-	// Thermostat
-	int64_t steps_per_temperature_measurement = 200;
-	bool apply_thermostat = false;
-
-};
 
 struct SimSignals {
 	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
@@ -52,14 +18,19 @@ struct SimSignals {
 
 
 struct BoxParams {
-	int boxSize = 0;	// [nm]
+	Int3 boxSize{};	// [nm]
 	int n_compounds = 0;
 	int n_bridges = 0;
-	int n_solvents = 0;
+	int nTinymols = 0;
+	int nTinymolParticles = 0;
 	int total_particles_upperbound = 0;
 	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
 	int64_t degreesOfFreedom=0;
+
+	__host__ Float3 BoxSizeFloat() const {
+		return Float3{ static_cast<float>(boxSize.x), static_cast<float>(boxSize.y), static_cast<float>(boxSize.z) };
+	}
 };
 
 
@@ -74,6 +45,10 @@ public:
 	{}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
+
+	const std::vector<T>& GetBuffer() {
+		return buffer;
+	}
 
 	// Get entryindex from LIMALOGSYSTEM
 	T* getBufferAtIndex(size_t entryindex) {
@@ -143,10 +118,9 @@ struct Box {
 
 	std::vector<Compound> compounds;
 	std::vector<CompoundInterimState> compoundInterimStates;
-	//std::unique_ptr<CompoundcoordsCircularQueue_Host> compoundcoordsCircularQueue = nullptr;
 	std::vector<CompoundCoords> compoundCoordsBuffer;
 
-	std::vector<TinyMolState> tinyMols;
+	std::vector<TinyMolParticleState> tinyMolParticlesState;
 	std::vector<SolventBlock> solventblockgrid_circularqueue;
 
 	std::vector<BondedParticlesLUT> bpLutCollection;
@@ -177,9 +151,9 @@ public:
 	bool finished = false;
 
 
-	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;// [nm]
-	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;	// [J/mol]
-	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;	// [m/s]
+	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;	// [nm]
+	std::unique_ptr<ParticleDataBuffer<float>> potE_buffer;		// [J/mol]
+	std::unique_ptr<ParticleDataBuffer<float>> vel_buffer;		// [m/s]
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [J/mol/nm] // For debug only
 
 	std::vector<float> temperature_buffer;	

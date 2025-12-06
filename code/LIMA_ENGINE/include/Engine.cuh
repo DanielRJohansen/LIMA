@@ -7,9 +7,8 @@
 #include "Utilities.h"
 
 #include <iostream>
-#include <chrono>
-#include <thread>
 #include <memory>
+#include <thread>
 
 
 
@@ -19,55 +18,22 @@ class DatabuffersDeviceController;
 class Thermostat;
 class BoxState;
 class BoxConfig;
-class NeighborList;
 class CompoundGridNode;
+struct CompoundQuickData;
+struct ForceEnergyInterims;
+class TinymolTransferModule;
+
+namespace NeighborList { class Controller; }
 
 namespace PME { class Controller; };
+namespace NeighborList{struct IdAndRelshift;}
 
-struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nSolvents, int nSolventblocks);
-	void Free() const;
-
-	__device__ ForceEnergy Sum(int compoundId, int particleId) const {
-		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId];
-	}
-
-	// Compounds
-	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyBonds = nullptr;
-
-	// Tinymol
-	ForceEnergy* forceEnergiesCompoundinteractions = nullptr;
-	ForceEnergy* forceEnergiesTinymolinteractions = nullptr;
-};
-
-struct EngineTimings {
-	int compound_kernels{};
-	int solvent_kernels{};
-	int cpu_master{};
-	int nlist{};
-	int electrostatics{};
-
-	void reset() {
-		compound_kernels = 0;
-		solvent_kernels = 0;
-		cpu_master = 0;
-		nlist = 0;
-		electrostatics = 0;
-	}
-};
 
 struct RunStatus {
 	Float3* most_recent_positions = nullptr;
 	int64_t stepForMostRecentData = 0;
 	int current_step = 0;
 	float current_temperature = NAN;
-
-	//int64_t stepsSinceEnergycheck = 0;
-	//float highestEnergy = 0.f; // measured in a single particle
 	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;
@@ -91,7 +57,6 @@ public:
 	std::unique_ptr<Simulation> takeBackSim();
 
 
-	EngineTimings timings{};
 	volatile RunStatus runstatus;
 
 	void terminateSimulation();
@@ -120,51 +85,38 @@ private:
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
 
+	void BootstrapSolventblockDistributeFromDensity();
+
 	void HandleEarlyStoppingInEM();
 	int64_t stepAtLastEarlystopCheck = 0;
 
 	std::unique_ptr<LimaLogger> m_logger;
 
-	bool updatenlists_mutexlock = 0;
-
 	std::array<cudaStream_t, 5> cudaStreams;
 	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
-	int testval = 0;
-
-	//ForceField_NB forcefield_host;
 	uint64_t step_at_last_traj_transfer = 0;
 	std::unique_ptr<Simulation> simulation;
 
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
-	// These are owned, but this is temporary place to store them
-	ForceEnergy* forceEnergiesBondgroups = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
 	BondGroup* bondgroups = nullptr;
-	ForceField_NB::ParticleParameters* compoundLjParameters = nullptr;
+	CompoundQuickData* compoundQuickData = nullptr;
+	
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
-	NeighborList* neighborlistsPtr = nullptr; // dont own data!
-	CompoundGridNode* compoundgridPtr = nullptr;// dont own data!
 
-
-
+	uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
 
 	std::unique_ptr<PME::Controller> pmeController;
-
-
-	ForceEnergyInterims forceEnergyInterims;
-
-
-	//std::unique_ptr<NeighborList> neighborlistsCopy = nullptr;
-
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
-
 	std::unique_ptr<Thermostat> thermostat;
+	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
+	std::unique_ptr<NeighborList::Controller> nlistController;
+	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
 
 	const BoundaryConditionSelect bc_select;
 };

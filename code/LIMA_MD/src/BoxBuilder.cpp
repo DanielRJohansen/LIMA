@@ -5,6 +5,7 @@
 
 #include <random>
 #include <format>
+#include <numeric>
 
 using namespace LIMA_Print;
 
@@ -27,7 +28,7 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 
 	/*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
 	coords_now = */
-	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, static_cast<float>(box.boxparams.boxSize), simparams.bc_select));
+	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, box.boxparams.boxSize, simparams.bc_select));
 	if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
 		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
 	}
@@ -49,31 +50,60 @@ void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimPar
 int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	for (const auto& tinyMol : tinyMols) {
-		if (box.boxparams.n_solvents == MAX_SOLVENTS) {
+		if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
 			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
 		}
 
-		auto [nodeIndex, relPos] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.position, static_cast<float>(box.boxparams.boxSize), simparams.bc_select);
+		auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], box.boxparams.boxSize, simparams.bc_select);
+		SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
+		
+		std::vector<Coord> relPos(tinyMol.nParticles);
+		std::vector<uint32_t> ids(tinyMol.nParticles);
+		std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
+		std::vector<TinyMolParticleState> states(tinyMol.nParticles);
+		for (int i = 0; i < tinyMol.nParticles; i++) {
+			Float3 hyperPos = tinyMol.positions[i];
+			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, box.boxparams.BoxSizeFloat(), PBC);
+			//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
+			relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.BoxSizeFloat(), PBC);
+			//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
+			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
+			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
+			states[i] = tinyMol.states[i];
+		}
 
-		SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndex, 0, box.boxparams.boxSize).addSolvent(relPos, box.boxparams.n_solvents, tinyMol.state.tinymolTypeIndex);
-		box.boxparams.n_solvents++;
+		solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup, states);
+		box.boxparams.nTinymolParticles += tinyMol.nParticles;
+		box.boxparams.nTinymols++;
 	}
 
 	std::mt19937 gen(1238971);
-	std::uniform_real_distribution<float> distribution(-1.f, 1.f);
+	std::uniform_real_distribution<float> distribution(-1.f, 1.f); // TODO: GROMACS COMPARISON: This is why we dont match gromacs in RMSD
 
 	// Setup forces and vel's for VVS
-	box.tinyMols.reserve(box.boxparams.n_solvents);
-	for (int i = 0; i < box.boxparams.n_solvents; i++) {
+	box.tinyMolParticlesState.resize(0);
+	box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
+	for (int i = 0; i < box.boxparams.nTinymols; i++) {
 		
 		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
-		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, forcefield.types[tinyMols[i].state.tinymolTypeIndex].mass);
 
-		box.tinyMols.emplace_back(TinyMolState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
+		const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
+			[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
+		);
+		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
+
+		for (int j = 0; j < tinyMols[i].nParticles; j++) {
+			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
+			box.tinyMolParticlesState.back().vel_prev = direction * velocity;
+		}
+
+		
+
+		//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
 	}    
-	box.boxparams.total_particles += box.boxparams.n_solvents;
-	return box.boxparams.n_solvents;
+	box.boxparams.total_particles += box.boxparams.nTinymolParticles;
+	return box.boxparams.nTinymolParticles;
 }
 
 
@@ -102,7 +132,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 #endif
 
 	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.n_solvents;
+	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.nTinymolParticles; // Compounds often read/write uncompressed, while tinymols always read/write compressed
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
 	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;
@@ -180,10 +210,10 @@ bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, b
 			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
 
 			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, (float) sim.box_host->boxparams.boxSize, sim.simparams_host.bc_select);
+			BoundaryConditionPublic::applyBCNM(pos, sim.box_host->boxparams.BoxSizeFloat(), sim.simparams_host.bc_select);
 
 			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (static_cast<float>(sim.box_host->boxparams.boxSize) - padding)) {
+				if (pos[i] < padding || pos[i] > (sim.box_host->boxparams.BoxSizeFloat()[i] - padding)) {
 					//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 					return false;
 				}

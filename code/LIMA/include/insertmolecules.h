@@ -64,9 +64,13 @@ Example:
     parser.AddFlag({ "-display", "-d" }, [&display]() {display = true; });
     parser.Parse(argc, argv);
 
-    if (!fs::exists(confSrcPath)) {printf("Invalid conf src");}//TODO make standard,prettier
-    if (!fs::exists(topSrcPath)) {printf("Invalid top src");}
-    if (!fs::exists(confTgtPath)) {printf("Invalid conf tgt");}
+    if (!fs::exists(confSrcPath)) { throw("Invalid conf src");}//TODO make standard,prettier
+    if (!fs::exists(topSrcPath))  { throw("Invalid top src");}
+    if (!fs::exists(confTgtPath)) { throw("Invalid conf tgt");}
+	if (!fs::exists(topTgtPath))  { throw("Invalid top tgt"); }
+
+	confTgtPath = fs::absolute(confTgtPath);
+	topTgtPath = fs::absolute(topTgtPath);
 
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);

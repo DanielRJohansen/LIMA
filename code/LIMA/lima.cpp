@@ -13,8 +13,14 @@
 #include "insertmolecules.h"
 #include "editconf.h"
 #include "em.h"
+#include "solvate.h"
+#include "SetWindowsRegistry.h"
+
+
+
 
 namespace fs = std::filesystem;
+//	solvate				Solvate a .gro file with water molecules.
 
 
 static const std::string helpText = R"(
@@ -66,6 +72,8 @@ int main(int argc, char** argv)
 		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
 		else if (program == "editconf") { editconf(argc, argv); }
 		else if (program == "em") { em(argc, argv); }
+		else if (program == "setregistry") { RegisterGrofileAssociation(); }
+		//else if (program == "solvate") { solvate(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }
 		else {
 			std::cout << "Unregcognized lima program: " << program<< "\n";

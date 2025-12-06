@@ -1,6 +1,7 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 #include "Environment.h"
 #include "MDFiles.h"
@@ -8,6 +9,7 @@
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
+#include "UpgradeableFileFormat.h"
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -37,13 +39,12 @@ Environment::Environment(const fs::path& workdir, EnvMode mode)
 
 Environment::~Environment() {}
 
-void Environment::CreateSimulation(float boxsize_nm) {
+void Environment::CreateSimulation(const Float3& boxsize_nm) {
 	SimParams simparams{};
 	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm)));
-	simulation->box_host->boxparams.boxSize = static_cast<int>(boxsize_nm);
 }
 
-void Environment::CreateSimulation(std::string gro_path, std::string topol_path, const SimParams params) {
+void Environment::CreateSimulation(const std::string& gro_path, const std::string& topol_path, const SimParams& params) {
 	const auto groFile = std::make_unique<GroFile>(gro_path);
 	const auto topFile = std::make_unique<TopologyFile>(topol_path);
 	CreateSimulation(*groFile, *topFile, params);
@@ -92,6 +93,9 @@ void Environment::createSimulationFiles(float boxlen) {
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
+	if (simulation->simparams_host.cutoff_nm != 1.2f) {// TODO: DANGER
+		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
+	}
 }
 
 void Environment::verifyBox() {
@@ -110,7 +114,7 @@ void Environment::verifyBox() {
 
 	
 
-	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.n_solvents != 0) {
+	if (simulation->simparams_host.bc_select == NoBC && simulation->box_host->boxparams.nTinymols != 0) {
 		throw std::runtime_error("A simulation with no Boundary Condition may not contain solvents, since they may try to acess a solventblock outside the box causing a crash");
 	}	
 
@@ -145,6 +149,7 @@ bool Environment::prepareForRun() {
 
 	simulation->PrepareDataBuffers();
 	
+	verifySimulationParameters();
 	verifyBox();
 	simulation->ready_to_run = true;
 
@@ -177,11 +182,13 @@ void Environment::sayHello() {
 
 	std::cout << file_contents;
 }
-#include <optional>
 
-void Environment::run(bool doPostRunEvents) {
+std::chrono::duration<double> Environment::run() {
 	const bool emVariant = simulation->simparams_host.em_variant;
-	if (!prepareForRun()) { return; }
+	const bool stepwise = simulation->simparams_host.stepwise;
+	simparamsCopy = simulation->simparams_host;
+
+    if (!prepareForRun()) { return {}; }
 
 	std::unique_ptr<Display> display = nullptr;
 
@@ -192,9 +199,10 @@ void Environment::run(bool doPostRunEvents) {
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
 	time0 = std::chrono::steady_clock::now();
+    auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(compounds, boxparams, display.get(), emVariant)) {
+		if (!handleDisplay(compounds, boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -202,7 +210,7 @@ void Environment::run(bool doPostRunEvents) {
 		
 		engine->step();
 
-		handleStatus(engine->runstatus.current_step);
+		handleStatus(engine->runstatus.current_step, emVariant);
 		
 		if (engine->runstatus.simulation_finished) {
 			break;
@@ -211,12 +219,14 @@ void Environment::run(bool doPostRunEvents) {
 		// Deadspin to slow down rendering for visual debugging :)
 		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
+    auto t1 = std::chrono::steady_clock::now();
 	simulationTimer->stop();
 
 	// Transfers the remaining traj data and more
 	engine->terminateSimulation();
 
 	simulation = engine->takeBackSim();
+	simparamsCopy.reset();
 
 	simulation->finished = true;
 	simulation->ready_to_run = false ;
@@ -224,9 +234,7 @@ void Environment::run(bool doPostRunEvents) {
 	
 	m_logger.finishSection("Simulation Finished");
 
-	if (simulation->finished && doPostRunEvents) {
-		postRunEvents();
-	}
+    return t1-t0;
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
@@ -242,23 +250,27 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 		}
 	}
 
-	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.n_solvents; tinymolId++) {
+	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
 
 		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 		const int nAtomsInTinymol = tinymol.nParticles;
 
-		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, stepToLoadFrom);
+		if (nAtomsInTinymol != 3)
+			throw std::runtime_error("Only support 3-atom tinymols in WriteBoxCoordinatesToFile for now");
+
+		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId*3, stepToLoadFrom);	
 		const Float3 deltaPos = new_position - grofile.atoms[tinymol.firstParticleIdInGrofile].position;
 
-		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomType[0]);
+		assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomTypes[0][0]);
 
 		for (int i = 0; i < nAtomsInTinymol; i++) {
-			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
+			//grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
+			grofile.atoms[tinymol.firstParticleIdInGrofile + i].position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId * 3 + i, stepToLoadFrom);
 			particlesUpdated++;
 		}		
 	}
 
-	if (particlesUpdated != grofile.atoms.size()) {
+	if (AllAtom && particlesUpdated != grofile.atoms.size()) {
 		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 	}
 }
@@ -273,35 +285,85 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 
 	return outputfile;
 }
+std::vector<Float3> Environment::GetForces(int64_t step) const {
+	int particlesUpdated = 0;
+
+	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm]
 
 
-void Environment::postRunEvents() {
-	if (simulation->getStep() == 0) { return; }
 
-	const fs::path out_dir = work_dir / ("Steps_" + std::to_string(simulation->getStep()));
-	std::filesystem::create_directories(out_dir);
+		for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+			for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+				forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
+				particlesUpdated++;
+			}
+		}
 
-	// Nice to have for matlab stuff
-	if (m_mode != Headless) {
-		//printH2();
-		//LIMA_Printer::printNameValuePairs("n steps", static_cast<int>(simulation->getStep()), "n solvents", simulation->box_host->boxparams.n_solvents,
-		//	"max comp particles", MAX_COMPOUND_PARTICLES, "n compounds", simulation->box_host->boxparams.n_compounds, "total p upperbound", simulation->box_host->boxparams.total_particles_upperbound);
-		//printH2();
-	}
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
+			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+			const int nAtomsInTinymol = tinymol.nParticles;
+
+			for (int i = 0; i < nAtomsInTinymol; i++) {
+				forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
+				particlesUpdated++;
+			}
+		}
+
+		if (particlesUpdated != boximage->grofile.atoms.size()) {
+			throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
+		}
 	
-	if (simulation->simparams_host.save_trajectory)
-		simulation->ToTracjectoryFile()->Dump(out_dir / "trajectory.trr");
 
-	/*if (simulation->simparams_host.save_energy)
-		FileUtils::dumpToFile(postsim_anal_package.energy_data.data(), postsim_anal_package.energy_data.size(), out_dir.string() + "energy.bin");*/
-
-	simulation->ready_to_run = false;
-	m_logger.finishSection("Post-run events finished Finished");
+	return forces;
 }
 
+Trajectory Environment::WriteSimToTrajectory() const {
+
+	const int nSteps = simulation->getStep();
+	const int nAtoms = boximage->grofile.atoms.size();
+
+	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simparams_host.dt);
 
 
-void Environment::handleStatus(const int64_t step) {
+	for (int step = 0; step < nSteps; step += simulation->simparams_host.data_logging_interval) {
+
+		for (int cid = 0; cid < boximage->compounds.size(); cid++) {
+			for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
+				const int atomIndex = boximage->compounds[cid].indicesInGrofile[pid];
+				trajectory.Set(step, atomIndex, simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step));
+			}
+		}
+
+		for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
+			const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
+			const int nAtomsInTinymol = tinymol.nParticles;
+
+			const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
+			const Float3 deltaPos = new_position - boximage->grofile.atoms[tinymol.firstParticleIdInGrofile].position;
+
+			for (int i = 0; i < nAtomsInTinymol; i++) {
+				const int atomId = tinymol.firstParticleIdInGrofile + i;
+				const Float3 newPos = boximage->grofile.atoms[atomId].position + deltaPos;
+				trajectory.Set(step, atomId, newPos);
+			}
+		}
+	}
+
+	return trajectory;
+}
+
+void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
+	const int nSteps = simulation->getStep();
+	const int nAtoms = boximage->grofile.atoms.size();
+
+	UpgradeableFileFormat file(path);
+
+	file.WriteSection("numAtoms", std::vector{ nAtoms });
+	file.WriteSection("numFrames", std::vector{nSteps / simulation->simparams_host.data_logging_interval});
+	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
+}
+
+void Environment::handleStatus(const int64_t step, bool emVariant) {
 	if (m_mode == Headless) {
 		return;
 	}
@@ -316,24 +378,30 @@ void Environment::handleStatus(const int64_t step) {
 		printf("\033[1000D\033[K");
 
 		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms (%05d/%05d/%05d/%05d/%05d) \tRemaining: %04d min         ",
-			duration_ms / STEPS_PER_UPDATE,
-			engine->timings.compound_kernels / STEPS_PER_UPDATE,
-			engine->timings.solvent_kernels / STEPS_PER_UPDATE,
-			engine->timings.cpu_master / STEPS_PER_UPDATE,
-			engine->timings.nlist / STEPS_PER_UPDATE,
-			engine->timings.electrostatics / STEPS_PER_UPDATE,
-			0);
+		printf("\tAvg. time: %.2fms", duration_ms / STEPS_PER_UPDATE);
 
-		engine->timings.reset();
 		time0 = std::chrono::steady_clock::now();
 		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
+
+
+
+		SimStatus newStatus{};
+		newStatus.step = engine->runstatus.current_step;
+		newStatus.maxForce = emVariant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
+		newStatus.temperature = !emVariant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
+		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
+		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
+		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
+		const double wall_time_sec = duration.count() * 1e-3;
+		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+		newStatus.simulationPerformance = ns_per_day;
+		simStatus = newStatus;
 	}
 }
 
 
 
-bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant) {
+bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
 	if (m_mode != Full) {
 		return true;
 	}
@@ -343,15 +411,15 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 		std::rethrow_exception(displayException);
 	}
 
-	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {
-		
+	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {		
+
 		const std::string info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod
-		));
+			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
+		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;
 	}

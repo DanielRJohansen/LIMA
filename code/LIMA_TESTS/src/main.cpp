@@ -11,6 +11,7 @@
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
+#include "AlgorithmTests.h"
 
 
 using namespace TestUtils;
@@ -135,11 +136,14 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
-		int runAll = 1;
+		KernelAlgorithms::WarpSort64_Unittest(envmode);
+
+
+		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		else
-			RunAllUnitTests();
+			RunAllUnitTests();*/
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;

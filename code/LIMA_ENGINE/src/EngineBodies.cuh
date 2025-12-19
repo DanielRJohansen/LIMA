@@ -92,6 +92,42 @@ public:
 };
 
 
+class PClusterTransfermodule {
+public:
+	static const int maxClustersPerBlock = 64;
+	static const int blockLen = 1;	
+	static const int maxOutgoingClusters = 8;
+
+	Float3* meanPositionOfPClusters = nullptr; // 1 value per pCluster per block
+	int* nPClustersPerBlock = nullptr;		// 1 value per block
+	int* idsOfPclustersInBlocks = nullptr; // 1 value per pclusters per block
+
+
+	int* nIncomingClusters = nullptr;
+	int* idsOfIncomingClusters = nullptr;
+	Float3* meanpositionsOfIncomingClusters = nullptr;
+};
+	
+
+struct SuperClustersControl {
+	//int* nSuperclustersInGrid;
+	//int* pclusterIdsInSuperclusters;
+
+	SuperClusterMeta* scMeta = nullptr;
+	SuperCluster* scData = nullptr;
+	int* nSuperclustersAtomic;
+
+
+	__host__ static SuperClustersControl Create(Int3 boxSize);
+	
+	__host__ void Reset(int nSuperclustersMax /*The struct does not track this number itself*/) {		
+		//cudaMemset(scMeta, 0, sizeof(SuperClusterMeta) * nSuperclustersMax); // doesnt matter
+		//cudaMemset(scData, 0, sizeof(SuperCluster) * nSuperclustersMax);
+		cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
+	}
+};
+
+
 
 //class SmallShift {
 //    __nv_fp8_e4m3 data[4];

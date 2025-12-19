@@ -63,6 +63,8 @@ public:
 
 	SimulationDevice* getSimDev() { return sim_dev; }
 
+	static bool TestAlgorithms();
+
 private:
 
 

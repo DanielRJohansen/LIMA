@@ -15,6 +15,10 @@
 
 #include "EngineHostside.h"
 
+#include <random>
+#include <numeric>
+
+
 
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc)
@@ -507,4 +511,133 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 			SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simulation->getStep());
 		break;
 	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// -------------------------- TESTS: Shouldn't be here permanently ---------------------------- //
+
+
+
+
+template <int nBins, int nValuesPerBin>
+__global__ void TestSortKernel32(float* keys, int* ids)
+{
+	//static_assert(nBins * nValuesPerBin == 32);
+
+	// exactly one warp
+	LAL::SortBins<nBins, nValuesPerBin>(keys, ids);
+}
+bool Engine::TestAlgorithms() {
+
+	constexpr int totalValues = 64;
+
+
+	bool success = true;
+	auto runCase = [&](int nBins, int nValuesPerBin)
+		{
+			std::vector<float> hKeys(totalValues);
+			std::vector<int> hIds(totalValues);
+			std::vector<float> refKeys(totalValues);
+			std::vector<int> refIds(totalValues);
+
+			float* dKeys;
+			int* dIds;
+			cudaMalloc(&dKeys, totalValues * sizeof(float));
+			cudaMalloc(&dIds, totalValues * sizeof(int));
+
+			std::mt19937 rng(12345);
+			std::uniform_real_distribution<float> dist(-1e6, 1e6);
+
+			//hKeys = { 4,3,2,1,4,1,2,3,1,2,3,4,4,2,3,1,4,3,2,1,4,1,2,3,1,2,3,4,4,2,3,1 };
+			for (int i = 0; i < totalValues; ++i) {
+				hKeys[i] = dist(rng);
+				hIds[i] = i;
+			}
+
+
+			{
+				refKeys = hKeys;
+				refIds = hIds;
+
+				std::vector<std::pair<float, int>> keyIdPairs;
+				for (int i = 0; i < totalValues; ++i) {
+					keyIdPairs.push_back({ refKeys[i], refIds[i] });
+				}
+
+				// CPU reference:
+				for (int i = 0; i < nBins; i++) {
+					std::sort(
+						keyIdPairs.begin() + i * nValuesPerBin,
+						keyIdPairs.begin() + (i + 1) * nValuesPerBin,
+						[](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+							return a.first < b.first;
+						}
+					);
+				}
+				for (int i = 0; i < totalValues; ++i) {
+					refKeys[i] = keyIdPairs[i].first;
+					refIds[i] = keyIdPairs[i].second;
+				}
+			}
+
+
+
+
+
+			cudaMemcpy(dKeys, hKeys.data(), totalValues * sizeof(float), cudaMemcpyHostToDevice);
+			cudaMemcpy(dIds, hIds.data(), totalValues * sizeof(int), cudaMemcpyHostToDevice);
+
+			if (nBins == 1)
+				TestSortKernel32<1, 64> << <1, 32 >> > (dKeys, dIds);
+			else if (nBins == 4)
+				TestSortKernel32<4, 16> << <1, 32 >> > (dKeys, dIds);
+			else if (nBins == 8)
+				TestSortKernel32<8, 8> << <1, 32 >> > (dKeys, dIds);
+
+
+			cudaDeviceSynchronize();
+
+			cudaMemcpy(hKeys.data(), dKeys, totalValues * sizeof(float), cudaMemcpyDeviceToHost);
+			cudaMemcpy(hIds.data(), dIds, totalValues * sizeof(int), cudaMemcpyDeviceToHost);
+
+			for (int i = 0; i < totalValues; ++i) {
+				if (hKeys[i] != refKeys[i]) {
+					success = false;
+				}
+			if (hIds[i] != refIds[i]) {
+				success = false;
+				}
+			}
+			
+
+			cudaFree(dKeys);
+			cudaFree(dIds);
+		};
+
+	// 64 values total, tested via 2x32
+	runCase(1, 64);   // effectively 1×64
+	runCase(4, 16);    // effectively 4×16
+	runCase(8, 8);   // effectively 16×4
+
+	return success;
 }

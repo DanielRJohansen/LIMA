@@ -10,7 +10,7 @@
 #include <cfloat>
 
 namespace LJ {
-	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond };
+	enum CalcLJOrigin { ComComIntra, ComComInter, ComSol, SolCom, SolSolIntra, SolSolInter, Pairbond, PP };
 
 
 	__device__ static const char* calcLJOriginString[] = {
@@ -300,5 +300,34 @@ namespace LJ {
 
 		potE_sum += electrostaticPotential;
 		return force * 24.f + electrostaticForce;
+	}
+
+	// Returns fe on p0, invert to get fe on p1
+	template<bool computePotE, bool emvariant>
+	__device__ ForceEnergy ComputeParticleParticleNB(const PData& p0, const PData& p1) 
+	{
+		ForceEnergy fe{}; // on p0
+		//
+		////const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
+		//const Float3 diff = p1.position - p0.position;
+
+		//if (p0.params.epsilonSqrt != 0 && p1.params.epsilonSqrt != 0) {
+		//	fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1. / diff.lenSquared(), fe.potE,
+		//		CalcSigma(p0.params.sigmaHalf, p1.params.sigmaHalf),
+		//		CalcEpsilon(p0.params.epsilonSqrt, p1.params.epsilonSqrt),
+		//		//precomputedOO.sigma, precomputedOO.epsilon,
+		//		CalcLJOrigin::PP,
+		//		threadIdx.x, queryIndex
+		//	) * 24.f;
+		//}
+
+		//if constexpr (ENABLE_ES_SR) {
+		//	const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndex].atomType];
+		//	fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
+		//	if constexpr (computePotE)
+		//		fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
+		//}
+
+		return fe;
 	}
 }

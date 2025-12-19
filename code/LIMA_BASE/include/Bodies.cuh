@@ -326,6 +326,12 @@ struct ParticleReference {
 	//int global_id = -1; // For debug
 };
 
+struct NBParams {
+	float sigmaHalf = -1;		// [nm]
+	float epsilonSqrt = -1;		// [J/mol/nm]
+	float charge = -1;		// [kC/mol]
+};
+
 // Precomputed values for pairs of atomtypes
 struct NonbondedInteractionParams {
 	float sigma;
@@ -361,10 +367,106 @@ struct ForcefieldTinymol {
 	TinyMolType types[MAX_TYPES];
 };
 
+struct PData {
+	Float3 position;
+	NBParams params;
+	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
+};
+
 //struct PrecomputedSolventForcefield {
 //	NonbondedInteractionParams ljParams[3]; // [O-O, O-H, H-H]
 //	float chargeProducts[3]; // [O-O, O-H, H-H]
 //};
+
+struct PersistentCluster {
+	static const int nParticles = 4;
+	PData pqd[nParticles];
+};
+struct PersistentClusterMeta {
+	int particleIdsGlobal[PersistentCluster::nParticles];
+};
+
+//struct PersistentCluster {
+//	ParticleQuickData pqd[4];
+//};
+
+struct SuperCluster {
+	static const int nPclusters = 4;
+	static const int nParticles = PersistentCluster::nParticles * nPclusters;
+
+
+	//Float3 positions[nParticles];
+	PData pData[nParticles];
+
+
+	/*float x[nParticles];
+	float y[nParticles];
+	float z[nParticles];*/
+
+};
+
+struct SCResult {
+	ForceEnergy fe[SuperCluster::nParticles];
+};
+
+
+class BoolMatrix16x16 {
+	uint16_t data[16]; // rowmajor
+
+public:
+
+	constexpr static bool Get(const uint16_t& row, int col) {
+		return (row >> col) & 1;
+	}
+	constexpr uint16_t GetRow(int row) const {
+		return data[row];
+	}
+	constexpr void Set(int row, int col, bool val) {
+		unsigned bit = 1u << col;
+		unsigned mask = -static_cast<unsigned>(val);  // 0xFFFFFFFF if val==1, else 0
+		unsigned old = data[row];
+
+		data[row] = (old & ~bit) | (mask & bit);
+		/*if (val)
+			data[row] |= (1 << col);
+		else
+			data[row] &= ~(1 << col);		*/
+	}
+};
+class NoMat {};// Needed as a nonlocal variant of the one above.
+
+
+struct SuperClusterMeta {
+	// Set by clustering kernel
+	int pclusterIds[SuperCluster::nPclusters];
+	Float3 meanPos;
+
+	// Set by taskbuilder kernel
+	int resultsStartIndex;
+	int nResults;
+};
+
+struct ScScTask {
+	int scIds[2];
+	int resultIndices[2];
+	int nointeractionMatrixIndex = -1;
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class UniformElectricField {

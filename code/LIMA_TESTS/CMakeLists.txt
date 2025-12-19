@@ -8,6 +8,7 @@ if(WIN32)
 endif()
 
 set(SOURCE_FILES
+    #src/AlgorithmTests.cu
     src/main.cpp
 )
 add_executable(limatest

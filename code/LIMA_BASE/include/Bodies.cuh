@@ -421,6 +421,7 @@ public:
 	constexpr uint16_t GetRow(int row) const {
 		return data[row];
 	}
+	// TODO: Optim this with a SetRow
 	constexpr void Set(int row, int col, bool val) {
 		unsigned bit = 1u << col;
 		unsigned mask = -static_cast<unsigned>(val);  // 0xFFFFFFFF if val==1, else 0

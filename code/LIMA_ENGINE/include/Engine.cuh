@@ -22,6 +22,8 @@ class CompoundGridNode;
 struct CompoundQuickData;
 struct ForceEnergyInterims;
 class TinymolTransferModule;
+struct SuperClustersControl;
+struct PClusterTransfermodule;
 
 namespace NeighborList { class Controller; }
 
@@ -105,7 +107,9 @@ private:
 	SimulationDevice* sim_dev = nullptr;
 	BondGroup* bondgroups = nullptr;
 	CompoundQuickData* compoundQuickData = nullptr;
-	
+	//SuperClusterControl
+	std::unique_ptr<SuperClustersControl> superClustersControl;
+	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -121,6 +125,18 @@ private:
 	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
 
 	const BoundaryConditionSelect bc_select;
+
+
+
+	// Temp
+	bool MakeSuperClusterTasksCPU(const std::vector<PersistentCluster>& pClusters,
+		const std::vector< PersistentClusterMeta>& pClustersMeta,
+		const std::vector<SuperCluster>& superClusters,
+		std::vector<SuperClusterMeta>& superClusterMetasInOut,
+		std::vector<ScScTask>& tasksOut,
+		std::vector<BoolMatrix16x16>& nointeractionMatrices);
+
+	void BootstrapClustering();
 };
 
  

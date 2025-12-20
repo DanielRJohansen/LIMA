@@ -282,6 +282,125 @@ std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int
 }
 
 
+std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system) {
+	std::vector<std::pair<int, std::string>> atoms;
+	atoms.reserve(system.particles.size());
+	for (int pid = 0; pid < system.particles.size(); pid++) {
+		atoms.push_back({ pid, system.particles[pid].topologyAtom.type });
+	}
+	std::vector<std::array<int, 2>> edges;
+	edges.reserve(system.singlebonds.size());
+	for (const auto& bond : system.singlebonds) {
+		edges.push_back(bond.global_atom_indexes);
+	}
+
+	// TODO: This is under the assumption that we get a ideally sorted graph back, ill need to verify that
+	const auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
+	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph->GetListOfListsofConnectedNodeids();
+
+	std::vector<std::array<int, 4>> persistentClusters;
+	persistentClusters.resize(atoms.size()); // A bit too big..
+
+
+	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
+
+		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
+
+		std::array<int, 4> cluster{ -1,-1,-1,-1 };
+		int nextIndex = 0;
+
+		for (int i = 0; i < collection.size(); i++) {
+			cluster[nextIndex++] = collection[i];
+
+			if (i == collection.size() - 1 || nextIndex == 4 || (nextIndex == 3 && i == collection.size() - 2)) {
+				persistentClusters.push_back(cluster);
+				cluster = { -1,-1,-1,-1 };
+				nextIndex = 0;
+			}
+		}
+		//for (int i = )???
+	}
+
+	return persistentClusters;
+}
+
+std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
+	
+	std::vector<PersistentCluster> pClusters(clustersParticleIds.size());
+	std::vector<PersistentClusterMeta> pClusterMetas(clustersParticleIds.size());
+
+	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
+		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
+			const int pId = clustersParticleIds[pcId][pidRel];
+			
+			if (pId == -1) {
+				pClusters[pcId].pqd[pidRel] = PData{};
+				pClusterMetas[pcId].particleIdsGlobal[pidRel] = -1;
+				continue;
+			}
+			else {
+				const std::string& atomType = system.particles[pId].topologyAtom.type;
+				const Float3 pos = system.particles[pId].position;
+				NBParams nbParams = forcefield.GetLjParameters(atomType);
+				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
+				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
+			}
+		}
+	}
+
+	return { pClusters, pClusterMetas };
+}
+
+// returns bondedParticles, bondedPclusters
+std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system) {
+	// First make a particle-2-pcluster map
+	std::vector<int> particleIdToPclusterIdMap(system.particles.size(), -1);
+	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
+		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
+			const int pId = clustersParticleIds[pcId][pidRel];
+			if (pId == -1) { continue; }
+			particleIdToPclusterIdMap[pId] = pcId;
+		}
+	}	
+	
+	std::vector<std::set<int>> particleBondedToParticle;
+	std::vector<std::set<int>> pclusterBondedToPcluster;
+
+
+
+	auto AddBond = [&](const auto& particleIdsInBond) {
+		for (int i = 0; i < particleIdsInBond.size(); i++) {
+			const int pid_self = particleIdsInBond[i];
+			const int pcid_self = particleIdToPclusterIdMap[pid_self];
+			//if (pcid_self == -1) { continue; }
+			assert(pcid_self != -1);
+
+			for (int j = i + 1; j < particleIdsInBond.size(); j++) {
+				const int pid_other = particleIdsInBond[j];
+				const int pcid_other = particleIdToPclusterIdMap[pid_other];
+				assert(pcid_other != -1);
+
+				particleBondedToParticle[pid_self].insert(pid_other);
+				particleBondedToParticle[pid_other].insert(pid_self);
+				pclusterBondedToPcluster[pcid_self].insert(pcid_other);
+				pclusterBondedToPcluster[pcid_other].insert(pcid_self);
+			}
+		}
+	};
+
+	// Then go through all bonds to make the particle nointeraction matrix
+	for (const auto& singlebond : system.singlebonds)
+		AddBond(singlebond.global_atom_indexes);
+	for (const auto& anglebond : system.anglebonds)
+		AddBond(anglebond.global_atom_indexes);
+	for (const auto& dihedralbond : system.dihedralbonds)
+		AddBond(dihedralbond.global_atom_indexes);
+	for (const auto& improperdihedralbond : system.improperdihedralbonds)
+		AddBond(improperdihedralbond.global_atom_indexes);
+
+	return { particleBondedToParticle, pclusterBondedToPcluster };
+}
+
 
 std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& particleidsInTinymols, const SuperTopology& topology, LIMAForcefield& forcefield) {
 	std::vector<TinyMolFactory> tinyMols;
@@ -608,6 +727,17 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	}
 
+
+	// Make PersistenClusters
+	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology);
+
+	auto [pClusters, pClusterMetas] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
+
+	auto [particleBondedToParticle, pclusterBondedToPcluster] = GetBondedPersistentClusters(pClustersParticleids, superTopology);
+
+
+
+
 	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToCompoundidMap);
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
@@ -644,7 +774,11 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		forcefield.GetTinymolTypes(),
 		superTopology,
 		forcefield.GetNonbondedInteractionParams(),
-		BondGroupFactory::FinishBondgroups(bondGroups)
+		BondGroupFactory::FinishBondgroups(bondGroups),
+		pClusters, 
+		pClusterMetas,
+		particleBondedToParticle,
+		pclusterBondedToPcluster
 	);
 
 }

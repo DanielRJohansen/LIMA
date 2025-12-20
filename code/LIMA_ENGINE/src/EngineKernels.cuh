@@ -984,6 +984,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 	__syncthreads();
 	{
+		// TODO: For the case where querySC == thisSC, we should probably do a bunch of stuff here differently???!?
 		auto tb = cooperative_groups::this_thread_block();
 		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[1]], &queryFE, sizeof(SCResult));
 		cooperative_groups::wait(tb);

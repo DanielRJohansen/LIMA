@@ -1,5 +1,5 @@
-#include "Bodies.cuh"
-
+#include "EngineBodies.cuh"
+#include "Engine.cuh"
 
 
 static const NodeIndex directions[6]{
@@ -286,4 +286,22 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		scControl.scData[scOutStartIndex + threadIdx.x] = sc;
 		scControl.scMeta[scOutStartIndex + threadIdx.x] = scMeta;
 	}
+}
+
+
+
+
+
+void Engine::BootstrapClustering() {
+	
+
+
+
+	Int3 boxSize = simulation->box_host->boxparams.boxSize;
+	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));;
+	
+	SolventPretransferKernel<PeriodicBoundaryCondition>
+		<<<nBlocks, 32>>>(pclusterTransfermodule, boxSize);
+
+
 }

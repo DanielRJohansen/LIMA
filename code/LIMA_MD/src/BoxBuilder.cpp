@@ -137,6 +137,12 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
 	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;
 
+
+	box->persistentClusters = boxImage.persistentClusters;
+	box->persistentClustersMetadata = boxImage.persistentClustersMetadata;
+	box->particleBondedToParticle = boxImage.particleBondedToParticle;
+	box->pclusterBondedToPcluster = boxImage.pclusterBondedToPcluster;
+
 	return box;
 }
 

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 #include "SimParams.h"
+#include <set>
 
 namespace MDFiles { struct TrrFile; }
 
@@ -128,6 +129,12 @@ struct Box {
 	std::vector<BondGroup> bondgroups;
 
 	UniformElectricField uniformElectricField;
+
+	// Clusters
+	std::vector<PersistentCluster> persistentClusters;
+	std::vector<PersistentClusterMeta> persistentClustersMetadata;
+	std::vector<std::set<int>> particleBondedToParticle;
+	std::vector<std::set<int>> pclusterBondedToPcluster;
 };
 
 

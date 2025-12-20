@@ -28,6 +28,8 @@ public:
 	}
 
 	AtomType& GetAtomType(const std::string& query) {
+		if (!atomTypes.contains(query))
+			throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
 		return atomTypes.at(query);
 	}
 
@@ -268,6 +270,16 @@ LIMAForcefield::~LIMAForcefield() {}
 int LIMAForcefield::GetActiveLjParameterIndex(const std::string& query) {
 	return ljParameters->GetActiveIndex(query);
 }
+NBParams LIMAForcefield::GetLjParameters(const std::string& query) const {
+	auto params = ljParameters->GetAtomType(query);
+
+	NBParams nbparams{};
+	nbparams.sigmaHalf = params.parameters.sigmaHalf;
+	nbparams.epsilonSqrt = params.parameters.epsilonSqrt;
+	nbparams.charge = params.charge;
+	return nbparams;
+}
+
 ForceField_NB LIMAForcefield::GetActiveLjParameters() {
 	ForceField_NB forcefieldNB{};
 	const std::vector<AtomType>& activeParameters = ljParameters->GetActiveParameters();//  *activeLJParamtypes;

@@ -102,10 +102,34 @@ public:
 	int* nPClustersPerBlock = nullptr;		// 1 value per block
 	int* idsOfPclustersInBlocks = nullptr; // 1 value per pclusters per block
 
-
 	int* nIncomingClusters = nullptr;
 	int* idsOfIncomingClusters = nullptr;
 	Float3* meanpositionsOfIncomingClusters = nullptr;
+
+	__host__ static PClusterTransfermodule Create(Int3 boxSize) {
+		const int nBlocksTotal = boxSize.InnerProduct();
+		PClusterTransfermodule transferModule;
+		cudaMalloc(&transferModule.meanPositionOfPClusters, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);
+		cudaMalloc(&transferModule.nPClustersPerBlock, sizeof(int) * nBlocksTotal);
+		cudaMalloc(&transferModule.idsOfPclustersInBlocks, sizeof(int) * maxClustersPerBlock * nBlocksTotal);
+		cudaMalloc(&transferModule.nIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
+		return transferModule;
+	}
+	__host__ void Reset(Int3 boxSize) {
+		const int nBlocksTotal = boxSize.InnerProduct();
+		cudaMemset(nPClustersPerBlock, 0, sizeof(int) * nBlocksTotal);
+		cudaMemset(nIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+	}
+	__host__ void Free() {
+		cudaFree(meanPositionOfPClusters);
+		cudaFree(nPClustersPerBlock);
+		cudaFree(idsOfPclustersInBlocks);
+		cudaFree(nIncomingClusters);
+		cudaFree(idsOfIncomingClusters);
+		cudaFree(meanpositionsOfIncomingClusters);
+	}
 };
 	
 
@@ -118,12 +142,23 @@ struct SuperClustersControl {
 	int* nSuperclustersAtomic;
 
 
-	__host__ static SuperClustersControl Create(Int3 boxSize);
-	
-	__host__ void Reset(int nSuperclustersMax /*The struct does not track this number itself*/) {		
+	__host__ static SuperClustersControl Create(Int3 boxSize, int maxSuperclusters) {
+		SuperClustersControl control;
+		cudaMalloc(&control.scMeta, sizeof(SuperClusterMeta) * maxSuperclusters);
+		cudaMalloc(&control.scData, sizeof(SuperCluster) * maxSuperclusters);
+		cudaMalloc(&control.nSuperclustersAtomic, sizeof(int));
+		control.Reset();
+		return control;
+	}
+	__host__ void Reset(/*int nSuperclustersMax*/ /*The struct does not track this number itself*/) {
 		//cudaMemset(scMeta, 0, sizeof(SuperClusterMeta) * nSuperclustersMax); // doesnt matter
 		//cudaMemset(scData, 0, sizeof(SuperCluster) * nSuperclustersMax);
 		cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
+	}
+	__host__ void Free() {
+		cudaFree(scMeta);
+		cudaFree(scData);
+		cudaFree(nSuperclustersAtomic);
 	}
 };
 

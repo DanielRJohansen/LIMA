@@ -71,11 +71,12 @@ public:
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
-	int GetActiveLjParameterIndex(const std::string& query);
+	int GetActiveLjParameterIndex(const std::string& query);	
 	ForceField_NB GetActiveLjParameters();
 	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
 	int GetActiveTinymoltypeIndex(const std::string& query);
+	NBParams GetLjParameters(const std::string& query) const;// Experimental, breaks the ActiveLjParamsSystem
 	ForcefieldTinymol GetTinymolTypes();
 	
 

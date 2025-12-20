@@ -17,6 +17,7 @@
 
 #include <random>
 #include <numeric>
+#include "ParticleClusters.cuh"
 
 
 
@@ -33,6 +34,9 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(boxparams.total_particles_upperbound, 
 		boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
+
+	superClustersControl = std::make_unique<SuperClustersControl>(SuperClustersControl::Create(boxparams.boxSize, simulation->box_host->persistentClusters.size()));
+	pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
 
 
 	// Create the Sim_dev {
@@ -73,7 +77,10 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	nlistController = std::make_unique<NeighborList::Controller>(boxparams);
 	
 	tinymolTransferModule = std::make_unique<TinymolTransferModule>(TinymolTransferModule::Create(BoxGrid::BlocksTotal(boxparams.boxSize)));
-	
+		
+
+
+
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();

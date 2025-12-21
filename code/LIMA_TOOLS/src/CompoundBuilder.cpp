@@ -299,7 +299,7 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph->GetListOfListsofConnectedNodeids();
 
 	std::vector<std::array<int, 4>> persistentClusters;
-	persistentClusters.resize(atoms.size()); // A bit too big..
+	persistentClusters.reserve(atoms.size()); // A bit too big..
 
 
 	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {

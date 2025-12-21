@@ -98,9 +98,9 @@ public:
 	static const int blockLen = 1;	
 	static const int maxOutgoingClusters = 8;
 
-	Float3* meanPositionOfPClusters = nullptr; // 1 value per pCluster per block
-	int* nPClustersPerBlock = nullptr;		// 1 value per block
+	Float3* meanPositionOfPClustersPerBlock = nullptr; // 1 value per pCluster per block
 	int* idsOfPclustersInBlocks = nullptr; // 1 value per pclusters per block
+	int* nPClustersPerBlock = nullptr;		// 1 value per block
 
 	int* nIncomingClusters = nullptr;
 	int* idsOfIncomingClusters = nullptr;
@@ -109,9 +109,10 @@ public:
 	__host__ static PClusterTransfermodule Create(Int3 boxSize) {
 		const int nBlocksTotal = boxSize.InnerProduct();
 		PClusterTransfermodule transferModule;
-		cudaMalloc(&transferModule.meanPositionOfPClusters, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);
-		cudaMalloc(&transferModule.nPClustersPerBlock, sizeof(int) * nBlocksTotal);
+		cudaMalloc(&transferModule.meanPositionOfPClustersPerBlock, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);		
 		cudaMalloc(&transferModule.idsOfPclustersInBlocks, sizeof(int) * maxClustersPerBlock * nBlocksTotal);
+		cudaMalloc(&transferModule.nPClustersPerBlock, sizeof(int) * nBlocksTotal);
+
 		cudaMalloc(&transferModule.nIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
@@ -123,7 +124,7 @@ public:
 		cudaMemset(nIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 	}
 	__host__ void Free() {
-		cudaFree(meanPositionOfPClusters);
+		cudaFree(meanPositionOfPClustersPerBlock);
 		cudaFree(nPClustersPerBlock);
 		cudaFree(idsOfPclustersInBlocks);
 		cudaFree(nIncomingClusters);

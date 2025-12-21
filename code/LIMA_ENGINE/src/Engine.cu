@@ -37,7 +37,9 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	superClustersControl = std::make_unique<SuperClustersControl>(SuperClustersControl::Create(boxparams.boxSize, simulation->box_host->persistentClusters.size()));
 	pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
+	cudaMalloc(&pClusterDevice, sizeof(PersistentCluster) * simulation->box_host->persistentClusters.size());// We will never have more sc than pc
 
+	BootstrapClustering();
 
 	// Create the Sim_dev {
 	{

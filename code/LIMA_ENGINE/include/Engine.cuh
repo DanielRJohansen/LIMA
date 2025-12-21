@@ -24,6 +24,7 @@ struct ForceEnergyInterims;
 class TinymolTransferModule;
 struct SuperClustersControl;
 struct PClusterTransfermodule;
+struct PersistentCluster;
 
 namespace NeighborList { class Controller; }
 
@@ -107,9 +108,12 @@ private:
 	SimulationDevice* sim_dev = nullptr;
 	BondGroup* bondgroups = nullptr;
 	CompoundQuickData* compoundQuickData = nullptr;
-	//SuperClusterControl
+
+	//SuperClusterControl// TODO: Handle lifetimes!
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
+	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
+
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;

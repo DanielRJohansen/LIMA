@@ -1,21 +1,25 @@
+#pragma once
+
 #include "EngineBodies.cuh"
 #include "Engine.cuh"
 
 
-static const NodeIndex directions[6]{
+
+
+
+
+template <typename BoundaryCondition>
+__global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {	
+
+
+	static const NodeIndex directions[6]{
 	{1, 0, 0},
 	{-1, 0, 0},
 	{0, 1, 0},
 	{0, -1, 0},
 	{0, 0, 1},
 	{0, 0, -1}
-};
-
-
-
-template <typename BoundaryCondition>
-__global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {
-	
+	};
 
 	__shared__ int nClusters;
 	__shared__ int indexOfFirstCluster;
@@ -31,20 +35,23 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 	__syncthreads();
 
 	// TODO FIx this part
-	//for (int i = threadIdx.x; i < nParticlesInCluster; i += blockDim.x) {
-	//	const int particleIndex = indexOfFirstCluster + i;
-	//	const Float3 absPos = transferModule->positionsOfFirstParticleInPCluster[particleIndex];
-	//	//const Float3 posRelativeToBlock = 
-	//	// Account for blockLen > 1
-	//	const NodeIndex direction = LIMAPOSITIONSYSTEM::getTransferDirection(posRelativeToBlock);					//OPTIM here
-	//	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
-	//		if (direction == directions[directionIndex]) {
-	//			directionIndexOfPCluster[i] = directionIndex;
-	//			break;
-	//		}
-	//	}
-	//}
-	//__syncthreads();
+	const Float3 blockOrigoF = BoxGrid::Get3dIndex(blockIdx.x, boxSize).toFloat3();
+
+	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
+		const int particleIndex = indexOfFirstCluster + i;
+		Float3 absPos = transferModule.meanPositionOfPClustersPerBlock[particleIndex];
+		PeriodicBoundaryCondition::applyHyperposNM(blockOrigoF, absPos);	// TODO: OPTIM: shoudn't be necessary if pClusters are placed correctly in blocks...
+
+		const Float3 posRelativeToBlockCenter = absPos - (blockOrigoF + Float3{ 0.5f, 0.5f, 0.5f });
+		const NodeIndex direction = LIMAPOSITIONSYSTEM::getTransferDirection(Coord{ posRelativeToBlockCenter });					//OPTIM here
+		for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
+			if (direction == directions[directionIndex]) {
+				directionIndexOfPCluster[i] = directionIndex;
+				break;
+			}
+		}
+	}
+	__syncthreads();
 
 	// First 6 threads are responsible for marking a direction
 	__shared__ int nClustersThisDirection[6];
@@ -97,7 +104,7 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 			const int clusterSrcGlobalIndex = indexOfFirstCluster + clusterIndexRelativeToBlock;
 
 			transferModule.idsOfIncomingClusters[clusterTargetGlobalIndex] = transferModule.idsOfPclustersInBlocks[clusterSrcGlobalIndex];
-			transferModule.meanpositionsOfIncomingClusters[clusterTargetGlobalIndex] = transferModule.meanPositionOfPClusters[clusterSrcGlobalIndex];
+			transferModule.meanpositionsOfIncomingClusters[clusterTargetGlobalIndex] = transferModule.meanPositionOfPClustersPerBlock[clusterSrcGlobalIndex];
 		}
 	}
 	__syncthreads();
@@ -129,7 +136,7 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 		const int srcIndex = indexOfFirstCluster + indexRelativeToBlockOfRemainingClusters[i];
 		const int destIndex = indexOfFirstCluster + i;
 		transferModule.idsOfPclustersInBlocks[destIndex] = transferModule.idsOfPclustersInBlocks[srcIndex];
-		transferModule.meanPositionOfPClusters[destIndex] = transferModule.meanPositionOfPClusters[srcIndex];
+		transferModule.meanPositionOfPClustersPerBlock[destIndex] = transferModule.meanPositionOfPClustersPerBlock[srcIndex];
 	}
 }
 
@@ -194,7 +201,7 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 //}
 
 // Called with 32 threads
-__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, const Float3* const pclustersParticlesPositions, SuperClustersControl scControl)
+__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperClustersControl scControl)
 {
 	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
@@ -217,7 +224,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 	// Load 
 	for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
-		meanPositionsOfPClusters[i] = transferModule.meanPositionOfPClusters[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
+		meanPositionsOfPClusters[i] = transferModule.meanPositionOfPClustersPerBlock[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
 		idsOfPclustersInBlock[i] = transferModule.idsOfPclustersInBlocks[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
 	}
 	__syncthreads();
@@ -293,15 +300,40 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 
 void Engine::BootstrapClustering() {
-	
-
-
-
 	Int3 boxSize = simulation->box_host->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));;
+	const Float3 boxSizeF = Float3(boxSize.x, boxSize.y, boxSize.z);
+	const Box& box = *simulation->box_host;
 	
-	SolventPretransferKernel<PeriodicBoundaryCondition>
-		<<<nBlocks, 32>>>(pclusterTransfermodule, boxSize);
+	std::vector<Float3> meanPositionsofPclusters(nBlocks * PClusterTransfermodule::maxClustersPerBlock);	
+	std::vector<int> idsOfPclustersInBlocks(nBlocks * PClusterTransfermodule::maxClustersPerBlock);
+	std::vector<int> nPclustersPerBlock(nBlocks);
 
+	for (int pcId = 0; pcId < box.persistentClusters.size(); pcId++) {
+
+		Float3 pos = box.persistentClusters[pcId].pqd[0].position;
+		BoundaryConditionPublic::applyBCNM(pos, boxSizeF, BoundaryConditionSelect::PBC);	// TODO: OPTIM: Shouldnt be necessary, maybe just BC every step before resorting??
+
+		NodeIndex targetBlock{ static_cast<int>(floorf(pos.x)), static_cast<int>(floorf(pos.y)), static_cast<int>(floorf(pos.z)) };
+		int blockIndex = BoxGrid::Get1dIndex(targetBlock, BoxGrid::NodesPerDim(boxSize));
+
+		int targetDataIndex = blockIndex * PClusterTransfermodule::maxClustersPerBlock + nPclustersPerBlock[blockIndex];
+		meanPositionsofPclusters[targetDataIndex] = pos;
+		idsOfPclustersInBlocks[targetDataIndex] = pcId;
+		nPclustersPerBlock[blockIndex]++;
+	}
+
+	cudaMemcpy(pclusterTransfermodule->meanPositionOfPClustersPerBlock, meanPositionsofPclusters.data(), meanPositionsofPclusters.size() * sizeof(Float3), cudaMemcpyHostToDevice);
+	cudaMemcpy(pclusterTransfermodule->idsOfPclustersInBlocks, idsOfPclustersInBlocks.data(), idsOfPclustersInBlocks.size() * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(pclusterTransfermodule->nPClustersPerBlock, nPclustersPerBlock.data(), nPclustersPerBlock.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+	LIMA_UTILS::genericErrorCheckNoSync("Error after uploading pCluster bootstrap data");
+
+	SolventPretransferKernel<PeriodicBoundaryCondition>
+		<<<nBlocks, 32>>>(*pclusterTransfermodule, boxSize);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
+
+	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superClustersControl);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 
 }

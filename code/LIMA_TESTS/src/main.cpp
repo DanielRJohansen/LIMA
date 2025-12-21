@@ -37,7 +37,7 @@ int main() {
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
-		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
@@ -136,7 +136,7 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
-		KernelAlgorithms::WarpSort64_Unittest(envmode);
+		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 
 
 		/*int runAll = 1;

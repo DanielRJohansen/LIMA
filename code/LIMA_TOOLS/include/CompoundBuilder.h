@@ -228,5 +228,6 @@ struct BoxImage {
 	std::vector<PersistentClusterMeta> persistentClustersMetadata;
 	std::vector<std::set<int>> particleBondedToParticle;
 	std::vector<std::set<int>> pclusterBondedToPcluster;
+	sstd::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 };
  

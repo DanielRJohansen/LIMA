@@ -142,6 +142,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->persistentClustersMetadata = boxImage.persistentClustersMetadata;
 	box->particleBondedToParticle = boxImage.particleBondedToParticle;
 	box->pclusterBondedToPcluster = boxImage.pclusterBondedToPcluster;
+	box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 
 	return box;
 }

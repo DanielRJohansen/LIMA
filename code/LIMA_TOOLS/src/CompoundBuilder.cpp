@@ -778,7 +778,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		pClusters, 
 		pClusterMetas,
 		particleBondedToParticle,
-		pclusterBondedToPcluster
+		pclusterBondedToPcluster,
+		particleToCompoundOrSolventMapping
 	);
 
 }

@@ -1036,6 +1036,22 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 	particleForceEnergies[particleId] = myFE;
 }
 
+//This is just temp code untill we switch completely to verletclustering, and no longer need the compounds/solvents discerning
+__global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergy* const forceenergy, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles,
+ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
+	if (threadIdx.x >= nParticles)
+		return;
+
+
+	ParticleToCompoundOrSolventMapping mapping = mappings[threadIdx.x];
+	if (mapping.IsSolvent()) {
+		feSolvents[mapping.particleId];
+	}
+	else {
+		feCompounds[mapping.compoundId * Compound::maxParticles + mapping.particleId];
+	}
+}
+
 
 
 #pragma warning (pop)

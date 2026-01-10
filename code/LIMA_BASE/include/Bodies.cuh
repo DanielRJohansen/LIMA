@@ -457,17 +457,17 @@ struct ScScTask {
 struct ParticleToCompoundOrSolventMapping {
 	int compoundId = -1;
 	int particleId = -1; // Relative to compound if in compound, otherwise solventid
-
+	ParticleToCompoundOrSolventMapping() {}
 	ParticleToCompoundOrSolventMapping(int solventId) {
 		particleId = solventId;
 	}
 	ParticleToCompoundOrSolventMapping(int cid, int pid) {
-	compoundId = cid;
-	particleId=pid;
+		compoundId = cid;
+		particleId = pid;
 	}
 
-	bool isSolvent() const { return compoundId == -1; }
-}
+	constexpr bool IsSolvent() const { return compoundId == -1; }
+};
 
 
 

@@ -3,13 +3,43 @@
 #include "EngineBodies.cuh"
 #include "Engine.cuh"
 
+// blockdim = (32, 1, 1)
+__global__ void GetPclusterPositions(PClusterTransfermodule transferModule, const Float3* const compoundsRelposNm, const ParticleToCompoundOrSolventMapping* const mappings, const int nParticles, Int3 boxSize) {
+	const int particleId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (particleId >= nParticles)
+		return;
+
+	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
 
 
+	if (!mapping.IsSolvent()) {
+
+		int cid = mapping.compoundId;
+		int pid = mapping.particleId;
+
+		const int indexInCompoundsRelpos = cid * MAX_COMPOUND_PARTICLES + pid;
+		const Float3 pos = compoundsRelposNm[indexInCompoundsRelpos];
+		Float3 gridPos = pos.round();
+		PeriodicBoundaryCondition::applyBCNM(gridPos);
+		NodeIndex blockId = NodeIndex(gridPos.ToInt3	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
+
+
+
+		int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
+		int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
+		
+		transferModule.idsOfPclustersInBlocks[index] = particleId;
+		transferModule.meanPositionOfPClustersPerBlock[index] = pos; // TODO: THis is not even the actual meanposition is it?
+	}
+	else {
+		// TODO: DANGER: Add solvents here also, more difficult as they are not in a line but in blocks..
+	}
+}
 
 
 
 template <typename BoundaryCondition>
-__global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {	
+__global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {	
 
 
 	static const NodeIndex directions[6]{
@@ -81,11 +111,8 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 		const NodeIndex targetBlock = BoundaryCondition::applyBC(blockOrigo + direction, boxSize);
 		const int targetBlockId = BoxGrid::Get1dIndex(targetBlock, boxSize);
 		if constexpr (INDEXING_CHECKS) {
-			if (targetBlockId < 0 || targetBlockId > BoxGrid::BlocksTotal(DeviceConstants::boxSize.blocksPerDim))
-				printf("Target block was out of bounds");
-
-			if (targetBlockId >= DeviceConstants::boxSize.blocksPerDim.x * DeviceConstants::boxSize.blocksPerDim.y * DeviceConstants::boxSize.blocksPerDim.z)
-				printf("Target block was out of bounds");
+			if (targetBlockId < 0 || targetBlockId > BoxGrid::BlocksTotal(boxSize))
+				printf("Target block %d %d %d was out of bounds. Id %d out of %d\n", targetBlock.x, targetBlock.y, targetBlock.z, targetBlockId, BoxGrid::BlocksTotal(DeviceConstants::boxSize.blocksPerDim));
 		}
 
 		//const Coord relposShift = Coord{ -direction.toFloat3() };
@@ -141,53 +168,6 @@ __global__ void SolventPretransferKernel(PClusterTransfermodule transferModule, 
 }
 
 
-//__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const Float3* const pclustersParticlesPositions, SuperClusterGridData scGridData,
-//	SuperClusterMeta* scMetaOut, SuperCluster* scDataOut) 
-//{
-//	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
-//	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
-//	__shared__ int nPclustersInBlock;
-//
-//	if (threadIdx.x == 0) {
-//		nPclustersInBlock = transferModule.nPClustersPerBlock[blockIdx.x];	
-//	}
-//	__syncthreads();
-//
-//	// Load remaining
-//	for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
-//		meanPositionsOfPClusters[i] = transferModule.meanPositionOfPClusters[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
-//		transferModule.idsOfPclustersInBlocks[i] = transferModule.idsOfPclustersInBlocks[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
-//	}
-//
-//	// Load incoming
-//	for (int i = 0; i < 6; i++) {
-//		if (threadIdx.x < PClusterTransfermodule::maxOutgoingClusters) {
-//			size_t srcIndex = blockIdx.x * 6 * PClusterTransfermodule::maxOutgoingClusters + i * PClusterTransfermodule::maxOutgoingClusters + threadIdx.x;
-//			meanPositionsOfPClusters[nPclustersInBlock + threadIdx.x] = transferModule.meanpositionsOfIncomingClusters[srcIndex];
-//			idsOfPclustersInBlock[nPclustersInBlock + threadIdx.x] = transferModule.idsOfIncomingClusters[srcIndex];
-//		}
-//		__syncthreads();
-//
-//		if (threadIdx.x == 0) {
-//			nPclustersInBlock += transferModule.nIncomingClusters[blockIdx.x * 6 + i];
-//		}
-//		__syncthreads();
-//	}
-//
-//	// 
-//
-//
-//
-//}
-
-//
-//template <int nBins, int nValuesPerBin>
-//__device__ Sort(int* keys, int* ids) {
-//
-//}
-
-
-
 //uint32_t MakeKey(
 //	uint32_t mask1, // first 4 bits
 //	uint32_t mask2, // second 4 bits
@@ -218,6 +198,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
 		sortIds[i] = i;
 		meanPositionsOfPClusters[i] = Float3{ INFINITY,INFINITY, INFINITY };
+		idsOfPclustersInBlock[i] = -1;
 	}
 
 	__syncthreads();
@@ -233,18 +214,18 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	const int bucketsPerDim = 4;
 	// Sort along z 
 	{
-		for (int i = threadIdx.x; i < nPclustersInBlock; i+=blockDim.x) {
+		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i+=blockDim.x) {
 			sortKeys[i] = meanPositionsOfPClusters[i].z;
 		}
 		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock;
 		LAL::SortBins<1, bucketSize>(sortKeys, sortIds);
 		__syncthreads();
 	}
-	
+
 
 	// Sort the 4 buckets along y
 	{
-		for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
+		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
 			sortKeys[i] = meanPositionsOfPClusters[sortIds[i]].y;
 		}
 		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock / bucketsPerDim;
@@ -255,7 +236,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 	// Sort the 4x4 buckets along x
 	{
-		for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
+		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
 			sortKeys[i] = meanPositionsOfPClusters[sortIds[i]].x;
 		}
 		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock / (bucketsPerDim * bucketsPerDim);
@@ -277,9 +258,15 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		for (int pcId = 0; pcId < 4; pcId++) {
 			const int srcIndex = threadIdx.x * 4 + pcId;
 			if (srcIndex < nPclustersInBlock) {
+
+
 				const int pcIdRelativeToBlock = sortIds[srcIndex];
 				const int pcIdGlobal = idsOfPclustersInBlock[pcIdRelativeToBlock];
 				scMeta.pclusterIds[pcId] = idsOfPclustersInBlock[pcIdGlobal];
+				//pClusters[pcIdGlobal].pqd[0].position.print('p');
+				//printf("posx %f block %d, idsat0 %d sortId %d, pcIdGlobal %d, pcIdRelativeToBlock %d\n", pClusters[pcIdGlobal].pqd[0].position.x, blockIdx.x, idsOfPclustersInBlock[0], pcIdRelativeToBlock, pcIdGlobal, pcIdRelativeToBlock);
+
+
 				for (int particleId = 0; particleId < 4; particleId++) {
 					sc.pData[pcId * 4 + particleId] = pClusters[pcIdGlobal].pqd[particleId];
 				}						
@@ -297,7 +284,29 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 
 
+void Engine::RunClustering(bool getPclusters) {
+	Int3 boxSize = simulation->box_host->boxparams.boxSize;
+	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));
 
+	if (getPclusters) {
+		int nCudablocks = (simulation->box_host->persistentClusters.size() + 31) / 32;
+		GetPclusterPositions << <nCudablocks, 32 >> > (*pclusterTransfermodule,
+			sim_dev->boxState.compoundsRelposNm,
+			particleToCompoundOrSolventMappingDevice,
+			simulation->box_host->particleToCompoundOrSolventMapping.size(),
+			simulation->box_host->boxparams.boxSize);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");
+	}
+
+	ClusteringPretransferKernel<PeriodicBoundaryCondition>
+		<< <nBlocks, 32 >> > (*pclusterTransfermodule, boxSize);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
+
+	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superClustersControl);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
+
+	pclusterTransfermodule->Reset(boxSize);
+}
 
 void Engine::BootstrapClustering() {
 	Int3 boxSize = simulation->box_host->boxparams.boxSize;
@@ -329,11 +338,6 @@ void Engine::BootstrapClustering() {
 
 	LIMA_UTILS::genericErrorCheckNoSync("Error after uploading pCluster bootstrap data");
 
-	SolventPretransferKernel<PeriodicBoundaryCondition>
-		<<<nBlocks, 32>>>(*pclusterTransfermodule, boxSize);
-	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
-
-	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superClustersControl);
-	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
-
+	RunClustering(false);	
 }
+

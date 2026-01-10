@@ -1010,7 +1010,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 }
 
 
-// TODO: This layout ccan be much smarter
+// TODO: This layout can be much smarter
 // blockdim = 16,1,1
 __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pcMeta, const SCResult* const scResults, ForceEnergy* const particleForceEnergies) {
 	//__shared__ SCResult scResultShared;
@@ -1036,6 +1036,51 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 	particleForceEnergies[particleId] = myFE;
 }
 
+//// blockDim = (16, 1, 1)
+//template <typename BoundaryCondition, bool emVariant>
+//__global__ void SuperclusterIntegrateKernel(const SuperCluster* const superClusters, const ForceEnergy* const particleForceEnergies) {
+//
+//	const Float3 currentPos = superClusters[blockIdx.x].pData[threadIdx.x].position;
+//	const ForceEnergy forceEnergy = particleForceEnergies[blockIdx.x * SuperCluster::nParticles + threadIdx.x];
+//
+//
+//	if constexpr (FORCE_CHECKS)
+//		if (isnan(forceEnergy.force.len()))
+//			printf("NAN\n");
+//
+//	float speed = 0.f;
+//	if (threadIdx.x < nParticles) {
+//		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
+//
+//		// Energy minimize
+//		if constexpr (emvariant) {
+//			const Float3 safeForce = EngineUtils::ForceActivationFunction(forceEnergy.force);
+//			//AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+//			//const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords.rel_positions[threadIdx.x], safeForce, adamState, step);
+//
+//			//compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+//		}
+//		else {
+//			const Float3 force_prev = sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+//			const Float3 vel_prev = sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+//			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, forceEnergy.force, sim->params.dt, mass);
+//			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, forceEnergy.force, mass, sim->params.dt);
+//			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+//
+//			Float3 velScaled;
+//			velScaled = vel_now * DeviceConstants::thermostatScalar;
+//
+//			sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
+//			sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
+//
+//			speed = velScaled.len();
+//		}
+//	}
+//	__syncthreads();
+//}
+
+
+
 //This is just temp code untill we switch completely to verletclustering, and no longer need the compounds/solvents discerning
 __global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergy* const forceenergy, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles,
 ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
@@ -1048,7 +1093,7 @@ ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
 		feSolvents[mapping.particleId];
 	}
 	else {
-		feCompounds[mapping.compoundId * Compound::maxParticles + mapping.particleId];
+		feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId];
 	}
 }
 

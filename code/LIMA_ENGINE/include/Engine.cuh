@@ -112,8 +112,11 @@ private:
 	//SuperClusterControl// TODO: Handle lifetimes!
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
+	ScScTask* scscTasksDevice = nullptr;
+	BoolMatrix16x16* noInteractionMatricesDevice = nullptr;
 	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
-
+	SCResult* scResultsDevice = nullptr;
+	ParticleToCompoundOrSolventMapping* particleToCompoundOrSolventMappingDevice = nullptr;
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -133,13 +136,8 @@ private:
 
 
 	// Temp
-	bool MakeSuperClusterTasksCPU(const std::vector<PersistentCluster>& pClusters,
-		const std::vector< PersistentClusterMeta>& pClustersMeta,
-		const std::vector<SuperCluster>& superClusters,
-		std::vector<SuperClusterMeta>& superClusterMetasInOut,
-		std::vector<ScScTask>& tasksOut,
-		std::vector<BoolMatrix16x16>& nointeractionMatrices);
-
+	bool MakeSuperClusterTasksCPU();
+	void RunClustering(bool runPclustering = true);
 	void BootstrapClustering();
 };
 

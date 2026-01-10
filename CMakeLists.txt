@@ -20,7 +20,7 @@ set(CUDA_SEPARABLE_COMPILATION ON)
 
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_89,code=sm_89")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo -allow-unsupported-compiler") # --ptxas-options=-v")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo") # --ptxas-options=-v")
 
 
 if (UNIX)
@@ -28,7 +28,6 @@ if (UNIX)
 	add_definitions(-w)	# Hides the shared varialbe dynamic initilization error in kernels
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
 else()
-
 	#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++26 /W4" )
 	#add_compile_options(/Zc:__cplusplus)
 	#add_compile_options(/std:c++latest /Zc:__cplusplus /W4)

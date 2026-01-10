@@ -587,10 +587,18 @@ std::vector<T> GenericCopyToHost(T* srcDevice, size_t nElements) {
 }
 
 template<typename T>
+T GenericCopyToHost(T* srcDevice) {
+	static_assert(std::is_trivially_copyable<T>::value, "GenericCopyToHost can only be used with trivially copyable types");
+	T destHost;
+	cudaMemcpy(&destHost, srcDevice, sizeof(T), cudaMemcpyDeviceToHost);
+	return destHost;
+}
+
+template<typename T>
 void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	size_t bytesize = n_elements * sizeof(T);
 
-	cudaMallocManaged(dest, bytesize);
+	cudaMallocManaged(dest, bytesize);  // optim: THis shouldnt be managed
 	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
 }

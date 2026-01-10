@@ -363,8 +363,8 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 		}
 	}	
 	
-	std::vector<std::set<int>> particleBondedToParticle;
-	std::vector<std::set<int>> pclusterBondedToPcluster;
+	std::vector<std::set<int>> particleBondedToParticle(system.particles.size());
+	std::vector<std::set<int>> pclusterBondedToPcluster(clustersParticleIds.size());
 
 
 
@@ -761,6 +761,28 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size, compounds, simparams.bc_select);
 
 	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
+
+	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
+	// Temp
+	int cParticles = 0;
+	std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping(superTopology.particles.size());
+	for (int cid = 0; cid < compounds.size(); cid++) {
+		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
+			const int global_pid = compounds[cid].global_ids[pid];
+			particleToCompoundOrSolventMapping[global_pid] = ParticleToCompoundOrSolventMapping{ cid, pid };
+			cParticles++;
+		}
+	}
+	int sCount = 0;
+	for (int tmId = 0; tmId < tinyMols.size(); tmId++) {
+		for (int pid = 0; pid < tinyMols[tmId].nParticles; pid++) {
+			const int global_pid = tinyMols[tmId].firstParticleIdInGrofile + pid;
+			particleToCompoundOrSolventMapping[global_pid] = ParticleToCompoundOrSolventMapping(cParticles + sCount);
+			sCount++;
+		}
+	}
+
+
 
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 

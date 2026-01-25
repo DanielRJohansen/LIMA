@@ -12,6 +12,7 @@
 
 #include "Statistics.h"
 #include "Utilities.h"
+#include "DebugUtils.h"
 
 #include "EngineHostside.h"
 
@@ -26,7 +27,7 @@
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc)
 	, m_logger(std::move(logger))
-	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.nTinymols, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size()))
+	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.nTinymols, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size(), _sim->box_host->boxparams.total_particles))
 {
 	simulation = std::move(_sim);
 
@@ -41,14 +42,11 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
 	//cudaMalloc(&pClusterDevice, sizeof(PersistentCluster) * simulation->box_host->persistentClusters.size());// We will never have more sc than pc
 	pClusterDevice = GenericCopyToDevice(simulation->box_host->persistentClusters);
+	pClusterMetaDevice = GenericCopyToDevice(simulation->box_host->persistentClustersMetadata);
 	particleToCompoundOrSolventMappingDevice = GenericCopyToDevice(simulation->box_host->particleToCompoundOrSolventMapping);
 
 
-	BootstrapClustering();
-	cudaMalloc(&scscTasksDevice, 1); // Bootstrap these, will be reallocated in the next function. TODO: CHange that system so we dont need realloc
-	cudaMalloc(&noInteractionMatricesDevice, 1);
-	cudaMalloc(&scResultsDevice, 1);
-	MakeSuperClusterTasksCPU();
+
 
 
 	// Create the Sim_dev {
@@ -63,6 +61,12 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);	
 	nParticlesInCompoundsBufferPtr = sim_dev->nParticlesInCompoundsBuffer;
+
+	BootstrapClustering();
+	cudaMalloc(&scscTasksDevice, 1); // Bootstrap these, will be reallocated in the next function. TODO: CHange that system so we dont need realloc
+	cudaMalloc(&noInteractionMatricesDevice, 1);
+	cudaMalloc(&scResultsDevice, 1);
+	MakeSuperClusterTasksCPU();
 
     std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
@@ -115,6 +119,9 @@ Engine::~Engine() {
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamDestroy(stream);
 	}
+
+	if (superClustersControl)
+		superClustersControl->Free();
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	//assert(simulation == nullptr);
@@ -178,9 +185,10 @@ void Engine::step() {
 	simulation->step++;
 
 	hostMaster();
-
+	
 
 	if (true) {
+		superClustersControl->Reset();
 		RunClustering();
 		MakeSuperClusterTasksCPU();
 	}
@@ -366,16 +374,34 @@ void Engine::_deviceMaster() {
     }
 
 	{
-		bool useNointeractionMatrix = false;
-		dim3 blockDim(16, 2, 1);
-		int nBlocks = 1;
+		const bool useNointeractionMatrix = true;
+		//dim3 blockDim(16, 2, 1);
+		dim3 blockDim(16, 1, 1); // TEMP
+		//int nBlocks = 1;
 		//SCResult
-		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, false>
-			<< <nBlocks, blockDim, 0, cudaStreams[0] >> >
+		auto a = GenericCopyToHost(superClustersControl->scData, 2);
+		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
+			<< <nTasks, blockDim, 0, cudaStreams[0] >> >
 			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
+
+		std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
+		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
+
+		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
+			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
+
+		std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
+		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
+
+		DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
+			(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
+				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
 	}
 
-	if (boxparams.n_compounds > 0) {
+	/*if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->simparams_host.enable_electrostatics,
@@ -386,7 +412,7 @@ void Engine::_deviceMaster() {
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
 			(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-	}
+	}*/
 
 	if (boxparams.nTinymols > 0) {
 		const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
@@ -471,6 +497,13 @@ void Engine::_deviceMaster() {
 			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
 		}
 	}
+
+	UpdatePdataPositions<<<nSuperclusters, 16>>>
+		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
+	auto a = GenericCopyToHost(superClustersControl->scData, 2);
+	int b = 0;
+
 }
 
 
@@ -599,11 +632,64 @@ std::array<int, 16> GetParticleIdsOfSuperCluster(const std::vector<PersistentClu
 
 struct ReservedTask {
 	int queryScId;
-	bool areBonded;
+	//bool areBonded;
 	int resultIndexRelativeSelf = -1;
 	int resultIndexRelativeQuery = -1;
 	int nointeractionMatrixIndexRelative = -1;
 };
+
+std::vector<size_t> ExlusivePrefixsum(const std::vector<int>& counts) {
+	std::vector<size_t> prefixsum(counts.size());
+	std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
+    return prefixsum;
+}
+template <typename T>
+std::vector<size_t> ExlusivePrefixsum(const std::vector<std::vector<T>>& sizes) {
+	std::vector<size_t> prefixsum(sizes.size());
+	std::transform_exclusive_scan(std::execution::par, sizes.begin(), sizes.end(), prefixsum.begin(), size_t{ 0 }, std::plus<>{},
+		[](const std::vector<T>& v) { return v.size(); }
+	);
+	return prefixsum;
+}
+
+std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperClusterMeta>& superClusterMetas, const std::vector<int>& nBondedmatricesReserved, const std::vector<size_t>& nBondedMatricesPrefixsum, 
+	const std::vector<PersistentClusterMeta>& pClustersMeta, const std::vector<std::vector<ReservedTask>>& workPerSc, const std::vector<std::set<int>>& particleBondedToParticle) {
+	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+	std::vector<BoolMatrix16x16> nointeractionMatrices(numNointeractionMatricesTotal);
+
+	// Build all the nointeractionMatrices
+	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
+		for (int i = 0; i < workPerSc[scId].size(); i++) {
+			if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
+				continue;
+
+			const int queryScId = workPerSc[scId][i].queryScId;
+			BoolMatrix16x16 nointeractionMatrix{};
+
+			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
+			const bool isSelfInteractionTask = scId == queryScId;
+
+			for (int col = 0; col < 16; ++col) {
+				for (int row = 0; row < 16; ++row) {
+					if (particleIdsSelf[row] == -1)
+						continue;
+					bool noInteraction = particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
+					if (isSelfInteractionTask && row == col) {
+						noInteraction = true;
+					}
+					nointeractionMatrix.Set(row, col, noInteraction);
+				}
+			}
+
+
+			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
+			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+		}
+	}
+
+	return nointeractionMatrices;
+}
 
 bool Engine::MakeSuperClusterTasksCPU() {
 
@@ -612,11 +698,10 @@ bool Engine::MakeSuperClusterTasksCPU() {
 
 	//simulation->box_host->persistentClusters;
 	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
-	const int nSuperClusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
-	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperClusters);
-	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperClusters);
-	std::vector<ScScTask> tasks;
-	std::vector<BoolMatrix16x16> nointeractionMatrices;
+	//const int nSuperClusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
+	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
+	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+	
 
 
 
@@ -669,20 +754,19 @@ bool Engine::MakeSuperClusterTasksCPU() {
 
 			const float hyperDist = LIMAPOSITIONSYSTEM::calcHyperDistNM(scMeanPos[scId], scMeanPos[queryScId], boxSizeF, BoundaryConditionSelect::PBC);
 			if (hyperDist < simulation->simparams_host.cutoff_nm) {
-				const bool bonded = ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
+				//const bool bonded = ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
+				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
+
 				workPerSc[scId].emplace_back(ReservedTask{
 					queryScId,
-					bonded,
 					nResultsReserved[scId],
-					scId != queryScId ? nResultsReserved[queryScId] : -1,
-					bonded ? nBondedmatricesReserved[scId] : -1
+					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId]+1,
+					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
 					});
 
 				nResultsReserved[scId]++;
-				if (scId != queryScId) {
-					nResultsReserved[queryScId]++;
-				}
-				if (bonded) {
+				nResultsReserved[queryScId]++;				
+				if (useNointeractionMatrix) {
 					nBondedmatricesReserved[scId]++;
 				}
 			}
@@ -690,33 +774,24 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	}
 
 	// Make prefixsums
-	std::vector<size_t> nResultsPrefixsum(superClusters.size());
-	std::vector<size_t> nBondedMatricesPrefixsum(superClusters.size());
-	std::vector<size_t> nTasksPrefixsum(superClusters.size());
-	std::exclusive_scan(std::execution::par, nResultsReserved.begin(), nResultsReserved.end(), nResultsPrefixsum.begin(), 0);
-	std::exclusive_scan(std::execution::par, nBondedmatricesReserved.begin(), nBondedmatricesReserved.end(), nBondedMatricesPrefixsum.begin(), 0);
-	//std::exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), 0);
-	std::transform_exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), size_t{ 0 }, std::plus<>{},
-		[](const std::vector<ReservedTask>& v) { return v.size(); }
-	);
-
-	/*std::exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), size_t{ 0 },
-		[](size_t a, const std::vector<ReservedTask>& b) { return a + b.size(); });*/
+	const std::vector<size_t> nResultsPrefixsum = ExlusivePrefixsum(nResultsReserved);
+	const std::vector<size_t> nBondedMatricesPrefixsum = ExlusivePrefixsum(nBondedmatricesReserved);
+	const std::vector<size_t> nTasksPrefixsum = ExlusivePrefixsum(workPerSc);
 
 	const size_t numTasksTotal = nTasksPrefixsum.back() + workPerSc.back().size();
-	tasks.resize(numTasksTotal);
-	std::vector<ScScTask> scScTasks(numTasksTotal);
+	std::vector<ScScTask> tasks(numTasksTotal);	
 
 	// Build all the tasks and update the scMeta
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			const bool bondedTask = workPerSc[scId][i].areBonded;
+			//const bool bondedTask = workPerSc[scId][i].areBonded;
 			ScScTask task;
-			task.nointeractionMatrixIndex = bondedTask ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
+			task.nointeractionMatrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative != -1 ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
 			task.scIds[0] = scId;
 			task.scIds[1] = workPerSc[scId][i].queryScId;
 			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
-			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
+			//task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
+			task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
 			tasks[nTasksPrefixsum[scId] + i] = task;
 		}
 
@@ -724,37 +799,46 @@ bool Engine::MakeSuperClusterTasksCPU() {
 		superClusterMetas[scId].nResults = nResultsReserved[scId];
 	}
 
-	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
-	nointeractionMatrices.resize(numNointeractionMatricesTotal);
+	//const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+	//nointeractionMatrices.resize(numNointeractionMatricesTotal);
 
 
 
 	// Build all the nointeractionMatrices
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
-		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			if (!workPerSc[scId][i].areBonded)
-				continue;
+	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particleBondedToParticle);
+	//for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+	//	std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
+	//	for (int i = 0; i < workPerSc[scId].size(); i++) {
+	//		if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
+	//			continue;
 
-			const int queryScId = workPerSc[scId][i].queryScId;
-			BoolMatrix16x16 nointeractionMatrix{};
+	//		const int queryScId = workPerSc[scId][i].queryScId;
+	//		BoolMatrix16x16 nointeractionMatrix{};
 
-			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
+	//		std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
+	//		const bool isSelfInteractionTask = scId == queryScId;
+
+	//		for (int col = 0; col < 16; ++col) {
+	//			for (int row = 0; row < 16; ++row) {
+	//				if (particleIdsSelf[row] == -1)
+	//					continue;
+	//				bool noInteraction = box.particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
+	//				if (isSelfInteractionTask && row == col) {
+	//					noInteraction = true;
+	//				}
+	//				nointeractionMatrix.Set(row, col, noInteraction);
+	//			}
+	//		}
 
 
-			for (int col = 0; col < 16; ++col) {
-				for (int row = 0; row < 16; ++row) {
-					const bool noInteraction = box.particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
-					nointeractionMatrix.Set(row, col, noInteraction);
-				}
-			}
+	//		const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
+	//		nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+	//	}
+	//}
 
 
-			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
-			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
-		}
-	}
-
+	DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
+	//DebugUtils::VerifyIdentical
 
 
 	// Push back to device
@@ -764,9 +848,13 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	scscTasksDevice = GenericCopyToDevice(tasks);
 	noInteractionMatricesDevice = GenericCopyToDevice(nointeractionMatrices);
 
+	nResults = nResultsPrefixsum.back() + nResultsReserved.back();
 	cudaFree(scResultsDevice);
-	cudaMalloc(&scResultsDevice, sizeof(SCResult)* tasks.size());
-	cudaMemset(scResultsDevice, 0, sizeof(SCResult)* tasks.size());
+	cudaMalloc(&scResultsDevice, sizeof(SCResult)* nResults);
+	cudaMemset(scResultsDevice, 0, sizeof(SCResult)* nResults);
+
+	nTasks = numTasksTotal;
+	//nSuperclusters = nSuperClusters;
 
 	return true;
 }

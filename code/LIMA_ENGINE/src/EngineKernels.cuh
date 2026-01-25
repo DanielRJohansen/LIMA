@@ -337,16 +337,19 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 		}
 	}
 
+	if (threadIdx.x < nParticles) {
+		//printf("Integrating force %f %f %f\n", forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
+	}
 
 
 	__syncthreads();
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 
-	if constexpr (FORCE_CHECKS)
+	if constexpr (FORCE_CHECKS) {
 		if (isnan(forceEnergy.force.len()))
 			printf("NAN\n");
-
+	}
 	float speed = 0.f;
 	if (threadIdx.x < nParticles) {
 		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
@@ -909,7 +912,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 
 // 
 /// <summary>
-/// blockdim=16,2,1 
+/// blockdim=16,2,1  OPTIM: This is too complex, for now its just 16,1,1
 /// MaskMatrix is either BoolMatrix16x16 or NoMat
 /// </summary>
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
@@ -917,27 +920,26 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	__shared__ ScScTask task;
 	__shared__ SuperCluster queryCluster;
 	__shared__ Float3 p0Pos; // Used for PBC`
-	//__shared__ ForceEnergy queryFE[SuperCluster::nParticles];
-	__shared__ SCResult queryFE;
+	__shared__ SCResult utilitySCResult;
 
 	
-
-	//__shared__ MaskMatrix nointeractionMask;
 	uint16_t noInteractionsRow;
-
+	bool hasNoInteractionMatrix = tasks[blockIdx.x].nointeractionMatrixIndex != -1;
 
 	if (threadIdx.x == 0) {
 		task = tasks[blockIdx.x];
+		queryCluster = superClusters[task.scIds[1]];
 	}
-	if (threadIdx.y == 0)
-		queryFE.fe[threadIdx.x] = ForceEnergy{};
+
+	utilitySCResult.fe[threadIdx.x] = ForceEnergy{};
 	__syncthreads();
 	
 	{
 		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &queryCluster, &(superClusters[task.scIds[1]]), sizeof(SuperCluster));
+		//cooperative_groups::memcpy_async(tb, &queryCluster, &(superClusters[task.scIds[1]]), sizeof(SuperCluster));
 		if constexpr (useNointeractionMatrix) {
-			noInteractionsRow = nointeractionMatrices[task.nointeractionMatrixIndex].GetRow(threadIdx.x);
+			if (hasNoInteractionMatrix)
+				noInteractionsRow = nointeractionMatrices[task.nointeractionMatrixIndex].GetRow(threadIdx.x);
 			//cooperative_groups::memcpy_async(tb, &nointeractionMask, &nointeractionMatrices[task.nointeractionMatrixIndex], sizeof(MaskMatrix));
 		}
 		cooperative_groups::wait(tb);
@@ -956,55 +958,64 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 	ForceEnergy myForceEnergy{};
 
-	const int firstQueryIndex = threadIdx.x + threadIdx.y * SuperCluster::nParticles/2;
-	for (int queryIndex = 0; queryIndex < SuperCluster::nParticles/2; queryIndex++) {
+	//const int firstQueryIndex = threadIdx.x + threadIdx.y * SuperCluster::nParticles/2;
+	for (int i = 0; i < SuperCluster::nParticles; i++) {
+		int queryIndex = threadIdx.x + i;
 		queryIndex -= SuperCluster::nParticles * (queryIndex >= SuperCluster::nParticles);
+		//queryIndex -= SuperCluster::nParticles * (queryIndex >= SuperCluster::nParticles);
+
+		bool skip = false;
 
 		if constexpr (useNointeractionMatrix) {
-			if (BoolMatrix16x16::Get(noInteractionsRow, queryIndex)) {
-				continue;
+			if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractionsRow, queryIndex)) {
+				skip = true;
 			}
 		}
 
-		ForceEnergy fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex]);
+
+		ForceEnergy fe{}; 
+		if (!skip) { 
+			fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex]);
+		}
 		myForceEnergy += fe;
 
-		fe.force *= -1.f;
-		
-		// Or just do this with atomics... NO, that loses determinability
-		if (threadIdx.y == 0) {
-			queryFE.fe[queryIndex] += fe;
-		}
-		__syncthreads();
-		if (threadIdx.y == 1) {
-			queryFE.fe[queryIndex] += fe;
-		}
-		__syncthreads();
-	}
+		// Now invert force and push to query atom also
+		fe.force = -fe.force;
+		utilitySCResult.fe[queryIndex] += fe;
 
+		__syncthreads();
+		/*if (threadIdx.y == 1) {
+			queryFE.fe[queryIndex] += fe;
+		}
+		__syncthreads();*/
+	}
 	__syncthreads();
 	{
 		// TODO: For the case where querySC == thisSC, we should probably do a bunch of stuff here differently???!?
 		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[1]], &queryFE, sizeof(SCResult));
+		if (threadIdx.x == 0) {
+			//printf("forceQuery %f %f %f\n", utilitySCResult.fe[threadIdx.x].force.x, utilitySCResult.fe[threadIdx.x].force.y, utilitySCResult.fe[threadIdx.x].force.z);
+		}
+
+		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[1]], &utilitySCResult, sizeof(SCResult));
 		cooperative_groups::wait(tb);
 	}
 	__syncthreads();
 
+	
 
 	// Now reduce across y-dimension in the now vacant queryFE
-	if (threadIdx.y == 0) {
-		queryFE.fe[threadIdx.x] = myForceEnergy;
-	}
+	utilitySCResult.fe[threadIdx.x] = myForceEnergy;
+	//utilitySCResult.fe[threadIdx.x] = ForceEnergy{ Float3{3000.f}, 300.f };
 	__syncthreads();
-	if (threadIdx.y == 1) {
-		queryFE.fe[threadIdx.x] += myForceEnergy;
-	}
-	__syncthreads();
+	//if (threadIdx.y == 1) {
+	//	utilitySCResult.fe[threadIdx.x] += myForceEnergy;
+	//}
+	//__syncthreads();
 
 	{
 		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[0]], &queryFE, sizeof(SCResult));
+		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[0]], &utilitySCResult, sizeof(SCResult));
 		cooperative_groups::wait(tb);
 	}
 }
@@ -1013,7 +1024,6 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 // TODO: This layout can be much smarter
 // blockdim = 16,1,1
 __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pcMeta, const SCResult* const scResults, ForceEnergy* const particleForceEnergies) {
-	//__shared__ SCResult scResultShared;
 	__shared__ SuperClusterMeta scMetaShared;
 
 	{
@@ -1028,13 +1038,14 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 		myFE += scResults[i].fe[threadIdx.x];
 	}
 
-
 	// push
 	int pClusterId = scMetaShared.pclusterIds[threadIdx.x / 4];
-	auto pCluster = pcMeta[pClusterId];
-	int particleId = pCluster.particleIdsGlobal[threadIdx.x % 4];
+	int particleId = pClusterId == -1 ? -1 : pcMeta[pClusterId].particleIdsGlobal[threadIdx.x % 4];
+	if (particleId == -1)
+		return;
 	particleForceEnergies[particleId] = myFE;
 }
+
 
 //// blockDim = (16, 1, 1)
 //template <typename BoundaryCondition, bool emVariant>
@@ -1084,19 +1095,53 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 //This is just temp code untill we switch completely to verletclustering, and no longer need the compounds/solvents discerning
 __global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergy* const forceenergy, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles,
 ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
-	if (threadIdx.x >= nParticles)
+
+	int particleId = threadIdx.x + blockIdx.x * blockDim.x;
+
+	if (particleId >= nParticles)
 		return;
 
 
-	ParticleToCompoundOrSolventMapping mapping = mappings[threadIdx.x];
+	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
 	if (mapping.IsSolvent()) {
-		feSolvents[mapping.particleId];
+		feSolvents[mapping.particleId] = forceenergy[particleId];
 	}
 	else {
-		feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId];
+		feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = forceenergy[particleId];
 	}
 }
 
+// blockdim = 16,1,1
+__global__ void UpdatePdataPositions(const BoxState boxState, const ParticleToCompoundOrSolventMapping* const particleToCompoundOrSolventMapping, const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pclusterMeta, 
+	SuperCluster* const scData, PersistentCluster* pClusters) {
+	
+	const int pclusterId = scMeta[blockIdx.x].pclusterIds[threadIdx.x / 4];
+	if (pclusterId == -1)
+		return;
+
+	int localParticleIndex = threadIdx.x % 4;
+	const int globalParticleId = pclusterMeta[pclusterId].particleIdsGlobal[localParticleIndex];
+	if (globalParticleId == -1)
+		return;
+	
+	
+
+	ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[globalParticleId];
+	//printf("mapping %d %d\n", mapping.compoundId, mapping.particleId);
+	if (!mapping.IsSolvent()) {
+		NodeIndex origo = boxState.compoundOrigos[mapping.compoundId];
+		Float3 relPos = boxState.compoundsRelposNm[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId];
+		Float3 absPos = origo.toFloat3() + relPos;
+
+		scData[blockIdx.x].pData[threadIdx.x].position = absPos;
+		pClusters[pclusterId].pqd[localParticleIndex].position = absPos;
+		//absPos.print('A');
+		//printf("Updating pc %d globalpid %d to %f %f %f\n", pclusterId, globalParticleId, absPos.x, absPos.y, absPos.z);
+	}
+	else {
+		
+	}
+}
 
 
 #pragma warning (pop)

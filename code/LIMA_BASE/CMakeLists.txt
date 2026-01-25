@@ -22,7 +22,7 @@ add_library(LIMA_BASE STATIC
     src/PlotUtils.cpp
     src/SimParams.cpp
     src/FilePreprocessor.cpp
-)
+ "include/DebugUtils.h")
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal

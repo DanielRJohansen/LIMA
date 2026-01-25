@@ -91,7 +91,7 @@ public:
 	}
 };
 
-
+// Todo move this impl to ParticleClusters.cuh
 class PClusterTransfermodule {
 public:
 	static const int maxClustersPerBlock = 64;
@@ -138,29 +138,30 @@ public:
 struct SuperClustersControl {
 	//int* nSuperclustersInGrid;
 	//int* pclusterIdsInSuperclusters;
+	static const int maxClustersPerBlock = 8;
 
 	SuperClusterMeta* scMeta = nullptr;
 	SuperCluster* scData = nullptr;
-	int* nSuperclustersAtomic;
+	//int* nSuperclustersAtomic;
 
 
 	__host__ static SuperClustersControl Create(Int3 boxSize, int maxSuperclusters) {
 		SuperClustersControl control;
 		cudaMalloc(&control.scMeta, sizeof(SuperClusterMeta) * maxSuperclusters);
 		cudaMalloc(&control.scData, sizeof(SuperCluster) * maxSuperclusters);
-		cudaMalloc(&control.nSuperclustersAtomic, sizeof(int));
+		//cudaMalloc(&control.nSuperclustersAtomic, sizeof(int));
 		control.Reset();
 		return control;
 	}
 	__host__ void Reset(/*int nSuperclustersMax*/ /*The struct does not track this number itself*/) {
 		//cudaMemset(scMeta, 0, sizeof(SuperClusterMeta) * nSuperclustersMax); // doesnt matter
 		//cudaMemset(scData, 0, sizeof(SuperCluster) * nSuperclustersMax);
-		cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
+		//cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
 	}
 	__host__ void Free() {
 		cudaFree(scMeta);
 		cudaFree(scData);
-		cudaFree(nSuperclustersAtomic);
+		//cudaFree(nSuperclustersAtomic);
 	}
 };
 

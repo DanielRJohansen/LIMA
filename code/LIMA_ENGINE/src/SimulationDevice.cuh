@@ -143,7 +143,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups);
+	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles);
 	void Free() const;
 
 	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
@@ -155,14 +155,18 @@ struct ForceEnergyInterims {
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ pmeFE;
 	}
+
+	ForceEnergy* nbNonlocal = nullptr;
 
 	// Compounds
 	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyBonds = nullptr;
 	ForceEnergy* forceEnergiesPME = nullptr;
+	ForceEnergy* fromSuperclusters = nullptr;
 
 	// Bondgroups
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
@@ -173,5 +177,6 @@ struct ForceEnergyInterims {
 		ForceEnergy* solventsInteractions = nullptr;
 		ForceEnergy* bondgroupsInteractions = nullptr;
 		ForceEnergy* pmeInteraction = nullptr;
+		ForceEnergy* fromSuperclusters = nullptr;
 	} solvents;
 };

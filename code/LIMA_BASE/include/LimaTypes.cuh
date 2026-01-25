@@ -70,6 +70,7 @@ struct Float3 {
 	constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
 	constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
 	constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	constexpr bool operator != (const Float3& a) const { return !(*this == a); }
 	constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
 	constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
 	constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
@@ -277,6 +278,9 @@ struct ForceEnergy {
 		potE += a.potE;
 	}
 	
+	__host__ bool operator != (const ForceEnergy& a) const {
+		return (force != a.force) || (potE != a.potE);
+	}
 };
 
 struct ParticleQuickData {

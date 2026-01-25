@@ -30,18 +30,20 @@ void Engine::verifyEngine() {
 
 
 
-ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups) {
+ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles) {
 	if (nCompounds > 0) {
 		const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
 		cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
 		cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
 		cudaMalloc(&forceEnergyBonds, byteSize);
 		cudaMalloc(&forceEnergiesPME, byteSize);
-		
+		cudaMalloc(&fromSuperclusters, byteSize);
+
 		cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
 		cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
 		cudaMemset(forceEnergyBonds, 0, byteSize);
 		cudaMemset(forceEnergiesPME, 0, byteSize);		
+		cudaMemset(fromSuperclusters, 0, byteSize);
 	}
 
 	if (nBondgroups > 0) {
@@ -55,11 +57,18 @@ ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSol
 		cudaMalloc(&solvents.solventsInteractions, byteSize);
 		cudaMalloc(&solvents.bondgroupsInteractions, byteSize);
 		cudaMalloc(&solvents.pmeInteraction, byteSize);
+		cudaMalloc(&solvents.fromSuperclusters, byteSize);
 
 		cudaMemset(solvents.compoundsInteractions, 0, byteSize);
 		cudaMemset(solvents.solventsInteractions, 0, byteSize);
 		cudaMemset(solvents.bondgroupsInteractions, 0, byteSize);
 		cudaMemset(solvents.pmeInteraction, 0, byteSize);
+		cudaMemset(solvents.fromSuperclusters, 0, byteSize);
+	}
+
+	if (nParticles > 0) {
+		cudaMalloc(&nbNonlocal, sizeof(ForceEnergy) * nParticles);
+		cudaMemset(nbNonlocal, 0, sizeof(ForceEnergy) * nParticles);
 	}
 }
 
@@ -77,6 +86,10 @@ void ForceEnergyInterims::Free() const {
 		cudaFree(solvents.solventsInteractions);
 		cudaFree(solvents.bondgroupsInteractions);
 		cudaFree(solvents.pmeInteraction);
+	}
+
+	if (nbNonlocal != nullptr) {
+		cudaFree(nbNonlocal);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");

@@ -359,7 +359,7 @@ struct ForcefieldTinymol {
 	// Can make mass and epsilon half
 	struct TinyMolType {
 		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm]
+		float epsilonSqrt = -1;		// [J/mol/nm] // TODO: OPTIM: Should be 0 so the same logic handles missing data aswell as particles that doesnt interact with LJ
 		float mass = -1;		// [kg/mol]
 		float charge = -1;		// [kC/mol]
 	};
@@ -407,6 +407,15 @@ struct SuperCluster {
 
 struct SCResult {
 	ForceEnergy fe[SuperCluster::nParticles];
+
+	__host__ bool operator!=(const SCResult& other) const {
+		for (int i = 0; i < SuperCluster::nParticles; i++) {
+			if (fe[i].force != other.fe[i].force ||
+				fe[i].potE != other.fe[i].potE)
+				return true;
+		}
+		return false;
+	}
 };
 
 
@@ -414,7 +423,9 @@ class BoolMatrix16x16 {
 	uint16_t data[16]; // rowmajor
 
 public:
-
+	BoolMatrix16x16(){
+		memset(data, 0, sizeof(data));
+	}
 	constexpr static bool Get(const uint16_t& row, int col) {
 		return (row >> col) & 1;
 	}
@@ -445,12 +456,33 @@ struct SuperClusterMeta {
 	// Set by taskbuilder kernel
 	int resultsStartIndex;
 	int nResults;
+
+	__host__ bool operator != (const SuperClusterMeta& other) const {
+		if (resultsStartIndex != other.resultsStartIndex ||
+			nResults != other.nResults)
+			return true;
+		for (int i = 0; i < SuperCluster::nPclusters; i++) {
+			if (pclusterIds[i] != other.pclusterIds[i])
+				return true;
+		}
+		return false;
+	}
 };
 
 struct ScScTask {
 	int scIds[2];
 	int resultIndices[2];
 	int nointeractionMatrixIndex = -1;
+
+	__host__ constexpr bool operator!=(const ScScTask& other) const {
+		for (int i = 0; i < 2; i++) {
+			if (scIds[i] != other.scIds[i])
+				return true;
+			if (resultIndices[i] != other.resultIndices[i])
+				return true;
+		}
+		return false;
+	}
 };
 
 

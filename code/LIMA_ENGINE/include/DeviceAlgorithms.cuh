@@ -139,6 +139,38 @@ namespace LAL {
 		}
 	}
 
+	// Assumes nValues is a power of two and <= blockDim.x
+	template <int nValues>
+	__device__ inline void Sort(int* keys, Float3* attachedData)
+	{
+		static_assert(nValues == 16 || nValues == 32 || nValues == 64 || nValues == 128);
+		for (int k = 2; k <= nValues; k <<= 1) {
+			for (int j = k >> 1; j > 0; j >>= 1) {
+				int i = threadIdx.x;
+				if (i < nValues) {
+					int ixj = i ^ j;
+					if (ixj > i) {
+						bool ascending = ((i & k) == 0);
+						int key_i = keys[i];
+						int key_j = keys[ixj];
+
+						if ((ascending && key_i > key_j) ||
+							(!ascending && key_i < key_j)) {
+
+							keys[i] = key_j;
+							keys[ixj] = key_i;
+
+							Float3 tmp = attachedData[i];
+							attachedData[i] = attachedData[ixj];
+							attachedData[ixj] = tmp;
+						}
+					}
+				}
+				__syncthreads();
+			}
+		}
+	}
+
 
 //	// Must always be called by blocks with blockdim=32,1,1
 //	template <int nBins, int nValuesPerBin, typename T>

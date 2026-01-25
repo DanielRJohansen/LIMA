@@ -2,41 +2,107 @@
 
 #include "EngineBodies.cuh"
 #include "Engine.cuh"
+#include "DebugUtils.h"
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/scan.h>
 
+
+
+
+
+
+
+class SuperclusterStagingControl {
+public:
+	SuperclusterStagingControl() {}
+	__host__ SuperclusterStagingControl(Int3 boxSize) {
+		const int _nBlocks = BoxGrid::BlocksTotal(boxSize);
+		const int nElements = _nBlocks + 1; // 1 extra element allows is to see the sum at the final prefixsum index
+
+		cudaMalloc(&nClustersPerBlock, sizeof(int) * nElements);
+		cudaMalloc(&nClustersPrefixSum, sizeof(int) * nElements);
+		cudaMalloc(&scData, sizeof(SuperCluster) * SuperClustersControl::maxClustersPerBlock);
+		cudaMalloc(&scMeta, sizeof(SuperClusterMeta) * SuperClustersControl::maxClustersPerBlock);
+
+		cudaMemset(nClustersPerBlock, 0, sizeof(int) * nElements);
+		cudaMemset(nClustersPrefixSum, 0, sizeof(int) * nElements);
+	}
+
+	__host__ void Free() {
+		if (nClustersPerBlock == nullptr)
+			return;
+
+		cudaFree(nClustersPerBlock);
+		cudaFree(nClustersPrefixSum);
+		cudaFree(scData);
+		cudaFree(scMeta);
+	}
+
+	int* nClustersPerBlock = nullptr;
+	int* nClustersPrefixSum = nullptr;
+	SuperCluster* scData = nullptr;
+	SuperClusterMeta* scMeta = nullptr;
+};
+
+
+
+
+
+
+
+// nBlocks = nPclusters/32
 // blockdim = (32, 1, 1)
-__global__ void GetPclusterPositions(PClusterTransfermodule transferModule, const Float3* const compoundsRelposNm, const ParticleToCompoundOrSolventMapping* const mappings, const int nParticles, Int3 boxSize) {
-	const int particleId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (particleId >= nParticles)
+__global__ void GetPclusterPositions(PClusterTransfermodule transferModule, const PersistentCluster* const pClustersData, const int nPclusters, Int3 boxSize) {
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (pcId >= nPclusters)
 		return;
 
-	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
+	//ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
 
 
-	if (!mapping.IsSolvent()) {
+	const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
+	Float3 gridPosF = pos.round();
+	PeriodicBoundaryCondition::applyBCNM(gridPosF);
+	NodeIndex blockId = NodeIndex(gridPosF.x, gridPosF.y, gridPosF.z);
+	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
+	int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
+	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
 
-		int cid = mapping.compoundId;
-		int pid = mapping.particleId;
-
-		const int indexInCompoundsRelpos = cid * MAX_COMPOUND_PARTICLES + pid;
-		const Float3 pos = compoundsRelposNm[indexInCompoundsRelpos];
-		Float3 gridPos = pos.round();
-		PeriodicBoundaryCondition::applyBCNM(gridPos);
-		NodeIndex blockId = NodeIndex(gridPos.ToInt3	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
-
-
-
-		int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
-		int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
-		
-		transferModule.idsOfPclustersInBlocks[index] = particleId;
-		transferModule.meanPositionOfPClustersPerBlock[index] = pos; // TODO: THis is not even the actual meanposition is it?
-	}
-	else {
-		// TODO: DANGER: Add solvents here also, more difficult as they are not in a line but in blocks..
-	}
+	transferModule.idsOfPclustersInBlocks[index] = pcId;
+	transferModule.meanPositionOfPClustersPerBlock[index] = pos; // TODO: THis is not even the actual meanposition is it?
 }
 
 
+// Since we use non-deterministic atomics to place pclusters, we need to sort the indices to make the result deterministic again
+// blockDim = 32,1,1
+__global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModule) {
+	__shared__ int ids[PClusterTransfermodule::maxClustersPerBlock];
+	__shared__ Float3 positions[PClusterTransfermodule::maxClustersPerBlock];
+
+	const int nPclustersToSort = transferModule.nPClustersPerBlock[blockIdx.x];
+
+	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i+=blockDim.x) {
+		if (i < nPclustersToSort) {
+			const int globalIndex = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i;
+			ids[i] = transferModule.idsOfPclustersInBlocks[globalIndex];
+			positions[i] = transferModule.meanPositionOfPClustersPerBlock[globalIndex];
+		}
+		else {
+			ids[i] = INT_MAX;
+		}
+	}
+
+	LAL::Sort<PClusterTransfermodule::maxClustersPerBlock>(ids, positions);
+
+	for (int i = threadIdx.x; i < nPclustersToSort; i+=blockDim.x) {
+		if (i < nPclustersToSort) {
+			const int globalIndex = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i;
+			transferModule.idsOfPclustersInBlocks[globalIndex] = ids[i];
+			transferModule.meanPositionOfPClustersPerBlock[globalIndex] = positions[i];
+		}
+	}
+}
 
 template <typename BoundaryCondition>
 __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {	
@@ -51,12 +117,12 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	{0, 0, -1}
 	};
 
-	__shared__ int nClusters;
+	__shared__ int nPClusters;
 	__shared__ int indexOfFirstCluster;
 	__shared__ int directionIndexOfPCluster[PClusterTransfermodule::maxClustersPerBlock]; // -1 for stay
 
 	if (threadIdx.x == 0) {
-		nClusters = transferModule.nPClustersPerBlock[blockIdx.x];
+		nPClusters = transferModule.nPClustersPerBlock[blockIdx.x];
 		indexOfFirstCluster = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock;
 	}
 	if (threadIdx.x < PClusterTransfermodule::maxClustersPerBlock) {
@@ -67,9 +133,9 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	// TODO FIx this part
 	const Float3 blockOrigoF = BoxGrid::Get3dIndex(blockIdx.x, boxSize).toFloat3();
 
-	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
-		const int particleIndex = indexOfFirstCluster + i;
-		Float3 absPos = transferModule.meanPositionOfPClustersPerBlock[particleIndex];
+	for (int i = threadIdx.x; i < nPClusters; i += blockDim.x) {
+		const int pcIndex = indexOfFirstCluster + i;
+		Float3 absPos = transferModule.meanPositionOfPClustersPerBlock[pcIndex];
 		PeriodicBoundaryCondition::applyHyperposNM(blockOrigoF, absPos);	// TODO: OPTIM: shoudn't be necessary if pClusters are placed correctly in blocks...
 
 		const Float3 posRelativeToBlockCenter = absPos - (blockOrigoF + Float3{ 0.5f, 0.5f, 0.5f });
@@ -88,7 +154,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	__shared__ int clusterIdsThisDirectionRelativeToBlock[PClusterTransfermodule::maxOutgoingClusters * 6];
 	if (threadIdx.x < 6) {
 		int myCount = 0;
-		for (int i = 0; i < nClusters; i++) {
+		for (int i = 0; i < nPClusters; i++) {
 			if (directionIndexOfPCluster[i] == threadIdx.x) {
 				if constexpr (INDEXING_CHECKS) {
 					if (myCount >= PClusterTransfermodule::maxOutgoingClusters)
@@ -96,6 +162,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 				}
 				
 				clusterIdsThisDirectionRelativeToBlock[threadIdx.x * PClusterTransfermodule::maxOutgoingClusters + myCount] = i;
+				myCount++;
 			}
 		}
 		nClustersThisDirection[threadIdx.x] = myCount;
@@ -130,6 +197,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 				+ threadIdx.x;
 			const int clusterSrcGlobalIndex = indexOfFirstCluster + clusterIndexRelativeToBlock;
 
+			//printf("pcluster leaving to index %d %d %d\n", targetBlock.x, targetBlock.y, targetBlock.z);
 			transferModule.idsOfIncomingClusters[clusterTargetGlobalIndex] = transferModule.idsOfPclustersInBlocks[clusterSrcGlobalIndex];
 			transferModule.meanpositionsOfIncomingClusters[clusterTargetGlobalIndex] = transferModule.meanPositionOfPClustersPerBlock[clusterSrcGlobalIndex];
 		}
@@ -140,14 +208,12 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	// Finally compress remainders. Reuse the direction-of-particle buffer as prefixsum buffer
 	__shared__ int indexRelativeToBlockOfRemainingClusters[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int nClustersRemaining;	
-	/*for (int i = threadIdx.x; i < nClusters; i += blockDim.x) {
-		bondgroupRemains[i] = directionIndexOfPCluster[i] == -1;
-	}*/
 
 	// TODO OPTIM: Find a not idiot way of doing this compression...
 	if (threadIdx.x == 0) {
 		int nextDestIndex = 0;
-		for (int i = 0; i < nClusters; i++) {
+		for (int i = 0; i < nPClusters; i++) {
+			//printf("Here: %d\n", directionIndexOfPCluster[i]);
 			if (directionIndexOfPCluster[i] == -1) {
 				indexRelativeToBlockOfRemainingClusters[nextDestIndex++] = i;
 			}
@@ -160,6 +226,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 
 	// Now finally compress data in global mem
 	for (int i = threadIdx.x; i < nClustersRemaining; i += blockDim.x) {
+		//printf("pcluster remains block %d thread %d\n", blockIdx.x, threadIdx.x);
 		const int srcIndex = indexOfFirstCluster + indexRelativeToBlockOfRemainingClusters[i];
 		const int destIndex = indexOfFirstCluster + i;
 		transferModule.idsOfPclustersInBlocks[destIndex] = transferModule.idsOfPclustersInBlocks[srcIndex];
@@ -181,7 +248,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 //}
 
 // Called with 32 threads
-__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperClustersControl scControl)
+__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl)
 {
 	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
@@ -189,7 +256,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 	__shared__ float sortKeys[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int sortIds[PClusterTransfermodule::maxClustersPerBlock]; // starts out as iota, tracks relative
-	__shared__ int scOutStartIndex;
+	//__shared__ int scOutStartIndex;
 
 	if (threadIdx.x == 0) {
 		nPclustersInBlock = transferModule.nPClustersPerBlock[blockIdx.x];
@@ -208,8 +275,21 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		meanPositionsOfPClusters[i] = transferModule.meanPositionOfPClustersPerBlock[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
 		idsOfPclustersInBlock[i] = transferModule.idsOfPclustersInBlocks[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
 	}
+	for (int dir = 0; dir < 6; dir++){
+		const int incomingBaseIndex = (blockIdx.x * 6 + dir) * PClusterTransfermodule::maxOutgoingClusters;
+		if (threadIdx.x < transferModule.nIncomingClusters[blockIdx.x * 6 + dir]) {
+			const int indexInBlock = nPclustersInBlock + threadIdx.x;
+			meanPositionsOfPClusters[indexInBlock] = transferModule.meanpositionsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
+			idsOfPclustersInBlock[indexInBlock] = transferModule.idsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
+		}
+		if (threadIdx.x == 0) {
+			nPclustersInBlock += transferModule.nIncomingClusters[blockIdx.x * 6 + dir];
+		}
+	}
 	__syncthreads();
-
+	/*if (threadIdx.x == 0 && nPclustersInBlock > 0) {
+		printf("pCID %d\n", idsOfPclustersInBlock[0]);
+	}*/
 
 	const int bucketsPerDim = 4;
 	// Sort along z 
@@ -245,12 +325,17 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	}
 
 
-	const int nClustersToMake = (nPclustersInBlock + 3) / 4;
+	const int nClustersToMake = (nPclustersInBlock + 3) / 4;	
 	if (threadIdx.x == 0) {
-		scOutStartIndex = atomicAdd(scControl.nSuperclustersAtomic, nClustersToMake);
+		scStagingControl.nClustersPerBlock[blockIdx.x] = nClustersToMake;
+		if constexpr (INDEXING_CHECKS) {
+			if (nClustersToMake >= SuperClustersControl::maxClustersPerBlock) {
+				printf("Trying to make too many superclusters in block %d: %d (max %d)\n", blockIdx.x, nClustersToMake, SuperClustersControl::maxClustersPerBlock);
+			}				
+		}
 	}
-	__syncthreads();
 
+	
 	if (threadIdx.x < nClustersToMake){
 		SuperClusterMeta scMeta{};
 		SuperCluster sc{};
@@ -262,13 +347,13 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 				const int pcIdRelativeToBlock = sortIds[srcIndex];
 				const int pcIdGlobal = idsOfPclustersInBlock[pcIdRelativeToBlock];
-				scMeta.pclusterIds[pcId] = idsOfPclustersInBlock[pcIdGlobal];
+				//printf("rel %d global %d value %d\n", pcIdRelativeToBlock, pcIdGlobal, idsOfPclustersInBlock[pcIdGlobal]);
+				scMeta.pclusterIds[pcId] = pcIdGlobal;
 				//pClusters[pcIdGlobal].pqd[0].position.print('p');
-				//printf("posx %f block %d, idsat0 %d sortId %d, pcIdGlobal %d, pcIdRelativeToBlock %d\n", pClusters[pcIdGlobal].pqd[0].position.x, blockIdx.x, idsOfPclustersInBlock[0], pcIdRelativeToBlock, pcIdGlobal, pcIdRelativeToBlock);
-
-
+				/*printf("posx %f block %d, idsat0 %d sortId %d, pcIdGlobal %d, pcIdRelativeToBlock %d\n", pClusters[pcIdGlobal].pqd[0].position.x, blockIdx.x, idsOfPclustersInBlock[0], pcIdRelativeToBlock, pcIdGlobal, pcIdRelativeToBlock);
+				printf("Clusting %f %f %f\n", pClusters[pcIdGlobal].pqd[0].position.x, pClusters[pcIdGlobal].pqd[0].position.y, pClusters[pcIdGlobal].pqd[0].position.z);*/
 				for (int particleId = 0; particleId < 4; particleId++) {
-					sc.pData[pcId * 4 + particleId] = pClusters[pcIdGlobal].pqd[particleId];
+					sc.pData[pcId * 4 + particleId] = pClusters[pcIdGlobal].pqd[particleId];					
 				}						
 			}
 			else {
@@ -277,10 +362,29 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 			}
 		}
 
-		scControl.scData[scOutStartIndex + threadIdx.x] = sc;
-		scControl.scMeta[scOutStartIndex + threadIdx.x] = scMeta;
+		const int stagingStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
+		scStagingControl.scData[stagingStartIndex + threadIdx.x] = sc;
+		scStagingControl.scMeta[stagingStartIndex + threadIdx.x] = scMeta;
 	}
 }
+
+// 1 cudablock per block, blockdim = 32,1,1
+__global__ void CompressSuperclusters(SuperClustersControl scControl, const SuperclusterStagingControl scStagingControl) {
+	const int nClusters = scStagingControl.nClustersPerBlock[blockIdx.x];
+	if (nClusters == 0)
+		return;
+
+	const int srcStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
+	const int dstStartIndex = scStagingControl.nClustersPrefixSum[blockIdx.x];
+
+
+	auto tb = cooperative_groups::this_thread_block();
+	cooperative_groups::memcpy_async(tb, &scControl.scData[dstStartIndex], &scStagingControl.scData[srcStartIndex], sizeof(SuperCluster) * nClusters);
+	cooperative_groups::memcpy_async(tb, &scControl.scMeta[dstStartIndex], &scStagingControl.scMeta[srcStartIndex], sizeof(SuperClusterMeta) * nClusters);
+	cooperative_groups::wait(tb);
+}
+
+
 
 
 
@@ -288,24 +392,59 @@ void Engine::RunClustering(bool getPclusters) {
 	Int3 boxSize = simulation->box_host->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));
 
+
+	if (!superclusterStagingControl) {
+		superclusterStagingControl = std::make_unique<SuperclusterStagingControl>(boxSize);
+	}
+
+	auto origos = GenericCopyToHost(sim_dev->boxState.compoundOrigos, 2);
+
 	if (getPclusters) {
-		int nCudablocks = (simulation->box_host->persistentClusters.size() + 31) / 32;
-		GetPclusterPositions << <nCudablocks, 32 >> > (*pclusterTransfermodule,
-			sim_dev->boxState.compoundsRelposNm,
-			particleToCompoundOrSolventMappingDevice,
-			simulation->box_host->particleToCompoundOrSolventMapping.size(),
+		const int nPclusters = simulation->box_host->persistentClusters.size();
+		int nCudablocks = (nPclusters + 31) / 32;
+		GetPclusterPositions<<<nCudablocks, 32>>>(
+			*pclusterTransfermodule,
+			pClusterDevice,
+			nPclusters,
 			simulation->box_host->boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");
+
+
+		SortPClusterIndicesInBlocks <<<nBlocks, 32>>> (*pclusterTransfermodule);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SortPClusterIndicesInBlocks kernel");
 	}
+
+	
 
 	ClusteringPretransferKernel<PeriodicBoundaryCondition>
 		<< <nBlocks, 32 >> > (*pclusterTransfermodule, boxSize);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
 
-	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superClustersControl);
+	// This simply stages the SC's per block, need to compress after
+	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 
+
+	
+
+	// Compute prefixsum buffer on nScPerBlock
+	{
+		auto countsPtr = thrust::device_pointer_cast(superclusterStagingControl->nClustersPerBlock);
+		auto prefixSumPtr = thrust::device_pointer_cast(superclusterStagingControl->nClustersPrefixSum);
+		const int nElements = nBlocks + 1; // Extra element for total sum at end
+		thrust::exclusive_scan(thrust::device, countsPtr, countsPtr + nElements, prefixSumPtr);
+		nSuperclusters = GenericCopyToHost(superclusterStagingControl->nClustersPrefixSum + (nElements - 1));
+	}
+
+	CompressSuperclusters<<<nBlocks, 32>>>(*superClustersControl, *superclusterStagingControl);
+
 	pclusterTransfermodule->Reset(boxSize);
+
+
+	// temp
+	//const int nSuperclusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
+	std::vector<SuperClusterMeta> meta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+	DebugUtils::VerifyIdentical(meta, "SCMeta" + std::to_string(simulation->getStep()));
 }
 
 void Engine::BootstrapClustering() {

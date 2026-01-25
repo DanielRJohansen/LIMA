@@ -329,7 +329,7 @@ struct ParticleReference {
 struct NBParams {
 	float sigmaHalf = -1;		// [nm]
 	float epsilonSqrt = -1;		// [J/mol/nm]
-	float charge = -1;		// [kC/mol]
+	float charge = NAN;		// [kC/mol]
 };
 
 // Precomputed values for pairs of atomtypes

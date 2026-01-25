@@ -396,6 +396,10 @@ std::array<uint8_t, n> GetLocalIds(const std::unordered_map<int, uint8_t>& parti
 }
 
 void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToCompoundMap, std::span<const int> bondGlobalIds) {
+	if (bondGlobalIds.front() == bondGlobalIds.back()) {
+		assert(false);
+	}
+
 	for (int id : bondGlobalIds) {
 		if (!particleGlobalToLocalId.contains(id)) {
 

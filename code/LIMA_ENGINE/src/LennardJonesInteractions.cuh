@@ -141,6 +141,8 @@ namespace LJ {
 					CalcLJOrigin::ComComInter
 				);
 
+				//printf("OLD sigma %f %f eps %f %f charge %f %f dist %f\n", myParams.sigmaHalf, neighborParams[neighborparticle_id].sigmaHalf, myParams.epsilonSqrt, neighborParams[neighborparticle_id].epsilonSqrt, chargeSelf, chargeNeighbors[neighborparticle_id], diff.len());
+
 				if constexpr (ENABLE_ES_SR) {
 					electrostaticForce += PhysicsUtilsDevice::CalcCoulumbForce(chargeSelf * chargeNeighbors[neighborparticle_id], -diff);
 					if constexpr (computePotE && ENABLE_POTE)
@@ -320,14 +322,30 @@ namespace LJ {
 				CalcLJOrigin::PP,
 				threadIdx.x, -1
 			) * 24.f;
+
+			//printf("\nNEW sigma %f %f eps %f %f charge %f %f dist %f\n", p0.params.sigmaHalf, p1.params.sigmaHalf, p0.params.epsilonSqrt, p1.params.epsilonSqrt, p0.params.charge, p1.params.charge, diff.len());
 		}
 
-		//if constexpr (ENABLE_ES_SR) {
-		//	const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndex].atomType];
-		//	fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
-		//	if constexpr (computePotE)
-		//		fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
-		//}
+		if constexpr (ENABLE_ES_SR) {
+			if (!isnan(p0.params.charge) && !isnan(p1.params.charge)) {
+				const float chargeProduct = p0.params.charge * p1.params.charge;
+				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
+				if constexpr (computePotE)
+					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());
+			}
+		}
+
+
+		if constexpr (FORCE_CHECKS) {
+			if (fe.force.isNan() || isnan(fe.potE)) {
+				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
+					diff.x, diff.y, diff.z,
+					p0.params.sigmaHalf, p1.params.sigmaHalf,
+					p0.params.epsilonSqrt, p1.params.epsilonSqrt,
+					p0.params.charge, p1.params.charge,
+					diff.len());
+			}
+		}
 
 		return fe;
 	}

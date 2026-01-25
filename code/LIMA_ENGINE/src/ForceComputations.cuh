@@ -38,6 +38,12 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	results[0] = dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
 	results[1] = -dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
 
+	if constexpr (FORCE_CHECKS) {
+		if (results[0].isNan()) {
+			printf("Singlebond produces NAN force: kb %f b0 %f dist %f\n", bondParams.kb, bondParams.b0, difference.len());
+		}
+	}
+
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
 		//std::cout << "SingleBond : " << kernelname << " dist " << difference.len() / NANO_TO_LIMA;
@@ -104,9 +110,17 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 		results[2] += -dir * force_scalar;
 
 
+		if constexpr (FORCE_CHECKS) {
+			if (results[0].isNan()) {
+				printf("Anglebond produces NAN force: kTheta %f theta0 %f distance %f\n", angletype.params.kTheta, angletype.params.theta0, difference.len());
+			}
+		}
 		//results[0] += -inward_force_direction1 * force_scalar;
 		//results[2] += -inward_force_direction2 * force_scalar;
 	}
+
+
+
 #if defined LIMASAFEMODE
 	if (results[0].len() > 0.1f) {
 		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 %f [rad] kt %f\n", angle, error, results[0].len(), angletype.theta_0, angletype.k_theta);

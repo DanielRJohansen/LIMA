@@ -37,7 +37,7 @@ int main() {
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
-		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);
@@ -53,7 +53,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
-		//doEightResiduesNoSolvent(envmode);
+		doEightResiduesNoSolvent(envmode);
 		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
@@ -146,13 +146,13 @@ int main() {
 			RunAllUnitTests();*/
 	}
 	catch (std::runtime_error ex) {
-		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
+		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
 	}
 	catch (const std::exception& ex) {
-		std::cerr << "Caught exception: " << ex.what() << std::endl;
+		std::cerr << "\nCaught exception: " << ex.what() << std::endl;
 	}
 	catch (...) {
-		std::cerr << "Caught unnamed exception";
+		std::cerr << "\nCaught unnamed exception";
 	}
 
 	return 0;

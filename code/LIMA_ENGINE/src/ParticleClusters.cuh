@@ -6,8 +6,8 @@
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/scan.h>
-
-
+#include "BoundaryCondition.cuh"
+#include <numeric>
 
 
 
@@ -17,16 +17,16 @@ class SuperclusterStagingControl {
 public:
 	SuperclusterStagingControl() {}
 	__host__ SuperclusterStagingControl(Int3 boxSize) {
-		const int _nBlocks = BoxGrid::BlocksTotal(boxSize);
-		const int nElements = _nBlocks + 1; // 1 extra element allows is to see the sum at the final prefixsum index
+		const int nBlocks = BoxGrid::BlocksTotal(boxSize);
+		//const int nElements = _nBlocks + 1; 
 
-		cudaMalloc(&nClustersPerBlock, sizeof(int) * nElements);
-		cudaMalloc(&nClustersPrefixSum, sizeof(int) * nElements);
-		cudaMalloc(&scData, sizeof(SuperCluster) * SuperClustersControl::maxClustersPerBlock);
-		cudaMalloc(&scMeta, sizeof(SuperClusterMeta) * SuperClustersControl::maxClustersPerBlock);
+		cudaMalloc(&nClustersPerBlock, sizeof(int) * (nBlocks + 1)); // 1 extra element allows is to see the sum at the final prefixsum index
+		cudaMalloc(&nClustersPrefixSum, sizeof(int) * (nBlocks + 1));
+		cudaMalloc(&scData, sizeof(SuperCluster) * nBlocks * SuperClustersControl::maxClustersPerBlock);
+		cudaMalloc(&scMeta, sizeof(SuperClusterMeta) * nBlocks * SuperClustersControl::maxClustersPerBlock);
 
-		cudaMemset(nClustersPerBlock, 0, sizeof(int) * nElements);
-		cudaMemset(nClustersPrefixSum, 0, sizeof(int) * nElements);
+		cudaMemset(nClustersPerBlock, 0, sizeof(int) * (nBlocks + 1));
+		cudaMemset(nClustersPrefixSum, 0, sizeof(int) * (nBlocks + 1));
 	}
 
 	__host__ void Free() {
@@ -82,6 +82,12 @@ __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModul
 
 	const int nPclustersToSort = transferModule.nPClustersPerBlock[blockIdx.x];
 
+	if constexpr (INDEXING_CHECKS) {
+		if (threadIdx.x == 0 && nPclustersToSort > PClusterTransfermodule::maxClustersPerBlock) {
+			printf("Not allowed to sort %d pclusters\n", nPclustersToSort);
+		}
+	}
+
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i+=blockDim.x) {
 		if (i < nPclustersToSort) {
 			const int globalIndex = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i;
@@ -98,6 +104,7 @@ __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModul
 	for (int i = threadIdx.x; i < nPclustersToSort; i+=blockDim.x) {
 		if (i < nPclustersToSort) {
 			const int globalIndex = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i;
+
 			transferModule.idsOfPclustersInBlocks[globalIndex] = ids[i];
 			transferModule.meanPositionOfPClustersPerBlock[globalIndex] = positions[i];
 		}
@@ -397,7 +404,6 @@ void Engine::RunClustering(bool getPclusters) {
 		superclusterStagingControl = std::make_unique<SuperclusterStagingControl>(boxSize);
 	}
 
-	auto origos = GenericCopyToHost(sim_dev->boxState.compoundOrigos, 2);
 
 	if (getPclusters) {
 		const int nPclusters = simulation->box_host->persistentClusters.size();
@@ -407,33 +413,33 @@ void Engine::RunClustering(bool getPclusters) {
 			pClusterDevice,
 			nPclusters,
 			simulation->box_host->boxparams.boxSize);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");
-
+		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");	
 
 		SortPClusterIndicesInBlocks <<<nBlocks, 32>>> (*pclusterTransfermodule);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SortPClusterIndicesInBlocks kernel");
 	}
 
-	
-
 	ClusteringPretransferKernel<PeriodicBoundaryCondition>
-		<< <nBlocks, 32 >> > (*pclusterTransfermodule, boxSize);
-	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
+		<<<nBlocks, 32 >>> (*pclusterTransfermodule, boxSize);
+
+	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringPretransferKernel");
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel << <nBlocks, 32 >> > (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl);
+	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 
 
-	
-
 	// Compute prefixsum buffer on nScPerBlock
 	{
-		auto countsPtr = thrust::device_pointer_cast(superclusterStagingControl->nClustersPerBlock);
-		auto prefixSumPtr = thrust::device_pointer_cast(superclusterStagingControl->nClustersPrefixSum);
 		const int nElements = nBlocks + 1; // Extra element for total sum at end
-		thrust::exclusive_scan(thrust::device, countsPtr, countsPtr + nElements, prefixSumPtr);
-		nSuperclusters = GenericCopyToHost(superclusterStagingControl->nClustersPrefixSum + (nElements - 1));
+		thrust::exclusive_scan(thrust::device, superclusterStagingControl->nClustersPerBlock, superclusterStagingControl->nClustersPerBlock + nElements, superclusterStagingControl->nClustersPrefixSum);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
+		nSuperclusters = GenericCopyToHost<int>(superclusterStagingControl->nClustersPrefixSum + nElements-1);
+
+		std::vector<int> counts = GenericCopyToHost(superclusterStagingControl->nClustersPerBlock, nElements);
+		int sum = std::accumulate(counts.begin(), counts.end(), 0);
+		if (sum != nSuperclusters)
+			throw std::runtime_error("Prefixsum mismatch in clustering");
 	}
 
 	CompressSuperclusters<<<nBlocks, 32>>>(*superClustersControl, *superclusterStagingControl);
@@ -443,8 +449,8 @@ void Engine::RunClustering(bool getPclusters) {
 
 	// temp
 	//const int nSuperclusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
-	std::vector<SuperClusterMeta> meta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
-	DebugUtils::VerifyIdentical(meta, "SCMeta" + std::to_string(simulation->getStep()));
+	/*std::vector<SuperClusterMeta> meta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+	DebugUtils::VerifyIdentical(meta, "SCMeta" + std::to_string(simulation->getStep()));*/
 }
 
 void Engine::BootstrapClustering() {

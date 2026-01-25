@@ -373,35 +373,35 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	{
-		const bool useNointeractionMatrix = true;
-		//dim3 blockDim(16, 2, 1);
-		dim3 blockDim(16, 1, 1); // TEMP
-		//int nBlocks = 1;
-		//SCResult
-		auto a = GenericCopyToHost(superClustersControl->scData, 2);
-		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
-			<< <nTasks, blockDim, 0, cudaStreams[0] >> >
-			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
+	//if (true){
+	//	const bool useNointeractionMatrix = true;
+	//	dim3 blockDim(16, 1, 1); // TEMP
+	//	NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
+	//		<<<nTasks, blockDim, 0, cudaStreams[0]>>>
+	//		(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
-		std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
-		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
+	//	std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
+	//	DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
 
-		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
-			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
+	//	SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
+	//		(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
 
-		std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
-		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
+	//	std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
+	//	DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
 
-		DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
-			(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
-				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
-	}
+	//	DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
+	//		(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
+	//			forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
+	//}
 
-	/*if (boxparams.n_compounds > 0) {
+
+
+
+
+	if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->simparams_host.enable_electrostatics,
@@ -412,7 +412,7 @@ void Engine::_deviceMaster() {
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
 			(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-	}*/
+	}
 
 	if (boxparams.nTinymols > 0) {
 		const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
@@ -498,12 +498,9 @@ void Engine::_deviceMaster() {
 		}
 	}
 
-	UpdatePdataPositions<<<nSuperclusters, 16>>>
-		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);
+	/*UpdatePdataPositions<<<nSuperclusters, 16>>>
+		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);*/
 	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
-	auto a = GenericCopyToHost(superClustersControl->scData, 2);
-	int b = 0;
-
 }
 
 
@@ -692,7 +689,8 @@ std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperC
 }
 
 bool Engine::MakeSuperClusterTasksCPU() {
-
+	if (nSuperclusters == 0)
+		return true;
 
 	const Box& box = *simulation->box_host;
 

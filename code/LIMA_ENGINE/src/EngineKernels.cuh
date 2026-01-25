@@ -348,7 +348,7 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 	if constexpr (FORCE_CHECKS) {
 		if (isnan(forceEnergy.force.len()))
-			printf("NAN\n");
+			printf("NAN force during compound integration\n");
 	}
 	float speed = 0.f;
 	if (threadIdx.x < nParticles) {
@@ -1036,6 +1036,8 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 
 	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
 		myFE += scResults[i].fe[threadIdx.x];
+		if (isnan(scResults[i].fe[threadIdx.x].force.len()))
+			printf("Found nan here %d %d\n", blockIdx.x, threadIdx.x);
 	}
 
 	// push

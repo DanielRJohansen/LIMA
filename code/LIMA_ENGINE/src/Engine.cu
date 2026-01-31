@@ -373,35 +373,35 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	//if (true){
-	//	const bool useNointeractionMatrix = true;
-	//	dim3 blockDim(16, 1, 1); // TEMP
-	//	NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
-	//		<<<nTasks, blockDim, 0, cudaStreams[0]>>>
-	//		(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice);
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
+	bool newAlg = false;
 
-	//	std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
-	//	DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
+	if (newAlg)
+	{
+		const bool useNointeractionMatrix = true;
+		dim3 blockDim(16, 1, 1); // TEMP
+		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
+			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
+			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
-	//	SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
-	//		(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
+		std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
+		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
 
-	//	std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
-	//	DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
+		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
+			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
 
-	//	DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
-	//		(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
-	//			forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
-	//}
+		std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
+		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
 
-
-
-
-
-	if (boxparams.n_compounds > 0) {
+		DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
+			(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
+				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
+	}
+	else 
+	{
+		if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->simparams_host.enable_electrostatics,
@@ -412,7 +412,10 @@ void Engine::_deviceMaster() {
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
 			(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
+		}
 	}
+
+	
 
 	if (boxparams.nTinymols > 0) {
 		const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
@@ -671,14 +674,20 @@ std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperC
 				for (int row = 0; row < 16; ++row) {
 					if (particleIdsSelf[row] == -1)
 						continue;
+					int pidSelf = particleIdsSelf[row];
+					int pidQuery = particleIdsQuery[col];
+					if (pidSelf == pidQuery && pidSelf == 0)
+						int a = 0;
+
 					bool noInteraction = particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
 					if (isSelfInteractionTask && row == col) {
 						noInteraction = true;
 					}
+			//		noInteraction = true;
 					nointeractionMatrix.Set(row, col, noInteraction);
 				}
 			}
-
+			
 
 			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
 			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
@@ -804,33 +813,29 @@ bool Engine::MakeSuperClusterTasksCPU() {
 
 	// Build all the nointeractionMatrices
 	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particleBondedToParticle);
-	//for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-	//	std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
-	//	for (int i = 0; i < workPerSc[scId].size(); i++) {
-	//		if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
-	//			continue;
-
-	//		const int queryScId = workPerSc[scId][i].queryScId;
-	//		BoolMatrix16x16 nointeractionMatrix{};
-
-	//		std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
-	//		const bool isSelfInteractionTask = scId == queryScId;
-
-	//		for (int col = 0; col < 16; ++col) {
-	//			for (int row = 0; row < 16; ++row) {
-	//				if (particleIdsSelf[row] == -1)
-	//					continue;
-	//				bool noInteraction = box.particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
-	//				if (isSelfInteractionTask && row == col) {
-	//					noInteraction = true;
-	//				}
-	//				nointeractionMatrix.Set(row, col, noInteraction);
+	//for (const auto& mat : nointeractionMatrices) {
+	//	mat.Print();
+	//}
+	//{
+	//	std::vector<std::set<int>> expectedLjInteractions(16);
+	//	for (int row = 0; row < 16; row++) {
+	//		for (int col = 0; col < 16; col++) {
+	//			if (col == 8 && row == 8)
+	//				int aa = 0;
+	//			auto _row = nointeractionMatrices[0].GetRow(row);
+	//			if (!nointeractionMatrices[0].Get(_row, col)) {
+	//				int pid0 = superClusterMetas[0].particlesIds[row];
+	//				int pid1 = superClusterMetas[0].particlesIds[col];
+	//				expectedLjInteractions[pid0].insert(pid1);
 	//			}
 	//		}
+	//	}
 
-
-	//		const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
-	//		nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+	//	for (int pid = 0; pid < 16; pid++) {
+	//		for (auto& interactPid : expectedLjInteractions[pid]) {
+	//			printf("%d ", interactPid);
+	//		}
+	//		printf("\n");
 	//	}
 	//}
 

@@ -42,7 +42,7 @@ class BondedParticlesLUTManagerFactory {
 public:
 	BondedParticlesLUTManagerFactory(int nCompounds, const SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& p2cMap) :
 		nCompounds(nCompounds) ,
-		luts(nCompounds * BondedParticlesLUTHelpers::max_bonded_compounds, BondedParticlesLUT(false)) 
+		luts(nCompounds * BondedParticlesLUTHelpers::max_bonded_compounds, BondedParticlesLUT(false))
 	{
 		for (const auto& bond : topology.singlebonds)
 			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
@@ -107,7 +107,7 @@ std::array<int, n> TransformBondIds(const std::array<int, n>& ids, int offset) {
 }
 
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield, 
+void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield,
 	std::vector<BondtypeFactory>& topology)
 {
 	for (const auto& bondTopol : bondsInTopfile) {
@@ -156,7 +156,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 	int nextUniqueParticleId = 0;
 	int indexInGrofile = 0;
 
-	
+
 
 	for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
 		const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
@@ -196,11 +196,11 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 		const float bondRelaxedDist = bond.params.b0;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}. AtomIndices: {} {}", 
+			throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}. AtomIndices: {} {}",
 				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));
 		}
 		if (hyper_dist < bondRelaxedDist * 0.001)
-			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}. AtomIndices: {} {}", 
+			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}. AtomIndices: {} {}",
 				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));
 	}
 	for (const auto& bond : anglebonds)
@@ -275,7 +275,7 @@ std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int
 			molecules.emplace_back(collection);
 		else {
 			tinyMolecules.emplace_back(collection);
-		}			
+		}
 	}
 
 	return { molecules, tinyMolecules };
@@ -312,7 +312,7 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		for (int i = 0; i < collection.size(); i++) {
 			cluster[nextIndex++] = collection[i];
 
-			if (i == collection.size() - 1 || nextIndex == 4 || (nextIndex == 3 && i == collection.size() - 2)) {
+			if (i == collection.size() - 1 || nextIndex == 4 || (nextIndex == 3 && i == collection.size() - 3)) {
 				persistentClusters.push_back(cluster);
 				cluster = { -1,-1,-1,-1 };
 				nextIndex = 0;
@@ -325,14 +325,14 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 }
 
 std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
-	
+
 	std::vector<PersistentCluster> pClusters(clustersParticleIds.size());
 	std::vector<PersistentClusterMeta> pClusterMetas(clustersParticleIds.size());
 
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
 		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
 			const int pId = clustersParticleIds[pcId][pidRel];
-			
+
 			if (pId == -1) {
 				pClusters[pcId].pqd[pidRel] = PData{};
 				pClusterMetas[pcId].particleIdsGlobal[pidRel] = -1;
@@ -361,8 +361,8 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 			if (pId == -1) { continue; }
 			particleIdToPclusterIdMap[pId] = pcId;
 		}
-	}	
-	
+	}
+
 	std::vector<std::set<int>> particleBondedToParticle(system.particles.size());
 	std::vector<std::set<int>> pclusterBondedToPcluster(clustersParticleIds.size());
 
@@ -386,7 +386,7 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 				pclusterBondedToPcluster[pcid_other].insert(pcid_self);
 			}
 		}
-	};
+		};
 
 	// Then go through all bonds to make the particle nointeraction matrix
 	for (const auto& singlebond : system.singlebonds)
@@ -409,7 +409,7 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 
 	std::vector<BondgroupTinymol> bondgroups = TinyMolFactory::MakeBondgroups(topology, particleidsInTinymols);
 
-	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {		
+	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {
 		const std::vector<int>& particleIds = particleidsInTinymols[tinymolIndex];
 		const int nParticlesToTake = particleIds.size();
 
@@ -424,7 +424,7 @@ std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& pa
 			atomTypes[i] = topology.particles[particleIds[i]].topologyAtom.type;
 			velocities[i] = Float3{};
 		}
-	
+
 
 		tinyMols.emplace_back(positions, tinymolTypeIndices, atomTypes, nParticlesToTake, topology.particles[particleIds[0]].indexInGrofile, velocities, bondgroups[tinymolIndex]);
 	}
@@ -483,7 +483,7 @@ bool AreBonded(const AtomGroup& left, const AtomGroup& right, const std::vector<
 	return false;
 }
 
-	
+
 
 std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unordered_map<int,int>& nodeIdToNumDownstream, int spaceLeft) {
 	std::vector<int> bestOrder = ids;
@@ -606,7 +606,7 @@ const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& par
 }
 
 
-std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, const Float3& boxlen_nm, 
+std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, const Float3& boxlen_nm,
 	const std::vector<AtomGroup>& atomGroups, BoundaryConditionSelect bc_select)
 {
 	std::vector<CompoundFactory> compounds;
@@ -626,7 +626,7 @@ std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, cons
 
 			compounds.emplace_back(CompoundFactory{});
 		}
-		
+
 		atomGroupToCompoundIdMap[atomgroupIndex] = compounds.size() - 1;
 
 		// Add all atoms of residue to current compound
@@ -650,7 +650,7 @@ std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, cons
 			}
 		}
 	}
-	
+
 	return compounds;
 }
 
@@ -693,10 +693,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::unique_ptr<LimaLogger> logger,
 	bool ignore_hydrogens,
 	const SimParams& simparams
-) 
+)
 {
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
-		
+
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
@@ -783,6 +783,29 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	}
 
 
+	// Debug, todo remove
+	//{
+	//	BondedParticlesLUT lut = bpLutManager->get(0, 0);
+	//	std::vector<std::set<int>> expectedLjInteractions(16);
+	//	for (int row = 0; row < 16; row++) {
+	//		for (int col = 0; col < 16; col++) {
+	//			if (lut.get(row, col) == false) {
+	//				int pid0 = compounds[0].global_ids[row];
+	//				int pid1 = compounds[0].global_ids[col];
+	//				expectedLjInteractions[pid0].insert(pid1);
+	//			}
+	//		}
+	//	}
+
+	//	for (int pid = 0; pid < 16; pid++) {
+	//		for (auto& interactPid : expectedLjInteractions[pid]) {
+	//			printf("%d ", interactPid);
+	//		}
+	//		printf("\n");
+	//	}
+	//}
+
+
 
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
@@ -797,7 +820,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		superTopology,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
-		pClusters, 
+		pClusters,
 		pClusterMetas,
 		particleBondedToParticle,
 		pclusterBondedToPcluster,

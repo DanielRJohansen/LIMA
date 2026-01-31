@@ -255,7 +255,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 //}
 
 // Called with 32 threads
-__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl)
+__global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, const PersistentClusterMeta* const persistentClusterMeta)
 {
 	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
@@ -359,8 +359,10 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 				//pClusters[pcIdGlobal].pqd[0].position.print('p');
 				/*printf("posx %f block %d, idsat0 %d sortId %d, pcIdGlobal %d, pcIdRelativeToBlock %d\n", pClusters[pcIdGlobal].pqd[0].position.x, blockIdx.x, idsOfPclustersInBlock[0], pcIdRelativeToBlock, pcIdGlobal, pcIdRelativeToBlock);
 				printf("Clusting %f %f %f\n", pClusters[pcIdGlobal].pqd[0].position.x, pClusters[pcIdGlobal].pqd[0].position.y, pClusters[pcIdGlobal].pqd[0].position.z);*/
-				for (int particleId = 0; particleId < 4; particleId++) {
-					sc.pData[pcId * 4 + particleId] = pClusters[pcIdGlobal].pqd[particleId];					
+				for (int particleIndex = 0; particleIndex< 4; particleIndex++) {
+					sc.pData[pcId * 4 + particleIndex] = pClusters[pcIdGlobal].pqd[particleIndex];					
+
+					scMeta.particlesIds[pcId * 4 + particleIndex] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[particleIndex];// For debugging only
 				}						
 			}
 			else {
@@ -425,7 +427,7 @@ void Engine::RunClustering(bool getPclusters) {
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringPretransferKernel");
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl);
+	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl, pClusterMetaDevice);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 
 

@@ -14,21 +14,32 @@ namespace LJ {
 
 
 	__device__ static const char* calcLJOriginString[] = {
-		"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter"
+		"ComComIntra", "ComComInter", "ComSol", "SolCom", "SolSolIntra", "SolSolInter", "Pairbond", "PP"
 	};
 
 
-	__device__ void calcLJForceOptimLogErrors(float s, float epsilon, Float3 force, CalcLJOrigin originSelect, float distNM, Float3 diff, float force_scalar, float sigma, int type1, int type2) {
-		//auto pot = 4. * epsilon * s * (s - 1.f) * 0.5;
-		//if (force.len() > 1.f || pot > 1e+8) {
-		if (distNM < 0.05f) {
-			//printf("\nBlock %d thread %d\n", blockIdx.x, threadIdx.x);
-			////((*pos1 - *pos0) * force_scalar).print('f');
-			//pos0.print('0');
-			//pos1.print('1');
-			printf("\nLJ Force %s: dist nm %f force %f sigma %f epsilon %f t1 %d t2 %d\n",
-				calcLJOriginString[(int)originSelect], distNM, (diff * force_scalar).len(), sigma, epsilon, type1, type2);
-		}
+	__device__ void calcLJForceOptimLogErrors(Float3 diff, float sigma, float epsilon, float s, int emvariant, float forceScalar, int originSelect, int pid0, int pid1, const char* const* originStrings) {
+		printf(
+			"LJ: "
+			"diff: %8.3f %8.3f %8.3f  "
+			"dist %8.6f  "
+			"sigma: %4.2f  "
+			"eps: %11.6f  "
+			"s %9.6f  "
+			"emvariant %2d  "
+			"forceScalar %14.6f  "
+			"origin %-12s  "
+			"pIds: %2d %2d\n",
+			diff.x, diff.y, diff.z,
+			diff.len(),
+			sigma,
+			epsilon,
+			s,
+			emvariant,
+			forceScalar,
+			originStrings[originSelect],
+			pid0, pid1
+		);
 	}
 
 
@@ -42,7 +53,9 @@ namespace LJ {
 	template<bool computePotE, bool emvariant>
 	__device__ inline Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
-		int type1 = -1, int type2 = -1) {
+		int pid0 = -1, int pid1 = -1) {
+
+		//return Float3{ diff.x > 0 ? 1.f/24.f : -1.f/24.f, 0.f, 0.f};
 
 		if constexpr (!ENABLE_LJ) {
 			return {};
@@ -57,12 +70,14 @@ namespace LJ {
 			force_scalar = fmaxf(fminf(force_scalar, 1e+20), -1e+20); // Necessary to avoid inf * 0 = NaN
 
 		const Float3 force = diff * force_scalar;
-#ifdef FORCE_NAN_CHECK
-		if (force.isNan()) {
-			printf("LJ is nan. diff: %f %f %f  sigma: %f  eps: %f s %f distSqRecip %f emvariant %d forceScalar %f firstPart %f\n",
-				diff.x, diff.y, diff.z, sigma, epsilon, s, dist_sq_reciprocal, emvariant, force_scalar, epsilon * s * dist_sq_reciprocal);
+
+		if constexpr (FORCE_CHECKS) {
+			if (force.isNan() || false) {
+				calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
+				/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
+					diff.x, diff.y, diff.z, diff.len(), sigma, epsilon, s, emvariant, force_scalar, calcLJOriginString[(int)originSelect], pid0, pid1);*/
+			}
 		}
-#endif
 
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
@@ -71,9 +86,6 @@ namespace LJ {
 		if constexpr (emvariant)
 			return EngineUtils::ForceActivationFunction(force, 100.f);
 
-#if defined LIMASAFEMODE
-		calcLJForceOptimLogErrors(s, epsilon, force, originSelect, diff.len(), diff, force_scalar, sigma, type1, type2);
-#endif
 
 		return force;	// [1/24 J/mol/nm]
 	}
@@ -82,10 +94,12 @@ namespace LJ {
 
 	// For intraCompound or bonded-to compounds	
 	template<bool computePotE, bool emvariant>
-    __device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
+	__device__ Float3 computeCompoundCompoundLJForces(const Float3& self_pos, uint8_t atomtype_self, float& potE_sum,
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
-		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield, 
-        float chargeSelf, const float* const charges)
+		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield,
+		float chargeSelf, const float* const charges,
+		const uint32_t* globalParticleIds
+	)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -101,10 +115,12 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
+			std::array<int, 2> globalPids = globalParticleIds == nullptr ? std::array<int, 2>{-1, -1} : std::array<int, 2>{(int)globalParticleIds[threadIdx.x], (int)globalParticleIds[neighborparticle_id]};
+
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,
-				threadIdx.x, neighborparticle_id
+				globalPids[0], globalPids[1]
 			);
 
 			if constexpr (ENABLE_ES_SR) {
@@ -306,7 +322,7 @@ namespace LJ {
 
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ ForceEnergy ComputeParticleParticleNB(const PData& p0, const PData& p1) 
+	__device__ ForceEnergy ComputeParticleParticleNB(const PData& p0, const PData& p1, int p0ParticleGlobalId, int p1ParticleGlobalId) 
 	{
 		ForceEnergy fe{}; // on p0
 		
@@ -320,9 +336,17 @@ namespace LJ {
 				CalcEpsilon(p0.params.epsilonSqrt, p1.params.epsilonSqrt),
 				//precomputedOO.sigma, precomputedOO.epsilon,
 				CalcLJOrigin::PP,
-				threadIdx.x, -1
+				p0ParticleGlobalId, p1ParticleGlobalId
 			) * 24.f;
 
+
+			//if (fe.force.len() > 10000.f) {
+			//	printf("p0 %d p1 %d force %f %f %f p0 %f %f %f p1 %f %f %f dist %f sigma %f %f eps %f %f\n", p0ParticleGlobalId, p1ParticleGlobalId,
+			//		fe.force.x, fe.force.y, fe.force.z, p0.position.x, p0.position.y, p0.position.z, p1.position.x, p1.position.y, p1.position.z, 
+			//		diff.len(), p0.params.sigmaHalf, p1.params.sigmaHalf, p0.params.epsilonSqrt, p1.params.epsilonSqrt);
+			//}
+
+			//fe.force.print('f');	
 			//printf("\nNEW sigma %f %f eps %f %f charge %f %f dist %f\n", p0.params.sigmaHalf, p1.params.sigmaHalf, p0.params.epsilonSqrt, p1.params.epsilonSqrt, p0.params.charge, p1.params.charge, diff.len());
 		}
 

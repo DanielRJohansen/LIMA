@@ -121,16 +121,16 @@ void Environment::verifyBox() {
 
 
 
-#ifdef LIMAKERNELDEBUGMODE
-	if (print_compound_positions) {
-		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
-			Compound* comp = &simulation->compounds_host[c];
-			for (int p = 0; p < comp->n_particles; p++) {
-				printf("%d   ", comp->particle_global_ids[p]);
-			}
-		}
-	}
-#endif
+//#ifdef LIMAKERNELDEBUGMODE
+//	if (print_compound_positions) {
+//		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
+//			Compound* comp = &simulation->compounds_host[c];
+//			for (int p = 0; p < comp->n_particles; p++) {
+//				printf("%d   ", comp->particle_global_ids[p]);
+//			}
+//		}
+//	}
+//#endif
 }
 
 bool Environment::prepareForRun() {

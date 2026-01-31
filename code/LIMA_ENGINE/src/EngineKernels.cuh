@@ -174,11 +174,13 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
+
+
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
 			force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
 				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
-				particleCharge, particleChargesCompound);
+				particleCharge, particleChargesCompound, nullptr);
 		}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -222,7 +224,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			if (threadIdx.x < compound.n_particles) {
 				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles, neighborAtomstypes, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
-					particleCharge, neighborParticlescharges);
+					particleCharge, neighborParticlescharges, nullptr);
 			}
 			__syncthreads();
 		}
@@ -349,6 +351,9 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 	if constexpr (FORCE_CHECKS) {
 		if (isnan(forceEnergy.force.len()))
 			printf("NAN force during compound integration\n");
+		if (0) {
+			printf("Compound integration: cid %d pid %d - %f %f %f\n", blockIdx.x, threadIdx.x, forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
+		}
 	}
 	float speed = 0.f;
 	if (threadIdx.x < nParticles) {
@@ -916,7 +921,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 /// MaskMatrix is either BoolMatrix16x16 or NoMat
 /// </summary>
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices) {
+__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta) {
 	__shared__ ScScTask task;
 	__shared__ SuperCluster queryCluster;
 	__shared__ Float3 p0Pos; // Used for PBC`
@@ -962,7 +967,6 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	for (int i = 0; i < SuperCluster::nParticles; i++) {
 		int queryIndex = threadIdx.x + i;
 		queryIndex -= SuperCluster::nParticles * (queryIndex >= SuperCluster::nParticles);
-		//queryIndex -= SuperCluster::nParticles * (queryIndex >= SuperCluster::nParticles);
 
 		bool skip = false;
 
@@ -975,7 +979,9 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 		ForceEnergy fe{}; 
 		if (!skip) { 
-			fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex]);
+			int p0pid = superClusterMeta[task.scIds[0]].particlesIds[threadIdx.x];
+			int p1pid = superClusterMeta[task.scIds[1]].particlesIds[queryIndex];
+			fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex], p0pid, p1pid);
 		}
 		myForceEnergy += fe;
 
@@ -990,8 +996,10 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		__syncthreads();*/
 	}
 	__syncthreads();
-	{
-		// TODO: For the case where querySC == thisSC, we should probably do a bunch of stuff here differently???!?
+
+	// For selfinteraction tasks all particles have already computed their interactions with queryparticles in this cluster, and thus the queryparticle already has the force from this, meaning we DONT need to push here.
+	// I.e. the resultindices are also the same, so we would just be writing the same data again.
+	if (task.scIds[0] != task.scIds[1]) {
 		auto tb = cooperative_groups::this_thread_block();
 		if (threadIdx.x == 0) {
 			//printf("forceQuery %f %f %f\n", utilitySCResult.fe[threadIdx.x].force.x, utilitySCResult.fe[threadIdx.x].force.y, utilitySCResult.fe[threadIdx.x].force.z);

@@ -196,7 +196,7 @@ struct alignas(4) CompoundCompact {
 	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	int n_particles = 0;
 
-#ifdef LIMAKERNELDEBUGMODE
+#if LIMAKERNELDEBUGMODE == 1
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
 #endif
 
@@ -214,7 +214,7 @@ struct alignas(4) CompoundCompact {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
 
-			#ifdef LIMAKERNELDEBUGMODE
+			#if LIMAKERNELDEBUGMODE == 1
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
 			#endif
 		}
@@ -429,6 +429,8 @@ public:
 	constexpr static bool Get(const uint16_t& row, int col) {
 		return (row >> col) & 1;
 	}
+	template <typename T> constexpr static bool Get(const T& row, int col) = delete;
+
 	constexpr uint16_t GetRow(int row) const {
 		return data[row];
 	}
@@ -444,6 +446,16 @@ public:
 		else
 			data[row] &= ~(1 << col);		*/
 	}
+
+	__host__ void Print() const {
+		for (int r = 0; r < 16; r++) {
+			for (int c = 0; c < 16; c++) {
+				printf("%d ", Get(data[r], c) ? 1 : 0);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
 };
 class NoMat {};// Needed as a nonlocal variant of the one above.
 
@@ -451,7 +463,12 @@ class NoMat {};// Needed as a nonlocal variant of the one above.
 struct SuperClusterMeta {
 	// Set by clustering kernel
 	int pclusterIds[SuperCluster::nPclusters];
-	Float3 meanPos;
+	
+	//Float3 meanPos;
+
+
+	// For debugging, find a way to remove in release automatically
+	int particlesIds[SuperCluster::nParticles];
 
 	// Set by taskbuilder kernel
 	int resultsStartIndex;

@@ -353,6 +353,12 @@ namespace LJ {
 		if constexpr (ENABLE_ES_SR) {
 			if (!isnan(p0.params.charge) && !isnan(p1.params.charge)) {
 				const float chargeProduct = p0.params.charge * p1.params.charge;
+				printf("PP charproduct %f force %f %f %f\n", chargeProduct,
+					PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).x,
+					PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).y,
+					PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).z
+				);
+				//PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).print('C');
 				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
 				if constexpr (computePotE)
 					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());

@@ -62,9 +62,10 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, cons
 
 
 	const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
-	Float3 gridPosF = pos.round();
+	Float3 gridPosF = pos.Floor();
 	PeriodicBoundaryCondition::applyBCNM(gridPosF);
 	NodeIndex blockId = NodeIndex(gridPosF.x, gridPosF.y, gridPosF.z);
+	//printf("Storing pc %d pos %f %f %f at block %d %d %d\n", pcId, pos.x, pos.y, pos.z, blockId.x, blockId.y, blockId.z);
 	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
 	int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
 	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;

@@ -373,7 +373,7 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	bool newAlg = false;
+	bool newAlg = true;
 
 	if (newAlg)
 	{
@@ -501,8 +501,8 @@ void Engine::_deviceMaster() {
 		}
 	}
 
-	/*UpdatePdataPositions<<<nSuperclusters, 16>>>
-		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);*/
+	UpdatePdataPositions<<<nSuperclusters, 16>>>
+		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
 }
 

@@ -152,13 +152,15 @@ struct ForceEnergyInterims {
 			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
 		}
 
-		//Float3 fOld = forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
-		//Float3 nNew = fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
-		//float err = (fOld - nNew).len() / fOld.len();
-		//if (err > 0.01) {
-		//	printf("Compound %d Particle %d: Old force %.6f, New force %.6f, relative error %.6f\n",
-		//		compoundId, particleId, fOld.len(), nNew.len(), err);
-		//}
+		Float3 fOld = 
+			forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force +
+			forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
+		Float3 nNew = fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
+		float err = (fOld - nNew).len() / fOld.len();
+		if (err > 0.01) {
+			printf("Compound %d Particle %d: Old force %.6f, New force %.6f, relative error %.6f\n",
+				compoundId, particleId, fOld.len(), nNew.len(), err);
+		}
 		
 
 		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]

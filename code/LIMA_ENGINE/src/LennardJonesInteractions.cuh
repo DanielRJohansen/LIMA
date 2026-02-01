@@ -27,7 +27,7 @@ namespace LJ {
 			"eps: %11.6f  "
 			"s %9.6f  "
 			"emvariant %2d  "
-			"forceScalar %14.6f  "
+			"forceMagnitude %14.6f  "
 			"origin %-12s  "
 			"pIds: %2d %2d\n",
 			diff.x, diff.y, diff.z,
@@ -36,7 +36,7 @@ namespace LJ {
 			epsilon,
 			s,
 			emvariant,
-			forceScalar,
+			forceScalar * diff.len() * 24.f,
 			originStrings[originSelect],
 			pid0, pid1
 		);
@@ -57,6 +57,10 @@ namespace LJ {
 
 		//return Float3{ diff.x > 0 ? 1.f/24.f : -1.f/24.f, 0.f, 0.f};
 
+
+		//if (!(min(pid0, pid1) == 4 && max(pid0, pid1) == 83))
+		//	return {};
+
 		if constexpr (!ENABLE_LJ) {
 			return {};
 		}
@@ -72,8 +76,9 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (FORCE_CHECKS) {
-			if (force.isNan() || false) {
-				calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
+			if (force.isNan() || (false && originSelect != CalcLJOrigin::Pairbond)) {
+				if (pid0 == 4 || pid1 == 4)
+					calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
 				/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
 					diff.x, diff.y, diff.z, diff.len(), sigma, epsilon, s, emvariant, force_scalar, calcLJOriginString[(int)originSelect], pid0, pid1);*/
 			}
@@ -98,7 +103,7 @@ namespace LJ {
 		const Float3* const neighbor_positions, int neighbor_n_particles, const uint8_t* const atom_types,
 		const BondedParticlesLUT* const bonded_particles_lut, CalcLJOrigin ljorigin, const ForceField_NB& forcefield,
 		float chargeSelf, const float* const charges,
-		const uint32_t* globalParticleIds
+		const uint32_t gpidSelf, const uint32_t* const gpidNeighbors
 	)
 	{
 		Float3 force(0.f);
@@ -115,12 +120,13 @@ namespace LJ {
 			const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
 			const float dist_sq_reciprocal = 1.f / diff.lenSquared();
 
-			std::array<int, 2> globalPids = globalParticleIds == nullptr ? std::array<int, 2>{-1, -1} : std::array<int, 2>{(int)globalParticleIds[threadIdx.x], (int)globalParticleIds[neighborparticle_id]};
+			//std::array<int, 2> globalPids = globalParticleIds == nullptr ? std::array<int, 2>{-1, -1} : std::array<int, 2>{(int)globalParticleIds[threadIdx.x], (int)globalParticleIds[neighborparticle_id]};
+			int gpidNeighbor = gpidNeighbors == nullptr ? -1 : (int)gpidNeighbors[neighborparticle_id];
 
 			force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
 				calcSigma(atomtype_self, neighborparticle_atomtype, forcefield), calcEpsilon(atomtype_self, neighborparticle_atomtype, forcefield),
 				ljorigin,
-				globalPids[0], globalPids[1]
+				gpidSelf, gpidNeighbor
 			);
 
 			if constexpr (ENABLE_ES_SR) {
@@ -139,7 +145,9 @@ namespace LJ {
     __device__ inline Float3 computeCompoundCompoundLJForces(const Float3& self_pos, float& potE_sum,
         const Float3* const neighbor_positions, const int neighbor_n_particles,
         const float chargeSelf, const float* const chargeNeighbors,
-        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams)
+        const ForceField_NB::ParticleParameters& myParams, const ForceField_NB::ParticleParameters* const neighborParams,
+		const uint32_t gpidSelf, const uint32_t* const gpidNeighbors
+	)
 	{
 		Float3 force(0.f);
 		Float3 electrostaticForce{};
@@ -151,10 +159,16 @@ namespace LJ {
             const Float3 diff = (neighbor_positions[neighborparticle_id] - self_pos);
             const float dist_sq_reciprocal = 1.f / diff.lenSquared();
             if (!EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal, cutoff_recip)) {
+
+#if LIMAKERNELDEBUGMODE == 1
+				int gpidNeighbor = (int)gpidNeighbors[neighborparticle_id];
+#endif
+
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,
                     myParams.sigmaHalf + neighborParams[neighborparticle_id].sigmaHalf,
                     myParams.epsilonSqrt * neighborParams[neighborparticle_id].epsilonSqrt,
-					CalcLJOrigin::ComComInter
+					CalcLJOrigin::ComComInter,
+					gpidSelf, gpidNeighbor
 				);
 
 				//printf("OLD sigma %f %f eps %f %f charge %f %f dist %f\n", myParams.sigmaHalf, neighborParams[neighborparticle_id].sigmaHalf, myParams.epsilonSqrt, neighborParams[neighborparticle_id].epsilonSqrt, chargeSelf, chargeNeighbors[neighborparticle_id], diff.len());

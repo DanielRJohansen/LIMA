@@ -15,6 +15,10 @@ void CompoundFactory::addParticle(const ParticleFactory& particle, int global_id
 	// Variables only present in factory
 	positions[n_particles] = hyperpos;
 	global_ids[n_particles] = global_id;
+#if LIMAKERNELDEBUGMODE == 1
+	particle_global_ids[n_particles] = static_cast<uint32_t>(global_id);
+#endif
+
 
 	// Variables present in Compound
 	atom_types[n_particles] = particle.activeLJParamIndex;

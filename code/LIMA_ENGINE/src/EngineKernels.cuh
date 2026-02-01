@@ -45,7 +45,8 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer,
-                    const uint16_t* const compoundsNNeighborNonbondedCompounds, const NeighborList::IdAndRelshift* const compoundsNeighborNonbondedCompounds, const uint8_t* const nParticlesInCompoundsBuffer)
+                    const uint16_t* const compoundsNNeighborNonbondedCompounds, const NeighborList::IdAndRelshift* const compoundsNeighborNonbondedCompounds, const uint8_t* const nParticlesInCompoundsBuffer,
+	SimulationDevice* sim)
 {
     const int batchsize = 32;
 
@@ -77,6 +78,10 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
     const float myCharge = enableES ? compoundQuickData.charges[threadIdx.x] : 0.f;
     const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
 
+#if LIMAKERNELDEBUGMODE == 1
+	uint32_t particleGlobalIdSelf = sim->boxConfig.compounds[blockIdx.x].particle_global_ids[threadIdx.x];
+#endif
+
     static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
 
     float potE_sum{};
@@ -96,9 +101,13 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
                 cooperative_groups::memcpy_async(block, &compoundQuickData, &compoundQuickDataBuffer[neighborCompounds[indexInBatch].id], sizeof(CompoundQuickData));
                 cooperative_groups::wait(block);
 
+#if LIMAKERNELDEBUGMODE == 1
+				const uint32_t* const particleGlobalIdsQuery = sim->boxConfig.compounds[neighborCompounds[indexInBatch].id].particle_global_ids;
+#endif
+
                 if (threadIdx.x < nParticles) {
                     force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(myPos - neighborCompounds[indexInBatch].relShift, potE_sum,
-                        compoundQuickData.relPos, neighborCompounds[indexInBatch].nParticles, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams);
+                        compoundQuickData.relPos, neighborCompounds[indexInBatch].nParticles, myCharge, compoundQuickData.charges, myParams, compoundQuickData.ljParams, particleGlobalIdSelf, particleGlobalIdsQuery);
                 }
                 __syncthreads();
             }
@@ -162,7 +171,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		cooperative_groups::wait(block);
 	}
 	compound.loadData(&boxConfig.compounds[blockIdx.x]);
-
+	const int gpidSelf = compound.particle_global_ids[threadIdx.x];
 
 
 	// ------------------------------------------------------------ Intracompound Operations ------------------------------------------------------------ //
@@ -174,13 +183,19 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		particleChargesCompound[threadIdx.x] = particleCharge;
 		__syncthreads();
 
+		
+#if LIMAKERNELDEBUGMODE == 1
+		uint32_t* particleGlobalIds = compound.particle_global_ids;
+#else 
+		uint32_t* particleGlobalIds = nullptr;
+#endif
 
 
 		if (threadIdx.x < compound.n_particles) {
 			// Having this inside vs outside the context makes impact the resulting VC, but it REALLY SHOULD NOT
 			force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum, compound_positions, compound.n_particles,
 				compound.atom_types, &bpLUT, LJ::CalcLJOrigin::ComComIntra, forcefield_shared,
-				particleCharge, particleChargesCompound, nullptr);
+				particleCharge, particleChargesCompound, gpidSelf, particleGlobalIds);
 		}
 	}
 	// ----------------------------------------------------------------------------------------------------------------------------------------------- //
@@ -224,7 +239,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			if (threadIdx.x < compound.n_particles) {
 				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles, neighborAtomstypes, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
-					particleCharge, neighborParticlescharges, nullptr);
+					particleCharge, neighborParticlescharges, gpidSelf, boxConfig.compounds[neighborId].particle_global_ids);
 			}
 			__syncthreads();
 		}
@@ -1001,7 +1016,10 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	// I.e. the resultindices are also the same, so we would just be writing the same data again.
 	if (task.scIds[0] != task.scIds[1]) {
 		auto tb = cooperative_groups::this_thread_block();
-		if (threadIdx.x == 0) {
+
+		if constexpr (INDEXING_CHECKS){
+			if (threadIdx.x == 0 && task.resultIndices[1] < 0)
+				printf("Illegal resultindex %d\n", task.resultIndices[1]);
 			//printf("forceQuery %f %f %f\n", utilitySCResult.fe[threadIdx.x].force.x, utilitySCResult.fe[threadIdx.x].force.y, utilitySCResult.fe[threadIdx.x].force.z);
 		}
 
@@ -1033,26 +1051,35 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 // blockdim = 16,1,1
 __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pcMeta, const SCResult* const scResults, ForceEnergy* const particleForceEnergies) {
 	__shared__ SuperClusterMeta scMetaShared;
-
 	{
 		auto tb = cooperative_groups::this_thread_block();
 		cooperative_groups::memcpy_async(tb, &scMetaShared, &scMeta[blockIdx.x], sizeof(SuperClusterMeta));
 		cooperative_groups::wait(tb);
 	}
 	__syncthreads();
+
 	ForceEnergy myFE{};
+	int pClusterId = scMetaShared.pclusterIds[threadIdx.x / 4];
+	int particleId = pClusterId == -1 ? -1 : pcMeta[pClusterId].particleIdsGlobal[threadIdx.x % 4];
+
 
 	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
+		/*if (particleId == 4)
+			scResults[i].fe[threadIdx.x].force.print('R');	*/
+
 		myFE += scResults[i].fe[threadIdx.x];
 		if (isnan(scResults[i].fe[threadIdx.x].force.len()))
 			printf("Found nan here %d %d\n", blockIdx.x, threadIdx.x);
 	}
 
 	// push
-	int pClusterId = scMetaShared.pclusterIds[threadIdx.x / 4];
-	int particleId = pClusterId == -1 ? -1 : pcMeta[pClusterId].particleIdsGlobal[threadIdx.x % 4];
+	//if (particleId == 4)
+	//	printf("Storing force mag %f\n", myFE.force.len());
+	
+	///printf("particle id %d %d\n", pClusterId, particleId);
 	if (particleId == -1)
 		return;
+	
 	particleForceEnergies[particleId] = myFE;
 }
 

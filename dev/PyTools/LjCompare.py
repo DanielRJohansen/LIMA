@@ -14,7 +14,8 @@ class Record:
     pid_pair: Tuple[int, int]   # sorted
     origin: str
     force_scalar: float
-    raw_line: str
+    dist: float
+    raw_line: str    
 
 
 LINE_RE = re.compile(
@@ -26,7 +27,7 @@ LINE_RE = re.compile(
 )
 
 FORCE_RE = re.compile(r"\bforceScalar\s+(?P<force>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\b")
-
+DIST_RE = re.compile(r"\bdist\s+(?P<dist>[-+]?(?:\d+\.?\d*|\.\d+))\b")
 
 def _parse_float(s: str) -> float:
     v = float(s)
@@ -43,7 +44,8 @@ def parse_file(path: Path) -> List[Record]:
 
         m1 = LINE_RE.search(line)
         m2 = FORCE_RE.search(line)
-        if not (m1 and m2):
+        m3 = DIST_RE.search(line)
+        if not (m1 and m2 and m3):
             continue
 
         origin = m1.group("origin")
@@ -51,8 +53,10 @@ def parse_file(path: Path) -> List[Record]:
         p1 = int(m1.group("p1"))
         pair = tuple(sorted((p0, p1)))
         force = _parse_float(m2.group("force"))
+        dist = _parse_float(m3.group("dist"))
 
-        records.append(Record(pair, origin, force, f"{path.name}:{i}: {line}"))
+        Record(pair, origin, force, dist, f"{path.name}:{i}: {line}")
+        records.append(Record(pair, origin, force, dist, f"{path.name}:{i}: {line}"))
     return records
 
 
@@ -95,18 +99,32 @@ def pick_value(recs: List[Record], agg: str) -> float:
         return max(vals, key=lambda x: abs(x))
     raise ValueError(f"Unknown agg: {agg}")
 
+def pick_dist(recs: List[Record], agg: str) -> float:
+    vals = [r.dist for r in recs if not (math.isnan(r.dist) or math.isinf(r.dist))]
+    if not vals:
+        return recs[0].dist
+    if agg == "mean":
+        return sum(vals) / len(vals)
+    if agg == "median":
+        s = sorted(vals)
+        n = len(s)
+        mid = n // 2
+        return s[mid] if (n % 2) else 0.5 * (s[mid - 1] + s[mid])
+    if agg == "maxabs":
+        return max(vals, key=lambda x: abs(x))
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Compare forceScalar for same pIds across origins (PP vs ComComIntra).")
     ap.add_argument("file", type=Path, nargs="?", default=Path("LjCompareData.txt"),
                     help="Path to .txt with kernel printf output (default: LjCompareData.txt)")
     ap.add_argument("--origin-a", default="PP", help="First origin name (default: PP)")
-    ap.add_argument("--origin-b", default="ComComIntra", help="Second origin name (default: ComComIntra)")
-    ap.add_argument("--min-rel", type=float, default=0.001,
+    ap.add_argument("--origin-b", default="ComCom", help="Second origin group: ComComIntra|ComComInter")
+    ap.add_argument("--min-rel", type=float, default=0.0001,
                     help="Minimum symmetric relative difference to report (default: 0.001)")
     ap.add_argument("--agg", choices=["mean", "median", "maxabs"], default="mean",
                     help="If multiple lines exist per (pair, origin), aggregate forceScalar this way (default: mean)")
-    ap.add_argument("--show-missing", action="store_true",
+    ap.add_argument("--show-missing", action="store_true", default=True,
                     help="Also list pId pairs that only exist in one of the origins")
     ap.add_argument("--show-lines", action="store_true",
                     help="Include the raw source lines for reported pairs")
@@ -129,12 +147,22 @@ def main() -> None:
         if not has_a and not has_b:
             continue
 
+        has_a = a in origins
+        has_b = ("ComComIntra" in origins) or ("ComComInter" in origins)
+
         if has_a and has_b:
             va = pick_value(origins[a], args.agg)
-            vb = pick_value(origins[b], args.agg)
+
+            comcom_recs = []
+            if "ComComIntra" in origins:
+                comcom_recs.extend(origins["ComComIntra"])
+            if "ComComInter" in origins:
+                comcom_recs.extend(origins["ComComInter"])
+
+            vb = pick_value(comcom_recs, args.agg)
             r = rel_err(va, vb)
             if r >= args.min_rel:
-                diffs.append((r, pair, va, vb, len(origins[a]), len(origins[b])))
+                diffs.append((r, pair, va, vb, len(origins[a]), len(comcom_recs)))
         else:
             if args.show_missing:
                 if not has_a and has_b:
@@ -183,12 +211,18 @@ def main() -> None:
             print()
             print(f"Pairs missing in {a} (present in {b}):")
             for (p0, p1), n in sorted(missing_a):
-                print(f"  {p0:3d} {p1:3d}  (n={n})")
+                recs = by_pair[(p0, p1)][b]
+                v = pick_value(recs, args.agg)
+                d = pick_dist(recs, args.agg)
+                print(f"  {p0:3d} {p1:3d}  force={v:12.6f}  dist={d:8.6f}  (n={n})")
         if missing_b:
             print()
             print(f"Pairs missing in {b} (present in {a}):")
             for (p0, p1), n in sorted(missing_b):
-                print(f"  {p0:3d} {p1:3d}  (n={n})")
+                recs = by_pair[(p0, p1)][a]
+                v = pick_value(recs, args.agg)
+                d = pick_dist(recs, args.agg)
+                print(f"  {p0:3d} {p1:3d}  force={v:12.6f}  dist={d:8.6f}  (n={n})")
 
 
 if __name__ == "__main__":

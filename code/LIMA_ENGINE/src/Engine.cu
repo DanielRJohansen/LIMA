@@ -373,9 +373,9 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	bool newAlg = true;
+	bool newAlg = false;
 
-	if (newAlg)
+	//if (newAlg)
 	{
 		const bool useNointeractionMatrix = true;
 		dim3 blockDim(16, 1, 1); // TEMP
@@ -387,9 +387,12 @@ void Engine::_deviceMaster() {
 		std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
 		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
 
+
+		std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
+
 		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
 			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");		
 
 		std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
 		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
@@ -399,13 +402,13 @@ void Engine::_deviceMaster() {
 				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
 	}
-	else 
+	//else 
 	{
 		if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
 			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
             (simulation->simparams_host.enable_electrostatics,
-                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr);
+                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, sim_dev);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -450,16 +453,16 @@ void Engine::_deviceMaster() {
 	
 
 
-	if (simulation->simparams_host.snf_select != None) {
-		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
-	}
+	//if (simulation->simparams_host.snf_select != None) {
+	//	SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
+	//}
 
-	if (!simulation->box_host->bondgroups.empty()) {
-		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
-	}
+	//if (!simulation->box_host->bondgroups.empty()) {
+	//	BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
+	//		(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+	//}
 
 	// #### Integration and Transfer kernels
 	cudaStreamSynchronize(pmeStream);
@@ -767,12 +770,13 @@ bool Engine::MakeSuperClusterTasksCPU() {
 				workPerSc[scId].emplace_back(ReservedTask{
 					queryScId,
 					nResultsReserved[scId],
-					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId]+1,
+					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId],
 					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
 					});
 
 				nResultsReserved[scId]++;
-				nResultsReserved[queryScId]++;				
+				if (scId != queryScId)
+					nResultsReserved[queryScId]++;				
 				if (useNointeractionMatrix) {
 					nBondedmatricesReserved[scId]++;
 				}
@@ -797,8 +801,8 @@ bool Engine::MakeSuperClusterTasksCPU() {
 			task.scIds[0] = scId;
 			task.scIds[1] = workPerSc[scId][i].queryScId;
 			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
-			//task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
-			task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
+			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
+			//task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
 			tasks[nTasksPrefixsum[scId] + i] = task;
 		}
 
@@ -830,7 +834,6 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	//			}
 	//		}
 	//	}
-
 	//	for (int pid = 0; pid < 16; pid++) {
 	//		for (auto& interactPid : expectedLjInteractions[pid]) {
 	//			printf("%d ", interactPid);

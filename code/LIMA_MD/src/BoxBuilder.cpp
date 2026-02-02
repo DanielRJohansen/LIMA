@@ -127,7 +127,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
 
-#ifdef ENABLE_SOLVENTS
+#if ENABLE_SOLVENTS == 1
 	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
 #endif
 

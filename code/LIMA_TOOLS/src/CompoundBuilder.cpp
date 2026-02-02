@@ -160,8 +160,14 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 	for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
 		const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
-		const int particleIdOffset = nextUniqueParticleId;
 
+#if ENABLE_SOLVENTS != 1
+		if (molecule.name == "SOL" || molecule.name == "TIP3") {// TODO: Add the other Solvent labels
+			continue;
+		}
+#endif 
+
+		const int particleIdOffset = nextUniqueParticleId;
 		const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
 
 		if (molType.atoms.empty())
@@ -281,8 +287,92 @@ std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int
 	return { molecules, tinyMolecules };
 }
 
+struct ParticleBondedToParticlesLookup {
+	ParticleBondedToParticlesLookup(const SuperTopology& system) {
+		particleBondedToParticle.resize(system.particles.size());
 
-std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system) {
+
+
+		// Then go through all bonds to make the particle nointeraction matrix
+		for (const auto& singlebond : system.singlebonds)
+			AddBond(singlebond.global_atom_indexes);
+		for (const auto& anglebond : system.anglebonds)
+			AddBond(anglebond.global_atom_indexes);
+		for (const auto& dihedralbond : system.dihedralbonds)
+			AddBond(dihedralbond.global_atom_indexes);
+		for (const auto& improperdihedralbond : system.improperdihedralbonds)
+			AddBond(improperdihedralbond.global_atom_indexes);
+	}
+
+	bool AreAllBonded(std::span<int>ids) const {
+		std::vector<bool> bonded(ids.size(), false);
+
+		for (int i = 0; i < ids.size(); i++) {
+			const int pid_self = ids[i];
+			for (int j = i + 1; j < ids.size(); j++) {
+				const int pid_other = ids[j];
+
+				if (particleBondedToParticle[pid_self].find(pid_other) != particleBondedToParticle[pid_self].end()) {
+					bonded[i] = true;
+					bonded[j] = true;
+					break;
+				}
+			}
+		}
+		return std::any_of(bonded.begin(), bonded.end(), [](bool v) { return v; });
+	}
+
+	std::vector<bool> BondedToFirst(std::span<int> ids) const {
+		std::vector<bool> bonded(ids.size(), false);
+		bonded[0] = true;
+		const int pid_self = ids[0];
+		for (int j = 1; j < ids.size(); j++) {
+			const int pid_other = ids[j];
+			if (particleBondedToParticle[pid_self].find(pid_other) != particleBondedToParticle[pid_self].end()) {
+				bonded[j] = true;
+			}
+		}
+		return bonded;
+	}
+
+private:
+
+	void AddBond(std::span<const int> particleIdsInBond) {
+		for (int i = 0; i < particleIdsInBond.size(); i++) {
+			const int pid_self = particleIdsInBond[i];
+
+			for (int j = i + 1; j < particleIdsInBond.size(); j++) {
+				const int pid_other = particleIdsInBond[j];
+
+				particleBondedToParticle[pid_self].insert(pid_other);
+				particleBondedToParticle[pid_other].insert(pid_self);
+			}
+		}
+	}
+	std::vector<std::set<int>> particleBondedToParticle;
+};
+
+void SplitClusters(std::span<int> ids, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, std::vector<std::array<int, 4>>& outClusters) 
+{
+	std::vector<bool> bondedToFirst = particleBondedToParticlesLookup.BondedToFirst(ids);
+
+	std::array<int, 4> thisCluster{ -1, -1, -1, -1 };
+	std::vector<int> remainingIds;
+
+	for (int i = 0; i < ids.size(); i++) {
+		if (bondedToFirst[i])
+			thisCluster[i] = ids[i];
+		else
+			remainingIds.push_back(ids[i]);
+	}
+
+	outClusters.push_back(thisCluster);
+
+	if (!remainingIds.empty())
+		SplitClusters(std::span<int>(remainingIds), particleBondedToParticlesLookup, outClusters);
+}
+
+std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup) {
 	std::vector<std::pair<int, std::string>> atoms;
 	atoms.reserve(system.particles.size());
 	for (int pid = 0; pid < system.particles.size(); pid++) {
@@ -302,24 +392,70 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 	persistentClusters.reserve(atoms.size()); // A bit too big..
 
 
+	
+	auto StoreCurrentCluster = [&](std::array<int, 4>& cluster, int& nextIndex) {
+		persistentClusters.push_back(cluster);
+		cluster = { -1,-1,-1,-1 };
+		nextIndex = 0;
+		};
+
 	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
 
 		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
+		std::unordered_set<int> addedByLookahead;
+		addedByLookahead.reserve(collection.size());
 
 		std::array<int, 4> cluster{ -1,-1,-1,-1 };
 		int nextIndex = 0;
 
-		for (int i = 0; i < collection.size(); i++) {
+		for (int i = 0; i < collection.size(); i++) {		
+			if (nextIndex == 0) {}
+			else {
+				std::optional<int> distanceToPreviousNode = systemGraph->DistanceBetweenNodes(cluster[nextIndex - 1], collection[i], 5);
+				if (!distanceToPreviousNode.has_value() || *distanceToPreviousNode > 2) {
+					StoreCurrentCluster(cluster, nextIndex);
+				}
+			}
+
 			cluster[nextIndex++] = collection[i];
 
-			if (i == collection.size() - 1 || nextIndex == 4 || (nextIndex == 3 && i == collection.size() - 3)) {
-				persistentClusters.push_back(cluster);
-				cluster = { -1,-1,-1,-1 };
-				nextIndex = 0;
+			if (i == collection.size() - 1 || nextIndex == 4) {
+				StoreCurrentCluster(cluster, nextIndex);
 			}
 		}
-		//for (int i = )???
 	}
+
+
+	// Compute cluster vacancy
+	int vacantCount = 0;
+	for (auto& cluster : persistentClusters) {
+		for (int i = 0; i < PersistentCluster::nParticles; i++) {
+			if (cluster[i] == -1)
+				vacantCount++;
+		}
+	}
+	double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::nParticles);
+
+	float largestDistInsidePcluster = 0.f;
+	for (auto& cluster : persistentClusters) {
+		std::vector<Float3> positions;
+		for (int i = 0; i < PersistentCluster::nParticles; i++) {
+			if (cluster[i] != -1) {
+				positions.push_back(system.particles[cluster[i]].position);
+			}
+		}
+		for (int i = 0; i < positions.size(); i++) {
+			for (int j = i + 1; j < positions.size(); j++) {
+				const float dist = LIMAPOSITIONSYSTEM::calcEuclideanDistNM(positions[i], positions[j]);
+				if (dist > largestDistInsidePcluster)
+					largestDistInsidePcluster = dist;
+			}
+		}
+	}
+	// Next compute the largest distances inside clusters
+	
+	//either the pclusters are made with particles far from eachother??
+
 
 	return persistentClusters;
 }
@@ -727,9 +863,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	}
 
+	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
 
 	// Make PersistenClusters
-	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology);
+	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, particleBondedToParticlesLookup);
 
 	auto [pClusters, pClusterMetas] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
 

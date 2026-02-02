@@ -77,7 +77,7 @@ namespace LimaMoleculeGraph {
 		public:
 			explicit BFSRange(NodePtr start_node) {
 				if (start_node) {
-					node_queue.push(start_node);
+					node_queue.push({start_node, 0});
 					visited.insert(start_node->atomid);
 				}
 			}
@@ -88,12 +88,15 @@ namespace LimaMoleculeGraph {
 				Iterator() = default;
 
 				// Constructor that initializes from a BFSRange instance
-				explicit Iterator(BFSRange* range) : range(range), current(range->next_node()) {}
+				explicit Iterator(BFSRange* range) : range(range) {
+					std::tie(current, depth) = range->next_node();
+				}
 
 				NodeType& operator*() const { return *current; }
+				int Depth() const { return depth; }
 
 				Iterator& operator++() {
-					current = range->next_node();
+					std::tie(current, depth) = range->next_node();
 					return *this;
 				}
 
@@ -102,6 +105,7 @@ namespace LimaMoleculeGraph {
 			private:
 				BFSRange* range = nullptr;
 				NodePtr current = nullptr;
+				int depth = 0;
 			};
 
 			// Begin and end for range-based for-loop support
@@ -110,22 +114,24 @@ namespace LimaMoleculeGraph {
 
 		private:
 			std::unordered_set<int> visited;
-			std::queue<NodePtr> node_queue;
+			std::queue<std::tuple<NodePtr, int>> node_queue;	// Stores {node, depth}
 
 			// Generates the next node in BFS order
-			NodePtr next_node() {
-				if (node_queue.empty()) return nullptr;
+			std::tuple<NodePtr, int> next_node() {
+				if (node_queue.empty())
+					return { nullptr, 0 };
 
-				NodePtr current = node_queue.front();
+				auto [current, currentDepth] = node_queue.front();
 				node_queue.pop();
 
 				for (Node* neighbor : current->getNeighbors()) {
-					NodePtr neighbor_ptr = neighbor; // Assign Node* to NodePtr
+					NodePtr neighbor_ptr = neighbor;
 					if (visited.insert(neighbor->atomid).second) {
-						node_queue.push(neighbor_ptr);
+						node_queue.emplace(neighbor_ptr, currentDepth + 1);
 					}
 				}
-				return current;
+
+				return { current, currentDepth };
 			}
 		};
 
@@ -173,6 +179,7 @@ namespace LimaMoleculeGraph {
 			return BFSRange(&nodes.at(start_node_id));
 		}
 
+		std::optional<int> DistanceBetweenNodes(int id0, int id1, int maxSearchDepth=8) const;
 
 		bool GraphIsDisconnected() const;
 

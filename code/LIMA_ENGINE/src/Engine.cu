@@ -373,7 +373,7 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	bool newAlg = false;
+	bool newAlg = true;
 
 	//if (newAlg)
 	{
@@ -402,7 +402,7 @@ void Engine::_deviceMaster() {
 				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
 	}
-	//else 
+	/*else*/ 
 	{
 		if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -453,16 +453,16 @@ void Engine::_deviceMaster() {
 	
 
 
-	//if (simulation->simparams_host.snf_select != None) {
-	//	SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
-	//}
+	if (simulation->simparams_host.snf_select != None) {
+		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
+	}
 
-	//if (!simulation->box_host->bondgroups.empty()) {
-	//	BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-	//		(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
-	//}
+	if (!simulation->box_host->bondgroups.empty()) {
+		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
+			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+	}
 
 	// #### Integration and Transfer kernels
 	cudaStreamSynchronize(pmeStream);
@@ -641,9 +641,12 @@ struct ReservedTask {
 	int nointeractionMatrixIndexRelative = -1;
 };
 
-std::vector<size_t> ExlusivePrefixsum(const std::vector<int>& counts) {
+template <typename T>
+std::vector<size_t> ExlusivePrefixsum(const std::vector<T>& counts) {
+	static_assert(std::is_integral<T>::value, "ExlusivePrefixsum only supports integral types");
 	std::vector<size_t> prefixsum(counts.size());
-	std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
+	//std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
+	std::exclusive_scan(counts.begin(), counts.end(), prefixsum.begin(), size_t{ 0 });
     return prefixsum;
 }
 template <typename T>
@@ -761,6 +764,8 @@ bool Engine::MakeSuperClusterTasksCPU() {
 
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
+
+			i need to verify that im using hyperdist correctly here!
 
 			const float hyperDist = LIMAPOSITIONSYSTEM::calcHyperDistNM(scMeanPos[scId], scMeanPos[queryScId], boxSizeF, BoundaryConditionSelect::PBC);
 			if (hyperDist < simulation->simparams_host.cutoff_nm) {

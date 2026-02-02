@@ -250,7 +250,7 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 
 
 	// --------------------------------------------------------------- Solvation forces --------------------------------------------------------------- //
-#ifdef ENABLE_SOLVENTS
+#if ENABLE_SOLVENTS == 1
 	__shared__ SolventBlock* solventblockPtrs[batchsize];
 	__shared__ ForcefieldTinymol forcefieldTinymol_shared;
 	if (threadIdx.x < ForcefieldTinymol::MAX_TYPES)

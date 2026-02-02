@@ -337,7 +337,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	if (threadIdx.x == 0) {
 		scStagingControl.nClustersPerBlock[blockIdx.x] = nClustersToMake;
 		if constexpr (INDEXING_CHECKS) {
-			if (nClustersToMake >= SuperClustersControl::maxClustersPerBlock) {
+			if (nClustersToMake > SuperClustersControl::maxClustersPerBlock) {
 				printf("Trying to make too many superclusters in block %d: %d (max %d)\n", blockIdx.x, nClustersToMake, SuperClustersControl::maxClustersPerBlock);
 			}				
 		}
@@ -468,10 +468,11 @@ void Engine::BootstrapClustering() {
 
 	for (int pcId = 0; pcId < box.persistentClusters.size(); pcId++) {
 
-		Float3 pos = box.persistentClusters[pcId].pqd[0].position;
-		BoundaryConditionPublic::applyBCNM(pos, boxSizeF, BoundaryConditionSelect::PBC);	// TODO: OPTIM: Shouldnt be necessary, maybe just BC every step before resorting??
-
+		const Float3 pos = box.persistentClusters[pcId].pqd[0].position;
+		//BoundaryConditionPublic::applyBCNM(pos, boxSizeF, BoundaryConditionSelect::PBC);	// TODO: OPTIM: Shouldnt be necessary, maybe just BC every step before resorting??
 		NodeIndex targetBlock{ static_cast<int>(floorf(pos.x)), static_cast<int>(floorf(pos.y)), static_cast<int>(floorf(pos.z)) };
+		BoundaryConditionPublic::applyBC(targetBlock, boxSize, BoundaryConditionSelect::PBC);
+
 		int blockIndex = BoxGrid::Get1dIndex(targetBlock, BoxGrid::NodesPerDim(boxSize));
 
 		int targetDataIndex = blockIndex * PClusterTransfermodule::maxClustersPerBlock + nPclustersPerBlock[blockIndex];

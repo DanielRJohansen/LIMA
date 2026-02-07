@@ -79,7 +79,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
     const ForceField_NB::ParticleParameters myParams = compoundQuickData.ljParams[threadIdx.x];
 
 #if LIMAKERNELDEBUGMODE == 1
-	uint32_t particleGlobalIdSelf = sim->boxConfig.compounds[blockIdx.x].particle_global_ids[threadIdx.x];
+	uint32_t particleGlobalIdSelf = sim ? sim->boxConfig.compounds[blockIdx.x].particle_global_ids[threadIdx.x] : 0;
 #endif
 
     static_assert(batchsize <= MAX_COMPOUND_PARTICLES, "Not enough threads to load a full batch");
@@ -102,7 +102,7 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
                 cooperative_groups::wait(block);
 
 #if LIMAKERNELDEBUGMODE == 1
-				const uint32_t* const particleGlobalIdsQuery = sim->boxConfig.compounds[neighborCompounds[indexInBatch].id].particle_global_ids;
+				const uint32_t* const particleGlobalIdsQuery = sim ? sim->boxConfig.compounds[neighborCompounds[indexInBatch].id].particle_global_ids : nullptr;
 #endif
 
                 if (threadIdx.x < nParticles) {

@@ -372,7 +372,7 @@ void SplitClusters(std::span<int> ids, const ParticleBondedToParticlesLookup& pa
 		SplitClusters(std::span<int>(remainingIds), particleBondedToParticlesLookup, outClusters);
 }
 
-std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup) {
+std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, Float3 box_size) {
 	std::vector<std::pair<int, std::string>> atoms;
 	atoms.reserve(system.particles.size());
 	for (int pid = 0; pid < system.particles.size(); pid++) {
@@ -399,6 +399,20 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		nextIndex = 0;
 		};
 
+	auto CanAppendToCluster = [&systemGraph](int particleId, std::array<int, 4>& cluster, int nextIndex) {
+		if (nextIndex == 0)
+			return true;
+
+		std::optional<int> distanceToPreviousNode = systemGraph->DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
+		std::optional<int> distanceToFirstNode = systemGraph->DistanceBetweenNodes(cluster[0], particleId, 5);
+
+		const bool canAppend = distanceToFirstNode.value_or(INT_MAX) < 3 ||
+			distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
+
+		return canAppend;
+		};
+
+
 	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
 
 		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
@@ -408,20 +422,43 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		std::array<int, 4> cluster{ -1,-1,-1,-1 };
 		int nextIndex = 0;
 
+
+
+
 		for (int i = 0; i < collection.size(); i++) {		
+			const int particleId = collection[i];
+			if (addedByLookahead.contains(particleId))
+				continue;
+
 			if (nextIndex == 0) {}
 			else {
-				std::optional<int> distanceToPreviousNode = systemGraph->DistanceBetweenNodes(cluster[nextIndex - 1], collection[i], 5);
-				if (!distanceToPreviousNode.has_value() || *distanceToPreviousNode > 2) {
+				const bool canAppend = CanAppendToCluster(particleId, cluster, nextIndex);
+
+				if (!canAppend) {
+					// Look ahead and add other particles if possible
+					int lookaheadCnt = 6;
+					for (int lookaheadIndex = i + 1; (lookaheadIndex <= std::min(i + lookaheadCnt, (int)collection.size() - 2)) && nextIndex < 4; lookaheadIndex++) {
+						const int lookaheadId = collection[lookaheadIndex];
+						if (CanAppendToCluster(lookaheadId, cluster, nextIndex)) {
+							addedByLookahead.insert(lookaheadId);
+							cluster[nextIndex++] = lookaheadId;
+						}
+
+					}
+
 					StoreCurrentCluster(cluster, nextIndex);
 				}
 			}
 
-			cluster[nextIndex++] = collection[i];
+			cluster[nextIndex++] = particleId;
 
 			if (i == collection.size() - 1 || nextIndex == 4) {
 				StoreCurrentCluster(cluster, nextIndex);
 			}
+		}
+
+		if (nextIndex != 0)	{
+			StoreCurrentCluster(cluster, nextIndex);
 		}
 	}
 
@@ -446,7 +483,7 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		}
 		for (int i = 0; i < positions.size(); i++) {
 			for (int j = i + 1; j < positions.size(); j++) {
-				const float dist = LIMAPOSITIONSYSTEM::calcEuclideanDistNM(positions[i], positions[j]);
+				const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], positions[j],  box_size, BoundaryConditionSelect::PBC);
 				if (dist > largestDistInsidePcluster)
 					largestDistInsidePcluster = dist;
 			}
@@ -459,7 +496,6 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 	return persistentClusters;
 }
-
 std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
 
 	std::vector<PersistentCluster> pClusters(clustersParticleIds.size());
@@ -866,7 +902,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
 
 	// Make PersistenClusters
-	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, particleBondedToParticlesLookup);
+	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, particleBondedToParticlesLookup, grofile.box_size);
 
 	auto [pClusters, pClusterMetas] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
 

@@ -98,6 +98,7 @@ public:
 	static const int blockLen = 1;	
 	static const int maxOutgoingClusters = 8;
 
+	// Set by GetPclusterPositions kernel
 	Float3* meanPositionOfPClustersPerBlock = nullptr; // 1 value per pCluster per block
 	int* idsOfPclustersInBlocks = nullptr; // 1 value per pclusters per block
 	int* nPClustersPerBlock = nullptr;		// 1 value per block

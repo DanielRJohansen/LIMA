@@ -159,7 +159,9 @@ struct ForceEnergyInterims {
 		float vecErr = (fOld - nNew).len() / fOld.len();
 		float magErr = std::abs(fOld.len() - nNew.len()) / fOld.len();
 
-		if (vecErr > 0.1 && compoundId == 0) {
+		if (vecErr > 0.1 
+			//&& compoundId == 0
+			) {
 			/*printf("Compound %5d Particle %2d: Old force %.6f, New force %.6f, relative error %.6f\n",
 				compoundId, particleId, fOld.len(), nNew.len(), err);*/
 			printf("Compound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",

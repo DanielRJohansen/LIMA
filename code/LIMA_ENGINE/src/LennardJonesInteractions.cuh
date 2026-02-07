@@ -76,8 +76,8 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (FORCE_CHECKS) {
-			if (force.isNan() || (true && originSelect != CalcLJOrigin::Pairbond)) {
-				if (pid0 == 4 || pid1 == 4)
+			if (force.isNan() || (false && originSelect != CalcLJOrigin::Pairbond)) {
+				//if (pid0 == 4 || pid1 == 4)
 				//if (pid0==0 || pid1 == 0)
 					calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
 				/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
@@ -162,7 +162,7 @@ namespace LJ {
             if (!EngineUtils::isOutsideCutoff_recip(dist_sq_reciprocal, cutoff_recip)) {
 
 #if LIMAKERNELDEBUGMODE == 1
-				int gpidNeighbor = (int)gpidNeighbors[neighborparticle_id];
+				int gpidNeighbor = gpidNeighbors ? (int)gpidNeighbors[neighborparticle_id] : -1;
 #endif
 
 				force += calcLJForceOptim<computePotE, emvariant>(diff, dist_sq_reciprocal, potE_sum,

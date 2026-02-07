@@ -368,20 +368,20 @@ void Environment::handleStatus(const int64_t step, bool emVariant) {
 		return;
 	}
 
-	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
-		const std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0);
-		const double duration_ms = duration.count();
-
+	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
+		auto duration = std::chrono::steady_clock::now() - time0;
+		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
+		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
 		//// First clear the current line
 		//printf("\r\033[K");
 		// Move cursor to the beginning of the line and clear it
 		printf("\033[1000D\033[K");
 
 		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms", duration_ms / STEPS_PER_UPDATE);
+		printf("\tAvg. time: %.2fms", avgSteptime);
 
 		time0 = std::chrono::steady_clock::now();
-		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
+		avgStepTimes.emplace_back(avgSteptime);
 
 
 
@@ -392,7 +392,7 @@ void Environment::handleStatus(const int64_t step, bool emVariant) {
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
 		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
-		const double wall_time_sec = duration.count() * 1e-3;
+		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		newStatus.simulationPerformance = ns_per_day;
 		simStatus = newStatus;

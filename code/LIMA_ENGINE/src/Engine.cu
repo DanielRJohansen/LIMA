@@ -384,18 +384,18 @@ void Engine::_deviceMaster() {
 			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
-		std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
-		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));
+		/*std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
+		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));*/
 
 
-		std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
+		//std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
 
 		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
 			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");		
 
-		std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
-		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));
+		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
+		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/
 
 		DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
 			(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
@@ -404,11 +404,18 @@ void Engine::_deviceMaster() {
 	}
 	/*else*/ 
 	{
+		cudaDeviceSynchronize();
 		if (boxparams.n_compounds > 0) {
 		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
+			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>
             (simulation->simparams_host.enable_electrostatics,
-                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, sim_dev);
+                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
+				nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
+				//sim_dev 
+				nullptr
+				);
+		cudaDeviceSynchronize();
+		int a = 0;
 		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
 		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
@@ -703,6 +710,81 @@ std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperC
 	return nointeractionMatrices;
 }
 
+//float MinDistanceBetweenPclustersInSupercluster(const SuperCluster& sc0, const SuperCluster& sc1, const Float3& boxSize) {
+//	float minDist = FLT_MAX;
+//	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
+//		if (!sc0.pData->Valid())
+//			continue;
+//		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
+//			if (!sc1.pData->Valid())
+//				continue;
+//			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(sc0.pData[pcid0].position, sc1.pData[pcid1].position, boxSize, BoundaryConditionSelect::PBC);
+//			if (dist < minDist) {
+//				minDist = dist;
+//			}
+//		}
+//	}
+//	return minDist;
+//}
+
+std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(const std::vector<SuperCluster>& superclusters) {
+	std::vector<std::array<float4, 4>> out(superclusters.size());
+
+	// Debugging
+	float maxRadius = 0;
+	float maxIntraScDistance = 0;
+
+	for (int scId = 0; scId < superclusters.size(); scId++) {
+		for (int pcid = 0; pcid < 4; pcid++) {
+			Float3 sum{};
+			int cnt = 0;
+			for (int pid = 0; pid < 4; pid++){
+				const PData& pData = superclusters[scId].pData[pcid * 4 +pid];
+				if (pData.Valid()) {
+					sum += pData.position;
+					cnt++;
+				}
+			}
+
+			const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
+			float radius = 0;
+			for (int pid = 0; pid < cnt; pid++) {
+				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+				radius = std::max(radius, (pData.position - meanPos).len());
+			}
+			out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };	
+
+			if (radius > 1.5f)
+				int a = 0;
+
+			// Debug
+			maxRadius = std::max(maxRadius, radius);
+			if (pcid != 0)
+				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
+			//
+		}
+	}
+
+	return out;
+}
+
+bool DoesSuperclustersInteract(const std::vector<std::array<float4, 4>>& superclusterPositionSpheres, int scId0, int scId1, float cutoffDistance, Float3 boxSize) {
+	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
+		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
+			float4 p0 = superclusterPositionSpheres[scId0][pcid0];
+			float4 p1 = superclusterPositionSpheres[scId1][pcid1];
+
+			float distance = LIMAPOSITIONSYSTEM::calcHyperDistNM(Float3{ p0 }, Float3{ p1 }, boxSize, BoundaryConditionSelect::PBC);
+			float radiusSum = p0.w + p1.w;
+
+			if (distance + radiusSum <= cutoffDistance) {	// optim use LenSq
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool Engine::MakeSuperClusterTasksCPU() {
 	if (nSuperclusters == 0)
 		return true;
@@ -718,26 +800,24 @@ bool Engine::MakeSuperClusterTasksCPU() {
 
 
 
-	std::vector<Float3> scMeanPos(superClusters.size());
-	std::transform(
-		std::execution::par,
-		superClusters.begin(),
-		superClusters.end(),
-		scMeanPos.begin(),
-		[](const SuperCluster& sc) {
-			Float3 sum{};
-			int cnt = 0;
-
-			for (const PData& p : sc.pData) {
-				if (p.Valid()) {
-					sum += p.position;
-					++cnt;
-				}
-			}
-
-			return sum * (1.0f / static_cast<float>(cnt));
-		}
-	);
+	//std::vector<Float3> scMeanPos(superClusters.size());
+	//std::transform(
+	//	std::execution::par,
+	//	superClusters.begin(),
+	//	superClusters.end(),
+	//	scMeanPos.begin(),
+	//	[](const SuperCluster& sc) {
+	//		Float3 sum{};
+	//		int cnt = 0;
+	//		for (const PData& p : sc.pData) {
+	//			if (p.Valid()) {
+	//				sum += p.position;
+	//				++cnt;
+	//			}
+	//		}
+	//		return sum * (1.0f / static_cast<float>(cnt));
+	//	}
+	//);
 	//for (int i = 0; i < superClusters.size(); i++) {
 	//	const auto& sc = superClusters[i];
 	//	Float3 meanPos{};
@@ -752,7 +832,7 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	//	scMeanPos[i] = meanPos;
 	//}
 
-
+	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
 
 
 	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
@@ -765,10 +845,10 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
 
-			i need to verify that im using hyperdist correctly here!
+			//const float minHyperdist = MinDistanceBetweenPclustersInSupercluster(superClusters[scId], superClusters[queryScId], boxSizeF);
 
-			const float hyperDist = LIMAPOSITIONSYSTEM::calcHyperDistNM(scMeanPos[scId], scMeanPos[queryScId], boxSizeF, BoundaryConditionSelect::PBC);
-			if (hyperDist < simulation->simparams_host.cutoff_nm) {
+			//if (minHyperdist < simulation->simparams_host.cutoff_nm) {
+			if (DoesSuperclustersInteract(superclusterPositionSpheres, scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)){
 				//const bool bonded = ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
 				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
 
@@ -867,7 +947,7 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	nTasks = numTasksTotal;
 	//nSuperclusters = nSuperClusters;
 
-	return true;
+	//return true;
 }
 
 

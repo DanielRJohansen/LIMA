@@ -19,7 +19,8 @@ namespace LAL {
 		return r < l ? r : l;
 	}
 
-	__device__ __host__ static int32_t abs(const int32_t val) {
+	template <typename T>
+	constexpr static T abs(const T val) {
 		return val < 0 ? -val : val;
 	}
 
@@ -39,6 +40,10 @@ namespace LAL {
 		}
 		__syncthreads();
 		data[threadIdx.x] -= 1;
+	}
+
+	constexpr bool Fequal(float a, float b, float eps = 1e-6f) noexcept {
+		return abs(a - b) <= eps;
 	}
 
 	// TODO These functions are NOT what their names elude they are, fix that

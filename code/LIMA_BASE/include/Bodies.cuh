@@ -398,6 +398,9 @@ struct SuperCluster {
 	//Float3 positions[nParticles];
 	PData pData[nParticles];
 
+#if LIMAKERNELDEBUGMODE == 1
+	Float3 center;
+#endif
 
 	/*float x[nParticles];
 	float y[nParticles];

@@ -1148,6 +1148,8 @@ ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
 	}
 }
 
+//TODO: This one is not QUITE right, we need to hyperpos all particles to the 0th particle, or maybe a middle particle? otherwise meanPos's get WIERD!
+// For now i deal with this in a downstream function to compute the pcluster meanpos, but eventually we want it to be correct here also!
 // blockdim = 16,1,1
 __global__ void UpdatePdataPositions(const BoxState boxState, const ParticleToCompoundOrSolventMapping* const particleToCompoundOrSolventMapping, const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pclusterMeta, 
 	SuperCluster* const scData, PersistentCluster* pClusters) {

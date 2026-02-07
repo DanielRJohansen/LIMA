@@ -754,13 +754,12 @@ std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSu
 			}
 			out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };	
 
-			if (radius > 1.5f)
-				int a = 0;
-
 			// Debug
 			maxRadius = std::max(maxRadius, radius);
 			if (pcid != 0)
 				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
+			if (radius > 1.5f || maxIntraScDistance > 1.5f)
+				int a = 0;
 			//
 		}
 	}
@@ -782,6 +781,7 @@ bool DoesSuperclustersInteract(const std::vector<std::array<float4, 4>>& supercl
 			}
 		}
 	}
+	//return true;
 	return false;
 }
 
@@ -845,11 +845,7 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
 
-			//const float minHyperdist = MinDistanceBetweenPclustersInSupercluster(superClusters[scId], superClusters[queryScId], boxSizeF);
-
-			//if (minHyperdist < simulation->simparams_host.cutoff_nm) {
 			if (DoesSuperclustersInteract(superclusterPositionSpheres, scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)){
-				//const bool bonded = ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
 				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
 
 				workPerSc[scId].emplace_back(ReservedTask{

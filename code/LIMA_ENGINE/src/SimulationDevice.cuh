@@ -157,21 +157,19 @@ struct ForceEnergyInterims {
 			forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
 		Float3 nNew = fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
 		float vecErr = (fOld - nNew).len() / fOld.len();
-		float magErr = std::abs(fOld.len() - nNew.len()) / fOld.len();
+		float magDiff = std::abs(fOld.len() - nNew.len());
+		float magErr = magDiff / fOld.len();
+		float threshold = 4000;
 
-		if (vecErr > 0.1 
-			//&& compoundId == 0
-			) {
-			/*printf("Compound %5d Particle %2d: Old force %.6f, New force %.6f, relative error %.6f\n",
-				compoundId, particleId, fOld.len(), nNew.len(), err);*/
-			printf("Compound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
+		if (vecErr > 0.1 && magDiff > threshold) {
+			printf("\nCompound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
 				compoundId, particleId, vecErr, fOld.x, fOld.y, fOld.z, nNew.x, nNew.y, nNew.z);
 		}
 		
 
-		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+		return/* forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ */forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ pmeFE;
 	}

@@ -85,6 +85,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 
 
 	//const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
+	Float3 temp = meanPos;
 	Float3 gridPosF = meanPos.Floor();
 	PeriodicBoundaryCondition::applyBCNM(gridPosF);
 	PeriodicBoundaryCondition::applyHyperposNM(gridPosF, meanPos);
@@ -94,6 +95,12 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
 	int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
 	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
+
+	if constexpr (INDEXING_CHECKS){
+		if (indexInBlock >= PClusterTransfermodule::maxClustersPerBlock) {
+			printf("Too many pclusters in block %d %d %d. Count %d\n", blockId.x, blockId.y, blockId.z, indexInBlock);
+		}
+	}
 
 	transferModule.idsOfPclustersInBlocks[index] = pcId;
 	transferModule.meanPositionOfPClustersPerBlock[index] = meanPos; // TODO: THis is not even the actual meanposition is it?
@@ -124,6 +131,7 @@ __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModul
 			ids[i] = INT_MAX;
 		}
 	}
+	__syncthreads();
 
 	LAL::Sort<PClusterTransfermodule::maxClustersPerBlock>(ids, positions);
 
@@ -198,15 +206,14 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	if (threadIdx.x < 6) {
 		int myCount = 0;
 		for (int i = 0; i < nPClusters; i++) {
-			if (directionIndexOfPCluster[i] == threadIdx.x) {
-				if constexpr (INDEXING_CHECKS) {
-					if (myCount >= PClusterTransfermodule::maxOutgoingClusters)
-						printf("Too many pClusters in one direction");
-				}
-				
+			if (directionIndexOfPCluster[i] == threadIdx.x) {				
 				clusterIdsThisDirectionRelativeToBlock[threadIdx.x * PClusterTransfermodule::maxOutgoingClusters + myCount] = i;
 				myCount++;
 			}
+		}
+		if constexpr (INDEXING_CHECKS) {
+			if (myCount >= PClusterTransfermodule::maxOutgoingClusters)
+				printf("Too many pClusters in one direction");
 		}
 		nClustersThisDirection[threadIdx.x] = myCount;
 	}
@@ -329,7 +336,12 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		}
 		if (threadIdx.x == 0) {
 			nPclustersInBlock += transferModule.nIncomingClusters[blockIdx.x * 6 + dir];
+			if constexpr (INDEXING_CHECKS) {
+				if (nPclustersInBlock > PClusterTransfermodule::maxClustersPerBlock)
+					printf("Too many clusters in block after adding incoming. Block %d, count %d\n", blockIdx.x, nPclustersInBlock);
+			}
 		}
+		__syncthreads();
 	}
 	__syncthreads();
 	/*if (threadIdx.x == 0 && nPclustersInBlock > 0) {
@@ -428,7 +440,6 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		scStagingControl.scMeta[stagingStartIndex + threadIdx.x] = scMeta;
 
 
-
 		{
 			bool aFound = false;
 			bool bFound = false;
@@ -438,12 +449,12 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 					aFound = true;
 				if (posDebug[i].x > 3.5f)
 					bFound = true;
-				/*if ((posDebug[i] - blockCenter > 1.5f))
-					cFound = true;*/
+				if ((posDebug[i] - blockCenter).len() > 1.5f)
+					cFound = true;
 			}
 
 
-			if (aFound && bFound && threadIdx.x == 2) {
+			if (cFound) {
 				// print all pos
 				printf("blockcenter %f %f %f\n", blockCenter.x, blockCenter.y, blockCenter.z);
 				for (int i = 0; i < 16; i++) {
@@ -525,6 +536,8 @@ void Engine::RunClustering(bool getPclusters) {
 		int sum = std::accumulate(counts.begin(), counts.end(), 0);
 		if (sum != nSuperclusters)
 			throw std::runtime_error("Prefixsum mismatch in clustering");
+
+		//cudaMemset(superclusterStagingControl->nClustersPerBlock, 0, sizeof(int) * nElements);// TODO: Remove this is not necessary im just bughunting.
 	}
 
 	CompressSuperclusters<<<nBlocks, 32>>>(*superClustersControl, *superclusterStagingControl);

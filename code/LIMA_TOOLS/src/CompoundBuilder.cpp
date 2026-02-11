@@ -982,6 +982,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
+	auto temp = compounds[78].particle_global_ids[8];
+
 	return std::make_unique<BoxImage>(
 		std::move(compounds),
 		static_cast<int>(totalCompoundParticles),

@@ -76,9 +76,12 @@ namespace LJ {
 		const Float3 force = diff * force_scalar;
 
 		if constexpr (FORCE_CHECKS) {
-			if (force.isNan() || (false && originSelect != CalcLJOrigin::Pairbond)) {
-				//if (pid0 == 4 || pid1 == 4)
-				//if (pid0==0 || pid1 == 0)
+			/*int debugPid = 2251;
+			bool eitherIsInvalid = pid0 == -1 || pid1 == -1;*/
+			bool debugThis = false;// (pid0 == debugPid || pid1 == debugPid) && !eitherIsInvalid;
+
+
+			if (force.isNan() || debugThis) {
 					calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
 				/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
 					diff.x, diff.y, diff.z, diff.len(), sigma, epsilon, s, emvariant, force_scalar, calcLJOriginString[(int)originSelect], pid0, pid1);*/

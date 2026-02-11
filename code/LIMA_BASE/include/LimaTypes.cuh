@@ -35,6 +35,7 @@ struct Int3 {
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 	constexpr int InnerProduct() const { return x * y * z; }
+	constexpr int Min() const { return std::min(x, std::min(y, z)); }
 
 	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';

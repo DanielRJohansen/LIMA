@@ -471,7 +471,8 @@ struct SuperClusterMeta {
 
 
 	// For debugging, find a way to remove in release automatically
-	int particlesIds[SuperCluster::nParticles];
+	//int particlesIds[SuperCluster::nParticles];
+	std::array<int, SuperCluster::nParticles> particlesIds;
 
 	// Set by taskbuilder kernel
 	int resultsStartIndex;

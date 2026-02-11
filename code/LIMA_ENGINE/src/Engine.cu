@@ -381,7 +381,7 @@ void Engine::_deviceMaster() {
 		dim3 blockDim(16, 1, 1); // TEMP
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
-			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta);
+			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
 		/*std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
@@ -411,8 +411,9 @@ void Engine::_deviceMaster() {
             (simulation->simparams_host.enable_electrostatics,
                 forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
 				nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
-				//sim_dev 
-				nullptr
+				sim_dev,
+				//nullptr,
+                step
 				);
 		cudaDeviceSynchronize();
 		int a = 0;
@@ -758,7 +759,7 @@ std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSu
 			maxRadius = std::max(maxRadius, radius);
 			if (pcid != 0)
 				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
-			if (radius > 1.5f || maxIntraScDistance > 1.5f)
+			if (radius > .8f || maxIntraScDistance > 1.2f)
 				int a = 0;
 			//
 		}
@@ -790,6 +791,7 @@ bool Engine::MakeSuperClusterTasksCPU() {
 		return true;
 
 	const Box& box = *simulation->box_host;
+	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
 
 	//simulation->box_host->persistentClusters;
 	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
@@ -797,45 +799,25 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
 	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
 	
-
-
-
-	//std::vector<Float3> scMeanPos(superClusters.size());
-	//std::transform(
-	//	std::execution::par,
-	//	superClusters.begin(),
-	//	superClusters.end(),
-	//	scMeanPos.begin(),
-	//	[](const SuperCluster& sc) {
-	//		Float3 sum{};
-	//		int cnt = 0;
-	//		for (const PData& p : sc.pData) {
-	//			if (p.Valid()) {
-	//				sum += p.position;
-	//				++cnt;
-	//			}
-	//		}
-	//		return sum * (1.0f / static_cast<float>(cnt));
-	//	}
-	//);
-	//for (int i = 0; i < superClusters.size(); i++) {
-	//	const auto& sc = superClusters[i];
-	//	Float3 meanPos{};
-	//	int cnt = 0;
-	//	for (const PData& pData : sc.pData) {
-	//		if (pData.Valid()) {
-	//			meanPos += pData.position;
-	//			cnt++;
-	//		}
-	//	}
-	//	meanPos *= 1.f/static_cast<float>(cnt);
-	//	scMeanPos[i] = meanPos;
+	//// Debug
+	//std::vector<int> pclustersMissing(pClustersMeta.size(), 1);
+	//std::vector<int> particlesMissing(box.boxparams.total_particles, 1);
+	//for (const auto& scm : superClusterMetas) {
+	//	for (int pid : scm.particlesIds)
+	//		if (pid != -1)
+	//			particlesMissing[pid] = 0;
+	//	for (int pcid : scm.pclusterIds)
+	//		if (pcid != -1)
+	//			pclustersMissing[pcid] = 0;
+	//}
+	//const int nMissingPclusters = std::accumulate(pclustersMissing.begin(), pclustersMissing.end(), 0);
+	//const int nMissingParticles = std::accumulate(particlesMissing.begin(), particlesMissing.end(), 0);
+	//if (nMissingPclusters > 0 || nMissingParticles > 0) {
+	//	int a = 0;
 	//}
 
+
 	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
-
-
-	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
 
 
 	std::vector<std::vector<ReservedTask>> workPerSc(superClusters.size());
@@ -924,7 +906,7 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	//}
 
 
-	DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
+	//DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
 	//DebugUtils::VerifyIdentical
 
 
@@ -941,10 +923,26 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	cudaMemset(scResultsDevice, 0, sizeof(SCResult)* nResults);
 
 	nTasks = numTasksTotal;
-	//nSuperclusters = nSuperClusters;
-
-	//return true;
+	if (simulation->getStep() == 787) {
+		int a = 0;
+	}
+	return true;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

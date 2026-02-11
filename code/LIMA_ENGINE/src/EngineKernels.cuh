@@ -46,7 +46,7 @@
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE> // We dont compute potE if we dont log data this step
 __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, ForceEnergy* const forceEnergy, const CompoundQuickData* const compoundQuickDataBuffer,
                     const uint16_t* const compoundsNNeighborNonbondedCompounds, const NeighborList::IdAndRelshift* const compoundsNeighborNonbondedCompounds, const uint8_t* const nParticlesInCompoundsBuffer,
-	SimulationDevice* sim)
+	SimulationDevice* sim, int step)
 {
     const int batchsize = 32;
 
@@ -102,7 +102,9 @@ __global__ void compoundFarneighborShortrangeInteractionsKernel(bool enableES, F
                 cooperative_groups::wait(block);
 
 #if LIMAKERNELDEBUGMODE == 1
-				const uint32_t* const particleGlobalIdsQuery = sim ? sim->boxConfig.compounds[neighborCompounds[indexInBatch].id].particle_global_ids : nullptr;
+				const uint32_t* particleGlobalIdsQuery = sim ? sim->boxConfig.compounds[neighborCompounds[indexInBatch].id].particle_global_ids : nullptr;
+				if (step != 788)
+					particleGlobalIdsQuery = nullptr;
 #endif
 
                 if (threadIdx.x < nParticles) {
@@ -186,6 +188,8 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 		
 #if LIMAKERNELDEBUGMODE == 1
 		uint32_t* particleGlobalIds = compound.particle_global_ids;
+		if (step != 788)
+			particleGlobalIds = nullptr;
 #else 
 		uint32_t* particleGlobalIds = nullptr;
 #endif
@@ -236,10 +240,15 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 			bpLUT.load(*compoundPairLutPtrs[i]);
 			__syncthreads();
 
+			const uint32_t* particleGlobalIdsQuery = boxConfig.compounds[neighborId].particle_global_ids;
+			if (step != 788)
+				particleGlobalIdsQuery = nullptr;
+
+
 			if (threadIdx.x < compound.n_particles) {
 				force += LJ::computeCompoundCompoundLJForces<computePotE, energyMinimize>(compound_positions[threadIdx.x], compound.atom_types[threadIdx.x], potE_sum,
 					neighborPositions, neighborNParticles, neighborAtomstypes, &bpLUT, LJ::CalcLJOrigin::ComComInter, forcefield_shared,
-					particleCharge, neighborParticlescharges, gpidSelf, boxConfig.compounds[neighborId].particle_global_ids);
+					particleCharge, neighborParticlescharges, gpidSelf, particleGlobalIdsQuery);
 			}
 			__syncthreads();
 		}
@@ -936,7 +945,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 /// MaskMatrix is either BoolMatrix16x16 or NoMat
 /// </summary>
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta) {
+__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step) {
 	__shared__ ScScTask task;
 	__shared__ SuperCluster queryCluster;
 	__shared__ Float3 p0Pos; // Used for PBC`
@@ -954,25 +963,19 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	utilitySCResult.fe[threadIdx.x] = ForceEnergy{};
 	__syncthreads();
 	
-	{
-		auto tb = cooperative_groups::this_thread_block();
-		//cooperative_groups::memcpy_async(tb, &queryCluster, &(superClusters[task.scIds[1]]), sizeof(SuperCluster));
-		if constexpr (useNointeractionMatrix) {
-			if (hasNoInteractionMatrix)
-				noInteractionsRow = nointeractionMatrices[task.nointeractionMatrixIndex].GetRow(threadIdx.x);
-			//cooperative_groups::memcpy_async(tb, &nointeractionMask, &nointeractionMatrices[task.nointeractionMatrixIndex], sizeof(MaskMatrix));
-		}
-		cooperative_groups::wait(tb);
+	
+	if constexpr (useNointeractionMatrix) {
+		if (hasNoInteractionMatrix)
+			noInteractionsRow = nointeractionMatrices[task.nointeractionMatrixIndex].GetRow(threadIdx.x);
 	}
+	
 	const PData myParticle = superClusters[task.scIds[0]].pData[threadIdx.x];
 	if (threadIdx.x == 0) {
 		p0Pos = superClusters[task.scIds[0]].pData[0].position;
 	}
 	__syncthreads();
 
-	if (threadIdx.y == 0) {
-		BoundaryCondition::applyHyperposNM(p0Pos, queryCluster.pData[threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??		
-	}
+	BoundaryCondition::applyHyperposNM(p0Pos, queryCluster.pData[threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??		
 	__syncthreads();
 
 
@@ -996,6 +999,11 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		if (!skip) { 
 			int p0pid = superClusterMeta[task.scIds[0]].particlesIds[threadIdx.x];
 			int p1pid = superClusterMeta[task.scIds[1]].particlesIds[queryIndex];
+			if (step != 788) {
+				p0pid = -1;
+				p1pid = -1;
+			}
+
 			fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex], p0pid, p1pid);
 		}
 		myForceEnergy += fe;

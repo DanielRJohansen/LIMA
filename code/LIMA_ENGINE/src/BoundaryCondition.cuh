@@ -64,13 +64,13 @@ public:
 		movable_particle.z += DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) > boxlenhalf_nm.z);
 		movable_particle.z -= DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm.z);
 	}
-
+// TODO: CHECK ALL THESE! Most are wrong, its CRITICAL we do >= not just >!!!
 	__device__ constexpr static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
 		current_position.x += DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x < 0.f);
-		current_position.x -= DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x > DeviceConstants::boxSize.boxSizeNM_f.x);
+		current_position.x -= DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x >= DeviceConstants::boxSize.boxSizeNM_f.x);
 		current_position.y += DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y < 0.f);
-		current_position.y -= DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y > DeviceConstants::boxSize.boxSizeNM_f.y);
+		current_position.y -= DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y >= DeviceConstants::boxSize.boxSizeNM_f.y);
 		current_position.z += DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z < 0.f);
-		current_position.z -= DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z > DeviceConstants::boxSize.boxSizeNM_f.z);
+		current_position.z -= DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z >= DeviceConstants::boxSize.boxSizeNM_f.z);
 	}
 };
